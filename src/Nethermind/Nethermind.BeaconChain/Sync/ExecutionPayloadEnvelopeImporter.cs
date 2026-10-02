@@ -148,6 +148,18 @@ public sealed class ExecutionPayloadEnvelopeImporter(
         };
     }
 
+    /// <summary>Checks <paramref name="signedEnvelope"/>'s signature against the post-state of the block it names.</summary>
+    /// <returns><c>null</c> when that state is not held; otherwise whether the signer the state names for it signed it.</returns>
+    public bool? VerifySignature(SignedExecutionPayloadEnvelope signedEnvelope)
+    {
+        if (signedEnvelope.Message?.BeaconBlockRoot is not { } blockRoot || states.GetGloasBlockState(blockRoot) is not { } state)
+        {
+            return null;
+        }
+
+        return HasSelfBuildProposerKey(signedEnvelope.Message, state) && GloasBlockProcessing.VerifyExecutionPayloadEnvelopeSignature(state, signedEnvelope, pubkeys);
+    }
+
     /// <summary>
     /// Whether the key a self-built envelope's signature is checked against is cached, first extending the cache from the
     /// state's registry when it lags, as fork choice does for each block's post-state; an envelope from a builder needs none.

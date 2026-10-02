@@ -634,6 +634,123 @@ public class ColumnGossipRouterFuluHeaderTests
         }
     }
 
+    /// <summary>
+    /// A Fulu block is judged on its header as a sidecar is: accepted once the parent, slot, finalized-ancestor, expected-proposer and
+    /// signature rules pass, before its data or execution payload, so it is forwarded and announced early; a REJECT is never raised for import,
+    /// and a block those sources cannot check yet is ignored at once while it still imports.
+    /// </summary>
+    /// <remarks>phase0 p2p-interface.md beacon_block; the signing root of a block is its header's root.</remarks>
+    [TestCase(0, 0UL, true, MessageValidity.Accepted, 1, TestName = "Fulu_block_header_that_verifies_is_accepted_at_once")]
+    [TestCase(0, 1UL, true, MessageValidity.Rejected, 0, TestName = "Fulu_block_from_an_unexpected_proposer_is_rejected")]
+    [TestCase(1, 0UL, true, MessageValidity.Rejected, 0, TestName = "Fulu_block_with_an_invalid_signature_is_rejected")]
+    [TestCase(0, 0UL, false, MessageValidity.Ignored, 1, TestName = "Fulu_block_whose_proposer_cannot_be_checked_is_ignored_and_imported")]
+    public void Fulu_block_header_is_checked_before_its_data(int signer, ulong expectedProposer, bool lookaheadOnBranch, MessageValidity expected, int raised)
+    {
+        (GossipRouter router, _) = BlockRouter(lookaheadOnBranch ? ParentRoot : OtherRoot, expectedProposer, out List<GossipVerdict> raisedVerdicts);
+
+        (MessageValidity routed, List<MessageValidity> given) = HandleBlock(router, SignedBlock(signer, Hash256.Zero));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(given, Is.EqualTo(new[] { expected }));
+            Assert.That(raisedVerdicts, Has.Count.EqualTo(raised), "only a block that is not rejected reaches the import pipeline");
+            Assert.That(routed, Is.EqualTo(expected == MessageValidity.Rejected ? MessageValidity.Rejected : MessageValidity.Ignored));
+        }
+    }
+
+    /// <summary>A child of a parent whose execution payload fork choice invalidated is ignored, not accepted, though its header verifies.</summary>
+    /// <remarks>bellatrix p2p-interface.md beacon_block: the parent passes all validation, execution included; fork choice keeps an invalidated node.</remarks>
+    [Test]
+    public void Fulu_block_on_a_parent_with_an_invalidated_payload_is_ignored()
+    {
+        CheckpointRef finalized = new(FinalizedEpoch, ParentRoot);
+        ForkChoiceSnapshot snapshot = new(finalized, finalized, Hash256.Zero,
+            [new ForkChoiceSnapshotNode(FinalizedSlot, ParentRoot, null, FinalizedEpoch, FinalizedEpoch, 0, ExecutionStatus.Invalid, Hash256.Zero)]);
+        (GossipRouter router, _) = BlockRouter(ParentRoot, 0, out _, snapshot);
+
+        (_, List<MessageValidity> given) = HandleBlock(router, SignedBlock(0, Hash256.Zero));
+
+        Assert.That(given, Is.EqualTo(new[] { MessageValidity.Ignored }));
+    }
+
+    /// <summary>
+    /// A block accepted on its header that the import pipeline refuses for local load is throttled instead, and its claims are released, so a
+    /// later copy is checked again and reaches import rather than being forwarded without ever being imported here.
+    /// </summary>
+    [Test]
+    public void Fulu_block_refused_by_the_import_queue_is_throttled_and_accepted_on_a_later_copy()
+    {
+        (GossipRouter router, _) = BlockRouter(ParentRoot, 0, out List<GossipVerdict> raised);
+        router.BeaconBlockReceived += (_, verdict) =>
+        {
+            if (raised.Count == 1)
+            {
+                verdict.Complete(MessageValidity.Throttled);
+            }
+        };
+        SignedBeaconBlock block = SignedBlock(0, Hash256.Zero);
+
+        (_, List<MessageValidity> first) = HandleBlock(router, block);
+        (_, List<MessageValidity> second) = HandleBlock(router, block);
+
+        Assert.That((first.Single(), second.Single(), raised.Count), Is.EqualTo((MessageValidity.Throttled, MessageValidity.Accepted, 2)));
+    }
+
+    /// <summary>phase0 p2p-interface.md beacon_block: [IGNORE] a block that is not the first with a valid signature for its (slot, proposer_index).</summary>
+    [Test]
+    public void Second_signed_block_of_a_proposer_for_a_slot_is_ignored()
+    {
+        (GossipRouter router, ColumnGossipRouter headers) = BlockRouter(ParentRoot, 0, out _);
+
+        (_, List<MessageValidity> first) = HandleBlock(router, SignedBlock(0, Hash256.Zero));
+        long verifiedBeforeSecond = headers.HeaderSignatureVerificationCount;
+        (_, List<MessageValidity> second) = HandleBlock(router, SignedBlock(0, OtherRoot));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((first.Single(), second.Single()), Is.EqualTo((MessageValidity.Accepted, MessageValidity.Ignored)));
+            Assert.That(headers.HeaderSignatureVerificationCount, Is.EqualTo(verifiedBeforeSecond), "the second block costs no BLS work");
+        }
+    }
+
+    private static (GossipRouter Router, ColumnGossipRouter Headers) BlockRouter(Hash256 dependentRoot, ulong expectedProposer, out List<GossipVerdict> raised, ForkChoiceSnapshot? snapshot = null)
+    {
+        (ColumnGossipRouter headers, _, _) = Create(snapshot ?? Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true),
+            lookaheads: new ProposerLookaheadHolder { Current = Lookahead(dependentRoot, expectedProposer) });
+        GossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot + 6))),
+            LimboLogs.Instance, headers: headers);
+        List<GossipVerdict> verdicts = [];
+        router.BeaconBlockReceived += (_, verdict) => verdicts.Add(verdict);
+        raised = verdicts;
+        return (router, headers);
+    }
+
+    // As DeferredGossipValidation does: the verdict of the checks that ran is given unless the import pipeline took the verdict over.
+    private static (MessageValidity Routed, List<MessageValidity> Given) HandleBlock(GossipRouter router, SignedBeaconBlock block)
+    {
+        List<MessageValidity> given = [];
+        GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
+        MessageValidity routed = router.Handle(GossipTopics.BeaconBlock, gloasTopic: false, Snappy.CompressToArray(SignedBeaconBlock.Encode(block)), verdict);
+        if (!verdict.IsHandedOff)
+        {
+            verdict.Complete(routed);
+        }
+
+        return (routed, given);
+    }
+
+    /// <summary>A Fulu block on <see cref="ParentRoot"/> at <see cref="CurrentSlot"/> by validator 0, signed by <paramref name="signer"/>'s key.</summary>
+    private static SignedBeaconBlock SignedBlock(int signer, Hash256 graffiti)
+    {
+        SignedBeaconBlock block = TestChain.CreateBlock(CurrentSlot, ParentRoot);
+        block.Message!.ProposerIndex = 0;
+        block.Message.Body!.Graffiti = graffiti;
+        Hash256 domain = Domains.ComputeDomain(DomainType.BeaconProposer, Spec.VersionForEpoch(Spec.GetEpoch(CurrentSlot)), Spec.GenesisValidatorsRoot);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block.Message), domain);
+        block.Signature = new BlsSignature(BlsSigner.Sign(SecretKey(signer), signingRoot.Bytes).Bytes);
+        return block;
+    }
+
     [Test]
     public void A_column_pooled_by_a_retry_is_not_validated_again_by_later_publications([Values(1, 3)] int laterSnapshots)
     {

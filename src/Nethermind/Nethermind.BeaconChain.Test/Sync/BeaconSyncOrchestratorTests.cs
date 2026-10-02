@@ -1919,6 +1919,11 @@ public partial class BeaconSyncOrchestratorTests
             return BlockImportResult.ParentPayloadUnverified;
         }
 
+        /// <summary>The answer of <see cref="VerifyEnvelopeSignature"/>: <c>null</c> when the named block's state is not held.</summary>
+        public bool? EnvelopeSignature { get; set; } = true;
+
+        public bool? VerifyEnvelopeSignature(SignedExecutionPayloadEnvelope envelope) => EnvelopeSignature;
+
         public ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope)
         {
             Hash256 blockRoot = envelope.Message!.BeaconBlockRoot!;

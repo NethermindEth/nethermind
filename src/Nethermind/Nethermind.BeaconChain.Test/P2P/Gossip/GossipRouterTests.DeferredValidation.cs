@@ -65,7 +65,7 @@ public partial class GossipRouterTests
         byte[] first = BlockMessage(CurrentSlot);
         byte[] second = BlockMessage(CurrentSlot - 1);
         int firstSize = new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(first) }.CalculateSize();
-        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: byBytes ? 8 : 1, maxPendingBytes: byBytes ? firstSize + 1 : 1 << 20, TimeSpan.FromSeconds(30));
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: byBytes ? 64 : 1, maxPendingBytes: byBytes ? firstSize + 1 : 1 << 20, TimeSpan.FromSeconds(30));
         ulong throttledBefore = Metrics.BeaconChainGossipThrottled;
 
         fixture.Receive(fixture.Sender, first);
@@ -79,6 +79,58 @@ public partial class GossipRouterTests
             Assert.That(raisedWhileFull, Is.EqualTo(1), "the message past the bound is not validated");
             Assert.That(Metrics.BeaconChainGossipThrottled - throttledBefore, Is.EqualTo(1UL), "the throttled message is counted");
             Assert.That(fixture.Raised, Has.Count.EqualTo(2), "the throttled message is validated once the bound frees");
+        }
+    }
+
+    /// <summary>
+    /// One delivering peer holds at most its share of the messages awaiting a verdict, so cheap unsigned messages from it cannot throttle the
+    /// gossip of every other peer; votes are not counted, as the vote queue bounds them.
+    /// </summary>
+    [Test]
+    public async Task One_peer_holds_at_most_its_share_of_the_pending_messages()
+    {
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30));
+        int share = fixture.Validation.MaxPendingPerSource;
+
+        // One RPC: the router checks all its messages before it dispatches any of them.
+        Rpc rpc = new();
+        for (int i = 0; i <= share; i++)
+        {
+            rpc.Publish.Add(new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot - (ulong)i)) });
+        }
+
+        fixture.ReceiveRpc(fixture.Sender, rpc);
+
+        int raisedFromSender = fixture.Raised.Count;
+        fixture.Receive(fixture.Neighbor, BlockMessage(CurrentSlot - (ulong)share - 1));
+        Message vote = new() { Topic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconAggregateAndProof), Data = ByteString.CopyFrom([1]) };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((share, raisedFromSender), Is.EqualTo((2, 2)), "the message past the peer's share is throttled");
+            Assert.That(fixture.Raised, Has.Count.EqualTo(3), "another peer's message is still validated");
+            Assert.That(fixture.Validation.Verify(fixture.Sender, vote), Is.EqualTo(MessageValidity.Deferred), "a vote is not held to the peer's share");
+        }
+    }
+
+    /// <summary>
+    /// Aggregates and payload attestations are reserved apart, up to the vote queue: past it they are throttled, and a full vote bound
+    /// leaves the room for blocks, columns and envelopes untouched. Every message is reserved before the router dispatches it.
+    /// </summary>
+    [Test]
+    public async Task Votes_are_held_to_their_own_bound_and_leave_the_room_of_other_gossip()
+    {
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), maxPendingVotes: 2);
+        string aggregates = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconAggregateAndProof);
+        MessageValidity[] votes = [.. Enumerable.Range(0, 3).Select(i => fixture.Validation.Verify(fixture.Sender, new Message { Topic = aggregates, Data = ByteString.CopyFrom([(byte)i]) }))];
+
+        MessageValidity block = fixture.Validation.Verify(fixture.Neighbor, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot)) });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(votes, Is.EqualTo(new[] { MessageValidity.Deferred, MessageValidity.Deferred, MessageValidity.Throttled }));
+            Assert.That(block, Is.EqualTo(MessageValidity.Deferred));
+            Assert.That((fixture.Validation.PendingVotes, fixture.Validation.Pending), Is.EqualTo((2, 1)), "each deferred message is reserved before it is dispatched");
         }
     }
 
@@ -118,10 +170,13 @@ public partial class GossipRouterTests
         }
     }
 
-    /// <summary>A block for the next slot that arrives early is held with its verdict, and the verdict is handed on with the block once its slot starts.</summary>
-    /// <remarks>phase0 p2p-interface.md beacon_block: [IGNORE] a future slot, which a client MAY queue; the router does not redeliver an ignored id.</remarks>
+    /// <summary>
+    /// A block for the next slot that arrives early is ignored at once, so no verdict waits a slot before any signature is checked, and the
+    /// held block is still raised for import once its slot starts.
+    /// </summary>
+    /// <remarks>phase0 p2p-interface.md beacon_block: [IGNORE] a future slot, which a client MAY queue.</remarks>
     [Test]
-    public void Early_next_slot_block_keeps_its_verdict_until_its_slot_starts()
+    public void Early_next_slot_block_is_ignored_at_once_and_imported_once_its_slot_starts()
     {
         ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot + 10));
         GossipRouter router = new(Spec, new SlotClock(Spec, timestamper), LimboLogs.Instance);
@@ -136,8 +191,9 @@ public partial class GossipRouterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((validity, handedOff, raisedEarly), Is.EqualTo((MessageValidity.Ignored, true, 0)), "the held block's verdict is not given at once");
-            Assert.That(raised.SingleOrDefault(), Is.SameAs(verdict), "the block is raised with its own verdict once its slot starts");
+            Assert.That((validity, handedOff, raisedEarly), Is.EqualTo((MessageValidity.Ignored, false, 0)), "the caller gives the early block's IGNORE at once");
+            Assert.That(raised, Has.Count.EqualTo(1), "the held block is raised once its slot starts");
+            Assert.That(raised.SingleOrDefault(), Is.Not.SameAs(verdict), "with a verdict no router waits on");
         }
     }
 
@@ -166,6 +222,42 @@ public partial class GossipRouterTests
         router.Handle(GossipTopics.BeaconBlock, gloasTopic: false, BlockMessage(slot), new GossipVerdict(static _ => true, null));
 
         Assert.That((raised, router.GetDropCount(GossipDropReason.Duplicate)), Is.EqualTo((2, 0L)));
+    }
+
+    /// <summary>
+    /// The room reserved for a message the router never dispatches, as one it skips once it expired while an earlier message of its RPC was
+    /// still being checked, is released when the reservation expires, so it is not lost to later gossip.
+    /// </summary>
+    [Test]
+    public async Task Reservation_of_a_message_never_dispatched_is_released_when_it_expires()
+    {
+        SteppedTime time = new(DateTimeOffset.UnixEpoch.AddDays(20_000));
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), time: time);
+        string aggregates = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconAggregateAndProof);
+        fixture.Validation.Verify(fixture.Sender, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot)) });
+        fixture.Validation.Verify(fixture.Sender, new Message { Topic = aggregates, Data = ByteString.CopyFrom([1]) });
+        (int pending, int votes) = (fixture.Validation.Pending, fixture.Validation.PendingVotes);
+
+        time.Now += TimeSpan.FromSeconds(29);
+        fixture.Validation.Verify(fixture.Neighbor, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot - 1)) });
+        (int pendingBeforeExpiry, int votesBeforeExpiry) = (fixture.Validation.Pending, fixture.Validation.PendingVotes);
+        time.Now += TimeSpan.FromSeconds(3);
+        fixture.Validation.Verify(fixture.Neighbor, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot - 2)) });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((pending, votes), Is.EqualTo((1, 1)), "fixture: both messages reserved and never dispatched");
+            Assert.That((pendingBeforeExpiry, votesBeforeExpiry), Is.EqualTo((2, 1)), "a reservation lasts as long as the router may still dispatch its message");
+            Assert.That((fixture.Validation.Pending, fixture.Validation.PendingVotes), Is.EqualTo((2, 0)), "the expired reservations are released, the later ones kept");
+        }
+    }
+
+    /// <summary>A clock a test moves by hand.</summary>
+    private sealed class SteppedTime(DateTimeOffset start) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = start;
+
+        public override DateTimeOffset GetUtcNow() => Now;
     }
 
     private static readonly string BlockTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
@@ -207,7 +299,8 @@ public partial class GossipRouterTests
 
         public PeerId Neighbor { get; }
 
-        public static async Task<DeferredFixture> Create(int maxPending, long maxPendingBytes, TimeSpan timeout, string protocol = PubsubRouter.GossipsubProtocolVersionV11)
+        public static async Task<DeferredFixture> Create(int maxPending, long maxPendingBytes, TimeSpan timeout, string protocol = PubsubRouter.GossipsubProtocolVersionV11, int maxPendingVotes = 1024,
+            TimeProvider? time = null)
         {
             IContainer container = BeaconChainTestContainer.Builder().Build();
             PubsubSettings settings;
@@ -222,7 +315,7 @@ public partial class GossipRouterTests
             List<GossipVerdict> raised = [];
             router.BeaconBlockReceived += (_, verdict) => raised.Add(verdict);
             DeferredGossipValidation validation = new(pubsub, new GossipMessageValidator(router, new ColumnGossipRouter(Spec, clock, LimboLogs.Instance), Spec, clock),
-                maxPending, maxPendingBytes, timeout, LimboLogs.Instance.GetClassLogger<GossipRouterTests>(), CancellationToken.None);
+                maxPending, maxPendingBytes, maxPendingVotes, timeout, LimboLogs.Instance.GetClassLogger<GossipRouterTests>(), CancellationToken.None, time);
             pubsub.VerifyMessage = validation.Verify;
             pubsub.OnDeferredMessage = validation.ValidateAsync;
             pubsub.GetTopic(BlockTopic);

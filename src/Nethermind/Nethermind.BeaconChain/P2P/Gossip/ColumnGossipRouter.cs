@@ -642,6 +642,64 @@ public sealed class ColumnGossipRouter(
             : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
     }
 
+    /// <summary>
+    /// The phase0 p2p-interface.md <c>beacon_block</c> rules that need beacon state, run for a Fulu block's header against the published
+    /// fork-choice snapshot, proposer lookahead and key cache, as for a sidecar's header.
+    /// </summary>
+    /// <returns>
+    /// <see cref="BlockHeaderCheck.Verified"/> when the parent is held and valid, the slot is above it, the finalized checkpoint is an ancestor,
+    /// the proposer is the expected one and its signature verifies; a failing REJECT rule; or <see cref="BlockHeaderCheck.Unverifiable"/>
+    /// when a source cannot answer yet, which the spec turns into an IGNORE.
+    /// </returns>
+    /// <remarks>The expected proposer is checked before the signature, so a flood naming another proposer costs no BLS work.</remarks>
+    internal BlockHeaderCheck CheckBlockHeader(BeaconBlockHeader header, Hash256 blockRoot, BlsSignature signature)
+    {
+        // [IGNORE] the parent has been seen, and [REJECT] it passes validation: fork choice holds only valid blocks.
+        SnapshotIndex? snapshot = CurrentSnapshot();
+        if (snapshot is null || header.ParentRoot is null || !snapshot.Nodes.TryGetValue(header.ParentRoot, out ForkChoiceSnapshotNode? parent))
+        {
+            return BlockHeaderCheck.Unverifiable;
+        }
+
+        // bellatrix p2p-interface.md beacon_block: a parent whose execution payload is invalidated does not pass validation; ignored, as fork choice keeps the node.
+        if (parent.ExecutionStatus == ExecutionStatus.Invalid)
+        {
+            return BlockHeaderCheck.Unverifiable;
+        }
+
+        // [REJECT] the block is from a higher slot than its parent.
+        if (header.Slot <= parent.Slot)
+        {
+            return BlockHeaderCheck.NotAboveParentSlot;
+        }
+
+        // [REJECT] the current finalized checkpoint is an ancestor of the block.
+        switch (DescendsFromFinalized(snapshot, parent.Root))
+        {
+            case false:
+                return BlockHeaderCheck.NotFinalizedDescendant;
+            case null:
+                return BlockHeaderCheck.Unverifiable;
+        }
+
+        // [REJECT] the block is proposed by the expected proposer_index for its slot on its branch.
+        switch (proposerLookahead is null ? ExpectedProposer.Unverifiable : CheckExpectedProposer(snapshot, parent, header))
+        {
+            case ExpectedProposer.Unexpected:
+                return BlockHeaderCheck.UnexpectedProposer;
+            case ExpectedProposer.Unverifiable:
+                return BlockHeaderCheck.Unverifiable;
+        }
+
+        // [REJECT] the proposer signature is valid.
+        return CheckHeaderSignature(header, blockRoot, signature) switch
+        {
+            HeaderSignature.Valid => BlockHeaderCheck.Verified,
+            HeaderSignature.Invalid => BlockHeaderCheck.InvalidSignature,
+            _ => BlockHeaderCheck.Unverifiable,
+        };
+    }
+
     /// <summary>fulu/p2p-interface.md: the header's proposer is the expected one for its slot in the shuffling of its branch.</summary>
     /// <remarks>
     /// The published lookahead answers only for a branch whose latest block before the lookahead's first slot is its
@@ -1331,6 +1389,17 @@ public sealed class ColumnGossipRouter(
         Unknown,
         Found,
         SignatureMismatch,
+    }
+
+    /// <summary>The outcome of <see cref="CheckBlockHeader"/>.</summary>
+    internal enum BlockHeaderCheck
+    {
+        Verified,
+        Unverifiable,
+        NotAboveParentSlot,
+        NotFinalizedDescendant,
+        UnexpectedProposer,
+        InvalidSignature,
     }
 
     private enum ExpectedProposer
