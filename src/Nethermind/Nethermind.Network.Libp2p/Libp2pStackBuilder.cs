@@ -82,8 +82,8 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         public async Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => await Dns.GetHostAddressesAsync(name, AddressFamily.InterNetworkV6);
     }
 
-    /// <remarks>Dials through <see cref="ILocalPeer"/> reach the library only with resolved TCP addresses of one peer id: Nethermind.Libp2p 1.0.0
-    /// keeps a dial that fails before its first await, as such addresses make it, as that peer id's pending dial for good.</remarks>
+    /// <remarks>Dials through <see cref="ILocalPeer"/> reach the library only with resolved TCP addresses of one peer id: the library resolves
+    /// names on the dialing thread with no bound on the queries, and one name that does not resolve fails the whole dial.</remarks>
     private sealed class IdentifyingPeer : LocalPeer, ILocalPeer
     {
         // A TXT record may name another dnsaddr, and the library dials every address of a peer at once.
@@ -132,7 +132,8 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                 throw new Libp2pException($"A dial to {peerId} has addresses of another peer id");
             }
 
-            // Only IP, TCP and this peer id: the library would resolve any other component, such as a name inside, before its first await.
+            // Only IP, TCP and this peer id: the library would resolve any other component, such as a name inside, on the dialing thread,
+            // and fails the whole dial on an address of another peer id, as a dnsaddr record can name.
             List<Multiaddress> tcp = [.. (await ResolveAsync(addrs).WaitAsync(token))
                 .Where(resolved => resolved.Protocols is [IP4 or IP6, TCP, P2P] && resolved.GetPeerId() == peerId)
                 .Distinct()
@@ -143,23 +144,16 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                 throw new Libp2pException($"No TCP address to dial {peerId}");
             }
 
-            // A dial cancelled before the library's first await would stay the peer's pending dial for good, so the token stops only this
-            // wait; the dial itself ends within the library's connection timeout.
-            Task<ISession> dial = DialAsync([.. tcp], CancellationToken.None);
+            Task<ISession> dial = DialAsync([.. tcp], token);
+            // Disposal closes only the sessions it sees, so one a dial makes afterwards is closed here.
             _ = dial.ContinueWith(static (completed, state) =>
             {
-                // Disposal closes only the sessions it sees, so one a dial makes afterwards is closed here.
-                if (completed.IsCompletedSuccessfully)
+                if (Volatile.Read(ref ((IdentifyingPeer)state!)._disposed) == 1)
                 {
-                    if (Volatile.Read(ref ((IdentifyingPeer)state!)._disposed) == 1)
-                    {
-                        _ = completed.Result.DisconnectAsync();
-                    }
+                    _ = completed.Result.DisconnectAsync();
                 }
-                // A caller that stopped waiting leaves the failure unobserved; observing it keeps it out of UnobservedTaskException.
-                else _ = completed.Exception;
-            }, this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            return await dial.WaitAsync(token);
+            }, this, CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return await dial;
         }
 
         ValueTask IAsyncDisposable.DisposeAsync()

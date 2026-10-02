@@ -19,7 +19,7 @@ public static class UnscoredGossip
     public static PubsubSettings Configure(PubsubSettings settings, IEnumerable<string> topics)
     {
         settings.BehaviorPenaltyWeight = 0;
-        // The library records no peer address in 1.0.0, so this only keeps a later address penalty off.
+        // The library records no peer address in 1.0.1, so this only keeps a later address penalty off.
         settings.IPColocationFactorWeight = 0;
         TopicScoreParams unweighted = new() { TopicWeight = 0 };
         foreach (string topic in topics)

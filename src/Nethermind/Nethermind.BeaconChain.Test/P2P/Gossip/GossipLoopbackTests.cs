@@ -401,7 +401,7 @@ public class GossipLoopbackTests
 
     /// <summary>A gossip message of any legal size crosses a real session whole, so its sender is not disconnected for a truncated RPC.</summary>
     /// <remarks>p2p-interface.md "Gossipsub size limits" allow a compressed payload up to max_compressed_len(10 MiB); a message over one yamux window
-    /// spans several frames, and Nethermind.Libp2p 1.0.0 truncated such an RPC in the yamux channel (see ContiguousChunkProtocol).</remarks>
+    /// spans several frames, and Nethermind.Libp2p 1.0.1 truncates such an RPC in the yamux channel (see ContiguousChunkProtocol).</remarks>
     [TestCase(64)]
     [TestCase(300 * 1024)]
     [TestCase(1200 * 1024)]
