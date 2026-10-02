@@ -356,7 +356,7 @@ public class StatelessInputGeneratorTests
                 .WithTimestamp(parent.Timestamp + 12).WithBaseFeePerGas(0).WithBlobGasUsed(0).WithExcessBlobGas(0)
                 .WithSlotNumber(amsterdam ? 1UL : null)
                 .WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).WithTransactions(tx).TestObject;
-            StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
+            StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
             using IDisposable scope = env.WorldState.BeginScope(parent);
             (Block block, _) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
             block.DisposeAccountChanges();

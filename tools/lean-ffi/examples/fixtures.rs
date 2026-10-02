@@ -15,6 +15,26 @@ fn main() {
         "sphincs-signature.bin",
         &[pk.flatten().as_slice(), sig.to_bytes().as_slice()].concat(),
     );
+    let mut multi = Vec::new();
+    for index in 0u64..16 {
+        let message = keccak(&index.to_le_bytes());
+        let signature = sphincs::sign(&sk, &message).unwrap();
+        multi.extend_from_slice(&message);
+        multi.extend_from_slice(&pk.flatten());
+        multi.extend_from_slice(&signature.to_bytes());
+    }
+    save("sphincs-multi.bin", &multi);
+    let mut multi_keys = Vec::new();
+    for index in 0u8..16 {
+        let mut seed = [42; 32];
+        seed[0] = index;
+        let (sk, pk) = sphincs::key_gen_from_seed(seed);
+        let message = keccak(&[index]);
+        multi_keys.extend_from_slice(&message);
+        multi_keys.extend_from_slice(&pk.flatten());
+        multi_keys.extend_from_slice(&sphincs::sign(&sk, &message).unwrap().to_bytes());
+    }
+    save("sphincs-multi-keys.bin", &multi_keys);
     let source = "from snark_lib import *\ndef main():\n    p = GEN ** 0\n    p[1] = 7\n    p[GEN] = 9\n    return\n";
     let mut public_input = [0; 32];
     public_input[0] = 7;

@@ -39,7 +39,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 {
     protected override void Load(ContainerBuilder builder)
     {
-        builder.AddSingleton<ILeanProofVerifier>(Nethermind.Crypto.NativeLeanProofVerifier.Instance)
+        builder.AddSingleton<ILeanProofVerifier, Nethermind.Crypto.NativeLeanProofVerifier>()
             .AddSingleton<LeanProofStore>()
             .AddSingleton<ProofWrapperService>();
 

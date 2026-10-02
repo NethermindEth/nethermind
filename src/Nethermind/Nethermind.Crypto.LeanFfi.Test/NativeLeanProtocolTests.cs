@@ -39,10 +39,12 @@ public class NativeLeanProtocolTests
     {
         public bool Defer { get; set; }
         private Func<Task>? _pending;
+        public int Scheduled { get; private set; }
         public Task Completion { get; private set; } = Task.CompletedTask;
         public bool TryScheduleTask<T>(T request, Func<T, CancellationToken, Task> execute, TimeSpan? timeout = null)
             where T : notnull, IBackgroundTaskRequest<T>
         {
+            Scheduled++;
             if (Defer) _pending = () => execute(request, CancellationToken.None);
             else Completion = execute(request, CancellationToken.None);
             return true;
@@ -96,15 +98,18 @@ public class NativeLeanProtocolTests
     [TestCase("chain")]
     [TestCase("genesis")]
     [TestCase("guest")]
-    public async Task Handshake_rejects_another_chain_or_guest(string mismatch)
+    public async Task Handshake_mismatch_disables_lean_without_dropping_other_protocols(string mismatch)
     {
         using Context context = await Create();
         LeanStatusMessage valid = Status(context);
         LeanStatusMessage status = new(mismatch == "chain" ? valid.ChainId + 1 : valid.ChainId,
             mismatch == "genesis" ? TestItem.KeccakA : valid.GenesisHash,
             mismatch == "guest" ? new byte[32] : valid.VerificationKey);
+        context.Handler.Init();
         Receive(context, status, new LeanStatusMessageSerializer());
-        context.Session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        Receive(context, new LeanProofWrapperMessage([0]), new LeanProofWrapperMessageSerializer());
+        context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        Assert.That(context.Scheduler.Scheduled, Is.Zero);
     }
 
     [Test]
@@ -142,17 +147,82 @@ public class NativeLeanProtocolTests
         Transaction transaction = NativeBlockProductionTests.CreateTransaction(source.Chain);
         FrameDependency sphincs = NativeLeanProofVerifierTests.Dependency("sphincs");
         FrameDependency stark = NativeLeanProofVerifierTests.Dependency("stark");
-        source.Chain.Container.Resolve<LeanProofStore>().AddVerified([sphincs,stark],
-            [NativeLeanProofVerifierTests.Witness("sphincs"),NativeLeanProofVerifierTests.Witness("stark")],null);
-        Assert.That(source.Chain.TxPool.SubmitTx(transaction,TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        source.Chain.Container.Resolve<LeanProofStore>().AddVerified([sphincs, stark],
+            [NativeLeanProofVerifierTests.Witness("sphincs"), NativeLeanProofVerifierTests.Witness("stark")], null);
+        Assert.That(source.Chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         byte[] wrapper = await broadcast.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Receive(target,new LeanProofWrapperMessage(wrapper),new LeanProofWrapperMessageSerializer());
+        Receive(target, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
         await target.Scheduler.Completion.WaitAsync(TimeSpan.FromSeconds(10));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(target.Chain.Container.Resolve<LeanProofStore>().Covers(transaction),Is.True);
-            Assert.That(target.Chain.TxPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256,out _),Is.True);
-            target.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(),Arg.Any<string>());
+            Assert.That(target.Chain.Container.Resolve<LeanProofStore>().Covers(transaction), Is.True);
+            Assert.That(target.Chain.TxPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _), Is.True);
+            target.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
+    private static byte[] CreateValidWrapper(Context context)
+    {
+        Transaction transaction = NativeBlockProductionTests.CreateTransaction(context.Chain);
+        FrameDependency sphincs = NativeLeanProofVerifierTests.Dependency("sphincs");
+        FrameDependency stark = NativeLeanProofVerifierTests.Dependency("stark");
+        return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction)],
+            Deps = Eip8288Dependencies.Canonicalize([sphincs, stark]),
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = Eip8288Dependencies.Canonicalize([sphincs, stark]).Select(dependency =>
+                NativeLeanProofVerifierTests.Witness(dependency.Scheme == Eip8288Constants.LeanSphincsScheme ? "sphincs" : "stark")).ToList()
+        }).Bytes;
+    }
+
+    [Test]
+    public async Task Busy_peer_keeps_only_the_latest_pending_wrapper()
+    {
+        using Context context = await Create();
+        Receive(context, Status(context), new LeanStatusMessageSerializer());
+        context.Scheduler.Defer = true;
+        byte[] valid = CreateValidWrapper(context);
+        Receive(context, new LeanProofWrapperMessage(valid), new LeanProofWrapperMessageSerializer());
+        Receive(context, new LeanProofWrapperMessage([0]), new LeanProofWrapperMessageSerializer());
+        Receive(context, new LeanProofWrapperMessage(valid), new LeanProofWrapperMessageSerializer());
+        Assert.That(context.Scheduler.Scheduled, Is.EqualTo(1));
+        await context.Scheduler.RunPending();
+        Assert.That(context.Scheduler.Scheduled, Is.EqualTo(2));
+        await context.Scheduler.RunPending();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+        Receive(context, new LeanProofWrapperMessage(valid), new LeanProofWrapperMessageSerializer());
+        Assert.That(context.Scheduler.Scheduled, Is.EqualTo(3));
+        await context.Scheduler.RunPending();
+    }
+
+    [Test]
+    public async Task Gossip_retries_a_blocked_peer_without_resending_to_a_writable_peer()
+    {
+        using Context context = await Create();
+        Result<Hash256[]> admitted = await context.Chain.Container.Resolve<ProofWrapperService>().AcceptAsync(CreateValidWrapper(context));
+        Assert.That(admitted.IsSuccess, Is.True);
+        LeanProofGossip gossip = context.Chain.Container.Resolve<LeanProofGossip>();
+        int blockedAttempts = 0;
+        int writableAttempts = 0;
+        TaskCompletionSource retried = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        gossip.AddPeer(_ =>
+        {
+            if (Interlocked.Increment(ref blockedAttempts) < 2) return false;
+            retried.TrySetResult();
+            return true;
+        });
+        gossip.AddPeer(_ => { Interlocked.Increment(ref writableAttempts); return true; });
+        await retried.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await Task.Delay(1200);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockedAttempts, Is.EqualTo(2));
+            Assert.That(writableAttempts, Is.EqualTo(1));
         }
     }
 

@@ -818,8 +818,12 @@ public class GethGenesisLoaderTests
     {
         List<ForkActivationInfo> forks = DiscoverGethForks();
         Assert.That(forks, Is.Not.Empty);
+        long framesActivation = forks.Single(f => f.Fork is Eip8141Prototype).ActivationValue;
+        for (int i = 0; i < forks.Count; i++)
+            if (forks[i].Fork is Eip8288Prototype) forks[i] = forks[i] with { ActivationValue = framesActivation };
 
-        // Build genesis with distinct activation values — bypass LoadStandardGethGenesis
+        // Overlapping prototype labels share EIP-8141 and must agree on its activation.
+        // Bypass LoadStandardGethGenesis
         // to avoid hardcoded eip150Block/eip155Block/eip158Block that would shadow fork-named properties
         string configEntries = string.Join(", ", forks.Select(f => $"\"{f.GethConfigName}\": {f.ActivationValue}"));
         ChainSpec chainSpec = LoadFromString($$"""

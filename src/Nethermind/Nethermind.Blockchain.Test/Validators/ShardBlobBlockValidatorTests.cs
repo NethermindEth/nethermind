@@ -23,7 +23,7 @@ public class ShardBlobBlockValidatorTests
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
         HeaderValidator headerValidator = new(Substitute.For<IBlockTree>(), Always.Valid, specProvider, TestLogManager.Instance);
-        BlockValidator blockValidator = new(Always.Valid, headerValidator, Always.Valid, specProvider, TestLogManager.Instance);
+        BlockValidator blockValidator = new(Always.Valid, headerValidator, Always.Valid, specProvider, TestLogManager.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         return blockValidator.ValidateSuggestedBlock(
             Build.A.Block
@@ -41,7 +41,7 @@ public class ShardBlobBlockValidatorTests
     public bool Blobs_per_block_count_is_valid(IReleaseSpec spec, ulong blobGasUsed)
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         return blockValidator.ValidateSuggestedBlock(
             Build.A.Block

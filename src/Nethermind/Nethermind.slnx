@@ -57,7 +57,6 @@
     <File Path="tests.props" />
   </Folder>
   <Folder Name="/Tests/">
-    <Project Path="Nethermind.Crypto.LeanFfi.Test/Nethermind.Crypto.LeanFfi.Test.csproj" />
     <Project Path="Nethermind.Abi.Test/Nethermind.Abi.Test.csproj" />
     <Project Path="Nethermind.Analyzers.Test/Nethermind.Analyzers.Test.csproj" />
     <Project Path="Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
@@ -68,6 +67,7 @@
     <Project Path="Nethermind.Config.Test/Nethermind.Config.Test.csproj" />
     <Project Path="Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj" />
     <Project Path="Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
+    <Project Path="Nethermind.Crypto.LeanFfi.Test/Nethermind.Crypto.LeanFfi.Test.csproj" />
     <Project Path="Nethermind.Db.Test/Nethermind.Db.Test.csproj" />
     <Project Path="Nethermind.Era1.Test/Nethermind.Era1.Test.csproj" />
     <Project Path="Nethermind.EraE.Test/Nethermind.EraE.Test.csproj" />

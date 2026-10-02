@@ -30,6 +30,27 @@ public class FocilInclusionListTests
     }
 
     [Test]
+    public void Request_memo_reuses_only_identical_proof_and_public_inputs()
+    {
+        FakeLeanProofVerifier backend = new(true);
+        InclusionListProofVerifier verifier = new(backend);
+        ValueHash256 deps = ValueKeccak.Compute([1]);
+        byte[] key = [3];
+        byte[] proof = [1];
+        for (int check = 0; check < 4; check++) Assert.That(verifier.VerifyRecursiveStark(in deps, key, proof), Is.True);
+        Assert.That(backend.VerificationCalls, Is.EqualTo(1));
+        proof[0] = 2;
+        Assert.That(verifier.VerifyRecursiveStark(in deps, key, proof), Is.True);
+        Assert.That(backend.VerificationCalls, Is.EqualTo(2));
+        key[0] = 4;
+        Assert.That(verifier.VerifyRecursiveStark(in deps, key, proof), Is.True);
+        Assert.That(backend.VerificationCalls, Is.EqualTo(3));
+        deps = ValueKeccak.Compute([2]);
+        Assert.That(verifier.VerifyRecursiveStark(in deps, key, proof), Is.True);
+        Assert.That(backend.VerificationCalls, Is.EqualTo(4));
+    }
+
+    [Test]
     public void Empty_focil_round_trips()
     {
         FocilInclusionList focil = new()

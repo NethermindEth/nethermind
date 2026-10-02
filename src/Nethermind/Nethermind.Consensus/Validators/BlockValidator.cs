@@ -27,14 +27,14 @@ public class BlockValidator(
     IUnclesValidator? unclesValidator,
     ISpecProvider? specProvider,
     ILogManager? logManager,
-    ILeanProofVerifier? leanProofVerifier = null)
+    ILeanProofVerifier leanProofVerifier)
     : IBlockValidator
 {
     private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
     private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
     private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? NativeLeanProofVerifier.Instance;
+    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier));
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);

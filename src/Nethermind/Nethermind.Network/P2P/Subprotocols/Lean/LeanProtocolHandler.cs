@@ -34,7 +34,10 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
     private readonly LeanProofGossip _gossip;
     private readonly CancellationTokenSource _stop = new();
     private readonly CancellationToken _stopToken;
-    private int _receiving;
+    private readonly Lock _receiveLock = new();
+    private bool _receiving;
+    private LeanProofWrapperMessage? _active;
+    private LeanProofWrapperMessage? _pending;
     private bool _initialized;
     private int _disposed;
 
@@ -51,9 +54,14 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
 
     public override void Init()
     {
-        if (!Session.HasAgreedCapability(new Capability(Code, Version)) || !_wrappers.IsEnabled || _blockTree.Genesis?.Hash is not { } genesis)
+        if (!Session.HasAgreedCapability(new Capability(Code, Version)))
         {
-            Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Lean prototype fork unavailable");
+            Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Lean capability was not negotiated");
+            return;
+        }
+        if (!_wrappers.IsEnabled || _blockTree.Genesis?.Hash is not { } genesis)
+        {
+            Dispose();
             return;
         }
         Send(new LeanStatusMessage(_blockTree.ChainId, genesis, Eip8288Constants.AggregatedVk.ToArray()));
@@ -66,10 +74,16 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
         if (message.PacketType == 0)
         {
             LeanStatusMessage status = Deserialize<LeanStatusMessage>(message.Content);
-            if (_initialized || !Session.HasAgreedCapability(new Capability(Code, Version)) || !_wrappers.IsEnabled || status.ChainId != _blockTree.ChainId
-                || status.GenesisHash != _blockTree.Genesis?.Hash || !status.VerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
+            if (_initialized || !Session.HasAgreedCapability(new Capability(Code, Version)))
             {
-                Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Lean chain or guest mismatch");
+                Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Unexpected lean status");
+                return true;
+            }
+            if (!_wrappers.IsEnabled || status.ChainId != _blockTree.ChainId || status.GenesisHash != _blockTree.Genesis?.Hash
+                || !status.VerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
+            {
+                ReceivedProtocolInitMsg(status);
+                Dispose();
                 return true;
             }
             _initialized = true;
@@ -84,44 +98,85 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
             Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Lean wrapper before handshake");
             return true;
         }
-        if (Interlocked.CompareExchange(ref _receiving, 1, 0) != 0)
+        LeanProofWrapperMessage wrapper = Deserialize<LeanProofWrapperMessage>(message.Content);
+        lock (_receiveLock)
         {
-            Session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached, "Too many pending lean wrappers");
-            return true;
+            if (Volatile.Read(ref _disposed) != 0) return true;
+            if (_receiving)
+            {
+                _pending = wrapper;
+                return true;
+            }
+            _receiving = true;
+            _active = wrapper;
         }
-        try
-        {
-            LeanProofWrapperMessage wrapper = Deserialize<LeanProofWrapperMessage>(message.Content);
-            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(wrapper, Receive)) Interlocked.Exchange(ref _receiving, 0);
-        }
-        catch
-        {
-            Interlocked.Exchange(ref _receiving, 0);
-            throw;
-        }
+        ScheduleReceive();
         return true;
     }
 
-    private async ValueTask Receive(LeanProofWrapperMessage message, CancellationToken cancellationToken)
+    private void ScheduleReceive()
     {
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(_stopToken, cancellationToken);
         try
         {
-            linked.Token.ThrowIfCancellationRequested();
-            Result<Hash256[]> result = await _wrappers.AcceptAsync(message.Wrapper, linked.Token);
-            if (!result.IsSuccess) throw new RlpException(result.Error ?? "Invalid lean proof wrapper");
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(true, Receive)) ClearReceive();
         }
-        catch (OperationCanceledException) when (_stopToken.IsCancellationRequested) { }
-        finally
+        catch
         {
-            Interlocked.Exchange(ref _receiving, 0);
+            ClearReceive();
+            throw;
         }
     }
 
-    private void Broadcast(byte[] wrapper)
+    private async ValueTask Receive(bool _, CancellationToken cancellationToken)
     {
-        if (Volatile.Read(ref _disposed) == 0 && _initialized && _wrappers.IsEnabled) Send(new LeanProofWrapperMessage(wrapper));
+        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(_stopToken, cancellationToken);
+        bool completed = false;
+        try
+        {
+            LeanProofWrapperMessage? message;
+            lock (_receiveLock)
+            {
+                message = _active;
+                _active = null;
+                if (message is null || Volatile.Read(ref _disposed) != 0)
+                {
+                    _receiving = false;
+                    completed = true;
+                    return;
+                }
+            }
+            linked.Token.ThrowIfCancellationRequested();
+            ProofWrapperAcceptance result = await _wrappers.AcceptDetailedAsync(message.Wrapper, linked.Token);
+            if (result.Status == ProofWrapperAcceptanceStatus.Invalid) throw new RlpException(result.Result.Error ?? "Invalid lean proof wrapper");
+            message = null;
+            bool schedule;
+            lock (_receiveLock)
+            {
+                schedule = _pending is not null && Volatile.Read(ref _disposed) == 0;
+                _active = schedule ? _pending : null;
+                _pending = null;
+                _receiving = schedule;
+                completed = true;
+            }
+            if (schedule) ScheduleReceive();
+        }
+        catch (OperationCanceledException) when (_stopToken.IsCancellationRequested) { }
+        finally { if (!completed) ClearReceive(); }
     }
+
+    private void ClearReceive()
+    {
+        lock (_receiveLock)
+        {
+            _receiving = false;
+            _active = null;
+            _pending = null;
+        }
+    }
+
+    private bool Broadcast(byte[] wrapper)
+        => Volatile.Read(ref _disposed) == 0 && !Session.IsClosing && _initialized && _wrappers.IsEnabled
+            && SendWithResult(new LeanProofWrapperMessage(wrapper)) > 0;
 
     public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) => Dispose();
 
@@ -130,6 +185,7 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _gossip.RemovePeer(Broadcast);
         _stop.Cancel();
+        ClearReceive();
         _stop.Dispose();
         ClearProtocolEvents();
     }

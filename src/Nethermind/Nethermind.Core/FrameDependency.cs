@@ -177,8 +177,8 @@ public static class Eip8288Dependencies
         {
             int comparison = left.Scheme.CompareTo(right.Scheme);
             if (comparison != 0) return comparison;
-            comparison = left.DataHash.Bytes.SequenceCompareTo(right.DataHash.Bytes);
-            return comparison != 0 ? comparison : left.VerificationKey.Bytes.SequenceCompareTo(right.VerificationKey.Bytes);
+            comparison = left.DataHash.CompareTo(right.DataHash);
+            return comparison != 0 ? comparison : left.VerificationKey.CompareTo(right.VerificationKey);
         });
         int unique = 0;
         for (int i = 0; i < result.Count; i++)

@@ -17,7 +17,7 @@ public class OptimismBlockValidator(
     IUnclesValidator unclesValidator,
     ISpecProvider specProvider,
     IOptimismSpecHelper specHelper,
-    ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager)
+    ILogManager logManager, ILeanProofVerifier leanProofVerifier) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager, leanProofVerifier)
 {
     private const string NonEmptyWithdrawalsList =
         $"{nameof(Block.Withdrawals)} is not an empty list";

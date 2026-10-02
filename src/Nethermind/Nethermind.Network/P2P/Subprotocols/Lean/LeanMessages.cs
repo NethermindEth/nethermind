@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using DotNetty.Buffers;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;

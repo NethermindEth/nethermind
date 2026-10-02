@@ -5,12 +5,6 @@
 
   <PropertyGroup>
     <DefineConstants Condition="'$(BuildLeanFfi)' == 'true'">$(DefineConstants);NATIVE_LEAN_TESTS</DefineConstants>
-    <LeanFfiManifest>$(MSBuildThisFileDirectory)../../../tools/lean-ffi/Cargo.toml</LeanFfiManifest>
-    <LeanFfiOutDir>$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/release</LeanFfiOutDir>
-    <LeanFfiLibName Condition="$([MSBuild]::IsOSPlatform('Windows'))">nethermind_lean.dll</LeanFfiLibName>
-    <LeanFfiLibName Condition="$([MSBuild]::IsOSPlatform('OSX'))">libnethermind_lean.dylib</LeanFfiLibName>
-    <LeanFfiLibName Condition="'$(LeanFfiLibName)' == ''">libnethermind_lean.so</LeanFfiLibName>
-    <LeanFfiLib>$(LeanFfiOutDir)/$(LeanFfiLibName)</LeanFfiLib>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,13 +13,11 @@
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
   </ItemGroup>
 
-  <Target Name="BuildLeanFfi" BeforeTargets="BeforeBuild" Condition="'$(BuildLeanFfi)' == 'true'">
-    <Exec Command="cargo build --release --locked --manifest-path &quot;$(LeanFfiManifest)&quot;" />
-    <Exec Command="cargo run --release --locked --manifest-path &quot;$(LeanFfiManifest)&quot; --example fixtures -- &quot;$(LeanFfiOutDir)/../test-vectors&quot;" />
+  <Target Name="GenerateLeanFixtures" BeforeTargets="BeforeBuild" DependsOnTargets="ResolveProjectReferences" Condition="'$(BuildLeanFfi)' == 'true'">
+    <Exec Command="cargo run --release --locked --manifest-path &quot;$(MSBuildThisFileDirectory)../../../tools/lean-ffi/Cargo.toml&quot; --example fixtures -- &quot;$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/test-vectors&quot;" />
     <ItemGroup>
-      <LeanVectors Include="$(LeanFfiOutDir)/../test-vectors/*.bin" />
+      <LeanVectors Include="$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/test-vectors/*.bin" />
     </ItemGroup>
-    <Copy SourceFiles="$(LeanFfiLib)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(LeanVectors)" DestinationFolder="$(OutDir)lean-vectors" SkipUnchangedFiles="true" />
   </Target>
 </Project>

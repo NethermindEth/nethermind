@@ -36,13 +36,15 @@ public class ProofInclusionListEnforcementTests
     [TestCase("proof-gas-full", true)]
     [TestCase("missing-proof", false)]
     [TestCase("bad-proof", false)]
+    [TestCase("full-bad-proof", true)]
     [TestCase("wrong-commitment", false)]
     public async Task Enforces_proven_frame_prefixes_through_production_processor(string scenario, bool satisfied)
     {
         OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
+        FakeLeanProofVerifier verifier = new(scenario is not ("bad-proof" or "full-bad-proof"));
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(spec))
-            .AddSingleton<ILeanProofVerifier>(new FakeLeanProofVerifier(scenario != "bad-proof")));
+            .AddSingleton<ILeanProofVerifier>(verifier));
         IWorldState state = chain.MainWorldState;
         using System.IDisposable stateScope = state.BeginScope(chain.BlockTree.Head!.Header);
         Address sender = TestItem.PrivateKeyA.Address;
@@ -90,6 +92,7 @@ public class ProofInclusionListEnforcementTests
             block.Header.GasUsed = executionUsed + Eip8288Constants.LeanStarkVerificationGas;
             block.Header.GasUsedPerDimension = (executionUsed, 0);
         }
+        if (scenario == "full-bad-proof") block.Header.GasUsed = block.GasLimit;
         block.InclusionListTransactions = [transaction];
         if (scenario == "withdrawal-funded")
             block = block.WithReplacedBody(new(block.Transactions, block.Uncles,
@@ -104,9 +107,11 @@ public class ProofInclusionListEnforcementTests
         IInclusionListSatisfactionChecker checker = ((MainProcessingContext)chain.MainProcessingContext)
             .LifetimeScope.Resolve<IInclusionListSatisfactionChecker>();
 
+        int verificationCalls = verifier.VerificationCalls;
         Assert.That(checker.IsSatisfied(block, block, state), Is.EqualTo(satisfied));
         using (Assert.EnterMultipleScope())
         {
+            if (scenario == "full-bad-proof") Assert.That(verifier.VerificationCalls, Is.EqualTo(verificationCalls));
             Assert.That(state.GetBalance(sender), Is.EqualTo(balance));
             Assert.That(state.GetCodeHash(sender), Is.EqualTo(codeHash));
             Assert.That(state.GetNonce(sender), Is.Zero);

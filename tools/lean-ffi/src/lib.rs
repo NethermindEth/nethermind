@@ -10,7 +10,7 @@ use primitives::field::F192;
 use rec_aggregation::{ClaimSelection, EthereumProof, SignatureClaims};
 use sphincs::{SphincsPublicKey, SphincsSignature};
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tiny_keccak::{Hasher, Keccak};
 
 pub const MAX_BYTES: usize = 8 * 1024 * 1024;
@@ -29,18 +29,23 @@ pub fn keccak(bytes: &[u8]) -> [u8; 32] {
 }
 
 pub fn aggregated_vk() -> [u8; 32] {
-    let cells = cpu::fs_seed(rec_aggregation::aggregation::unified_guest());
-    [
-        cells[0].c0.to_le_bytes(),
-        cells[0].c1.to_le_bytes(),
-        cells[1].c0.to_le_bytes(),
-        cells[1].c1.to_le_bytes(),
-    ]
-    .concat()
-    .try_into()
-    .unwrap()
+    static KEY: OnceLock<[u8; 32]> = OnceLock::new();
+    *KEY.get_or_init(|| {
+        let cells = cpu::fs_seed(rec_aggregation::aggregation::unified_guest());
+        [
+            cells[0].c0.to_le_bytes(),
+            cells[0].c1.to_le_bytes(),
+            cells[1].c0.to_le_bytes(),
+            cells[1].c1.to_le_bytes(),
+        ]
+        .concat()
+        .try_into()
+        .unwrap()
+    })
 }
 
+// F192 is GF(2^64)[y]/(y^3+y+1): new stores three distinct u64 coefficients,
+// without integer modular reduction. Two (c0,c1,0) cells injectively encode all 256 bits.
 fn pi(hash: &[u8; 32]) -> [F192; 2] {
     let word = |i| u64::from_le_bytes(hash[i..i + 8].try_into().unwrap());
     [
@@ -264,12 +269,18 @@ struct Aggregate {
     starks: HashMap<Dep, Vec<u8>>,
 }
 fn decode_aggregate(bytes: &[u8]) -> Result<Aggregate, ()> {
+    decode_aggregate_with_hash(bytes, None)
+}
+fn decode_aggregate_with_hash(bytes: &[u8], expected: Option<&[u8; 32]>) -> Result<Aggregate, ()> {
     let mut r = Reader { bytes };
     if r.take(4)? != MAGIC {
         return Err(());
     }
     let deps = r.deps()?;
     if !deps.windows(2).all(|w| w[0] < w[1]) {
+        return Err(());
+    }
+    if expected.is_some_and(|hash| commitment(&deps) != *hash) {
         return Err(());
     }
     let proof = r.blob()?;
@@ -530,8 +541,9 @@ pub unsafe extern "C" fn nlean_verify_recursive(
         if unsafe { bytes(vk, vk_len)? } != aggregated_vk() {
             return Ok(false);
         }
-        let aggregate = decode_aggregate(unsafe { bytes(proof, len)? })?;
-        Ok(commitment(&aggregate.deps).as_slice() == unsafe { bytes(hash, 32)? })
+        let expected = unsafe { bytes(hash, 32)? }.try_into().map_err(|_| ())?;
+        decode_aggregate_with_hash(unsafe { bytes(proof, len)? }, Some(expected))?;
+        Ok(true)
     })
 }
 /// # Safety
@@ -592,6 +604,28 @@ pub fn prove_stark(source: &str, hash: &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]),
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn public_input_packing_preserves_every_bit() {
+        for bit in 0..256 {
+            let mut message = [0; 32];
+            message[bit / 8] = 1 << (bit % 8);
+            let cells = pi(&message);
+            let decoded = [
+                cells[0].c0.to_le_bytes(),
+                cells[0].c1.to_le_bytes(),
+                cells[1].c0.to_le_bytes(),
+                cells[1].c1.to_le_bytes(),
+            ]
+            .concat();
+            assert_eq!(decoded, message);
+            assert_eq!((cells[0].c2, cells[1].c2), (0, 0));
+        }
+        let cells = pi(&[255; 32]);
+        assert_eq!(
+            (cells[0].c0, cells[0].c1, cells[1].c0, cells[1].c1),
+            (u64::MAX, u64::MAX, u64::MAX, u64::MAX)
+        );
+    }
     #[test]
     fn real_signature_and_vm_proof_bind_message_and_key() {
         let (sk, pk) = sphincs::key_gen_from_seed([42; 32]);

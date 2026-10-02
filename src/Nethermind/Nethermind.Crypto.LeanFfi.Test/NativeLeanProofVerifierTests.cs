@@ -21,6 +21,7 @@ public class NativeLeanProofVerifierTests
     [OneTimeSetUp]
     public void EnsureNativeLibraryLoads()
     {
+        NativeLeanProofVerifier.Instance.EnsureAvailable();
         Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(2u));
         Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
     }
@@ -47,6 +48,30 @@ public class NativeLeanProofVerifierTests
         Assert.That(Verify(dep.DataHash, dep.VerificationKey, witness), Is.False);
     }
 
+    [TestCase(2, false)]
+    [TestCase(4, false)]
+    [TestCase(16, false)]
+    [TestCase(2, true)]
+    [TestCase(16, true)]
+    public void Aggregation_binds_distinct_signature_claims(int count, bool distinctKeys)
+    {
+        byte[] fixtures = Fixture(distinctKeys ? "sphincs-multi-keys" : "sphincs-multi");
+        FrameDependency[] deps = new FrameDependency[count];
+        byte[][] witnesses = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            int offset = i * (32 + Eip8288Constants.LeanSphincsWitnessBytes);
+            ValueHash256 key = ValueKeccak.Compute(fixtures.AsSpan(offset + 32, 32));
+            deps[i] = new(Eip8288Constants.LeanSphincsScheme, new ValueHash256(fixtures.AsSpan(offset, 32)), key);
+            witnesses[i] = fixtures.AsSpan(offset + 32, Eip8288Constants.LeanSphincsWitnessBytes).ToArray();
+        }
+        ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(deps);
+        byte[] proof = Native.ProveRecursiveStark(commitment, Eip8288Constants.AggregatedVk, new() { Deps = deps, Witnesses = witnesses });
+        Assert.That(Native.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proof), Is.True);
+        deps[^1] = deps[0];
+        Assert.That(Native.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash(deps), Eip8288Constants.AggregatedVk, proof), Is.False);
+    }
+
     [Test]
     public void Recursive_proof_compresses_sphincs_and_carries_verified_starks()
     {
@@ -58,7 +83,9 @@ public class NativeLeanProofVerifierTests
         Assert.That(Native.VerifyRecursiveStark(leafHash, Eip8288Constants.AggregatedVk, leaf), Is.True);
         AggregationInput mixedInput = new()
         {
-            Deps = [stark], Witnesses = [Witness("stark")], RecursiveProofs = [new RecursiveProofInput([sphincs], leaf)]
+            Deps = [stark],
+            Witnesses = [Witness("stark")],
+            RecursiveProofs = [new RecursiveProofInput([sphincs], leaf)]
         };
         ValueHash256 mixedHash = Eip8288Dependencies.ComputeDepsHash([stark, sphincs]);
         byte[] mixed = Native.ProveRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixedInput);

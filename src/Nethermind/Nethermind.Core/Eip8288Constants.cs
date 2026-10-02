@@ -27,6 +27,12 @@ public static class Eip8288Constants
     /// <summary>Maximum encoded native witness or recursive proof size.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
 
+    /// <summary>Maximum encoded ETH header response, including room around an 8 MiB proof.</summary>
+    public const int MaxHeaderResponseBytes = MaxProofBytes + 1024 * 1024;
+
+    /// <summary>Encoded public key and signature size of the pinned BLAKE2s SPHINCS scheme.</summary>
+    public const int LeanSphincsWitnessBytes = 32 + 4924;
+
     public const byte LeanSphincsScheme = 0x10;
     public const byte LeanStarkScheme = 0x11;
 

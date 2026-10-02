@@ -8,8 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Eip8288;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -130,11 +128,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             else
             {
-                if (spec.IsEip8288Enabled && !FocilInclusionListValidator.Validate(
-                    TxsDecoder.DecodeTxs(ilTxs, skipErrors: true).Transactions, payloadAttributes.InclusionListRecursiveStark,
-                    NativeLeanProofVerifier.Instance, out _, out string? proofError))
-                    return ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(proofError!, MergeErrorCodes.InvalidPayloadAttributes);
-                inclusionListTxSource.Set(ilTxs, spec);
+                inclusionListTxSource.Set(ilTxs, spec, payloadAttributes.InclusionListRecursiveStark);
             }
         }
 

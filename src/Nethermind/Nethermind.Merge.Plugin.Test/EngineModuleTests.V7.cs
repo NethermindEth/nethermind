@@ -1225,6 +1225,12 @@ public partial class EngineModuleTests
             BeforeEvaluate?.Invoke();
             return Inner.TryEvaluate(blockHash, inclusionListTransactions);
         }
+
+        public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof)
+        {
+            BeforeEvaluate?.Invoke();
+            return Inner.TryEvaluate(blockHash, inclusionListTransactions, proof);
+        }
     }
 
     /// <summary>Wraps the chain's <see cref="IStateReader"/> so one block's state can be made unreadable.</summary>

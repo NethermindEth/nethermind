@@ -26,6 +26,6 @@
     </Content>
   </ItemGroup>
 
-  <Import Project="../../../tools/lean-ffi/LeanFfi.targets" />
+  <Import Project="../../../tools/lean-ffi/LeanFfi.targets" Condition="'$(BuildLeanFfi)' == 'true'" />
 
 </Project>

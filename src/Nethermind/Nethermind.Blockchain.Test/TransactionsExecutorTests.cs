@@ -351,6 +351,32 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        public void BlockProductionTransactionsExecutor_skips_uncovered_dependencies_before_execution()
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+            Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            transaction.Type = TxType.FrameTx;
+            transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
+                Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+            Block block = Build.A.Block.WithGasLimit(1_000_000).WithTransactions([transaction]).TestObject;
+            BlockToProduce producing = new(block.Header, block.Transactions, block.Uncles);
+            ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
+            IWorldState state = Substitute.For<IWorldState>();
+            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: new());
+            BlockProcessor.BlockProductionTransactionsExecutor executor = new(adapter, state, picker, LimboLogs.Instance,
+                NullBlockAccessListManager.Instance, NullTxPool.Instance);
+
+            TxReceipt[] receipts = executor.ProcessTransactions(producing, ProcessingOptions.ProducingBlock, new());
+
+            adapter.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(producing.Transactions, Is.Empty);
+                Assert.That(receipts, Is.Empty);
+            }
+        }
+
+        [Test]
         public void BlockProductionTransactionPicker_reserves_recursive_proof_gas_in_state_lane([Values] bool fits, [Values(0UL, 30_000UL)] ulong reserved)
         {
             FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);

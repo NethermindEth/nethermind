@@ -118,7 +118,8 @@ public static class StatelessExecutor
             headerValidator,
             new UnclesValidator(blockTree, headerValidator, NullLogManager.Instance),
             specProvider,
-            NullLogManager.Instance
+            NullLogManager.Instance,
+            Nethermind.Crypto.NativeLeanProofVerifier.Instance
         );
 
         if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error, validateHashes))
@@ -128,7 +129,7 @@ public static class StatelessExecutor
         }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
-            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
+            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree, Nethermind.Crypto.NativeLeanProofVerifier.Instance);
 
         if (!blockProcessingEnv.WorldState.TryBeginScope(parentHeader, out IDisposable? scope))
         {

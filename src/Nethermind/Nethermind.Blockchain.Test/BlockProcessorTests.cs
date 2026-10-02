@@ -1829,14 +1829,15 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         BranchProcessor branchProcessor = new(
             processor,
             specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
-            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
+            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>(), Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>()),
             LimboLogs.Instance,
             preWarmer);
 
@@ -2060,7 +2061,8 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
         BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(block.Header, "invalid BAL");
@@ -3379,13 +3381,14 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         BranchProcessor branchProcessor = new(
             processor,
             specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
-            new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()),
+            new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>(), Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>()),
             LimboLogs.Instance);
 
         return new(block, stateHeaderProvider.Parent!, balManager, handler, executor, branchProcessor, container);

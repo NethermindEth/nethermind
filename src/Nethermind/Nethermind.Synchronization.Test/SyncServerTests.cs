@@ -29,9 +29,11 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -51,6 +53,190 @@ namespace Nethermind.Synchronization.Test;
 [Parallelizable(ParallelScope.All)]
 public class SyncServerTests
 {
+    private const BlockTreeLookupOptions HeaderLookup = BlockTreeLookupOptions.TotalDifficultyNotNeeded;
+
+    [Test]
+    public void Compact_proof_headers_share_a_batch()
+    {
+        Context ctx = new();
+        BlockHeader first = ProofHeader(0, 2048);
+        ctx.BlockTree.FindHeader(first.Hash!, HeaderLookup).Returns(first);
+        ctx.BlockTree.FindHeader(Arg.Any<ulong>(), HeaderLookup)
+            .Returns(call => ProofHeader(call.ArgAt<ulong>(0), 2048));
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, specProvider: new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance));
+
+        using IOwnedReadOnlyList<BlockHeader> headers = server.FindHeaders(first.Hash!, 64, 0, false);
+
+        Assert.That(headers, Has.Count.EqualTo(64));
+        Assert.That(headers.Select(header => header.Number), Is.EqualTo(Enumerable.Range(0, 64).Select(number => (ulong)number)));
+    }
+
+    [TestCase(Eip8288Constants.MaxProofBytes, 1)]
+    [TestCase(4 * 1024 * 1024, 2)]
+    public void Large_proof_headers_stop_loading_at_byte_budget(int proofBytes, int expectedCount)
+    {
+        Context ctx = new();
+        BlockHeader first = ProofHeader(0, proofBytes);
+        int additionalLoads = 0;
+        ctx.BlockTree.FindHeader(first.Hash!, HeaderLookup).Returns(first);
+        ctx.BlockTree.FindHeader(Arg.Any<ulong>(), HeaderLookup).Returns(call =>
+        {
+            additionalLoads++;
+            Assert.That(additionalLoads, Is.LessThanOrEqualTo(expectedCount), "Only one candidate beyond the fitting prefix may be loaded.");
+            return ProofHeader(call.ArgAt<ulong>(0), proofBytes);
+        });
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, specProvider: new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance));
+
+        using IOwnedReadOnlyList<BlockHeader> headers = server.FindHeaders(first.Hash!, 1024, 0, false);
+
+        HeaderDecoder decoder = new();
+        int encodedBytes = Rlp.LengthOfSequence(headers.Sum(header => decoder.GetLength(header, RlpBehaviors.None)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers, Has.Count.EqualTo(expectedCount));
+            Assert.That(additionalLoads, Is.EqualTo(expectedCount));
+            Assert.That(encodedBytes + 64, Is.LessThanOrEqualTo(Eip8288Constants.MaxHeaderResponseBytes));
+        }
+        ctx.BlockTree.DidNotReceive().FindHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>());
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Proof_header_batches_preserve_skip_and_direction(bool reverse)
+    {
+        Context ctx = new();
+        BlockHeader first = ProofHeader(reverse ? 11UL : 2UL, 2048);
+        ctx.BlockTree.FindHeader(first.Hash!, HeaderLookup).Returns(first);
+        ctx.BlockTree.FindHeader(Arg.Any<ulong>(), HeaderLookup)
+            .Returns(call => ProofHeader(call.ArgAt<ulong>(0), 2048));
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, specProvider: new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance));
+
+        using IOwnedReadOnlyList<BlockHeader> headers = server.FindHeaders(first.Hash!, 4, 2, reverse);
+
+        ulong[] expected = reverse ? [11, 8, 5, 2] : [2, 5, 8, 11];
+        Assert.That(headers.Select(header => header.Number), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Reverse_contiguous_proof_headers_follow_the_requested_fork()
+    {
+        Context ctx = new();
+        BlockHeader genesis = ProofHeader(0, 2048);
+        BlockHeader forkParent = ProofHeader(1, 2048);
+        forkParent.Hash = TestItem.KeccakB;
+        forkParent.ParentHash = genesis.Hash!;
+        BlockHeader forkHead = ProofHeader(2, 2048);
+        forkHead.Hash = TestItem.KeccakC;
+        forkHead.ParentHash = forkParent.Hash;
+        ctx.BlockTree.FindHeader(forkHead.Hash, HeaderLookup).Returns(forkHead);
+        ctx.BlockTree.FindHeader(forkParent.Hash, HeaderLookup, 1).Returns(forkParent);
+        ctx.BlockTree.FindHeader(genesis.Hash!, HeaderLookup, 0).Returns(genesis);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, specProvider: new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance));
+
+        using IOwnedReadOnlyList<BlockHeader> headers = server.FindHeaders(forkHead.Hash, 4, 0, true);
+
+        Assert.That(headers.Select(header => header.Hash), Is.EqualTo(new[] { forkHead.Hash, forkParent.Hash, genesis.Hash }));
+        ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<ulong>(), HeaderLookup);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Prefork_header_batches_preserve_block_tree_behavior(bool reverse)
+    {
+        Context ctx = new();
+        BlockTree tree = Build.A.BlockTree().OfChainLength(4).TestObject;
+        Hash256 start = reverse ? tree.Head!.Hash! : tree.Genesis!.Hash!;
+        SyncServer server = ctx.CreateSyncServer(tree);
+
+        using IOwnedReadOnlyList<BlockHeader> expected = tree.FindHeaders(start, 10, 1, reverse);
+        using IOwnedReadOnlyList<BlockHeader> actual = server.FindHeaders(start, 10, 1, reverse);
+
+        Assert.That(actual.Select(header => header?.Hash), Is.EqualTo(expected.Select(header => header?.Hash)));
+    }
+
+    [Test]
+    public void Header_request_count_remains_bounded()
+    {
+        Context ctx = new();
+        BlockHeader first = ProofHeader(0, 1);
+        ctx.BlockTree.FindHeader(first.Hash!, HeaderLookup).Returns(first);
+        ctx.BlockTree.FindHeader(Arg.Any<ulong>(), HeaderLookup)
+            .Returns(call => ProofHeader(call.ArgAt<ulong>(0), 1));
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, specProvider: new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance));
+
+        using IOwnedReadOnlyList<BlockHeader> headers = server.FindHeaders(first.Hash!, 2048, 0, false);
+
+        Assert.That(headers, Has.Count.EqualTo(1024));
+    }
+
+    [Test]
+    public void Reverse_skip_stops_before_genesis_without_unsigned_underflow()
+    {
+        Context ctx = new();
+        BlockHeader first = ProofHeader(1, 2048);
+        ctx.BlockTree.FindHeader(first.Hash!, HeaderLookup).Returns(first);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, specProvider: new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance));
+
+        using IOwnedReadOnlyList<BlockHeader> headers = server.FindHeaders(first.Hash!, 1024, 2, true);
+
+        Assert.That(headers, Has.Count.EqualTo(1));
+        ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<ulong>(), HeaderLookup);
+    }
+
+    [Test]
+    public void Prefork_head_does_not_bypass_budget_for_downloaded_proof_headers()
+    {
+        Context ctx = new();
+        BlockHeader first = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).TestObject;
+        ctx.BlockTree.Head.Returns(new Block(first, [], []));
+        ctx.BlockTree.Genesis.Returns(first);
+        ctx.BlockTree.FindHeader(first.Hash!, HeaderLookup).Returns(first);
+        ctx.BlockTree.BestKnownNumber.Returns(1024UL);
+        int loads = 0;
+        ctx.BlockTree.FindHeader(Arg.Any<ulong>(), HeaderLookup).Returns(call =>
+        {
+            loads++;
+            Assert.That(loads, Is.LessThanOrEqualTo(3));
+            BlockHeader header = ProofHeader(call.ArgAt<ulong>(0), Eip8288Constants.MaxProofBytes);
+            header.Timestamp = 1;
+            return header;
+        });
+        ISpecProvider provider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance),
+            (ForkActivation.TimestampOnly(1), Eip8288Prototype.Instance));
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, specProvider: provider);
+
+        using IOwnedReadOnlyList<BlockHeader> headers = server.FindHeaders(first.Hash!, 1024, 0, false);
+
+        Assert.That(headers, Has.Count.EqualTo(2));
+        Assert.That(loads, Is.EqualTo(3));
+        ctx.BlockTree.DidNotReceive().FindHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>());
+    }
+
+    [Test]
+    public void Legacy_header_batches_cannot_exceed_the_wire_byte_budget()
+    {
+        Context ctx = new();
+        BlockHeader ordinary = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader oversized = Build.A.BlockHeader.WithNumber(2).TestObject;
+        oversized.ExtraData = new byte[Eip8288Constants.MaxHeaderResponseBytes];
+        ctx.BlockTree.FindHeader(ordinary.Hash!, HeaderLookup).Returns(ordinary);
+        ctx.BlockTree.FindHeaders(ordinary.Hash!, 2, 0, true).Returns(new ArrayPoolList<BlockHeader>([ordinary, oversized]));
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree);
+
+        using IOwnedReadOnlyList<BlockHeader> headers = server.FindHeaders(ordinary.Hash!, 2, 0, true);
+
+        Assert.That(headers, Has.Count.EqualTo(1));
+        Assert.That(headers[0], Is.SameAs(ordinary));
+    }
+
+    private static BlockHeader ProofHeader(ulong number, int proofBytes)
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(number).TestObject;
+        header.Hash = Keccak.Compute($"header-{number}");
+        header.RecursiveStark = new(new byte[proofBytes], Keccak.Zero);
+        return header;
+    }
+
     [Test]
     public void When_finding_hash_it_does_not_load_headers()
     {
@@ -192,7 +378,8 @@ public class SyncServerTests
             mergeHeaderValidator,
             Always.Valid,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         ctx.SyncServer = new SyncServer(
             ctx.WorldStateManager,
@@ -402,7 +589,8 @@ public class SyncServerTests
             headerValidatorWithInterceptor,
             Always.Valid,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         ctx.SyncServer = new SyncServer(
             ctx.WorldStateManager,
@@ -444,7 +632,8 @@ public class SyncServerTests
             headerValidator,
             Always.Valid,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         ctx.SyncServer = ctx.CreateSyncServer(localBlockTree, blockValidator);
 

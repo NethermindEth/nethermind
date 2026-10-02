@@ -21,6 +21,6 @@ public interface IInclusionListComplianceEvaluator
     /// <returns><c>null</c> when the block, state, or execution gas dimensions needed to judge compliance are unavailable.</returns>
     bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions);
 
-    bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof)
-        => proof is null ? TryEvaluate(blockHash, inclusionListTransactions) : null;
+    /// <summary>Evaluates a proof-bearing list using the configured proof verifier.</summary>
+    bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof);
 }

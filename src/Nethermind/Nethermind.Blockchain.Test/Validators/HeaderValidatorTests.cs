@@ -62,6 +62,38 @@ public class HeaderValidatorTests
         _blockTree.SuggestBlock(_block);
     }
 
+    [TestCase(false, "absent", true, null)]
+    [TestCase(false, "valid", false, BlockErrorMessages.RecursiveStarkNotEnabled)]
+    [TestCase(true, "absent", false, BlockErrorMessages.MissingRecursiveStark)]
+    [TestCase(true, "empty", false, BlockErrorMessages.InvalidRecursiveStark)]
+    [TestCase(true, "oversized", false, BlockErrorMessages.InvalidRecursiveStark)]
+    [TestCase(true, "missing-hash", false, BlockErrorMessages.InvalidRecursiveStark)]
+    [TestCase(true, "valid", true, null)]
+    public void Header_validation_gates_recursive_proof_shape(bool enabled, string shape, bool valid, string? expectedError)
+    {
+        OverridableReleaseSpec spec = new(Byzantium.Instance) { IsEip8141Enabled = enabled, IsEip8288Enabled = enabled };
+        _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance);
+        _block.Header.RecursiveStark = shape == "absent" ? null : new RecursiveStark(shape switch
+        {
+            "empty" => [],
+            "oversized" => new byte[Eip8288Constants.MaxProofBytes + 1],
+            _ => [1]
+        }, shape == "missing-hash" ? null! : Keccak.Zero);
+
+        Assert.That(_validator.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.EqualTo(valid));
+        Assert.That(error, Is.EqualTo(expectedError));
+    }
+
+    [Test]
+    public void Active_fork_genesis_does_not_require_a_recursive_proof()
+    {
+        OverridableReleaseSpec spec = new(Byzantium.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance);
+        BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).TestObject;
+        genesis.Hash = genesis.CalculateHash();
+        Assert.That(_validator.ValidateOrphaned(genesis, out string? error), Is.True, error);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Valid_when_valid()
     {

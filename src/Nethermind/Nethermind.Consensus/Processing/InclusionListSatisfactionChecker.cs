@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -17,7 +16,7 @@ namespace Nethermind.Consensus.Processing;
 
 /// <inheritdoc cref="IInclusionListSatisfactionChecker"/>
 public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider, ITxValidator txValidator,
-    ITransactionProcessor? transactionProcessor = null, ILeanProofVerifier? proofVerifier = null)
+    ILeanProofVerifier proofVerifier, ITransactionProcessor? transactionProcessor = null)
     : IInclusionListSatisfactionChecker
 {
     public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState)
@@ -25,7 +24,7 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions,
             worldState, spec, txValidator, suggestedBlock.InclusionListRecursiveStark,
-            proofVerifier ?? NativeLeanProofVerifier.Instance, CouldAppendFrame);
+            proofVerifier, CouldAppendFrame);
 
         bool CouldAppendFrame(Transaction tx)
         {

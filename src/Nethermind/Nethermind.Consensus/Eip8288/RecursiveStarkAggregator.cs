@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -40,7 +41,7 @@ public static class RecursiveStarkAggregator
         {
             foreach (RecursiveProofInput child in input.RecursiveProofs)
             {
-                if (!seenProofs.Add(ValueKeccak.Compute(child.Proof))) continue;
+                if (!seenProofs.Add(child.ProofHash)) continue;
                 recursive.Add(child);
                 foreach (FrameDependency dep in child.InnerDeps)
                 {
@@ -63,8 +64,9 @@ public static class RecursiveStarkAggregator
     }
 
     /// <summary>Folds inputs in bounded batches before generating the final recursive proof.</summary>
-    public static byte[] Prove(AggregationInput input, ILeanProofVerifier verifier, in ValueHash256 depsHash)
+    public static byte[] Prove(AggregationInput input, ILeanProofVerifier verifier, in ValueHash256 depsHash, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize)
             return verifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, input);
 
@@ -98,11 +100,13 @@ public static class RecursiveStarkAggregator
             }
             children = next;
         }
+        cancellationToken.ThrowIfCancellationRequested();
         return verifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk,
             new AggregationInput { RecursiveProofs = children, Discards = input.Discards });
 
         RecursiveProofInput ProveChild(AggregationInput childInput, IReadOnlyList<FrameDependency> dependencies)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(dependencies);
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(canonical);
             byte[] proof = verifier.ProveRecursiveStark(in hash, Eip8288Constants.AggregatedVk, childInput);
@@ -140,7 +144,7 @@ public static class RecursiveStarkAggregator
         foreach (RecursiveProofInput recursiveProof in input.RecursiveProofs)
         {
             ValueHash256 innerHash = Eip8288Dependencies.ComputeDepsHash(recursiveProof.InnerDeps);
-            if (!verifier.VerifyRecursiveStark(in innerHash, Eip8288Constants.AggregatedVk, recursiveProof.Proof)) return false;
+            if (!verifier.VerifyRecursiveStark(in innerHash, Eip8288Constants.AggregatedVk, recursiveProof.Proof.Span)) return false;
             allDeps.AddRange(recursiveProof.InnerDeps);
         }
 

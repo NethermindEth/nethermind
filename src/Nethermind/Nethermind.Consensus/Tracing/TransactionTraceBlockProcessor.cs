@@ -16,6 +16,8 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Consensus.Tracing;
 
 /// <summary>RPC-only processor which omits block finalization after a completed transaction prefix.</summary>
@@ -23,9 +25,9 @@ public sealed class TransactionTraceBlockProcessor(
     ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator,
     TransactionTraceExecutor executor, IWorldState state, IReceiptStorage receipts,
     IBeaconBlockRootHandler beaconRoot, IBlockhashStore blockHashes, ILogManager logManager,
-    IWithdrawalProcessor withdrawals, IExecutionRequestsProcessor requests, IBlockAccessListManager balManager)
+    IWithdrawalProcessor withdrawals, IExecutionRequestsProcessor requests, IBlockAccessListManager balManager, ILeanProofVerifier leanProofVerifier)
     : BlockProcessor(specProvider, blockValidator, rewardCalculator, executor, state, receipts,
-        beaconRoot, blockHashes, logManager, withdrawals, requests, balManager)
+        beaconRoot, blockHashes, logManager, withdrawals, requests, balManager, leanProofVerifier)
 {
     public override (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
         IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)

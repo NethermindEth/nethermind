@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Eip8288;
 
@@ -30,7 +30,7 @@ public static class FocilInclusionListValidator
         => Validate(focil.Transactions, focil.RecursiveStark, verifier, out _, out error);
 
     public static bool Validate(IReadOnlyList<Transaction> transactions, RecursiveStark? proof,
-        ILeanProofVerifier verifier, out List<FrameDependency> deps, out string? error)
+        ILeanProofVerifier verifier, out List<FrameDependency> deps, out string? error, IReleaseSpec? spec = null)
     {
         error = null;
         deps = [];
@@ -39,6 +39,7 @@ public static class FocilInclusionListValidator
             foreach (Transaction tx in transactions)
             {
                 if (tx is null) { error = InvalidProof; return false; }
+                if (spec is not null && tx.SupportsFrames && !FrameTxValidation.IsWellFormed(tx, spec, out error)) return false;
                 deps.AddRange(Eip8288Dependencies.ForTransaction(tx));
             }
             deps = Eip8288Dependencies.Canonicalize(deps);

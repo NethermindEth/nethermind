@@ -43,7 +43,8 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         InclusionListTxSource il = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         byte[][] ilBytes = [TxDecoder.Instance.Encode(ilTx, RlpBehaviors.SkipTypedWrapping).Bytes];
         il.Set(ilBytes, Bogota.Instance);
         // IL is keyed by the build's PayloadAttributes array.
@@ -81,7 +82,8 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         InclusionListTxSource il = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         // IL is empty
 
         ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();

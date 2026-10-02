@@ -16,7 +16,6 @@ using Nethermind.Consensus.Eip8288;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -88,7 +87,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        ILogManager logManager, ILeanProofVerifier? proofVerifier = null)
+        ILogManager logManager, ILeanProofVerifier proofVerifier)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -103,7 +102,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader = stateReader;
         _specProvider = specProvider;
         _txValidator = txValidator;
-        _proofVerifier = proofVerifier ?? NativeLeanProofVerifier.Instance;
+        _proofVerifier = proofVerifier ?? throw new ArgumentNullException(nameof(proofVerifier));
         _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -472,7 +471,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        if (InclusionListValidator.IsBlockFull(block, spec)) return true;
         _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
+        ILeanProofVerifier verifier = new InclusionListProofVerifier(_proofVerifier);
         if (spec.IsEip8288Enabled)
         {
             // A read-only state cannot execute the validation prefix needed to excuse an omitted frame tx.
@@ -481,18 +482,18 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             foreach (Transaction tx in inclusionList)
                 if (tx.SupportsFrames && (tx.Hash is null || !included.Contains(tx.Hash)))
                     return FocilInclusionListValidator.Validate(inclusionList, block.InclusionListRecursiveStark,
-                        _proofVerifier, out _, out _) ? null : false;
+                        verifier, out _, out _, spec) ? null : false;
         }
 
         SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
         return spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
-            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
-            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, _proofVerifier);
+            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec, verifier)
+            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier);
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
     /// <remarks>Account reads are shared across the gas bounds.</remarks>
-    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
+    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec, ILeanProofVerifier verifier)
     {
         state = new CachedAccountStateProvider(state);
         ulong proofGas = spec.IsEip8288Enabled
@@ -503,13 +504,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         try
         {
             block.Header.GasUsedPerDimension = (transactionGas, transactionGas);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, _proofVerifier)) return false;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier)) return false;
 
             block.Header.GasUsedPerDimension = (transactionGas, 0);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, _proofVerifier)) return null;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier)) return null;
 
             block.Header.GasUsedPerDimension = (0, transactionGas);
-            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, _proofVerifier) ? true : null;
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier) ? true : null;
         }
         finally
         {

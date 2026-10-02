@@ -51,8 +51,6 @@ public static class FrameTxValidation
     public const string DependencyPaddingNotZero = "each dependency must begin with 31 zero bytes before the scheme id";
     public const string InvalidDependencyScheme = "dependency scheme must be LEANSPHINCS or LEANSTARK";
     public const string DependencyFrameGasMismatch = "dependency verification frame gas limit must equal the sum of per-scheme verification gas";
-    public const string TooManySigDeps = "at most 16 leanSPHINCS dependencies per transaction";
-    public const string TooManyStarkDeps = "at most 1 leanSTARK dependency per transaction";
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";

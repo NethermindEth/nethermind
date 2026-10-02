@@ -27,6 +27,8 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.TxPool;
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Consensus.AuRa
 {
     public class AuRaBlockProcessor : BlockProcessor
@@ -52,6 +54,7 @@ namespace Nethermind.Consensus.AuRa
             IExecutionRequestsProcessor executionRequestsProcessor,
             IBlockAccessListManager blockAccessListManager,
             IAuRaValidator? auRaValidator,
+            ILeanProofVerifier leanProofVerifier,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null)
@@ -67,7 +70,8 @@ namespace Nethermind.Consensus.AuRa
                 logManager,
                 withdrawalProcessor,
                 executionRequestsProcessor,
-                blockAccessListManager)
+                blockAccessListManager,
+                leanProofVerifier)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));

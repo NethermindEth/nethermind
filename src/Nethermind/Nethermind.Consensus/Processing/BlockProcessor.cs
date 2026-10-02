@@ -23,8 +23,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -47,14 +47,16 @@ public partial class BlockProcessor(
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
-    ILeanProofVerifier? leanProofVerifier = null,
+    ILeanProofVerifier leanProofVerifier,
     LeanProofStore? leanProofStore = null)
     : IBlockProcessor
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
     protected readonly ISpecProvider _specProvider = specProvider;
-    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? NativeLeanProofVerifier.Instance;
+    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier));
     private readonly LeanProofStore? _leanProofStore = leanProofStore;
+    private (ValueHash256 Dependencies, ValueHash256 VerificationKey)? _productionProofKey;
+    private byte[]? _productionProof;
     protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockAccessListManager _balManager = balManager;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
@@ -197,15 +199,26 @@ public partial class BlockProcessor(
         if (spec.IsEip8288Enabled && options.ContainsFlag(ProcessingOptions.ProducingBlock))
         {
             List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block);
-            AggregationInput input = new();
-            if (block is BlockToProduce producing)
-                input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
-            else if (deps.Count != 0 && (_leanProofStore is null || !_leanProofStore.TryGetInput(deps, out input)))
-                throw new InvalidOperationException("Missing verified EIP-8288 dependency witnesses.");
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
-            byte[] proof = RecursiveStarkAggregator.Prove(input, _leanProofVerifier, in depsHash);
-            if (!_leanProofVerifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof))
-                throw new InvalidOperationException("Produced EIP-8288 proof failed verification.");
+            (ValueHash256, ValueHash256) key = (depsHash, new ValueHash256(Eip8288Constants.AggregatedVk));
+            byte[] proof;
+            if (_productionProofKey == key && _productionProof is not null)
+                proof = (byte[])_productionProof.Clone();
+            else
+            {
+                AggregationInput input = new();
+                if (block is BlockToProduce producing)
+                    input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
+                else if (deps.Count != 0 && (_leanProofStore is null || !_leanProofStore.TryGetInput(deps, out input)))
+                    throw new InvalidOperationException("Missing verified EIP-8288 dependency witnesses.");
+                proof = RecursiveStarkAggregator.Prove(input, _leanProofVerifier, in depsHash);
+                if (proof.Length is 0 or > Eip8288Constants.MaxProofBytes
+                    || !_leanProofVerifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof))
+                    throw new InvalidOperationException("Produced EIP-8288 proof failed verification.");
+                // One verified result per processor/backend; improvement passes reuse it without retaining old blocks.
+                _productionProof = (byte[])proof.Clone();
+                _productionProofKey = key;
+            }
             block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
         }
         return FinalizeBlock<OnFlag>(block, blockTracer, spec, receipts);

@@ -10,13 +10,32 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto;
 
-/// <summary>Verifies SPHINCS and leanVM proofs with the pinned native Lean Ethereum implementation.</summary>
+/// <summary>Checks signature claims and public program commitments with the pinned native backend;
+/// unavailable libraries fail verification closed, while proving reports an error.</summary>
 // Pinned spans remain valid for each call; Rust bounds all buffers and owns returned proof allocations.
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
+    private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
     public static readonly NativeLeanProofVerifier Instance = new();
+
+    /// <summary>Checks the ABI and recursive guest key once, before an EIP-8288 node starts processing.</summary>
+    public void EnsureAvailable() => _ = BackendAvailable.Value;
+
+    private static bool CheckBackend()
+    {
+        try
+        {
+            if (!AggregatedVerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
+                throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
+            return true;
+        }
+        catch (Exception exception) when (IsUnavailable(exception) || exception is InvalidOperationException)
+        {
+            throw new InvalidOperationException("EIP-8288 requires the pinned native Lean backend. Build with BuildLeanFfi=true and install the host library beside Nethermind.", exception);
+        }
+    }
 
     /// <summary>Native library ABI version.</summary>
     public static uint AbiVersion => nlean_abi_version();
@@ -38,7 +57,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     /// <inheritdoc/>
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
     {
-        if (witness.Length != 4956) return false;
+        if (witness.Length != Eip8288Constants.LeanSphincsWitnessBytes) return false;
         try
         {
             fixed (byte* d = dataHash.Bytes)
@@ -128,7 +147,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             if (child.InnerDeps.Count > Eip8288Constants.MaxProofDependencies) throw new ArgumentException("Too many child dependencies", nameof(input));
             writer.Write(child.InnerDeps.Count);
             foreach (FrameDependency dep in child.InnerDeps) WriteDependency(writer, dep);
-            WriteBlob(writer, child.Proof);
+            WriteBlob(writer, child.Proof.Span);
         }
         writer.Write(input.Discards.Count);
         foreach (FrameDependency dep in input.Discards) WriteDependency(writer, dep);
@@ -147,6 +166,11 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     private static void WriteBlob(BinaryWriter writer, byte[] bytes)
     {
         ArgumentNullException.ThrowIfNull(bytes);
+        WriteBlob(writer, bytes.AsSpan());
+    }
+
+    private static void WriteBlob(BinaryWriter writer, ReadOnlySpan<byte> bytes)
+    {
         if (writer.BaseStream.Length + 4 + bytes.Length > MaxProofBytes) throw new ArgumentException("Lean aggregation input too large");
         writer.Write(bytes.Length);
         writer.Write(bytes);

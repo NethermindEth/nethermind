@@ -42,7 +42,8 @@ public class BlockValidatorTests
             headerValidator,
             Substitute.For<IUnclesValidator>(),
             Substitute.For<ISpecProvider>(),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<ILeanProofVerifier>());
     }
 
 
@@ -61,7 +62,8 @@ public class BlockValidatorTests
             new HeaderValidator(blockTree, Always.Valid, specProvider, LimboLogs.Instance),
             Always.Valid,
             specProvider,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         Block parent = Build.A.Block.WithDifficulty(1).TestObject;
         Block block = Build.A.Block.WithParent(parent).WithDifficulty(2).TestObject;
@@ -85,7 +87,7 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_WithdrawalsMissingAfterShanghai_IsRejected([Values] bool validateHashes)
     {
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Shanghai.Instance);
-        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).WithWithdrawals(null).TestObject;
 
@@ -245,7 +247,7 @@ public class BlockValidatorTests
         };
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
-        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).TestObject, parent, out _);
         Assert.That(noiseRemoved, Is.True);
@@ -260,7 +262,7 @@ public class BlockValidatorTests
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = new TestSpecProvider(Frontier.Instance);
 
-        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Invalid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Invalid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block
@@ -351,7 +353,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        return new BlockValidator(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        return new BlockValidator(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
     }
 
     private static IEnumerable<TestCaseData> BadSuggestedBlocks()
@@ -439,7 +441,7 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, BlockHeader parent, ISpecProvider specProvider, string expectedError)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
@@ -614,7 +616,7 @@ public class BlockValidatorTests
 
     private static BlockValidator AmsterdamSut(ITxValidator? tx = null) =>
         new(tx ?? new TxValidator(TestBlockchainIds.ChainId), Always.Valid, Always.Valid,
-            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance, Substitute.For<ILeanProofVerifier>());
 
     private static void AssertValidation(bool expected, bool actual, string? error, string failPrefix)
     {

@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Consensus.Eip8288;
-using Nethermind.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -31,12 +30,23 @@ public static class InclusionListValidator
         if (!spec.InclusionListsEnabled) return true;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
         if (il is null) return true;
-        if (spec.IsEip8288Enabled && !FocilInclusionListValidator.Validate(il, proof,
-            verifier ?? NativeLeanProofVerifier.Instance, out _, out _)) return false;
-
         // No room for even the cheapest possible tx → nothing is appendable.
-        ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
-        if (block.GasUsed + minIntrinsicGas > block.GasLimit) return true;
+        if (IsBlockFull(block, spec)) return true;
+
+        if (spec.IsEip8288Enabled)
+        {
+            if (verifier is null)
+            {
+                if (proof is not null) return false;
+                foreach (Transaction tx in il)
+                {
+                    if (tx is null) return false;
+                    foreach (TxFrame frame in tx.Frames ?? [])
+                        if (Eip8288Dependencies.IsDependencyFrame(frame)) return false;
+                }
+            }
+            else if (!FocilInclusionListValidator.Validate(il, proof, verifier, out _, out _, spec)) return false;
+        }
 
         // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.
         bool[]? rented = il.Length > StackAllocEntries
@@ -52,6 +62,12 @@ public static class InclusionListValidator
         {
             if (rented is not null) ArrayPool<bool>.Shared.Return(rented);
         }
+    }
+
+    public static bool IsBlockFull(Block block, IReleaseSpec spec)
+    {
+        ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        return block.GasUsed > block.GasLimit || minIntrinsicGas > block.GasLimit - block.GasUsed;
     }
 
     private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, Func<Transaction, bool>? frameCanInclude)

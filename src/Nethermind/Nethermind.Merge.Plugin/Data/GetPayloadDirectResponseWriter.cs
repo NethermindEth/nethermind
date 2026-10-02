@@ -136,8 +136,7 @@ internal static class GetPayloadDirectResponseWriter
             WriteNullableUlongHexString(writer, block.SlotNumber);
         }
 
-        // EIP-8288: emitted from the Osaka payload (getPayloadV5) onward once the fork is active;
-        // omitted otherwise so pre-EIP-8288 payloads are byte-identical.
+        // Proof fields are present only on EIP-8288 payloads.
         if (block.Header.RecursiveStark is { } recursiveStark)
         {
             writer.Write(",\"recursiveStarkProof\":"u8);

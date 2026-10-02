@@ -20,7 +20,7 @@ public class InclusionListTxSource(
     IEthereumEcdsa ecdsa,
     ISpecProvider specProvider,
     ILogManager logManager,
-    ILeanProofVerifier? proofVerifier = null, LeanProofStore? proofStore = null) : IInclusionListTxSource
+    ILeanProofVerifier proofVerifier, LeanProofStore? proofStore = null) : IInclusionListTxSource
 {
     // Lazy<T> defaults to ExecutionAndPublication: constructed once even under racing FCUs.
     private readonly Lazy<InclusionListDecoder> _decoder = new(() => new InclusionListDecoder(ecdsa, specProvider, logManager));
@@ -28,13 +28,13 @@ public class InclusionListTxSource(
 
     // Keyed by the build's PayloadAttributes array so a concurrent FCU can't leak another build's IL;
     // weak keys collect with the build.
-    private readonly ConditionalWeakTable<byte[][], Lazy<Transaction[]>> _decodedByAttributes = [];
+    private readonly ConditionalWeakTable<byte[][], BuildInclusionList> _decodedByAttributes = [];
 
     // gasLimit is ignored: the downstream tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
         if (payloadAttributes?.InclusionListTransactions is not { Length: > 0 } il) return [];
-        if (!_decodedByAttributes.TryGetValue(il, out Lazy<Transaction[]>? decoded))
+        if (!_decodedByAttributes.TryGetValue(il, out BuildInclusionList? decoded))
         {
             // A miss means Set was never called for these attributes, e.g. an oversized IL that
             // engine_forkchoiceUpdatedV5 already warned about; debug-level as this runs once per improvement.
@@ -42,35 +42,69 @@ public class InclusionListTxSource(
             return [];
         }
 
-        try
-        {
-            Transaction[] transactions = decoded.Value;
-            if (specProvider.GetSpec(targetBlock).IsEip8288Enabled)
-            {
-                if (!FocilInclusionListValidator.Validate(transactions, payloadAttributes.InclusionListRecursiveStark,
-                    proofVerifier ?? NativeLeanProofVerifier.Instance, out List<FrameDependency> deps, out _)) return [];
-                if (deps.Count > 0)
-                {
-                    if (proofStore is null) throw new InvalidOperationException("Inclusion-list dependencies require a proof store.");
-                    proofStore.AddVerified(deps, null, payloadAttributes.InclusionListRecursiveStark!.StarkProof);
-                }
-            }
-            return OrderForProduction(FilterBlobs((Transaction[])transactions.Clone()));
-        }
-        catch (Exception ex) when (ex is RlpException or ArgumentException)
-        {
-            // Lazy caches the failure, so a malformed list is reported once per build, not per improvement.
-            if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}); building without it.");
-            return [];
-        }
+        if (decoded.DependenciesEnabled != specProvider.GetSpec(targetBlock).IsEip8288Enabled
+            || !decoded.MatchesProof(payloadAttributes.InclusionListRecursiveStark)) return [];
+        return (Transaction[])decoded.Transactions.Value.Clone();
     }
 
     /// <inheritdoc/>
     /// <remarks>Decoding and sender recovery are deferred to the first <see cref="GetTransactions"/> call, so
     /// a forkchoice update that never starts a build pays nothing.</remarks>
-    public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
-        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions,
-            new Lazy<Transaction[]>(() => _decoder.Value.DecodeAndRecover(inclusionListTransactions, spec)));
+    public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec, RecursiveStark? proof = null)
+    {
+        if (inclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions) return;
+        long bytes = 0;
+        foreach (byte[] transaction in inclusionListTransactions)
+        {
+            bytes += transaction?.Length ?? 0;
+            if (bytes > Eip7805Constants.MaxAggregateInclusionListBytes) return;
+        }
+        if (proof is not null && (proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes })) return;
+        byte[][] snapshot = new byte[inclusionListTransactions.Length][];
+        for (int i = 0; i < snapshot.Length; i++) snapshot[i] = inclusionListTransactions[i] is { } entry ? entry.AsSpan().ToArray() : null!;
+        RecursiveStark? proofSnapshot = proof is null ? null : new(proof.StarkProof.AsSpan().ToArray(), proof.BlockDepsHash);
+        _decodedByAttributes.AddOrUpdate(inclusionListTransactions, new BuildInclusionList(spec.IsEip8288Enabled,
+            proofSnapshot, new Lazy<Transaction[]>(() => PrepareSafely(snapshot, proofSnapshot, spec))));
+    }
+
+    private Transaction[] PrepareSafely(byte[][] snapshot, RecursiveStark? proof, IReleaseSpec spec)
+    {
+        try
+        {
+            return Prepare(snapshot, proof, spec);
+        }
+        catch (Exception ex) when (ex is RlpException or ArgumentException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}).");
+            return [];
+        }
+    }
+
+    private Transaction[] Prepare(byte[][] snapshot, RecursiveStark? proof, IReleaseSpec spec)
+    {
+        Transaction[] transactions = _decoder.Value.DecodeAndRecover(snapshot, spec);
+        if (spec.IsEip8288Enabled)
+        {
+            if (!FocilInclusionListValidator.Validate(transactions, proof, proofVerifier,
+                out List<FrameDependency> deps, out string? error, spec))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Discarding inclusion list: {error}.");
+                return [];
+            }
+            if (deps.Count > 0)
+            {
+                if (proofStore is null) throw new InvalidOperationException("Inclusion-list dependencies require a proof store.");
+                proofStore.AddVerified(deps, null, proof!.StarkProof);
+            }
+        }
+        return OrderForProduction(FilterBlobs(transactions));
+    }
+
+    private sealed record BuildInclusionList(bool DependenciesEnabled, RecursiveStark? Proof, Lazy<Transaction[]> Transactions)
+    {
+        public bool MatchesProof(RecursiveStark? proof) => Proof is null ? proof is null
+            : proof is not null && Proof.BlockDepsHash == proof.BlockDepsHash && Proof.StarkProof.AsSpan().SequenceEqual(proof.StarkProof);
+    }
 
     // The producer offers each IL tx once, so a shuffled IL would skip a nonce that arrives after its
     // dependent. Ordering by first-appearance rather than address avoids favouring low-address senders.

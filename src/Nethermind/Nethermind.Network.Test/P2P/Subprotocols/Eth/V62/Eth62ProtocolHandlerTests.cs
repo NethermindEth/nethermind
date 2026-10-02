@@ -201,6 +201,26 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Proof_bearing_headers_preserve_requested_batch_size_for_bounded_server([Values] bool proofAtHead)
+        {
+            BlockHeader header = Build.A.BlockHeader.TestObject;
+            header.RecursiveStark = new RecursiveStark([1], TestItem.KeccakB);
+            if (proofAtHead) _syncManager.Head.Returns(header);
+            else _syncManager.FindHeader(TestItem.KeccakA).Returns(header);
+            using GetBlockHeadersMessage message = new()
+            {
+                StartBlockHash = TestItem.KeccakA,
+                MaxHeaders = 1024
+            };
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(message, Eth62MessageCode.GetBlockHeaders);
+
+            _syncManager.Received().FindHeaders(TestItem.KeccakA, 1024, 0, false);
+            _syncManager.DidNotReceive().FindHeaders(TestItem.KeccakA, 1, 0, false);
+        }
+
+        [Test]
         public void Receiving_request_before_status_fails()
         {
             GetBlockHeadersMessage msg = new();

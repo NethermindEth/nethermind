@@ -157,6 +157,7 @@ public class BlockHeader
         if (RecursiveStark is not null)
         {
             builder.AppendLine($"{indent}BlockDepsHash: {RecursiveStark.BlockDepsHash}");
+            builder.AppendLine($"{indent}RecursiveStarkProofBytes: {RecursiveStark.StarkProof.Length}");
         }
 
         return builder.ToString();

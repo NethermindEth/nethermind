@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Consensus.Eip8288;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -127,10 +126,6 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         {
             return result;
         }
-
-        if (spec.IsEip8288Enabled && spec.InclusionListsEnabled
-            && !FocilInclusionListValidator.Validate(TxsDecoder.DecodeTxs(InclusionListTransactions!, skipErrors: true).Transactions,
-                executionPayload.InclusionListRecursiveStark, NativeLeanProofVerifier.Instance, out _, out error)) return ValidationResult.Fail;
 
         result = ValidateEngineApiVersionParams(spec, version, out error);
         if (result != ValidationResult.Success)

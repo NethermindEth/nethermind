@@ -17,8 +17,9 @@ dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -c rele
 `BuildLeanFfi=true` builds and copies the host native library into consumer build/publish
 outputs and rejects a different target RID. Build on each target platform; cross compilation
 and distribution remain release packaging work. Ordinary builds do not require Rust.
-Verification fails closed if the native library is absent or has an incompatible ABI;
-proving requires the library.
+A chain with a scheduled EIP-8288 fork checks the native ABI and guest key at startup
+and fails with installation instructions if the backend is unavailable. Other chains do
+not load it. Verification also fails closed; proving requires the library.
 
 `cargo run --release --locked --manifest-path tools/lean-ffi/Cargo.toml --example fixtures -- <directory>`
 produces genuine test signatures/proofs and the pinned recursive verification key. The live
@@ -38,6 +39,12 @@ accepts malformed inputs.
 All framing integers are unsigned 32-bit little-endian. Proofs and aggregation inputs are
 bounded to 8 MiB; dependency lists to 4096; recursive children to 16. This format and the
 pinned key are prototype protocol choices, pending finalized EIP-8288 encodings.
+
+The [EIP](https://eips.ethereum.org/EIPS/eip-8288#recursive-stark-header-entry) requires the proof in the block header, so the header database and caches retain it.
+Generic STARK witnesses can make each header approach 8 MiB. On proof-bearing chains,
+header serving loads compact headers in batches and stops at a 9 MiB response budget before
+encoding or decoding. Large proofs reduce batch size. This trades header-sync throughput and storage for the prototype's
+current header format; a finalized sidecar format would require a protocol change.
 
 * **SPHINCS witness:** public key (32 bytes), signature (4924 bytes). The dependency key
   is Keccak-256 of the public key. Both this hash and the signature over `data_hash` are checked.
@@ -69,6 +76,10 @@ therefore carried in the aggregate envelope and cryptographically reverified at 
 Their size is not compressed. Extending the guest to recursively verify arbitrary bytecode
 is separate work; this implementation does not claim that functionality.
 
+The 4096-dependency block limit and 16384-instruction generic-program limit are prototype
+backend acceptance bounds beyond the unrestricted EIP. Block/proof interoperability
+requires peers to share these bounds.
+
 The upstream project remains experimental and unaudited. This integration is a prototype,
 with a pinned backend and explicit wire choices, rather than a finalized network protocol.
 
@@ -76,7 +87,8 @@ with a pinned backend and explicit wire choices, rather than a finalized network
 
 Build the native library and copy it beside the Nethermind executable (or put its directory
 on the host's native library search path). The native backend is always selected for
-EIP-8288; missing libraries or invalid proofs fail validation. There is no placeholder switch.
+EIP-8288; missing libraries fail startup on configured proof-bearing chains, and invalid
+proofs fail validation. There is no placeholder switch.
 
 Prototype proof payloads use the JSON Engine API and RLP transport. Standard Engine SSZ
 schemas cannot carry block or inclusion-list proofs; proof-bearing SSZ payloads are rejected
@@ -113,17 +125,33 @@ pending for another block.
 
 When the prototype fork is active at the node's head, it advertises `lean/1` alongside
 normal Ethereum capabilities. Only peers that negotiate `lean/1` exchange proof wrappers.
+The Network project references Consensus directly for the shared proof admission service
+and background scheduler already used by its Ethereum handlers. Keeping `lean/1` in the
+existing protocol registry shares negotiation and shutdown with those handlers.
+
 Message 0 is a 72-byte status: chain ID (u64 big-endian), genesis hash (32 bytes), pinned
-recursive guest key (32 bytes). All three must match before message 1 is accepted.
+recursive guest key (32 bytes). All three must match before message 1 is accepted;
+a mismatch disables only `lean/1`, preserving the session's other protocols.
 Message 1 carries a complete RLP mempool wrapper, including full transactions, bounded
-by 16 MiB and 4096 transactions. Outgoing selection reserves 8 MiB for the proof before
-encoding transactions. A peer may have only one pending verification task;
-invalid wrappers disconnect the peer.
+by 10 MiB and 4096 transactions. This leaves room for worst-case Snappy expansion within
+the 12 MiB inbound frame cap. Outgoing selection reserves 8 MiB for the proof before
+encoding transactions. Each peer retains at most one active and one latest pending
+wrapper (20 MiB total); newer pending wrappers replace older ones. Each verification
+returns pending work to the shared scheduler. Invalid proofs
+or encodings disconnect the peer; ordinary pool rejection does not.
 
 One node-wide worker aggregates eligible pending transactions every second, using the
 shared RPC/peer validation and proof store. Bounded wrapper selection rotates through
-the pool; unchanged selections reuse their verified proof. Generic STARK witnesses
-remain carried and verified. Shutdown cancels peer work and joins the aggregation worker.
+the pool, advancing past the last selected transaction; unchanged selections reuse
+their verified proof. Blocked sends retry on the next cadence without resending the
+same wrapper immediately to peers that accepted it. Unchanged wrappers refresh every
+30–35 seconds, with per-peer jitter, so dropped queued work and policy rejections can
+recover without acknowledgements or retained outbound queues. Generic STARK witnesses
+remain carried and verified. Exact verified dependency sets reuse proofs from the bounded
+store across rotation cycles; each peer remembers at most 64 recent delivered hashes.
+Only admitted transactions retain witness coverage. RPC aggregation rejects concurrent
+work and permits one request per second, with cooperative timeout checks between native
+calls. Shutdown cancels peer work and joins the aggregation worker.
 
 ## Proof-bearing inclusion lists
 

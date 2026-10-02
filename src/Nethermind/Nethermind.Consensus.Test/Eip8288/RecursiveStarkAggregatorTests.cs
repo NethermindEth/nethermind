@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Eip8288;
@@ -102,7 +102,7 @@ public class RecursiveStarkAggregatorTests
         if (recursive)
         {
             Assert.That(input.Discards, Is.EqualTo(new[] { a }));
-            Assert.That(input.RecursiveProofs[0].Proof[0], Is.EqualTo(1));
+            Assert.That(input.RecursiveProofs[0].Proof.Span[0], Is.EqualTo(1));
         }
         else
         {
@@ -158,6 +158,56 @@ public class RecursiveStarkAggregatorTests
         store.AddVerified([dependency], [[1]], null);
         for (int i = 0; i < 1025; i++) store.AddVerified([], null, [2]);
         Assert.That(store.TryGetInput([dependency], out _), Is.True);
+    }
+
+    [Test]
+    public void Repeated_identical_proofs_do_not_evict_other_coverage()
+    {
+        LeanProofStore store = new();
+        FrameDependency honest = Sphincs("honest");
+        FrameDependency repeated = Sphincs("repeated");
+        store.AddVerified([honest], [[1]], null);
+        for (int i = 0; i < 1025; i++) store.AddVerified([repeated], null, [2]);
+        Assert.That(store.TryGetInput([honest], out _), Is.True);
+        Assert.That(store.TryGetRecursiveProof([repeated], out byte[] proof), Is.True);
+        Assert.That(proof, Is.EqualTo(new byte[] { 2 }));
+        Assert.That(store.TryGetRecursiveProof([honest, repeated], out _), Is.False);
+    }
+
+    [Test]
+    public async Task Disposed_admission_scope_revokes_captured_execution_context()
+    {
+        LeanProofStore store = new();
+        FrameDependency dependency = Sphincs("temporary");
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                Nethermind.Int256.UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+        };
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<bool> captured;
+        using (store.BeginAdmission([dependency]))
+        {
+            Assert.That(store.Covers(transaction), Is.True);
+            captured = Task.Run(async () => { await release.Task; return store.Covers(transaction); });
+        }
+        release.SetResult();
+        Assert.That(await captured, Is.False);
+        Assert.That(store.Covers(transaction), Is.False);
+    }
+
+    [Test]
+    public void Recursive_input_snapshots_caller_owned_buffers()
+    {
+        FrameDependency[] dependencies = [Sphincs("a")];
+        byte[] bytes = [1];
+        RecursiveProofInput input = new(dependencies, bytes);
+        bytes[0] = 2;
+        dependencies[0] = Sphincs("b");
+        Assert.That(input.Proof.Span[0], Is.EqualTo(1));
+        Assert.That(input.ProofHash, Is.EqualTo(ValueKeccak.Compute(input.Proof.Span)));
+        Assert.That(input.InnerDeps[0], Is.EqualTo(Sphincs("a")));
     }
 
     [Test]

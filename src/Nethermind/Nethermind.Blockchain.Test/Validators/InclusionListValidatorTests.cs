@@ -28,6 +28,25 @@ public class InclusionListValidatorTests
     private static readonly TxValidator _txValidator = new(TestBlockchainIds.ChainId);
     private static readonly Transaction _validTx = BuildTx();
 
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public void Proof_bearing_lists_require_a_verifier_only_when_transactions_can_fit(bool dependencies, bool full)
+    {
+        Transaction transaction = BuildFrameTx();
+        byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
+        data[31] = Eip8288Constants.LeanSphincsScheme;
+        transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
+            Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(full ? 30_000_000UL : 0)
+            .WithInclusionListTransactions(dependencies ? [transaction] : []).TestObject;
+        if (!dependencies) block.InclusionListRecursiveStark = new([1], Keccak.Zero);
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+
+        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(full));
+    }
+
     public static IEnumerable<TestCaseData> SatisfactionCases
     {
         get

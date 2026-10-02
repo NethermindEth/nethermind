@@ -74,9 +74,9 @@ namespace Nethermind.Consensus.Processing
                 ulong txStarkGas = spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(currentTx) : 0;
                 if (txStarkGas != 0)
                 {
-                    if (leanProofStore is null || !leanProofStore.TryGetInput(Eip8288Dependencies.ForTransaction(currentTx), out AggregationInput candidateInput))
-                        return args.Set(TxAction.Skip, "Missing verified dependency witnesses");
                     List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx);
+                    if (leanProofStore is null || !leanProofStore.TryGetInput(required, out AggregationInput candidateInput))
+                        return args.Set(TxAction.Skip, "Missing verified dependency witnesses");
                     List<AggregationInput> inputs = [candidateInput];
                     if (block is BlockToProduce producing)
                     {
@@ -93,6 +93,7 @@ namespace Nethermind.Consensus.Processing
                     if (witnessBytes > RecursiveStarkAggregator.MaxProductionWitnessBytes)
                         return args.Set(TxAction.Skip, "Dependency witness budget exceeded");
                     args.LeanProofInput = candidateInput;
+                    args.LeanDependencies = required;
                     args.LeanWitnessBytes = witnessBytes;
                 }
                 gasRemaining = gasRemaining.SaturatingSub(txStarkGas);

@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm;
@@ -127,10 +126,8 @@ namespace Nethermind.Consensus.Processing
                         {
                             producing.LeanProofInputs.Clear();
                             producing.LeanProofInputs.Add(proofInput);
-                            producing.LeanDependencies.AddRange(Eip8288Dependencies.ForTransaction(currentTx));
-                            List<FrameDependency> canonicalDependencies = Eip8288Dependencies.Canonicalize(producing.LeanDependencies);
                             producing.LeanDependencies.Clear();
-                            producing.LeanDependencies.AddRange(canonicalDependencies);
+                            producing.LeanDependencies.AddRange(args.LeanDependencies);
                             producing.LeanWitnessBytes = args.LeanWitnessBytes;
                         }
                     }

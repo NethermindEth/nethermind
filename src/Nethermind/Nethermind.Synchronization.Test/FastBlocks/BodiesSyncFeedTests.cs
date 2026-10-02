@@ -80,7 +80,7 @@ public class BodiesSyncFeedTests
     }
 
     private static BlockValidator CreateBlockValidator() =>
-        new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
     private BodiesSyncFeed CreateFeed(IBlockValidator blockValidator) =>
         new(
