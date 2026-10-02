@@ -41,7 +41,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IFrameTxWidthLedger, IAsyncDisposable, IRecyclableTxPool
+    public class TxPool : ITxPool, IAsyncDisposable, IRecyclableTxPool
     {
         private const int RevalidationAbandonmentWarningThreshold = 3;
         private const int MarkerPublicationDeferralWarningThreshold = 3;
@@ -51,7 +51,6 @@ namespace Nethermind.TxPool
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _hashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
-        private int _missingReceiptsWarned;
 
         private readonly HashCache _hashCache = new();
         private readonly TxBroadcaster _broadcaster;
@@ -74,7 +73,7 @@ namespace Nethermind.TxPool
         private readonly DelegationCache _pendingDelegations;
         private readonly PayerExposureCache _payerExposure = new();
         private readonly PendingPaymasterCache _pendingPaymasters = new();
-        private readonly SenderWidthCache _senderWidth = new();
+        private readonly SenderWidthCache _senderWidth;
         private readonly SenderAdmissionGates _senderAdmissionGates = new();
         private readonly ConcurrentDictionary<AddressAsKey, ValueHash256> _senderBaselines = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
@@ -187,9 +186,11 @@ namespace Nethermind.TxPool
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter[]? incomingTxFilters = null,
             bool thereIsPriorityContract = false,
-            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null)
+            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null,
+            FrameTxWidthLedger? frameTxWidthLedger = null)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
+            _senderWidth = (frameTxWidthLedger ?? new FrameTxWidthLedger(txPoolConfig, logManager)).SenderWidth;
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
@@ -1092,43 +1093,6 @@ namespace Nethermind.TxPool
             bool removed = RemoveTransaction(tx.Hash);
             _broadcaster.EnsureStopBroadcastUpToNonce(tx);
             return removed;
-        }
-
-        /// <summary>Credits each finalized EIP-8250 keyed-nonce frame transaction's sender with the width its gas earns.</summary>
-        /// <remarks>
-        /// MATCHA earns width only on finalization, so a block later reorged out grants none. The consensus layer
-        /// that observes finalization delivers the finalized blocks through <see cref="IFrameTxWidthLedger"/>, so
-        /// this pool keeps no reference to the block tree that raises the signal. The gas is read from the block's
-        /// receipts, not recomputed. Each finalized block arrives once, so a sender earns once per finalized
-        /// transaction.
-        /// </remarks>
-        public void EarnWidthOnFinalization(Block finalizedBlock, TxReceipt[] receipts)
-        {
-            if (!_txPoolConfig.FrameTxWidthEnabled) return;
-
-            Transaction[] blockTransactions = finalizedBlock.Transactions;
-            if (receipts.Length != blockTransactions.Length)
-            {
-                if (Interlocked.Exchange(ref _missingReceiptsWarned, 1) == 0)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Skipped MATCHA width for finalized block {finalizedBlock.Number}: {receipts.Length} receipts for {blockTransactions.Length} transactions. Further skips are logged at debug level.");
-                }
-                else if (_logger.IsDebug)
-                {
-                    _logger.Debug($"Skipped MATCHA width for finalized block {finalizedBlock.Number}: {receipts.Length} receipts for {blockTransactions.Length} transactions");
-                }
-
-                return;
-            }
-
-            for (int i = 0; i < blockTransactions.Length; i++)
-            {
-                Transaction blockTx = blockTransactions[i];
-                if (blockTx.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(blockTx))
-                {
-                    _senderWidth.Earn(blockTx.SenderAddress!, (UInt256)receipts[i].GasUsed, _txPoolConfig.FrameTxWidthCap);
-                }
-            }
         }
 
         /// <summary>Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.</summary>

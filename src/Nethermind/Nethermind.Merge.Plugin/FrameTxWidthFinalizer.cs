@@ -38,13 +38,13 @@ public class FrameTxWidthFinalizer : IDisposable
     private ulong _lastFinalizedBlock;
     private bool _seenFinalization;
 
-    public FrameTxWidthFinalizer(IBlockTree blockTree, IReceiptFinder receiptFinder, ITxPool txPool, ITxPoolConfig txPoolConfig, ILogManager logManager)
+    public FrameTxWidthFinalizer(IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPoolConfig txPoolConfig, ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         _logger = logManager?.GetClassLogger<FrameTxWidthFinalizer>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        if (txPoolConfig.FrameTxWidthEnabled && txPool is IFrameTxWidthLedger ledger)
+        if (txPoolConfig.FrameTxWidthEnabled)
         {
             _ledger = ledger;
             _blockTree.BlocksFinalized += OnBlocksFinalized;

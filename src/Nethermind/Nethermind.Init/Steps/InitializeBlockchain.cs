@@ -71,7 +71,8 @@ namespace Nethermind.Init.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
-                frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>()
+                frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>(),
+                frameTxWidthLedger: _api.Context.Resolve<FrameTxWidthLedger>()
             );
 
             _api.DisposeStack.Push(txPool);
