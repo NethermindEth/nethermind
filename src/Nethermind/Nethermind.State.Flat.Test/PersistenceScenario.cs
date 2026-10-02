@@ -57,17 +57,17 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
                 Enabled = true,
                 Layout = layout
             }, layout.ToString());
-        }
 
-        // A generation small enough that the scenarios roll and merge generations while readers are open.
-        yield return new TestConfiguration(new FlatDbConfig()
-        {
-            Enabled = true,
-            Layout = FlatLayout.Flat,
-            TrieNodeLogEnabled = true,
-            TrieNodeLogStateBytes = 8192,
-            TrieNodeLogStorageBytes = 8192,
-        }, "Flat+TrieNodeLog");
+            // A generation small enough that the scenarios roll and merge generations while readers are open.
+            yield return new TestConfiguration(new FlatDbConfig()
+            {
+                Enabled = true,
+                Layout = layout,
+                TrieNodeLogEnabled = true,
+                TrieNodeLogStateBytes = 8192,
+                TrieNodeLogStorageBytes = 8192,
+            }, $"{layout}+TrieNodeLog");
+        }
     }
 
     private static bool IsPreimage(FlatLayout layout) => layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat;

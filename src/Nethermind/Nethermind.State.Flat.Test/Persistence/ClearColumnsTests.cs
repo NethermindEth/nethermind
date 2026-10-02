@@ -60,8 +60,8 @@ public class ClearColumnsTests
     private static IEnumerable<(string, Func<IColumnsDb<FlatDbColumns>, IPersistence>)> PersistenceFactories()
     {
         yield return (nameof(RocksDbPersistence), static db => new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance));
-        yield return (nameof(PreimageRocksdbPersistence), static db => new PreimageRocksdbPersistence(db, LimboLogs.Instance, FlatLayout.PreimageFlat));
-        yield return (nameof(FlatInTriePersistence), static db => new FlatInTriePersistence(db, LimboLogs.Instance));
+        yield return (nameof(PreimageRocksdbPersistence), static db => new PreimageRocksdbPersistence(db, LimboLogs.Instance, FlatLayout.PreimageFlat, NullTrieNodeLog.Instance));
+        yield return (nameof(FlatInTriePersistence), static db => new FlatInTriePersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance));
     }
 
     // The sync that follows a wipe never advances the state pointer, so on a restart mid-sync only the wipe marker

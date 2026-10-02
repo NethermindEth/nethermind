@@ -125,7 +125,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat =>
-                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout),
+                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout, ctx.Resolve<ITrieNodeLog>()),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 
