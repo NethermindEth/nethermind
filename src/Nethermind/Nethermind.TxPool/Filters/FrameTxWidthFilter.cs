@@ -31,6 +31,7 @@ namespace Nethermind.TxPool.Filters;
 /// </remarks>
 internal sealed class FrameTxWidthFilter(
     ITxPoolConfig txPoolConfig,
+    IChainHeadInfoProvider headInfo,
     TxDistinctSortedPool standardPool,
     TxDistinctSortedPool blobPool,
     SenderWidthCache senderWidth,
@@ -58,6 +59,15 @@ internal sealed class FrameTxWidthFilter(
         if (replaced is not null && !(tx.CarriesBlobs ? blobPool : standardPool).CanReplace(tx, replaced))
         {
             return AcceptTxResult.ReplacementNotAllowed;
+        }
+
+        UInt256 nextBaseFee = headInfo.NextBaseFee;
+        if (tx.MaxFeePerGas < nextBaseFee)
+        {
+            Metrics.PendingTransactionsTooLowFee++;
+            if (logger.IsTrace)
+                logger.Trace($"Skipped adding keyed-nonce frame transaction {tx.Hash}, max fee per gas {tx.MaxFeePerGas} is below the next base fee {nextBaseFee}.");
+            return AcceptTxResult.FeeTooLow.WithMessage($"MaxFeePerGas needs to be at least the next block's base fee ({nextBaseFee}) beyond the sender's baseline, is {tx.MaxFeePerGas}.");
         }
 
         UInt256 cost = FrameTxWidthCharge.For(tx, state.HeadSpec, txPoolConfig.FrameTxWidthSafetyFactorPermille);

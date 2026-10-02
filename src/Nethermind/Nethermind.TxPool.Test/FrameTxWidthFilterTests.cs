@@ -126,6 +126,31 @@ public class FrameTxWidthFilterTests
         Assert.That(result, Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.WidthUnmet));
     }
 
+    [Test]
+    public void Accept_BeyondBaseline_BelowTheNextBaseFee_SpendsNoWidth([Values] bool replaces, [Values] bool atNextBaseFee)
+    {
+        const uint nextBaseFee = 3;
+        SenderWidthCache cache = new();
+        cache.Earn(Sender, Cost);
+        Transaction incoming = KeyedTx(nonceSeq: replaces ? Baseline - 1 : Baseline, gasPrice: atNextBaseFee ? nextBaseFee : nextBaseFee - 1);
+
+        AcceptTxResult result = Accept(cache, incoming, PendingKeyedTxs((int)Baseline), nextBaseFee: nextBaseFee);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(atNextBaseFee ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow));
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)(atNextBaseFee ? 0 : Cost)));
+        }
+    }
+
+    [Test]
+    public void Accept_Baseline_BelowTheNextBaseFee_IsLeftToTheFeeFilters()
+    {
+        AcceptTxResult result = Accept(new SenderWidthCache(), KeyedTx(nonceSeq: 0), PendingKeyedTxs(0), nextBaseFee: 2);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
     [TestCase(true, TestName = "width enabled")]
     [TestCase(false, TestName = "width disabled")]
     public void Accept_DisabledWidth_NeverRejectsOrTouchesTheLedger(bool enabled)
@@ -279,12 +304,12 @@ public class FrameTxWidthFilterTests
         Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)90_000));
     }
 
-    private static AcceptTxResult Accept(SenderWidthCache cache, Transaction tx, TxDistinctSortedPool pending, bool enabled = true, ulong permille = SafetyFactorPermille, Transaction? baseline = null)
+    private static AcceptTxResult Accept(SenderWidthCache cache, Transaction tx, TxDistinctSortedPool pending, bool enabled = true, ulong permille = SafetyFactorPermille, Transaction? baseline = null, uint nextBaseFee = 0)
     {
         TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthSafetyFactorPermille = permille };
         ConcurrentDictionary<AddressAsKey, ValueHash256> baselines = new();
         if (baseline is not null) baselines[Sender] = baseline.Hash!.ValueHash256;
-        FrameTxWidthFilter filter = new(config, pending, Pool(), cache, baselines, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
+        FrameTxWidthFilter filter = new(config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pending, Pool(), cache, baselines, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }

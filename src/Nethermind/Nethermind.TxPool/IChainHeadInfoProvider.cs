@@ -37,6 +37,8 @@ namespace Nethermind.TxPool
 
         UInt256 CurrentBaseFee { get; }
 
+        UInt256 NextBaseFee { get; }
+
         public UInt256 CurrentFeePerBlobGas { get; }
 
         ProofVersion CurrentProofVersion { get; }

@@ -366,7 +366,7 @@ namespace Nethermind.TxPool
             {
                 postHashFilters.Add(new SenderAdmissionGateFilter(_senderAdmissionGates));
                 postHashFilters.Add(new KeyedNonceDisjointnessFilter(_transactions, _blobTransactions));
-                postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _transactions, _blobTransactions, _senderWidth, _senderBaselines, _logger));
+                postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _headInfo, _transactions, _blobTransactions, _senderWidth, _senderBaselines, _logger));
             }
 
             _postHashFilters = postHashFilters.ToArray();

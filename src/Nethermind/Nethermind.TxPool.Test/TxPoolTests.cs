@@ -4962,6 +4962,28 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(bumped, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
+        [Test]
+        public void Additional_admission_below_the_next_base_fee_spends_no_width()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _blockTree.Head = Build.A.Block.WithNumber(10000000 - 1).WithBaseFeePerGas(2.GWei).WithGasLimit(30_000_000).WithGasUsed(0).TestObject;
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxWidthEnabled = true }, KeyedNonceSpecProvider(), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            UInt256 nextBaseFee = BaseFeeCalculator.Calculate(_blockTree.Head.Header, KeyedNonceSpecProvider().GenesisSpec);
+
+            Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1], feePerGas: 2.GWei);
+            Transaction belowNextBaseFee = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2], feePerGas: nextBaseFee - 1);
+            Transaction atNextBaseFee = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2], feePerGas: nextBaseFee);
+            _txPool.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)WidthChargeOf(atNextBaseFee) }]);
+
+            Assert.That(nextBaseFee, Is.LessThan(2.GWei), "the child block's base fee, not the head's, is the boundary");
+            Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(belowNextBaseFee, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FeeTooLow));
+            Assert.That(_txPool.SubmitTx(atNextBaseFee, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted), "the refused admission spent no width");
+        }
+
         // Each carried deferral costs a simulation under the head write lock, so an unbounded carry lets a
         // backlog the per-head budget cannot clear hold that lock for the whole budget on every later head.
         [TestCase(0, 1)]
