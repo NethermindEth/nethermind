@@ -305,7 +305,7 @@ public class ExecutionPayloadTests
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
             Assert.That(nextWorkers, Is.Not.SameAs(firstWorkers));
             Assert.That(payload.TransferWorkerGroup(), Is.SameAs(nextWorkers));
-            Assert.That(resent.Data.Header.TxRoot, Is.EqualTo(block.Data.Header.TxRoot));
+            Assert.That(resent.Data!.Header.TxRoot, Is.EqualTo(block.Data.Header.TxRoot));
         }
     }
 
