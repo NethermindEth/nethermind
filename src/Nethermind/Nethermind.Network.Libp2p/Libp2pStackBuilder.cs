@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
@@ -100,6 +101,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         {
             _dnsLookup = dnsLookup;
             notifier.TrackChanges(this);
+            Sessions.CollectionChanged += CloseAfterDisposal;
         }
 
         protected override Task ConnectedTo(ISession session, bool isDialer) => session.DialAsync<IdentifyProtocol>();
@@ -144,22 +146,30 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                 throw new Libp2pException($"No TCP address to dial {peerId}");
             }
 
-            Task<ISession> dial = DialAsync([.. tcp], token);
-            // Disposal closes only the sessions it sees, so one a dial makes afterwards is closed here.
-            _ = dial.ContinueWith(static (completed, state) =>
-            {
-                if (Volatile.Read(ref ((IdentifyingPeer)state!)._disposed) == 1)
-                {
-                    _ = completed.Result.DisconnectAsync();
-                }
-            }, this, CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            return await dial;
+            return await DialAsync([.. tcp], token);
         }
 
         ValueTask IAsyncDisposable.DisposeAsync()
         {
-            Volatile.Write(ref _disposed, 1);
+            // Under the Sessions lock: a session added before this is in the library's disposal snapshot, one added after sees the flag.
+            lock (Sessions)
+            {
+                Volatile.Write(ref _disposed, 1);
+            }
+
             return DisposeAsync();
+        }
+
+        // Disposal closes only the sessions it sees, so one a dial completes afterwards is closed here, off the library's lock.
+        private void CloseAfterDisposal(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.Action == NotifyCollectionChangedAction.Add && e.NewItems is not null && Volatile.Read(ref _disposed) == 1)
+            {
+                foreach (ISession session in e.NewItems)
+                {
+                    _ = Task.Run(session.DisconnectAsync);
+                }
+            }
         }
 
         // A name that does not resolve leaves the other addresses of the peer to dial.
