@@ -44,9 +44,6 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
             // Reject ambiguous input: both gasPrice and EIP-1559 fields
             if (GasPrice is not null && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null))
                 return RpcTransactionErrors.GasPriceInEip1559;
-
-            if (MaxFeePerGas < MaxPriorityFeePerGas)
-                return RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(MaxFeePerGas, MaxPriorityFeePerGas);
         }
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
