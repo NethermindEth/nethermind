@@ -20,7 +20,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
-/// <summary><c>/eth/v1/beacon/*</c>: genesis, headers (by id, slot or parent), block root, block content as SSZ or JSON, and the block's attestations.</summary>
+/// <summary><c>/eth/v1/beacon/*</c>: genesis, headers (by id, slot or parent), block root, block content as SSZ or JSON, the block's attestations, and Gloas execution payload envelopes.</summary>
 internal static class BeaconEndpoints
 {
     public static void Map(WebApplication app, BeaconApiContext ctx)
@@ -31,6 +31,58 @@ internal static class BeaconEndpoints
         app.MapGet("/eth/v1/beacon/blocks/{block_id}/root", (HttpContext c, string block_id) => BlockRoot(c, block_id, ctx.ForRequest()));
         app.MapGet("/eth/v2/beacon/blocks/{block_id}", (HttpContext c, string block_id) => BlockContent(c, block_id, ctx.ForRequest()));
         app.MapGet("/eth/v2/beacon/blocks/{block_id}/attestations", (HttpContext c, string block_id) => BlockAttestations(c, block_id, ctx.ForRequest()));
+        app.MapGet("/eth/v1/beacon/execution_payload_envelopes/{block_id}", (HttpContext c, string block_id) => ExecutionPayloadEnvelope(c, block_id, ctx.ForRequest()));
+    }
+
+    /// <summary>beacon-APIs v5.0.0-alpha.2 <c>getSignedExecutionPayloadEnvelope</c>: the verified envelope stored for a Gloas block, as JSON or SSZ.</summary>
+    /// <remarks>
+    /// Only envelopes that passed verification are stored, so a pre-Gloas block has none, and the store checks that a record names the block it is keyed by.
+    /// An envelope is served for any retained block, canonical or not, and whether or not fork choice treats its payload as present.
+    /// </remarks>
+    private static Task ExecutionPayloadEnvelope(HttpContext c, string blockId, BeaconApiContext ctx)
+    {
+        ContentNegotiation.ResponseFormat? format = ContentNegotiation.Negotiate(c, sszSupported: true);
+        if (format is null)
+        {
+            return ContentNegotiation.WriteNotAcceptable(c);
+        }
+
+        if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
+        {
+            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+        }
+
+        // An unreadable record throws InvalidDataException, which the host turns into a logged 500.
+        if (!ctx.Store.TryGetExecutionPayloadEnvelope(resolved.Root, out SignedExecutionPayloadEnvelope? envelope))
+        {
+            return ApiErrors.Write(c, StatusCodes.Status404NotFound,
+                $"No execution payload envelope is retained for block {resolved.Root}.", c.RequestAborted);
+        }
+
+        // gloas/beacon-chain.md process_execution_payload: the envelope's parent_beacon_block_root is its block's parent_root.
+        if (envelope.Message!.ParentBeaconBlockRoot != resolved.ParentRoot)
+        {
+            return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
+                $"The envelope stored for block {resolved.Root} names parent {envelope.Message.ParentBeaconBlockRoot}, not the block's parent {resolved.ParentRoot}.", c.RequestAborted);
+        }
+
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
+        if (format == ContentNegotiation.ResponseFormat.Ssz)
+        {
+            c.Response.ContentType = ContentNegotiation.OctetStream;
+            return c.Response.Body.WriteAsync(SignedExecutionPayloadEnvelope.Encode(envelope), c.RequestAborted).AsTask();
+        }
+
+        // types/primitive.yaml ExecutionOptimistic is about the payload served, and no execution verdict is kept per envelope:
+        // the block's status can turn valid through a descendant that skipped this payload, so never claim it verified.
+        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(BeaconFork.Gloas),
+            executionOptimistic: true,
+            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
+            s =>
+            {
+                BeaconJsonWriter.WriteSignedExecutionPayloadEnvelope(s.Writer, envelope);
+                return Task.CompletedTask;
+            });
     }
 
     /// <summary>beacon-APIs v5.0.0-alpha.2 <c>getBlockAttestationsV2</c>: the attestations included in the block body, in body order.</summary>

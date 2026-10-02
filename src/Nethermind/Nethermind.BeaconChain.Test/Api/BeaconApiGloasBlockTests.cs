@@ -7,8 +7,10 @@ using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,19 +29,38 @@ public class BeaconApiGloasBlockTests
     private static readonly ulong GloasSlot = Spec.GloasForkEpoch * Spec.SlotsPerEpoch + 3;
     private static readonly Hash256 Parent = TestRoot(0x90);
     private static readonly Hash256 Root = TestRoot(0x91);
+    private static readonly Hash256 NoEnvelopeRoot = TestRoot(0x92);
+    private static readonly Hash256 MismatchedEnvelopeRoot = TestRoot(0x93);
+    private static readonly Hash256 UnreadableEnvelopeRoot = TestRoot(0x94);
 
     private BeaconApiTestHost _host = null!;
     private SignedBeaconBlockGloas _block = null!;
+    private SignedExecutionPayloadEnvelope _envelope = null!;
 
     [OneTimeSetUp]
     public async Task StartHost()
     {
-        _host = await StartAsync(Spec);
+        // Fork choice reports the block itself verified, so a flag that follows the block would read false.
+        ForkChoiceSnapshotHolder forkChoice = new()
+        {
+            Current = new ForkChoiceSnapshot(new CheckpointRef(0, Parent), new CheckpointRef(0, Parent), Hash256.Zero,
+                [new ForkChoiceSnapshotNode(GloasSlot, Root, Parent, 0, 0, 0, ExecutionStatus.Valid, FilledHash(0x87))]),
+        };
+        _host = await StartAsync(Spec, forkChoice);
         _block = RichGloasBlock(GloasSlot, Parent);
         _host.Store.PutBlock(Parent, MinimalBlock(GloasSlot - 40));
         _host.Store.PutForkedBlock(Root, new ForkedSignedBeaconBlock.OfGloas(_block));
         _host.Store.SetCanonicalRoot(GloasSlot, Root);
         _host.Store.PutState(Root, [0x01, 0x02, 0x03]);
+
+        _envelope = RichEnvelope(Root, Parent, GloasSlot);
+        _host.Store.PutExecutionPayloadEnvelope(Root, _envelope);
+        _host.Store.PutForkedBlock(NoEnvelopeRoot, new ForkedSignedBeaconBlock.OfGloas(RichGloasBlock(GloasSlot + 1, Root)));
+        _host.Store.SetCanonicalRoot(GloasSlot + 1, NoEnvelopeRoot);
+        _host.Store.PutForkedBlock(MismatchedEnvelopeRoot, new ForkedSignedBeaconBlock.OfGloas(RichGloasBlock(GloasSlot + 2, NoEnvelopeRoot)));
+        _host.Store.PutExecutionPayloadEnvelope(MismatchedEnvelopeRoot, RichEnvelope(MismatchedEnvelopeRoot, FilledHash(0x99), GloasSlot + 2));
+        _host.Store.PutForkedBlock(UnreadableEnvelopeRoot, new ForkedSignedBeaconBlock.OfGloas(RichGloasBlock(GloasSlot + 3, MismatchedEnvelopeRoot)));
+        _host.Db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).Set(UnreadableEnvelopeRoot.Bytes, [0x01, 0x02, 0x03]);
     }
 
     [OneTimeTearDown]
@@ -221,6 +242,121 @@ public class BeaconApiGloasBlockTests
             Assert.That(attestation.GetProperty("data").GetProperty("beacon_block_root").GetString(), Is.EqualTo(Hex(32, 0xaa)));
         }
     }
+
+    /// <summary>beacon-APIs v5.0.0-alpha.2 getSignedExecutionPayloadEnvelope: the stored envelope under version gloas, with every beta.2 field.</summary>
+    [Test]
+    public async Task Execution_payload_envelope_json_carries_every_envelope_and_payload_field()
+    {
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/execution_payload_envelopes/{Root}", Json);
+        string raw = await response.Content.ReadAsStringAsync();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        JsonElement envelope = JsonDocument.Parse(raw).RootElement;
+        JsonElement data = envelope.GetProperty("data");
+        JsonElement message = data.GetProperty("message");
+        JsonElement payload = message.GetProperty("payload");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(envelope.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "version", "execution_optimistic", "finalized", "data" }));
+            // No execution verdict is kept per envelope, and the block's VALID status does not cover a payload a descendant may have skipped.
+            Assert.That(envelope.GetProperty("execution_optimistic").GetBoolean(), Is.True);
+            Assert.That((await ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{Root}", Json))).RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
+            Assert.That(envelope.GetProperty("version").GetString(), Is.EqualTo("gloas"));
+            Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"));
+            Assert.That(data.GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0xbb)));
+            Assert.That(message.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "payload", "execution_requests", "builder_index", "beacon_block_root", "parent_beacon_block_root" }));
+            Assert.That(message.GetProperty("builder_index").GetString(), Is.EqualTo("12"));
+            Assert.That(message.GetProperty("beacon_block_root").GetString(), Is.EqualTo(Root.ToString()));
+            Assert.That(message.GetProperty("parent_beacon_block_root").GetString(), Is.EqualTo(Parent.ToString()));
+            Assert.That(message.GetProperty("execution_requests").GetProperty("builder_exits")[0].GetProperty("pubkey").GetString(), Is.EqualTo(Hex(48, 0xbc)));
+
+            Assert.That(payload.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[]
+            {
+                "parent_hash", "fee_recipient", "state_root", "receipts_root", "logs_bloom", "prev_randao", "block_number", "gas_limit",
+                "gas_used", "timestamp", "extra_data", "base_fee_per_gas", "block_hash", "transactions", "withdrawals", "blob_gas_used",
+                "excess_blob_gas", "block_access_list", "slot_number",
+            }));
+            Assert.That(payload.GetProperty("parent_hash").GetString(), Is.EqualTo(Hex(32, 0xb1)));
+            Assert.That(payload.GetProperty("fee_recipient").GetString(), Is.EqualTo(Hex(20, 0xb2)));
+            Assert.That(payload.GetProperty("logs_bloom").GetString(), Is.EqualTo(Hex(256, 0xb5)));
+            Assert.That(payload.GetProperty("block_number").GetString(), Is.EqualTo("24000000"));
+            Assert.That(payload.GetProperty("extra_data").GetString(), Is.EqualTo("0xcafe"));
+            Assert.That(payload.GetProperty("base_fee_per_gas").GetString(), Is.EqualTo("9"));
+            Assert.That(payload.GetProperty("transactions").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(new[] { "0x02f8" }));
+            Assert.That(payload.GetProperty("withdrawals")[0].GetProperty("validator_index").GetString(), Is.EqualTo("200"));
+            Assert.That(payload.GetProperty("excess_blob_gas").GetString(), Is.EqualTo("262144"));
+            Assert.That(payload.GetProperty("block_access_list").GetString(), Is.EqualTo("0xc001"));
+            Assert.That(payload.GetProperty("slot_number").GetString(), Is.EqualTo(GloasSlot.ToString()));
+        }
+    }
+
+    [Test]
+    public async Task Execution_payload_envelope_ssz_is_the_stored_envelope_encoding()
+    {
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/execution_payload_envelopes/{GloasSlot}", OctetStream);
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"));
+        Assert.That(await response.Content.ReadAsByteArrayAsync(), Is.EqualTo(SignedExecutionPayloadEnvelope.Encode(_envelope)));
+    }
+
+    /// <summary>
+    /// apis/beacon/execution_payload/envelope_get.yaml: malformed id 400, no envelope (unknown block, a block without one, a
+    /// pre-Gloas block) 404, unsupported Accept 406. An unreadable envelope, or one naming another parent than its block, is 500.
+    /// </summary>
+    [TestCase("not-a-block", Json, HttpStatusCode.BadRequest)]
+    [TestCase("0x00000000000000000000000000000000000000000000000000000000000000ee", Json, HttpStatusCode.NotFound)]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000092", Json, HttpStatusCode.NotFound)]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000090", Json, HttpStatusCode.NotFound)]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000093", Json, HttpStatusCode.InternalServerError)]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000094", Json, HttpStatusCode.InternalServerError)]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000091", "text/plain", HttpStatusCode.NotAcceptable)]
+    public async Task Execution_payload_envelope_errors_follow_the_published_responses(string blockId, string accept, HttpStatusCode expected)
+    {
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/execution_payload_envelopes/{blockId}", accept);
+        Assert.That(response.StatusCode, Is.EqualTo(expected));
+        Assert.That((await ReadJsonAsync(response)).RootElement.GetProperty("code").GetInt32(), Is.EqualTo((int)expected));
+    }
+
+    private static SignedExecutionPayloadEnvelope RichEnvelope(Hash256 blockRoot, Hash256 parent, ulong slot) => new()
+    {
+        Message = new ExecutionPayloadEnvelope
+        {
+            Payload = new ExecutionPayloadGloas
+            {
+                ParentHash = FilledHash(0xb1),
+                FeeRecipient = new Address(Hex(20, 0xb2)),
+                StateRoot = FilledHash(0xb3),
+                ReceiptsRoot = FilledHash(0xb4),
+                LogsBloom = new Bloom(Enumerable.Repeat((byte)0xb5, 256).ToArray()),
+                PrevRandao = FilledHash(0xb6),
+                BlockNumber = 24_000_000,
+                GasLimit = 36_000_000,
+                GasUsed = 21_000,
+                Timestamp = 1_760_000_000,
+                ExtraData = [0xca, 0xfe],
+                BaseFeePerGas = 9,
+                BlockHash = FilledHash(0xb7),
+                Transactions = [new TransactionGloas { Bytes = [0x02, 0xf8] }],
+                Withdrawals = [new Nethermind.BeaconChain.Types.Withdrawal { Index = 100, ValidatorIndex = 200, Address = new Address(Hex(20, 0xb8)), Amount = 300 }],
+                BlobGasUsed = 131_072,
+                ExcessBlobGas = 262_144,
+                BlockAccessList = [0xc0, 0x01],
+                SlotNumber = slot,
+            },
+            ExecutionRequests = new ExecutionRequestsGloas
+            {
+                Deposits = [],
+                Withdrawals = [],
+                Consolidations = [],
+                BuilderDeposits = [],
+                BuilderExits = [new BuilderExitRequest { SourceAddress = new Address(Hex(20, 0xb9)), Pubkey = FilledPubkey(0xbc) }],
+            },
+            BuilderIndex = 12,
+            BeaconBlockRoot = blockRoot,
+            ParentBeaconBlockRoot = parent,
+        },
+        Signature = FilledSignature(0xbb),
+    };
 
     /// <summary>A Gloas block with one of every body operation populated, reusing the Fulu fixture's shared operations.</summary>
     private static SignedBeaconBlockGloas RichGloasBlock(ulong slot, Hash256 parent)
