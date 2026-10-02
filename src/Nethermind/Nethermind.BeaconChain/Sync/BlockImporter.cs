@@ -184,7 +184,7 @@ public sealed class BlockImporter : IBlockImporter
         {
             case (ForkedBeaconState.OfFulu { State: BeaconStateFulu fuluState }, ForkedSignedBeaconBlock.OfFulu { Block: SignedBeaconBlock fuluBlock }):
                 _states = new PostStateCache(store, spec, anchorRoot, fuluState, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
-                _runner = new ForkChoiceRunner(spec, fuluState, fuluBlock.Message!, _states, pubkeys, _states);
+                _runner = new ForkChoiceRunner(spec, fuluState, fuluBlock.Message!, _states, pubkeys, _states, logManager);
                 _lastSnapshotEpoch = fuluState.GetCurrentEpoch();
                 _fuluProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, fuluState.Fork!.CurrentVersion!, fuluState.GenesisValidatorsRoot!);
                 _gloasProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, spec.GloasForkVersion, fuluState.GenesisValidatorsRoot!);
@@ -193,7 +193,7 @@ public sealed class BlockImporter : IBlockImporter
                 // specs/gloas/fork-choice.md get_forkchoice_store: block_states holds the anchor state, the finalized checkpoint's.
                 _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
                 _states.PinGloas(anchorRoot, gloasState);
-                _runner = new ForkChoiceRunner(spec, gloasState, gloasBlock.Message!, _states, pubkeys, _states);
+                _runner = new ForkChoiceRunner(spec, gloasState, gloasBlock.Message!, _states, pubkeys, _states, logManager);
                 _gloasAnchorRoot = anchorRoot;
                 _gloasAnchorParentBlockHash = gloasBlock.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash;
                 _lastSnapshotEpoch = gloasState.GetCurrentEpoch();
