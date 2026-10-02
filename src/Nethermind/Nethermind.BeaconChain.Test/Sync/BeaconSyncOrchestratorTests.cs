@@ -1091,9 +1091,9 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
-    /// A gossip child whose parent's walk is served the queued forgery imports with the genuine copy kept beside it, which takes
-    /// the forgery's place: the walk acts on that copy's result, also when it waits for the next slot's regeneration budget.
-    /// Only the peer that served the forgery is blamed.
+    /// A gossip child whose parent's walk was fetching before either copy was queued, and is served the queued forgery, imports
+    /// with the genuine copy kept beside it, which takes the forgery's place: the walk acts on that copy's result, also when it
+    /// waits for the next slot's regeneration budget. Only the peer that served the forgery is blamed.
     /// </summary>
     [Test]
     public async Task Walk_served_a_queued_forgery_continues_with_the_genuine_copy([Values] bool genuineWaitsForRegeneration)
@@ -1112,6 +1112,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.Add(anchorRoot);
         harness.Importer.Unavailable.Add(root);
         harness.Importer.ForgedSignatures.Add(forgedSignature);
+        await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
         await harness.Orchestrator.ImportBlockAsync(forgery, CancellationToken.None);
         await harness.Orchestrator.ImportBlockAsync(genuine, CancellationToken.None, fetchedByRoot: true, servedBy: supplier);
         harness.Importer.Unavailable.Remove(root);
@@ -1120,7 +1121,7 @@ public partial class BeaconSyncOrchestratorTests
             harness.Importer.RegenerationRefused.Add(root);
         }
 
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
+        await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, CancellationToken.None);
         harness.Importer.RegenerationRefused.Remove(root);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
 

@@ -446,32 +446,37 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
-    /// A Fulu block in the retry set waits on its data, not on a payload, so its gossip child takes the missing-parent path:
-    /// once the parent's data is held, the parent fetched for the child imports, and the child with it.
+    /// A Fulu block in the retry set waits on its data, not on a payload, so a walk that reaches it holds its blocks for the
+    /// block's retry instead of fetching it again: the retry imports it, and the held blocks with it, a fetched one as fetched.
     /// </summary>
     [Test]
-    public async Task Child_of_a_fulu_block_waiting_on_its_data_imports_with_its_fetched_parent()
+    public async Task Child_of_a_fulu_block_waiting_on_its_data_imports_with_its_retry_without_fetching_it([Values] bool fetchedIntermediate)
     {
         const ulong NearWallSlot = WallSlot - 5;
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2, NearWallSlot + 3);
         ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
-        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        ForkedSignedBeaconBlock intermediate = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        ForkedSignedBeaconBlock child = fetchedIntermediate ? new ForkedSignedBeaconBlock.OfFulu(chain[2]) : intermediate;
         Hash256 parentRoot = parent.ComputeMessageRoot();
         IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
-        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent]));
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent, intermediate]));
         Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
         harness.Importer.Known.Add(anchorRoot);
         harness.Importer.Unavailable.Add(parentRoot);
         BlockImportResult parked = await harness.Orchestrator.ImportBlockAsync(parent, CancellationToken.None);
-        harness.Importer.Unavailable.Remove(parentRoot);
 
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
+        int held = harness.Orchestrator.PendingGossipBlockCount;
+        harness.Importer.Unavailable.Remove(parentRoot);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(parked, Is.EqualTo(BlockImportResult.DataUnavailable), "fixture: the parent waits in the retry set");
-            Assert.That(harness.Importer.Known, Does.Contain(parentRoot));
-            Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
+            Assert.That(ByRootRequestsFor(peer, parentRoot), Is.Zero, "the waiting parent is not fetched");
+            Assert.That(held, Is.EqualTo(fetchedIntermediate ? 2 : 1), "the walk's blocks wait for the parent's retry");
+            Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(intermediate.ComputeMessageRoot()).And.Contain(child.ComputeMessageRoot()));
+            Assert.That(harness.Importer.ByRootImports, fetchedIntermediate ? Is.EqualTo(new[] { intermediate.ComputeMessageRoot() }) : Is.Empty, "a fetched block imports as fetched");
         }
     }
 
