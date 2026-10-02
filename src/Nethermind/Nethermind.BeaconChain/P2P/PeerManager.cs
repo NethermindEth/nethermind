@@ -151,8 +151,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly ConcurrentDictionary<string, Reservation> _dialing = new();
     private readonly object _admissionLock = new();
 
-    // Admissions in flight per session, guarded by _admissionLock: more than one admission path can hold
-    // one session at once (see AdmitSessionAsync).
+    // Admissions in flight per session, guarded by _admissionLock: DisconnectUnadmittedAsync leaves a session one of them holds open.
     private readonly Dictionary<ISession, int> _admittingSessions = [];
 
     /// <summary>What an admission in flight already knows about its peer: enough for the directory's

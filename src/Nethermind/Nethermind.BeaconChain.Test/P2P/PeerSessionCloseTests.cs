@@ -294,7 +294,7 @@ public class PeerSessionCloseTests
     public Task A_dialed_peer_that_breaks_the_protocol_and_closes_after_its_admission_backs_its_address_off(CancellationToken token) =>
         ViolationAfterDialAsync(token);
 
-    private static async Task<bool> ViolationAfterDialAsync(CancellationToken token)
+    private static async Task ViolationAfterDialAsync(CancellationToken token)
     {
         Node remote = Create();
         Node local = Create();
@@ -316,8 +316,6 @@ public class PeerSessionCloseTests
 
             Assert.That(discovery.DialHistory.Quality(address), Is.EqualTo(-1), "the fault close turns the dial's recorded success into one failure");
         }
-
-        return true;
     }
 
     [Test]
@@ -325,7 +323,7 @@ public class PeerSessionCloseTests
     public Task A_session_that_closes_while_its_status_is_checked_is_not_admitted(CancellationToken token) =>
         SessionClosedDuringAdmissionAsync(token);
 
-    private static async Task<bool> SessionClosedDuringAdmissionAsync(CancellationToken token)
+    private static async Task SessionClosedDuringAdmissionAsync(CancellationToken token)
     {
         Node remote = Create();
         Node local = Create();
@@ -356,7 +354,5 @@ public class PeerSessionCloseTests
                 Assert.That(manager.PeerCount, Is.Zero, "nor left in the pool");
             }
         }
-
-        return true;
     }
 }
