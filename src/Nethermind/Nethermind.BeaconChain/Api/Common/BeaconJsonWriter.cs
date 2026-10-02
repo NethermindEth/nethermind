@@ -400,8 +400,66 @@ internal static class BeaconJsonWriter
         foreach (Types.Transaction transaction in payload.Transactions!) WriteHexValue(w, transaction.Bytes!);
         w.WriteEndArray();
 
+        WriteWithdrawals(w, payload.Withdrawals!);
+        WriteUInt(w, "blob_gas_used", payload.BlobGasUsed);
+        WriteUInt(w, "excess_blob_gas", payload.ExcessBlobGas);
+        w.WriteEndObject();
+    }
+
+    /// <summary>Writes a Gloas signed execution payload envelope (consensus-specs v1.7.0-beta.2 gloas/beacon-chain.md <c>SignedExecutionPayloadEnvelope</c>).</summary>
+    /// <remarks>execution_requests carries the Gloas builder_deposits and builder_exits, which the Electra schema the published operation references lacks.</remarks>
+    public static void WriteSignedExecutionPayloadEnvelope(Utf8JsonWriter w, SignedExecutionPayloadEnvelope signed)
+    {
+        ExecutionPayloadEnvelope message = signed.Message!;
+        w.WriteStartObject();
+        w.WritePropertyName("message");
+        w.WriteStartObject();
+        w.WritePropertyName("payload");
+        WriteExecutionPayload(w, message.Payload!);
+        w.WritePropertyName("execution_requests");
+        WriteExecutionRequests(w, message.ExecutionRequests!);
+        WriteUInt(w, "builder_index", message.BuilderIndex);
+        WriteHex(w, "beacon_block_root", message.BeaconBlockRoot!.Bytes);
+        WriteHex(w, "parent_beacon_block_root", message.ParentBeaconBlockRoot!.Bytes);
+        w.WriteEndObject();
+        WriteHex(w, "signature", signed.Signature.Bytes);
+        w.WriteEndObject();
+    }
+
+    /// <summary>The Deneb payload fields plus Gloas <c>block_access_list</c> (EIP-7928) and <c>slot_number</c> (EIP-7843).</summary>
+    private static void WriteExecutionPayload(Utf8JsonWriter w, ExecutionPayloadGloas payload)
+    {
+        w.WriteStartObject();
+        WriteHex(w, "parent_hash", payload.ParentHash!.Bytes);
+        WriteHex(w, "fee_recipient", payload.FeeRecipient!.Bytes);
+        WriteHex(w, "state_root", payload.StateRoot!.Bytes);
+        WriteHex(w, "receipts_root", payload.ReceiptsRoot!.Bytes);
+        WriteHex(w, "logs_bloom", payload.LogsBloom!.Bytes);
+        WriteHex(w, "prev_randao", payload.PrevRandao!.Bytes);
+        WriteUInt(w, "block_number", payload.BlockNumber);
+        WriteUInt(w, "gas_limit", payload.GasLimit);
+        WriteUInt(w, "gas_used", payload.GasUsed);
+        WriteUInt(w, "timestamp", payload.Timestamp);
+        WriteHex(w, "extra_data", payload.ExtraData!);
+        w.WriteString("base_fee_per_gas", payload.BaseFeePerGas.ToString());
+        WriteHex(w, "block_hash", payload.BlockHash!.Bytes);
+
+        w.WriteStartArray("transactions");
+        foreach (TransactionGloas transaction in payload.Transactions!) WriteHexValue(w, transaction.Bytes!);
+        w.WriteEndArray();
+
+        WriteWithdrawals(w, payload.Withdrawals!);
+        WriteUInt(w, "blob_gas_used", payload.BlobGasUsed);
+        WriteUInt(w, "excess_blob_gas", payload.ExcessBlobGas);
+        WriteHex(w, "block_access_list", payload.BlockAccessList!);
+        WriteUInt(w, "slot_number", payload.SlotNumber);
+        w.WriteEndObject();
+    }
+
+    private static void WriteWithdrawals(Utf8JsonWriter w, Types.Withdrawal[] withdrawals)
+    {
         w.WriteStartArray("withdrawals");
-        foreach (Types.Withdrawal withdrawal in payload.Withdrawals!)
+        foreach (Types.Withdrawal withdrawal in withdrawals)
         {
             w.WriteStartObject();
             WriteUInt(w, "index", withdrawal.Index);
@@ -411,10 +469,6 @@ internal static class BeaconJsonWriter
             w.WriteEndObject();
         }
         w.WriteEndArray();
-
-        WriteUInt(w, "blob_gas_used", payload.BlobGasUsed);
-        WriteUInt(w, "excess_blob_gas", payload.ExcessBlobGas);
-        w.WriteEndObject();
     }
 
     private static void WriteExecutionPayloadHeader(Utf8JsonWriter w, ExecutionPayloadHeader header)
