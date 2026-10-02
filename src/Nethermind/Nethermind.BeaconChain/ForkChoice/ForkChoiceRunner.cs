@@ -13,6 +13,8 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
@@ -75,6 +77,22 @@ public sealed class ForkChoiceRunner
     /// <remarks>Keyed as p2p-interface.md keys its first-aggregate-per-aggregator rule, so a previous-epoch duty does not use up a current-epoch one.</remarks>
     private readonly HashSet<(ulong TargetEpoch, ulong AggregatorIndex)> _offHeadAggregators = [];
 
+    /// <summary>The epoch of the including blocks <see cref="_otherShufflingBodyBuilds"/> counts in.</summary>
+    private ulong _otherShufflingBodyBuildEpoch;
+
+    /// <summary>Target states built for body votes of another shuffling than their block's, in blocks of <see cref="_otherShufflingBodyBuildEpoch"/>.</summary>
+    private int _otherShufflingBodyBuilds;
+
+    /// <summary>Body votes of another shuffling than their block's whose build the budget put off, oldest first; <see cref="OnTick"/> applies them.</summary>
+    private readonly Queue<DeferredBodyVote> _deferredBodyVotes = new();
+
+    /// <summary>The store slot in which a deferred body vote last cost a build.</summary>
+    private ulong? _deferredBuildSlot;
+
+    /// <summary>The root and post-state of the block <see cref="OnBlock"/> last registered, which its own body votes and later checkpoint advances read.</summary>
+    /// <remarks>A caller may advance that state in place afterwards; every reader checks what it reads against the state's own roots or the root.</remarks>
+    private (Hash256 Root, ForkedBeaconState State)? _lastBlock;
+
     /// <summary>The spec's <c>store.block_timeliness</c>: whether each block arrived before its slot's attestation and PTC deadlines, keyed by block root.</summary>
     private readonly Dictionary<Hash256, BlockTimeliness> _blockTimeliness = [];
 
@@ -125,6 +143,17 @@ public sealed class ForkChoiceRunner
 
     /// <summary>A sibling of a decision block can carry the same RANDAO reveal and so the same committees; such a target is rare, and each costs a whole state.</summary>
     private const int MaxOffHeadBuildsPerEpoch = 2;
+
+    /// <summary>The same rare sibling for body votes, counted per epoch of the including block so a range sync does not spend it in one wall-clock epoch.</summary>
+    private const int MaxOtherShufflingBodyBuildsPerEpoch = 2;
+
+    /// <summary>Eight blocks' worth of body votes (<c>MAX_ATTESTATIONS_ELECTRA</c>) waiting for a build; past it the oldest is dropped.</summary>
+    private const int MaxDeferredBodyVotes = 64;
+
+    private static readonly StringLabel BodyAttestationRejected = new("body_attestation");
+
+    /// <summary>A body vote waiting for its target's state, with the block that carried it.</summary>
+    private sealed record DeferredBodyVote(AttestationData Data, BitArray AggregationBits, BitArray CommitteeBits, BlsSignature Signature, bool GloasContainer, Hash256 IncludingBlock);
 
     /// <summary>A <c>store.block_timeliness</c> entry: its <c>ATTESTATION_TIMELINESS_INDEX</c> and <c>PTC_TIMELINESS_INDEX</c> flags.</summary>
     private readonly record struct BlockTimeliness(bool Attestation, bool Ptc);
@@ -402,6 +431,7 @@ public sealed class ForkChoiceRunner
         _store.OnTick((time - GenesisTime) / _spec.SecondsPerSlot);
         DequeueAttestations();
         PruneVoteStates();
+        ApplyDeferredBodyVotes();
         _lastHeadRoot = null;
     }
 
@@ -468,6 +498,7 @@ public sealed class ForkChoiceRunner
             EpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache()),
             executionStatus,
             block.Body?.ExecutionPayload?.BlockHash);
+        _lastBlock = (blockRoot, new ForkedBeaconState.OfFulu(postState));
     }
 
     /// <summary>
@@ -541,6 +572,7 @@ public sealed class ForkChoiceRunner
         _ptcVotes[blockRoot] = new PtcVotes();
         foreach (PtcVoteWrite write in blockPtcVotes)
             write.Apply();
+        _lastBlock = (blockRoot, new ForkedBeaconState.OfGloas(postState));
     }
 
     /// <summary>
@@ -811,8 +843,27 @@ public sealed class ForkChoiceRunner
             new AggregatorProof(message.AggregatorIndex, message.SelectionProof, SszRoots.HashTreeRoot(message), signed.Signature));
     }
 
+    /// <summary>
+    /// The spec's <c>on_attestation</c> with <c>is_from_block</c> for a vote in the body of <paramref name="blockRoot"/>, the block
+    /// <see cref="OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IDataAvailabilityRule)"/> last registered, whose state transition verified it.
+    /// </summary>
+    /// <remarks>
+    /// specs/phase0/fork-choice.md on_attestation reads only <c>get_indexed_attestation</c> and <c>is_valid_indexed_attestation</c> from
+    /// <c>store_target_checkpoint_state</c>. For a target with the block's shuffling, <see cref="BodyVoteState"/> takes both from the block's
+    /// post-state, which <c>process_attestation</c> already checked the vote against, so no checkpoint state is built or held. A target of another
+    /// shuffling is checked against its own state, signature included, and costs one of <see cref="MaxOtherShufflingBodyBuildsPerEpoch"/> builds when
+    /// none is held; a vote past that budget waits for <see cref="OnTick"/>, which builds at most one such state a slot (<see cref="ApplyDeferredBodyVotes"/>).
+    /// </remarks>
+    /// <exception cref="ForkChoiceException">The vote violates a <c>validate_on_attestation</c> rule or does not verify.</exception>
+    internal void OnBodyAttestation(Attestation attestation, Hash256 blockRoot) =>
+        OnAttestation(attestation.Data!, attestation.AggregationBits!, attestation.CommitteeBits!, attestation.Signature, isFromBlock: true, verifySignature: false, gloasContainer: false, includingBlock: blockRoot);
+
+    /// <inheritdoc cref="OnBodyAttestation(Attestation, Hash256)"/>
+    internal void OnBodyAttestation(AttestationGloas attestation, Hash256 blockRoot) =>
+        OnAttestation(attestation.Data!, attestation.AggregationBits!, attestation.CommitteeBits!, attestation.Signature, isFromBlock: true, verifySignature: false, gloasContainer: true, includingBlock: blockRoot);
+
     private void OnAttestation(AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, bool isFromBlock, bool verifySignature, bool gloasContainer,
-        AggregatorProof? aggregator = null)
+        AggregatorProof? aggregator = null, Hash256? includingBlock = null, bool deferred = false)
     {
         CheckpointRef target = CheckpointRef.From(data.Target!);
         Hash256 beaconBlockRoot = data.BeaconBlockRoot!;
@@ -851,6 +902,18 @@ public sealed class ForkChoiceRunner
         if (aggregator is { } gossipProof)
             targetState = GetGossipTargetState(target, targetState, data, aggregationBits, committeeBits, signature, gossipProof);
 
+        bool fromIncludingBlock = false;
+        if (includingBlock is not null)
+        {
+            if (BodyVoteState(target, targetState, includingBlock, budgeted: !deferred) is not { } source)
+            {
+                DeferBodyVote(new DeferredBodyVote(data, aggregationBits, committeeBits, signature, gloasContainer, includingBlock));
+                return;
+            }
+
+            (targetState, verifySignature, fromIncludingBlock) = source;
+        }
+
         bool unheld = targetState is null;
         targetState ??= ComputeCheckpointState(target);
         ulong[] attestingIndices = AttestingIndices(targetState, target.Epoch, data, aggregationBits, committeeBits, signature);
@@ -865,7 +928,8 @@ public sealed class ForkChoiceRunner
         // Cached only once the vote verified, so a refused one leaves no state behind.
         if (unheld)
             _checkpointStates[target] = targetState;
-        RegisterVoteState(key, targetState);
+        if (!fromIncludingBlock)
+            RegisterVoteState(key, targetState);
 
         // specs/gloas/fork-choice.md update_latest_messages: payload_present = data.index == 1; a pre-Gloas slot has no payload vote.
         bool? payloadPresent = IsGloasSlot(data.Slot) ? data.Index == 1 : null;
@@ -1666,13 +1730,105 @@ public sealed class ForkChoiceRunner
         return entry.State;
     }
 
+    /// <summary>
+    /// The state a body vote of <paramref name="includingBlock"/> is checked against (<c>null</c> to build the target's), whether its signature
+    /// still needs verifying, and whether that state is the including block's own post-state rather than a checkpoint state.
+    /// </summary>
+    /// <remarks>
+    /// For a target with the block's shuffling the block's post-state gives the same <c>get_indexed_attestation</c> as the target checkpoint
+    /// state (specs/phase0/beacon-chain.md): <c>get_beacon_committee</c> reads <c>get_seed</c>, the RANDAO mix of epoch
+    /// <c>target - MIN_SEED_LOOKAHEAD - 1</c>, final at the decision slot both chains share, and <c>get_active_validator_indices</c>, whose
+    /// activation and exit epochs are set <c>MAX_SEED_LOOKAHEAD + 1</c> or more epochs ahead (<c>compute_activation_exit_epoch</c>), so fixed
+    /// for the target epoch in every state of that chain past the decision slot. <c>process_attestation</c> puts the target epoch at the
+    /// block's current or previous one, whose committees the block's state holds.
+    /// </remarks>
+    /// <returns><c>null</c> for a target of another shuffling with no held state once <see cref="MaxOtherShufflingBodyBuildsPerEpoch"/> are spent, when <paramref name="budgeted"/>.</returns>
+    private (ForkedBeaconState? State, bool VerifySignature, bool FromIncludingBlock)? BodyVoteState(CheckpointRef target, ForkedBeaconState? held, Hash256 includingBlock, bool budgeted)
+    {
+        // A block fork choice refused vouches for nothing: its votes take the spec's own path, signature included.
+        if (_protoArray.GetBlockSlot(includingBlock) is not ulong blockSlot)
+            return (held, true, false);
+
+        if (HasShufflingOf(includingBlock, target))
+        {
+            // The caller may have advanced the last block's state in place since; a state at another slot is not that block's.
+            return held is null && _lastBlock is { } last && last.Root == includingBlock && last.State.Slot == blockSlot
+                ? (last.State, false, true)
+                : (held, false, false);
+        }
+
+        if (held is null && budgeted)
+        {
+            // Only a later epoch renews the budget, so blocks arriving out of epoch order cannot renew it again and again.
+            ulong blockEpoch = BeaconStateAccessors.ComputeEpochAtSlot(blockSlot);
+            if (blockEpoch > _otherShufflingBodyBuildEpoch)
+            {
+                _otherShufflingBodyBuildEpoch = blockEpoch;
+                _otherShufflingBodyBuilds = 0;
+            }
+
+            if (_otherShufflingBodyBuilds == MaxOtherShufflingBodyBuildsPerEpoch)
+                return null;
+            _otherShufflingBodyBuilds++;
+        }
+
+        return (held, true, false);
+    }
+
+    /// <summary>Puts off a body vote whose target state the budget cannot build now, dropping the oldest past <see cref="MaxDeferredBodyVotes"/>.</summary>
+    private void DeferBodyVote(DeferredBodyVote vote)
+    {
+        if (_deferredBodyVotes.Count == MaxDeferredBodyVotes)
+        {
+            _deferredBodyVotes.Dequeue();
+            Metrics.BeaconChainForkChoiceRejections.Increment(BodyAttestationRejected);
+        }
+
+        _deferredBodyVotes.Enqueue(vote);
+    }
+
+    /// <summary>Applies the deferred body votes whose target state is held, and builds at most one more target state per store slot for the next.</summary>
+    /// <remarks>
+    /// specs/phase0/fork-choice.md on_attestation for a body vote has no time check, and update_latest_messages takes only a newer target epoch, so a
+    /// vote applied late changes nothing a validator's newer vote already set; only which of two votes of one epoch counts can differ. A vote whose
+    /// target finality has pruned, or that fails verification, is dropped as the importer drops a refused one.
+    /// </remarks>
+    private void ApplyDeferredBodyVotes()
+    {
+        for (int pending = _deferredBodyVotes.Count; pending > 0; pending--)
+        {
+            DeferredBodyVote vote = _deferredBodyVotes.Dequeue();
+            CheckpointRef target = CheckpointRef.From(vote.Data.Target!);
+            if (HeldVoteState(target, GetShufflingKey(target)) is null)
+            {
+                if (_deferredBuildSlot == _store.CurrentSlot)
+                {
+                    _deferredBodyVotes.Enqueue(vote);
+                    continue;
+                }
+
+                _deferredBuildSlot = _store.CurrentSlot;
+            }
+
+            try
+            {
+                OnAttestation(vote.Data, vote.AggregationBits, vote.CommitteeBits, vote.Signature, isFromBlock: true, verifySignature: true, vote.GloasContainer,
+                    includingBlock: vote.IncludingBlock, deferred: true);
+            }
+            catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+            {
+                Metrics.BeaconChainForkChoiceRejections.Increment(BodyAttestationRejected);
+            }
+        }
+    }
+
     /// <summary>Whether <paramref name="target"/>'s epoch has the same shuffling decision block on the chain of <paramref name="blockRoot"/> as on the target's own.</summary>
     /// <remarks>
     /// The committees of a target epoch are fixed by that block, so a vote the state transition checked with the committees of
     /// <paramref name="blockRoot"/>'s state names the same validators through the target's state exactly when this holds. The first two
     /// epochs decide on the slot-0 block every chain shares.
     /// </remarks>
-    internal bool HasShufflingOf(Hash256 blockRoot, CheckpointRef target) =>
+    private bool HasShufflingOf(Hash256 blockRoot, CheckpointRef target) =>
         target.Epoch <= Presets.MinSeedLookahead
         || (GetShufflingKey(target) is { } key && key == GetShufflingKey(new CheckpointRef(target.Epoch, blockRoot)));
 
@@ -1749,7 +1905,8 @@ public sealed class ForkChoiceRunner
     /// <summary>A mutable copy of the post-state of <paramref name="blockRoot"/> advanced to <paramref name="targetSlot"/>, crossing into <paramref name="targetFork"/> on the way when needed.</summary>
     private ForkedBeaconState AdvanceCopy(Hash256 blockRoot, ulong blockSlot, ulong targetSlot, BeaconFork targetFork)
     {
-        EpochCache cache = new() { Hasher = new BlockStateRootFirst(_protoArray.EnumerateAncestorNodes(blockRoot).First().StateRoot, CheckpointStateHasher()) };
+        Hash256 blockStateRoot = _protoArray.EnumerateAncestorNodes(blockRoot).First().StateRoot;
+        EpochCache cache = new() { Hasher = new KnownSlotRoots(blockSlot, KnownAdvanceRoots(blockRoot, blockStateRoot, blockSlot, targetSlot), CheckpointStateHasher()) };
         ForkedBeaconState state = IsGloasSlot(blockSlot)
             ? new ForkedBeaconState.OfGloas(((ForkedBeaconState.OfGloas)GetBlockState(blockRoot)).State.Clone())
             : new ForkedBeaconState.OfFulu(_stateProvider.CopyBlockState(blockRoot) ?? throw new ForkChoiceException($"No state for the block {blockRoot}"));
@@ -1770,24 +1927,50 @@ public sealed class ForkChoiceRunner
         return state;
     }
 
-    /// <summary>Answers the first <c>process_slot</c> root of a checkpoint advance with the block's own <c>state_root</c>, and hashes every later slot with <paramref name="next"/>.</summary>
+    /// <summary>
+    /// The <c>process_slot</c> roots of advancing <paramref name="blockRoot"/>'s post-state from <paramref name="blockSlot"/> towards
+    /// <paramref name="targetSlot"/> that are already known: the block's own <c>state_root</c>, and every later one when the post-state of the
+    /// block last registered went through that same advance.
+    /// </summary>
     /// <remarks>
     /// The advance starts from <c>store.block_states[root]</c>, the post-state whose root the block's <c>state_root</c> commits to (specs/phase0/beacon-chain.md
-    /// <c>state_transition</c>; the anchor's is checked at construction), so a one-slot advance needs no merkleization.
+    /// <c>state_transition</c>; the anchor's is checked at construction). <c>process_slot</c> writes <c>state_roots[i]</c> and <c>block_roots[i]</c> for
+    /// each slot <c>i</c> it leaves, so a state whose <c>block_roots</c> name <paramref name="blockRoot"/> at every slot of the advance had no other block
+    /// there, and its <c>state_roots</c> are the roots of the very states this advance hashes.
     /// </remarks>
-    private sealed class BlockStateRootFirst(Hash256 blockStateRoot, IBeaconStateHasher next) : IBeaconStateHasher
+    private Hash256[] KnownAdvanceRoots(Hash256 blockRoot, Hash256 blockStateRoot, ulong blockSlot, ulong targetSlot)
     {
-        private bool _started;
-
-        public Hash256 HashTreeRoot(BeaconStateFulu state) => _started ? next.HashTreeRoot(state) : Start();
-
-        public Hash256 HashTreeRoot(BeaconStateGloas state) => _started ? next.HashTreeRoot(state) : Start();
-
-        private Hash256 Start()
+        (ulong slot, Hash256[]? blockRoots, Hash256[]? stateRoots) = _lastBlock?.State switch
         {
-            _started = true;
-            return blockStateRoot;
+            ForkedBeaconState.OfFulu fulu => (fulu.State.Slot, fulu.State.BlockRoots, fulu.State.StateRoots),
+            ForkedBeaconState.OfGloas gloas => (gloas.State.Slot, gloas.State.BlockRoots, gloas.State.StateRoots),
+            _ => (0UL, null, null),
+        };
+        // block_roots and state_roots hold the last SLOTS_PER_HISTORICAL_ROOT slots before the state's own.
+        if (blockRoots is null || stateRoots is null || slot < targetSlot || slot - blockSlot > Presets.SlotsPerHistoricalRoot)
+            return [blockStateRoot];
+
+        Hash256[] roots = new Hash256[targetSlot - blockSlot];
+        for (ulong i = blockSlot; i < targetSlot; i++)
+        {
+            int index = (int)(i % Presets.SlotsPerHistoricalRoot);
+            if (blockRoots[index] != blockRoot)
+                return [blockStateRoot];
+            roots[i - blockSlot] = stateRoots[index];
         }
+
+        return roots;
+    }
+
+    /// <summary>Answers each <c>process_slot</c> root of a checkpoint advance from <paramref name="roots"/>, which start at <paramref name="firstSlot"/>, and hashes every later slot with <paramref name="next"/>.</summary>
+    /// <remarks><c>process_slot</c> hashes the state before it moves the slot on, so the state's own slot names the root it asks for.</remarks>
+    private sealed class KnownSlotRoots(ulong firstSlot, Hash256[] roots, IBeaconStateHasher next) : IBeaconStateHasher
+    {
+        public Hash256 HashTreeRoot(BeaconStateFulu state) => Known(state.Slot) ?? next.HashTreeRoot(state);
+
+        public Hash256 HashTreeRoot(BeaconStateGloas state) => Known(state.Slot) ?? next.HashTreeRoot(state);
+
+        private Hash256? Known(ulong slot) => slot >= firstSlot && slot - firstSlot < (ulong)roots.Length ? roots[slot - firstSlot] : null;
     }
 
     private static Validator[] ValidatorsOf(ForkedBeaconState state) => state switch

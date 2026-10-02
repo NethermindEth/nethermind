@@ -212,7 +212,7 @@ internal static class ForkChoiceStepDriver
         Attestation[] bodyAttestations = block.Body!.Attestations!;
         for (int i = 0; i < bodyAttestations.Length; i++)
         {
-            try { runner.OnAttestation(bodyAttestations[i], isFromBlock: true, verifySignature: false); }
+            try { runner.OnBodyAttestation(bodyAttestations[i], blockRoot); }
             catch (Exception ex) { Assert.Fail($"step {stepIndex}: body attestation {i} of block {blockKey} rejected: {ex.Message}"); }
         }
 

@@ -144,7 +144,7 @@ internal static class GloasForkChoiceStepDriver
         for (int i = 0; i < attestations.Length; i++)
         {
             AttestationGloas attestation = attestations[i];
-            if (Attempt(() => context.Runner.OnAttestation(attestation, isFromBlock: true, verifySignature: false)) is { } ex)
+            if (Attempt(() => context.Runner.OnBodyAttestation(attestation, blockRoot)) is { } ex)
                 Assert.Fail($"{subject}: body attestation {i} rejected: {ex.Message}");
         }
 

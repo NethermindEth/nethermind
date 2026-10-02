@@ -1205,18 +1205,14 @@ public sealed class BlockImporter : IBlockImporter
     /// leaves to its caller: feeds the block's attestations and attester slashings (already verified
     /// by the transition) to fork choice. A refused operation is counted and skipped, never fatal.
     /// </summary>
-    /// <remarks>
-    /// specs/phase0/fork-choice.md on_attestation checks every vote, a block's too, against its target's state. The transition
-    /// already checked the signature with the committees of this block's state, so it is skipped only for a target whose
-    /// shuffling is this block's: another shuffling reads the same aggregation bits as other validators.
-    /// </remarks>
+    /// <remarks>Each vote is checked as <see cref="ForkChoiceRunner.OnBodyAttestation(Attestation, Hash256)"/> describes.</remarks>
     private void ApplyBodyOperations(BeaconBlockBody body, Hash256 blockRoot)
     {
         foreach (Attestation attestation in body.Attestations!)
         {
             try
             {
-                _runner.OnAttestation(attestation, isFromBlock: true, verifySignature: !_runner.HasShufflingOf(blockRoot, CheckpointRef.From(attestation.Data!.Target!)));
+                _runner.OnBodyAttestation(attestation, blockRoot);
             }
             catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
             {
@@ -1249,7 +1245,7 @@ public sealed class BlockImporter : IBlockImporter
         {
             try
             {
-                _runner.OnAttestation(attestation, isFromBlock: true, verifySignature: !_runner.HasShufflingOf(blockRoot, CheckpointRef.From(attestation.Data!.Target!)));
+                _runner.OnBodyAttestation(attestation, blockRoot);
             }
             catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
             {
