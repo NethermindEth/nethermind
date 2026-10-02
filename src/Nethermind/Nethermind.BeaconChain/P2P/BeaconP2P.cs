@@ -405,11 +405,16 @@ public sealed class BeaconP2P : IAsyncDisposable
             _ = dial.ContinueWith(static (completed, state) =>
             {
                 // Disposal closes only the sessions it sees, so one a dial makes afterwards is closed here.
-                if (completed.IsCompletedSuccessfully && Volatile.Read(ref ((BeaconP2P)state!)._disposed) == 1)
+                if (completed.IsCompletedSuccessfully)
                 {
-                    _ = completed.Result.DisconnectAsync();
+                    if (Volatile.Read(ref ((BeaconP2P)state!)._disposed) == 1)
+                    {
+                        _ = completed.Result.DisconnectAsync();
+                    }
                 }
-            }, this, TaskScheduler.Default);
+                // A caller that stopped waiting leaves the failure unobserved; observing it keeps it out of UnobservedTaskException.
+                else _ = completed.Exception;
+            }, this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             return await dial.WaitAsync(token);
         }
         catch (Exception e) when (e is not OperationCanceledException && token.IsCancellationRequested)

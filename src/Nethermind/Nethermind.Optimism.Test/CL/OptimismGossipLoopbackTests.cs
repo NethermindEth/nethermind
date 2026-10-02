@@ -184,6 +184,53 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
+    /// <summary>A dial its caller stopped waiting for, which then fails, leaves no unobserved failure behind.</summary>
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(60_000)]
+    public async Task An_abandoned_dial_that_fails_is_observed(CancellationToken token)
+    {
+        await using Host node = await Host.StartAsync(token);
+        using TcpListener closed = new(IPAddress.Loopback, 0);
+        closed.Start();
+        int port = ((IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+        string refusing = $"/ip4/127.0.0.1/tcp/{port}/p2p/{new Nethermind.Libp2p.Core.Identity().PeerId}";
+        int unobserved = 0;
+        void OnUnobserved(object? sender, UnobservedTaskExceptionEventArgs args)
+        {
+            if (args.Exception.Flatten().InnerExceptions.Any(e => e.Message.Contains(refusing)))
+            {
+                Interlocked.Increment(ref unobserved);
+            }
+        }
+
+        TaskScheduler.UnobservedTaskException += OnUnobserved;
+        try
+        {
+            await AbandonAsync(node.Peer, Multiaddress.Decode(refusing), token);
+            // The library dial fails within milliseconds on a refused connection; its task is then collectable.
+            await Task.Delay(1000, token);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+
+        Assert.That(Volatile.Read(ref unobserved), Is.Zero, "the failed dial reached UnobservedTaskException");
+    }
+
+    // Kept out of the test method so no local holds the dial task when the collector runs.
+    private static async Task AbandonAsync(ILocalPeer peer, Multiaddress address, CancellationToken token)
+    {
+        using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await abandoned.CancelAsync();
+        Assert.That(async () => await peer.DialAsync(address, abandoned.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the caller stops waiting");
+    }
+
     /// <summary>A dial its caller cancelled before it began does not keep the peer from being dialed afterwards.</summary>
     /// <remarks>Nethermind.Libp2p 1.0.0 keeps a dial cancelled before its first await as the pending dial of the peer id for good.</remarks>
     [Test]
