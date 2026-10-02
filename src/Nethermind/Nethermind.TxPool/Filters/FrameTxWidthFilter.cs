@@ -21,9 +21,9 @@ namespace Nethermind.TxPool.Filters;
 /// with the transaction's admission gas. The baseline is the transaction admitted while the sender had none pending, and a
 /// replacement of it stays the baseline; replacing any other pending transaction spends width. Once the baseline leaves, no
 /// other pending transaction takes its place until the sender's pending set empties. Spent width is never returned, which is what bounds repeated mass invalidation, so a fee
-/// bump beyond the baseline spends width like any admission: its rerun is real work. Width is spent when this filter
-/// accepts, so a transaction that a later pool check rejects, such as a disallowed replacement or a fee too low to
-/// compete, still spends it. Only the sender's pending
+/// bump beyond the baseline spends width like any admission: its rerun is real work. A replacement the pool would refuse is
+/// refused here, before any width is spent. Otherwise width is spent when this filter accepts, so a transaction that a
+/// later pool check rejects, such as a fee too low to compete, still spends it. Only the sender's pending
 /// keyed-nonce frame transactions count toward the baseline, since other pending types add no revalidation work.
 /// Runs inside the sender's admission gate, held through insertion, so concurrent admissions from one sender see
 /// each other and only one takes the free baseline. Inert unless
@@ -53,6 +53,11 @@ internal sealed class FrameTxWidthFilter(
         {
             state.TakesSenderBaseline = true;
             return AcceptTxResult.Accepted;
+        }
+
+        if (replaced is not null && !(tx.CarriesBlobs ? blobPool : standardPool).CanReplace(tx, replaced))
+        {
+            return AcceptTxResult.ReplacementNotAllowed;
         }
 
         UInt256 cost = FrameTxWidthCharge.For(tx, txPoolConfig.FrameTxWidthSafetyFactorPermille);
