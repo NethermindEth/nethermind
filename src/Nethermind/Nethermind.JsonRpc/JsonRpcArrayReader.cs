@@ -85,6 +85,6 @@ internal static class JsonRpcArrayReader
         throw new JsonException("Expected JSON array.");
 
     [DoesNotReturn, StackTraceHidden]
-    private static int ThrowIncompleteJsonArray() =>
+    private static void ThrowIncompleteJsonArray() =>
         throw new JsonException("Incomplete JSON array.");
 }

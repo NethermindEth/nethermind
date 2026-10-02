@@ -1211,11 +1211,12 @@ public class JsonRpcProcessorTests
     ];
 
     /// <remarks>
-    /// A single-document body ends at its root value, so anything but whitespace after it is a framing error and not a
-    /// second request - the body is answered with one parse error and none of it is dispatched.
+    /// A single-document body must be exactly one valid JSON value. Trailing data is a framing error, not a second
+    /// request, and an unclosed or malformed batch is not a document at all - either way the body is answered with one
+    /// parse error and none of it is dispatched.
     /// </remarks>
     [Test]
-    public async Task Trailing_data_after_a_single_document_request_is_a_parse_error(
+    public async Task Body_that_is_not_one_valid_document_is_a_parse_error(
         [Values(RequestTransport.HttpMemory, RequestTransport.HttpPipe)] RequestTransport transport,
         [ValueSource(nameof(NotOneDocumentBodies))] string body)
     {
