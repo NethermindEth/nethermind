@@ -104,7 +104,7 @@ public partial class BlockProducerBaseTests
     {
         IBlockTree blockTree = Build.A.BlockTree().TestObject;
         IWorldState state = Substitute.For<IWorldState>();
-        state.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        state.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(true);
         bool flagDuringExecution = false;
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
         processor.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
