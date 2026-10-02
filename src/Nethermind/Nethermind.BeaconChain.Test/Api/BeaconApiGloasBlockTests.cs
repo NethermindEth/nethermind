@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -16,6 +17,7 @@ using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
@@ -335,12 +337,18 @@ public class BeaconApiGloasBlockTests
         ForkChoiceSnapshotHolder snapshots = new();
         await using BeaconApiTestHost host = await StartAsync(chain.Spec, snapshots);
         BeaconChainStore store = new(host.Db, chain.Spec);
+        ExecutionPayloadEnvelopePool pool = new(store: store);
+        MemDb envelopes = (MemDb)host.Db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine { EnvelopeVerdict = verdict }, snapshots: snapshots, store: store);
         SignedGloasChain.Block parent = chain.Next(null, 32, full: false, 0xA1);
         SignedGloasChain.Block child = chain.Next(parent, 33, full: validThroughEmptyHead, 0xA2);
         Assert.That(importer.Import(parent.Forked, parent.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+        long writesBefore = envelopes.WritesCount;
         Assert.That(importer.ImportEnvelope(parent.Envelope), Is.EqualTo(verdict == ExecutionStatus.Valid
             ? ExecutionPayloadEnvelopeImportResult.Valid : ExecutionPayloadEnvelopeImportResult.Optimistic));
+        pool.Add(parent.Root, parent.Envelope, persisted: true);
+        Assert.That(envelopes.WritesCount - writesBefore, Is.EqualTo(verdict == ExecutionStatus.Valid ? 4 : 3),
+            "one envelope write, its slot index and bounds, and a marker only for VALID");
         if (laterValid && !validThroughEmptyHead)
             importer.OnForkchoiceUpdated(parent.Root, parent.Bid.BlockHash!, new PayloadStatusV1 { Status = PayloadStatus.Valid });
         Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
@@ -363,10 +371,9 @@ public class BeaconApiGloasBlockTests
 
         ForkChoiceSnapshot snapshot = snapshots.Current!;
         snapshots.Current = snapshot with { Nodes = snapshot.Nodes.Where(n => n.Root != parent.Root).ToArray() };
-        store.PutExecutionPayloadEnvelope(parent.Root, parent.Envelope);
 
         Assert.That((await ReadJsonAsync(await host.GetAsync(path, Json))).RootElement.GetProperty("execution_optimistic").GetBoolean(),
-            Is.EqualTo(expectedOptimistic), "the payload verdict must survive pruning and duplicate storage");
+            Is.EqualTo(expectedOptimistic), "the payload verdict must survive removal from fork choice");
         snapshots.Current = null;
         Assert.That((await ReadJsonAsync(await host.GetAsync(path, Json))).RootElement.GetProperty("execution_optimistic").GetBoolean(),
             Is.EqualTo(expectedOptimistic), "the persisted verdict also survives the absence of a published fork choice snapshot");
