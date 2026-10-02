@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.RateLimiting;
+using Nethermind.BeaconChain.Api.Endpoints;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -41,6 +43,9 @@ internal sealed record BeaconApiContext(
     public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead(), ForkChoiceSnapshot = ForkChoiceSnapshots?.Current };
 
     public ForkChoiceSnapshot? ForkChoiceSnapshot { get; private init; }
+
+    /// <summary>Bounds the blob rebuilds of this host's getBlobs requests that run at once; a request past it is refused, never queued.</summary>
+    public ConcurrencyLimiter BlobRebuilds { get; } = new(new ConcurrencyLimiterOptions { PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds, QueueLimit = 0 });
 
     /// <summary>Freezes the published get_head view, or the startup status before publication (fork-choice.md).</summary>
     public IBeaconChainStatusSource CaptureHead()
