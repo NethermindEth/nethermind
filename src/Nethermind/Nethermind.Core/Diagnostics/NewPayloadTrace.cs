@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Threading;
 
@@ -37,8 +39,20 @@ public static class NewPayloadTrace
     private const int CounterCount = 3;
     private static readonly string[] CounterNames = ["ntries", "nslots", "naccts"];
 
+    private sealed class TxMisses(int index, long startUs)
+    {
+        public readonly int Index = index;
+        public readonly long StartUs = startUs;
+        public int Accounts, Slots;
+    }
+
     private sealed class Record
     {
+        // Per-transaction pre-block cache misses on the processing thread, with each transaction's start, and notes.
+        public readonly List<TxMisses> Txs = [];
+        public TxMisses? CurrentTx;
+        public readonly StringBuilder Notes = new();
+        public long Start => Stamps[HttpStart] != 0 ? Stamps[HttpStart] : Stamps[MethodEntry];
         public readonly long[] Stamps = new long[Count];
         public readonly long[] Counters = [-1, -1, -1];
         public long Block = -1;
@@ -150,6 +164,45 @@ public static class NewPayloadTrace
             record.Counters[counter] = value;
     }
 
+    /// <summary>Marks a transaction's start on the processing thread; the cache misses that follow count against it.</summary>
+    public static void TxStart(int index)
+    {
+        if (Enabled && Threading.ProcessingThread.IsBlockProcessingThread && Volatile.Read(ref s_active) is { } record)
+        {
+            TxMisses tx = new(index, ElapsedUs(record));
+            record.Txs.Add(tx);
+            record.CurrentTx = tx;
+        }
+    }
+
+    /// <summary>Counts a pre-block cache miss on the processing thread against its current transaction.</summary>
+    public static void Miss(bool storage)
+    {
+        if (Enabled && Threading.ProcessingThread.IsBlockProcessingThread && Volatile.Read(ref s_active) is { CurrentTx: { } tx })
+        {
+            if (storage) tx.Slots++;
+            else tx.Accounts++;
+        }
+    }
+
+    /// <summary>Microseconds since the active newPayload started, or -1 without one.</summary>
+    public static long NowUs() => Enabled && Volatile.Read(ref s_active) is { } record ? ElapsedUs(record) : -1;
+
+    private static long ElapsedUs(Record record) => (Stopwatch.GetTimestamp() - record.Start) * 1_000_000 / Stopwatch.Frequency;
+
+    /// <summary>Appends a note (no spaces or '=') to the active newPayload's line, from any thread.</summary>
+    public static void Note(string text)
+    {
+        if (Enabled && Volatile.Read(ref s_active) is { } record)
+        {
+            lock (record.Notes)
+            {
+                if (record.Notes.Length > 0) record.Notes.Append(';');
+                record.Notes.Append(text);
+            }
+        }
+    }
+
     private static void Print(Record record)
     {
         long start = record.Stamps[HttpStart] != 0 ? record.Stamps[HttpStart] : record.Stamps[MethodEntry];
@@ -172,6 +225,19 @@ public static class NewPayloadTrace
             .Append(" gcpause=").Append(record.PauseUs < 0 ? "na" : record.PauseUs.ToString());
         for (int i = 0; i < CounterCount; i++)
             line.Append(' ').Append(CounterNames[i]).Append('=').Append(record.Counters[i] < 0 ? "na" : record.Counters[i].ToString());
+
+        // The transactions that missed the pre-block cache most, as index:accounts/slots@start-us.
+        line.Append(" ntx=").Append(record.Txs.Count).Append(" txmiss=");
+        int printed = 0;
+        foreach (TxMisses tx in record.Txs.OrderByDescending(static t => t.Accounts + t.Slots))
+        {
+            if (printed == 12 || tx.Accounts + tx.Slots < 3) break;
+            if (printed++ > 0) line.Append(',');
+            line.Append(tx.Index).Append(':').Append(tx.Accounts).Append('/').Append(tx.Slots).Append('@').Append(tx.StartUs);
+        }
+
+        if (printed == 0) line.Append("na");
+        lock (record.Notes) line.Append(" notes=").Append(record.Notes.Length == 0 ? "na" : record.Notes.ToString());
         Console.Out.WriteLine(line.ToString());
     }
 }

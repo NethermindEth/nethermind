@@ -293,6 +293,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
+            long roundStartUs = Core.Diagnostics.NewPayloadTrace.NowUs();
             DiscoveryRound roundState = new(block, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates, cancellationToken);
             ParallelOptions parallelOptions = new()
             {
@@ -311,15 +312,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             roundCells.ExceptWith(allDiscoveredCells);
+            long roundRunUs = Core.Diagnostics.NewPayloadTrace.NowUs();
             if (cancellationToken.IsCancellationRequested) return;
 
             int productive = nextRoundCandidates.Count - awaiting;
             if (roundCells.Count > 0)
             {
                 allDiscoveredCells.UnionWith(roundCells);
-                if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken)) return;
+                // With per-candidate warming the cells are already read.
+                if (!Core.Diagnostics.ExperimentKnobs.DiscoveryWarmPerCandidate && !WarmDiscoveredStorage(block.Header, roundCells, cancellationToken)) return;
+                if (Core.Diagnostics.NewPayloadTrace.Enabled) NoteRound(round, roundStartUs, roundRunUs, roundCells.Count, admitted);
                 if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
             }
+            else if (Core.Diagnostics.NewPayloadTrace.Enabled) NoteRound(round, roundStartUs, roundRunUs, 0, admitted);
             else if (awaiting == 0 && (deferred.Count == 0 || productive == admitted.Count))
             {
                 // No progress and no budget freed for the deferred — the next round would repeat this one.
@@ -339,6 +344,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             nextRoundCandidates.Sort(static (a, b) => a.Index.CompareTo(b.Index));
             (currentCandidates, nextRoundCandidates) = (nextRoundCandidates, currentCandidates);
         }
+    }
+
+    private void NoteRound(int round, long startUs, long runUs, int cells, List<(int Index, Transaction Tx)> admitted)
+    {
+        System.Text.StringBuilder note = new("disc:r");
+        note.Append(round).Append('@').Append(startUs).Append('-').Append(runUs).Append('-').Append(Core.Diagnostics.NewPayloadTrace.NowUs())
+            .Append(":c").Append(cells).Append(":m").Append(MainThreadTxIndex).Append(":a");
+        for (int i = 0; i < admitted.Count; i++) note.Append(i == 0 ? "" : "/").Append(admitted[i].Index);
+        Core.Diagnostics.NewPayloadTrace.Note(note.ToString());
     }
 
     /// <summary>Splits candidates into the greedy first-fit set (in block order) whose declared gas fits one block re-execution, and the deferred rest.</summary>
@@ -486,51 +500,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IPrewarmerEnv env = _envPool.Get();
         try
         {
-            using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(round.RemainingCaptureCells);
-            using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(round.Block.Header);
-            scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(round.Block.Header, round.Spec));
-
-            try
+            bool failed = CaptureCandidate(env, candidate, round, UInt256.One, out int cells, out int added);
+            // A packed slot read as 1 has every field above the lowest zero, which trips divide-by-zero checks and
+            // ends the run at the first such read; every byte 0x01 keeps each byte-aligned field non-zero.
+            if (failed && Core.Diagnostics.ExperimentKnobs.DiscoveryRetryPlaceholder && !round.CancellationToken.IsCancellationRequested)
             {
-                IWorldState worldState = scope.WorldState;
-                Address senderAddress = tx.SenderAddress!;
-                if (!worldState.AccountExists(senderAddress))
-                {
-                    worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
-                }
-
-                // Access-list cells are not warmed here: the normal warm task covers them, and reading
-                // them under the capture would re-record already-covered cells as discovered.
-                scope.TransactionProcessor.Warmup(tx, round.Tracer);
-            }
-            catch (Exception ex) when (ex is EvmException or OverflowException)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Discovery execution of {tx.Hash} stopped on {ex.GetType().Name}");
-            }
-
-            if (capture.Cells.Count == 0) return;
-
-            using (round.CellsLock.EnterScope())
-            {
-                round.NextRoundCandidates.Add(candidate);
-                int added = 0;
-                bool roundFull = false;
-                foreach (StorageCell cell in capture.Cells)
-                {
-                    if (round.Cells.Count >= round.CellBudget)
-                    {
-                        roundFull = true;
-                        break;
-                    }
-
-                    if (round.Cells.Add(cell)) added++;
-                }
-
-                // Refund cells that did not extend the round (duplicates across captures), so overlapping
-                // candidates of one heavy contract don't multiply-charge the shared budget — but not when
-                // the round is saturated, or concurrent captures would keep recording cells only to be discarded.
-                int unused = capture.Cells.Count - added;
-                if (unused > 0 && !roundFull) Interlocked.Add(ref round.RemainingCaptureCells.Value, unused);
+                CaptureCandidate(env, candidate, round, SpreadPlaceholder, out int retryCells, out int retryAdded);
+                if (Core.Diagnostics.NewPayloadTrace.Enabled) Core.Diagnostics.NewPayloadTrace.Note($"retry:{candidate.Index}:c{cells}/{added}+{retryCells}/{retryAdded}");
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -541,6 +517,92 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _envPool.Return(env);
         }
+    }
+
+    private static readonly UInt256 SpreadPlaceholder = new(0x0101010101010101UL, 0x0101010101010101UL, 0x0101010101010101UL, 0x0101010101010101UL);
+
+    /// <returns>Whether the speculative run failed (reverted or halted).</returns>
+    private bool CaptureCandidate(IPrewarmerEnv env, (int Index, Transaction Tx) candidate, DiscoveryRound round, UInt256 placeholder, out int cellCount, out int addedCount)
+    {
+        Transaction tx = candidate.Tx;
+        cellCount = addedCount = 0;
+        DiscoveryStatusTracer status = new();
+        using PooledSet<StorageCell>? own = Core.Diagnostics.ExperimentKnobs.DiscoveryWarmPerCandidate ? new PooledSet<StorageCell>() : null;
+        bool failed;
+        // The capture must be closed before this thread warms: a scope built on it while it is open would capture again.
+        using (PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(round.RemainingCaptureCells))
+        {
+        capture.Placeholder = placeholder;
+        using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(round.Block.Header);
+        scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(round.Block.Header, round.Spec));
+
+        try
+        {
+            IWorldState worldState = scope.WorldState;
+            Address senderAddress = tx.SenderAddress!;
+            if (!worldState.AccountExists(senderAddress))
+            {
+                worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+            }
+
+            // Access-list cells are not warmed here: the normal warm task covers them, and reading
+            // them under the capture would re-record already-covered cells as discovered.
+            scope.TransactionProcessor.Warmup(tx, new CancellationTxTracer(status, round.CancellationToken));
+            failed = status.Failed;
+        }
+        catch (Exception ex) when (ex is EvmException or OverflowException)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Discovery execution of {tx.Hash} stopped on {ex.GetType().Name}");
+            failed = true;
+        }
+
+        cellCount = capture.Cells.Count;
+        if (cellCount == 0) return failed;
+
+        using (round.CellsLock.EnterScope())
+        {
+            if (!round.NextRoundCandidates.Contains(candidate)) round.NextRoundCandidates.Add(candidate);
+            int added = 0;
+            bool roundFull = false;
+            foreach (StorageCell cell in capture.Cells)
+            {
+                if (round.Cells.Count >= round.CellBudget)
+                {
+                    roundFull = true;
+                    break;
+                }
+
+                if (round.Cells.Add(cell))
+                {
+                    added++;
+                    own?.Add(cell);
+                }
+            }
+
+            // Refund cells that did not extend the round (duplicates across captures), so overlapping
+            // candidates of one heavy contract don't multiply-charge the shared budget — but not when
+            // the round is saturated, or concurrent captures would keep recording cells only to be discarded.
+            int unused = capture.Cells.Count - added;
+            if (unused > 0 && !roundFull) Interlocked.Add(ref round.RemainingCaptureCells.Value, unused);
+            addedCount = added;
+        }
+        }
+
+        // Read this candidate's new cells now rather than when the slowest candidate of the round is done.
+        if (own is { Count: > 0 }) WarmDiscoveredStorage(round.Block.Header, own, round.CancellationToken);
+        return failed;
+    }
+
+    /// <summary>Records whether a discovery run ended in a failure.</summary>
+    private sealed class DiscoveryStatusTracer : TxTracer
+    {
+        public bool Failed;
+        public override bool IsTracingReceipt => true;
+        public override bool IsCollectingLogs => false;
+
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
+
+        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => Failed = true;
     }
 
     private bool WarmDiscoveredStorage(BlockHeader target, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
@@ -797,7 +859,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
-    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+    public void OnBeforeTxExecution()
+    {
+        Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+        Core.Diagnostics.NewPayloadTrace.TxStart(_mainThreadTxIndex);
+    }
 
     public CacheType ClearCaches()
     {
