@@ -207,13 +207,18 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     try
                     {
                         bool handledAsCompleteBody = false;
-                        if (options.InputMode == JsonRpcInputMode.SingleDocument && isCompleted && buffer.IsSingleSegment)
+                        bool isSingleDocument = options.InputMode == JsonRpcInputMode.SingleDocument;
+                        // A held-over partial document lives in the reader state, so only a fresh multi-document read
+                        // can be answered from its bytes alone.
+                        if (isCompleted && buffer.IsSingleSegment && (isSingleDocument || processingState.FreshState))
                         {
                             CompleteBodyOutcome outcome;
                             JsonRpcResult.Entry? entry;
                             try
                             {
-                                (outcome, entry) = await TryProcessCompleteBodyAsync(buffer.First, context, sink, startTime, cancellationToken);
+                                (outcome, entry) = isSingleDocument
+                                    ? await TryProcessCompleteBodyAsync(buffer.First, context, sink, startTime, cancellationToken)
+                                    : await ProcessCompleteDocumentsAsync(buffer.First, context, sink, cancellationToken);
                             }
                             catch
                             {
@@ -430,6 +435,65 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         await RunBatchAsync(new MemoryBatchItemSource(batchBody), context, sink, cancellationToken);
 
         return (CompleteBodyOutcome.Handled, null);
+    }
+
+    /// <summary>Answers, in order, every top-level JSON value of a framed message that is already complete in memory.</summary>
+    /// <remarks>
+    /// Equivalent to the incremental parser's multi-document loop, but objects and batches take the same raw-bytes
+    /// decode as <see cref="TryProcessCompleteBodyAsync"/> instead of being parsed into a <see cref="JsonDocument"/>.
+    /// Each value is answered before the next one is read, so a malformed value ends the message with a parse error
+    /// only after everything in front of it has been answered.
+    /// </remarks>
+    private async ValueTask<(CompleteBodyOutcome Outcome, JsonRpcResult.Entry? Entry)> ProcessCompleteDocumentsAsync(
+        ReadOnlyMemory<byte> message,
+        JsonRpcContext context,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        int offset = 0;
+        while (true)
+        {
+            long startTime = Stopwatch.GetTimestamp();
+            ReadOnlyMemory<byte> document;
+            JsonTokenType rootToken;
+            try
+            {
+                if (!JsonRpcRequestDecoder.TryReadNextDocument(message, ref offset, out document, out rootToken))
+                {
+                    return (CompleteBodyOutcome.Handled, null);
+                }
+            }
+            catch (Exception ex) when (JsonRpcRequestDecoder.IsRequestDecodingException(ex))
+            {
+                return (CompleteBodyOutcome.ParseError, CreateBodyParsingError(message[offset..], context, startTime, ex));
+            }
+
+            switch (rootToken)
+            {
+                case JsonTokenType.StartObject:
+                    JsonRpcRequest? request;
+                    try
+                    {
+                        JsonRpcRequestDecoder.TryReadObjectRequest(document, out request);
+                    }
+                    catch (Exception ex) when (JsonRpcRequestDecoder.IsRequestDecodingException(ex))
+                    {
+                        // The value itself is well-formed, so it is answered alone and the next one is still read.
+                        await WriteSingleEntryAsync(CreateBodyParsingError(document, context, startTime, ex), sink, cancellationToken);
+                        break;
+                    }
+
+                    // Only a non-object root is declined rather than decoded or thrown on.
+                    await ProcessSingleRequestToSink(request!, context, sink, cancellationToken);
+                    break;
+                case JsonTokenType.StartArray:
+                    await RunBatchAsync(new MemoryBatchItemSource(document), context, sink, cancellationToken);
+                    break;
+                default:
+                    await WriteInvalidRequestAsync(sink, startTime, cancellationToken);
+                    break;
+            }
+        }
     }
 
     private JsonRpcResult.Entry CreateBodyParsingError(ReadOnlyMemory<byte> body, JsonRpcContext context, long startTime, Exception exception)

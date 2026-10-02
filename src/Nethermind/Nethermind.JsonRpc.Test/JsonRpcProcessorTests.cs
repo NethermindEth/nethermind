@@ -901,11 +901,124 @@ public class JsonRpcProcessorTests
         }
     }
 
+    private static IEnumerable<TestCaseData> MultipleDocumentMessageCases()
+    {
+        string first = CreateRequest("1", "eth_blockNumber");
+        string second = CreateRequest("2", "eth_chainId");
+        (string name, string message)[] cases =
+        [
+            ("Two requests", first + "\r\n" + second),
+            ("Adjacent requests", first + second),
+            ("Request and batch", first + CreateBatchRequest(second, CreateRequest("3", "net_version"))),
+            ("Surrounding whitespace", " \r\n\t" + first + " \n " + second + " \r\n\t"),
+            ("Whitespace only", " \r\n\t"),
+            ("Second request truncated", first + second[..^1]),
+            ("Second request invalid", first + "{aaa}" + second),
+            ("First request invalid", "{aaa}" + first),
+            ("Garbage after request", first + " garbage"),
+            ("Primitives between requests", first + " 1 \"x\" null " + second),
+            ("Undecodable envelope between requests", first + """{"jsonrpc":"2.0","id":1.5,"method":"eth_chainId","params":[]}""" + second),
+            ("Empty batch between requests", first + "[]" + second),
+            ("Batch with malformed item", CreateBatchRequest(first, "1", second) + first),
+            ("Empty object", "{}" + first),
+        ];
+
+        foreach ((string name, string message) in cases)
+        {
+            yield return new TestCaseData(message).SetName(name);
+        }
+    }
+
+    /// <remarks>
+    /// A complete socket message is answered straight from its bytes, while a segmented one still goes through the
+    /// incremental parser; the two must agree on every response, their order, and which requests are dispatched.
+    /// </remarks>
+    [TestCaseSource(nameof(MultipleDocumentMessageCases))]
+    public async Task Multiple_document_message_is_answered_alike_from_memory_and_incrementally(string message)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(message);
+
+        (string Outcome, bool AllParamsRaw) fromMemory = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsPipe);
+        (string Outcome, bool AllParamsRaw) incremental = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsSegmentedPipe);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fromMemory.Outcome, Is.EqualTo(incremental.Outcome));
+            Assert.That(fromMemory.AllParamsRaw, Is.True, "a complete message must not be parsed into a document");
+        }
+    }
+
+    /// <remarks>
+    /// The unauthenticated read timeout is only observed by reads that can wait for data. A pipe over an in-memory
+    /// message never waits and ignores the token, so an expired timeout does not cut the message short on either path.
+    /// </remarks>
+    [Test]
+    public async Task Timeout_expiring_mid_message_is_handled_alike_from_memory_and_incrementally([Values] bool isAuthenticated)
+    {
+        const int timeoutMs = 50;
+        byte[] bytes = Encoding.UTF8.GetBytes(
+            CreateRequest("1", "eth_blockNumber") + "\n" + CreateRequest("2", "eth_chainId") + "\n" + CreateRequest("3", "net_version") + "\n");
+        JsonRpcConfig config = new() { Timeout = timeoutMs };
+        Action<JsonRpcRequest> outlastTimeout = static request =>
+        {
+            if (request.Method == "eth_blockNumber") Thread.Sleep(timeoutMs * 4);
+        };
+
+        (string fromMemory, _) = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsPipe, config, isAuthenticated, outlastTimeout);
+        (string incremental, _) = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsSegmentedPipe, config, isAuthenticated, outlastTimeout);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fromMemory, Is.EqualTo(incremental));
+            Assert.That(fromMemory, Does.Contain("dispatched: eth_blockNumber #1 | eth_chainId #2 | net_version #3; thrown: nothing"));
+        }
+    }
+
+    /// <summary>Describes the responses, dispatched requests and any exception of processing one multi-document message.</summary>
+    private static async ValueTask<(string Outcome, bool AllParamsRaw)> DescribeMultipleDocumentProcessingAsync(
+        byte[] message,
+        RequestTransport transport,
+        JsonRpcConfig? config = null,
+        bool isAuthenticated = false,
+        Action<JsonRpcRequest>? onDispatch = null)
+    {
+        List<string> dispatched = [];
+        bool allParamsRaw = true;
+        IJsonRpcService service = CreateService(request =>
+        {
+            dispatched.Add($"{request.Method} #{request.Id}");
+            allParamsRaw &= request.ParamsKind == JsonValueKind.Undefined || !request.ParamsUtf8.IsEmpty;
+            onDispatch?.Invoke(request);
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        CollectingJsonRpcResponseSink sink = new();
+        using JsonRpcContext context = CreateContext(transport, isAuthenticated);
+        string thrown = "nothing";
+        try
+        {
+            await ProcessAsync(CreateProcessor(service, config), message, transport, sink, context);
+        }
+        catch (Exception e)
+        {
+            thrown = e.GetType().Name;
+        }
+
+        using CollectedJsonRpcResponses result = sink.Responses;
+        IEnumerable<string> responses = result
+            .Select(static r => r.BatchItems is null ? Describe(r.Response!) : $"[{string.Join(", ", r.BatchItems.Select(Describe))}]");
+        return ($"responses: {string.Join(" | ", responses)}; dispatched: {string.Join(" | ", dispatched)}; thrown: {thrown}", allParamsRaw);
+
+        static string Describe(JsonRpcResponse response) =>
+            response is JsonRpcErrorResponse error ? $"error {error.Error!.Code} #{response.Id}" : $"success #{response.Id}";
+    }
+
     /// <remarks>
     /// <paramref name="transport"/> picks the entry point, and with it the batch item source the limit is enforced
     /// from: an HTTP body arrives as one complete document and takes the raw-bytes path - over the
-    /// <see cref="ReadOnlyMemory{T}"/> overload production HTTP calls as well as over a pipe - while a WS body goes
-    /// through the incremental parser and the parsed-document path.
+    /// <see cref="ReadOnlyMemory{T}"/> overload production HTTP calls as well as over a pipe. A complete WS message is
+    /// split into its documents and takes the same raw-bytes path, while a segmented one goes through the incremental
+    /// parser and the parsed-document path.
     /// </remarks>
     [Test]
     public async Task Batch_size_limit_respects_authentication(
@@ -978,7 +1091,10 @@ public class JsonRpcProcessorTests
     {
         HttpMemory,
         HttpPipe,
-        WsPipe
+        WsPipe,
+
+        /// <summary>A WS message split into one-byte segments, which keeps all of it on the incremental parser.</summary>
+        WsSegmentedPipe
     }
 
     private static readonly byte[] _methodPrefixUtf8 = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_");
@@ -1156,10 +1272,32 @@ public class JsonRpcProcessorTests
     /// <summary>The endpoint a transport arrives on, optionally on an authenticated URL.</summary>
     private static JsonRpcContext CreateContext(RequestTransport transport, bool isAuthenticated = false)
     {
-        RpcEndpoint endpoint = transport == RequestTransport.WsPipe ? RpcEndpoint.Ws : RpcEndpoint.Http;
+        RpcEndpoint endpoint = IsMultipleDocuments(transport) ? RpcEndpoint.Ws : RpcEndpoint.Http;
         return isAuthenticated
             ? new JsonRpcContext(endpoint, url: new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, []))
             : new JsonRpcContext(endpoint);
+    }
+
+    private static bool IsMultipleDocuments(RequestTransport transport) =>
+        transport is RequestTransport.WsPipe or RequestTransport.WsSegmentedPipe;
+
+    private static PipeReader CreateReader(byte[] request, RequestTransport transport) =>
+        PipeReader.Create(transport == RequestTransport.WsSegmentedPipe
+            ? CreateByteSegmentedSequence(request)
+            : new ReadOnlySequence<byte>(request));
+
+    /// <summary>One segment per byte and an empty one at the end, so no unread remainder is ever a single segment.</summary>
+    private static ReadOnlySequence<byte> CreateByteSegmentedSequence(byte[] bytes)
+    {
+        BufferSegment start = new(ReadOnlyMemory<byte>.Empty);
+        BufferSegment end = start;
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            end = end.Append(bytes.AsMemory(i, 1));
+        }
+
+        end = end.Append(ReadOnlyMemory<byte>.Empty);
+        return new ReadOnlySequence<byte>(start, 0, end, 0);
     }
 
     /// <remarks>
@@ -1175,7 +1313,7 @@ public class JsonRpcProcessorTests
     {
         sink ??= new CollectingJsonRpcResponseSink();
         context ??= CreateContext(transport);
-        JsonRpcProcessingOptions options = new(transport == RequestTransport.WsPipe
+        JsonRpcProcessingOptions options = new(IsMultipleDocuments(transport)
             ? JsonRpcInputMode.MultipleDocuments
             : JsonRpcInputMode.SingleDocument);
 
@@ -1185,7 +1323,7 @@ public class JsonRpcProcessorTests
         }
         else
         {
-            await processor.ProcessAsync(PipeReader.Create(new ReadOnlySequence<byte>(request)), context, sink, options);
+            await processor.ProcessAsync(CreateReader(request, transport), context, sink, options);
         }
 
         return sink.Responses;
@@ -1261,7 +1399,7 @@ public class JsonRpcProcessorTests
         if (batch) request = "[" + request + "]";
         byte[] body = Encoding.UTF8.GetBytes(request);
         using JsonRpcContext context = CreateContext(transport);
-        JsonRpcProcessingOptions options = new(transport == RequestTransport.WsPipe
+        JsonRpcProcessingOptions options = new(IsMultipleDocuments(transport)
             ? JsonRpcInputMode.MultipleDocuments : JsonRpcInputMode.SingleDocument);
 
         Exception? thrown = Assert.CatchAsync(async () =>
@@ -1269,7 +1407,7 @@ public class JsonRpcProcessorTests
             if (transport == RequestTransport.HttpMemory)
                 await processor.ProcessAsync(body.AsMemory(), context, sink, options);
             else
-                await processor.ProcessAsync(PipeReader.Create(new ReadOnlySequence<byte>(body)), context, sink, options);
+                await processor.ProcessAsync(CreateReader(body, transport), context, sink, options);
         });
 
         Assert.That(thrown, Is.SameAs(failure));
