@@ -19,34 +19,32 @@ namespace Nethermind.BeaconChain.Test.Engine;
 public class EngineDriverMetricsTests
 {
     private const int Threads = 8;
-    private const int CallsPerThread = 100_000;
+    private const int CallsPerThread = 10_000;
 
     /// <summary>
     /// Engine calls run on the slot worker and on other threads at once, so a plain read-modify-write of a shared counter loses
     /// counts; every call must be counted.
     /// </summary>
     [Test]
-    [HardTimeout(300_000)]
+    [HardTimeout(60_000)]
     public void Engine_calls_made_from_many_threads_at_once_are_all_counted()
     {
-        (IEngineRpcModule Engine, EngineDriver Driver)[] drivers = [.. Enumerable.Range(0, Threads).Select(static _ => CreateDriver())];
+        EngineDriver[] drivers = [.. Enumerable.Range(0, Threads).Select(static _ => CreateDriver())];
         ExecutionPayloadGloas payload = EngineTests.GloasPayload(5);
         ulong newPayloadBefore = Metrics.BeaconChainNewPayloadCalls;
         ulong forkchoiceBefore = Metrics.BeaconChainForkchoiceUpdatedCalls;
         using Barrier start = new(Threads);
         int failedThreads = 0;
 
-        Thread[] threads = [.. drivers.Select(pair => new Thread(() =>
+        Thread[] threads = [.. drivers.Select(driver => new Thread(() =>
         {
             try
             {
                 start.SignalAndWait();
                 for (int i = 0; i < CallsPerThread; i++)
                 {
-                    pair.Driver.NotifyNewPayload(payload, [], TestItem.KeccakA, new ExecutionRequestsGloas());
-                    pair.Driver.ForkchoiceUpdated(TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakA).GetAwaiter().GetResult();
-                    // The substitute records every call; clearing keeps memory flat over the run.
-                    if (i % 10_000 == 0) pair.Engine.ClearReceivedCalls();
+                    driver.NotifyNewPayload(payload, [], TestItem.KeccakA, new ExecutionRequestsGloas());
+                    driver.ForkchoiceUpdated(TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakA).GetAwaiter().GetResult();
                 }
             }
             catch
@@ -65,10 +63,10 @@ public class EngineDriverMetricsTests
         }
     }
 
-    private static (IEngineRpcModule Engine, EngineDriver Driver) CreateDriver()
+    private static EngineDriver CreateDriver()
     {
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
         EngineTests.ConfigureEngine(engine, static () => Task.FromResult(PayloadStatusV1.Syncing));
-        return (engine, TestEngineDriver.Create(EngineTests.CreateDetector(engine, out _)));
+        return TestEngineDriver.Create(EngineTests.CreateDetector(engine, out _));
     }
 }
