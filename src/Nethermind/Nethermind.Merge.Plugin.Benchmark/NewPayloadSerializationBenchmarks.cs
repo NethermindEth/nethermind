@@ -22,7 +22,6 @@ using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Ssz;
-using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Benchmark;
 
@@ -68,7 +67,7 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         _jsonBody = EncodeJsonBody(payload, blobHashes, parentRoot);
         _jsonPayloadOnly = JsonSerializer.SerializeToUtf8Bytes(payload, EthereumJsonSerializer.JsonOptions);
 
-        IEngineRpcModule engine = BuildEngineStub();
+        IEngineRpcModule engine = EngineBenchmarkHost.CreateEngine(ValidTask);
         _sszHost = BuildSszServer(engine);
         _jsonHost = EngineBenchmarkHost.BuildJsonServer(engine);
         _sszServer = _sszHost.GetTestServer();
@@ -118,7 +117,8 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         using ByteArrayContent content = new(_sszBody);
         content.Headers.ContentType = EngineBenchmarkHost.OctetStream;
 
-        using HttpRequestMessage req = new(HttpMethod.Post, "/engine/v3/payloads") { Content = content };
+        using HttpRequestMessage req = new(HttpMethod.Post, "/engine/v1/payloads") { Content = content };
+        req.Headers.Add(SszMiddleware.ForkHeaderName, "cancun");
         req.Headers.Authorization = EngineBenchmarkHost.Authorization;
         req.Headers.Accept.Add(EngineBenchmarkHost.OctetAccept);
 
@@ -218,17 +218,6 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         w.Flush();
 
         return buffer.WrittenSpan.ToArray();
-    }
-
-    private static IEngineRpcModule BuildEngineStub()
-    {
-        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
-        engine.engine_newPayloadV1(default!).ReturnsForAnyArgs(ValidTask);
-        engine.engine_newPayloadV2(default!).ReturnsForAnyArgs(ValidTask);
-        engine.engine_newPayloadV3(default!, default!, default!).ReturnsForAnyArgs(ValidTask);
-        engine.engine_newPayloadV4(default!, default!, default!, default!).ReturnsForAnyArgs(ValidTask);
-        engine.engine_newPayloadV5(default!, default!, default!, default!).ReturnsForAnyArgs(ValidTask);
-        return engine;
     }
 
     private static IHost BuildSszServer(IEngineRpcModule engine)

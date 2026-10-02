@@ -68,7 +68,7 @@ internal static class EngineBenchmarkHost
                     JsonRpcUrl url = new("http", "localhost", EnginePort, RpcEndpoint.Http, isAuthenticated: true, ["engine"]);
                     services.AddSingleton<IJsonRpcUrlCollection>(new StubUrlCollection(EnginePort, url));
                     services.AddSingleton<IRpcAuthentication>(new StubRpcAuthentication());
-                    services.AddSingleton<ILogManager>(LimboLogs.Instance);
+                    services.AddSingleton<ILogManager>(NullLogManager.Instance);
                     services.AddSingleton<IProcessExitSource>(new StubProcessExitSource());
                     configureServices(services);
                 });
@@ -100,7 +100,7 @@ internal static class EngineBenchmarkHost
         JsonRpcConfig config = new();
         IFileSystem fs = Substitute.For<IFileSystem>();
 
-        RpcModuleProvider modules = new(fs, config, Serializer, LimboLogs.Instance);
+        RpcModuleProvider modules = new(fs, config, Serializer, NullLogManager.Instance);
         modules.Register(new SingletonModulePool<IEngineRpcModule>(engine, allowExclusive: true));
 
         return Build(
@@ -110,8 +110,8 @@ internal static class EngineBenchmarkHost
             app =>
             {
                 GCKeeper gcKeeper = app.ApplicationServices.GetRequiredService<GCKeeper>();
-                JsonRpcService service = new(modules, LimboLogs.Instance, config, gcKeeper);
-                JsonRpcProcessor processor = new(service, config, fs, LimboLogs.Instance);
+                JsonRpcService service = new(modules, NullLogManager.Instance, config, gcKeeper);
+                JsonRpcProcessor processor = new(service, config, fs, NullLogManager.Instance);
                 app.Use(async (ctx, next) =>
                 {
                     if (ctx.Request.Method != "POST" ||
@@ -146,6 +146,26 @@ internal static class EngineBenchmarkHost
                         ctx.RequestAborted);
                 });
             });
+    }
+
+    /// <summary>Creates an engine module whose every method returning <paramref name="result"/>'s type answers it.</summary>
+    /// <remarks>
+    /// Unlike an NSubstitute stub, it records no calls: a recorded call keeps its arguments reachable, so every
+    /// payload would survive and the growing heap would make each GC slower than in production.
+    /// </remarks>
+    public static IEngineRpcModule CreateEngine(object result)
+    {
+        IEngineRpcModule engine = System.Reflection.DispatchProxy.Create<IEngineRpcModule, FixedResultEngine>();
+        ((FixedResultEngine)(object)engine).Result = result;
+        return engine;
+    }
+
+    public class FixedResultEngine : System.Reflection.DispatchProxy
+    {
+        internal object Result = null!;
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod!.ReturnType.IsInstanceOfType(Result) ? Result : throw new NotSupportedException(targetMethod.Name);
     }
 
     public static Withdrawal[] BuildWithdrawals(int count)
@@ -211,7 +231,7 @@ internal static class EngineBenchmarkHost
         public async ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
             EnsureStarted();
-            await Serializer.SerializeAsync(context.Response.BodyWriter, response);
+            await JsonRpcResponseWriter.WriteAsync(context.Response.BodyWriter, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
             await context.Response.CompleteAsync();
         }
 
@@ -229,7 +249,7 @@ internal static class EngineBenchmarkHost
             }
 
             _isFirstBatchItem = false;
-            await Serializer.SerializeAsync(context.Response.BodyWriter, response);
+            await JsonRpcResponseWriter.WriteAsync(context.Response.BodyWriter, response, EthereumJsonSerializer.JsonOptions, isBatch: true, cancellationToken);
         }
 
         public async ValueTask EndBatchAsync(CancellationToken cancellationToken)

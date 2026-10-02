@@ -20,7 +20,6 @@ using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Ssz;
-using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Benchmark;
 
@@ -67,7 +66,7 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
         _jsonEncoded = JsonSerializer.SerializeToUtf8Bytes(_result, EthereumJsonSerializer.JsonOptions);
         _jsonRequestBody = BuildJsonRpcRequest(PayloadIdHex);
 
-        IEngineRpcModule engine = BuildEngineStub(_result);
+        IEngineRpcModule engine = EngineBenchmarkHost.CreateEngine(Task.FromResult(ResultWrapper<GetPayloadV3Result?>.Success(_result)));
         _sszHost = BuildSszServer(engine);
         _jsonHost = EngineBenchmarkHost.BuildJsonServer(engine);
         _sszServer = _sszHost.GetTestServer();
@@ -125,7 +124,8 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
     [Benchmark(Description = "SSZ  GetPayloadV3 (full Kestrel round-trip)")]
     public async Task<int> SszRoundTrip()
     {
-        using HttpRequestMessage req = new(HttpMethod.Get, $"/engine/v3/payloads/{PayloadIdHex}");
+        using HttpRequestMessage req = new(HttpMethod.Get, $"/engine/v1/payloads/{PayloadIdHex}");
+        req.Headers.Add(SszMiddleware.ForkHeaderName, "cancun");
         req.Headers.Authorization = EngineBenchmarkHost.Authorization;
         req.Headers.Accept.Add(EngineBenchmarkHost.OctetAccept);
 
@@ -229,15 +229,6 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
         w.Flush();
 
         return buffer.WrittenSpan.ToArray();
-    }
-
-    private static IEngineRpcModule BuildEngineStub(GetPayloadV3Result result)
-    {
-        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
-        Task<ResultWrapper<GetPayloadV3Result?>> task =
-            Task.FromResult(ResultWrapper<GetPayloadV3Result?>.Success(result));
-        engine.engine_getPayloadV3(default!).ReturnsForAnyArgs(task);
-        return engine;
     }
 
     private static IHost BuildSszServer(IEngineRpcModule engine)
