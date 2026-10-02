@@ -41,7 +41,7 @@ public class CountingStreamPipeWriterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stream.ToArray(), Is.EqualTo("prefix[1,2]"u8.ToArray()));
+            Assert.That(stream, Is.SequenceEqualTo("prefix[1,2]"u8));
             Assert.That(writer.WrittenCount, Is.EqualTo(initialWrittenCount + 5));
             Assert.That(writer.UnflushedBytes, Is.Zero);
         }

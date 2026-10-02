@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -417,7 +418,7 @@ public class ScopeProviderTests(bool useFlat)
         else
         {
             using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
-            Assert.That(scope.CodeDb.GetCode(TestItem.KeccakA), Is.EqualTo([1, 2, 3]));
+            Assert.That(scope.CodeDb.GetCode(TestItem.KeccakA), Is.SequenceEqualTo<byte>([1, 2, 3]));
         }
     }
 
@@ -476,7 +477,9 @@ public class ScopeProviderTests(bool useFlat)
             .TestObject;
 
         // Collect results via HintBal(bal, sink) — the merged trie warmup + BAL read pass
-        CollectingBalSink sink = new();
+        CollectingBalSink sink = new(useFlat ? null : () =>
+            Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0,
+                Is.EqualTo(Core.Cpu.RuntimeInformation.IsSingleProcessor ? 0 : Environment.ProcessorCount)));
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             scope.HintBal(bal, sink).Wait();
@@ -2314,7 +2317,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
 #nullable enable
-    private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
+    private class CollectingBalSink(Action? onAccountRead = null) : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
         public ConcurrentDictionary<Address, Account> Accounts { get; } = new();
         public ConcurrentDictionary<Address, byte> NullAccounts { get; } = new();
@@ -2322,6 +2325,7 @@ public class ScopeProviderTests(bool useFlat)
 
         public void OnAccountRead(Address address, Account? account)
         {
+            onAccountRead?.Invoke();
             if (account is null)
                 NullAccounts[address] = 0;
             else

@@ -5,6 +5,7 @@ using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing;
@@ -104,12 +105,12 @@ public class T8nExecutionResult
         if (!stateProvider.AccountExists(address)) return null;
 
         stateProvider.TryGetAccount(address, out AccountStruct account);
-        byte[]? code = stateProvider.GetCode(address);
+        byte[] code = stateProvider.GetCode(address).AsArray();
         AccountState accountState = new()
         {
             Nonce = account.Nonce,
             Balance = account.Balance,
-            Code = code!
+            Code = code
         };
 
         accountState.Storage = storageTxTracer.GetStorage(address) ?? [];

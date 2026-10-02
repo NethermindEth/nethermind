@@ -110,27 +110,30 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        nint fusedOpCodeCount = 0;
+        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where TUseVmCounter : struct, IFlag
+    {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        // Retrieve the code segment containing immediate data.
+        // Retrieve the code segment containing immediate data. Untraced code is padded, so the immediate and
+        // the next opcode are readable even past the end: a truncated immediate reads zeros and is followed by STOP.
         ref byte bytes = ref stack.Code;
         nint remainingCode = stack.CodeLength - programCounter;
         Instruction nextInstruction;
-        if (!TTracingInst.IsActive)
+        // A following jump or implicit STOP does not exempt PUSH2 from the stack limit.
+        if (!TTracingInst.IsActive && stack.Head >= EvmStack.MaxStackSize - 1)
         {
-            // A following jump or implicit STOP does not exempt PUSH2 from the stack limit.
-            if (stack.Head >= EvmStack.MaxStackSize - 1)
-            {
-                programCounter += Size;
-                return EvmExceptionType.StackOverflow;
-            }
-            if (remainingCode <= Size)
-            {
-                // Implicit STOP discards the stack, and no tracer or subsequent opcode can observe this push.
-                programCounter += Size;
-                return EvmExceptionType.None;
-            }
+            programCounter += Size;
+            return EvmExceptionType.StackOverflow;
         }
         if (!TTracingInst.IsActive &&
             ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size))
@@ -140,21 +143,21 @@ public static partial class EvmInstructions
             ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
             destination = BinaryPrimitives.ReverseEndianness(destination);
             // With lazy analysis the destination may not be analyzed yet, and analyzing it here would put a call into
-            // this handler, so the push and the jump run unfused and the jump handler does the analysis. Either way
-            // the gas, the stack and the outcome are the same. A JUMPI that is not taken never looks at its
-            // destination, so it stays fused; the condition is only peeked, leaving the stack intact for the fallback.
+            // this handler, so unless a JUMPI will not be taken, and so never validates it, the push and the jump run
+            // unfused and the jump handler does the analysis. Either way the gas, the stack and the outcome are the
+            // same.
             if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination)
-                && (nextInstruction == Instruction.JUMP || !stack.EnsureDepth(1) || !EvmStack.IsSlotZero(ref stack.PeekBytesByRefUnchecked())))
+                && !(nextInstruction == Instruction.JUMPI && stack.PeekUInt256IsZero()))
                 goto Unfused;
 
             if (nextInstruction == Instruction.JUMP)
             {
-                vm.OpCodeCount++;
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
             }
             else
             {
-                vm.OpCodeCount++;
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 if (!stack.EnsureDepth(1)) goto StackUnderflow;
                 if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
@@ -172,8 +175,7 @@ public static partial class EvmInstructions
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
             programCounter = jumpTarget + 1;
-            PrefetchCodeAtDestination(ref stack, programCounter);
-            vm.OpCodeCount++;
+            IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
             goto Success;
@@ -205,6 +207,20 @@ public static partial class EvmInstructions
         return EvmExceptionType.InvalidJumpDestination;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(VirtualMachine<TGasPolicy> vm, ref nint fusedOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TUseVmCounter : struct, IFlag
+    {
+        if (DispatchFlags.CountOpcodes)
+        {
+            if (TUseVmCounter.IsActive)
+                vm.OpCodeCount++;
+            else
+                fusedOpCodeCount++;
+        }
     }
 
     /// <summary>

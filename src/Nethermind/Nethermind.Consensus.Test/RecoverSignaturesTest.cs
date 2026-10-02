@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Concurrent;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Core;
 using NUnit.Framework;
 using Nethermind.Consensus.Processing;
@@ -123,6 +126,55 @@ public class RecoverSignaturesTest
 
     private const int DrainTimeoutMs = 10_000;
     private const int PollMs = 5;
+
+    [Test]
+    public void Recovery_shares_worker_budget_with_authorization_lists([Values] bool background, [Range(0, 1)] int budget, [Values] bool shared)
+    {
+        ConcurrentBag<int> observedBudgets = [];
+        IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
+        ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<ValueHash256>()).Returns(_ =>
+        {
+            observedBudgets.Add(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0);
+            return TestItem.AddressA;
+        });
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsAuthorizationListEnabled.Returns(true);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IEthereumEcdsa>(ecdsa)
+            .Build();
+        RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
+        Transaction[] txs = new Transaction[4];
+        for (int i = 0; i < txs.Length; i++)
+        {
+            AuthorizationTuple[] authorizations = new AuthorizationTuple[4];
+            for (int j = 0; j < authorizations.Length; j++)
+                authorizations[j] = _ecdsa.Sign(TestItem.PrivateKeyB, 0, Address.Zero, (ulong)j);
+            txs[i] = Build.A.Transaction.WithType(TxType.SetCode).WithNonce((ulong)i)
+                .WithAuthorizationCode(authorizations).SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+        }
+
+        ParallelUnbalancedWork.WorkerGroup? group = shared ? new(budget == 0 ? 2 : budget) : null;
+        using ParallelUnbalancedWork.WorkerScope? entered = group?.Enter();
+        using ParallelUnbalancedWork.WorkerScope? outer = budget == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(budget);
+        if (background)
+        {
+            recovery.StartRecovery(TestItem.KeccakA, txs, spec);
+            Assert.That(() => recovery.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
+            if (group?.Concurrency == 1) recovery.RecoverData(txs, spec);
+        }
+        else recovery.RecoverData(txs, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observedBudgets.Count, Is.InRange(16, 20));
+            int expectedBudget = group?.Concurrency ?? (background ? Math.Max(1, Environment.ProcessorCount / 2) : budget == 0 ? Environment.ProcessorCount : budget);
+            Assert.That(observedBudgets, Is.All.EqualTo(expectedBudget));
+            Assert.That(txs.Select(tx => tx.SenderAddress), Is.All.EqualTo(TestItem.AddressA));
+            Assert.That(txs.SelectMany(tx => tx.AuthorizationList!).Select(auth => auth.Authority), Is.All.EqualTo(TestItem.AddressA));
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer ?? entered));
+        }
+    }
 
     [Test]
     public void StartRecovery_WhileRunning_PipelineStepLeavesTheBlockAlone()

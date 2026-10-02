@@ -57,6 +57,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddFirst<IBlockPreprocessorStep>(static ctx => ctx.Resolve<RecoverSignatures>())
             // The prewarmer waits on the recovery this instance has in flight rather than polling the transactions.
             .Bind<ISenderRecoveryTracker, RecoverSignatures>()
+            .AddLast<IBlockPreprocessorStep, BlockAccessListRecoveryStep>()
 
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()

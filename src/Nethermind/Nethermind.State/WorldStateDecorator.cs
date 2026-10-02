@@ -55,10 +55,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual ref readonly ValueHash256 GetCodeHash(Address address)
         => ref State.GetCodeHash(address);
 
-    public virtual byte[]? GetCode(Address address)
+    public virtual ReadOnlyMemory<byte> GetCode(Address address)
         => State.GetCode(address);
 
-    public virtual byte[]? GetCode(in ValueHash256 codeHash)
+    public virtual ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         => State.GetCode(in codeHash);
 
     public virtual bool IsContract(Address address)

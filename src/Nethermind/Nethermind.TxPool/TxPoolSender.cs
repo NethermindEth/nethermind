@@ -61,7 +61,7 @@ namespace Nethermind.TxPool
 
             if (result == AcceptTxResult.Accepted)
             {
-                locker.Accept();
+                locker.Accept(tx);
             }
 
             return result;
