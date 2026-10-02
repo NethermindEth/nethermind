@@ -25,7 +25,7 @@ GUEST_EXTLIB ?= lib$(GUEST_LIBC)
 # .NET 11, not 10: both pass the soft-float suite, but 11 is the line it is
 # maintained on. It costs ~2.6% more SP1 cycles and ~2.5% more ZisK steps over
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:e48bd7b555baa1a592e9825240ca16ce4b012247@sha256:f5d546ee2cbf5c53790be755ef82da58031b1a323f47c0d6fc4ce1bbb1bb686a
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:0eefff0d1a6d9ddefe4e63758d41436be6c4617a@sha256:9405ea361e7854dba5502ba6b20fa75d6e4659eb0a869e7d06ae81804cffdb11
 
 # Every target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
