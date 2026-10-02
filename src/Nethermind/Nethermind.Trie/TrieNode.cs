@@ -341,23 +341,6 @@ namespace Nethermind.Trie
             ResolveUnknownNodeWithContext(tree, path, readFlags, bufferPool);
         }
 
-        private void ResolveUnknownNodeWithContext(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
-            ICappedArrayPool? bufferPool)
-        {
-            try
-            {
-                ResolveUnknownNode(tree, path, readFlags, bufferPool);
-            }
-            catch (RlpException rlpException)
-            {
-                ThrowDecodingError(rlpException, path);
-            }
-
-            [DoesNotReturn, StackTraceHidden]
-            void ThrowDecodingError(RlpException rlpException, in TreePath path) => throw new TrieNodeException($"Error when decoding node {Keccak}", path,
-                    Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
-        }
-
         /// <summary>
         /// Highly optimized
         /// </summary>
@@ -832,6 +815,7 @@ namespace Nethermind.Trie
             return childNode;
         }
 
+        [MethodImpl(GetChildWithChildPathInlining)]
         public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex, bool keepChildRef = false)
         {
             // No index shift for an extension: both ExtensionData slots hold the child, and SeekChildPosition skips the key.
