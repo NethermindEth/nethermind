@@ -178,8 +178,7 @@ public sealed unsafe class BloomFilter : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void AddUnsynchronized(ulong key)
     {
-        if (_disposed != 0)
-            throw new ObjectDisposedException(nameof(BloomFilter));
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
 
         GetLineAndHashState(key, NumBlocks, out long lineIndex, out uint h);
 

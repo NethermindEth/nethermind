@@ -117,8 +117,8 @@ public class Snapshot : RefCountingDisposable
 
     /// <summary>Adds every storage key of this snapshot to <paramref name="filter"/> under <see cref="StorageFilterKey"/>.</summary>
     /// <remarks>
-    /// Such a filter has no false negatives only because no storage key is added to a snapshot after it is
-    /// created (see <see cref="SnapshotContent.Storages"/>).
+    /// Requires storage keys to be fully populated before the snapshot is published to readers and unchanged
+    /// afterwards (see <see cref="SnapshotContent.Storages"/>), so a built filter cannot miss a later key.
     /// </remarks>
     internal void AddStorageKeysTo(BloomFilter filter)
     {
@@ -161,9 +161,10 @@ public sealed class SnapshotContent : IDisposable, IResettable
 
     /// <summary>Slot writes; <c>null</c> is a zero write (a deletion).</summary>
     /// <remarks>
-    /// Sealed once a <see cref="Snapshot"/> wraps the content: only commit write batches add slots, and they finish
-    /// before the snapshot is created. The negative slot filter of <see cref="ReadOnlySnapshotBundle"/> relies on it -
-    /// a key added afterwards would be missing from a filter already built and a filtered read would skip it.
+    /// Slot writes must finish before the snapshot is published to readers, including when content is populated
+    /// after construction through <see cref="ResourcePool.CreateSnapshot"/>. The negative slot filter of
+    /// <see cref="ReadOnlySnapshotBundle"/> relies on this: a key added afterwards would be missing from a filter
+    /// already built and a filtered read would skip it.
     /// </remarks>
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();

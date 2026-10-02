@@ -200,6 +200,7 @@ public static class Metrics
 
     private static long _inMemorySlotFilterMemory;
 
+    /// <summary>Gets or sets the bytes held by in-memory slot filters across live read-only bundles.</summary>
     [GaugeMetric]
     [Description("Memory held by the negative filters over the in-memory snapshots' slots in bytes; one filter per read-only snapshot bundle that served a read-only execution slot read")]
     public static long InMemorySlotFilterMemory
@@ -210,6 +211,7 @@ public static class Metrics
 
     private static long _inMemorySlotFilterBuilds;
 
+    /// <summary>Gets or sets the number of successfully built in-memory slot filters.</summary>
     [CounterMetric]
     [Description("Negative filters built over the in-memory snapshots' slots")]
     public static long InMemorySlotFilterBuilds
@@ -220,6 +222,7 @@ public static class Metrics
 
     private static long _inMemorySlotFilterBuildFailures;
 
+    /// <summary>Gets or sets the number of failed builds that left a bundle using unfiltered slot reads.</summary>
     [CounterMetric]
     [Description("Negative filters over the in-memory snapshots' slots that failed to build; their bundles read slots without a filter")]
     public static long InMemorySlotFilterBuildFailures
@@ -228,6 +231,7 @@ public static class Metrics
         set => Volatile.Write(ref _inMemorySlotFilterBuildFailures, value);
     }
 
+    /// <summary>Gets or sets the observer for successful in-memory slot filter build durations in Stopwatch ticks.</summary>
     [DetailedMetric]
     [Description("Time to build the negative filter over the in-memory snapshots' slots (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]

@@ -1,18 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
+using System;
+using Autofac;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core;
+using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.State.Flat;
-using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
@@ -48,6 +52,8 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
     public bool Filtered;
 
     private readonly List<FlatSnapshot> _layers = [];
+    private IContainer _container = null!;
+    private TempPath _dbPath = null!;
     private ReadOnlySnapshotBundle _bundle = null!;
     private SnapshotBundle _snapshotBundle = null!;
     private NoopPersistenceReader _persistence = null!;
@@ -62,13 +68,13 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        FlatDbConfig config = new() { CompactionOffset = 0 };
-        ResourcePool resourcePool = new(config);
-        // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it.
-        SnapshotCompactor compactor = new(
-            config, new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
-            resourcePool, new SnapshotRepository(null!, null!, NullSnapshotCatalog.Instance, config, null!, NullLogManager.Instance),
-            NullLogManager.Instance);
+        _dbPath = TempPath.GetTempDirectory();
+        FlatDbConfig config = new() { Enabled = true, CompactionOffset = 0, EnableLongFinality = false };
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config, new InitConfig { BaseDbPath = _dbPath.Path }))
+            .Build();
+        IResourcePool resourcePool = _container.Resolve<IResourcePool>();
+        ISnapshotCompactor compactor = _container.Resolve<ISnapshotCompactor>();
 
         Address[] contracts = new Address[ContractCount];
         for (int i = 0; i < contracts.Length; i++) contracts[i] = DeriveAddress(i + 1);
@@ -137,6 +143,8 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
         _snapshotBundle.Dispose();
         _bundle.Dispose();
         foreach (FlatSnapshot layer in _layers) layer.Dispose();
+        _container.Dispose();
+        _dbPath.Dispose();
     }
 
     private ReadOnlySnapshotBundle CreateBundle()
