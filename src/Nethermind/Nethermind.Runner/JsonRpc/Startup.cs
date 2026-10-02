@@ -457,9 +457,24 @@ public class Startup : IStartup
         await ctx.Response.CompleteAsync();
     }
 
+    // Wakes idle cores at the start of an engine request, before the payload's parallel work fans out to them.
+    private static void PreWakeWorkers()
+    {
+        long spinTicks = ExperimentKnobs.PreWakeMicroseconds * System.Diagnostics.Stopwatch.Frequency / 1_000_000;
+        for (int i = 0; i < ExperimentKnobs.PreWakeWorkers; i++)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(static ticks =>
+            {
+                long end = System.Diagnostics.Stopwatch.GetTimestamp() + ticks;
+                while (System.Diagnostics.Stopwatch.GetTimestamp() < end) Thread.SpinWait(20);
+            }, spinTicks, preferLocal: false);
+        }
+    }
+
     internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
         NewPayloadTrace.BeginRequest();
+        if (jsonRpcUrl.IsAuthenticated && ExperimentKnobs.PreWakeWorkers > 0) PreWakeWorkers();
         long startTime = _jsonRpcLocalStats.IsEnabled ? Stopwatch.GetTimestamp() : 0;
 
         if (_jsonRpcProcessor.ProcessExit.IsCancellationRequested)
