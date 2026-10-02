@@ -331,7 +331,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             if (trace.TryGetValue(cell, out StorageChangeTrace changeTrace))
             {
-                trace[cell] = new StorageChangeTrace(in originalValue, in changeTrace.After);
+                trace[cell] = new StorageChangeTrace(in originalValue, changeTrace.After);
             }
             else
             {
@@ -1000,6 +1000,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public Dictionary<UInt256, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
+        public Dictionary<UInt256, StorageChangeTrace>.KeyCollection Keys => _dictionary.Keys;
+
         public void UnmarkClear()
         {
             _missingAreDefault = false;
@@ -1272,15 +1274,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ForgetLastRead();
             _wasWritten = true;
             ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
-            if (!exists)
+            if (!exists || valueChanges.IsInitialValue)
             {
-                valueChanges = new StorageChangeTrace(value);
+                valueChanges.Set(UInt256.Zero, value, isInitialValue: true);
             }
             else
             {
-                valueChanges = valueChanges.IsInitialValue
-                    ? new StorageChangeTrace(value)
-                    : new StorageChangeTrace(valueChanges.Before, value);
+                valueChanges.Set(valueChanges.Before, value, isInitialValue: false);
             }
 
             EnsureStorageTree();
@@ -1310,7 +1310,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 LoadFromTreeStorage(in storageCell, out value);
 
-                valueChange = new(value, value);
+                valueChange.Set(value, value, isInitialValue: false);
             }
             else
             {
@@ -1368,6 +1368,35 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
 
+#if ZK_EVM
+            // ILC block-copies each 104-byte pair through corelib's out-of-line Memmove several times per entry, so
+            // the guest walks keys and reaches each entry by ref. The host keeps the pair walk: for the unchanged
+            // reads that make up most entries, the extra lookup costs it more than the copies save.
+            foreach (UInt256 key in BlockChange.Keys)
+            {
+                ref StorageChangeTrace change = ref BlockChange.GetValueRefOrNullRef(key);
+                UInt256 after = change.After;
+                if (change.Before != after || change.IsInitialValue)
+                {
+                    if (after.IsZero)
+                    {
+                        deferredDeletes.Add(key);
+                    }
+                    else
+                    {
+                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
+                        change.Set(after, after, isInitialValue: false);
+                        storageWriteBatch.Set(key, in after);
+
+                        writes++;
+                    }
+                }
+                else
+                {
+                    skipped++;
+                }
+            }
+#else
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
                 UInt256 after = kvp.Value.After;
@@ -1391,6 +1420,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     skipped++;
                 }
             }
+#endif
 
             foreach (ref readonly UInt256 key in deferredDeletes.AsSpan())
             {
@@ -1486,8 +1516,20 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void SetCapturedRound(ulong round) => _metadata = round | (_metadata & 1);
 
-        public readonly UInt256 Before;
-        public readonly UInt256 After;
+        /// <summary>Overwrites the trace in place, clearing its captured round.</summary>
+        /// <remarks>
+        /// Assigning a new trace through a ref builds it in a zeroed temporary and block-copies it, and the
+        /// guest makes that copy through corelib's out-of-line <c>Memmove</c>; field stores move the words directly.
+        /// </remarks>
+        public void Set(in UInt256 before, in UInt256 after, bool isInitialValue)
+        {
+            Before = before;
+            After = after;
+            _metadata = isInitialValue ? 1UL : 0UL;
+        }
+
+        public UInt256 Before { readonly get; private set; }
+        public UInt256 After { readonly get; private set; }
         private ulong _metadata;
         public readonly bool IsInitialValue => (_metadata & 1) != 0;
         public readonly ulong CapturedRound => _metadata & ~1UL;
