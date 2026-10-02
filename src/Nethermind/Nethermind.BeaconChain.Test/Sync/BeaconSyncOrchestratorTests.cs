@@ -1711,6 +1711,12 @@ public partial class BeaconSyncOrchestratorTests
         private BlockImportResult Defer(Hash256 blockRoot)
         {
             if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;
+            if (AdmissionRefused.Contains(blockRoot))
+            {
+                LastRefusal = ImportRefusal.LocalAdmission;
+                return BlockImportResult.Invalid;
+            }
+
             _deferred.Add(blockRoot);
             return BlockImportResult.ParentPayloadUnverified;
         }
