@@ -36,4 +36,40 @@ public class ColumnStoreWriterTests
 
         Assert.That(ran, Is.EqualTo(new[] { 0, 1, 2 }));
     }
+
+    /// <summary>A barrier asked for while disposal drains the queue must wait for the writes still running, not report them done.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_barrier_requested_while_disposal_drains_completes_only_after_the_running_write(CancellationToken token)
+    {
+        using ManualResetEventSlim running = new();
+        using ManualResetEventSlim release = new();
+        bool writeFinished = false;
+        ColumnStoreWriter writer = new(LimboLogs.Instance);
+        writer.Post(() =>
+        {
+            running.Set();
+            release.Wait(token);
+            Volatile.Write(ref writeFinished, true);
+        });
+        Assert.That(running.Wait(TimeSpan.FromSeconds(30), token), Is.True, "fixture");
+
+        Task disposed = Task.Run(writer.Dispose, token);
+        // Each barrier taken while the queue is open is a new task; once disposal has closed it, every call returns the same one.
+        Task previous = writer.WhenWritten();
+        Task barrier;
+        while (!ReferenceEquals(barrier = writer.WhenWritten(), previous))
+        {
+            token.ThrowIfCancellationRequested();
+            previous = barrier;
+        }
+
+        bool completedEarly = barrier.IsCompleted;
+        release.Set();
+        await barrier.WaitAsync(token);
+        await disposed.WaitAsync(token);
+
+        Assert.That(completedEarly, Is.False, "the barrier completed while a write was still running");
+        Assert.That(Volatile.Read(ref writeFinished), Is.True);
+    }
 }
