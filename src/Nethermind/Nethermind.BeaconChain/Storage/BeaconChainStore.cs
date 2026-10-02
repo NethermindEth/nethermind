@@ -949,6 +949,22 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             ? payload.SlotNumber
             : throw new ArgumentException($"The envelope for {blockRoot} has no payload or names beacon block {envelope.Message?.BeaconBlockRoot?.ToString() ?? "none"}", nameof(envelope));
 
+    /// <summary>Records an EL VALID verdict for a retained envelope.</summary>
+    internal void SetExecutionPayloadValid(Hash256 blockRoot)
+    {
+        lock (_envelopeIndexLock)
+        {
+            if (_envelopes.KeyExists(blockRoot.Bytes))
+                _envelopes.Set(ExecutionPayloadVerdictKey(blockRoot.Bytes), [1]);
+        }
+    }
+
+    /// <summary>Whether the retained envelope has its own persisted EL VALID verdict.</summary>
+    internal bool IsExecutionPayloadValid(Hash256 blockRoot) =>
+        _envelopes.Get(ExecutionPayloadVerdictKey(blockRoot.Bytes)) is [1];
+
+    private static byte[] ExecutionPayloadVerdictKey(ReadOnlySpan<byte> root) => [1, .. root];
+
     /// <summary>Reads the execution payload envelope stored under <paramref name="blockRoot"/>.</summary>
     /// <exception cref="InvalidDataException">The stored record is not snappy-compressed SSZ of an envelope with a payload that names <paramref name="blockRoot"/>.</exception>
     public bool TryGetExecutionPayloadEnvelope(Hash256 blockRoot, [NotNullWhen(true)] out SignedExecutionPayloadEnvelope? envelope)
@@ -1039,6 +1055,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
                     for (int offset = 0; offset + Hash256.Size <= roots.Length; offset += Hash256.Size)
                     {
                         envelopes.Remove(roots.AsSpan(offset, Hash256.Size));
+                        envelopes.Remove(ExecutionPayloadVerdictKey(roots.AsSpan(offset, Hash256.Size)));
                     }
 
                     envelopes.Remove(slotKey);
