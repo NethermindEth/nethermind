@@ -15,11 +15,17 @@ for patch in executor-integration.patch runtime-trace.patch request-output.patch
   git -c core.autocrlf=false -c core.eol=lf -C "${source_dir}" apply --check "${bundle}/${patch}"
   git -c core.autocrlf=false -c core.eol=lf -C "${source_dir}" apply "${bundle}/${patch}"
 done
-for module in scheduler_collector.py limited_exec.py; do
+for module in scheduler_collector.py limited_exec.py pidfd_compat.py; do
   cp -- "${bundle}/${module}" "${source_dir}/src/expb/payloads/executor/${module}"
 done
 python3 -m compileall -q "${source_dir}/src/expb"
 uv tool install --force --from "${source_dir}" expb
+expb_bin="$(uv tool dir --bin)/expb"
+expb_python="$(head -n1 "${expb_bin}")"
+[[ "${expb_python}" == '#!'/* && "${expb_python}" != *' '* ]] || { echo 'Unexpected EXPB interpreter shebang'; exit 1; }
+expb_python="${expb_python#'#!'}"
+[[ -x "${expb_python}" ]] || { echo 'EXPB interpreter unavailable'; exit 1; }
+"${expb_python}" -I "${bundle}/pidfd_compat.py" --self-check > "${RUNNER_TEMP}/spin-pidfd-capability-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
 echo "EXPB_SOURCE=git+https://github.com/${EXPB_REPO}@${expected}+spin-diagnostic-${GITHUB_SHA}" >> "${GITHUB_ENV}"
 echo "EXPB_DIAGNOSTIC_SOURCE=${source_dir}" >> "${GITHUB_ENV}"
 git -C "${source_dir}" diff --check

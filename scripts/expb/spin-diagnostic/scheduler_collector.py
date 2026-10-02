@@ -16,6 +16,11 @@ import sys
 import threading
 import time
 
+if __package__:
+    from . import pidfd_compat
+else:
+    import pidfd_compat
+
 MIB = 1024 * 1024
 EVENTS = ("sched_switch", "sched_wakeup", "sched_wakeup_new")
 LINE = re.compile(
@@ -172,7 +177,7 @@ class OwnedProcess:
             [sys.executable, "-I", launcher, str(os.getpid()), str(file_limit), *argv],
             stdout=stdout, stderr=stderr, pass_fds=pass_fds, start_new_session=True,
         )
-        self.pidfd = os.pidfd_open(self.process.pid)
+        self.pidfd = pidfd_compat.pidfd_open(self.process.pid)
         self.identity = proc_identity(Path("/proc") / str(self.process.pid))
         if self.identity["ppid"] != os.getpid() or self.identity["pgid"] != self.process.pid:
             raise CaptureError("UNKNOWN collector ownership; no signal sent")
@@ -189,7 +194,7 @@ class OwnedProcess:
             current = proc_identity(Path("/proc") / str(self.process.pid))
             if current != self.identity:
                 raise CaptureError("UNKNOWN collector ownership; no signal sent")
-            signal.pidfd_send_signal(self.pidfd, signal.SIGINT)
+            pidfd_compat.pidfd_send_signal(self.pidfd, signal.SIGINT)
             self.stop_evidence["sigint_sent"] = True
             self.stop_evidence["signal_sent"] = clock_origin()
         try:
@@ -237,10 +242,10 @@ class SchedulerCollector:
         return snapshot
 
     def __enter__(self):
-        if sys.platform != "linux" or not hasattr(signal, "pidfd_send_signal"):
-            raise CaptureError("Linux pidfd support required")
-        probe = os.pidfd_open(os.getpid())
-        os.close(probe)
+        try:
+            pidfd_compat.preflight()
+        except OSError as error:
+            raise CaptureError("Linux pidfd capability failed: " + str(error)) from error
         self.perf = self.perf.resolve(strict=True)
         if not self.perf.is_file() or self.perf.stat().st_mode & 0o022:
             raise CaptureError("perf executable is missing or broadly writable")

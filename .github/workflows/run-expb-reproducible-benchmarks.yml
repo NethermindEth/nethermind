@@ -2985,6 +2985,14 @@ jobs:
           path: ${{ runner.temp }}/spin-public-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 30
           if-no-files-found: error
+      - name: Upload pidfd capability evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: spin-pidfd-capability-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/spin-pidfd-capability-${{ github.run_id }}-${{ github.run_attempt }}.json
+          retention-days: 30
+          if-no-files-found: warn
       - name: Upload campaign artifact
         id: upload-campaign
         if: always()
