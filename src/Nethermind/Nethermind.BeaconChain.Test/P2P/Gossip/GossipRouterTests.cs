@@ -51,7 +51,7 @@ public partial class GossipRouterTests
             GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data.Span)),
         });
         int verified = 0;
-        GossipTopicSubscriptions subscriptions = new(pubsub, _ => { verified++; return MessageValidity.Ignored; });
+        GossipTopicSubscriptions subscriptions = new(pubsub, (_, _) => { verified++; return MessageValidity.Ignored; });
         pubsub.VerifyMessage = subscriptions.Verify;
         byte[] digest = ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot));
         GossipRouter gossip = CreateRouter();
@@ -203,7 +203,7 @@ public partial class GossipRouterTests
     public void Retiring_a_topic_waits_for_the_router_monitor()
     {
         using PubsubRouter pubsub = new(new PeerStore(), new PubsubSettings());
-        GossipTopicSubscriptions subscriptions = new(pubsub, static _ => MessageValidity.Ignored);
+        GossipTopicSubscriptions subscriptions = new(pubsub, static (_, _) => MessageValidity.Ignored);
         ITopic topic = subscriptions.GetTopic(GossipTopics.Topic(ForkDigest.Compute(Spec, 0), GossipTopics.BeaconBlock));
         TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task retire;
@@ -235,9 +235,9 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateRouter();
         List<byte[]> received = [];
-        router.BeaconBlockReceived += b => received.Add(SignedBeaconBlockCodec.Encode(b, Spec));
-        router.AggregateAndProofReceived += a => received.Add(SignedAggregateAndProof.Encode(a));
-        router.AttesterSlashingReceived += s => received.Add(AttesterSlashing.Encode(s));
+        router.BeaconBlockReceived += (b, _) => received.Add(SignedBeaconBlockCodec.Encode(b, Spec));
+        router.AggregateAndProofReceived += (a, _) => received.Add(SignedAggregateAndProof.Encode(a));
+        router.AttesterSlashingReceived += (s, _) => received.Add(AttesterSlashing.Encode(s));
 
         byte[][] payloads =
         [
@@ -272,7 +272,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateRouter();
         int received = 0;
-        router.BeaconBlockReceived += _ => received++;
+        router.BeaconBlockReceived += (_, _) => received++;
 
         router.HandleBeaconBlock(message);
 
@@ -293,7 +293,7 @@ public partial class GossipRouterTests
         };
         GossipRouter router = new(Spec, new SlotClock(Spec, time), LimboLogs.Instance, status: status);
         int received = 0;
-        router.BeaconBlockReceived += _ => received++;
+        router.BeaconBlockReceived += (_, _) => received++;
 
         router.HandleBeaconBlock(BlockMessage(CurrentSlot - Spec.SlotsPerEpoch - 1));
 
@@ -306,7 +306,7 @@ public partial class GossipRouterTests
         // 11.7 s into the slot leaves 300 ms to the next slot, within MAXIMUM_GOSSIP_CLOCK_DISPARITY.
         GossipRouter router = CreateRouter(secondsIntoSlot: 11.7);
         int received = 0;
-        router.BeaconBlockReceived += _ => received++;
+        router.BeaconBlockReceived += (_, _) => received++;
 
         router.HandleBeaconBlock(BlockMessage(CurrentSlot + 1));
         router.HandleBeaconBlock(BlockMessage(CurrentSlot - Spec.SlotsPerEpoch));
@@ -319,7 +319,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateRouter();
         int received = 0;
-        router.BeaconBlockReceived += _ => received++;
+        router.BeaconBlockReceived += (_, _) => received++;
         byte[] message = BlockMessage(CurrentSlot);
 
         router.HandleBeaconBlock(message);
@@ -340,7 +340,7 @@ public partial class GossipRouterTests
         Dictionary<string, FakeTopic> topics = [];
         GossipRouter router = CreateRouter();
         int blocks = 0;
-        router.BeaconBlockReceived += _ => blocks++;
+        router.BeaconBlockReceived += (_, _) => blocks++;
 
         Assert.That(() => router.SubscribeDigest(bpo2Digest), Throws.InvalidOperationException, "rotation requires Start");
 
@@ -355,21 +355,18 @@ public partial class GossipRouterTests
         Assert.That(topics.Keys, Is.EquivalentTo(expectedTopics), "all gossip topics subscribed for the starting digest");
 
         FakeTopic blockTopicBpo1 = topics[GossipTopics.Topic(bpo1Digest, GossipTopics.BeaconBlock)];
-        blockTopicBpo1.Deliver(BlockMessage(CurrentSlot));
-        Assert.That(blocks, Is.EqualTo(1), "messages on a subscribed topic reach the event");
-
         router.SubscribeDigest(bpo2Digest);
         router.UnsubscribeDigest(bpo1Digest);
         FakeTopic blockTopicBpo2 = topics[GossipTopics.Topic(bpo2Digest, GossipTopics.BeaconBlock)];
-        blockTopicBpo1.Deliver(BlockMessage(CurrentSlot - 1));
-        blockTopicBpo2.Deliver(BlockMessage(CurrentSlot - 2));
+        blockTopicBpo2.Deliver(BlockMessage(CurrentSlot));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(blockTopicBpo1.IsSubscribed, Is.False, "old topics are unsubscribed on rotation");
-            Assert.That(blockTopicBpo1.HasHandlers, Is.False, "old handlers are detached on rotation");
             Assert.That(blockTopicBpo2.IsSubscribed, "new topics are subscribed on rotation");
-            Assert.That(blocks, Is.EqualTo(2), "only the new digest topic delivers after rotation");
+            // The pubsub validator consumes every message, and the router raises topic events for each one it forwards.
+            Assert.That(topics.Values.Select(static t => t.HasHandlers), Is.All.False, "no topic handler would process a forwarded message again");
+            Assert.That(blocks, Is.Zero);
         }
     }
 
@@ -383,7 +380,7 @@ public partial class GossipRouterTests
         Dictionary<string, FakeTopic> topics = [];
         GossipRouter router = new(spec, new SlotClock(spec, new ManualTimestamper(SepoliaSlotStart(FirstGloasSlot + 1).AddSeconds(6))), LimboLogs.Instance);
         int envelopes = 0;
-        router.ExecutionPayloadEnvelopeReceived += _ => envelopes++;
+        router.ExecutionPayloadEnvelopeReceived += (_, _) => envelopes++;
 
         router.Start(id => topics[id] = new FakeTopic(), fuluDigest);
         using (Assert.EnterMultipleScope())
@@ -400,10 +397,6 @@ public partial class GossipRouterTests
             Assert.That(topics.Keys, Does.Contain(GossipTopics.Topic(bpo1Digest, GossipTopics.PayloadAttestationMessage)), "fork choice consumes PTC votes from gossip");
         }
 
-        // A pre-Gloas slot, so the envelope handler drops each delivery as one.
-        topics[envelopeTopicBpo1].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(PreGloasEnvelope())));
-        Assert.That(router.GetDropCount(GossipDropReason.InvalidField), Is.EqualTo(1), "Gloas topics deliver to their handlers");
-
         // A second subscription must not double-subscribe.
         router.SubscribeDigest(bpo1Digest);
         Assert.That(topics.Keys.Count(k => k == envelopeTopicBpo1), Is.EqualTo(1));
@@ -415,12 +408,9 @@ public partial class GossipRouterTests
         {
             Assert.That(topics[envelopeTopicBpo1].IsSubscribed, Is.False, "old Gloas topics are unsubscribed on rotation");
             Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo2), "Gloas topics rotate to the new digest automatically");
+            Assert.That(topics[envelopeTopicBpo2].IsSubscribed, Is.True);
+            Assert.That(envelopes, Is.Zero);
         }
-
-        // A distinct builder index, so the message differs from the BPO1 delivery and is not
-        // suppressed as a duplicate of it (dedup keys on topic name + payload, not the digest).
-        topics[envelopeTopicBpo2].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(PreGloasEnvelope(builderIndex: 4))));
-        Assert.That((router.GetDropCount(GossipDropReason.InvalidField), envelopes), Is.EqualTo((2L, 0)), "the rotated Gloas topic still delivers");
     }
 
     public enum EnvelopeCase
@@ -656,7 +646,7 @@ public partial class GossipRouterTests
             FuluRoot = SszRoots.HashTreeRoot(fulu.Message!);
             Store.PutBlock(FuluRoot, fulu);
             Router = new GossipRouter(Sepolia, new SlotClock(Sepolia, Timestamper), LimboLogs.Instance, withStore ? Store : null, status, FailedBlocks);
-            Router.ExecutionPayloadEnvelopeReceived += _ => Raised++;
+            Router.ExecutionPayloadEnvelopeReceived += (_, _) => Raised++;
         }
 
         public GossipRouter Router { get; }

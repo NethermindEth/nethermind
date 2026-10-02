@@ -34,6 +34,12 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "The target number of beacon chain peers.", DefaultValue = "50")]
     int TargetPeerCount { get; set; }
 
+    [ConfigItem(Description = "The most gossip messages that may await a validation verdict at once. A message received past it is not validated, forwarded or charged to its sender, so a later copy can still be. Must be at least 1.", DefaultValue = "128")]
+    int GossipMaxPendingValidations { get; set; }
+
+    [ConfigItem(Description = "The most bytes of gossip messages that may await a validation verdict at once, the messages of one received RPC aside. A message received past it is not validated, forwarded or charged to its sender. Must be at least 1.", DefaultValue = "16777216")]
+    int GossipMaxPendingValidationBytes { get; set; }
+
     [ConfigItem(Description = "The low watermark: below this many connected peers the node is under-peered, and the peer manager runs its maintenance round (static-peer reconnect, health checks) on a shorter cadence. Candidate discovery pacing is still BeaconDiscovery's own concern, not this config's.", DefaultValue = "20")]
     int MinPeerCount { get; set; }
 

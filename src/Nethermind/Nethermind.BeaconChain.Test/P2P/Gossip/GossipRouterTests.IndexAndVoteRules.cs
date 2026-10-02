@@ -33,7 +33,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateRouter();
         int received = 0;
-        router.AttesterSlashingReceived += _ => received++;
+        router.AttesterSlashingReceived += (_, _) => received++;
         IndexedAttestation first = CreateIndexedAttestation(1, 4);
         IndexedAttestation second = CreateIndexedAttestation(2, 3);
         first.AttestingIndices = indices1;
@@ -51,7 +51,7 @@ public partial class GossipRouterTests
     {
         GossipRouter router = CreateRouter();
         int received = 0;
-        router.GloasAttesterSlashingReceived += _ => received++;
+        router.GloasAttesterSlashingReceived += (_, _) => received++;
         ulong[] indices = [.. Enumerable.Range(0, Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot + overBound).Select(static i => (ulong)i)];
         AttesterSlashingGloas slashing = GossipMessageValidatorTests.GloasSlashing(indices, [0], secondSource: 2, secondTarget: 3);
 
@@ -70,7 +70,7 @@ public partial class GossipRouterTests
     {
         (GossipRouter router, BeaconChainStore store) = CreateSepoliaRouterWithStore();
         int received = 0;
-        router.GloasAggregateAndProofReceived += _ => received++;
+        router.GloasAggregateAndProofReceived += (_, _) => received++;
         ulong voteSlot = earlyNextSlot ? VoteSlot + 1 : VoteSlot;
         Hash256 blockRoot = Keccak.Compute("voted block");
         if (held) store.PutForkedBlock(blockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock((ulong)((long)voteSlot - slotsAfterBlock))));
@@ -86,7 +86,7 @@ public partial class GossipRouterTests
     {
         (GossipRouter router, BeaconChainStore store) = CreateSepoliaRouterWithStore();
         int received = 0;
-        router.GloasAggregateAndProofReceived += _ => received++;
+        router.GloasAggregateAndProofReceived += (_, _) => received++;
         Hash256[] roots = [.. Enumerable.Range(0, GossipRouter.VotedBlockSlotReadsPerSlot + 1).Select(static i => Keccak.Compute($"voted block {i}"))];
         foreach (Hash256 root in roots)
         {
@@ -129,7 +129,7 @@ public partial class GossipRouterTests
     {
         (GossipRouter router, BeaconChainStore store) = CreateSepoliaRouterWithStore();
         int received = 0;
-        router.GloasAggregateAndProofReceived += _ => received++;
+        router.GloasAggregateAndProofReceived += (_, _) => received++;
         Hash256 heldRoot = Keccak.Compute("held voted block");
         store.PutForkedBlock(heldRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(VoteSlot)));
 

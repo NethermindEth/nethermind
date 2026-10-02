@@ -12,21 +12,21 @@ using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 
 namespace Nethermind.BeaconChain.P2P.Gossip;
 
-/// <summary>The pubsub router's synchronous validator for eth2 gossip messages (see <see cref="PubsubRouter.VerifyMessage"/>).</summary>
+/// <summary>The validator of eth2 gossip messages, run by <see cref="DeferredGossipValidation"/> for the pubsub router.</summary>
 /// <remarks>
 /// <para>
-/// The pubsub library calls the validator once per new message id, after its own <c>StrictNoSign</c> check (which drops a
-/// message carrying any of from, seqno, signature or key without caching its id) and before its message cache and forwarding. It raises topic events only for <see cref="MessageValidity.Accepted"/>, and keeps a
-/// rejected or ignored id for the whole seen TTL without redelivering it. A message that passes every check this node
-/// can run without beacon state is therefore consumed here, by <see cref="GossipRouter"/> raising its typed event, and
-/// returned as <see cref="MessageValidity.Ignored"/>: its signature and state checks run later, so it must not be
-/// forwarded. A synchronous <see cref="MessageValidity.Rejected"/> is returned only when every check the spec orders
-/// before it has passed.
+/// The pubsub library validates a message once per new message id, after its own <c>StrictNoSign</c> check (which drops a
+/// message carrying any of from, seqno, signature or key without caching its id) and before its message cache and forwarding.
+/// It keeps a rejected or ignored id for the whole seen TTL without redelivering it. A message on a topic this node handles is
+/// routed to <see cref="GossipRouter"/> or <see cref="ColumnGossipRouter"/>, which run every check they can without beacon state
+/// and hand the message's <see cref="GossipVerdict"/> to the import pipeline when its signature and state checks run there; the
+/// router forwards it only once that verdict is <see cref="MessageValidity.Accepted"/>. A <see cref="MessageValidity.Rejected"/>
+/// is returned only when every check the spec orders before it has passed.
 /// </para>
 /// <para>
-/// Data column sidecars go to <see cref="ColumnGossipRouter"/>. They are the only messages that can be
-/// <see cref="MessageValidity.Accepted"/>: a Gloas sidecar, whose every check runs here without beacon state, and a
-/// Fulu sidecar whose header is an imported block's or is signed by the proposer the head state's lookahead expects.
+/// A data column sidecar that passes every check is <see cref="MessageValidity.Accepted"/> here: a Gloas sidecar, whose every check
+/// runs without beacon state, and a Fulu sidecar whose header is an imported block's or is signed by the proposer the head state's
+/// lookahead expects.
 /// </para>
 /// </remarks>
 public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRouter columns, BeaconChainSpec spec, SlotClock slotClock)
@@ -38,14 +38,20 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
 
     private volatile DigestWindow? _window;
 
+    /// <summary>Whether a message on <paramref name="topic"/> is validated off the router's monitor: one on a topic this node handles under a digest in effect.</summary>
+    /// <remarks>A message on any other topic is dropped by <see cref="Validate"/> without decoding, which may run under the monitor.</remarks>
+    internal bool IsDeferred(string topic) => Route(topic, out _, out _, out _, out _) is null;
+
     /// <summary>Validates <paramref name="message"/> and consumes it when it passes.</summary>
+    /// <param name="verdict">The message's pending verdict, which a consumer takes over when the checks continue in the import pipeline.</param>
     /// <returns>
+    /// The verdict of the checks that ran, which the caller gives unless <paramref name="verdict"/> was handed off:
     /// <see cref="MessageValidity.Accepted"/> only for a data column sidecar that passed every check; otherwise
     /// <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>, including for a consumed message.
     /// </returns>
-    public MessageValidity Verify(Message message)
+    internal MessageValidity Validate(Message message, GossipVerdict verdict)
     {
-        bool parsed = GossipTopics.TryParse(message.Topic, out byte[]? digest, out string? name);
+        bool parsed = GossipTopics.TryParse(message.Topic, out _, out string? name);
         string label = parsed && IsHandledName(name!) ? name! : UnhandledTopicLabel;
         StringLabel? columnLabel = null;
         if (parsed && GossipTopics.TryParseDataColumnSidecarTopicName(name!, out ulong labelSubnet)
@@ -56,29 +62,37 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
         }
         Metrics.BeaconChainGossipReceivedByTopic.Increment(columnLabel ?? new StringLabel(label));
 
-        // phase0 p2p: MUST reject messages with an unknown topic.
-        if (!parsed || !GossipTopics.IsEth2TopicName(name!))
+        if (Route(message.Topic, out string? topicName, out bool gloas, out bool column, out ulong subnetId) is { } drop)
         {
-            return Drop(label, GossipDropReason.UnknownTopic, MessageValidity.Rejected);
+            return Drop(label, GossipDropReason.UnknownTopic, drop);
         }
 
-        bool column = GossipTopics.TryParseDataColumnSidecarTopicName(name!, out ulong subnetId);
+        return column
+            ? columns.Handle(subnetId, gloas, message.Data.ToByteArray(), verdict)
+            : gossip.Handle(topicName!, gloas, message.Data.ToByteArray(), verdict);
+    }
+
+    /// <summary>Finds the router and fork of a message on <paramref name="topic"/>.</summary>
+    /// <returns><c>null</c> when this node handles the topic; otherwise the verdict for a message on it.</returns>
+    private MessageValidity? Route(string topic, out string? name, out bool gloas, out bool column, out ulong subnetId)
+    {
+        gloas = false;
+        column = false;
+        subnetId = 0;
+
+        // phase0 p2p: MUST reject messages with an unknown topic.
+        if (!GossipTopics.TryParse(topic, out byte[]? digest, out name) || !GossipTopics.IsEth2TopicName(name!))
+        {
+            return MessageValidity.Rejected;
+        }
+
+        column = GossipTopics.TryParseDataColumnSidecarTopicName(name!, out subnetId);
         if (column && subnetId >= Eip7594DasConstants.DataColumnSidecarSubnetCount)
         {
-            return Drop(label, GossipDropReason.UnknownTopic, MessageValidity.Rejected);
+            return MessageValidity.Rejected;
         }
 
-        if (!TryGetFork(digest!, out bool gloas) || (!column && !IsHandled(name!, gloas)))
-        {
-            return Drop(label, GossipDropReason.UnknownTopic, MessageValidity.Ignored);
-        }
-
-        if (column)
-        {
-            return columns.Handle(subnetId, gloas, message.Data.ToByteArray());
-        }
-
-        return gossip.Handle(name!, gloas, message.Data.ToByteArray());
+        return TryGetFork(digest!, out gloas) && (column || IsHandled(name!, gloas)) ? null : MessageValidity.Ignored;
     }
 
     private static string[] CreateColumnTopicNames()
