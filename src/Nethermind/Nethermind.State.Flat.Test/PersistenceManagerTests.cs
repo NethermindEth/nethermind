@@ -644,27 +644,19 @@ public class PersistenceManagerTests
 
     private PersistenceManager CreateByteBudgetManager(ulong byteBudget, bool enableLongFinality, int maxInMemoryBaseSnapshotCount = 160)
     {
-        FlatDbConfig config = new()
-        {
-            CompactSize = 16,
-            MinReorgDepth = ByteBudgetMinReorgDepth,
-            MaxReorgDepth = 256,
-            LongFinalityMaxReorgDepth = 90000,
-            EnableLongFinality = enableLongFinality,
-            MaxInMemoryBaseSnapshotCount = maxInMemoryBaseSnapshotCount,
-            MaxInMemorySnapshotBytes = byteBudget,
-        };
-        return new PersistenceManager(
-            config,
-            ScheduleHelper.CreateWithOffset(config, 0),
-            _finalizedStateProvider,
-            _persistence,
-            _snapshotRepository,
-            NullStatePersistenceBarrier.Instance,
-            LimboLogs.Instance,
-            _persistedSnapshotCompactor,
-            _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+        _config.MinReorgDepth = ByteBudgetMinReorgDepth;
+        _config.EnableLongFinality = enableLongFinality;
+        _config.MaxInMemoryBaseSnapshotCount = maxInMemoryBaseSnapshotCount;
+        _config.MaxInMemorySnapshotBytes = byteBudget;
+
+        _persistenceManager.Dispose();
+        _tier.Dispose();
+        _tier = new FlatTestContainer(_config, finalizedStateProvider: _finalizedStateProvider, configure: builder => builder
+            .AddSingleton(_persistence)
+            .AddSingleton(_persistedSnapshotCompactor));
+        _snapshotRepository = _tier.Repository;
+        _persistenceManager = (PersistenceManager)_tier.Resolve<IPersistenceManager>();
+        return _persistenceManager;
     }
 
     [TestCase(0, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_AboveInMemoryFloor_PrefersConversion")]
