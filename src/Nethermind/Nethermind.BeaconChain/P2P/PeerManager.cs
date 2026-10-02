@@ -1445,8 +1445,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// The router opens its own channel only to a peer it is told of, which stock identify does and the probe replacing it does not, or in answer
     /// to the remote's channel; without this, two such nodes never exchange gossip. A channel can end while the session lives, by a reset or the
     /// remote closing it, and the router then drops the peer, so it is checked every <see cref="GossipChannelCheckInterval"/> and opened again,
-    /// waiting longer after each new channel that does not last (see <see cref="NextGossipRedialDelay"/>). In this pubsub library the end of
-    /// either channel ends the other, so a lost channel leaves none of this node's open.
+    /// waiting longer after each new channel that does not last (see <see cref="NextGossipRedialDelay"/>). Each attempt is closed before the
+    /// next, so a peer that never completes the negotiation holds at most one.
     /// </remarks>
     private async Task KeepGossipChannelAsync(ManagedPeer peer)
     {
@@ -1457,6 +1457,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         CancellationToken closed = _p2p.SessionClosedToken(peer.Session);
         TimeSpan redialDelay = GossipChannelCheckInterval;
+        CancellationTokenSource? attempt = null;
+        Task dialing = Task.CompletedTask;
         try
         {
             while (!closed.IsCancellationRequested)
@@ -1469,7 +1471,15 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 }
                 else
                 {
-                    _ = DialGossipAsync(peer.Session, remotePeerId, closed);
+                    if (attempt is not null)
+                    {
+                        await attempt.CancelAsync();
+                        await dialing;
+                        attempt.Dispose();
+                    }
+
+                    attempt = CancellationTokenSource.CreateLinkedTokenSource(closed);
+                    dialing = DialGossipAsync(peer.Session, remotePeerId, attempt.Token);
                     wait = redialDelay;
                     redialDelay = NextGossipRedialDelay(redialDelay);
                 }
@@ -1481,32 +1491,38 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             // The session closed, which ends its channels too.
         }
+        finally
+        {
+            attempt?.Cancel();
+            await dialing;
+            attempt?.Dispose();
+        }
     }
 
     /// <summary>The wait after a gossip channel is opened again when the one opened before, then waited on for <paramref name="delay"/>, did not last.</summary>
     internal static TimeSpan NextGossipRedialDelay(TimeSpan delay) => delay * 2 < MaxGossipRedialDelay ? delay * 2 : MaxGossipRedialDelay;
 
     // The newest gossipsub version the peer listed, in the order the pubsub router picks one when it connects itself.
-    private async Task DialGossipAsync(ISession session, PeerId remotePeerId, CancellationToken closed)
+    private async Task DialGossipAsync(ISession session, PeerId remotePeerId, CancellationToken token)
     {
         try
         {
             IReadOnlyList<string> protocols = _p2p.SupportedProtocolsOf(remotePeerId);
             if (protocols.Contains(PubsubRouter.GossipsubProtocolVersionV13))
             {
-                await session.DialAsync<GossipsubProtocolV13>(closed);
+                await session.DialAsync<GossipsubProtocolV13>(token);
             }
             else if (protocols.Contains(PubsubRouter.GossipsubProtocolVersionV12))
             {
-                await session.DialAsync<GossipsubProtocolV12>(closed);
+                await session.DialAsync<GossipsubProtocolV12>(token);
             }
             else if (protocols.Contains(PubsubRouter.GossipsubProtocolVersionV11))
             {
-                await session.DialAsync<GossipsubProtocolV11>(closed);
+                await session.DialAsync<GossipsubProtocolV11>(token);
             }
             else if (protocols.Contains(PubsubRouter.GossipsubProtocolVersionV10))
             {
-                await session.DialAsync<GossipsubProtocol>(closed);
+                await session.DialAsync<GossipsubProtocol>(token);
             }
             else if (_logger.IsDebug)
             {
