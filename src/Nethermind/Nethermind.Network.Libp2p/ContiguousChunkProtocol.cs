@@ -9,12 +9,8 @@ using Nethermind.Libp2p.Core;
 namespace Nethermind.Network.Libp2p;
 
 /// <summary>Sits between yamux and multistream on every yamux channel and hands each received segment upward as a chunk of its own.</summary>
-/// <remarks>
-/// Nethermind.Libp2p 1.0.0 <c>Channel.ReadAsync</c> keeps only the first segment of every chunk after the first when it gathers an exact
-/// length, and a yamux frame read from Noise arrives as several segments, so a gossip RPC spanning frames reached pubsub truncated and
-/// cost the peer. Writing each segment upward on its own makes every chunk a single segment without a copy; a frame can be megabytes, so a
-/// copy would put one large object heap array per frame on range sync. Data sent down passes unchanged.
-/// </remarks>
+/// <remarks>Nethermind.Libp2p 1.0.0 <c>Channel.ReadAsync</c> keeps only the first segment of each later chunk when it gathers an exact length,
+/// which truncated gossip RPCs spanning yamux frames; single-segment chunks avoid that without copying megabyte frames.</remarks>
 public sealed class ContiguousChunkProtocol : IConnectionProtocol
 {
     /// <summary>Never negotiated: the stack connects it directly after yamux.</summary>
