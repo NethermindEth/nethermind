@@ -23,6 +23,17 @@ namespace Nethermind.Merge.Plugin.Test;
 [Parallelizable(ParallelScope.All)]
 public class ExecutionPayloadTests
 {
+    private sealed class BlockConversionProbe : ExecutionPayload
+    {
+        public bool Converted { get; private set; }
+
+        public override Result<Block> TryGetBlock(Nethermind.Int256.UInt256? totalDifficulty = null)
+        {
+            Converted = true;
+            return base.TryGetBlock(totalDifficulty);
+        }
+    }
+
     private static TxType[] TxTypes() => [TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob];
 
     [Test, NonParallelizable]
@@ -321,12 +332,16 @@ public class ExecutionPayloadTests
     {
         byte[][] rlps = EncodeTxs(count);
         rlps[^1] = [0x01];
-        ExecutionPayload payload = new() { Transactions = rlps };
+        BlockConversionProbe payload = new() { Transactions = rlps };
         using (ExecutionPayloadPreparation preparation = new(payload))
         {
             Assert.That(preparation.TryGetBlock().IsError, Is.True);
         }
-        Assert.That(payload.TransactionsRoot, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.TransactionsRoot, Is.Null);
+            Assert.That(payload.Converted, Is.False, "a decoding failure must return before block conversion retries decoding");
+        }
         payload.Transactions = EncodeTxs(count, nonceOffset: 1000);
         using ExecutionPayloadPreparation replacement = new(payload);
         Result<Block> block = replacement.TryGetBlock();

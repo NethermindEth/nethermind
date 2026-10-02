@@ -42,7 +42,13 @@ internal sealed class ExecutionPayloadPreparation : IDisposable
     {
         using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
         Result<Transaction[]> transactions = _payload.TryGetTransactions();
-        if (!transactions.IsError && _txRootWork is not null && ReferenceEquals(_encodedTransactions, _payload.Transactions))
+        if (transactions.IsError)
+        {
+            _txRootWork?.Dispose();
+            return transactions.Error;
+        }
+
+        if (_txRootWork is not null && ReferenceEquals(_encodedTransactions, _payload.Transactions))
         {
             _txRootWork.WaitForCompletion();
             _payload.TransactionsRoot = _txRoot;
