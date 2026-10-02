@@ -125,6 +125,32 @@ public class BeaconChainServiceStartupTests
         }
     }
 
+    /// <summary>
+    /// The anchor root keys the anchor state and is fork choice's anchor_root, which get_forkchoice_store computes as
+    /// hash_tree_root(anchor_block); a stored block that does not hash to it is a corrupt database, refused before the run.
+    /// </summary>
+    [Test]
+    public async Task A_resumed_anchor_block_that_does_not_hash_to_its_anchor_root_fails_startup([Values] bool gloas)
+    {
+        Hash256 storedUnder = GloasTestFixtures.Hash(0x5A);
+        (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas, nextCommittee: false, key: null, prepare: store =>
+        {
+            Assert.That(store.TryGetAnchor(out Hash256? root, out ulong slot), Is.True);
+            Assert.That(store.TryGetState(root!, out byte[]? state), Is.True);
+            Assert.That(store.TryGetForkedBlock(root!, out ForkedSignedBeaconBlock? block), Is.True);
+            store.PutState(storedUnder, state!);
+            store.PutForkedBlock(storedUnder, block!);
+            store.SetAnchor(storedUnder, slot);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains($"not the anchor root {storedUnder}").And.Message.Contains("Delete the beaconChain database"));
+            Assert.That(errors, Is.Empty, "the background run never started");
+            Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
+        }
+    }
+
     /// <summary>A database written for another network must not seed this one; the anchor state's genesis_validators_root is checked on resume.</summary>
     [Test]
     public async Task A_resumed_anchor_from_another_network_fails_startup([Values] bool gloas)
@@ -784,11 +810,10 @@ public class BeaconChainServiceStartupTests
     private static void SeedAnchor(BeaconChainStore store, bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key, Hash256? blockStateRoot = null)
     {
         byte[] stateSsz = SyncCommitteeKeyAnchors.EncodeState(gloas, nextCommittee, key, out Hash256 blockRoot);
-        store.PutState(blockRoot, stateSsz);
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         BeaconBlock fulu = chain.AnchorBlock;
         BeaconBlockGloas gloasBlock = chain.First.Block.Message!;
-        store.PutForkedBlock(blockRoot, gloas
+        ForkedSignedBeaconBlock block = gloas
             ? new ForkedSignedBeaconBlock.OfGloas(blockStateRoot is null ? chain.First.Block : new SignedBeaconBlockGloas
             {
                 Message = new BeaconBlockGloas { Slot = gloasBlock.Slot, ProposerIndex = gloasBlock.ProposerIndex, ParentRoot = gloasBlock.ParentRoot, StateRoot = blockStateRoot, Body = gloasBlock.Body },
@@ -798,7 +823,11 @@ public class BeaconChainServiceStartupTests
             {
                 Message = blockStateRoot is null ? fulu : new BeaconBlock { Slot = fulu.Slot, ProposerIndex = fulu.ProposerIndex, ParentRoot = fulu.ParentRoot, StateRoot = blockStateRoot, Body = fulu.Body },
                 Signature = new BlsSignature(new byte[BlsSignature.Length]),
-            }));
+            });
+        // A block with another state root has another root, and the anchor is stored under its block's root.
+        blockRoot = block.ComputeMessageRoot();
+        store.PutState(blockRoot, stateSsz);
+        store.PutForkedBlock(blockRoot, block);
         store.SetAnchor(blockRoot, 0);
     }
 
