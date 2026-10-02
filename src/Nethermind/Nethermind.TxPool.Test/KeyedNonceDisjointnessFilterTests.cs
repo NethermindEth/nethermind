@@ -4,15 +4,10 @@
 #nullable enable
 
 using System.Collections.Generic;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
@@ -70,28 +65,12 @@ public class KeyedNonceDisjointnessFilterTests
 
     private static AcceptTxResult Accept(Transaction tx, TxDistinctSortedPool pending)
     {
-        KeyedNonceDisjointnessFilter filter = new(pending, Pool());
+        KeyedNonceDisjointnessFilter filter = new(pending, FrameTxFilterTestPools.Pool(false));
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
-    private static TxDistinctSortedPool PendingWith(UInt256[] keys) => Pool(KeyedTx(keys));
-
-    private static TxDistinctSortedPool Pool(params Transaction[] pending)
-    {
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec { IsEip1559Enabled = false });
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
-        IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer();
-        TxDistinctSortedPool pool = new(pending.Length + 1, comparer, LimboLogs.Instance);
-        foreach (Transaction tx in pending)
-        {
-            pool.TryInsert(tx.Hash!, tx);
-        }
-
-        return pool;
-    }
+    private static TxDistinctSortedPool PendingWith(UInt256[] keys) => FrameTxFilterTestPools.Pool(false, KeyedTx(keys));
 
     private static Transaction KeyedTx(UInt256[] keys) => FrameTx(keys);
 

@@ -6,16 +6,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
@@ -121,7 +117,7 @@ public class FrameTxWidthFilterTests
         Transaction incoming = KeyedTx(nonceSeq: replaces ? Baseline - 1 : Baseline, gasPrice: 2);
         Transaction pending = KeyedTx(nonceSeq: Baseline - 1);
 
-        AcceptTxResult result = Accept(cache, incoming, Pool(pending), baseline: pendingIsBaseline ? pending : null);
+        AcceptTxResult result = Accept(cache, incoming, FrameTxFilterTestPools.Pool(false, pending), baseline: pendingIsBaseline ? pending : null);
 
         Assert.That(result, Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.WidthUnmet));
     }
@@ -278,7 +274,7 @@ public class FrameTxWidthFilterTests
     {
         SenderWidthCache cache = new();
 
-        AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: 0), Pool(FrameTx(nonce: 0, nonceKeys: null)));
+        AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: 0), FrameTxFilterTestPools.Pool(false, FrameTx(nonce: 0, nonceKeys: null)));
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
@@ -309,7 +305,7 @@ public class FrameTxWidthFilterTests
         TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthSafetyFactorPermille = permille };
         ConcurrentDictionary<AddressAsKey, ValueHash256> baselines = new();
         if (baseline is not null) baselines[Sender] = baseline.Hash!.ValueHash256;
-        FrameTxWidthFilter filter = new(config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pending, Pool(), cache, baselines, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
+        FrameTxWidthFilter filter = new(config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pending, FrameTxFilterTestPools.Pool(false), cache, baselines, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
@@ -322,24 +318,7 @@ public class FrameTxWidthFilterTests
             pending[i] = KeyedTx(nonceSeq: (ulong)i);
         }
 
-        return Pool(pending);
-    }
-
-    private static TxDistinctSortedPool Pool(params Transaction[] pending)
-    {
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec { IsEip1559Enabled = false });
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
-
-        IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer();
-        TxDistinctSortedPool pool = new(pending.Length + 1, comparer, LimboLogs.Instance);
-        foreach (Transaction tx in pending)
-        {
-            pool.TryInsert(tx.Hash!, tx);
-        }
-
-        return pool;
+        return FrameTxFilterTestPools.Pool(false, pending);
     }
 
     private static Transaction KeyedTx(ulong nonceSeq, uint gasPrice = 1, int signatures = 1) => FrameTx(nonceSeq, [NonceKey], gasPrice, signatures);

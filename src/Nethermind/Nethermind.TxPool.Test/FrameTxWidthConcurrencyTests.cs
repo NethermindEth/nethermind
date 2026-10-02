@@ -48,9 +48,8 @@ public class FrameTxWidthConcurrencyTests
     }
 
     [Test]
-    public void ConcurrentEarnAndSpend_ConservesEveryEarnedUnit()
+    public void ConcurrentEarnAndSpend_ConservesEveryEarnedUnit([Values(20_000, 50_000)] int rounds)
     {
-        const int rounds = 20_000;
         SenderWidthCache cache = new();
         long spent = 0;
 
@@ -63,7 +62,7 @@ public class FrameTxWidthConcurrencyTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero), "the ledger drains to zero with nothing stranded");
-            Assert.That((ulong)spent, Is.EqualTo(Cost * rounds), "every earned unit is spendable exactly once, none minted or lost");
+            Assert.That((ulong)spent, Is.EqualTo(Cost * (ulong)rounds), "every earned unit is spendable exactly once, none minted or lost");
         }
     }
 
@@ -149,27 +148,6 @@ public class FrameTxWidthConcurrencyTests
         BitConverter.GetBytes(index + 1).CopyTo(bytes, 0);
         bytes[19] = 0xb0;
         return new Address(bytes);
-    }
-
-    [Test]
-    public void SpendToZero_RacingACredit_NeverLosesTheCredit()
-    {
-        const int iterations = 50_000;
-        SenderWidthCache cache = new();
-        long credited = 0;
-        long spent = 0;
-
-        Parallel.Invoke(
-            () => { for (int i = 0; i < iterations; i++) { cache.Earn(Sender, Cost); Interlocked.Add(ref credited, (long)Cost); } },
-            () => { for (int i = 0; i < iterations; i++) if (cache.TrySpend(Sender, Cost)) Interlocked.Add(ref spent, (long)Cost); });
-
-        while (cache.TrySpend(Sender, Cost)) spent += (long)Cost;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(spent, Is.EqualTo(credited), "spend total equals credit total: no credit was dropped at the zero boundary");
-            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero));
-        }
     }
 
     [Test]
