@@ -52,6 +52,15 @@ public static class ExperimentKnobs
     /// <summary>Storage discovery goes on for a candidate the main thread is executing, not only for ones ahead of it.</summary>
     public static readonly bool DiscoveryWhileRunning = On("NETHERMIND_EXP_DISCOVERY_WHILE_RUNNING");
 
+    /// <summary>A discovery run that fails on the placeholder 1 is run again with every byte 0x01, so packed fields read non-zero.</summary>
+    public static readonly bool DiscoveryRetryPlaceholder = On("NETHERMIND_EXP_DISCOVERY_RETRY_PLACEHOLDER");
+
+    /// <summary>Each discovery candidate warms its own new cells as soon as its run ends, not at the round's barrier.</summary>
+    public static readonly bool DiscoveryWarmPerCandidate = On("NETHERMIND_EXP_DISCOVERY_WARM_PER_CANDIDATE");
+
+    /// <summary>MODEXP whose exponent is a known prime modulus minus two is computed as a modular inverse.</summary>
+    public static readonly bool ModExpInvert = On("NETHERMIND_EXP_MODEXP_INVERT");
+
     /// <summary>When at least this many of the root's children are dirty, hash two nibbles down (up to 256 units); 0 = off.</summary>
     public static readonly int HashTwoLevels = Int("NETHERMIND_EXP_HASH_TWO_LEVELS", 0);
 }

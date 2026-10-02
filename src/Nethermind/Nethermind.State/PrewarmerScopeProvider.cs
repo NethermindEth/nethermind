@@ -274,7 +274,11 @@ public class PrewarmerScopeProvider(
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
-                if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
+                if (!isPrewarmer)
+                {
+                    _metrics.IncrementPreBlockAccountMisses();
+                    Nethermind.Core.Diagnostics.NewPayloadTrace.Miss(storage: false);
+                }
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
             return account;
@@ -432,7 +436,11 @@ public class PrewarmerScopeProvider(
             // PreBlock misses only (consumer scope): StorageTreeReads is already counted once per
             // first-in-block touch by PersistentStorageProvider; counting it here again double-counted
             // fully-cold reads. Populator probes are excluded — they miss by design while filling.
-            if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
+            if (!isPrewarmer)
+            {
+                _metrics.IncrementPreBlockStorageMisses();
+                Nethermind.Core.Diagnostics.NewPayloadTrace.Miss(storage: true);
+            }
 
             baseStorageTree.Get(storageCell.Index, out value);
         }
@@ -457,7 +465,7 @@ public class PrewarmerScopeProvider(
 
             storageReadCapture.Record(in storageCell);
             // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
-            value = UInt256.One;
+            value = storageReadCapture.Placeholder;
         }
 
         public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);

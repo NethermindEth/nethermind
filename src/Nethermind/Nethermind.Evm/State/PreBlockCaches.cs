@@ -598,6 +598,9 @@ public class PreBlockCaches
 
         internal PreBlockCaches Owner { get; }
 
+        /// <summary>The value a skipped read returns.</summary>
+        public UInt256 Placeholder { get; set; } = UInt256.One;
+
         /// <summary>Distinct cells encountered while backing reads were skipped.</summary>
         /// <remarks>Exposed as the concrete pooled set so consumers enumerate without boxing; treat as read-only.</remarks>
         public PooledSet<StorageCell> Cells => _cells;
