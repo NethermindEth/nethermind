@@ -1763,6 +1763,8 @@ public class DeferredBlockColumnFetchTests
 
         public ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope) => inner.ImportEnvelope(envelope);
 
+        public bool? VerifyEnvelopeSignature(SignedExecutionPayloadEnvelope envelope) => inner.VerifyEnvelopeSignature(envelope);
+
         public void OnSlotTick(ulong slot) => inner.OnSlotTick(slot);
 
         public HeadView ComputeHead() => inner.ComputeHead();

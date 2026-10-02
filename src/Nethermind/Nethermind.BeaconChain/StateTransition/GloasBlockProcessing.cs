@@ -783,8 +783,14 @@ public static class GloasBlockProcessing
             throw new BeaconStateException($"Execution payload envelope was rejected by the execution layer ({executionStatus})");
     }
 
-    private static bool VerifyExecutionPayloadEnvelopeSignature(BeaconStateGloas state, SignedExecutionPayloadEnvelope signedEnvelope, PubkeyCache pubkeys)
+    /// <summary>Whether the envelope's builder, or the self-building proposer, signed it under <c>DOMAIN_BEACON_BUILDER</c>; a builder index outside the registry fails.</summary>
+    internal static bool VerifyExecutionPayloadEnvelopeSignature(BeaconStateGloas state, SignedExecutionPayloadEnvelope signedEnvelope, PubkeyCache pubkeys)
     {
+        if (signedEnvelope.Message!.BuilderIndex != Presets.BuilderIndexSelfBuild && signedEnvelope.Message.BuilderIndex >= (ulong)state.Builders!.Length)
+        {
+            return false;
+        }
+
         ExecutionPayloadEnvelope envelope = signedEnvelope.Message!;
         Hash256 domain = state.GetDomain(DomainType.BeaconBuilder);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(envelope), domain);

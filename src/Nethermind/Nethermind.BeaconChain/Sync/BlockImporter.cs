@@ -941,6 +941,9 @@ public sealed class BlockImporter : IBlockImporter
         return result;
     }
 
+    /// <inheritdoc/>
+    public bool? VerifyEnvelopeSignature(SignedExecutionPayloadEnvelope envelope) => _envelopes.VerifySignature(envelope);
+
     /// <summary>Advances fork-choice time to the node's clock when the block reached the importer, before <c>on_block</c>, whose proposer boost and <c>record_block_timeliness</c> read <c>store.time</c>.</summary>
     /// <remarks>
     /// fork-choice.md on_block: transition latency does not count as lateness; an early receipt uses its slot start after the clock reaches it.

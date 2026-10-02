@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -18,8 +19,8 @@ using NUnit.Framework;
 namespace Nethermind.BeaconChain.Test.Sync;
 
 /// <summary>
-/// The worker gives each gossip message's pending verdict once the checks the router left to it finish: accepted only when every gossip
-/// check passed, ignored when a check fails or a dependency is missing, never before the import settles.
+/// The worker gives each gossip message's pending verdict once the gossip checks the router left to it finish: accepted only when every
+/// gossip check passed, which for an envelope is before its payload import; ignored at once when a check fails or a dependency is missing.
 /// </summary>
 public partial class BeaconSyncOrchestratorTests
 {
@@ -31,14 +32,17 @@ public partial class BeaconSyncOrchestratorTests
         InvalidSignature,
         UnexpectedProposer,
         AlreadyKnown,
+        UnknownParent,
     }
 
     /// <summary>
     /// phase0 p2p-interface.md beacon_block: a block is accepted once its proposer and proposer signature verified, which the importer does
-    /// before these results; a block waiting for its columns keeps its verdict until the retry imports it.
+    /// before these results; a block waiting for its columns is ignored at once, and only one waiting for its parent's payload after its
+    /// signature verified keeps its verdict for the retry.
     /// </summary>
     [TestCase(GossipBlockOutcome.Imported, new[] { MessageValidity.Accepted })]
-    [TestCase(GossipBlockOutcome.ImportedOnceColumnsArrive, new[] { MessageValidity.Accepted })]
+    [TestCase(GossipBlockOutcome.ImportedOnceColumnsArrive, new[] { MessageValidity.Ignored })]
+    [TestCase(GossipBlockOutcome.UnknownParent, new[] { MessageValidity.Ignored })]
     [TestCase(GossipBlockOutcome.ImportedOnceParentPayloadIsVerified, new[] { MessageValidity.Accepted })]
     [TestCase(GossipBlockOutcome.InvalidSignature, new[] { MessageValidity.Ignored })]
     [TestCase(GossipBlockOutcome.UnexpectedProposer, new[] { MessageValidity.Ignored })]
@@ -71,7 +75,8 @@ public partial class BeaconSyncOrchestratorTests
         }
 
         (GossipVerdict verdict, List<MessageValidity> given) = RecordingVerdict();
-        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None, verdict);
+        SignedBeaconBlock block = outcome == GossipBlockOutcome.UnknownParent ? TestChain.CreateBlock(chain[0].Message!.Slot, TestItem.KeccakF) : chain[0];
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(block), CancellationToken.None, verdict);
         MessageValidity[] givenBeforeRetry = [.. given];
         harness.Importer.Unavailable.Remove(blockRoot);
         if (outcome == GossipBlockOutcome.ImportedOnceParentPayloadIsVerified)
@@ -83,9 +88,36 @@ public partial class BeaconSyncOrchestratorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(givenBeforeRetry, outcome is GossipBlockOutcome.ImportedOnceColumnsArrive or GossipBlockOutcome.ImportedOnceParentPayloadIsVerified ? Is.Empty : Is.EqualTo(expected),
-                "the verdict waits for the import");
+            Assert.That(givenBeforeRetry, outcome is GossipBlockOutcome.ImportedOnceParentPayloadIsVerified ? Is.Empty : Is.EqualTo(expected),
+                "only a block whose signature verified waits, for its parent's payload");
             Assert.That(given, Is.EqualTo(expected));
+        }
+    }
+
+    /// <summary>A block whose verdict waits for its parent's payload is ignored once it is no longer held, so its message waits no longer for a retry that will not come.</summary>
+    [Test]
+    public async Task Pending_block_verdict_is_ignored_once_the_block_is_dropped()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.UnverifiedPayloads.Add(anchorRoot);
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 4);
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        (GossipVerdict verdict, List<MessageValidity> given) = RecordingVerdict();
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None, verdict);
+        MessageValidity[] givenWhileHeld = [.. given];
+        // Finality passes the block, so the retry set drops it.
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: Spec.GetEpoch(chain[0].Message!.Slot) + 1);
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        await harness.Orchestrator.ProcessSlotAsync(151, CancellationToken.None);
+        await harness.Orchestrator.ProcessSlotAsync(152, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(givenWhileHeld, Is.Empty, "a block whose signature verified waits for its parent's payload");
+            Assert.That(given, Is.EqualTo(new[] { MessageValidity.Ignored }));
         }
     }
 
@@ -111,24 +143,67 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
-    /// gloas/p2p-interface.md execution_payload: an envelope whose payload is recorded passed every gossip check, its signature included;
-    /// one waiting for its block keeps its verdict, and any other result is ignored.
+    /// gloas/p2p-interface.md execution_payload: an envelope is accepted once its signature verifies against the block it names, whatever its
+    /// data or the engine later say, rejected for a bad signature, and ignored at once when that block is not held; only a signed one imports.
     /// </summary>
-    [TestCase(ExecutionPayloadEnvelopeImportResult.Valid, new[] { MessageValidity.Accepted })]
-    [TestCase(ExecutionPayloadEnvelopeImportResult.Optimistic, new[] { MessageValidity.Accepted })]
-    [TestCase(ExecutionPayloadEnvelopeImportResult.Invalid, new[] { MessageValidity.Ignored })]
-    [TestCase(ExecutionPayloadEnvelopeImportResult.AlreadyKnown, new[] { MessageValidity.Ignored })]
-    [TestCase(ExecutionPayloadEnvelopeImportResult.UnknownBlock, new MessageValidity[0])]
-    public async Task Gossip_envelope_verdict_is_given_once_its_payload_import_settles(ExecutionPayloadEnvelopeImportResult result, MessageValidity[] expected)
+    [TestCase(true, ExecutionPayloadEnvelopeImportResult.DataUnavailable, MessageValidity.Accepted)]
+    [TestCase(true, ExecutionPayloadEnvelopeImportResult.EngineUnavailable, MessageValidity.Accepted)]
+    [TestCase(false, ExecutionPayloadEnvelopeImportResult.Valid, MessageValidity.Rejected)]
+    [TestCase(null, ExecutionPayloadEnvelopeImportResult.UnknownBlock, MessageValidity.Ignored)]
+    public async Task Gossip_envelope_verdict_follows_its_signature_before_its_payload_import(bool? signed, ExecutionPayloadEnvelopeImportResult result, MessageValidity expected)
     {
         Harness harness = CreateHarness();
+        harness.Importer.EnvelopeSignature = signed;
         harness.Importer.EnvelopeResult = result;
         (GossipVerdict verdict, List<MessageValidity> given) = RecordingVerdict();
 
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipEnvelopeItem(EnvelopeFor(TestItem.KeccakA, EnvelopeBlockSlot), verdict));
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        Assert.That(given, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(given, Is.EqualTo(new[] { expected }));
+            Assert.That(harness.Importer.Envelopes, signed == false ? Is.Empty : Has.Count.EqualTo(1), "a badly signed envelope is not imported");
+        }
+    }
+
+    /// <summary>gloas/p2p-interface.md execution_payload: [IGNORE] a later envelope for a (block root, builder index) that already has a valid one, before its data or engine call.</summary>
+    [Test]
+    public async Task Second_signed_gossip_envelope_for_a_block_and_builder_is_ignored()
+    {
+        Harness harness = CreateHarness();
+        harness.Importer.EnvelopeResult = ExecutionPayloadEnvelopeImportResult.DataUnavailable;
+        (GossipVerdict first, List<MessageValidity> firstGiven) = RecordingVerdict();
+        (GossipVerdict second, List<MessageValidity> secondGiven) = RecordingVerdict();
+        SignedExecutionPayloadEnvelope other = EnvelopeFor(TestItem.KeccakA, EnvelopeBlockSlot);
+        other.Message!.ParentBeaconBlockRoot = TestItem.KeccakB;
+
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipEnvelopeItem(EnvelopeFor(TestItem.KeccakA, EnvelopeBlockSlot), first));
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipEnvelopeItem(other, second));
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        Assert.That((firstGiven.Single(), secondGiven.Single()), Is.EqualTo((MessageValidity.Accepted, MessageValidity.Ignored)));
+    }
+
+    /// <summary>
+    /// An envelope whose router verdict was given at routing, as one whose block was not held then, gets no gossip check here: claiming its
+    /// (block root, builder index) would make the first valid envelope for the pair look like a repeat.
+    /// </summary>
+    [Test]
+    public async Task Envelope_settled_at_routing_claims_no_seen_pair()
+    {
+        Harness harness = CreateHarness();
+        harness.Importer.EnvelopeResult = ExecutionPayloadEnvelopeImportResult.DataUnavailable;
+        SignedExecutionPayloadEnvelope envelope = EnvelopeFor(TestItem.KeccakA, EnvelopeBlockSlot);
+
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipEnvelopeItem(envelope, GossipVerdict.Local()));
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Router.IsEnvelopeSeen(TestItem.KeccakA, envelope.Message!.BuilderIndex), Is.False);
+            Assert.That(harness.Importer.Envelopes, Has.Count.EqualTo(1), "the envelope still imports");
+        }
     }
 
     private static (GossipVerdict Verdict, List<MessageValidity> Given) RecordingVerdict()
