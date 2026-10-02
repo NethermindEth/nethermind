@@ -1608,6 +1608,9 @@ public partial class BeaconSyncOrchestratorTests
         /// <summary>Block roots whose proposer signature fails, so <see cref="Import"/> answers <see cref="BlockImportResult.Invalid"/>.</summary>
         public HashSet<Hash256> Forged { get; } = [];
 
+        /// <summary>Block roots whose state transition fails, so <see cref="Import"/> answers <see cref="BlockImportResult.Invalid"/> only once their parent's payload is verified.</summary>
+        public HashSet<Hash256> InvalidTransition { get; } = [];
+
         /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.EngineUnavailable"/>.</summary>
         public HashSet<Hash256> EngineDown { get; } = [];
 
@@ -1690,6 +1693,7 @@ public partial class BeaconSyncOrchestratorTests
             }
 
             if (UnverifiedPayloads.Contains(block.ParentRoot)) return Defer(blockRoot);
+            if (InvalidTransition.Contains(blockRoot)) return BlockImportResult.Invalid;
             if (Unavailable.Contains(blockRoot)) return BlockImportResult.DataUnavailable;
             if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;
             if (block is ForkedSignedBeaconBlock.OfFulu { Block.Signature: var signature } && ForgedSignatures.Contains(signature)) return BlockImportResult.Invalid;

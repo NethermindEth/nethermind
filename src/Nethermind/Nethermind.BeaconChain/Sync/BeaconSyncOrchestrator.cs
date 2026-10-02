@@ -1983,13 +1983,20 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Holds <paramref name="chain"/> from index <paramref name="from"/> down to its gossip block at index 0, stopping at the first block not held.</summary>
-    private async Task HoldChainForWaitingParentAsync(List<ForkedSignedBeaconBlock> chain, int from)
+    /// <remarks>A held fetched block keeps its supplier, so its release imports it as fetched by root.</remarks>
+    /// <param name="sources">The peer that served each block of <paramref name="chain"/>; <c>null</c> for the gossip block.</param>
+    private async Task HoldChainForWaitingParentAsync(List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> sources, int from)
     {
         for (int i = from; i >= 0; i--)
         {
             if (!await HoldForWaitingParentAsync(chain[i], fetchedByRoot: i > 0))
             {
                 return;
+            }
+
+            if (i > 0)
+            {
+                _heldFetched.Set(chain[i].ComputeMessageRoot(), new HeldFetchedBlock(chain[i], sources[i]));
             }
         }
     }
@@ -2011,7 +2018,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             if (IsWaitingForPayload(parent))
             {
-                await HoldChainForWaitingParentAsync(chain, chain.Count - 1);
+                await HoldChainForWaitingParentAsync(chain, sources, chain.Count - 1);
             }
             else if (chain.Count > MaxBackfillDepth)
             {
@@ -2032,7 +2039,7 @@ public sealed class BeaconSyncOrchestrator(
             BlockImportResult result = await ImportBlockAsync(chain[i], token, fetchedByRoot: i > 0, servedBy: sources[i]);
             if (result == BlockImportResult.ParentPayloadUnverified && i > 0 && _pendingRetry.ContainsKey(chain[i].ComputeMessageRoot()))
             {
-                await HoldChainForWaitingParentAsync(chain, i - 1);
+                await HoldChainForWaitingParentAsync(chain, sources, i - 1);
                 break;
             }
 
