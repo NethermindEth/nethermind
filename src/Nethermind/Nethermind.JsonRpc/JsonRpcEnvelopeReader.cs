@@ -15,6 +15,9 @@ internal ref struct JsonRpcEnvelopeReader
 
     public JsonRpcEnvelopeReader(ReadOnlySpan<byte> body) => _body = body;
 
+    /// <summary>The length of the root object, valid after <see cref="TryRead"/> succeeds; bytes after it are not read.</summary>
+    public int ObjectLength { get; private set; }
+
     public static JsonRpcEnvelope Read(JsonElement element, out JsonElement paramsElement)
     {
         string? jsonRpc = null;
@@ -60,6 +63,7 @@ internal ref struct JsonRpcEnvelopeReader
         {
             if (reader.TokenType == JsonTokenType.EndObject)
             {
+                ObjectLength = (int)reader.BytesConsumed;
                 envelope = new JsonRpcEnvelope(jsonRpc, in id, method, hasParams, paramsKind, paramsStart, paramsLength);
                 return true;
             }

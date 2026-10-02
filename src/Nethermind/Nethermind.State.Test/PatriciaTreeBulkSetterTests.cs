@@ -42,7 +42,7 @@ public class PatriciaTreeBulkSetterTests
         void RecordBudget()
         {
             if (!observing) return;
-            int budget = ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0;
+            int budget = ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0;
             if (operation != ParallelTrieOperation.UpdateRootHash || budget != 0) observedBudgets.Add(budget);
         }
 
