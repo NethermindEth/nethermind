@@ -49,10 +49,10 @@ public partial class GasEstimator
         Span<FrameReservation> reservations = stackalloc FrameReservation[Eip8141Constants.MaxFrames];
         FrameGasSearch search = new(transactionProcessor, tx, context, fillExecution, fillState, gasCap, errorMargin, token,
             reservations[..frames.Length]);
-        if (!search.TryPartitionRooms()) return Result<TxFrame[]>.Fail(CannotEstimateGasExceeded);
+        if (!search.TryPartitionRooms(out string? error)) return Result<TxFrame[]>.Fail(error);
         search.ReserveEvenSplit();
         search.MeasureReservations();
-        if (!search.TryMinimizeFrames(out string? error))
+        if (!search.TryMinimizeFrames(out error))
         {
             executionReverted = search.LastProbeReverted;
             return Result<TxFrame[]>.Fail(error);
@@ -142,11 +142,17 @@ public partial class GasEstimator
         public bool LastProbeReverted { get; private set; }
 
         /// <summary>Sizes the pools the omitted limits share, or fails when the fixed gas leaves no room for them.</summary>
-        public bool TryPartitionRooms()
+        public bool TryPartitionRooms([NotNullWhen(false)] out string? error)
         {
+            error = CannotEstimateGasExceeded;
+            if (!FrameTxValidation.TryCalculateGasBudget(_tx, _spec, out _, out _, out ulong totalGas, estimateSignatureBytes: true)) return false;
+            if (totalGas > _gasCap)
+            {
+                error = $"{GasExceedsAllowanceMsgPrefix} ({_gasCap})";
+                return false;
+            }
             if (!TryReserveBlockRooms(out ulong reservedExecution, out ulong reservedState)) return false;
             ulong fixedGas = FixedGas();
-            if (fixedGas > _gasCap) return false;
 
             ulong fillBudget = _gasCap - fixedGas;
             _executionRoom = _executionCap - reservedExecution;
@@ -163,6 +169,7 @@ public partial class GasEstimator
                 else if (_statePool <= half) _executionPool = fillBudget - _statePool;
                 else (_executionPool, _statePool) = (half, fillBudget - half);
             }
+            error = null;
             return true;
         }
 
