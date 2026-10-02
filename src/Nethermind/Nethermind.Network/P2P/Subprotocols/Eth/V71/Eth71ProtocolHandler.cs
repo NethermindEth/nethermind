@@ -73,6 +73,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
                 HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Eth71MessageCode.BlockAccessLists:
+                _balRequests.ThrowIfNotRequested(message.Content);
                 BlockAccessListsMessage balMsg = Deserialize<BlockAccessListsMessage>(message.Content);
                 ReportIn(balMsg, size);
                 Handle(balMsg, size);
