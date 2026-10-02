@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P;
@@ -40,11 +41,16 @@ public class ChannelOpenRetryTests
         DroppingOpener opener = new(drops: 1);
         await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(10));
         RequestTiming timing = new();
+        ulong reopened = Metrics.BeaconChainChannelsReopened;
 
         IReadOnlyList<ForkedSignedBeaconBlock> blocks = await node.RequestBlocksByRootAsync(opener.Session, [Hash256.Zero], token, timing);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(Metrics.BeaconChainChannelsReopened - reopened, Is.EqualTo(1UL), "the retry is counted");
+            Assert.That(timing.ToString(), Does.Match(@"total (\d+) ms, 0 chunks, attempt 2$"), "the Debug line names the attempt");
+            Assert.That(int.Parse(Regex.Match(timing.ToString(), @"total (\d+) ms").Groups[1].Value), Is.GreaterThanOrEqualTo((int)OpenBound.TotalMilliseconds),
+                "the total runs from the first attempt");
             Assert.That(blocks, Is.Empty, "the second channel's answer is the request's");
             Assert.That(opener.Attempts, Is.EqualTo(2));
             Assert.That(opener.EarlierCancelledWhenOpened, Is.EqualTo(new[] { true }), "the dropped attempt is cancelled before the second starts");
@@ -137,6 +143,25 @@ public class ChannelOpenRetryTests
             Assert.That(blocks, Is.Empty);
             Assert.That(opener.Attempts, Is.EqualTo(1), "a slow peer whose channel opened is not asked twice");
         }
+    }
+
+    /// <summary>A peer answers <c>na</c> for a protocol it does not support, which never opens either; when its identify answer lists protocols without this one, a second channel would only cost it another open.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_protocol_the_peer_does_not_list_is_not_opened_twice([Values] bool listed, CancellationToken token)
+    {
+        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(1));
+        await node.StartAsync(token);
+        LocalPeer.Session wedged = RequestFailureCauseTests.AddWedgedSession(node);
+        PeerId remote = new Nethermind.Libp2p.Core.Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+        wedged.State.RemoteAddress = Multiformats.Address.Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{remote}");
+        string blocksByRoot = new BeaconBlocksByRootProtocolV2(Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>())).Id;
+        node.PeerInfoForTest(remote).SupportedProtocols = listed ? ["/ipfs/id/1.0.0", blocksByRoot] : ["/ipfs/id/1.0.0"];
+        RequestTiming timing = new();
+
+        Assert.ThrowsAsync<ReqRespTimeoutException>(() => node.RequestBlocksByRootAsync(wedged, [Hash256.Zero], token, timing));
+
+        Assert.That(timing.Attempt, Is.EqualTo(listed ? 2 : 1));
     }
 
     [TestCase(1)]

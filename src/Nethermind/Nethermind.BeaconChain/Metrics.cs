@@ -20,6 +20,7 @@ public readonly record struct GossipRejectKey(string Topic, GossipDropReason Rea
 public class Metrics
 {
     internal static ulong PeersConnectedCount;
+    internal static ulong ChannelsReopenedCount;
     internal static ulong PeersDroppedCount;
     internal static ulong GossipAcceptedCount;
     internal static ulong GossipDroppedCount;
@@ -56,6 +57,10 @@ public class Metrics
     [GaugeMetric]
     [Description("Connected, status-exchanged beacon chain peers.")]
     public static int BeaconChainPeerCount { get => Volatile.Read(ref _peerCount); set => Volatile.Write(ref _peerCount, value); }
+
+    [CounterMetric]
+    [Description("Requests and identify dials whose first channel never reached its protocol and were opened once more.")]
+    public static ulong BeaconChainChannelsReopened { get => Volatile.Read(ref ChannelsReopenedCount); set => Volatile.Write(ref ChannelsReopenedCount, value); }
 
     [CounterMetric]
     [Description("Beacon chain peer connections established.")]

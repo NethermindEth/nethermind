@@ -463,10 +463,8 @@ public sealed class BeaconP2P : IAsyncDisposable
     }
 
     /// <summary>Exchanges <c>status</c> with the peer, preferring v2 and falling back to v1 (with <c>earliest_available_slot</c> of 0).</summary>
-    /// <remarks>Falls back only when v2 failed as an exchange (<see cref="Eth2ReqRespException"/>) or went unanswered
-    /// within the request timeout, which is how a protocol the peer does not support surfaces: the peer answers <c>na</c>,
-    /// and the library's dialing multistream then ends without completing the request;
-    /// any other failure is not a reason to try v1 and propagates.</remarks>
+    /// <remarks>Falls back only when v2 failed as an exchange (<see cref="Eth2ReqRespException"/>) or went unanswered, which is how an unsupported
+    /// protocol surfaces once the peer answers <c>na</c>; any other failure propagates.</remarks>
     public async Task<StatusMessageV2> RequestStatusAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
     {
         try
@@ -643,8 +641,8 @@ public sealed class BeaconP2P : IAsyncDisposable
         try
         {
             TRequest first = request();
-            // Only a tracked request tells whether its channel opened.
-            if (timing is not { ChannelOpened: not null } tracked)
+            // Only a tracked request tells whether its channel opened; a protocol the peer does not list is refused, not dropped.
+            if (timing is not { ChannelOpened: not null } tracked || !PeerMayServe<TProtocol>(session))
             {
                 return await session.DialAsync<TProtocol, TRequest, TResponse>(first, cts.Token);
             }
@@ -665,12 +663,21 @@ public sealed class BeaconP2P : IAsyncDisposable
         }
     }
 
+    /// <summary>False only when the peer's identify answer listed protocols and <typeparamref name="TProtocol"/> is not among them.</summary>
+    private bool PeerMayServe<TProtocol>(ISession session) where TProtocol : IProtocol
+    {
+        if (RemotePeerIdOf(session) is not { } peerId || _serviceProvider.GetService<TProtocol>() is not { } protocol)
+        {
+            return true;
+        }
+
+        string[]? listed = _serviceProvider.GetRequiredService<PeerStore>().GetPeerInfo(peerId).SupportedProtocols;
+        return listed is not { Length: > 0 } || Array.IndexOf(listed, protocol.Id) >= 0;
+    }
+
     /// <summary>Runs <paramref name="first"/>, and <paramref name="second"/> instead when the first channel has not reached its protocol within <paramref name="openBound"/>.</summary>
-    /// <remarks>
-    /// Nethermind.Libp2p.Protocols.Yamux 1.0.0 stores a channel this node opens only after it has sent the opening frame, so the peer's first frames can
-    /// arrive before it and be dropped; the negotiation then never completes and the request would wait out its whole budget. The first attempt is
-    /// cancelled before the second starts, which has the library close its channel, and there is one second attempt at most.
-    /// </remarks>
+    /// <remarks>Nethermind.Libp2p.Protocols.Yamux 1.0.0 can drop the peer's first frames on a channel this node opens, so its negotiation never completes.
+    /// The first attempt is cancelled before the second starts, and there is one second attempt at most.</remarks>
     /// <param name="tryAbandonFirst">Gives the first attempt up unless its channel already reached its protocol, which it then can no longer do.</param>
     internal static async Task<T> RetryUnopenedAsync<T>(Func<CancellationToken, Task<T>> first, Func<bool> tryAbandonFirst, Func<CancellationToken, Task<T>> second,
         TimeSpan openBound, CancellationToken token)
@@ -687,6 +694,7 @@ public sealed class BeaconP2P : IAsyncDisposable
         }
         catch (TimeoutException)
         {
+            Interlocked.Increment(ref Metrics.ChannelsReopenedCount);
         }
         finally
         {
