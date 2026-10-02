@@ -216,6 +216,9 @@ internal static class ForkChoiceStepDriver
             catch (Exception ex) { Assert.Fail($"step {stepIndex}: body attestation {i} of block {blockKey} rejected: {ex.Message}"); }
         }
 
+        // A vote waiting for a build would reach the store only on a later tick, after the vector's checks of this step.
+        Assert.That(runner.DeferredBodyVoteCount, Is.Zero, $"step {stepIndex}: block {blockKey} left body attestations waiting for a target state build");
+
         AttesterSlashing[] bodySlashings = block.Body!.AttesterSlashings!;
         for (int i = 0; i < bodySlashings.Length; i++)
         {
