@@ -277,7 +277,8 @@ public unsafe class EvmOpcodesBenchmark
         delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] continuationHandlers =
             new delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[_opcodeHandlers.Length];
         for (int i = 0; i < DispatchEntries; i++)
-            continuationHandlers[i] = &CompleteOpcode;
+            continuationHandlers[i] = (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)(
+                delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)&CompleteOpcode;
         // A fast path that falls back runs the plain handler past the dispatch entries, which then completes.
         for (int i = DispatchEntries; i < continuationHandlers.Length; i++)
             continuationHandlers[i] = _opcodeHandlers[i];
@@ -323,8 +324,15 @@ public unsafe class EvmOpcodesBenchmark
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCodeInfo.ExecutionCodeSpan, _opcodeCodeInfo);
         stack.HoistInputData(_env.InputData.Span);
-        DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
+        EthereumGasPolicy gas = _gas;
+        DispatchState state = new()
+        {
+            // Safety: the dispatch chain is fully contained in this benchmark invocation, so the reference cannot outlive gas.
+            Gas = ref Unsafe.AsRef(in gas),
+            OpcodeHandlers = _continuationHandlers,
+            Vm = _vm,
+        };
         int remaining = InnerCount;
         while (remaining > 0)
         {
@@ -333,7 +341,7 @@ public unsafe class EvmOpcodesBenchmark
 
             for (int i = 0; i < runs; i++)
             {
-                EthereumGasPolicy gas = _gas;
+                gas = _gas;
                 result = ExecuteOpcodeHandler(ref stack, ref gas, ref state);
                 DisposeNestedReturnFrame();
             }
@@ -348,14 +356,21 @@ public unsafe class EvmOpcodesBenchmark
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCodeInfo.ExecutionCodeSpan, _opcodeCodeInfo);
         stack.HoistInputData(_env.InputData.Span);
-        DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
+        EthereumGasPolicy gas = _gas;
+        DispatchState state = new()
+        {
+            // Safety: the dispatch chain is fully contained in this benchmark invocation, so the reference cannot outlive gas.
+            Gas = ref Unsafe.AsRef(in gas),
+            OpcodeHandlers = _continuationHandlers,
+            Vm = _vm,
+        };
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
         {
             stack.Head = _stackDepth;
             PreparePerRunLocationSetup(runIndex);
 
-            EthereumGasPolicy gas = _gas;
+            gas = _gas;
             result = ExecuteOpcodeHandler(ref stack, ref gas, ref state);
             DisposeNestedReturnFrame();
         }
@@ -367,8 +382,15 @@ public unsafe class EvmOpcodesBenchmark
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCodeInfo.ExecutionCodeSpan, _opcodeCodeInfo);
         stack.HoistInputData(_env.InputData.Span);
-        DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
+        EthereumGasPolicy gas = _gas;
+        DispatchState state = new()
+        {
+            // Safety: the dispatch chain is fully contained in this benchmark invocation, so the reference cannot outlive gas.
+            Gas = ref Unsafe.AsRef(in gas),
+            OpcodeHandlers = _continuationHandlers,
+            Vm = _vm,
+        };
         int remaining = InnerCount;
         while (remaining > 0)
         {
@@ -378,7 +400,7 @@ public unsafe class EvmOpcodesBenchmark
             {
                 stack.Head = depth - (i * 2);
 
-                EthereumGasPolicy gas = _gas;
+                gas = _gas;
                 result = ExecuteOpcodeHandler(ref stack, ref gas, ref state);
                 DisposeNestedReturnFrame();
             }
@@ -750,7 +772,13 @@ public unsafe class EvmOpcodesBenchmark
         }
 
         EthereumGasPolicy gas = _gas;
-        DispatchState state = CreateDispatchState();
+        DispatchState state = new()
+        {
+            // Safety: the dispatch chain is fully contained in this benchmark invocation, so the reference cannot outlive gas.
+            Gas = ref Unsafe.AsRef(in gas),
+            OpcodeHandlers = _continuationHandlers,
+            Vm = _vm,
+        };
         _ = ExecuteOpcodeHandler(ref stack, ref gas, ref state);
         DisposeNestedReturnFrame();
 
@@ -758,26 +786,24 @@ public unsafe class EvmOpcodesBenchmark
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private DispatchState CreateDispatchState() => new()
-    {
-        OpcodeHandlers = _continuationHandlers,
-        Vm = _vm,
-    };
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private EvmExceptionType ExecuteOpcodeHandler(
         ref EvmStack stack,
         ref EthereumGasPolicy gas,
-        ref DispatchState state) =>
-        _opcodeHandlers[(int)Opcode](ref stack, ref gas, ref state, 0, 0);
+        scoped ref DispatchState state) =>
+        ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)(nint)_opcodeHandlers[(int)Opcode])(
+            ref stack, gas.Value, ref state, 0, 0);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static EvmExceptionType CompleteOpcode(
         ref EvmStack stack,
-        ref EthereumGasPolicy gas,
+        ulong gas,
         ref DispatchState state,
         nint programCounter,
-        nint opCodeCount) => EvmExceptionType.None;
+        nint opCodeCount)
+    {
+        state.Gas.Value = gas;
+        return EvmExceptionType.None;
+    }
 
     private void DisposeNestedReturnFrame()
     {
