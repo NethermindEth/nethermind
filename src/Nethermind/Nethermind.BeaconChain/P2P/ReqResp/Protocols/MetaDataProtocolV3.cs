@@ -39,6 +39,11 @@ public sealed class MetaDataProtocolV3(LocalMetadataSource metadataSource) : Req
                 RecordFailure(Id, ReqRespFailureReason.Timeout);
                 throw new ReqRespTimeoutException($"timed out after {Seconds(TtfbTimeout + RespTimeout)} waiting for the response", e);
             }
+            catch (IOException)
+            {
+                RecordFailure(Id, ReqRespFailureReason.Transport);
+                throw;
+            }
 
             if (chunk.Result != ReqRespFraming.ResponseCode.Success)
             {
