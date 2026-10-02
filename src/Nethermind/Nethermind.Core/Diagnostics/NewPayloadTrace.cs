@@ -38,6 +38,29 @@ public static class NewPayloadTrace
         public long RunStart, WaitStart, RunNs = -1, WaitNs = -1, Slices = -1, SlicesStart;
         // The same split at the end of the transactions, so execution and finalization are told apart.
         public long TxRunNs = -1, TxWaitNs = -1;
+        // Major and minor faults and voluntary context switches of the processing thread across the transactions.
+        public long MajStart, MinStart, VolStart, Majflt = -1, Minflt = -1, Vol = -1;
+    }
+
+    private static bool ReadFaultsAndSwitches(out long majflt, out long minflt, out long voluntary)
+    {
+        majflt = minflt = voluntary = 0;
+        try
+        {
+            // /proc/thread-self/stat: fields after the ')' of comm; minflt is field 10 and majflt field 12 overall.
+            string stat = System.IO.File.ReadAllText("/proc/thread-self/stat");
+            string[] f = stat[(stat.LastIndexOf(')') + 2)..].Split(' ');
+            minflt = long.Parse(f[7]); majflt = long.Parse(f[9]);
+            foreach (string line in System.IO.File.ReadLines("/proc/thread-self/status"))
+            {
+                if (line.StartsWith("voluntary_ctxt_switches:", StringComparison.Ordinal)) { voluntary = long.Parse(line.AsSpan(24).Trim()); break; }
+            }
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>Reads the schedstat when the block's transactions are done, on the processing thread.</summary>
@@ -47,6 +70,7 @@ public static class NewPayloadTrace
             && ReadSchedStat(out long run, out long wait, out _))
         {
             record.TxRunNs = run - record.RunStart; record.TxWaitNs = wait - record.WaitStart;
+            if (ReadFaultsAndSwitches(out long maj, out long min, out long vol)) { record.Majflt = maj - record.MajStart; record.Minflt = min - record.MinStart; record.Vol = vol - record.VolStart; }
         }
     }
 
@@ -56,6 +80,7 @@ public static class NewPayloadTrace
         if (Enabled && Volatile.Read(ref s_active) is { } record && ReadSchedStat(out long run, out long wait, out long slices))
         {
             record.RunStart = run; record.WaitStart = wait; record.SlicesStart = slices;
+            if (ReadFaultsAndSwitches(out long maj, out long min, out long vol)) { record.MajStart = maj; record.MinStart = min; record.VolStart = vol; }
         }
     }
 
@@ -138,7 +163,10 @@ public static class NewPayloadTrace
             .Append(" schedwait=").Append(record.WaitNs < 0 ? "na" : (record.WaitNs / 1000).ToString())
             .Append(" schedslices=").Append(record.Slices < 0 ? "na" : record.Slices.ToString())
             .Append(" txrun=").Append(record.TxRunNs < 0 ? "na" : (record.TxRunNs / 1000).ToString())
-            .Append(" txwait=").Append(record.TxWaitNs < 0 ? "na" : (record.TxWaitNs / 1000).ToString());
+            .Append(" txwait=").Append(record.TxWaitNs < 0 ? "na" : (record.TxWaitNs / 1000).ToString())
+            .Append(" txmajflt=").Append(record.Majflt < 0 ? "na" : record.Majflt.ToString())
+            .Append(" txminflt=").Append(record.Minflt < 0 ? "na" : record.Minflt.ToString())
+            .Append(" txvolsw=").Append(record.Vol < 0 ? "na" : record.Vol.ToString());
         Console.Out.WriteLine(line.ToString());
     }
 }
