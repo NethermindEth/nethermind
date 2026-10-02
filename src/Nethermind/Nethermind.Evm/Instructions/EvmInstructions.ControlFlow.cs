@@ -51,7 +51,10 @@ public static partial class EvmInstructions
     [SkipLocalsInit]
     public static OpcodeResult InstructionJump<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => InstructionJump<TGasPolicy, OffFlag>(ref stack, ref gas, vm, programCounter);
+    {
+        nint jumpOpCodeCount = 0;
+        return InstructionJump<TGasPolicy, OffFlag, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref jumpOpCodeCount);
+    }
 
     /// <summary>
     /// <see cref="InstructionJump{TGasPolicy}"/> for non-traced tables: a valid taken jump also
@@ -61,13 +64,43 @@ public static partial class EvmInstructions
     [SkipLocalsInit]
     internal static OpcodeResult InstructionJumpAndSkipJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => InstructionJump<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
+    {
+        nint jumpOpCodeCount = 0;
+        return InstructionJump<TGasPolicy, OnFlag, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref jumpOpCodeCount);
+    }
+
+    /// <summary>
+    /// Executes an untraced, non-cancelable JUMP while carrying the landed JUMPDEST count in the
+    /// dispatch frame. The <typeparamref name="TUseVmCounter"/> specialization keeps the hot
+    /// host path independent of the VM when the counter is flushed by the caller.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType InstructionJumpCore<TGasPolicy, TUseVmCounter>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        VirtualMachine<TGasPolicy> vm,
+        ref nint programCounter,
+        ref nint jumpOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TUseVmCounter : struct, IFlag
+    {
+        OpcodeResult result = InstructionJump<TGasPolicy, OnFlag, TUseVmCounter>(
+            ref stack, ref gas, vm, ref programCounter, ref jumpOpCodeCount);
+        return result.Exception;
+    }
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static OpcodeResult InstructionJump<TGasPolicy, TSkipJumpDest>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+    private static OpcodeResult InstructionJump<TGasPolicy, TSkipJumpDest, TUseVmCounter>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        VirtualMachine<TGasPolicy> vm,
+        ref nint programCounter,
+        ref nint jumpOpCodeCount)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TSkipJumpDest : struct, IFlag
+        where TUseVmCounter : struct, IFlag
     {
         // Deduct the gas cost for performing a jump.
         if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
@@ -76,7 +109,8 @@ public static partial class EvmInstructions
         // Validate the jump destination and update the program counter if valid.
         nint destination = JumpDestination(ref stack.PopBytesByRefUnchecked(), ref stack);
         if (destination < 0) goto InvalidJumpDestination;
-        if (!SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination, out programCounter))
+        if (!SkipJumpDest<TGasPolicy, TSkipJumpDest, TUseVmCounter>(
+                vm, ref gas, destination, ref jumpOpCodeCount, out programCounter))
             return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
         return new OpcodeResult(programCounter, EvmExceptionType.None);
         // Jump forward to be unpredicted by the branch predictor.
@@ -151,12 +185,33 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TSkipJumpDest : struct, IFlag
     {
+        nint jumpOpCodeCount = 0;
+        return SkipJumpDest<TGasPolicy, TSkipJumpDest, OnFlag>(
+            vm, ref gas, destination, ref jumpOpCodeCount, out programCounter);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool SkipJumpDest<TGasPolicy, TSkipJumpDest, TUseVmCounter>(
+        VirtualMachine<TGasPolicy> vm,
+        ref TGasPolicy gas,
+        nint destination,
+        ref nint jumpOpCodeCount,
+        out nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipJumpDest : struct, IFlag
+        where TUseVmCounter : struct, IFlag
+    {
         programCounter = destination;
         if (TSkipJumpDest.IsActive)
         {
             // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
             if (DispatchFlags.CountOpcodes)
-                vm.OpCodeCount++;
+            {
+                if (TUseVmCounter.IsActive)
+                    vm.OpCodeCount++;
+                else
+                    jumpOpCodeCount++;
+            }
             programCounter++;
             return TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas);
         }
