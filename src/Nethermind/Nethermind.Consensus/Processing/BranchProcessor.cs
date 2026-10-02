@@ -56,6 +56,9 @@ public class BranchProcessor(
         if (suggestedBlocks.Count == 0) return [];
 
         Block suggestedBlock = suggestedBlocks[0];
+        ParallelUnbalancedWork.WorkerGroup GetWorkers(Block block) =>
+            (options.ContainsFlag(ProcessingOptions.ReadOnlyChain) ? null : block.Workers) ?? new(Environment.ProcessorCount);
+        ParallelUnbalancedWork.WorkerGroup workerGroup = GetWorkers(suggestedBlock);
         // The scope is opened at the target's parent, but baseBlock still selects the prewarmed caches, so an
         // inconsistent pair would warm one state and execute another without any other symptom.
         Debug.Assert(suggestedBlock.IsGenesis ? baseBlock is null : baseBlock?.Hash == suggestedBlock.ParentHash,
@@ -98,8 +101,7 @@ public class BranchProcessor(
         {
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
             Task? prefetchBlockhash;
-            suggestedBlock.Workers ??= new(Environment.ProcessorCount);
-            using (suggestedBlock.Workers.Enter())
+            using (workerGroup.Enter())
             {
                 prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
                 prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
@@ -118,15 +120,16 @@ public class BranchProcessor(
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
-                suggestedBlock.Workers ??= new(Environment.ProcessorCount);
-                using ParallelUnbalancedWork.WorkerScope workers = suggestedBlock.Workers.Enter();
+                if (i > 0) workerGroup = GetWorkers(suggestedBlock);
+                using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)
                 {
                     // Refresh spec
                     spec = specProvider.GetSpec(suggestedBlock.Header);
                 }
+                // The first block prepared its caches at method entry, even if no warming was needed.
                 backgroundCancellation ??= new CancellationTokenSource();
-                if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock!, spec, backgroundCancellation.Token);
+                if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
                 prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -25,6 +27,52 @@ namespace Nethermind.Consensus.Test.Processing;
 
 public class BranchProcessorVerdictTests
 {
+    [Test]
+    public async Task Concurrent_read_only_processing_uses_independent_worker_groups([Values] bool attached)
+    {
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        ParallelUnbalancedWork.WorkerGroup original = attached ? new(2) : null;
+        block.Workers = original;
+        using CountdownEvent entered = new(2);
+        using ManualResetEventSlim release = new();
+        ConcurrentBag<ParallelUnbalancedWork.WorkerGroup> groups = [];
+        Task Process() => Task.Run(() =>
+        {
+            IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
+            blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+                .Returns(_ =>
+                {
+                    groups.Add(ParallelUnbalancedWork.GetCurrentGroup());
+                    entered.Signal();
+                    if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Processing was not released");
+                    return (block, Array.Empty<TxReceipt>());
+                });
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton(blockProcessor)
+                .AddSingleton(Substitute.For<IBlockCachePreWarmer>())
+                .Build();
+            container.Resolve<IMainProcessingContext>().BranchProcessor.Process(null, [block],
+                ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        });
+        Task first = Process();
+        Task second = Process();
+        bool concurrent;
+        try { concurrent = entered.Wait(TimeSpan.FromSeconds(10)); }
+        finally { release.Set(); }
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10));
+        ParallelUnbalancedWork.WorkerGroup[] observed = groups.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(concurrent, Is.True, "independent calls must reach execution together");
+            Assert.That(observed, Has.Length.EqualTo(2));
+            Assert.That(observed, Is.All.Not.Null);
+            Assert.That(observed[0], Is.Not.SameAs(observed[1]));
+            Assert.That(observed, Has.None.SameAs(original));
+            Assert.That(block.Workers, Is.SameAs(original));
+        }
+    }
+
     [Test]
     public void Hash_only_queue_reference_restores_the_worker_group()
     {
