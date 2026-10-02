@@ -396,12 +396,12 @@ public class BlockhashProviderTests
 
         // Stands in for the beacon-root call: a BLOCKHASH on this header before the ring buffer is written.
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> before), Is.True);
-        Assert.That(before.ToArray(), Is.EqualTo(previousOccupant.Bytes.ToArray()), "precondition: the old occupant is still there");
+        Assert.That(before, Is.SequenceEqualTo(previousOccupant.Bytes), "precondition: the old occupant is still there");
 
         fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
 
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> after), Is.True);
-        Assert.That(after.ToArray(), Is.EqualTo(header.ParentHash!.Bytes.ToArray()),
+        Assert.That(after, Is.SequenceEqualTo(header.ParentHash!.Bytes),
             "the memo served what the slot held before the block wrote it");
     }
 
@@ -439,7 +439,7 @@ public class BlockhashProviderTests
         {
             Assert.That(fixture.Store.GetBlockHashFromState(header, number, fixture.Spec), Is.EqualTo(expected), because);
             Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> span), Is.True, because);
-            Assert.That(span.ToArray(), Is.EqualTo(expected.Bytes.ToArray()), because);
+            Assert.That(span, Is.SequenceEqualTo(expected.Bytes), because);
         }
 
         void AssertNotServed(ulong number, string because)
@@ -466,7 +466,7 @@ public class BlockhashProviderTests
         fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
 
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> first), Is.True);
-        Assert.That(first.ToArray(), Is.EqualTo(firstParent.Bytes.ToArray()), "first block");
+        Assert.That(first, Is.SequenceEqualTo(firstParent.Bytes), "first block");
 
         // A second header at the same height overwrites the same ring slot.
         Hash256 secondParent = new("0x2222222222222222222222222222222222222222222222222222222222222222");
@@ -474,7 +474,7 @@ public class BlockhashProviderTests
         fixture.StoreParentHash(secondHeader, secondParent);
 
         Assert.That(fixture.Provider.TryGetBlockhash(secondHeader, number, fixture.Spec, out ReadOnlySpan<byte> second), Is.True);
-        Assert.That(second.ToArray(), Is.EqualTo(secondParent.Bytes.ToArray()), "a second block must not be served the first entry");
+        Assert.That(second, Is.SequenceEqualTo(secondParent.Bytes), "a second block must not be served the first entry");
     }
 
     /// <summary>Repeated lookups must keep agreeing with a direct read from state.</summary>
@@ -496,7 +496,7 @@ public class BlockhashProviderTests
                 Assert.That(found, Is.EqualTo(expected is not null), $"round {round}, number {number}");
                 if (expected is not null)
                 {
-                    Assert.That(actual.ToArray(), Is.EqualTo(expected.Bytes.ToArray()), $"round {round}, number {number}");
+                    Assert.That(actual, Is.SequenceEqualTo(expected.Bytes), $"round {round}, number {number}");
                 }
             }
         }
@@ -564,14 +564,14 @@ public class BlockhashProviderTests
         fixture.StoreParentHash(header, firstParent);
         // No Prefetch: this provider is unarmed, exactly like a pooled eth_call env.
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> before), Is.True);
-        Assert.That(before.ToArray(), Is.EqualTo(firstParent.Bytes.ToArray()));
+        Assert.That(before, Is.SequenceEqualTo(firstParent.Bytes));
 
         // Rewrite the history slot through the same world state (the shape a stateOverride produces).
         Hash256 secondParent = new("0x2222222222222222222222222222222222222222222222222222222222222222");
         fixture.StoreParentHash(header, secondParent);
 
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> after), Is.True);
-        Assert.That(after.ToArray(), Is.EqualTo(secondParent.Bytes.ToArray()), "an unarmed read must reflect the rewrite, not a memoized value");
+        Assert.That(after, Is.SequenceEqualTo(secondParent.Bytes), "an unarmed read must reflect the rewrite, not a memoized value");
     }
 
     /// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
@@ -647,7 +647,7 @@ public class BlockhashProviderTests
         Assert.That(found, Is.EqualTo(expected is not null));
         if (expected is not null)
         {
-            Assert.That(actual.ToArray(), Is.EqualTo(expected.Bytes.ToArray()));
+            Assert.That(actual, Is.SequenceEqualTo(expected.Bytes));
         }
     }
 

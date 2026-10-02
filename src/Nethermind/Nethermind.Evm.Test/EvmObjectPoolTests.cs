@@ -34,6 +34,7 @@ public class EvmObjectPoolTests
     private sealed class ChurnItem(int id) : Item(id);
     private sealed class GuardItem(int id) : Item(id);
     private sealed class OrderItem(int id) : Item(id);
+    private sealed class SharedItem(int id) : Item(id);
 
     [Test]
     public void Empty_pool_reports_no_item()
@@ -130,6 +131,30 @@ public class EvmObjectPoolTests
         });
 
         Assert.That(seen, Is.SameAs(overflowed));
+    }
+
+    [Test]
+    public void Item_enqueued_to_the_shared_tier_skips_the_local_one()
+    {
+        EvmObjectPool<SharedItem> pool = new(localCapacity: 4);
+        SharedItem kept = new(1);
+        SharedItem shared = new(2);
+        SharedItem? seen = null;
+
+        RunOnNewThread(() =>
+        {
+            pool.Enqueue(kept);
+            // The local tier has room, yet the item goes where every thread can rent it.
+            pool.EnqueueShared(shared);
+        });
+
+        RunOnNewThread(() =>
+        {
+            pool.TryDequeue(out SharedItem? item);
+            seen = item;
+        });
+
+        Assert.That(seen, Is.SameAs(shared));
     }
 
     [Test]
@@ -266,7 +291,7 @@ public class EvmObjectPoolTests
             "the pool stopped recycling and kept allocating fresh instances");
     }
 
-    private static void RunOnNewThread(ThreadStart body)
+    internal static void RunOnNewThread(ThreadStart body)
     {
         Thread thread = new(body) { IsBackground = true };
         thread.Start();

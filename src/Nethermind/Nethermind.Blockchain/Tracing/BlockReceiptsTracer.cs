@@ -28,11 +28,16 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     /// <summary>Error reported to tracers for a frame transaction whose derived status is a failure.</summary>
     private const string FrameTxFailedError = "frame failed";
 
+    /// <inheritdoc/>
+    /// <remarks>A block tracer with this capability must forward receipts to its tx tracer; frame-end and rollback reports go directly to the tx tracer.</remarks>
     public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
     {
         _frameTxPayer = payer;
         _frameTxReceipts = frameReceipts;
-        _currentFrameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
+        if (_otherTracer is IFrameTxReceiptTracer receiptsTracer)
+            receiptsTracer.ReportFrameTxReceipt(payer, frameReceipts);
+        else
+            _currentFrameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
     }
 
     public void ReportFrameEnd(int frameIndex, EvmExceptionType? error) =>
@@ -41,19 +46,6 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) =>
         _currentFrameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
 
-    /// <summary>The innermost tracer of <paramref name="tracer"/> that takes EIP-8141 frame reports.</summary>
-    /// <remarks>The tracing RPCs hand the processor a wrapped tracer, so the capability is reached through
-    /// the wrapper chain rather than on the outermost one. A <see cref="CompositeTxTracer"/> is not a wrapper
-    /// and ends the walk; no tracing RPC builds one, and a chain that did would need this to fan out.</remarks>
-    private static IFrameTxReceiptTracer? FrameTxTracerOf(ITxTracer tracer)
-    {
-        while (true)
-        {
-            if (tracer is IFrameTxReceiptTracer frameTxTracer) return frameTxTracer;
-            if (tracer is not ITxTracerWrapper wrapper) return null;
-            tracer = wrapper.InnerTracer;
-        }
-    }
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
     public bool IsCollectingLogs => true;
@@ -147,6 +139,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         if (!parallel)
         {
             Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeBlockGas, cumulativeBlockStateGas);
+            Block.Header.GasUsedPerDimension = (cumulativeBlockGas, cumulativeBlockStateGas);
         }
 
         // Track cumulative receipt gas (post-refund)
@@ -389,6 +382,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         // Restore block gas from tracking: max(cumulative_execution, cumulative_state) for EIP-8037
         (ulong cumulativeExecution, ulong cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
         Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeExecution, cumulativeState);
+        Block.Header.GasUsedPerDimension = (cumulativeExecution, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
@@ -462,7 +456,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         _frameTxPayer = null;
         _frameTxReceipts = null;
         _currentTxTracer = _otherTracer.StartNewTxTrace(tx);
-        _currentFrameTxTracer = FrameTxTracerOf(_currentTxTracer);
+        _currentFrameTxTracer = IFrameTxReceiptTracer.FindIn(_currentTxTracer);
         return _currentTxTracer;
     }
 
