@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Multiformats.Address;
+using Multiformats.Address.Net;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -145,6 +146,25 @@ public class BeaconP2PLoopbackTests
         using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
         await abandoned.CancelAsync();
         Assert.That(async () => await client.DialPeerAsync(address, abandoned.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the caller stops waiting");
+    }
+
+    /// <summary>Disposal closes the TCP listener: the library closes it only on the start token, and its peer disposal closes sessions alone.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_disposed_host_no_longer_accepts_TCP_connections(CancellationToken token)
+    {
+        BeaconP2P host = PeerSessionNodes.Create().P2P;
+        await host.StartAsync(token);
+        int port = host.ListenAddresses.Single().ToEndPoint().Port;
+        using (TcpClient before = new())
+        {
+            await before.ConnectAsync(IPAddress.Loopback, port, token);
+        }
+
+        await host.DisposeAsync();
+
+        using TcpClient after = new();
+        Assert.That(async () => await after.ConnectAsync(IPAddress.Loopback, port, token), Throws.InstanceOf<SocketException>());
     }
 
     [Test]
