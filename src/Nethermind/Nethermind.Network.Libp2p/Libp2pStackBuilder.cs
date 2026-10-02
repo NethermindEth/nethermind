@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -59,14 +60,27 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
 }
 
 /// <summary>Creates peers that run identify on every new session and push it when their listen addresses change.</summary>
-/// <param name="dnsLookup">Answers the DNS queries that resolve names in dialed addresses; DnsClient when null.</param>
+/// <param name="dnsLookup">Answers the DNS queries that resolve names in dialed addresses; the operating system and DnsClient when null.</param>
 public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings, PeerStore peerStore, IdentifyNotifier identifyNotifier, ILoggerFactory? loggerFactory = null,
     IDnsLookup? dnsLookup = null)
     : PeerFactory(protocolStackSettings, peerStore, loggerFactory: loggerFactory)
 {
     public override ILocalPeer Create(Identity? identity = null) =>
         new IdentifyingPeer(identity ?? new Identity(privateKey: null, KeyType.Secp256K1), PeerStore, protocolStackSettings, identifyNotifier, LoggerFactory,
-            dnsLookup ?? new DnsClientLookup());
+            dnsLookup ?? new SystemDnsLookup());
+
+    /// <summary>Answers A and AAAA queries through the operating system, which reads the hosts file, and TXT queries through DnsClient,
+    /// which the operating system resolver cannot make.</summary>
+    private sealed class SystemDnsLookup : IDnsLookup
+    {
+        private readonly DnsClientLookup _txt = new();
+
+        public Task<IEnumerable<string>> QueryTxtAsync(string name) => _txt.QueryTxtAsync(name);
+
+        public async Task<IEnumerable<IPAddress>> QueryAAsync(string name) => await Dns.GetHostAddressesAsync(name, AddressFamily.InterNetwork);
+
+        public async Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => await Dns.GetHostAddressesAsync(name, AddressFamily.InterNetworkV6);
+    }
 
     /// <remarks>Dials through <see cref="ILocalPeer"/> reach the library only with resolved TCP addresses of one peer id: Nethermind.Libp2p 1.0.0
     /// keeps a dial that fails before its first await, as such addresses make it, as that peer id's pending dial for good.</remarks>
