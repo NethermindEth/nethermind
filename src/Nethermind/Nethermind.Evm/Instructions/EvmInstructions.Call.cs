@@ -342,6 +342,7 @@ public static partial class EvmInstructions
         ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadAfterGas(in dataOffset, in dataLength);
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+            vm.EnvironmentCache,
             codeInfo: codeInfo,
             executingAccount: target,
             caller: caller,
@@ -380,6 +381,7 @@ public static partial class EvmInstructions
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+            vm.FrameCache,
             gas: childGas,
             outputDestination: outputOffset.ToLong(),
             outputLength: outputLength.ToLong(),
