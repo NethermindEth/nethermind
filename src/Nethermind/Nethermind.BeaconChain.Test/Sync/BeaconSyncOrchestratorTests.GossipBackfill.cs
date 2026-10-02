@@ -171,21 +171,53 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    // A parent held behind a deeper ancestor that waits for the regeneration budget is not fetched again for another child in the slot.
+    // A parent held behind a deeper ancestor that waits for the regeneration budget is not fetched again for another child, in the slot or the next.
     [Test]
-    public async Task Parent_held_behind_a_budget_deferred_ancestor_buys_no_second_backfill()
+    public async Task Parent_held_behind_a_budget_deferred_ancestor_buys_no_second_backfill([Values] bool nextSlot)
     {
         DeferredAncestorWalk walk = await WalkToBudgetDeferredAncestorAsync();
         ForkedSignedBeaconBlock sibling = ChildOf(walk.Blocks[1], WallSlot - 1);
+        ulong siblingWallSlot = nextSlot ? WallSlot + 1 : WallSlot;
+        SetWallSlot(walk.Harness, siblingWallSlot);
 
         await walk.Harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(sibling, CancellationToken.None);
         walk.Harness.Importer.RegenerationRefused.Remove(walk.Blocks[0].ComputeMessageRoot());
-        await walk.Harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+        await walk.Harness.Orchestrator.ProcessSlotAsync(siblingWallSlot, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ByRootRequestsFor(walk.Peer, walk.Blocks[1].ComputeMessageRoot()), Is.EqualTo(1), "the held parent is not fetched again");
             Assert.That(walk.Harness.Importer.Known, Does.Contain(walk.Blocks[2].ComputeMessageRoot()).And.Contain(sibling.ComputeMessageRoot()), "both children import behind the deferred ancestor");
+        }
+    }
+
+    // A parent whose retry expired is no longer held, so a later child fetches it, also when the slot's budget was renewed while it waited.
+    [Test]
+    public async Task Parent_whose_retry_expired_may_be_fetched_again()
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 3);
+        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        Hash256 parentRoot = parent.ComputeMessageRoot();
+        (Harness harness, IBeaconSyncPeer peer) = CreateBackfillHarness();
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.Add(parentRoot);
+        await harness.Orchestrator.ImportBlockAsync(parent, CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(parent, WallSlot), CancellationToken.None);
+
+        ulong expirySlot = WallSlot + 2 * Spec.SlotsPerEpoch + 1;
+        SetWallSlot(harness, expirySlot);
+        // Near the head again, so a block with an unknown parent is fetched by root rather than left to range sync.
+        await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(expirySlot - 1, anchorRoot)), CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(expirySlot, seed: 0), CancellationToken.None);
+        await harness.Orchestrator.ProcessSlotAsync(expirySlot, CancellationToken.None);
+        int requestsBeforeExpiry = ByRootRequestsFor(peer, parentRoot);
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(parent, expirySlot), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requestsBeforeExpiry, Is.Zero, "fixture: the parent waited for its retry");
+            Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero, "fixture: the parent's retry expired");
+            Assert.That(ByRootRequestsFor(peer, parentRoot), Is.EqualTo(1));
         }
     }
 
