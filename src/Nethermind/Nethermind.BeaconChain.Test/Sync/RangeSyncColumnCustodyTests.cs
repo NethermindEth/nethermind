@@ -227,6 +227,24 @@ public class RangeSyncColumnCustodyTests
         }
     }
 
+    /// <summary>A reply cut short keeps the reason it failed: a closed session must not read as a failed request, or the peer stays on a failure budget it can never work off.</summary>
+    [TestCase(false, PeerFailureReason.RequestFailed)]
+    [TestCase(true, PeerFailureReason.SessionClosed)]
+    [CancelAfter(30_000)]
+    public async Task A_reply_cut_short_is_reported_under_the_reason_it_failed(bool sessionClosed, PeerFailureReason expected, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        Exception cause = sessionClosed
+            ? new System.IO.IOException("peer disconnected after 1 s: its libp2p session closed", new OperationCanceledException())
+            : new TimeoutException("request timed out");
+        StubPeer cutShort = fixture.FailingColumnPeer("cut-short", columns => throw new PartialSidecarsException(cause, fixture.ServeColumns(columns[..1])));
+        StubPeer good = fixture.Peer("good", custody: StubPeer.AllColumns);
+
+        await fixture.RunOneRoundAsync([cutShort, good], token);
+
+        Assert.That(cutShort.Reports, Is.EqualTo(new[] { expected }));
+    }
+
     /// <summary>The importer defers a block whose columns are missing and fetches them by root, so a failed column batch must not hold its blocks back.</summary>
     [Test]
     [CancelAfter(30_000)]
