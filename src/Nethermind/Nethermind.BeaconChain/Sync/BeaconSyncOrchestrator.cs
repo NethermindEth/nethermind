@@ -1194,16 +1194,20 @@ public sealed class BeaconSyncOrchestrator(
                 BlameInvalidFetchedBlock(result, refusal, servedBy, root);
             }
 
+            // Rejection of the last deferred copy ends its held chain regardless of the copy's origin.
+            if (result == BlockImportResult.Invalid && (rangeItem is not null || isRangeHeld || (_rangeHeld?.DeferredRoot == root && !otherCopyQueued)))
+            {
+                _rangeHeld = null;
+                ClearRangeHeldRoots();
+                EndRangeSyncRound();
+            }
+
             // The copy range sync delivered answers for its supplier whatever other route also brought it; another signed copy does not.
             // A range copy waiting for a retry keeps its supplier once the held chain is gone, as when another range copy failed first.
             bool queuedRangeCopy = isQueued && queued.Origin == ImportOrigin.Range;
             if (result == BlockImportResult.Invalid && (rangeItem is not null || isRangeHeld || queuedRangeCopy))
             {
-                // fork-choice.md on_block: rejected range blocks end the round and only their supplier is blamed.
                 (rangeItem is not null || isRangeHeld ? rangeSource : queued.ServedBy)?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Invalid range block at slot {block.Slot}");
-                _rangeHeld = null;
-                ClearRangeHeldRoots();
-                EndRangeSyncRound();
             }
             // A promoted copy still waits under the root, so the held chain waits with it.
             else if (wasRetried && promoted is null)

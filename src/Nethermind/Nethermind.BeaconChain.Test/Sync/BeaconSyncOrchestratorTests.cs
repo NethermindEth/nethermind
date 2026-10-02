@@ -1220,6 +1220,107 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    [TestCase(false, false, false)]
+    [TestCase(true, false, false)]
+    [TestCase(true, true, false)]
+    [TestCase(true, true, true)]
+    [CancelAfter(10_000)]
+    public async Task Failed_queued_range_copy_ends_only_the_rejected_held_chain(bool restoreOldChain, bool alternateCopy, bool rejectAlternate, CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 102, 103);
+        SignedBeaconBlock oldBlock = new()
+        {
+            Message = TestChain.CreateBlock(101, anchorRoot).Message,
+            Signature = new BlsSignature(Enumerable.Repeat((byte)0x22, 96).ToArray())
+        };
+        ForkedSignedBeaconBlock old = new ForkedSignedBeaconBlock.OfFulu(oldBlock);
+        ForkedSignedBeaconBlock replacement = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        Hash256 oldRoot = old.ComputeMessageRoot();
+        Hash256 replacementRoot = replacement.ComputeMessageRoot();
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(restoreOldChain ? TestChain.CreateBlock(103, oldRoot) : chain[1]);
+        BlsSignature alternateSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
+        ForkedSignedBeaconBlock alternate = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock
+        {
+            Message = oldBlock.Message,
+            Signature = alternateSignature
+        });
+        IBeaconSyncPeer oldPeer = Substitute.For<IBeaconSyncPeer>();
+        IBeaconSyncPeer alternatePeer = Substitute.For<IBeaconSyncPeer>();
+        IBeaconSyncPeer currentPeer = Substitute.For<IBeaconSyncPeer>();
+        currentPeer.Id.Returns("current");
+        currentPeer.HeadSlot.Returns(WallSlot);
+        TaskCompletionSource requestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        currentPeer.RequestBlocksByRangeAsync(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            requestStarted.TrySetResult();
+            await Task.Delay(Timeout.Infinite, call.ArgAt<CancellationToken>(2));
+            return (IReadOnlyList<ForkedSignedBeaconBlock>)[];
+        });
+        Harness harness = CreateHarness(peers: [currentPeer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.UnionWith([oldRoot, replacementRoot]);
+
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(old, oldPeer));
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+        Assert.That(harness.Orchestrator.RangeHeldSlot, Is.EqualTo(old.Slot), "the old copy first owns the hold");
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(replacement, currentPeer));
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+        Assert.That(harness.Orchestrator.RangeHeldSlot, Is.EqualTo(replacement.Slot), "B replaces A before the child arrives");
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(child, currentPeer));
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+        Assert.That(harness.Orchestrator.RangeHeldSlot, Is.EqualTo(child.Slot), "the child holds its own parent's chain");
+        if (alternateCopy)
+        {
+            await harness.Orchestrator.ImportBlockAsync(alternate, token, fetchedByRoot: rejectAlternate, servedBy: rejectAlternate ? alternatePeer : null);
+        }
+        harness.Importer.RequestedImports.Clear();
+        harness.Importer.ByRootImports.Clear();
+
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task round = harness.Orchestrator.FeedRangeSyncRoundAsync(stop.Token);
+        try
+        {
+            await requestStarted.Task.WaitAsync(token);
+            harness.Importer.Unavailable.Remove(oldRoot);
+            harness.Importer.ForgedSignatures.Add(oldBlock.Signature!);
+            if (rejectAlternate)
+            {
+                harness.Importer.ForgedSignatures.Add(alternateSignature);
+            }
+            harness.Importer.EngineDown.Add(oldRoot);
+            BlockImportResult result = await harness.Orchestrator.ImportBlockAsync(old, token);
+            bool alternateSurvives = alternateCopy && !rejectAlternate;
+            bool shouldEnd = restoreOldChain && !alternateSurvives;
+            bool ended = shouldEnd ? await EndsAsync(round, token) : await Task.WhenAny(round, Task.Delay(300, token)) == round;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(alternateSurvives ? BlockImportResult.EngineUnavailable : BlockImportResult.Invalid));
+                Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.EqualTo(alternateSurvives ? 2 : 1), "B and any surviving alternate copy remain queued");
+                Assert.That(harness.Importer.ByRootImports, Is.EqualTo(rejectAlternate ? new[] { oldRoot } : Array.Empty<Hash256>()), "the promoted fetched copy retains its by-root origin");
+                Assert.That(harness.Orchestrator.RangeHeldSlot, Is.EqualTo(shouldEnd ? (ulong?)null : child.Slot), "only rejection of the last copy of the held parent releases its chain");
+                Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(shouldEnd ? 0 : 1), "children survive only while their parent can still import");
+                Assert.That(ended, Is.EqualTo(shouldEnd), "restart fetching when the restored parent is rejected, but preserve an unrelated or recoverable chain");
+                oldPeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+                alternatePeer.Received(rejectAlternate ? 1 : 0).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+                currentPeer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
+            }
+
+            if (!shouldEnd)
+            {
+                harness.Importer.Unavailable.Remove(replacementRoot);
+                harness.Importer.EngineDown.Remove(oldRoot);
+                await harness.Orchestrator.ImportBlockAsync(alternateCopy ? alternate : replacement, token);
+                Assert.That(harness.Importer.RequestedImports, Does.Contain(child.ComputeMessageRoot()), "the surviving child retains its range provenance");
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            Assert.That(await EndsAsync(round, token), Is.True);
+        }
+    }
+
     public enum CopyArrival
     {
         ForgeryFirst,
