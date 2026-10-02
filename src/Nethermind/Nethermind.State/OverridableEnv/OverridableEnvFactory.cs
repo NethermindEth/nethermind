@@ -41,6 +41,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
                 builder.AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false));
             }
             builder
+                .AddScoped<CodeOverrideStore>()
                 .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
                 .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) =>
                     codeInfoRepo as OverridableCodeInfoRepository
@@ -61,6 +62,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
     {
         private IDisposable? _worldScopeCloser;
         private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
+        private readonly CodeOverrideStore _codeOverrides = childLifetimeScope.Resolve<CodeOverrideStore>();
         private readonly IWorldState _worldState = childLifetimeScope.Resolve<IWorldState>();
 
         public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, BlockOverride? blockOverride, [NotNullWhen(true)] out IDisposable? scope)
@@ -164,6 +166,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
                 .AddScoped<IOverridableEnv>(this)
                 .AddScoped<ICodeInfoRepository>(_codeInfoRepository)
                 .AddScoped<IOverridableCodeInfoRepository>(_codeInfoRepository)
+                .AddScoped<CodeOverrideStore>(_codeOverrides)
                 .AddScoped<ISpecProvider>(overridableSpecProvider);
 
             if (readOverlay is not null) builder.AddScoped<StateReadOverlaySlot>(readOverlay);

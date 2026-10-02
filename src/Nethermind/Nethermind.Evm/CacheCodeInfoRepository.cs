@@ -83,6 +83,9 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         _inner.GetPrecompile(codeSource, vmSpec);
 
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        _inner.GetDelegatedCodeInfo(target, vmSpec);
+
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         _inner.TryGetDelegation(address, spec, out delegatedAddress);
 

@@ -189,10 +189,7 @@ public static partial class EvmInstructions
             // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
             state.AddAccountRead(delegated);
 
-            // EIP-7702: precompile MUST NOT execute via delegation; the decorator would route to the precompile CodeInfo.
-            codeInfo = spec.IsPrecompile(delegated)
-                ? CodeInfo.Empty
-                : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
+            codeInfo = vm.CodeInfoRepository.GetDelegatedCodeInfo(delegated, spec);
         }
 
         // EIP-150: forward the requested gas to the child frame, capped at 63/64 of remaining.
