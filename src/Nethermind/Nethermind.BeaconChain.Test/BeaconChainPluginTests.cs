@@ -72,6 +72,8 @@ public class BeaconChainPluginTests
         ITopic topic = p2p.GetTopic(unknown.Topic);
         topic.Unsubscribe();
         Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = unknown.Topic }), Is.EqualTo(MessageValidity.Throttled));
+        p2p.GetTopic(blockTopic).Unsubscribe();
+        Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = blockTopic }), Is.EqualTo(MessageValidity.Throttled));
     }
 
     /// <summary>p2p-interface.md "Topics and messages": the router drops a message carrying from, seqno, signature or key before the validator runs.</summary>
