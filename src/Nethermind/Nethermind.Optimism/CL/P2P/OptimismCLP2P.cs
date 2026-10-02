@@ -47,7 +47,7 @@ public class OptimismCLP2P : IDisposable
     private readonly Random _random = new();
 
     private PubsubRouter? _router;
-    private LocalPeer? _localPeer;
+    private ILocalPeer? _localPeer;
     private ITopic? _blocksV2Topic;
     private PeerStore? _peerStore;
 
@@ -237,7 +237,7 @@ public class OptimismCLP2P : IDisposable
         try
         {
             ExecutionPayloadV3? response = null;
-            foreach (ISession peer in _localPeer!.Sessions.ToList().Shuffle(_random))
+            foreach (ISession peer in ((LocalPeer)_localPeer!).Sessions.ToList().Shuffle(_random))
             {
                 response = await TryRequestPayload(peer, payloadNumber, expectedHash, token);
                 if (response is not null)
@@ -331,7 +331,7 @@ public class OptimismCLP2P : IDisposable
         }
 
         string address = NetworkHelper.ToTcpMultiaddress(hostIp, _config.ClP2PPort);
-        _localPeer = (LocalPeer)peerFactory.Create(new Identity());
+        _localPeer = peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
@@ -361,9 +361,15 @@ public class OptimismCLP2P : IDisposable
 
     public void Reset(ulong headNumber) => _headNumber = headNumber;
 
+    /// <summary>Internal so a test can dial from the started host.</summary>
+    internal ILocalPeer? LocalPeerForTest => _localPeer;
+
     public void Dispose()
     {
         _blocksV2Topic?.Unsubscribe();
         _blocksP2PMessageChannel.Writer.Complete();
+        // Disposing through ILocalPeer marks the peer closed before it disconnects, so a dial that completes later is closed too.
+        _localPeer?.DisposeAsync().AsTask().ContinueWith(static disposal => _ = disposal.Exception,
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 }
