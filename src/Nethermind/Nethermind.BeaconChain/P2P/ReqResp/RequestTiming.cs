@@ -16,7 +16,9 @@ public sealed class RequestTiming
     private static readonly ConditionalWeakTable<object, RequestTiming> ByRequest = [];
 
     private readonly Lock _lock = new();
-    private long _startedAt = Stopwatch.GetTimestamp();
+    private readonly long _firstStartedAt = Stopwatch.GetTimestamp();
+    private long _startedAt;
+    private int _attempt = 1;
     private object? _tracked;
     private long _channelOpenedAt;
     private long _firstChunkAt;
@@ -26,9 +28,7 @@ public sealed class RequestTiming
     private bool _settling;
     private TaskCompletionSource? _drained;
 
-    internal RequestTiming()
-    {
-    }
+    internal RequestTiming() => _startedAt = _firstStartedAt;
 
     /// <summary>Lets the protocol that receives <paramref name="request"/> report on this timing.</summary>
     /// <remarks>The argument must be this request's own object: a timing tracked through a shared one would take another request's progress.</remarks>
@@ -112,6 +112,7 @@ public sealed class RequestTiming
         Volatile.Write(ref _firstChunkAt, 0);
         Volatile.Write(ref _chunks, 0);
         Volatile.Write(ref _startedAt, Stopwatch.GetTimestamp());
+        Interlocked.Increment(ref _attempt);
     }
 
     internal void ChunkRead()
@@ -144,6 +145,9 @@ public sealed class RequestTiming
     /// <summary>Whether the request's channel opened; <c>null</c> when its protocol cannot report.</summary>
     public bool? ChannelOpened => _measured ? Volatile.Read(ref _channelOpenedAt) != 0 : null;
 
+    /// <summary>Which attempt at the request this is, from 1: another channel or another protocol version.</summary>
+    public int Attempt => Volatile.Read(ref _attempt);
+
     /// <summary>The time since the current request attempt began.</summary>
     public TimeSpan Elapsed => Stopwatch.GetElapsedTime(Volatile.Read(ref _startedAt));
 
@@ -154,9 +158,10 @@ public sealed class RequestTiming
         : Chunks == 0 ? "waiting for the first chunk"
         : $"reading chunk {Chunks + 1}";
 
-    /// <summary>The timing as the per-request Debug line shows it.</summary>
+    /// <summary>The timing as the per-request Debug line shows it: the stages of the current attempt, the total since the first.</summary>
     public override string ToString() =>
-        $"channel open {Since(Volatile.Read(ref _channelOpenedAt))}, first chunk {Since(Volatile.Read(ref _firstChunkAt))}, total {Elapsed.TotalMilliseconds:F0} ms, {Chunks} chunks";
+        $"channel open {Since(Volatile.Read(ref _channelOpenedAt))}, first chunk {Since(Volatile.Read(ref _firstChunkAt))}, total {Stopwatch.GetElapsedTime(_firstStartedAt).TotalMilliseconds:F0} ms, {Chunks} chunks"
+        + (Attempt > 1 ? $", attempt {Attempt}" : "");
 
     private string Since(long at) =>
         !_measured ? "not measured"
