@@ -148,6 +148,9 @@ internal static class GloasForkChoiceStepDriver
                 Assert.Fail($"{subject}: body attestation {i} rejected: {ex.Message}");
         }
 
+        // A vote waiting for a build would reach the store only on a later tick, after the vector's checks of this step.
+        Assert.That(context.Runner.DeferredBodyVoteCount, Is.Zero, $"{subject} left body attestations waiting for a target state build");
+
         AttesterSlashingGloas[] slashings = block.Body!.AttesterSlashings!;
         for (int i = 0; i < slashings.Length; i++)
         {

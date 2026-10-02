@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.BeaconChain.ForkChoice;
@@ -50,6 +51,7 @@ public sealed class ForkChoiceRunner
     public const ulong ReorgMaxEpochsSinceFinalization = 2;
 
     private readonly BeaconChainSpec _spec;
+    private readonly ILogger _logger;
     private readonly IForkChoiceStateProvider _stateProvider;
     private readonly IGloasBlockStateProvider? _gloasStateProvider;
     private readonly PubkeyCache _pubkeys;
@@ -151,6 +153,7 @@ public sealed class ForkChoiceRunner
     private const int MaxDeferredBodyVotes = 64;
 
     private static readonly StringLabel BodyAttestationRejected = new("body_attestation");
+    private static readonly StringLabel BodyAttestationDeferredDropped = new("body_attestation_deferred_dropped");
 
     /// <summary>A body vote waiting for its target's state, with the block that carried it.</summary>
     private sealed record DeferredBodyVote(AttestationData Data, BitArray AggregationBits, BitArray CommitteeBits, BlsSignature Signature, bool GloasContainer, Hash256 IncludingBlock);
@@ -187,8 +190,9 @@ public sealed class ForkChoiceRunner
         BeaconBlock anchorBlock,
         IForkChoiceStateProvider stateProvider,
         PubkeyCache pubkeys,
-        IGloasBlockStateProvider? gloasStateProvider = null)
-        : this(spec, stateProvider, pubkeys, gloasStateProvider, FuluAnchor(spec, anchorState, anchorBlock))
+        IGloasBlockStateProvider? gloasStateProvider = null,
+        ILogManager? logManager = null)
+        : this(spec, stateProvider, pubkeys, gloasStateProvider, FuluAnchor(spec, anchorState, anchorBlock), logManager)
     {
     }
 
@@ -214,8 +218,9 @@ public sealed class ForkChoiceRunner
         BeaconBlockGloas anchorBlock,
         IForkChoiceStateProvider stateProvider,
         PubkeyCache pubkeys,
-        IGloasBlockStateProvider gloasStateProvider)
-        : this(spec, stateProvider, pubkeys, gloasStateProvider, GloasAnchor(spec, anchorState, anchorBlock))
+        IGloasBlockStateProvider gloasStateProvider,
+        ILogManager? logManager = null)
+        : this(spec, stateProvider, pubkeys, gloasStateProvider, GloasAnchor(spec, anchorState, anchorBlock), logManager)
     {
     }
 
@@ -224,8 +229,10 @@ public sealed class ForkChoiceRunner
         IForkChoiceStateProvider stateProvider,
         PubkeyCache pubkeys,
         IGloasBlockStateProvider? gloasStateProvider,
-        AnchorNode anchor)
+        AnchorNode anchor,
+        ILogManager? logManager)
     {
+        _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<ForkChoiceRunner>();
         _spec = spec;
         _stateProvider = stateProvider;
         _gloasStateProvider = gloasStateProvider;
@@ -447,9 +454,9 @@ public sealed class ForkChoiceRunner
     /// for every body attestation and <c>on_attester_slashing</c> for every body attester slashing,
     /// and that convention is the caller's to honour.
     /// After this returns, the caller must feed <c>Body.Attestations</c> to
-    /// <see cref="OnAttestation"/> with <c>isFromBlock: true</c> and <c>Body.AttesterSlashings</c>
-    /// to <see cref="OnAttesterSlashing"/>, both with signature verification off (the transition
-    /// already verified them). Whether a body operation the store refuses (typically an attestation
+    /// <see cref="OnBodyAttestation(Attestation, Hash256)"/> with this block's root, which trusts the signatures the
+    /// transition verified where it can, and <c>Body.AttesterSlashings</c> to <see cref="OnAttesterSlashing"/>
+    /// with signature verification off (the transition already verified them). Whether a body operation the store refuses (typically an attestation
     /// for a head or target block this node never saw) is tolerated or fatal is the caller's policy;
     /// the block itself is in the tree either way. A caller that skips the replay loses LMD votes
     /// and equivocation discounts silently: <see cref="GetHead"/> keeps answering, from fewer votes.
@@ -515,7 +522,7 @@ public sealed class ForkChoiceRunner
     /// Its execution status is that of the payload the bid builds on; its own payload's verdicts are kept apart (<see cref="InvalidateExecutionChain"/>).
     /// There is no availability argument because the Gloas <c>on_block</c> no longer calls
     /// <c>is_data_available</c>. The body replay contract is the one the Fulu overload documents, through
-    /// the <see cref="AttestationGloas"/> and <see cref="AttesterSlashingGloas"/> overloads.
+    /// <see cref="OnBodyAttestation(AttestationGloas, Hash256)"/> and <see cref="OnAttesterSlashing(AttesterSlashingGloas, bool)"/>.
     /// A block that builds on its parent's full payload (<see cref="IsParentNodeFull"/>) is refused until
     /// that payload is recorded through <see cref="OnExecutionPayloadVerified"/>; the refusal leaves the store untouched.
     /// The body's payload attestations are applied here, as the spec's <c>notify_ptc_messages</c> does, not by the caller:
@@ -1775,13 +1782,17 @@ public sealed class ForkChoiceRunner
         return (held, true, false);
     }
 
+    /// <summary>The body votes waiting for <see cref="OnTick"/> to build their target state.</summary>
+    internal int DeferredBodyVoteCount => _deferredBodyVotes.Count;
+
     /// <summary>Puts off a body vote whose target state the budget cannot build now, dropping the oldest past <see cref="MaxDeferredBodyVotes"/>.</summary>
     private void DeferBodyVote(DeferredBodyVote vote)
     {
         if (_deferredBodyVotes.Count == MaxDeferredBodyVotes)
         {
-            _deferredBodyVotes.Dequeue();
-            Metrics.BeaconChainForkChoiceRejections.Increment(BodyAttestationRejected);
+            DeferredBodyVote dropped = _deferredBodyVotes.Dequeue();
+            Metrics.BeaconChainForkChoiceRejections.Increment(BodyAttestationDeferredDropped);
+            if (_logger.IsDebug) _logger.Debug($"Dropped the oldest of {MaxDeferredBodyVotes} body votes waiting for a target state build, for target {CheckpointRef.From(dropped.Data.Target!)}");
         }
 
         _deferredBodyVotes.Enqueue(vote);

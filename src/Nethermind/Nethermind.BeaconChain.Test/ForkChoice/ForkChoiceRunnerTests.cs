@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransition;
@@ -505,16 +506,26 @@ public class ForkChoiceRunnerTests
         UnsignedChain.ChainBlock including = ImportLine(chain, runner, a.Root, 65)[0];
         // Unsigned, so no build is cached and every vote costs one.
         Attestation vote = BodyVote(chain, other, targetEpoch);
+        StringLabel droppedLabel = new("body_attestation_deferred_dropped");
+        long droppedBefore = Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(droppedLabel);
         for (int i = 0; i < MaxOtherShufflingBodyBuilds + waiting + 8; i++)
         {
             Assert.That(() => runner.OnBodyAttestation(vote, including.Root),
                 i < MaxOtherShufflingBodyBuilds ? Throws.TypeOf<ForkChoiceException>() : Throws.Nothing, "a budgeted build refuses the vote at once; later ones wait");
         }
 
+        int waitingBeforeTicks = runner.DeferredBodyVoteCount;
+        long dropped = Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(droppedLabel) - droppedBefore;
         for (ulong tick = 1; tick <= waiting + 8; tick++)
             TickToSlot(runner, now + tick);
 
-        Assert.That(builds.Count, Is.EqualTo(MaxOtherShufflingBodyBuilds + waiting));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waitingBeforeTicks, Is.EqualTo(waiting));
+            Assert.That(dropped, Is.EqualTo(8), "each vote pushed out of the full queue is counted under its own label, apart from refused votes");
+            Assert.That(builds.Count, Is.EqualTo(MaxOtherShufflingBodyBuilds + waiting));
+            Assert.That(runner.DeferredBodyVoteCount, Is.Zero);
+        }
     }
 
     /// <summary>
