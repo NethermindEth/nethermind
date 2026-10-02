@@ -1121,7 +1121,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         (int? errorType, string errorMessage, bool operatorActionable) = GetErrorResult(trimmedMethodName, context, result, module);
-        return (errorType, errorMessage, methodName, null, operatorActionable);
+        return (errorType, errorMessage, trimmedMethodName, null, operatorActionable);
 
         // OperatorActionable is decided here, at the only place that knows *why* the request failed. A namespace
         // that is disabled for this URL or this endpoint is a fact about the node's configuration, not about the
