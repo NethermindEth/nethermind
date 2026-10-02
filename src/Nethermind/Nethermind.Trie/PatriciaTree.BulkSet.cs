@@ -23,7 +23,9 @@ public partial class PatriciaTree
     {
         None = 0,
         WasSorted = 1,
-        DoNotParallelize = 2
+        DoNotParallelize = 2,
+        /// <summary>Each top-level parallel job hashes the subtree it set, so the root hash only has the root left.</summary>
+        HashSubtrees = 4
     }
 
     public readonly struct BulkSetEntry(in ValueHash256 path, byte[]? value) : IComparable<BulkSetEntry>
@@ -175,7 +177,17 @@ public partial class PatriciaTree
                     flipCount,
                     Core.Diagnostics.ExperimentKnobs.BulkSetTopLevelOnly ? flags | Flags.DoNotParallelize : flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
 
-                jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
+                // Hashed while its nodes are still in this core's cache; a later change re-dirties the path it touches.
+                // An in-place change is told apart by the child's missing hash, which hashing sets, so it is decided
+                // first and reported as a changed child.
+                TrieNode? reportedChild = child;
+                if ((flags & Flags.HashSubtrees) != 0 && childPath.Length == 1 && newChild is not null && ShouldUpdateChild(node, child, newChild))
+                {
+                    DirtyNodeHasher.HashSubtreeOf(newChild, in childPath, TrieStore, _bufferPool);
+                    reportedChild = null;
+                }
+
+                jobs[i] = (startIdx, count, nib, childPath, reportedChild, newChild); // Just need the child actually...
 
                 return workerTraverseStack;
             },

@@ -437,6 +437,49 @@ public class PatriciaTreeBulkSetterTests
         Assert.That(pTree.RootHash, Is.EqualTo(root));
     }
 
+    /// <summary>Hashing each top-level subtree in the job that set it reaches the same root, also when set again on top.</summary>
+    [TestCaseSource(nameof(BulkSetTestGen))]
+    public void BulkSetHashingSubtreesReachesTheSameRoot(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items) =>
+        BulkSetTwice(existingItems, items, PatriciaTree.Flags.HashSubtrees);
+
+    [TestCaseSource(nameof(BulkSetTestGen))]
+    public void BulkSetTwiceReachesTheSameRoot(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items) =>
+        BulkSetTwice(existingItems, items, PatriciaTree.Flags.None);
+
+    private static void BulkSetTwice(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items, PatriciaTree.Flags flags)
+    {
+        (Hash256 root, _, _, _) = CalculateBaseline(existingItems, items, false);
+
+        TestMemDb db = new();
+        PatriciaTree pTree = new(new StrictRawScopedTrieStore(new RawScopedTrieStore(db)), LimboLogs.Instance);
+        pTree.RootHash = Keccak.EmptyTreeHash;
+        foreach ((Hash256 key, byte[] value) existingItem in existingItems)
+        {
+            pTree.Set(existingItem.key.Bytes, existingItem.value);
+        }
+
+        pTree.UpdateRootHash();
+
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
+        foreach ((Hash256 key, byte[] value) valueTuple in items)
+        {
+            entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
+        }
+
+        pTree.BulkSet(entries, flags);
+        pTree.UpdateRootHash();
+        Assert.That(pTree.RootHash, Is.EqualTo(root));
+
+        // A second set over hashed subtrees must re-dirty the paths it changes.
+        List<(Hash256 key, byte[] value)> again = GenRandomOfLength(200, seed: 99);
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> second = new(again.Count);
+        foreach ((Hash256 key, byte[] value) valueTuple in again) second.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
+        pTree.BulkSet(second, flags);
+        pTree.UpdateRootHash();
+        (Hash256 expectedAfter, _, _, _) = CalculateBaseline(existingItems, [.. items.Where(i => !again.Any(a => a.key == i.key)), .. again], false);
+        Assert.That(pTree.RootHash, Is.EqualTo(expectedAfter));
+    }
+
     [TestCaseSource(nameof(BulkSetTestGen))]
     public void BulkSetPreSorted(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items)
     {

@@ -729,7 +729,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     scope._wroteThisBlock = true;
                     if (Avx2.IsSupported && toSet.Count >= KeyHashBatch.MinimumBatchSize)
                     {
-                        scope.StateTree.SetAccounts(toSet);
+                        scope.StateTree.SetAccounts(toSet, Core.Diagnostics.ExperimentKnobs.HashAfterSet ? PatriciaTree.Flags.HashSubtrees : PatriciaTree.Flags.None);
                     }
                     else
                     {
