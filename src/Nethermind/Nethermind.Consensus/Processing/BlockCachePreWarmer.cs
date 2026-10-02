@@ -477,8 +477,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void DiscoverTransactionStorageReads((int Index, Transaction Tx) candidate, DiscoveryRound round)
     {
-        // Already started by the main thread — warming it now is redundant and contends; skip.
-        if (MainThreadTxIndex >= candidate.Index) return;
+        // Already started by the main thread — warming it now is redundant and contends; skip. With the knob, a
+        // candidate the main thread is still inside is discovered on: a long chain of cold reads outlasts the rounds.
+        if (Core.Diagnostics.ExperimentKnobs.DiscoveryWhileRunning ? MainThreadTxIndex > candidate.Index : MainThreadTxIndex >= candidate.Index) return;
 
         // The round admits only candidates whose sender has landed; see DeferUnrecovered.
         Transaction tx = candidate.Tx;

@@ -49,6 +49,9 @@ public static class ExperimentKnobs
     /// <summary>The prewarmer also reads the accounts that large calldata names as ABI address words.</summary>
     public static readonly bool CalldataAddressWarm = On("NETHERMIND_EXP_CALLDATA_ADDRESSES");
 
+    /// <summary>Storage discovery goes on for a candidate the main thread is executing, not only for ones ahead of it.</summary>
+    public static readonly bool DiscoveryWhileRunning = On("NETHERMIND_EXP_DISCOVERY_WHILE_RUNNING");
+
     /// <summary>When at least this many of the root's children are dirty, hash two nibbles down (up to 256 units); 0 = off.</summary>
     public static readonly int HashTwoLevels = Int("NETHERMIND_EXP_HASH_TWO_LEVELS", 0);
 }
