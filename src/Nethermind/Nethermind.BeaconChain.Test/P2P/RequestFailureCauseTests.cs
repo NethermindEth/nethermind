@@ -351,6 +351,42 @@ public class RequestFailureCauseTests
         }
     }
 
+    /// <summary>A by-range reply cut by a timeout after some chunks carries what it delivered; the timeout inside must still be excused while no request of ours was answered.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_timeout_after_some_chunks_while_no_request_was_answered_is_not_counted_against_the_peer([Values] bool columns, CancellationToken token)
+    {
+        ISession session = Substitute.For<ISession>();
+        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(5, Hash256.Zero));
+        session.DialAsync<BeaconBlocksByRangeProtocolV2, BeaconBlocksByRangeDial, IReadOnlyList<ForkedSignedBeaconBlock>>(default, default).ReturnsForAnyArgs(call =>
+        {
+            call.Arg<BeaconBlocksByRangeDial>().OnBlock!(block);
+            return Task.FromCanceled<IReadOnlyList<ForkedSignedBeaconBlock>>(new CancellationToken(true));
+        });
+        session.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(default, default).ReturnsForAnyArgs(call =>
+        {
+            call.Arg<DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>>().OnSidecar!(DataColumnSidecarTestFixture.BuildValidSidecar(3, 5, blobCount: 1));
+            return Task.FromCanceled<ForkedDataColumnSidecars>(new CancellationToken(true));
+        });
+        Node node = Create();
+        await using (node.P2P)
+        {
+            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+            IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress);
+
+            Exception? failure = columns
+                ? Assert.CatchAsync(async () => await peer.RequestDataColumnSidecarsByRangeAsync(5, 1, [3], token))
+                : Assert.CatchAsync(async () => await peer.RequestBlocksByRangeAsync(5, 2, token));
+            peer.ReportFailure(PeerFailureClassifier.Classify(failure!), failure!.Message);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(failure, columns ? Is.InstanceOf<PartialSidecarsException>() : Is.InstanceOf<PartialBlocksException>(), "fixture: the reply delivered a chunk before the timeout");
+                Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
+            }
+        }
+    }
+
     [TestCase(typeof(ReqRespTimeoutException), false, 2, false, ExpectedResult = true)]
     [TestCase(typeof(OperationCanceledException), false, 1, false, ExpectedResult = true)]
     [TestCase(typeof(ReqRespTimeoutException), false, 3, false, ExpectedResult = false)]
