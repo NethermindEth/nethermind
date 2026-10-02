@@ -337,6 +337,7 @@ public sealed class ForkChoiceRunner
     public ForkChoiceSnapshot Snapshot()
     {
         IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
+        HashSet<Hash256> validPayloadHashes = CollectValidGloasPayloadHashes(nodes);
         ForkChoiceSnapshotNode[] copy = new ForkChoiceSnapshotNode[nodes.Count];
         for (int i = 0; i < copy.Length; i++)
         {
@@ -349,10 +350,32 @@ public sealed class ForkChoiceRunner
                 node.FinalizedCheckpoint.Epoch,
                 node.Weight,
                 node.ExecutionStatus,
-                node.ExecutionBlockHash);
+                node.ExecutionBlockHash,
+                node.IsGloas ? validPayloadHashes.Contains(node.ExecutionBlockHash!) : node.ExecutionStatus == ExecutionStatus.Valid);
         }
 
         return new ForkChoiceSnapshot(_store.JustifiedCheckpoint, _store.FinalizedCheckpoint, _store.ProposerBoostRoot, copy);
+    }
+
+    /// <summary>The bid <c>block_hash</c> of every Gloas payload known VALID: reported VALID itself, or one a VALID block builds on.</summary>
+    /// <remarks>
+    /// specs/bellatrix/optimistic-sync.md: the ancestors of a VALID payload are VALID, and so are their blocks, so the payload each VALID
+    /// block builds on covers every execution ancestor. A VALID Gloas block never vouches for its own payload, which a child may have built EMPTY over.
+    /// </remarks>
+    private HashSet<Hash256> CollectValidGloasPayloadHashes(IReadOnlyList<ProtoNode> nodes)
+    {
+        HashSet<Hash256> valid = [];
+        foreach (ProtoNode node in nodes)
+        {
+            if (!node.IsGloas)
+                continue;
+            if (_validPayloads.Contains(node.Root))
+                valid.Add(node.ExecutionBlockHash!);
+            if (node.ExecutionStatus == ExecutionStatus.Valid && _parentBlockHashes.TryGetValue(node.Root, out Hash256? builtOn))
+                valid.Add(builtOn);
+        }
+
+        return valid;
     }
 
     /// <summary>
