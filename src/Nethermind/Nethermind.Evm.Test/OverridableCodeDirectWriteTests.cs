@@ -3,11 +3,13 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -15,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
@@ -79,13 +82,20 @@ public class OverridableCodeDirectWriteTests : VirtualMachineTestsBase
         AssertStorage(3, (UInt256)SourceResult);
     }
 
-    [TestCase(Writer.SetCodeFrom)]
-    [TestCase(Writer.Delegation)]
-    public void DirectWrite_RevertedBySnapshot_RestoresTheOverride(Writer writer)
+    [Test]
+    public void DirectWrite_RevertedBySnapshot_RestoresTheOverride([Values] Writer writer, [Values] bool traceAccess)
     {
+        BlockAccessListAtIndex accesses = new();
+        if (traceAccess)
+        {
+            TracedAccessWorldState tracedState = new(TestState, false);
+            tracedState.SetGeneratingBlockAccessList(accesses);
+            _repository = new OverridableCodeInfoRepository(CodeInfoRepository, tracedState);
+        }
         byte[] codeBefore = CodeBefore(writer);
         TestState.CreateAccount(Target, 1.Ether);
         Override(Target, codeBefore);
+        CodeInfo original = _repository.GetCachedCodeInfoNoDelegation(Target, Spec);
         Snapshot snapshot = TestState.TakeSnapshot();
 
         if (writer == Writer.SetCodeFrom) TestState.InsertCode(Target, Keccak.Compute(SourceCode), SourceCode, Spec);
@@ -95,7 +105,41 @@ public class OverridableCodeDirectWriteTests : VirtualMachineTestsBase
 
         TestState.Restore(snapshot);
 
-        Assert.That(_repository.GetCachedCodeInfoNoDelegation(Target, Spec).Code.ToArray(), Is.EqualTo(codeBefore), "after the revert");
+        Assert.That(_repository.GetCachedCodeInfoNoDelegation(Target, Spec), Is.SameAs(original), "after the revert");
+        if (traceAccess)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accesses.AccountCount, Is.EqualTo(1));
+                Assert.That(accesses.HasAccount(Target), Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public void PrecompileOverride_DirectWriteAndRevert_KeepDispatchConsistent()
+    {
+        TestState.CreateAccount(Target, 1.Ether);
+        CodeInfo precompile = new(Sha256Precompile.Instance);
+        _repository.SetCodeOverride(Spec, Target, precompile);
+        Snapshot snapshot = TestState.TakeSnapshot();
+        Assert.That(_repository.GetPrecompile(Target, Spec), Is.SameAs(precompile.Precompile));
+
+        TestState.InsertCode(Target, SourceCode, Spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_repository.GetPrecompile(Target, Spec), Is.Null);
+            Assert.That(_repository.GetCachedCodeInfoNoDelegation(Target, Spec).Code.ToArray(), Is.EqualTo(SourceCode));
+        }
+
+        TestState.Restore(snapshot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_repository.GetPrecompile(Target, Spec), Is.SameAs(precompile.Precompile));
+            Assert.That(_repository.GetCachedCodeInfoNoDelegation(Target, Spec), Is.SameAs(precompile));
+        }
     }
 
     [Test]

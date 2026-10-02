@@ -13,7 +13,7 @@ public interface IOverridableCodeInfoRepository : ICodeInfoRepository
     /// <remarks>
     /// The world state must already hold <paramref name="value"/>'s code at <paramref name="key"/>: the override is
     /// served only while the state keeps that code hash, and after a direct write (SETCODEFROM, EIP-7702) is reverted
-    /// the override's code is reloaded from state. A precompile <paramref name="value"/> carries no code and is exempt.
+    /// the original override is restored. A precompile <paramref name="value"/> carries no code and is exempt.
     /// </remarks>
     void SetCodeOverride(IReleaseSpec vmSpec, Address key, CodeInfo value);
     void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr);
