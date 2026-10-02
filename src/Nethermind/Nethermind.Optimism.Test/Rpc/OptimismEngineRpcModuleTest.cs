@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -124,6 +125,17 @@ public class OptimismEngineRpcModuleTest
         Assert.That(result, Is.SameAs(expected));
         await engineRpcModule.Received(1).engine_newPayloadWithWitnessV4(
             payload, blobVersionedHashes, Hash256.Zero, executionRequests);
+    }
+
+    [TestCase(false, false, false)]
+    [TestCase(true, false, true)]
+    [TestCase(true, true, true)]
+    public void NewPayloadV4_fork_check_follows_Isthmus(bool isthmusEnabled, bool requestsEnabled, bool expected)
+    {
+        OptimismReleaseSpec spec = new() { IsEip4844Enabled = true, IsOpIsthmusEnabled = isthmusEnabled, IsEip6110Enabled = requestsEnabled };
+        OptimismExecutionPayloadV3 payload = new();
+
+        Assert.That(payload.ValidateForkOnNewPayload(new TestSingleReleaseSpecProvider(spec), EngineApiVersions.NewPayload.V4), Is.EqualTo(expected));
     }
 
     [Test]

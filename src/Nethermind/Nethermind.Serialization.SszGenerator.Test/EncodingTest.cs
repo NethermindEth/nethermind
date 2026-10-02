@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Serialization.Ssz.Merkleization;
@@ -128,6 +129,12 @@ public class EncodingTest
 
         Assert.That(() => ByteListItself.Decode(encoded, out ByteListItself[] _), Throws.InstanceOf<InvalidDataException>());
     }
+
+    [TestCase(new byte[] { 8, 0, 0, 0, 4, 0, 0, 0 }, "offsets are out of order (4 < 8).")]
+    [TestCase(new byte[] { 8, 0, 0, 0, 9, 0, 0, 0 }, "offset 9 exceeds the input length 8.")]
+    public void Decode_collection_itself_byte_lists_rejects_bad_offsets(byte[] encoded, string reason) =>
+        Assert.That(() => ByteListItself.Decode(encoded, out ByteListItself[] _),
+            Throws.InstanceOf<InvalidDataException>().With.Message.EndsWith(reason));
 
     [Test]
     public void Decode_collection_itself_byte_lists_supports_class_items()
@@ -437,7 +444,7 @@ public class EncodingTest
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(decoded.Items.AsSpan().ToArray(), Is.EqualTo(expectedItems));
+                Assert.That(decoded.Items.AsSpan(), Is.SequenceEqualTo(expectedItems));
                 Assert.That(actual, Is.EqualTo(expected));
             }
         }
@@ -664,7 +671,7 @@ public class EncodingTest
             Assert.That(convertedEncoded, Has.Length.EqualTo(4 + itemCount * itemLength));
             Assert.That(decoded.Items, Has.Length.EqualTo(itemCount));
             for (int i = 0; i < itemCount; i++)
-                Assert.That(decoded.Items![i].Data.ToArray(), Is.EqualTo(items[i]), $"item {i} must round-trip exactly");
+                Assert.That(decoded.Items![i].Data, Is.SequenceEqualTo(items[i]), $"item {i} must round-trip exactly");
         }
     }
 
@@ -836,6 +843,21 @@ public class EncodingTest
     }
 
     [Test]
+    public void Merkleize_progressive_byte_list_uses_progressive_merkleization([Values(0, 1, 31, 32, 33, 160, 161, 700)] int length)
+    {
+        byte[] bytes = new byte[length];
+        for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(i + 1);
+        ProgressiveByteListContainer container = new() { Bytes = bytes };
+
+        Merkleize(container, out UInt256 actual);
+
+        UInt256 expected = ProgressiveMerkleizeBytes(bytes);
+        Merkle.MixIn(ref expected, bytes.Length);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
     public void Encode_and_decode_progressive_bitlist_round_trip()
     {
         BitArray bits = MakeSampleBits10();
@@ -923,7 +945,7 @@ public class EncodingTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
-            Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+            Assert.That(decoded.Bytes, Is.SequenceEqualTo(original.Bytes));
         }
     }
 
@@ -938,7 +960,7 @@ public class EncodingTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
-            Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+            Assert.That(decoded.Bytes, Is.SequenceEqualTo(original.Bytes));
         }
     }
 
@@ -963,7 +985,7 @@ public class EncodingTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded.Length, Is.EqualTo(108));
-            Assert.That(encoded.AsSpan(0, 4).ToArray(), Is.EqualTo([0x04, 0x03, 0x02, 0x01]));
+            Assert.That(encoded.AsSpan(0, 4), Is.SequenceEqualTo(new byte[] { 0x04, 0x03, 0x02, 0x01 }));
             Assert.That(decoded.FixedBytes.Value, Is.EqualTo(original.FixedBytes.Value));
             Assert.That(decoded.FixedBytesVector!.Select(x => x.Value), Is.EqualTo(original.FixedBytesVector!.Select(x => x.Value)));
             Assert.That(decoded.Hash, Is.EqualTo(original.Hash));

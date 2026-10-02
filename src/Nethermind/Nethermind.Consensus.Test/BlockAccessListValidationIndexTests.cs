@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -232,7 +233,7 @@ public class BlockAccessListValidationIndexTests
             foreach (NonceChange nc in acc.NonceChanges)
                 GetSlice(slicesByIndex, nc.Index).AddNonceChange(acc.Address, nc.Value);
             foreach (CodeChange cc in acc.CodeChanges)
-                GetSlice(slicesByIndex, cc.Index).AddCodeChange(acc.Address, before: [], after: cc.Code);
+                GetSlice(slicesByIndex, cc.Index).AddCodeChange(acc.Address, before: Array.Empty<byte>(), after: cc.Code);
             foreach (ReadOnlySlotChanges slot in acc.StorageChanges)
             {
                 foreach (StorageChange ch in slot.Changes)
