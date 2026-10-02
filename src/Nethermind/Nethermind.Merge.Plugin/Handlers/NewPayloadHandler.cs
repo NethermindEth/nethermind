@@ -649,6 +649,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private void StartSenderRecovery(ExecutionPayload request)
     {
+        // The early recovery races the processing thread, so its share of the work would change from run to run;
+        // the processing queue recovers every sender before the block runs.
+        if (DeterministicBenchmark.Enabled)
+            return;
+
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
         // the senders; they recover in the processing queue as before.
         if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
