@@ -1849,7 +1849,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             case ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic:
                 Hash256 blockRoot = message.BeaconBlockRoot!;
-                envelopePool?.Add(blockRoot, envelope);
+                envelopePool?.Add(blockRoot, envelope, persisted: true);
                 gossipRouter.MarkEnvelopeSeen(blockRoot, message.BuilderIndex);
                 await OnPayloadRecordedAsync(blockRoot, token);
                 break;

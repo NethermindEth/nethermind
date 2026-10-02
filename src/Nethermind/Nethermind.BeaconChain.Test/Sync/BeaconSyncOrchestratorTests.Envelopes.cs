@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -23,6 +24,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Libp2p.Protocols.Pubsub;
+using NSubstitute;
 using NUnit.Framework;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
@@ -37,6 +39,75 @@ namespace Nethermind.BeaconChain.Test.Sync;
 public partial class BeaconSyncOrchestratorTests
 {
     private const ulong EnvelopeBlockSlot = 150;
+
+    public enum EnvelopeCache
+    {
+        Absent,
+        MemoryOnly,
+        Persistent,
+    }
+
+    [Test]
+    public async Task Envelope_import_persists_once_before_verification_and_recovers_from_storage_failure(
+        [Values] EnvelopeCache cache, [Values(ExecutionStatus.Valid, ExecutionStatus.Optimistic)] ExecutionStatus verdict)
+    {
+        SignedGloasChain chain = new();
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        IColumnsDb<BeaconChainDbColumns> failingDb = Substitute.For<IColumnsDb<BeaconChainDbColumns>>();
+        failingDb.GetColumnDb(Arg.Any<BeaconChainDbColumns>()).Returns(call => db.GetColumnDb(call.Arg<BeaconChainDbColumns>()));
+        bool failWrites = false;
+        failingDb.StartWriteBatch().Returns(_ =>
+        {
+            IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+            if (!failWrites) return batch;
+            IColumnsWriteBatch<BeaconChainDbColumns> failingBatch = Substitute.For<IColumnsWriteBatch<BeaconChainDbColumns>>();
+            failingBatch.GetColumnBatch(Arg.Any<BeaconChainDbColumns>()).Returns(call => batch.GetColumnBatch(call.Arg<BeaconChainDbColumns>()));
+            failingBatch.When(b => b.Dispose()).Do(_ =>
+            {
+                batch.Clear();
+                batch.Dispose();
+                throw new InvalidOperationException("storage unavailable");
+            });
+            return failingBatch;
+        });
+        BeaconChainStore store = new(failingDb, chain.Spec);
+        ExecutionPayloadEnvelopePool? pool = cache == EnvelopeCache.Absent ? null
+            : new(store: cache == EnvelopeCache.Persistent ? store : null);
+        (BeaconSyncOrchestrator orchestrator, _, SignedGloasChain.EnvelopeEngine engine) =
+            CreateGloasOrchestrator(chain, store, envelopePool: pool);
+        engine.EnvelopeVerdict = verdict;
+        SignedGloasChain.Block block = chain.Next(null, 32, full: false, 0xC1);
+        Assert.That(await orchestrator.ImportBlockAsync(block.Forked, CancellationToken.None), Is.EqualTo(BlockImportResult.Imported));
+        MemDb column = (MemDb)db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
+        failWrites = true;
+
+        ExecutionPayloadEnvelopeImportResult? failed = await orchestrator.ImportEnvelopeAsync(block.Envelope, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failed, Is.Null, "a local storage failure is caught at the import recovery boundary");
+            Assert.That(column.GetAllKeys(), Is.Empty, "a failed import must not leave an envelope or an orphan VALID marker");
+            if (pool is not null) Assert.That(pool.TryGet(block.Root, out _), Is.False, "failed persistence must not populate the cache");
+        }
+
+        failWrites = false;
+        long writesBefore = column.WritesCount;
+        Assert.That(await orchestrator.ImportEnvelopeAsync(block.Envelope, CancellationToken.None),
+            Is.EqualTo(verdict == ExecutionStatus.Valid ? ExecutionPayloadEnvelopeImportResult.Valid : ExecutionPayloadEnvelopeImportResult.Optimistic),
+            "a failed write must leave the payload unverified so persistence is retried instead of returning AlreadyKnown");
+        Assert.That(await orchestrator.ImportEnvelopeAsync(block.Envelope, CancellationToken.None), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.AlreadyKnown));
+        BeaconChainStore reopened = new(db, chain.Spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(column.WritesCount - writesBefore, Is.EqualTo(verdict == ExecutionStatus.Valid ? 4 : 3),
+                "one envelope, slot index and bounds write, plus a marker for VALID; caching and re-import write nothing");
+            Assert.That(reopened.TryGetExecutionPayloadEnvelope(block.Root, out _), Is.True, "AlreadyKnown must still leave a durable envelope for API reads and restart");
+            Assert.That(reopened.IsExecutionPayloadValid(block.Root), Is.EqualTo(verdict == ExecutionStatus.Valid));
+            Assert.That(engine.EnvelopeCalls, Is.EqualTo(2), "the failed import retries verification once, while AlreadyKnown does not");
+            if (pool is not null) Assert.That(pool.TryGet(block.Root, out _), Is.True);
+        }
+    }
 
     [Test]
     public async Task A_blob_carrying_stored_parent_recovers_columns_and_imports_its_full_child([Values] bool anchor, [Values] bool delayedColumns)

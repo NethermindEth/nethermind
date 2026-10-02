@@ -1452,8 +1452,9 @@ public sealed class ForkChoiceRunner
             if (carriesPayload && _invalidPayloads.Contains(node.Root))
                 throw new ProtoArrayException($"Invalid execution payload {node.ExecutionBlockHash} became valid");
             _protoArray.ProcessExecutionPayloadValidation(node.Root);
-            if (carriesPayload && node.IsGloas)
+            if (carriesPayload)
             {
+                if (!node.IsGloas) return null;
                 _validPayloads.Add(node.Root);
                 return node.Root;
             }

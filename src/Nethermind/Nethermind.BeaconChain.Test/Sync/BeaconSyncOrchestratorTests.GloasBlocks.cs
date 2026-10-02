@@ -1086,7 +1086,7 @@ public partial class BeaconSyncOrchestratorTests
 
     /// <summary>An orchestrator on the real importer over <paramref name="chain"/>, its wall clock inside slot 34.</summary>
     /// <param name="importOnClock">Whether the importer reads the orchestrator's clock rather than the wall clock.</param>
-    private static (BeaconSyncOrchestrator Orchestrator, BlockImporter Importer, SignedGloasChain.EnvelopeEngine Engine) CreateGloasOrchestrator(SignedGloasChain chain, BeaconChainStore? persisted = null, ManualTimestamper? clock = null, GossipRouter? router = null, SignedGloasChain.Block? gloasAnchor = null, IBeaconSyncPeer[]? peers = null, bool importOnClock = false)
+    private static (BeaconSyncOrchestrator Orchestrator, BlockImporter Importer, SignedGloasChain.EnvelopeEngine Engine) CreateGloasOrchestrator(SignedGloasChain chain, BeaconChainStore? persisted = null, ManualTimestamper? clock = null, GossipRouter? router = null, SignedGloasChain.Block? gloasAnchor = null, IBeaconSyncPeer[]? peers = null, bool importOnClock = false, ExecutionPayloadEnvelopePool? envelopePool = null)
     {
         BeaconChainSpec spec = chain.Spec;
         ManualTimestamper timestamper = clock ?? new(DateTime.UnixEpoch.AddSeconds(spec.GenesisTime + 34 * spec.SecondsPerSlot).AddSeconds(6));
@@ -1106,7 +1106,8 @@ public partial class BeaconSyncOrchestratorTests
             slotClock,
             router ?? new GossipRouter(spec, slotClock, LimboLogs.Instance),
             new BeaconChainStatusHolder(spec, timestamper),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            envelopePool: envelopePool);
         orchestrator.Initialize(importer, gloasAnchor?.Forked ?? new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), gloasAnchor?.Root ?? chain.AnchorRoot);
         orchestrator.GossipStarted = true;
         return (orchestrator, importer, engine);
