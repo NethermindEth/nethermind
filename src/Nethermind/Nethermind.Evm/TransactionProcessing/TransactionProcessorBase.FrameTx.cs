@@ -463,8 +463,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// payer and block gas, returns the unspent <c>max_cost</c> escrow, credits the fee recipients, finalizes
     /// EIP-6780 destructions and commits or restores the transaction-wide snapshot.</summary>
     /// <remarks>Straight-line tail of <see cref="ExecuteFrameTx{TTracing}"/>, taking the loop's accumulated totals as
-    /// inputs. The only failure it can report is a transaction that never set a payer, which unwinds to
-    /// <paramref name="txSnapshot"/>.</remarks>
+    /// inputs. Invalid settlement restores <paramref name="txSnapshot"/>.</remarks>
     /// <param name="intrinsicGas">The transaction's intrinsic gas, gross of any frame execution.</param>
     /// <param name="floorGas">The EIP-7623 calldata floor the net charge cannot fall below.</param>
     /// <param name="totalFrameGasUsed">Gas charged across all frames whose effects survived the loop.</param>
@@ -520,8 +519,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong grossGasBeforeCorrection = intrinsicGas + totalFrameGasUsed;
         ulong stateGasCorrectionApplied = (ulong)Math.Max(0, stateGasCorrection);
         ulong grossGas = grossGasBeforeCorrection > stateGasCorrectionApplied ? grossGasBeforeCorrection - stateGasCorrectionApplied : 0;
-        Debug.Assert(refundCounter >= 0, $"frame-tx settlement invariant violated: negative refund counter ({refundCounter}).");
         ulong gasRefund = RefundHelper.CalculateClaimableRefund(grossGas, (ulong)Math.Max(0, refundCounter), spec);
+        if (refundCounter < 0 || gasRefund > grossGas)
+        {
+            WorldState.Restore(txSnapshot);
+            return InvalidStateGas(Logger, $"Frame-tx settlement invariant violated: refund counter ({refundCounter}), claimable refund ({gasRefund}), gross gas ({grossGas}).").Result;
+        }
         ulong gasAfterRefund = grossGas - gasRefund;
         ulong blockStateGas = (ulong)Math.Max(0, totalFrameStateGasUsed - stateGasCorrection);
         // EIP-7778: the payer pays the post-refund execution dimension, but the block counts it before the refund.

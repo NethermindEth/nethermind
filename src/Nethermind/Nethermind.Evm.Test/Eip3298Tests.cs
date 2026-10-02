@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -54,6 +55,34 @@ public class Eip3298Tests(bool eip3298Enabled) : VirtualMachineTestsBase
             0, in gas, in gas, 0, false);
 
         Assert.That(result.Result.Error, Is.EqualTo(eip3298Enabled ? TransactionResult.ErrorType.StateGasInvariantViolated : TransactionResult.ErrorType.None));
+    }
+
+    [Test]
+    public void Frame_refund_rejects_invalid_counters_and_restores_state([Values(-1L, 101L)] long refundCounter)
+    {
+        MethodInfo method = typeof(TransactionProcessorBase<EthereumGasPolicy>).GetMethod("SettleFrameTx", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .MakeGenericMethod(typeof(OffFlag));
+        Transaction tx = Build.A.Transaction.WithGasLimit(GasLimit).WithSenderAddress(Sender).TestObject;
+        FrameTxContext context = new(Sender, 0, [], [], default, default, default, default, default, default) { Payer = Sender };
+        using StackAccessTracker tracker = new();
+        TestState.CreateAccount(Sender, 10);
+        TestState.Commit(Spec);
+        UInt256 initialBalance = TestState.GetBalance(Sender);
+        Snapshot snapshot = TestState.TakeSnapshot();
+        TestState.SubtractFromBalance(Sender, UInt256.One, Spec);
+        object[] args = [tx, NullTxTracer.Instance, null!, ExecutionOptions.Restore, Build.A.BlockHeader.TestObject, Spec,
+            context, Array.Empty<TxFrameReceipt>(), tracker, snapshot, 0UL, 0UL, 100UL, 0L, refundCounter,
+            UInt256.Zero, UInt256.Zero, UInt256.Zero, UInt256.Zero, false];
+
+        TransactionResult result = (TransactionResult)method.Invoke(_processor, args)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(refundCounter < 0 || eip3298Enabled
+                ? TransactionResult.ErrorType.StateGasInvariantViolated
+                : TransactionResult.ErrorType.None));
+            Assert.That(TestState.GetBalance(Sender), Is.EqualTo(initialBalance));
+        }
     }
 
     // The EIP's Test Cases table (x = 1, y = 2, z = 3), with the EIP-8038 STORAGE_CLEAR_REFUND net count it strikes.
