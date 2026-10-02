@@ -922,13 +922,14 @@ public sealed class BlockImporter : IBlockImporter
         ExecutionPayloadEnvelopeImportResult result = _envelopes.Import(envelope);
         if (result is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic)
         {
+            _store.PutExecutionPayloadEnvelope(blockRoot!, envelope);
             _runner.OnExecutionPayloadVerified(blockRoot!);
             // specs/bellatrix/optimistic-sync.md: a VALID newPayload makes the payload and its ancestors VALID; an invalidated payload stays unverified and keeps its verdict.
             if (result == ExecutionPayloadEnvelopeImportResult.Valid && _runner.IsPayloadVerified(blockRoot!) && _runner.GetExecutionBlockHash(blockRoot!) is { } payloadHash)
             {
                 try
                 {
-                    _runner.ValidateExecutionChain(blockRoot!, payloadHash);
+                    ValidateExecutionChain(blockRoot!, payloadHash);
                 }
                 catch (ProtoArrayException e)
                 {
@@ -1029,9 +1030,15 @@ public sealed class BlockImporter : IBlockImporter
     public void OnForkchoiceUpdated(Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)
     {
         if (status.Status == PayloadStatus.Valid)
-            _runner.ValidateExecutionChain(headRoot, headExecutionHash);
+            ValidateExecutionChain(headRoot, headExecutionHash);
         else if (status.Status == PayloadStatus.Invalid)
             _runner.InvalidateExecutionChain(headRoot, headExecutionHash, status.LatestValidHash);
+    }
+
+    private void ValidateExecutionChain(Hash256 root, Hash256 payloadHash)
+    {
+        if (_runner.ValidateExecutionChainAndGetPayloadRoot(root, payloadHash) is { } payloadRoot)
+            _store.SetExecutionPayloadValid(payloadRoot);
     }
 
     /// <summary>Invalidates <paramref name="blockRoot"/> and its descendants, and the blocks back to <paramref name="latestValidHash"/> when it names a known ancestor.</summary>

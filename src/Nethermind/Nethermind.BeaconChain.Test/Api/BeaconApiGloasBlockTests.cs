@@ -11,9 +11,12 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
@@ -320,6 +323,53 @@ public class BeaconApiGloasBlockTests
         HttpResponseMessage response = await host.GetAsync($"/eth/v1/beacon/execution_payload_envelopes/{Root}", Json);
 
         Assert.That((await ReadJsonAsync(response)).RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(expectedOptimistic));
+    }
+
+    [TestCase(ExecutionStatus.Valid, false, false)]
+    [TestCase(ExecutionStatus.Optimistic, false, false)]
+    [TestCase(ExecutionStatus.Optimistic, true, false)]
+    [TestCase(ExecutionStatus.Optimistic, true, true)]
+    public async Task Pruned_envelope_keeps_only_its_own_valid_verdict(ExecutionStatus verdict, bool laterValid, bool validThroughEmptyHead)
+    {
+        SignedGloasChain chain = new();
+        ForkChoiceSnapshotHolder snapshots = new();
+        await using BeaconApiTestHost host = await StartAsync(chain.Spec, snapshots);
+        BeaconChainStore store = new(host.Db, chain.Spec);
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine { EnvelopeVerdict = verdict }, snapshots: snapshots, store: store);
+        SignedGloasChain.Block parent = chain.Next(null, 32, full: false, 0xA1);
+        SignedGloasChain.Block child = chain.Next(parent, 33, full: validThroughEmptyHead, 0xA2);
+        Assert.That(importer.Import(parent.Forked, parent.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(importer.ImportEnvelope(parent.Envelope), Is.EqualTo(verdict == ExecutionStatus.Valid
+            ? ExecutionPayloadEnvelopeImportResult.Valid : ExecutionPayloadEnvelopeImportResult.Optimistic));
+        if (laterValid && !validThroughEmptyHead)
+            importer.OnForkchoiceUpdated(parent.Root, parent.Bid.BlockHash!, new PayloadStatusV1 { Status = PayloadStatus.Valid });
+        Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+        if (validThroughEmptyHead)
+        {
+            HeadView head = importer.ComputeHead();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(head.HeadRoot, Is.EqualTo(child.Root));
+                Assert.That(head.HeadExecutionHash, Is.EqualTo(parent.Bid.BlockHash), "the EMPTY head uses the payload its bid builds on");
+                Assert.That(head.HeadPayloadFull, Is.False, "the child's envelope has not arrived");
+            }
+            importer.OnForkchoiceUpdated(head.HeadRoot, head.HeadExecutionHash!, new PayloadStatusV1 { Status = PayloadStatus.Valid });
+        }
+        importer.ComputeHead();
+        bool expectedOptimistic = verdict != ExecutionStatus.Valid && !laterValid;
+        string path = $"/eth/v1/beacon/execution_payload_envelopes/{parent.Root}";
+        Assert.That((await ReadJsonAsync(await host.GetAsync(path, Json))).RootElement.GetProperty("execution_optimistic").GetBoolean(),
+            Is.EqualTo(expectedOptimistic), "the held payload's own verdict");
+
+        ForkChoiceSnapshot snapshot = snapshots.Current!;
+        snapshots.Current = snapshot with { Nodes = snapshot.Nodes.Where(n => n.Root != parent.Root).ToArray() };
+        store.PutExecutionPayloadEnvelope(parent.Root, parent.Envelope);
+
+        Assert.That((await ReadJsonAsync(await host.GetAsync(path, Json))).RootElement.GetProperty("execution_optimistic").GetBoolean(),
+            Is.EqualTo(expectedOptimistic), "the payload verdict must survive pruning and duplicate storage");
+        snapshots.Current = null;
+        Assert.That((await ReadJsonAsync(await host.GetAsync(path, Json))).RootElement.GetProperty("execution_optimistic").GetBoolean(),
+            Is.EqualTo(expectedOptimistic), "the persisted verdict also survives the absence of a published fork choice snapshot");
     }
 
     [Test]
