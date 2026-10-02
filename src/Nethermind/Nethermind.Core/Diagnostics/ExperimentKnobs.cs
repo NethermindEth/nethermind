@@ -25,6 +25,9 @@ public static class ExperimentKnobs
     /// <summary>Gas limit above which a transaction is a storage-discovery candidate; 0 keeps the built-in threshold.</summary>
     public static readonly long DiscoveryGasThreshold = Int("NETHERMIND_EXP_DISCOVERY_GAS", 0);
 
+    /// <summary>MULMOD with a four-limb modulus seen twice in a row uses a cached Barrett reducer.</summary>
+    public static readonly bool MulModBarrett = On("NETHERMIND_EXP_MULMOD_BARRETT");
+
     /// <summary>When at least this many of the root's children are dirty, hash two nibbles down (up to 256 units); 0 = off.</summary>
     public static readonly int HashTwoLevels = Int("NETHERMIND_EXP_HASH_TWO_LEVELS", 0);
 }
