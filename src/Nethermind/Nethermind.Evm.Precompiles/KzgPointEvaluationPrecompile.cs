@@ -16,6 +16,8 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
 {
     public static KzgPointEvaluationPrecompile Instance { get; } = new();
 
+    private const int RequiredInputLength = 192;
+
     // FIELD_ELEMENTS_PER_BLOB and BLS_MODULUS as padded 32 byte big endian values
     private static readonly byte[] _successResult = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 0, 115, 237, 167, 83, 41, 157, 125, 72, 51, 57, 216, 8, 9, 161, 216, 5, 83, 189, 164, 2, 255, 254, 91, 254, 255, 255, 255, 255, 0, 0, 0, 1];
 
@@ -27,13 +29,16 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
 
     public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
+        inputData.Length == RequiredInputLength ? inputData : ReadOnlyMemory<byte>.Empty;
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Result<byte[]> RunInternal(ReadOnlyMemory<byte> inputData)
     {
-        if (inputData.Length != 192)
+        if (inputData.Length != RequiredInputLength)
             return Errors.InvalidInputLength;
 
         ReadOnlySpan<byte> inputSpan = inputData.Span;
