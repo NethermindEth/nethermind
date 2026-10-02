@@ -161,7 +161,6 @@ public class InclusionListValidatorTests
     /// <summary>EIP-8369 Profile 2: an omitted frame transaction is judged when it is a candidate and excused
     /// when it is not, so both sides of the boundary are pinned rather than only the excuse.</summary>
     public static IEnumerable<TestCaseData> FrameCases
-
     {
         get
         {

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -8,6 +9,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -336,17 +338,57 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<MergeTestBlockchain> CreateProfile2Blockchain() =>
+    [Test]
+    public async Task Unknown_gas_dimensions_share_profile_2_replay_verdicts()
+    {
+        IneligibleReplayer replayer = new();
+        using MergeTestBlockchain chain = await CreateProfile2Blockchain(
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadCacheSize = 0 },
+            builder => builder.AddSingleton<IProfile2EligibilityReplayer>(replayer));
+        (GetPayloadV7Result built, byte[] frameTx, byte[] enabler, _) = await BuildProfile2Payload(chain);
+        ExecutionPayloadV4 payload = built.ExecutionPayload;
+        (byte[][] il, byte[][] membership) = Lists([frameTx, enabler]);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, built.ExecutionRequests, il, membership);
+        await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), null);
+        chain.BlockTree.FindHeader(payload.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.GasUsedPerDimension = null;
+        replayer.Batches = 0;
+
+        ResultWrapper<PayloadStatusV2> resent = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, built.ExecutionRequests, il, membership);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resent.Data.InclusionListSatisfied, Is.True);
+            Assert.That(replayer.Batches, Is.EqualTo(1));
+        }
+    }
+
+    private sealed class IneligibleReplayer : IProfile2EligibilityReplayer
+    {
+        public int Batches { get; set; }
+        public bool AreSignaturesValid(Transaction transaction, IReleaseSpec spec) => true;
+        public bool[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
+        {
+            Batches++;
+            return new bool[requests.Count];
+        }
+    }
+
+    private async Task<MergeTestBlockchain> CreateProfile2Blockchain(MergeConfig? config = null, Action<ContainerBuilder>? configure = null) =>
         await CreateBlockchain(
             new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true },
-            new MergeConfig { TerminalTotalDifficulty = "0" },
-            configurer: builder => builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
-                new FunctionalGenesisPostProcessor(_ =>
-                {
-                    worldState.CreateAccount(Profile2Sender, 10.Ether);
-                    worldState.InsertCode(Profile2Sender, ApproveOnceSlotIsSet, specProvider.GenesisSpec);
-                    worldState.RecalculateStateRoot();
-                })));
+            config ?? new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder =>
+            {
+                configure?.Invoke(builder);
+                builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
+                    new FunctionalGenesisPostProcessor(_ =>
+                    {
+                        worldState.CreateAccount(Profile2Sender, 10.Ether);
+                        worldState.InsertCode(Profile2Sender, ApproveOnceSlotIsSet, specProvider.GenesisSpec);
+                        worldState.RecalculateStateRoot();
+                    }));
+            });
 
     /// <summary>Builds on the head with the flat list <c>[frame transaction, enabler]</c>, in that order.</summary>
     private async Task<(GetPayloadV7Result Built, byte[] FrameTx, byte[] Enabler, string PayloadId)> BuildProfile2Payload(MergeTestBlockchain chain)

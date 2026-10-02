@@ -522,22 +522,49 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
         state = new CachedAccountStateProvider(state);
+        IProfile2EligibilityReplayer? replayer = _profile2Replayer is null ? null : new RequestReplayer(_profile2Replayer);
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
         try
         {
             block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, _profile2Replayer)) return false;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer)) return false;
 
             block.Header.GasUsedPerDimension = (block.GasUsed, 0);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, _profile2Replayer)) return null;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer)) return null;
 
             block.Header.GasUsedPerDimension = (0, block.GasUsed);
-            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, _profile2Replayer) ? true : null;
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer) ? true : null;
         }
         finally
         {
             // Bounds must never escape as recorded execution totals, including through the payload cache.
             block.Header.GasUsedPerDimension = null;
+        }
+    }
+
+    private sealed class RequestReplayer(IProfile2EligibilityReplayer inner) : IProfile2EligibilityReplayer
+    {
+        private readonly Dictionary<(Transaction Transaction, int Index), bool> _verdicts = [];
+
+        /// <inheritdoc/>
+        public bool AreSignaturesValid(Transaction transaction, IReleaseSpec spec) => inner.AreSignaturesValid(transaction, spec);
+
+        /// <inheritdoc/>
+        public bool[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
+        {
+            List<(Transaction Transaction, int Index)> missing = [];
+            foreach ((Transaction transaction, int index) in requests)
+                if (!_verdicts.ContainsKey((transaction, index))) missing.Add((transaction, index));
+
+            if (missing.Count > 0)
+            {
+                bool[] evaluated = inner.AreEligible(block, missing, spec);
+                for (int i = 0; i < missing.Count; i++) _verdicts[missing[i]] = evaluated[i];
+            }
+
+            bool[] verdicts = new bool[requests.Count];
+            for (int i = 0; i < requests.Count; i++) verdicts[i] = _verdicts[requests[i]];
+            return verdicts;
         }
     }
 
