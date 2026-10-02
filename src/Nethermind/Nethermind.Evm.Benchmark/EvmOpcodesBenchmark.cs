@@ -326,13 +326,7 @@ public unsafe class EvmOpcodesBenchmark
         stack.HoistInputData(_env.InputData.Span);
         EvmExceptionType result = EvmExceptionType.None;
         EthereumGasPolicy gas = _gas;
-        DispatchState state = new()
-        {
-            // Safety: the dispatch chain is fully contained in this benchmark invocation, so the reference cannot outlive gas.
-            Gas = ref Unsafe.AsRef(in gas),
-            OpcodeHandlers = _continuationHandlers,
-            Vm = _vm,
-        };
+        DispatchState state = CreateDispatchState(ref gas);
         int remaining = InnerCount;
         while (remaining > 0)
         {
@@ -358,13 +352,7 @@ public unsafe class EvmOpcodesBenchmark
         stack.HoistInputData(_env.InputData.Span);
         EvmExceptionType result = EvmExceptionType.None;
         EthereumGasPolicy gas = _gas;
-        DispatchState state = new()
-        {
-            // Safety: the dispatch chain is fully contained in this benchmark invocation, so the reference cannot outlive gas.
-            Gas = ref Unsafe.AsRef(in gas),
-            OpcodeHandlers = _continuationHandlers,
-            Vm = _vm,
-        };
+        DispatchState state = CreateDispatchState(ref gas);
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
         {
             stack.Head = _stackDepth;
@@ -384,13 +372,7 @@ public unsafe class EvmOpcodesBenchmark
         stack.HoistInputData(_env.InputData.Span);
         EvmExceptionType result = EvmExceptionType.None;
         EthereumGasPolicy gas = _gas;
-        DispatchState state = new()
-        {
-            // Safety: the dispatch chain is fully contained in this benchmark invocation, so the reference cannot outlive gas.
-            Gas = ref Unsafe.AsRef(in gas),
-            OpcodeHandlers = _continuationHandlers,
-            Vm = _vm,
-        };
+        DispatchState state = CreateDispatchState(ref gas);
         int remaining = InnerCount;
         while (remaining > 0)
         {
@@ -772,18 +754,21 @@ public unsafe class EvmOpcodesBenchmark
         }
 
         EthereumGasPolicy gas = _gas;
-        DispatchState state = new()
-        {
-            // Safety: the dispatch chain is fully contained in this benchmark invocation, so the reference cannot outlive gas.
-            Gas = ref Unsafe.AsRef(in gas),
-            OpcodeHandlers = _continuationHandlers,
-            Vm = _vm,
-        };
+        DispatchState state = CreateDispatchState(ref gas);
         _ = ExecuteOpcodeHandler(ref stack, ref gas, ref state);
         DisposeNestedReturnFrame();
 
         return (long)(_gas.Value - gas.Value);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private DispatchState CreateDispatchState(scoped ref EthereumGasPolicy gas) => new()
+    {
+        // Safety: the dispatch chain is fully contained in each benchmark invocation, so the reference cannot outlive gas.
+        Gas = ref Unsafe.AsRef(in gas),
+        OpcodeHandlers = _continuationHandlers,
+        Vm = _vm,
+    };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private EvmExceptionType ExecuteOpcodeHandler(

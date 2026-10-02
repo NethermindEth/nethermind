@@ -61,6 +61,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TTracingInst : struct, IFlag =>
         CarriesExecutionGas<TTracingInst>() ? GetExecutionGas(ref gas) : 0;
 
+    /// <summary>Stores <paramref name="handler"/> under the table's declared entry type.</summary>
+    /// <remarks>
+    /// The declared type is shared with the zkEVM tables, but every host handler takes execution gas as a scalar, so
+    /// each call site must cast the entry back to the <see langword="ulong"/> signature. Invoked through the declared
+    /// type, a handler would read the gas reference as the gas value and never synchronize <see cref="DispatchState.Gas"/>.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType> AsTableEntry(
         delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType> handler) =>
@@ -193,15 +199,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// </remarks>
     private static class RawCalliHelper
     {
+        /// <summary>Executes a <see cref="IOpcodeBody.HasCheckedBody"/> opcode against <paramref name="state"/>'s full policy.</summary>
+        /// <remarks>Out of line, so the handlers that do not carry execution gas keep the checked body out of their frame.</remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static OpcodeResult ExecuteCheckedOpcode<TOpcode>(
             ref EvmStack stack,
             ref DispatchState state,
             nint pc)
+            where TOpcode : struct, IOpcodeBody =>
+            ExecuteCheckedBody<TOpcode>(ref stack, ref state.Gas, ref state, pc);
+
+        /// <summary>
+        /// Charges gas, validates the stack and executes a <see cref="IOpcodeBody.HasCheckedBody"/> opcode, which then
+        /// cannot fail.
+        /// </summary>
+        /// <returns>The program counter after the opcode and <c>None</c>, or the unchanged counter and the failure.</returns>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static OpcodeResult ExecuteCheckedBody<TOpcode>(
+            ref EvmStack stack,
+            ref TGasPolicy gas,
+            ref DispatchState state,
+            nint pc)
             where TOpcode : struct, IOpcodeBody
         {
-            ref TGasPolicy gas = ref state.Gas;
             if (!TOpcode.TryConsumeGas(ref gas))
                 return new OpcodeResult(pc, EvmExceptionType.OutOfGas);
 
@@ -327,59 +349,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
             else if (TOpcode.HasCheckedBody)
             {
+                OpcodeResult checkedResult;
                 if (carriesExecutionGas)
                 {
                     TGasPolicy localGas = default;
                     SetExecutionGas(ref localGas, gas);
-
-                    if (!TOpcode.TryConsumeGas(ref localGas))
-                    {
-                        gas = GetExecutionGas(ref localGas);
-                        return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, EvmExceptionType.OutOfGas);
-                    }
-
-                    if (TOpcode.StackInputs != 0 && TOpcode.StackGrowth > 0)
-                    {
-                        // The head has to lie in [inputs, limit - growth), so one unsigned compare covers both bounds
-                        // and only the exit works out which one failed.
-                        if ((nuint)(stack.Head - TOpcode.StackInputs) >= (nuint)(EvmStack.MaxStackSize - TOpcode.StackGrowth - TOpcode.StackInputs))
-                        {
-                            gas = GetExecutionGas(ref localGas);
-                            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount,
-                                stack.Head < TOpcode.StackInputs ? EvmExceptionType.StackUnderflow : EvmExceptionType.StackOverflow);
-                        }
-                    }
-                    else
-                    {
-                        if (TOpcode.StackInputs != 0 && !stack.EnsureDepth(TOpcode.StackInputs))
-                        {
-                            gas = GetExecutionGas(ref localGas);
-                            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, EvmExceptionType.StackUnderflow);
-                        }
-                        if (TOpcode.StackGrowth > 0 && stack.Head >= EvmStack.MaxStackSize - TOpcode.StackGrowth)
-                        {
-                            gas = GetExecutionGas(ref localGas);
-                            return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, EvmExceptionType.StackOverflow);
-                        }
-                    }
-
-                    EvmExceptionType checkedResult;
-                    if (TOpcode.UsesVm)
-                        checkedResult = TOpcode.Execute(ref stack, ref localGas, state.Vm, ref pc);
-                    else
-                        checkedResult = TOpcode.Execute(ref stack, ref localGas, null!, ref pc);
-                    Debug.Assert(checkedResult == EvmExceptionType.None, "HasCheckedBody must not fail after dispatch validates its preconditions.");
-                    exceptionType = EvmExceptionType.None;
+                    checkedResult = ExecuteCheckedBody<TOpcode>(ref stack, ref localGas, ref state, pc);
                     gas = GetExecutionGas(ref localGas);
                 }
                 else
                 {
-                    OpcodeResult checkedResult = ExecuteCheckedOpcode<TOpcode>(ref stack, ref state, pc);
-                    pc = checkedResult.ProgramCounter;
-                    exceptionType = checkedResult.Exception;
-                    if (exceptionType != EvmExceptionType.None)
-                        return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
+                    checkedResult = ExecuteCheckedOpcode<TOpcode>(ref stack, ref state, pc);
                 }
+
+                pc = checkedResult.ProgramCounter;
+                exceptionType = checkedResult.Exception;
+                if (exceptionType != EvmExceptionType.None)
+                    return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
             }
             else if (carriesExecutionGas && TOpcode.ChargesFixedGas)
             {
