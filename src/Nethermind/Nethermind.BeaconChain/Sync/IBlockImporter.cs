@@ -124,8 +124,8 @@ public interface IBlockImporter
     /// optimistic verdict records that block's payload as verified.
     /// </summary>
     /// <remarks>
-    /// Recording does not upgrade the block's execution status: the one-dimensional fork choice
-    /// cannot undo a VALID that a later payload-status split would contradict.
+    /// A VALID verdict marks the block and its ancestors VALID, as a node's status is that of the payload its bid builds on (the envelope
+    /// payload's <c>parent_hash</c>), and records the block's own payload as VALID apart from that status (specs/bellatrix/optimistic-sync.md).
     /// </remarks>
     /// <exception cref="System.InvalidOperationException">The engine notifier returned no verdict; a local fault, not a rejection.</exception>
     ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope);
