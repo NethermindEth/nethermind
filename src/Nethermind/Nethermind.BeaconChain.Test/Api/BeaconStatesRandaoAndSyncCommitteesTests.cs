@@ -66,13 +66,20 @@ public class BeaconStatesRandaoAndSyncCommitteesTests
         Assert.That(data.GetProperty("randao").GetString(), Is.EqualTo(BeaconApiTestHost.FilledHash((byte)fill).ToString()));
     }
 
-    /// <summary>apis/beacon/states/randao.yaml: an epoch outside the state's randao_mixes window is 400.</summary>
-    [TestCase("412501")] // StateEpoch + 1
-    [TestCase("346964")] // OldestMixEpoch - 1
-    [TestCase("not-an-epoch")]
-    public async Task Randao_epoch_outside_the_window_or_malformed_is_400(string epoch)
+    /// <summary>
+    /// apis/beacon/states/randao.yaml: an epoch outside the state's randao_mixes window is 400.
+    /// apis/beacon/states/sync_committees.yaml: a state holds only its own and the next period's committee.
+    /// </summary>
+    [TestCase("randao", "412501")] // StateEpoch + 1
+    [TestCase("randao", "346964")] // OldestMixEpoch - 1
+    [TestCase("randao", "not-an-epoch")]
+    [TestCase("sync_committees", "412415")] // PeriodStart - 1
+    [TestCase("sync_committees", "412928")] // NextPeriodStart + 256
+    [TestCase("sync_committees", "0")]
+    [TestCase("sync_committees", "-1")]
+    public async Task Epoch_the_state_cannot_answer_or_malformed_is_400(string endpoint, string epoch)
     {
-        using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{StateSlot}/randao?epoch={epoch}", Json);
+        using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{StateSlot}/{endpoint}?epoch={epoch}", Json);
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
@@ -120,17 +127,6 @@ public class BeaconStatesRandaoAndSyncCommitteesTests
             string[] slice = [.. aggregates[subnet].EnumerateArray().Select(e => e.GetString()!)];
             Assert.That(slice, Is.EqualTo(expected.Skip(subnet * 128).Take(128).ToArray()), $"subnet {subnet}");
         }
-    }
-
-    /// <summary>apis/beacon/states/sync_committees.yaml: a state holds only its own and the next period's committee.</summary>
-    [TestCase("412415")]
-    [TestCase("412928")]
-    [TestCase("0")]
-    [TestCase("-1")]
-    public async Task Sync_committee_epoch_outside_the_two_held_periods_or_malformed_is_400(string epoch)
-    {
-        using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{StateSlot}/sync_committees?epoch={epoch}", Json);
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
     /// <summary>A committee member is always a registry entry; a state that breaks this is corrupt, not an unknown request.</summary>
