@@ -117,9 +117,11 @@ public sealed class StaticPeerKeeper : IDisposable
                 CancellationTokenSource dial = CancellationTokenSource.CreateLinkedTokenSource(token);
                 _gossipDials[peerId] = dial;
                 // The gossip channel lives as long as the connection, so its end is only observed.
-                _ = _openGossip(session, dial.Token).ContinueWith(
-                    static (t, state) => { if (t.IsFaulted && ((ILogger)state!).IsDebug) ((ILogger)state!).Debug($"Static peer gossip ended: {t.Exception!.InnerException?.Message}"); },
-                    _logger, TaskScheduler.Default);
+                _ = _openGossip(session, dial.Token).ContinueWith(static (ended, state) =>
+                {
+                    // Observed whatever the log level, so the failure never reaches UnobservedTaskException.
+                    if (ended.Exception is { } failure && ((ILogger)state!).IsDebug) ((ILogger)state!).Debug($"Static peer gossip ended: {failure.InnerException?.Message}");
+                }, _logger, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
