@@ -386,14 +386,17 @@ public partial class EngineModuleTests
     public async Task<int> NewPayload_returns_unsupported_fork_outside_its_fork_window(IReleaseSpec releaseSpec, int version)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec);
+        // The payload carries every field the method's structure requires, so only its fork window can reject it.
+        bool hasBlobFields = releaseSpec.IsCancunEnabled || version >= EngineApiVersions.NewPayload.V3;
+        bool hasAmsterdamFields = releaseSpec.IsAmsterdamEnabled || version >= EngineApiVersions.NewPayload.V5;
         Block block = Build.A.Block
             .WithNumber(chain.BlockTree.Head!.Number + 1)
             .WithWithdrawals(releaseSpec.IsShanghaiEnabled ? [] : null)
             .WithParentBeaconBlockRoot(releaseSpec.IsCancunEnabled ? Keccak.Zero : null)
-            .WithBlobGasUsed(releaseSpec.IsCancunEnabled ? 0UL : null)
-            .WithExcessBlobGas(releaseSpec.IsCancunEnabled ? 0UL : null)
-            .WithEncodedBlockAccessList(releaseSpec.IsAmsterdamEnabled ? Rlp.OfEmptyList.Bytes : null)
-            .WithSlotNumber(releaseSpec.IsAmsterdamEnabled ? 0UL : null)
+            .WithBlobGasUsed(hasBlobFields ? 0UL : null)
+            .WithExcessBlobGas(hasBlobFields ? 0UL : null)
+            .WithEncodedBlockAccessList(hasAmsterdamFields ? Rlp.OfEmptyList.Bytes : null)
+            .WithSlotNumber(hasAmsterdamFields ? 0UL : null)
             .TestObject;
         IEngineRpcModule rpc = chain.EngineRpcModule;
 

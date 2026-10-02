@@ -44,4 +44,18 @@ public class WitnessTests
             Assert.That(decoded[^1].Hash, Is.EqualTo(parent));
         }
     }
+
+    [Test]
+    public void Decoding_rejects_trailing_bytes_after_a_header()
+    {
+        using Witness witness = new()
+        {
+            Headers = new ArrayPoolList<byte[]>([[.. Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes, 0x00]]),
+            Codes = IOwnedReadOnlyList<byte[]>.Empty,
+            State = IOwnedReadOnlyList<byte[]>.Empty,
+            Keys = IOwnedReadOnlyList<byte[]>.Empty
+        };
+
+        Assert.That(() => witness.DecodeHeaders(), Throws.TypeOf<RlpException>());
+    }
 }

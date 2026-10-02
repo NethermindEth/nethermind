@@ -1515,7 +1515,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         // If no machine code is present, treat the call as empty.
-        if (env.CodeInfo.Code.Length == 0)
+        if (env.CodeInfo.CodeLength == 0)
         {
             if (!vmState.IsTopLevel)
             {

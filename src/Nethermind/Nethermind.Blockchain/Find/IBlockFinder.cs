@@ -105,8 +105,9 @@ namespace Nethermind.Blockchain.Find
                         blockParameter.RequireCanonical
                             ? BlockTreeLookupOptions.RequireCanonical
                             : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => blockParameter.BlockHash! == HeadHash
-                    ? FindLatestBlock()
+                // Head is read once, so a head change cannot answer for another block.
+                BlockParameterType.BlockHash => Head is { } head && head.Hash == blockParameter.BlockHash
+                    ? head
                     : FindBlock(blockParameter.BlockHash!, blockParameter.RequireCanonical
                         ? BlockTreeLookupOptions.RequireCanonical
                         : BlockTreeLookupOptions.None),

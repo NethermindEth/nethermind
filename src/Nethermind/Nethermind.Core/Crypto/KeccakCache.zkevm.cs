@@ -204,9 +204,9 @@ public static partial class KeccakCache
             mixed ^= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, i << 3));
         }
 
-        uint folded = (uint)mixed ^ (uint)(mixed >> 32);
+        ulong folded = mixed ^ (mixed >> 32);
         return ref Unsafe.Add(
             ref MemoryMarshal.GetArrayDataReference(Memo),
-            (nuint)((folded * MemoSlotMultiplier) >> (32 - MemoSlotBits)) << MemoSlotShift);
+            (nuint)(((folded * MemoSlotMultiplier) & uint.MaxValue) >> (32 - MemoSlotBits)) << MemoSlotShift);
     }
 }

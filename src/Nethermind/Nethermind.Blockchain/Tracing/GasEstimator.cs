@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Tracing;
 /// that run used, tries an optimistic guess derived from its peak gas, then bisects with a midpoint skewed to
 /// the low side until the bounds are within the allowed error ratio of the upper bound.
 /// </remarks>
-public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider)
+public partial class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider)
 {
     /// <summary>Error margin used if none other is specified, expressed in basis points.</summary>
     public const int DefaultErrorMargin = 150;
@@ -61,7 +61,7 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
         tx.SenderAddress ??= Address.Zero;
 
         if (tx.SupportsFrames)
-            return EstimateFrameTx(tx, header, spec);
+            return EstimateFrameTx(tx, header, spec, gasCap);
 
         ulong hi = tx.GasLimit >= GasCostOf.Transaction ? tx.GasLimit : header.GasLimit;
 
@@ -211,8 +211,11 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
     /// sender's balance is not gated on either, since the payer is frame-chosen rather than the sender.
     /// The reported budget is the combined reservation, but admission bounds the execution and state
     /// dimensions separately, so the combined figure is not what either limit is tested against.</remarks>
-    private static GasEstimation EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec)
+    private static GasEstimation EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec, ulong gasCap)
     {
+        if (!spec.IsEip8141Enabled)
+            return GasEstimation.Failure(TxErrorMessages.InvalidTxType(spec.Name));
+
         // The budget below is computable from an empty or oversized frame list, so a count no valid
         // transaction can carry is reported rather than priced.
         if (tx.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
@@ -221,6 +224,9 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
             || !FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation, estimateSignatureBytes: true))
             return GasEstimation.Failure(FrameTxGasLimitOverflows);
+
+        if (gasCap != 0 && maxGas > gasCap)
+            return GasEstimation.Failure($"{GasExceedsAllowanceMsgPrefix} ({gasCap})");
 
         // EIP-8037: each dimension gets its own block budget, and execution carries the per-tx cap on top.
         return executionReservation > Math.Min(header.GasLimit, Eip7825Constants.DefaultTxGasLimitCap) || stateReservation > header.GasLimit

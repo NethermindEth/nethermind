@@ -11,6 +11,7 @@ namespace Nethermind.JsonRpc.Modules
     public static class BlockFinderExtensions
     {
         public const string HeaderNotFound = "header not found";
+        internal const string BlockBodyNotFound = "block body not found";
         public const string BlockRangeInFuture = "requested block range is in the future";
 
         /// <summary>
@@ -71,13 +72,17 @@ namespace Nethermind.JsonRpc.Modules
             blockParameter ??= BlockParameter.Latest;
 
             Block block = blockFinder.FindBlock(blockParameter);
+            bool isCanonicalBodyMissing = false;
             if (blockParameter.RequireCanonical && block is null && !allowNulls && blockParameter.BlockHash is not null)
             {
+                // A canonical header without a body is pruned or missing history, not a side-chain block.
                 BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
-                if (header is not null)
+                if (header is not null && !blockFinder.IsMainChain(header))
                 {
                     return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
+
+                isCanonicalBodyMissing = header is not null;
             }
 
             if (block is null)
@@ -96,7 +101,7 @@ namespace Nethermind.JsonRpc.Modules
 
                 if (!allowNulls)
                 {
-                    return new SearchResult<Block>(HeaderNotFound, ErrorCodes.ResourceNotFound);
+                    return new SearchResult<Block>(isCanonicalBodyMissing ? BlockBodyNotFound : HeaderNotFound, ErrorCodes.ResourceNotFound);
                 }
             }
 
@@ -124,6 +129,11 @@ namespace Nethermind.JsonRpc.Modules
                         ? startingBlock.Object.Hash
                         : finalBlockHeader.Object.Hash;
                     yield return new SearchResult<Block>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);
+                }
+                // During sync a block past the processed head can be canonical without having been executed or validated.
+                else if (finalBlockHeader.Object.Number > blockFinder.Head!.Number)
+                {
+                    yield return new SearchResult<Block>($"{finalBlockHeader.Object.Hash} block is not processed", ErrorCodes.ResourceUnavailable);
                 }
                 else
                 {
