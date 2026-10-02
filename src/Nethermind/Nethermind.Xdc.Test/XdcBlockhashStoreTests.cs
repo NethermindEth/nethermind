@@ -67,7 +67,7 @@ internal class XdcBlockhashStoreTests
         Assert.Multiple(() =>
         {
             Assert.That(worldState.IsContract(Eip2935Account), Is.True);
-            Assert.That(worldState.GetCode(Eip2935Account).ToArray(), Is.EqualTo(Eip2935Constants.Code));
+            Assert.That(worldState.GetCode(Eip2935Account), Is.SequenceEqualTo(Eip2935Constants.Code));
             Assert.That(worldState.GetNonce(Eip2935Account), Is.EqualTo(1UL));
         });
     }

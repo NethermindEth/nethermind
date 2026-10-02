@@ -34,9 +34,9 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     private readonly MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage> _balRequests;
 
     /// <summary>
-    /// Recommended soft limit for BlockAccessLists responses (10 MiB per EIP-8159).
+    /// Recommended soft limit for BlockAccessLists responses (2 MiB per EIP-8159).
     /// </summary>
-    private const int BalResponseSoftLimit = 10 * MemorySizes.MiB;
+    private const int BalResponseSoftLimit = 2 * MemorySizes.MiB;
 
     public Eth71ProtocolHandler(
         ISession session,

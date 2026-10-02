@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
@@ -172,7 +173,7 @@ public class ExecutionPayloadTests
             {
                 Assert.That(segment.Array, Is.SameAs(encoded[i]));
                 Assert.That(tx.Nonce, Is.EqualTo((ulong)i));
-                Assert.That(tx.Data.ToArray(), Is.EqualTo(data));
+                Assert.That(tx.Data, Is.SequenceEqualTo(data));
                 Assert.That(tx.Hash, Is.EqualTo(expectedHashes[i]));
                 Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(encoded[i]));
             }
@@ -194,7 +195,7 @@ public class ExecutionPayloadTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(tx.Data.ToArray(), Is.EqualTo(data));
+                Assert.That(tx.Data, Is.SequenceEqualTo(data));
                 Assert.That(tx.Hash, Is.EqualTo(expectedHash));
             }
         }
@@ -260,6 +261,23 @@ public class ExecutionPayloadTests
         Result<Transaction[]> result = payload.TryGetTransactions();
 
         Assert.That(result.Error, Contains.Substring($"Transaction {invalidIndex}"));
+    }
+
+    [Test]
+    public void DecodeTxs_skipping_errors_drops_undecodable_entries_in_order([Values(8, 64)] int count)
+    {
+        byte[][] rlps = EncodeTxs(count);
+        rlps[1] = [0x01];
+        rlps[count - 2] = [.. rlps[count - 2], 0xDC, 0xAF];
+
+        TransactionDecodingResult result = TxsDecoder.DecodeTxs(rlps, skipErrors: true);
+
+        ulong[] expected = Enumerable.Range(0, count).Where(i => i != 1 && i != count - 2).Select(i => (ulong)i).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Transactions.Select(tx => tx.Nonce), Is.EqualTo(expected));
+        }
     }
 
     // The early-started root task must be the one TryGetBlock consumes, with an identical root
