@@ -19,7 +19,7 @@ namespace Nethermind.State.Healing;
 /// Code database that fetches bytecode missing locally from the network and persists it.
 /// </summary>
 [method: DebuggerStepThrough]
-public class HealingCodeDb(IKeyValueStoreWithBatching codeDb, Lazy<ICodeRecovery> recovery) : IKeyValueStoreWithBatching
+public class HealingCodeDb(IKeyValueStoreWithBatching codeDb, Lazy<ICodeRecovery> recovery) : IKeyValueStoreWithBatching, IReadOnlyNativeKeyValueStore
 {
     private readonly ConcurrentDictionary<ValueHash256, Lazy<Task<byte[]?>>> _inFlight = new();
 
@@ -32,6 +32,31 @@ public class HealingCodeDb(IKeyValueStoreWithBatching codeDb, Lazy<ICodeRecovery
     {
         byte[]? bytes = codeDb.Get(key, flags);
         return bytes is null && TryRecover(key, out byte[]? recovered) ? recovered : bytes;
+    }
+
+    /// <inheritdoc cref="IReadOnlyNativeKeyValueStore.GetNativeSlice"/>
+    /// <remarks>
+    /// Recovers on a miss, as <see cref="Get(ReadOnlySpan{byte}, ReadFlags)"/> does, then re-reads the persisted code.
+    /// Over a store that is not native the slice is the value's managed array, which needs no release.
+    /// </remarks>
+    public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
+    {
+        ReadOnlySpan<byte> slice = ReadSlice(key, out handle, flags);
+        return !slice.IsNull() || !TryRecover(key, out _) ? slice : ReadSlice(key, out handle, flags);
+    }
+
+    /// <inheritdoc cref="IReadOnlyNativeKeyValueStore.DangerousReleaseHandle"/>
+    public void DangerousReleaseHandle(nint handle)
+    {
+        if (codeDb is IReadOnlyNativeKeyValueStore native) native.DangerousReleaseHandle(handle);
+    }
+
+    private ReadOnlySpan<byte> ReadSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags)
+    {
+        if (codeDb is IReadOnlyNativeKeyValueStore native) return native.GetNativeSlice(key, out handle, flags);
+
+        handle = 0;
+        return codeDb.Get(key, flags);
     }
 
     /// <inheritdoc cref="IReadOnlyKeyValueStore.GetSpan"/>

@@ -29,6 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected bool NoBaseFee { get; set; }
             private BlockOverride? _blockOverride;
+            private CancellationToken _requestToken;
             protected BlockOverride? BlockOverride => _blockOverride;
             protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
 
@@ -42,8 +43,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// <summary>Whether a fee cap below the priority fee is rejected as input rather than left to execution.</summary>
             protected virtual bool ValidatesFeeCapOrder => true;
 
+            /// <summary>
+            /// Whether a zero blob fee cap is taken as an omitted one, as a call takes it, rather than rejected, as for a
+            /// transaction to send.
+            /// </summary>
+            protected virtual bool AcceptsZeroBlobFeeCap => true;
+
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
+                if (AcceptsZeroBlobFeeCap)
+                    call = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call);
+
                 IReleaseSpec spec = GetSpec(header);
                 Result<Transaction> result = ValidatesFeeCapOrder
                     ? call.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec)
@@ -84,7 +94,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 // The block override is applied later, inside the bridge, after the read-only state scope is opened
                 // on this (base) header — so the overridden block number does not leak into state selection.
-                return ExecuteTx(clonedHeader, tx, stateOverride, token);
+                if (!_requestToken.CanBeCanceled) return ExecuteTx(clonedHeader, tx, stateOverride, token);
+                using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, _requestToken);
+                return ExecuteTx(clonedHeader, tx, stateOverride, linked.Token);
             }
 
             public override ResultWrapper<TResult> Execute(
@@ -98,13 +110,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
-            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
+            /// <param name="requestToken">Cancels this execution along with work the request did before it, so both share one timeout.</param>
+            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null,
+                BlockOverride? blockOverride = null, CancellationToken requestToken = default, SearchResult<BlockHeader>? searchResult = null)
             {
                 ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
                 if (blockOverride?.GasLimit > gasCap)
                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {gasCap}", ErrorCodes.InvalidInput);
                 _blockOverride = blockOverride;
-                return Execute(transactionCall, blockParameter, stateOverride);
+                _requestToken = requestToken;
+                return Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
@@ -210,6 +225,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             private BigInteger? _feeCapBeyond256Bits;
 
             protected override bool ValidatesFeeCapOrder => false;
+
+            // The fee fields follow the defaults of a transaction about to be sent, as in Geth.
+            protected override bool AcceptsZeroBlobFeeCap => false;
 
             /// <remarks>
             /// The fee fields follow the defaults a transaction about to be sent gets, so a malformed pair is reported

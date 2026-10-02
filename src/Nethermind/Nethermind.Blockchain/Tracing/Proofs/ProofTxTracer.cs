@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -38,10 +39,10 @@ public class ProofTxTracer(bool treatZeroAccountDifferently) : TxTracer
         Accounts.Add(address);
     }
 
-    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
+    public override void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
     {
-        if (treatZeroAccountDifferently && Address.Zero == address && before is null &&
-            after == Array.Empty<byte>())
+        if (treatZeroAccountDifferently && Address.Zero == address && before.IsNull() &&
+            !after.IsNull() && after.IsEmpty)
         {
             return;
         }

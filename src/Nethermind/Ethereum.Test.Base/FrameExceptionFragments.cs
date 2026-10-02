@@ -125,5 +125,6 @@ public static class FrameExceptionFragments
         // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",
         "An RLP limit exceeded",
+        "Exceeded Transaction.NonceKeys",
     ];
 }

@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -83,6 +84,40 @@ public partial class FrameTxProcessorTests
     public void TearDown() => _worldStateCloser?.Dispose();
 
     [Test]
+    public void Execute_SimulateReportsGasBeforeRefunds([Values] bool clearStorage, [Values] bool postTxReverts)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Done);
+        if (clearStorage)
+        {
+            _stateProvider.Set(new StorageCell(Observer, 0), (UInt256)1);
+            _stateProvider.Commit(Spec);
+        }
+        DeployContract(Recipient, postTxReverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.PostTx, target: Recipient));
+        SimulateTxTracer tracer = new(false, tx, 1, TestItem.KeccakA, 1, 0, 0);
+
+        using NativeStateGasTracer stateGasTracer = new(tx, Spec, GethTraceOptions.Default);
+        CompositeTxTracer combinedTracer = new(tracer, stateGasTracer);
+
+        Assert.That(Process(tx, tracer: combinedTracer).TransactionExecuted, Is.True);
+        Assert.That(tracer.TraceResult, Is.Not.Null);
+        using GethLikeTxTrace trace = stateGasTracer.BuildResult();
+        StateGasTrace gas = (StateGasTrace)trace.CustomTracerResult!.Value;
+        bool hasRefund = clearStorage && !postTxReverts;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.TraceResult.MaxUsedGas,
+                hasRefund ? Is.GreaterThan(tracer.TraceResult.GasUsed) : Is.EqualTo(tracer.TraceResult.GasUsed));
+            Assert.That(gas.GasRefund, hasRefund ? Is.GreaterThan(0) : Is.Zero);
+            Assert.That(gas.GasRefund, Is.EqualTo(tracer.TraceResult.MaxUsedGas - tracer.TraceResult.GasUsed));
+            Assert.That(gas.GasRefund, Is.LessThanOrEqualTo(tracer.TraceResult.MaxUsedGas / RefundHelper.MaxRefundQuotientEIP3529));
+        }
+    }
+
+    [Test]
     public void Execute_NonceHigherThanAccount_ReturnsNonceTooHigh()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
@@ -94,6 +129,7 @@ public partial class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.False);
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.TransactionNonceTooHigh));
+            Assert.That(result.ErrorDescription, Does.Contain("nonce too high"));
         }
     }
 
@@ -111,6 +147,7 @@ public partial class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.False);
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.TransactionNonceTooLow));
+            Assert.That(result.ErrorDescription, Does.Contain("nonce too low"));
         }
     }
 
@@ -169,6 +206,31 @@ public partial class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.EqualTo(simulation && !reverts));
         if (simulation && reverts) Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
+    public void FrameGasEstimation_DefersEscrowOnlyForRestoredProbes([Values] bool restore)
+    {
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 1));
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+        ExecutionOptions options = ExecutionOptions.FrameGasEstimation
+            | (restore ? ExecutionOptions.CommitAndRestore : ExecutionOptions.SkipValidationAndCommit);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = _transactionProcessor.Process(tx, tracer, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(restore));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo((UInt256)1), "no escrow refund may leak");
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero));
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL));
+            if (restore) Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            else Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        }
     }
 
     [Test]
@@ -489,7 +551,7 @@ public partial class FrameTxProcessorTests
             Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert leaves the frame transaction included");
             Assert.That(_stateProvider.AccountExists(child), Is.True,
                 "a contract created in the validation prefix and self-destructed in a rolled-back body frame must be restored, not finalized for deletion");
-            Assert.That(_stateProvider.GetCode(child), Is.EqualTo(childRuntime), "the restored contract keeps its runtime code");
+            Assert.That(_stateProvider.GetCode(child).ToArray(), Is.EqualTo(childRuntime), "the restored contract keeps its runtime code");
         }
     }
 
@@ -3060,6 +3122,31 @@ public partial class FrameTxProcessorTests
         Assert.That(Process(tx).TransactionExecuted, Is.EqualTo(expectedExecuted));
     }
 
+    [TestCase(4UL, TransactionResult.ErrorType.TransactionNonceTooLow, "nonce too low", TestName = "a later key ahead of the sequence reports too low")]
+    [TestCase(0UL, TransactionResult.ErrorType.TransactionNonceTooHigh, "nonce too high", TestName = "a later key behind the sequence reports too high")]
+    public void Execute_KeyedNonce_ReportsTheFirstMismatchedKey(ulong laterKeySeq, TransactionResult.ErrorType expectedError, string expectedDetail)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, [(UInt256)1], nonceSeq: 2);
+        if (laterKeySeq > 0)
+        {
+            KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, [(UInt256)7], laterKeySeq - 1);
+        }
+
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonce: 3, SelfVerifyFrame());
+        tx.NonceKeys = [1, 7];
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(expectedError));
+            Assert.That(result.ErrorDescription, Does.Contain(expectedDetail));
+        }
+    }
+
     [Test]
     public void Execute_KeyedNonce_RecordsTheNonceManagerSlotInBal()
     {
@@ -4078,6 +4165,30 @@ public partial class FrameTxProcessorTests
             SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.PostTx, target: Recipient)));
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    [TestCase((byte)0x0B, 0ul, 2ul, true, StatusCode.Success)]
+    [TestCase((byte)0x0C, 0ul, 1ul, true, StatusCode.Success)]
+    [TestCase((byte)0x0C, 1ul, 2ul, true, StatusCode.Success)]
+    [TestCase((byte)0x0B, 1ul, 2ul, true, StatusCode.Failure)]
+    [TestCase((byte)0x0C, 2ul, 0ul, true, StatusCode.Failure)]
+    [TestCase((byte)0x0C, 0ul, 0ul, false, StatusCode.Failure)]
+    [TestCase((byte)0x0B, 0ul, 0ul, false, StatusCode.Success)]
+    public void Execute_TxDiff_ReadsPerTopicViews(byte param, ulong index, ulong expected, bool knownTopic, byte expectedStatus)
+    {
+        UInt256 topic = new(Keccak.Compute("topic").Bytes, isBigEndian: true);
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(topic).PushData(0).PushData(0).Op(Instruction.LOG1)
+            .PushData(topic).PushData(topic).PushData(0x22).PushData(0).PushData(0).Op(Instruction.LOG3)
+            .PushData(topic).PushData(0x22).PushData(0).PushData(0).Op(Instruction.LOG2).Done);
+        byte[] query = Prepare.EvmCode.PushData(index).PushData(knownTopic ? topic : (UInt256)0x33).PushData((UInt256)param).Op(Instruction.TXDIFF).Done;
+        DeployContract(Recipient, PostTxAssertAll((query, To32(expected))));
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.PostTx, target: Recipient)));
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(expectedStatus));
     }
 
     [Test]

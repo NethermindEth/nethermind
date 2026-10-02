@@ -125,7 +125,7 @@ Do not comment on anything below. CI will block the merge if any of it fails.
 | All unit & integration tests                                | `nethermind-tests.yml`                             |
 | CodeQL security analysis                                    | `codeql.yml`                                       |
 | Dependency vulnerabilities                                  | `dependency-review.yml`                            |
-| Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`, `hive-consensus-tests.yml`       |
+| Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`                                   |
 | JSON-RPC output correctness                                 | `rpc-comparison.yml`                               |
 
 Also skip: naming conventions, missing XML docs on `internal`/`private` members, minor grammar, refactoring suggestions that don't fix a real bug, logging improvements (unless security-related), build warnings that have no behavioural impact.
