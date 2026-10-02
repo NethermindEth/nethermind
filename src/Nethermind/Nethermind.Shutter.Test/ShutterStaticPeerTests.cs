@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Specialized;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Net;
@@ -56,6 +57,54 @@ public class ShutterStaticPeerTests
 
         stop.Cancel();
         await Task.WhenAll(keyperRun, nodeRun);
+    }
+
+    /// <summary>A dial still running when the Shutter host shuts down leaves no session open.</summary>
+    [Test]
+    [CancelAfter(90_000)]
+    public async Task A_host_shut_down_during_a_dial_leaves_no_session_open(CancellationToken token)
+    {
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await using ShutterP2P keyper = Create();
+        ShutterP2P node = Create();
+        Task keyperRun = keyper.Start([], static _ => Task.CompletedTask, stop.Token);
+        await WaitUntilAsync(() => keyper.PeerForTest.ListenAddresses.Count > 0, "the keyper never listened", token);
+        LocalPeer keyperPeer = (LocalPeer)keyper.PeerForTest;
+        Multiaddress keyperAddress = Multiaddress.Decode($"{keyperPeer.ListenAddresses.First().ToString().Split("/p2p/")[0]}/p2p/{keyperPeer.Identity.PeerId}");
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        keyperPeer.Sessions.CollectionChanged += (_, change) =>
+        {
+            if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
+        };
+        using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<ISession> dial = node.PeerForTest.DialAsync(keyperAddress, abandoned.Token);
+
+        await abandoned.CancelAsync();
+        await node.DisposeAsync();
+        try
+        {
+            await dial;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
+        Assert.That(dial.IsCanceled, Is.True, "fixture: the caller stopped waiting before the dial finished");
+        // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
+        // a session left open was still open after 40 s.
+        using (CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token))
+        {
+            bounded.CancelAfter(TimeSpan.FromSeconds(45));
+            while (keyperPeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
+            {
+                await Task.Delay(50, CancellationToken.None);
+            }
+        }
+
+        Assert.That(keyperPeer.Sessions, Is.Empty, "the dial finished after shutdown and its session stayed open");
+        await stop.CancelAsync();
+        await keyperRun;
     }
 
     // The router's own redial is off, so only the static peer check can connect a bootnode again.
