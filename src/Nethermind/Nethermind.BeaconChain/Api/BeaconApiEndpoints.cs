@@ -50,6 +50,7 @@ internal static class BeaconApiEndpoints
         NodeEndpoints.Map(app, ctx);
         ConfigEndpoints.Map(app, ctx);
         BeaconEndpoints.Map(app, ctx);
+        BlobsEndpoint.Map(app, ctx);
         BeaconStatesEndpoints.Map(app, ctx);
         DebugEndpoints.Map(app, ctx);
         ValidatorEndpoints.Map(app, ctx);
