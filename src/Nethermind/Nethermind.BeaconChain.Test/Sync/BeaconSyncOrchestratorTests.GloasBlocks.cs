@@ -264,9 +264,8 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
-    /// Two walks overlap: one fetched B and A for gossip C and waits on X, the other waits on a second fetch of A for gossip B.
-    /// When X begins to wait for its parent's payload, the first walk holds A, which resumes the second walk to hold B first;
-    /// the first walk still holds C behind B, and the payload imports the whole chain.
+    /// A walk for C waiting on X and a walk for B waiting on a second fetch of A both hold every block once X waits for a payload,
+    /// though the walk for B, resumed by A's hold, holds B first; the payload then imports the whole chain.
     /// </summary>
     [Test]
     public async Task Overlapping_walks_resumed_by_a_payload_wait_hold_every_block()
@@ -292,11 +291,7 @@ public partial class BeaconSyncOrchestratorTests
         int aFetches = fetches.Count(f => f.Key == a.ComputeMessageRoot() && !f.Value.Task.IsCompleted);
         await harness.Orchestrator.ProcessGossipBlockAsync(x, cts.Token);
         int held = harness.Orchestrator.PendingGossipBlockCount;
-        foreach (TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>> fetch in fetches.Values)
-        {
-            fetch.TrySetResult([]);
-        }
-
+        CompleteOutstandingFetches(fetches);
         await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
         await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(fullRoot, WallSlot), cts.Token);
 
@@ -343,6 +338,7 @@ public partial class BeaconSyncOrchestratorTests
         fetches[r.ComputeMessageRoot()].SetResult([forgedR]);
         await ProcessUntilOneFetchRunsAsync(harness, cts.Token);
         fetches[q.ComputeMessageRoot()].SetResult([q]);
+        CompleteOutstandingFetches(fetches);
         await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
 
         Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(3), "R, S and T are held; G is not held behind the forged R");
