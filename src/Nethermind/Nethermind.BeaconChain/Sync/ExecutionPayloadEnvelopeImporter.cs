@@ -57,8 +57,8 @@ public enum ExecutionPayloadEnvelopeImportResult
 /// Nothing here mutates fork choice. The caller owns <c>store.payloads</c>: on
 /// <see cref="ExecutionPayloadEnvelopeImportResult.Valid"/> and
 /// <see cref="ExecutionPayloadEnvelopeImportResult.Optimistic"/> it records the payload for
-/// <c>envelope.beacon_block_root</c>, and neither verdict changes that block's execution status
-/// (see <see cref="IBlockImporter.ImportEnvelope"/>).
+/// <c>envelope.beacon_block_root</c>; on VALID it also marks that block and its ancestors VALID and records the block's own
+/// payload as VALID apart from its node status (see <see cref="IBlockImporter.ImportEnvelope"/>).
 /// </para>
 /// <para>
 /// Every call gets its own execution-verdict recorder, because an envelope is verified on a call
