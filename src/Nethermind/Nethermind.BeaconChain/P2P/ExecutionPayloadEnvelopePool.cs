@@ -44,8 +44,12 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
 
     /// <exception cref="ArgumentException">The envelope has no payload, names a beacon block other than <paramref name="blockRoot"/>, or, with a store, encodes to more than <c>MAX_PAYLOAD_SIZE</c> bytes.</exception>
     public void Add(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope)
+        => Add(blockRoot, envelope, persisted: false);
+
+    /// <summary>Caches a verified envelope, skipping storage only when its importer already persisted it.</summary>
+    internal void Add(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope, bool persisted)
     {
-        if (store is null)
+        if (store is null || persisted)
         {
             _ = BeaconChainStore.GetExecutionPayloadEnvelopeSlot(blockRoot, envelope);
         }
@@ -58,7 +62,7 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
         _unreadable.Delete(blockRoot);
     }
 
-    /// <remarks>A stored envelope that cannot be read is reported once and treated as not held, so it is never served, and is not read again until a later <see cref="Add"/> replaces it.</remarks>
+    /// <remarks>A stored envelope that cannot be read is reported once and treated as not held, so it is never served, and is not read again until a later <see cref="Add(Hash256, SignedExecutionPayloadEnvelope)"/> replaces it.</remarks>
     public bool TryGet(Hash256 blockRoot, out SignedExecutionPayloadEnvelope? envelope)
     {
         if (_byRoot.TryGet(blockRoot, out envelope))
