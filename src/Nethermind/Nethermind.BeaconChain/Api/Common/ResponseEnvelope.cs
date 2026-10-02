@@ -62,9 +62,8 @@ internal static class ResponseEnvelope
 
     /// <summary>Whether the execution payload of the block is unverified (types/primitive.yaml ExecutionOptimistic); for a Gloas block, the payload its bid commits to.</summary>
     /// <remarks>
-    /// A Gloas block's own fork-choice status is that of the payload its bid builds on, so it never vouches for this payload.
-    /// Once fork choice no longer holds the block, the payload is verified only when a verified child builds on it
-    /// (specs/gloas/fork-choice.md get_parent_payload_status FULL); a payload that no child built on stays unverified.
+    /// A Gloas block's status covers the payload it builds on (ethereum/consensus-specs specs/gloas/fork-choice.md).
+    /// After pruning, its own payload needs a persisted VALID verdict or a verified child built on it (beacon-APIs types/primitive.yaml).
     /// </remarks>
     public static bool PayloadExecutionOptimistic(BeaconApiContext ctx, ResolvedBlock resolved)
     {
@@ -75,13 +74,15 @@ internal static class ResponseEnvelope
 
         if (ctx.ForkChoiceSnapshot is not { } snapshot)
         {
-            return true;
+            return !ctx.Store.IsExecutionPayloadValid(resolved.Root);
         }
 
         if (IndexNodes(snapshot).TryGetValue(resolved.Root, out ForkChoiceSnapshotNode? node))
         {
             return !node.PayloadValid;
         }
+
+        if (ctx.Store.IsExecutionPayloadValid(resolved.Root)) return false;
 
         ctx.Store.TryGetChildren(resolved.Root, out Hash256[] children, out _);
         foreach (Hash256 child in children)
