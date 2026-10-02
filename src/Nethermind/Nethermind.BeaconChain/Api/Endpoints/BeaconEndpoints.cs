@@ -73,10 +73,9 @@ internal static class BeaconEndpoints
             return c.Response.Body.WriteAsync(SignedExecutionPayloadEnvelope.Encode(envelope), c.RequestAborted).AsTask();
         }
 
-        // types/primitive.yaml ExecutionOptimistic is about the payload served, and no execution verdict is kept per envelope:
-        // the block's status can turn valid through a descendant that skipped this payload, so never claim it verified.
+        // types/primitive.yaml ExecutionOptimistic is about the payload served, not the block that committed to it.
         return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(BeaconFork.Gloas),
-            executionOptimistic: true,
+            ResponseEnvelope.PayloadExecutionOptimistic(ctx, resolved),
             ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
             s =>
             {

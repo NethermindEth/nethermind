@@ -118,6 +118,51 @@ public class GloasAnchorImportTests
     }
 
     /// <summary>
+    /// specs/bellatrix/optimistic-sync.md: a VALID newPayload verdict on an envelope verifies its payload, which the envelope endpoint then
+    /// reports as not optimistic; a SYNCING verdict records the payload without verifying it.
+    /// </summary>
+    [Test]
+    public void Envelope_newpayload_verdict_decides_whether_its_payload_is_valid([Values(ExecutionStatus.Valid, ExecutionStatus.Optimistic)] ExecutionStatus verdict)
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = chain.Next(anchor, ForkSlot + 1, full: false, 0xA2);
+        ForkChoiceSnapshotHolder snapshots = new();
+        IBlockImporter importer = CreateFactory(chain, anchor.PostState.Validators!, new SignedGloasChain.EnvelopeEngine { EnvelopeVerdict = verdict },
+                chain.CreateStore(), new SlotClock(chain.Spec, Timestamper.Default), forkChoiceSnapshots: snapshots)
+            .Create(new ForkedBeaconState.OfGloas(anchor.PostState), anchor.Forked, anchor.Root);
+        Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+
+        ExecutionPayloadEnvelopeImportResult result = importer.ImportEnvelope(child.Envelope);
+        importer.ComputeHead();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(verdict == ExecutionStatus.Valid ? ExecutionPayloadEnvelopeImportResult.Valid : ExecutionPayloadEnvelopeImportResult.Optimistic));
+            Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == child.Root).PayloadValid, Is.EqualTo(verdict == ExecutionStatus.Valid));
+        }
+    }
+
+    /// <summary>
+    /// specs/bellatrix/optimistic-sync.md: a VALID verdict on the payload of a block fork choice holds INVALID contradicts an earlier verdict.
+    /// The envelope is recorded either way, so its import still returns the verdict rather than failing after the record.
+    /// </summary>
+    [Test]
+    public void Valid_envelope_verdict_on_an_invalidated_block_is_recorded_without_failing_the_import()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = chain.Next(anchor, ForkSlot + 1, full: false, 0xA2);
+        BlockImporter importer = (BlockImporter)CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), chain.CreateStore());
+        Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+        importer.OnInvalidExecutionPayload(child.Root, latestValidHash: null);
+
+        ExecutionPayloadEnvelopeImportResult? result = null;
+        Assert.That(() => result = importer.ImportEnvelope(child.Envelope), Throws.Nothing);
+        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+    }
+
+    /// <summary>
     /// specs/gloas/fork-choice.md <c>notify_forkchoice_updated</c>: the finalized hash of a Gloas checkpoint is its bid's
     /// <c>parent_block_hash</c>. The anchor's own <c>block_hash</c> need not exist on the execution layer until its envelope
     /// is verified, so the head moves to it only then.
@@ -867,11 +912,13 @@ public class GloasAnchorImportTests
         return CreateFactory(chain, anchor.PostState.Validators!, engine, store, clock ?? new SlotClock(chain.Spec, Timestamper.Default)).Create(state, anchor.Forked, anchor.Root);
     }
 
-    private static BlockImporterFactory CreateFactory(SignedGloasChain chain, Validator[] validators, IEngineDriver engine, BeaconChainStore store, SlotClock clock, ILogManager? logManager = null)
+    private static BlockImporterFactory CreateFactory(SignedGloasChain chain, Validator[] validators, IEngineDriver engine, BeaconChainStore store, SlotClock clock, ILogManager? logManager = null,
+        ForkChoiceSnapshotHolder? forkChoiceSnapshots = null)
     {
         PubkeyCache pubkeys = new();
         pubkeys.Build(validators);
-        return new BlockImporterFactory(chain.Spec, store, pubkeys, engine, new BeaconChainConfig(), logManager ?? LimboLogs.Instance, new DataColumnSidecarPool(), clock);
+        return new BlockImporterFactory(chain.Spec, store, pubkeys, engine, new BeaconChainConfig(), logManager ?? LimboLogs.Instance, new DataColumnSidecarPool(), clock,
+            forkChoiceSnapshots: forkChoiceSnapshots);
     }
 
     /// <summary>Full one-committee votes for the <paramref name="targetEpoch"/> target <paramref name="targetRoot"/> from the eight slots of <paramref name="group"/>.</summary>

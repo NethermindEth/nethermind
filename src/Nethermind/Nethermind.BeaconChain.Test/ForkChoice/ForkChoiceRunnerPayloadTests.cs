@@ -475,6 +475,39 @@ public class ForkChoiceRunnerPayloadTests
         Assert.That(harness.Runner.IsPayloadVerified(first.Root), Is.True);
     }
 
+    /// <summary>
+    /// specs/bellatrix/optimistic-sync.md: an envelope's payload is VALID once its own verdict says so, or once a VALID block builds on it.
+    /// A block made VALID by a child that built EMPTY over its payload leaves that payload unverified.
+    /// </summary>
+    [Test]
+    public void Snapshot_reports_an_envelope_payload_valid_only_when_a_verdict_covers_it([Values] bool ownVerdict)
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = ImportVerifiedFirst(harness);
+        GloasForkChoiceHarness.Block x = harness.Child(first, first.Slot + 1, full: true, 0xA1);
+        harness.Import(x);
+        harness.Runner.OnExecutionPayloadVerified(x.Root);
+        GloasForkChoiceHarness.Block skipped = harness.Child(x, first.Slot + 2, full: true, 0xB1);
+        harness.Import(skipped);
+        harness.Runner.OnExecutionPayloadVerified(skipped.Root);
+        GloasForkChoiceHarness.Block head = harness.Child(skipped, first.Slot + 3, x.BidBlockHash, 0xE1);
+        harness.Import(head);
+        harness.Runner.OnExecutionPayloadVerified(head.Root);
+        bool PayloadValid(GloasForkChoiceHarness.Block block) => harness.Runner.Snapshot().Nodes.Single(n => n.Root == block.Root).PayloadValid;
+        Assert.That(new[] { first, x, skipped, head }.Select(PayloadValid), Is.All.False, "an optimistic envelope import verifies no payload");
+
+        harness.Runner.ValidateExecutionChain(head.Root, ownVerdict ? head.BidBlockHash : x.BidBlockHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PayloadValid(head), Is.EqualTo(ownVerdict));
+            Assert.That(harness.Runner.GetBlockExecutionStatus(skipped.Root), Is.EqualTo(ExecutionStatus.Valid), "fixture: the skipped block is VALID");
+            Assert.That(PayloadValid(skipped), Is.False, "its child built EMPTY over its payload");
+            Assert.That(PayloadValid(x), Is.True, "the payload a VALID block builds on");
+            Assert.That(PayloadValid(first), Is.True, "an execution ancestor of a VALID payload");
+        }
+    }
+
     private static GloasForkChoiceHarness.Block ImportVerifiedFirst(GloasForkChoiceHarness harness)
     {
         GloasForkChoiceHarness.Block first = harness.First;
