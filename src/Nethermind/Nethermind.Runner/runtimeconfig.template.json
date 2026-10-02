@@ -4,6 +4,6 @@
     "System.Diagnostics.Tracing.EventSource.IsSupported": false,
     "System.Diagnostics.Metrics.Meter.IsSupported": false,
     "Nethermind.Int256.UseHashCodeRandomizer": true,
-    "System.Threading.ThreadPool.UnfairSemaphoreSpinLimit": 0
+    "System.Threading.ThreadPool.UnfairSemaphoreSpinLimit": 5
   }
 }
