@@ -143,18 +143,32 @@ internal static class BeaconStatesEndpoints
                 c.RequestAborted);
         }
 
+        // Indexes the 512 committee keys rather than the whole registry, then finds them in one registry scan.
         BlsPublicKey[] pubkeys = committee.Pubkeys!;
-        Dictionary<BlsPublicKey, int> pubkeyIndex = BuildPubkeyIndex(state.Validators!);
-        string[] validators = new string[pubkeys.Length];
+        Dictionary<BlsPublicKey, List<int>> positions = new(pubkeys.Length);
         for (int i = 0; i < pubkeys.Length; i++)
         {
-            if (!pubkeyIndex.TryGetValue(pubkeys[i], out int index))
+            ref List<int>? at = ref CollectionsMarshal.GetValueRefOrAddDefault(positions, pubkeys[i], out _);
+            (at ??= []).Add(i);
+        }
+
+        string[] validators = new string[pubkeys.Length];
+        Validator[] registry = state.Validators!;
+        for (int index = 0; index < registry.Length && positions.Count > 0; index++)
+        {
+            if (!positions.Remove(registry[index].Pubkey, out List<int>? at)) continue;
+            string indexText = index.ToString();
+            foreach (int position in at) validators[position] = indexText;
+        }
+
+        for (int i = 0; i < validators.Length; i++)
+        {
+            // A committee member is always a registry entry; an unset position means the state is corrupt.
+            if (validators[i] is null)
             {
                 return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
                     $"Sync committee member {pubkeys[i]} at position {i} is not in the validator registry of the state for '{stateId}' ({resolved.Root}).", c.RequestAborted);
             }
-
-            validators[i] = index.ToString();
         }
 
         int subcommitteeSize = pubkeys.Length / SyncCommitteeSubnetCount;
