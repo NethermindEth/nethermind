@@ -229,6 +229,33 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
+    /// A fetched block held behind a fetched parent that waits for its own parent's payload is released as fetched by root once
+    /// the payload arrives: its import is charged to the by-root regeneration budget, and when its state transition fails the
+    /// peer that served it is blamed, as for any invalid block it returned by root.
+    /// </summary>
+    [Test]
+    public async Task Fetched_block_held_for_a_parent_payload_is_released_as_fetched_and_blames_its_supplier_when_invalid()
+    {
+        ParkedParentScenario scenario = CreateParkedParentScenario();
+        Harness harness = scenario.Harness;
+        Hash256 heldRoot = scenario.Child.ComputeMessageRoot();
+        scenario.Peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == heldRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([scenario.Child]));
+        harness.Importer.InvalidTransition.Add(heldRoot);
+
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Grandchild, CancellationToken.None);
+        int heldBeforeEnvelope = harness.Orchestrator.PendingGossipBlockCount;
+        await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(scenario.FullRoot, WallSlot), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldBeforeEnvelope, Is.EqualTo(2), "fixture: the fetched block and the gossip block are held for the payload");
+            Assert.That(harness.Importer.Known, Does.Contain(scenario.Parent.ComputeMessageRoot()), "fixture: the fetched parent imports once the payload arrives");
+            Assert.That(harness.Importer.ByRootImports.Count(root => root == heldRoot), Is.EqualTo(2), "the hold check and the release both import it as fetched by root");
+            scenario.Peer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+        }
+    }
+
+    /// <summary>
     /// A block that answers UnknownParent without ever having been retried can still import once range sync delivers its
     /// parent, so the far-behind gossip blocks held for it stay held and import with it.
     /// </summary>
