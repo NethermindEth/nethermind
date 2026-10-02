@@ -1132,6 +1132,51 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// A gossip forgery queued under the root of a held range block fails as a gossip block: the range peer that served the
+    /// genuine copy is not blamed, the held chain stays held, and its blocks import as range blocks once the genuine copy imports.
+    /// </summary>
+    [Test]
+    public async Task Queued_gossip_forgery_of_a_held_range_block_does_not_blame_the_range_peer_or_drop_the_held_chain()
+    {
+        const ulong NearWallSlot = WallSlot - 5;
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        ForkedSignedBeaconBlock genuine = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
+        Hash256 root = genuine.ComputeMessageRoot();
+        BlsSignature forgedSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
+        ForkedSignedBeaconBlock forgery = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = forgedSignature });
+        IBeaconSyncPeer supplier = Substitute.For<IBeaconSyncPeer>();
+        Harness harness = CreateHarness(anchorSlot: NearWallSlot);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.Add(root);
+        harness.Importer.ForgedSignatures.Add(forgedSignature);
+
+        await harness.Orchestrator.ImportBlockAsync(forgery, CancellationToken.None);
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(genuine, supplier));
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(child, supplier));
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        ulong? heldBefore = harness.Orchestrator.RangeHeldSlot;
+
+        // The forgery fails its retry while the genuine copy, promoted in its place, still waits.
+        harness.Importer.Unavailable.Remove(root);
+        harness.Importer.EngineDown.Add(root);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+        ulong? heldAfterForgery = harness.Orchestrator.RangeHeldSlot;
+        harness.Importer.EngineDown.Remove(root);
+        harness.Importer.RequestedImports.Clear();
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldBefore, Is.EqualTo(child.Slot), "fixture: the range chain is held behind the queued root");
+            Assert.That(heldAfterForgery, Is.EqualTo(child.Slot), "the forgery's failure leaves the held chain and its round");
+            supplier.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
+            Assert.That(harness.Importer.Known, Does.Contain(root).And.Contain(child.ComputeMessageRoot()));
+            Assert.That(harness.Importer.RequestedImports, Does.Contain(child.ComputeMessageRoot()), "the held child retries as a range block");
+        }
+    }
+
     public enum CopyArrival
     {
         ForgeryFirst,
