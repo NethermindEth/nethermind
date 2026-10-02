@@ -305,6 +305,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag>(ref stack, ref state.Gas, null!, ref pc, ref opCodeCount);
                 }
             }
+            else if (!TTracingInst.IsActive && !TCancelable.IsActive && typeof(TOpcode) == typeof(JumpOpcode<OffFlag>))
+            {
+                if (carriesExecutionGas)
+                {
+                    TGasPolicy localGas = default;
+                    SetExecutionGas(ref localGas, gas);
+                    exceptionType = EvmInstructions.InstructionJumpCore<TGasPolicy, OffFlag>(
+                        ref stack, ref localGas, null!, ref pc, ref opCodeCount);
+                    gas = GetExecutionGas(ref localGas);
+                }
+                else
+                {
+                    exceptionType = EvmInstructions.InstructionJumpCore<TGasPolicy, OffFlag>(
+                        ref stack, ref state.Gas, null!, ref pc, ref opCodeCount);
+                }
+            }
             else if (carriesExecutionGas && TOpcode.HasUntracedFastPath)
             {
                 exceptionType = EvmExceptionType.None;
