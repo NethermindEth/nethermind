@@ -154,18 +154,20 @@ public class BlockAccessListManagerTests
     /// The manager owns the virtual machines it builds for its tx processors: disposing it disposes them, which hands
     /// back the data stacks their call-frame caches keep.
     /// </summary>
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Dispose_disposes_the_virtual_machines_of_its_tx_processors(bool parallel)
+    [Test]
+    public void Dispose_disposes_the_virtual_machines_of_its_tx_processors([Values] bool parallel)
     {
         MachineCapturingFactory factory = new();
         Harness h = new(new BlocksConfig { ParallelExecution = parallel }, factory);
         Block block = h.IssueHint(Task.CompletedTask);
         h.Manager.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Substitute.For<IReleaseSpec>()));
         h.Manager.Setup(block);
-        Assert.That(h.Manager.ParallelExecutionEnabled, Is.EqualTo(parallel));
-        Assert.That(factory.Machines, Is.Not.Empty, "the manager built its tx processors");
-        Assert.That(factory.Machines.Select(FrameCacheLength), Is.All.Positive);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(h.Manager.ParallelExecutionEnabled, Is.EqualTo(parallel));
+            Assert.That(factory.Machines, Is.Not.Empty, "the manager built its tx processors");
+            Assert.That(factory.Machines.Select(FrameCacheLength), Is.All.Positive);
+        }
 
         h.Manager.Dispose();
 
@@ -185,8 +187,11 @@ public class BlockAccessListManagerTests
         h.SetupParallelBlock(txCount: processors);
 
         for (uint i = 0; i < processors; i++) h.Manager.GetTxProcessor(i);
-        Assert.That(factory.Machines.Count(), Is.EqualTo(processors), "every index got its own tx processor");
-        Assert.That(factory.Machines.Select(FrameCacheLength), Is.All.Positive);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.Machines.Count(), Is.EqualTo(processors), "every index got its own tx processor");
+            Assert.That(factory.Machines.Select(FrameCacheLength), Is.All.Positive);
+        }
 
         for (uint i = 0; i < processors; i++) h.Manager.ReturnTxProcessor(i);
 
