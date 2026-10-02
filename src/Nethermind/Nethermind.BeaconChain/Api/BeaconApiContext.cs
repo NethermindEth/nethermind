@@ -37,7 +37,8 @@ internal sealed record BeaconApiContext(
     PeerManager? PeerManager,
     BeaconDiscovery? Discovery,
     ForkChoiceSnapshotHolder? ForkChoiceSnapshots = null,
-    HeadSnapshotHolder? HeadSnapshots = null)
+    HeadSnapshotHolder? HeadSnapshots = null,
+    DataColumnSidecarPool? ColumnPool = null)
 {
     /// <summary>Captures one get_head view for all reads in a request (fork-choice.md).</summary>
     public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead(), ForkChoiceSnapshot = ForkChoiceSnapshots?.Current };

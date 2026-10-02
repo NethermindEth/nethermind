@@ -17,6 +17,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.P2P;
 
@@ -558,6 +559,15 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
             return false;
         }
     }
+
+    /// <summary>Reads accepted columns awaiting persistence without taking the store writer's locks.</summary>
+    internal SszBlobCell[]? GetUnwrittenCells(Hash256 blockRoot, ulong column, bool gloas) =>
+        _unwritten.TryGetValue((blockRoot, column), out object? sidecar) ? sidecar switch
+        {
+            DataColumnSidecar fulu when !gloas => fulu.Column ?? [],
+            DataColumnSidecarGloas value when gloas => value.Column ?? [],
+            _ => null,
+        } : null;
 
     private void MarkUnreadable(Hash256 blockRoot, ulong column, bool gloas, InvalidDataException e)
     {

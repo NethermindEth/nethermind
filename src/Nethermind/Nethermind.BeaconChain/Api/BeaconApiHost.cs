@@ -41,7 +41,8 @@ public sealed class BeaconApiHost(
     PeerManager? peerManager = null,
     BeaconDiscovery? discovery = null,
     ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
-    HeadSnapshotHolder? headSnapshots = null) : IAsyncDisposable
+    HeadSnapshotHolder? headSnapshots = null,
+    DataColumnSidecarPool? columnPool = null) : IAsyncDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconApiHost>();
     private WebApplication? _app;
@@ -63,7 +64,7 @@ public sealed class BeaconApiHost(
 
         WebApplication app = builder.Build();
         app.Use(stateLimiter.InvokeAsync);
-        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots);
+        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots, headSnapshots, columnPool);
         BeaconApiEndpoints.MapAll(app, ctx);
 
         await app.StartAsync(token);
