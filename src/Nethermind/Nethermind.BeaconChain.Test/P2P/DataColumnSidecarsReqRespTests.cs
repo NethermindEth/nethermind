@@ -403,7 +403,7 @@ public class DataColumnSidecarsReqRespTests
 
     private static (ulong Slot, ulong Column) Key(DataColumnSidecar sidecar) => (sidecar.SignedBlockHeader!.Message!.Slot, sidecar.Index);
 
-    /// <summary>The dial must stop reading at the budget scaled for the chunks it asked for, not at a longer generic ceiling: one slot of three columns gets 16 s, so a third chunk 21 s in is too late.</summary>
+    /// <summary>The request budget must cut a reply even when each chunk arrives within its own timeout.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task The_real_dial_is_cut_at_the_budget_scaled_to_the_request_though_each_chunk_arrives_in_time(CancellationToken token)
@@ -412,19 +412,24 @@ public class DataColumnSidecarsReqRespTests
         DataColumnSidecarsByRangeRequest request = new() { StartSlot = 100, Count = 1, Columns = [3, 4, 5] };
         Assert.That(DataColumnSidecarsByRangeProtocol.ResponseBudget(1, 3), Is.EqualTo(TimeSpan.FromSeconds(16)));
         List<DataColumnSidecar> seen = [];
+        DataColumnSidecarsByRangeProtocol protocol = new(Spec, new DataColumnSidecarPool(), new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()))
+        {
+            TtfbTimeout = TimeSpan.FromMilliseconds(500),
+            RespTimeout = TimeSpan.FromSeconds(2),
+        };
 
-        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => DialRangeAsync(chunks, [], seen.Add, request, TimeSpan.FromSeconds(7), token));
+        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => DialRangeAsync(chunks, [], seen.Add, request, TimeSpan.FromMilliseconds(1_400), token, protocol));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(seen, Has.Count.EqualTo(2), "the third chunk was never read");
-            Assert.That(cut!.Message, Is.EqualTo("timed out after 16 s, the bound for the whole response, with 2 chunks read"));
+            Assert.That(cut!.Message, Is.EqualTo("timed out after 3.5 s, the bound for the whole response, with 2 chunks read"));
         }
     }
 
-    private static async Task DialRangeAsync(DataColumnSidecar[] whole, byte[] trailingBytes, Action<DataColumnSidecar> onSidecar, DataColumnSidecarsByRangeRequest? request = null, TimeSpan chunkGap = default, CancellationToken token = default)
+    private static async Task DialRangeAsync(DataColumnSidecar[] whole, byte[] trailingBytes, Action<DataColumnSidecar> onSidecar, DataColumnSidecarsByRangeRequest? request = null, TimeSpan chunkGap = default, CancellationToken token = default, DataColumnSidecarsByRangeProtocol? protocol = null)
     {
-        DataColumnSidecarsByRangeProtocol protocol = new(Spec, new DataColumnSidecarPool(), new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()));
+        protocol ??= new(Spec, new DataColumnSidecarPool(), new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()));
         ISessionContext context = Substitute.For<ISessionContext>();
         context.State.Returns(new Nethermind.Libp2p.Core.State());
         Channel channel = new();

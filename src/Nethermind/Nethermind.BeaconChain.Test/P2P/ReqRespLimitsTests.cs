@@ -33,6 +33,24 @@ namespace Nethermind.BeaconChain.Test.P2P;
 public class ReqRespLimitsTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
+    private static readonly TimeSpan ShortTtfbTimeout = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan ShortRespTimeout = TimeSpan.FromMilliseconds(200);
+
+    [Test]
+    public void Production_timeouts_match_the_spec_and_are_unaffected_by_test_overrides()
+    {
+        TestReqRespProtocol shortened = new() { TtfbTimeout = ShortTtfbTimeout, RespTimeout = ShortRespTimeout };
+        TestReqRespProtocol production = new();
+
+        // ethereum/consensus-specs p2p-interface Configuration defines TTFB_TIMEOUT and RESP_TIMEOUT.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(production.TtfbTimeout, Is.EqualTo(TimeSpan.FromSeconds(5)));
+            Assert.That(production.RespTimeout, Is.EqualTo(TimeSpan.FromSeconds(10)));
+            Assert.That(shortened.TtfbTimeout, Is.EqualTo(ShortTtfbTimeout));
+            Assert.That(shortened.RespTimeout, Is.EqualTo(ShortRespTimeout));
+        }
+    }
 
     [Test]
     public async Task Metrics_single_response_failures_are_counted_once(
@@ -358,12 +376,12 @@ public class ReqRespLimitsTests
     }
 
     /// <summary>A timeout names the bound that fired: nothing within the first-chunk bound, or a later chunk not within the bound between chunks.</summary>
-    [TestCase(1, 16_000, "timed out after 15 s waiting for the first chunk")]
-    [TestCase(2, 12_000, "timed out after 10 s reading chunk 2")]
+    [TestCase(1, 1_000, "timed out after 0.7 s waiting for the first chunk")]
+    [TestCase(2, 400, "timed out after 0.2 s reading chunk 2")]
     [CancelAfter(60_000)]
     public async Task A_read_cut_by_a_chunk_bound_names_that_bound(int blocks, int delayBeforeEachChunkMs, string expected)
     {
-        TestBlocksProtocol protocol = new(Spec);
+        TestBlocksProtocol protocol = new(Spec) { TtfbTimeout = ShortTtfbTimeout, RespTimeout = ShortRespTimeout };
         (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, [.. SlotRange(2_001, blocks)]);
         List<byte[]> wireChunks = [];
         foreach (SignedBeaconBlock block in chain)
@@ -385,11 +403,11 @@ public class ReqRespLimitsTests
     [CancelAfter(60_000)]
     public void A_request_the_peer_never_reads_times_out_naming_the_write()
     {
-        BeaconBlocksByRootProtocolV2 protocol = new(Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()));
+        BeaconBlocksByRootProtocolV2 protocol = new(Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>())) { RespTimeout = ShortRespTimeout };
 
         ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => protocol.DialAsync(new Channel(), FakeSessionContext.ForNewPeer(), [Hash256.Zero]));
 
-        Assert.That(cut!.Message, Is.EqualTo("timed out after 10 s writing the request"));
+        Assert.That(cut!.Message, Is.EqualTo("timed out after 0.2 s writing the request"));
     }
 
     /// <summary>A single-chunk exchange has one bound for the request and its answer.</summary>
@@ -397,7 +415,8 @@ public class ReqRespLimitsTests
     [CancelAfter(60_000)]
     public async Task A_single_chunk_request_never_answered_times_out_naming_the_response([Values] bool metadata)
     {
-        Eth2PingProtocol protocol = new(new LocalMetadataSource());
+        Eth2PingProtocol protocol = new(new LocalMetadataSource()) { TtfbTimeout = ShortTtfbTimeout, RespTimeout = ShortRespTimeout };
+        MetaDataProtocolV3 metadataProtocol = new(new LocalMetadataSource()) { TtfbTimeout = ShortTtfbTimeout, RespTimeout = ShortRespTimeout };
         Channel channel = new();
         // Reads the request and never answers.
         Task drain = Task.Run(async () =>
@@ -407,15 +426,15 @@ public class ReqRespLimitsTests
             }
         });
 
-        string id = metadata ? new MetaDataProtocolV3(new LocalMetadataSource()).Id : protocol.Id;
+        string id = metadata ? metadataProtocol.Id : protocol.Id;
         long before = FailureCount(id, ReqRespFailureReason.Timeout);
         ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => metadata
-            ? new MetaDataProtocolV3(new LocalMetadataSource()).DialAsync(channel, FakeSessionContext.ForNewPeer(), 0)
+            ? metadataProtocol.DialAsync(channel, FakeSessionContext.ForNewPeer(), 0)
             : protocol.DialAsync(channel, FakeSessionContext.ForNewPeer(), 7));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cut!.Message, Is.EqualTo("timed out after 15 s waiting for the response"));
+            Assert.That(cut!.Message, Is.EqualTo("timed out after 0.7 s waiting for the response"));
             Assert.That(FailureCount(id, ReqRespFailureReason.Timeout), Is.EqualTo(before + 1));
         }
         await channel.CloseAsync();

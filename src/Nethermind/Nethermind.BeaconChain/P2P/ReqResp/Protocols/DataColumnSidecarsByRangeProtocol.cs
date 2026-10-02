@@ -66,7 +66,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
             stream,
             MaxSidecars(request.Count, requestedColumns),
             Id,
-            ResponseBudget(request.Count, requestedColumns),
+            ResponseBudget(request.Count, requestedColumns, TtfbTimeout + RespTimeout),
             sidecar =>
             {
                 ThrowIfNotRequested(request.StartSlot, request.Count, requestedColumnSet, sidecar.SignedBlockHeader!.Message!.Slot, sidecar.Index);
@@ -80,14 +80,14 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
     /// first-byte allowance plus a per-chunk allowance, so a slow peer that keeps delivering is not cut by a per-slot guess.
     /// </summary>
     /// <remarks>Each chunk must still arrive within the per-chunk read timeout, so a stalled peer is cut long before this.</remarks>
-    internal static TimeSpan ResponseBudget(ulong slots, int columns)
+    internal static TimeSpan ResponseBudget(ulong slots, int columns, TimeSpan? initialTimeout = null)
     {
         ulong bounded = Math.Min(slots, BlocksProtocolBase.MaxRequestBlocks);
         ulong chunks = bounded * (ulong)Math.Max(columns, 0);
         ulong maxChunks = (ulong)(MaxResponseBudget.Ticks / PerChunkAllowance.Ticks);
         TimeSpan scaled = TimeSpan.FromTicks((long)Math.Min(chunks, maxChunks) * PerChunkAllowance.Ticks);
         TimeSpan perSlotFloor = TimeSpan.FromSeconds(bounded);
-        TimeSpan budget = TtfbTimeout + RespTimeout + (scaled > perSlotFloor ? scaled : perSlotFloor);
+        TimeSpan budget = (initialTimeout ?? (DefaultTtfbTimeout + DefaultRespTimeout)) + (scaled > perSlotFloor ? scaled : perSlotFloor);
         return budget < MaxResponseBudget ? budget : MaxResponseBudget;
     }
 
