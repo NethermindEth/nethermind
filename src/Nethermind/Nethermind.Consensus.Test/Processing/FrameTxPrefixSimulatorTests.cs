@@ -513,13 +513,25 @@ public class FrameTxPrefixSimulatorTests
         processor.Received(1).Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), expected);
     }
 
+    [TestCase(41ul, 42ul, TestName = "Simulate_ExecutesAtTheMempoolCurrentSlot_OnePastTheHead")]
+    [TestCase(null, null, TestName = "Simulate_HeadWithoutASlot_ExecutesWithoutOne")]
+    public void Simulate_ExecutesAtTheMempoolCurrentSlot(ulong? headSlot, ulong? expectedSlot)
+    {
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, headSlot: headSlot);
+
+        simulator.Simulate(FrameTx());
+
+        processor.Received(1).SetBlockExecutionContext(Arg.Is<BlockHeader>(header => header.SlotNumber == expectedSlot));
+    }
+
     /// <summary>A simulator over an env that builds, so a test can choose where inside it the failure lands.</summary>
     private static FrameTxPrefixSimulator CreateOverBuiltEnv(
         out IReadOnlyTxProcessorSource source,
         out ITransactionProcessor processor,
         InterfaceLogger? logSink = null,
         int timeoutMs = 250,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        ulong? headSlot = null)
     {
         processor = Substitute.For<ITransactionProcessor>();
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
@@ -532,15 +544,15 @@ public class FrameTxPrefixSimulatorTests
         IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         envFactory.Create().Returns(source);
 
-        return CreateSimulator(envFactory, BlockFinderAtHead(), budgetPerHeadMs: 1000, logSink, timeoutMs, time);
+        return CreateSimulator(envFactory, BlockFinderAtHead(headSlot: headSlot), budgetPerHeadMs: 1000, logSink, timeoutMs, time);
     }
 
     /// <param name="secondCallerReachedTheLock">Set when a second caller reads the head, which is the last
     /// step before it contends for the env.</param>
-    private static IBlockFinder BlockFinderAtHead(ManualResetEventSlim? secondCallerReachedTheLock = null)
+    private static IBlockFinder BlockFinderAtHead(ManualResetEventSlim? secondCallerReachedTheLock = null, ulong? headSlot = null)
     {
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        Block head = Build.A.Block.WithNumber(1).TestObject;
+        Block head = Build.A.Block.WithNumber(1).WithSlotNumber(headSlot).TestObject;
         if (secondCallerReachedTheLock is null)
         {
             blockFinder.Head.Returns(head);

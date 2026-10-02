@@ -659,7 +659,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 // The deploy-frame carve-outs are scoped to one frame and everything it calls, which the
                 // tracer cannot see from opcodes alone.
-                prefixTracer?.StartPrefixFrame(isDeployFrame, resolvedTarget);
+                prefixTracer?.StartPrefixFrame(frame, isDeployFrame, resolvedTarget);
 
                 // A deploy frame runs in DEFAULT mode, so unlike a VERIFY frame it may write state.
                 TransactionSubstate substate = ExecuteFrame<OnFlag>(boundedFrame, resolvedTarget, caller, isStatic: !isDeployFrame, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
@@ -770,10 +770,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>Whether frame <paramref name="i"/> is a <c>deploy</c> frame opening the validation prefix.</summary>
-    /// <remarks>Positional, as RecognizedPrefixLength reaches index 1 only past an expiry-verify frame at index 0.
+    /// <remarks>Positional, as RecognizedPrefixLength reaches a deploy frame only past the optional protocol verifier frames.
     /// Spells the same prologue rule as <see cref="FrameTxValidation.ApprovalSearchStart"/>; a grammar change touches both.</remarks>
     private static bool OpensDeployPrefix(TxFrame[] frames, int i) =>
-        (i == 0 || (i == 1 && FrameTxValidation.IsExpiryVerifyFrame(frames[0])))
+        i == FrameTxValidation.ProtocolVerifierFrameCount(frames)
         && i + 1 < frames.Length
         && FrameTxValidation.IsDeployFrame(frames[i])
         && frames[i + 1].Mode == FrameMode.Verify;
