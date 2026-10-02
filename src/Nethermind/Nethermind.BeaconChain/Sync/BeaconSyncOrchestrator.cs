@@ -2183,6 +2183,11 @@ public sealed class BeaconSyncOrchestrator(
             {
                 await HoldChainForWaitingParentAsync(chain, sources, chain.Count - 1);
             }
+            else if (_pendingRetry.ContainsKey(parent))
+            {
+                // The parent's retry drains the blocks held for it, so it is not fetched again.
+                HoldChainBehindRetriedAncestor(chain, sources, chain.Count - 1);
+            }
             else if (chain.Count > MaxBackfillDepth)
             {
                 if (_logger.IsDebug) _logger.Debug($"Giving up on gossip block at slot {block.Slot}: ancestor chain exceeds {MaxBackfillDepth} unknown blocks");
@@ -2208,17 +2213,8 @@ public sealed class BeaconSyncOrchestrator(
 
             if (i > 0 && result == BlockImportResult.UnknownParent && _pendingRetry.ContainsKey(chain[i].ComputeMessageRoot()))
             {
-                // The ancestor waits for the next slot's regeneration budget; its descendants import after it, the fetched ones as
-                // fetched, held under the evicting cap a refused backfill has, so no fetched chain can fill the shared queue. Only the
-                // descendants nearest the ancestor are held: the cap evicts the oldest held first, which would strand the rest.
-                for (int j = i - 1; j >= Math.Max(0, i - MaxHeldRefusedBackfills); j--)
-                {
-                    HoldRefusedBackfill(chain[j]);
-                    if (j > 0)
-                    {
-                        _heldFetched.Set(chain[j].ComputeMessageRoot(), new HeldFetchedBlock(chain[j], sources[j]));
-                    }
-                }
+                // The ancestor waits for the next slot's regeneration budget; its descendants import after it.
+                HoldChainBehindRetriedAncestor(chain, sources, i - 1);
             }
 
             if (result is not (BlockImportResult.Imported or BlockImportResult.AlreadyKnown))
@@ -2228,6 +2224,24 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         EndBackfill(block);
+    }
+
+    /// <summary>Holds <paramref name="chain"/> from index <paramref name="from"/> down to its gossip block behind an ancestor waiting in the retry set, whose import drains them; fetched blocks import as fetched.</summary>
+    /// <remarks>
+    /// Held under the evicting cap a refused backfill has, so no fetched chain can fill the shared queue. Only the descendants
+    /// nearest the ancestor are held: the cap evicts the oldest held first, which would strand the rest.
+    /// </remarks>
+    /// <param name="sources">The peer that served each block of <paramref name="chain"/>; <c>null</c> for the gossip block.</param>
+    private void HoldChainBehindRetriedAncestor(List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> sources, int from)
+    {
+        for (int j = from; j >= Math.Max(0, from + 1 - MaxHeldRefusedBackfills); j--)
+        {
+            HoldRefusedBackfill(chain[j]);
+            if (j > 0)
+            {
+                _heldFetched.Set(chain[j].ComputeMessageRoot(), new HeldFetchedBlock(chain[j], sources[j]));
+            }
+        }
     }
 
     /// <summary>Releases the backfill of <paramref name="block"/>'s parent; see <see cref="ReleaseBackfill"/>.</summary>
