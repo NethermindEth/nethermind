@@ -457,7 +457,7 @@ public class EngineTests
         _ => driver.NewPayload(GloasPayload(5), [], TestHash, new ExecutionRequestsGloas()),
     };
 
-    private static void ConfigureEngine(IEngineRpcModule engine, Func<Task<PayloadStatusV1>> response)
+    internal static void ConfigureEngine(IEngineRpcModule engine, Func<Task<PayloadStatusV1>> response)
     {
         engine.Configure().engine_newPayloadV4(default!, default!, default, default)
             .ReturnsForAnyArgs(_ => PayloadResult());
@@ -512,7 +512,7 @@ public class EngineTests
         }
     }
 
-    private static ExecutionPayloadGloas GloasPayload(ulong slotNumber) => new()
+    internal static ExecutionPayloadGloas GloasPayload(ulong slotNumber) => new()
     {
         ParentHash = TestHash,
         FeeRecipient = Address.SystemUser,
@@ -534,7 +534,7 @@ public class EngineTests
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 
-    private static ExternalClDetector CreateDetector(IEngineRpcModule inner, out ExternalClInterceptingEngineRpcModule decorator)
+    internal static ExternalClDetector CreateDetector(IEngineRpcModule inner, out ExternalClInterceptingEngineRpcModule decorator)
     {
         ExternalClDetector detector = new(new BeaconChainConfig { Enabled = true }, new Lazy<IEngineRpcModule>(inner), LimboLogs.Instance);
         decorator = new ExternalClInterceptingEngineRpcModule(inner, detector);
