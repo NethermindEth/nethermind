@@ -72,9 +72,8 @@ namespace Nethermind.Evm.Test
         /// The tracker remembers the last address it warmed, so the sub call leaves the account remembered. Its revert
         /// must forget it, or the caller's BALANCE of the account would be charged warm: both runs must pay the same.
         /// </remarks>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Account_warmed_in_a_reverted_sub_call_is_cold_again(bool outOfGas)
+        [Test]
+        public void Account_warmed_in_a_reverted_sub_call_is_cold_again([Values] bool outOfGas)
         {
             ulong gasWhenSubCallTouchesTheAccount = GasOfBalanceAfterRevertedSubCall(TestItem.AddressD, TestItem.AddressF, outOfGas);
             ulong gasWhenSubCallTouchesAnotherAccount = GasOfBalanceAfterRevertedSubCall(TestItem.AddressE, TestItem.AddressC, outOfGas);

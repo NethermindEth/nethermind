@@ -108,7 +108,6 @@ namespace Nethermind.Core.Collections
             int count = _items.Count;
             if (count >= _tableSize >> 1)
             {
-                // Half full: double the table, then find the new free slot.
                 Grow();
                 slot = ref FindFreeSlot(hash);
             }

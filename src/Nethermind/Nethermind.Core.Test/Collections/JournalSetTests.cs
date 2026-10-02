@@ -166,11 +166,8 @@ namespace Nethermind.Core.Test.Collections
         /// A weak hash puts many items on one home slot, so the probe runs cross each other and wrap around the end
         /// of the table: the cases where freeing the wrong slot, or growing in a different insertion order, would lose an item.
         /// </remarks>
-        [TestCase(1)]
-        [TestCase(3)]
-        [TestCase(64)]
-        [TestCase(int.MaxValue)]
-        public void Matches_a_reference_journal_under_random_adds_restores_and_clears(int distinctHashes)
+        [Test]
+        public void Matches_a_reference_journal_under_random_adds_restores_and_clears([Values(1, 3, 64, int.MaxValue)] int distinctHashes)
         {
             Random random = new(distinctHashes);
             JournalSet<int> journalSet = new(new ModuloComparer(distinctHashes));
@@ -253,12 +250,9 @@ namespace Nethermind.Core.Test.Collections
             JournalSet<string?> journalSet = new(EqualityComparer<string?>.Default);
             int snapshot = journalSet.TakeSnapshot();
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(journalSet.Add(null), Is.True);
-                Assert.That(journalSet.Add(null), Is.False);
-                Assert.That(journalSet.Contains(null), Is.True);
-            }
+            Assert.That(journalSet.Add(null), Is.True);
+            Assert.That(journalSet.Add(null), Is.False);
+            Assert.That(journalSet.Contains(null), Is.True);
 
             journalSet.Restore(snapshot);
             Assert.That(journalSet.Contains(null), Is.False);
@@ -270,10 +264,11 @@ namespace Nethermind.Core.Test.Collections
             JournalSet<int> journalSet = CreateJournalSet();
             journalSet.AddRange([1, 2, 3]);
 
+            Assert.That(() => journalSet.Restore(3), Throws.InvalidOperationException);
+            Assert.That(() => journalSet.Restore(-2), Throws.InstanceOf<ArgumentOutOfRangeException>());
+
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(() => journalSet.Restore(3), Throws.InvalidOperationException);
-                Assert.That(() => journalSet.Restore(-2), Throws.InstanceOf<ArgumentOutOfRangeException>());
                 Assert.That(journalSet, Is.EqualTo([1, 2, 3]));
                 Assert.That(journalSet.Contains(2), Is.True);
             }

@@ -100,20 +100,14 @@ public class EthereumGasPolicyTests
         tracker.WarmUp(TestItem.AddressB);
 
         tracker.TakeSnapshot();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "first access is cold");
-            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "the repeat is served from the memo");
-        }
+        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "first access is cold");
+        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "the repeat is served from the memo");
 
         tracker.Restore();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tracker.IsCold(TestItem.AddressA), Is.True, "the warm-up was reverted");
-            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "and is charged cold again");
-            Assert.That(tracker.WarmUp(TestItem.AddressB), Is.False, "the access before the snapshot stays warm");
-        }
+        Assert.That(tracker.IsCold(TestItem.AddressA), Is.True, "the warm-up was reverted");
+        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "and is charged cold again");
+        Assert.That(tracker.WarmUp(TestItem.AddressB), Is.False, "the access before the snapshot stays warm");
     }
 
     /// <summary>A sub call's restore must not leave the parent's remembered address stale either.</summary>
@@ -131,11 +125,8 @@ public class EthereumGasPolicyTests
         Assert.That(child.WarmUp(TestItem.AddressB), Is.False);
         child.Restore();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(parent.WarmUp(TestItem.AddressB), Is.True, "warmed only in the reverted child");
-            Assert.That(parent.WarmUp(TestItem.AddressA), Is.False, "warmed by the parent before the child");
-        }
+        Assert.That(parent.WarmUp(TestItem.AddressB), Is.True, "warmed only in the reverted child");
+        Assert.That(parent.WarmUp(TestItem.AddressA), Is.False, "warmed by the parent before the child");
     }
 
     /// <summary>Returning a tracker to the pool must drop the remembered address, as it drops the remembered cell.</summary>
@@ -162,13 +153,10 @@ public class EthereumGasPolicyTests
         using StackAccessTracker tracker = new();
         Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tracker.WarmUp(new Address(TestItem.AddressA.Bytes)), Is.False, "an equal instance is warm");
-            Assert.That(tracker.WarmUp(TestItem.AddressB), Is.True, "another address is still cold");
-            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "and the first stays warm behind the memo");
-            Assert.That(tracker.AccessedAddresses, Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
-        }
+        Assert.That(tracker.WarmUp(new Address(TestItem.AddressA.Bytes)), Is.False, "an equal instance is warm");
+        Assert.That(tracker.WarmUp(TestItem.AddressB), Is.True, "another address is still cold");
+        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "and the first stays warm behind the memo");
+        Assert.That(tracker.AccessedAddresses, Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
     }
 
     /// <summary>A null address warms like any other, as it did when the set took it directly.</summary>
@@ -177,12 +165,9 @@ public class EthereumGasPolicyTests
     {
         using StackAccessTracker tracker = new();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tracker.WarmUp((Address)null!), Is.True, "first access is cold");
-            Assert.That(tracker.WarmUp((Address)null!), Is.False, "the repeat is warm");
-            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "a remembered null does not make an address warm");
-        }
+        Assert.That(tracker.WarmUp((Address)null!), Is.True, "first access is cold");
+        Assert.That(tracker.WarmUp((Address)null!), Is.False, "the repeat is warm");
+        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "a remembered null does not make an address warm");
     }
 
     [Test]
