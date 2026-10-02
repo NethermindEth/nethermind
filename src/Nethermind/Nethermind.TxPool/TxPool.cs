@@ -633,6 +633,8 @@ namespace Nethermind.TxPool
         /// it and would collect the whole expiring population — the sweep this index exists to avoid. Its
         /// predeployed code never changes, so the entry has no true positives, and the deadline it stands for
         /// is swept by <see cref="RemoveExpiredFrameTransactions"/> instead.
+        /// The prefix paymaster is indexed as well, so a head that changes its code reapplies the non-canonical
+        /// paymaster cap even when no payer was resolved.
         /// Two kinds of dependency sit outside the set (EIP8141-GAP): helper contracts an opaque prefix reaches
         /// through <c>CALL*</c>, so a code change at one does not trigger revalidation; and block context it
         /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe.
