@@ -94,6 +94,7 @@ public class BranchProcessor(
         void CancelBackgroundWork()
         {
             NewPayloadTrace.Stamp(NewPayloadTrace.TxsDone);
+            NewPayloadTrace.SchedTxsDone();
             backgroundCancellation?.Cancel();
         }
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;

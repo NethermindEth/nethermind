@@ -36,6 +36,18 @@ public static class NewPayloadTrace
         public long Block = -1;
         // The processing thread's /proc schedstat across ProcessOne: nanoseconds run and waited on a runqueue.
         public long RunStart, WaitStart, RunNs = -1, WaitNs = -1, Slices = -1, SlicesStart;
+        // The same split at the end of the transactions, so execution and finalization are told apart.
+        public long TxRunNs = -1, TxWaitNs = -1;
+    }
+
+    /// <summary>Reads the schedstat when the block's transactions are done, on the processing thread.</summary>
+    public static void SchedTxsDone()
+    {
+        if (Enabled && Volatile.Read(ref s_active) is { } record && record.RunStart != 0 && record.TxRunNs < 0
+            && ReadSchedStat(out long run, out long wait, out _))
+        {
+            record.TxRunNs = run - record.RunStart; record.TxWaitNs = wait - record.WaitStart;
+        }
     }
 
     /// <summary>Reads the calling thread's schedstat at the start of block execution.</summary>
@@ -124,7 +136,9 @@ public static class NewPayloadTrace
 
         line.Append(" schedrun=").Append(record.RunNs < 0 ? "na" : (record.RunNs / 1000).ToString())
             .Append(" schedwait=").Append(record.WaitNs < 0 ? "na" : (record.WaitNs / 1000).ToString())
-            .Append(" schedslices=").Append(record.Slices < 0 ? "na" : record.Slices.ToString());
+            .Append(" schedslices=").Append(record.Slices < 0 ? "na" : record.Slices.ToString())
+            .Append(" txrun=").Append(record.TxRunNs < 0 ? "na" : (record.TxRunNs / 1000).ToString())
+            .Append(" txwait=").Append(record.TxWaitNs < 0 ? "na" : (record.TxWaitNs / 1000).ToString());
         Console.Out.WriteLine(line.ToString());
     }
 }
