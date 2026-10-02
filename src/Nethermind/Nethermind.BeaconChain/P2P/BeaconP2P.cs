@@ -461,7 +461,8 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Exchanges <c>status</c> with the peer, preferring v2 and falling back to v1 (with <c>earliest_available_slot</c> of 0).</summary>
     /// <remarks>Falls back only when v2 failed as an exchange (<see cref="Eth2ReqRespException"/>) or went unanswered
-    /// within the request timeout, which is how the pinned multistream surfaces a protocol the peer does not support;
+    /// within the request timeout, which is how a protocol the peer does not support surfaces: the peer answers <c>na</c>,
+    /// and the library's dialing multistream then ends without completing the request;
     /// any other failure is not a reason to try v1 and propagates.</remarks>
     public async Task<StatusMessageV2> RequestStatusAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
     {
