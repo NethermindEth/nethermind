@@ -108,11 +108,21 @@ internal static class JsonRpcRequestDecoder
         return false;
     }
 
-    /// <summary>Reads one JSON object body as a request, keeping <c>params</c> as a slice of <paramref name="objectBody"/>.</summary>
-    public static bool TryReadObjectRequest(
-        ReadOnlyMemory<byte> objectBody,
-        [NotNullWhen(true)] out JsonRpcRequest? request) =>
-        TryReadObjectRequest(objectBody, out request, out _);
+    /// <summary>Reads the JSON object <paramref name="reader"/> is on as a request, keeping <c>params</c> as a slice of <paramref name="readerBody"/>.</summary>
+    /// <param name="readerBody">The bytes <paramref name="reader"/> reads; its token positions are offsets into them.</param>
+    /// <param name="reader">On the object's start; left on its end once the request is read, and not moved if reading throws.</param>
+    public static JsonRpcRequest ReadObjectRequest(ReadOnlyMemory<byte> readerBody, ref Utf8JsonReader reader)
+    {
+        Utf8JsonReader objectReader = reader;
+        JsonRpcEnvelope envelope = new JsonRpcEnvelopeReader(readerBody.Span).ReadObject(ref objectReader);
+        reader = objectReader;
+
+        ReadOnlyMemory<byte> paramsUtf8 = envelope.HasParams
+            ? readerBody.Slice(envelope.ParamsStart, envelope.ParamsLength)
+            : default;
+
+        return CreateRequest(envelope, paramsElement: default, paramsUtf8);
+    }
 
     private static bool TryReadObjectRequest(
         ReadOnlyMemory<byte> objectBody,

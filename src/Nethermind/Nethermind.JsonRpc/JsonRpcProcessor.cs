@@ -555,7 +555,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
         try
         {
-            while (source.TryGetNext(out JsonRpcRequest? request, out JsonDocument? ownedRequestDocument, out Exception? decodeException))
+            while (source.TryGetNext(out JsonRpcRequest? request, out Exception? decodeException))
             {
                 if (!batchStarted)
                 {
@@ -574,7 +574,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     continue;
                 }
 
-                batchRequestJsonLifetime.TrackUntilBatchEnd(request, ownedRequestDocument);
+                batchRequestJsonLifetime.TrackUntilBatchEnd(request);
 
                 JsonRpcResult.Entry response = isStopped
                     ? CreateBatchResponseLimitEntry(request)
@@ -900,17 +900,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     private sealed class BatchRequestJsonLifetime : IDisposable
     {
-        private List<JsonDocument>? _ownedRequestDocuments;
         private List<JsonRpcRequest>? _requestsWithRawParams;
 
-        public void TrackUntilBatchEnd(JsonRpcRequest request, JsonDocument? ownedRequestDocument)
+        public void TrackUntilBatchEnd(JsonRpcRequest request)
         {
-            if (ownedRequestDocument is not null)
-            {
-                _ownedRequestDocuments ??= [];
-                _ownedRequestDocuments.Add(ownedRequestDocument);
-            }
-            else if (!request.ParamsUtf8.IsEmpty)
+            if (!request.ParamsUtf8.IsEmpty)
             {
                 _requestsWithRawParams ??= [];
                 _requestsWithRawParams.Add(request);
@@ -919,14 +913,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
         public void Dispose()
         {
-            if (_ownedRequestDocuments is not null)
-            {
-                foreach (JsonDocument requestDocument in _ownedRequestDocuments)
-                {
-                    requestDocument.Dispose();
-                }
-            }
-
             if (_requestsWithRawParams is not null)
             {
                 foreach (JsonRpcRequest request in _requestsWithRawParams)

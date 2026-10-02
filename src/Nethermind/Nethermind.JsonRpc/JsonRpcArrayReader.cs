@@ -40,6 +40,28 @@ internal static class JsonRpcArrayReader
         itemLength = 0;
         Utf8JsonReader reader = new(arrayBody.Span[offset..], isFinalBlock: true, state: readerState);
 
+        if (!TryReadItemStart(ref reader, ref started))
+        {
+            offset += (int)reader.BytesConsumed;
+            readerState = reader.CurrentState;
+            return false;
+        }
+
+        itemStart = offset + (int)reader.TokenStartIndex;
+        reader.Skip();
+        int itemEnd = offset + (int)reader.BytesConsumed;
+        itemLength = itemEnd - itemStart;
+        offset = itemEnd;
+        readerState = reader.CurrentState;
+        return true;
+    }
+
+    /// <summary>Moves <paramref name="reader"/> onto the first token of the next array item.</summary>
+    /// <param name="reader">Before the array's start while <paramref name="started"/> is <c>false</c>, otherwise on the previous item's last token.</param>
+    /// <param name="started">Whether the array's start was already read; set once it is.</param>
+    /// <returns><c>false</c> if <paramref name="reader"/> is on the array's end instead.</returns>
+    public static bool TryReadItemStart(ref Utf8JsonReader reader, ref bool started)
+    {
         if (!started)
         {
             if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
@@ -55,20 +77,7 @@ internal static class JsonRpcArrayReader
             ThrowIncompleteJsonArray();
         }
 
-        if (reader.TokenType == JsonTokenType.EndArray)
-        {
-            offset += (int)reader.BytesConsumed;
-            readerState = reader.CurrentState;
-            return false;
-        }
-
-        itemStart = offset + (int)reader.TokenStartIndex;
-        reader.Skip();
-        int itemEnd = offset + (int)reader.BytesConsumed;
-        itemLength = itemEnd - itemStart;
-        offset = itemEnd;
-        readerState = reader.CurrentState;
-        return true;
+        return reader.TokenType != JsonTokenType.EndArray;
     }
 
     [DoesNotReturn, StackTraceHidden]

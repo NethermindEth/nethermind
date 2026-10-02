@@ -754,6 +754,9 @@ public class JsonRpcProcessorTests
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest(idJson));
         Assert.That(AssertSingleResponse(result).Response!.Id, Is.EqualTo(expectedId));
+
+        using CollectedJsonRpcResponses batchResult = await ProcessAsync(CreateBatchRequest(CreateTransactionCountRequest("1"), CreateTransactionCountRequest(idJson)));
+        Assert.That(AssertBatchResponse(batchResult, 2).BatchItems![1].Id, Is.EqualTo(expectedId));
     }
 
     [Test]
