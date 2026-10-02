@@ -130,9 +130,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             contextAwareModule.Context = context;
         }
-        void ReturnRental() => _rpcModuleProvider.Return(method, rpcModule);
         bool returnImmediately = methodName != GetLogsMethodName;
-        Action? returnAction = returnImmediately ? null : ReturnRental;
+        Action? returnAction = returnImmediately ? null : CreateReturnAction(method, rpcModule);
         IResultWrapper? resultWrapper = null;
         try
         {
@@ -163,7 +162,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             if (returnImmediately && resultWrapper is JsonRpcResponse invocationResponse && invocationResponse.TryGetStreamableResult(out _))
             {
                 returnImmediately = false;
-                returnAction = ReturnRental;
+                returnAction = CreateReturnAction(method, rpcModule);
             }
         }
         catch (Exception ex)
@@ -174,7 +173,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (returnImmediately)
             {
-                ReturnRental();
+                _rpcModuleProvider.Return(method, rpcModule);
             }
         }
 
@@ -195,6 +194,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
     }
+
+    // Kept out of ExecuteAsync so its state machine does not hoist the captured locals into a closure on every call.
+    private Action CreateReturnAction(ResolvedMethodInfo method, IRpcModule rpcModule) =>
+        () => _rpcModuleProvider.Return(method, rpcModule);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private JsonRpcResponse HandleMissingResultWrapper(JsonRpcRequest request, string methodName, Action? returnAction)
