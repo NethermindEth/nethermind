@@ -305,8 +305,9 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
 }
 
 /// <summary>A by-range column request that failed after delivering some sidecars; carries them so the caller keeps what arrived.</summary>
-/// <remarks>The message is the cause's, so failure classification by text is unchanged.</remarks>
-internal sealed class PartialSidecarsException(Exception cause, IReadOnlyList<DataColumnSidecar> received) : Exception(cause.GetBaseException().Message, cause)
+/// <remarks>The message is the cause's, unwrapped only from an aggregate, so failure classification by text is unchanged.</remarks>
+internal sealed class PartialSidecarsException(Exception cause, IReadOnlyList<DataColumnSidecar> received)
+    : Exception(((cause as AggregateException)?.Flatten().InnerException ?? cause).Message, cause)
 {
     /// <summary>The sidecars read before the failure: structurally valid and inside the requested window, not yet verified against their blocks.</summary>
     public IReadOnlyList<DataColumnSidecar> Received { get; } = received;
