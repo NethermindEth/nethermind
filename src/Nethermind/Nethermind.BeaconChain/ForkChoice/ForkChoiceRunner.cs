@@ -545,7 +545,7 @@ public sealed class ForkChoiceRunner
     /// Its execution status is that of the payload the bid builds on; its own payload's verdicts are kept apart (<see cref="InvalidateExecutionChain"/>).
     /// There is no availability argument because the Gloas <c>on_block</c> no longer calls
     /// <c>is_data_available</c>. The body replay contract is the one the Fulu overload documents, through
-    /// <see cref="OnBodyAttestation(AttestationGloas, Hash256)"/> and <see cref="OnAttesterSlashing(AttesterSlashingGloas, bool)"/>.
+    /// <see cref="OnBodyAttestation(AttestationGloas, Hash256)"/> and <see cref="OnAttesterSlashing(AttesterSlashingGloas, bool, ForkedBeaconState)"/>.
     /// A block that builds on its parent's full payload (<see cref="IsParentNodeFull"/>) is refused until
     /// that payload is recorded through <see cref="OnExecutionPayloadVerified"/>; the refusal leaves the store untouched.
     /// The body's payload attestations are applied here, as the spec's <c>notify_ptc_messages</c> does, not by the caller:
@@ -640,6 +640,27 @@ public sealed class ForkChoiceRunner
         if (state is not ForkedBeaconState.OfGloas { State: BeaconStateGloas gloasState } || !_ptcVotes.TryGetValue(root, out PtcVotes? votes))
             throw new ForkChoiceException($"Payload attestation for {root} at slot {data.Slot}: the block is before the Gloas fork and has no PTC");
 
+        if (!isFromBlock)
+        {
+            if (data.Slot != _store.CurrentSlot)
+                throw new ForkChoiceException($"Payload attestation for slot {data.Slot} is not for the current slot {_store.CurrentSlot}");
+            ForkedBeaconState headState = GetBlockState(GetHead());
+            if (headState is not ForkedBeaconState.OfGloas { State: BeaconStateGloas headGloas })
+                throw new ForkChoiceException("Head state has no payload timeliness committee");
+            ulong[] headPtc = headGloas.GetPtc(data.Slot, _spec).Indices!;
+            foreach (ulong index in validatorIndices)
+            {
+                if (!headPtc.AsSpan().Contains(index))
+                    // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The validator is a member of the payload timeliness committee".
+                    throw new ForkChoiceException($"Validator {index} is outside the head state's PTC") { RejectGossip = true };
+            }
+            RequireCachedKeys(headState, validatorIndices);
+            IndexedPayloadAttestation indexed = new() { AttestingIndices = validatorIndices, Data = data, Signature = signature };
+            if (!GloasBlockProcessing.IsValidIndexedPayloadAttestation(headGloas, indexed, _pubkeys, verifySignature))
+                // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The signature is valid".
+                throw new ForkChoiceException("Payload attestation signature is invalid against the head state") { RejectGossip = true };
+        }
+
         HashSet<ulong> voters = [.. validatorIndices];
         HashSet<ulong> seated = [];
         List<int> seats = [];
@@ -658,8 +679,7 @@ public sealed class ForkChoiceRunner
 
         if (!isFromBlock)
         {
-            if (data.Slot != _store.CurrentSlot)
-                throw new ForkChoiceException($"Payload attestation for slot {data.Slot} is not for the current slot {_store.CurrentSlot}");
+            RequireCachedKeys(state, validatorIndices);
             IndexedPayloadAttestation indexed = new() { AttestingIndices = validatorIndices, Data = data, Signature = signature };
             if (!GloasBlockProcessing.IsValidIndexedPayloadAttestation(gloasState, indexed, _pubkeys, verifySignature))
                 throw new ForkChoiceException($"Payload attestation for {root} at slot {data.Slot} has invalid indices or signature");
@@ -855,7 +875,7 @@ public sealed class ForkChoiceRunner
         OnAttestation(attestation.Data!, attestation.AggregationBits!, attestation.CommitteeBits!, attestation.Signature, isFromBlock, verifySignature, gloasContainer: true);
 
     /// <summary>Applies an aggregate after authenticating its wrapper under p2p-interface.md beacon_aggregate_and_proof.</summary>
-    /// <remarks>The target checkpoint state supplies the vote's committee and domains; all three signatures verify together.</remarks>
+    /// <remarks>Gossip authenticates with the head committee; fork choice checks the vote separately against its target state.</remarks>
     internal void OnAggregateAndProof(SignedAggregateAndProof signed)
     {
         AggregateAndProof message = signed.Message!;
@@ -898,39 +918,50 @@ public sealed class ForkChoiceRunner
         CheckpointRef target = CheckpointRef.From(data.Target!);
         Hash256 beaconBlockRoot = data.BeaconBlockRoot!;
 
+        if (aggregator is not null)
+        {
+            if (!_protoArray.ContainsBlock(beaconBlockRoot))
+                throw new ForkChoiceException($"Attestation head block {beaconBlockRoot} is unknown to fork choice");
+            CheckGossipCommitteeRange(committeeBits, target.Epoch);
+        }
+
         if (!isFromBlock)
         {
             // The spec's validate_target_epoch_against_current_time.
             ulong currentEpoch = _store.CurrentEpoch;
             ulong previousEpoch = currentEpoch > Presets.GenesisEpoch ? currentEpoch - 1 : Presets.GenesisEpoch;
-            if (target.Epoch != currentEpoch && target.Epoch != previousEpoch)
+            ulong attestationEpoch = BeaconStateAccessors.ComputeEpochAtSlot(data.Slot);
+            if (attestationEpoch != currentEpoch && attestationEpoch != previousEpoch)
                 throw new ForkChoiceException($"Attestation target epoch {target.Epoch} is not the current or previous epoch ({currentEpoch})");
             if (data.Slot > _store.CurrentSlot)
                 throw new ForkChoiceException($"Attestation for slot {data.Slot} is from the future (current slot {_store.CurrentSlot})");
         }
 
-        if (target.Epoch != BeaconStateAccessors.ComputeEpochAtSlot(data.Slot))
-            throw new ForkChoiceException($"Attestation target epoch {target.Epoch} does not match its slot {data.Slot}");
-        if (!_protoArray.ContainsBlock(target.Root))
-            throw new ForkChoiceException($"Attestation target {target.Root} is unknown to fork choice");
         if (_protoArray.GetBlockSlot(beaconBlockRoot) is not ulong blockSlot)
             throw new ForkChoiceException($"Attestation head block {beaconBlockRoot} is unknown to fork choice");
+        if (target.Epoch != BeaconStateAccessors.ComputeEpochAtSlot(data.Slot))
+            // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The aggregate attestation's epoch matches its target".
+            throw new ForkChoiceException($"Attestation target epoch {target.Epoch} does not match its slot {data.Slot}") { RejectGossip = aggregator is not null };
+        if (aggregator is null && !_protoArray.ContainsBlock(target.Root))
+            throw new ForkChoiceException($"Attestation target {target.Root} is unknown to fork choice");
         if (blockSlot > data.Slot)
             throw new ForkChoiceException($"Attestation for slot {data.Slot} votes for the newer block at slot {blockSlot}");
-        if (gloasContainer || IsGloasSlot(data.Slot))
-            ValidatePayloadStatusVote(data, blockSlot);
         // The LMD vote must be consistent with the FFG vote target.
         if (GetCheckpointBlock(beaconBlockRoot, target.Epoch) != target.Root)
-            throw new ForkChoiceException($"Attestation target {target.Root} is not the head block's ancestor at the target epoch start");
-
-        // p2p-interface.md beacon_aggregate_and_proof: IGNORE unless the finalized checkpoint is an ancestor of the voted block.
-        if (aggregator is not null && !_protoArray.IsFinalizedCheckpointOrDescendant(beaconBlockRoot, _store.FinalizedCheckpoint))
-            throw new ForkChoiceException($"Aggregate head block {beaconBlockRoot} does not descend from the finalized checkpoint {_store.FinalizedCheckpoint}");
+            // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The target block is an ancestor of the LMD vote block".
+            throw new ForkChoiceException($"Attestation target {target.Root} is not the head block's ancestor at the target epoch start") { RejectGossip = true };
 
         ShufflingKey? key = GetShufflingKey(target);
         ForkedBeaconState? targetState = HeldVoteState(target, key);
         if (aggregator is { } gossipProof)
             targetState = GetGossipTargetState(target, targetState, data, aggregationBits, committeeBits, signature, gossipProof);
+
+        // p2p-interface.md beacon_aggregate_and_proof: IGNORE unless the finalized checkpoint is an ancestor of the voted block.
+        if (aggregator is not null && !_protoArray.IsFinalizedCheckpointOrDescendant(beaconBlockRoot, _store.FinalizedCheckpoint))
+            throw new ForkChoiceException($"Aggregate head block {beaconBlockRoot} does not descend from the finalized checkpoint {_store.FinalizedCheckpoint}");
+
+        if (gloasContainer || IsGloasSlot(data.Slot))
+            ValidatePayloadStatusVote(data, blockSlot);
 
         bool fromIncludingBlock = false;
         if (includingBlock is not null)
@@ -950,9 +981,7 @@ public sealed class ForkChoiceRunner
         if (gloasContainer)
             ThrowIfOverGloasIndexedAttestationBound(attestingIndices, "Attestation");
         IndexedVote vote = new(attestingIndices, data, signature);
-        if (aggregator is { } proof)
-            VerifyAggregator(targetState, target.Epoch, data.Slot, committeeBits, proof, vote);
-        else if (!IsValidIndexedAttestation(targetState, vote, verifySignature))
+        if (!IsValidIndexedAttestation(targetState, vote, verifySignature))
             throw new ForkChoiceException("Attestation indices or aggregate signature are invalid");
 
         // Cached only once the vote verified, so a refused one leaves no state behind.
@@ -975,6 +1004,26 @@ public sealed class ForkChoiceRunner
         ApplyVotes(attestingIndices, beaconBlockRoot, data.Slot, target.Epoch, payloadPresent);
     }
 
+    private void CheckGossipCommitteeRange(BitArray committeeBits, ulong epoch)
+    {
+        int index = 0;
+        while (index < committeeBits.Length && !committeeBits[index]) index++;
+        if (index == 0) return;
+
+        Validator[] validators = GetBlockState(GetHead()) switch
+        {
+            ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
+            ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
+            _ => throw new NotSupportedException("Unsupported head state"),
+        };
+        int active = 0;
+        foreach (Validator validator in validators)
+            if (validator.IsActiveValidator(epoch)) active++;
+        // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The committee index is within the expected range".
+        if (index >= CommitteeCache.GetCommitteeCountPerSlot(active))
+            throw new ForkChoiceException($"Committee index {index} is out of range at epoch {epoch}") { RejectGossip = true };
+    }
+
     // p2p-interface.md beacon_aggregate_and_proof: authenticate committee membership and all three signatures before applying votes.
     private void VerifyAggregator(ForkedBeaconState state, ulong targetEpoch, ulong slot, BitArray committeeBits, AggregatorProof proof, IndexedVote vote)
     {
@@ -991,11 +1040,16 @@ public sealed class ForkChoiceRunner
         };
         ReadOnlySpan<int> committee = committees.GetBeaconCommittee(slot, committeeIndex);
         if (!BeaconStateAccessors.IsAggregator(committee.Length, proof.SelectionProof))
-            throw new ForkChoiceException($"Validator {proof.AggregatorIndex} is not selected as an aggregator for slot {slot}");
+            // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The selection proof selects the validator as an aggregator".
+            throw new ForkChoiceException($"Validator {proof.AggregatorIndex} is not selected as an aggregator for slot {slot}") { RejectGossip = true };
         if (proof.AggregatorIndex > int.MaxValue || !committee.Contains((int)proof.AggregatorIndex))
-            throw new ForkChoiceException($"Aggregator {proof.AggregatorIndex} is not a member of committee {committeeIndex} at slot {slot}");
+            // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The aggregator is a member of the committee".
+            throw new ForkChoiceException($"Aggregator {proof.AggregatorIndex} is not a member of committee {committeeIndex} at slot {slot}") { RejectGossip = true };
+        RequireCachedKeys(state, [proof.AggregatorIndex]);
+        RequireCachedKeys(state, vote.AttestingIndices);
         if (!SignatureSets.TryGetValidatorKey(_pubkeys, proof.AggregatorIndex, out G1Affine key))
-            throw new ForkChoiceException($"Aggregator {proof.AggregatorIndex} has no valid public key");
+            // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The selection proof signature is valid".
+            throw new ForkChoiceException($"Aggregator {proof.AggregatorIndex} has no valid public key") { RejectGossip = true };
 
         // compute_signing_root(slot, domain): hash_tree_root of a uint64 is its little-endian chunk.
         Span<byte> slotRoot = stackalloc byte[32];
@@ -1008,9 +1062,33 @@ public sealed class ForkChoiceRunner
         if (!BlockSignatureBatch.Verify(key, proof.SelectionProof, selectionRoot, batch.Defer("Aggregate selection proof is invalid"))
             || !BlockSignatureBatch.Verify(key, proof.Signature, aggregatorRoot, batch.Defer("Aggregator signature is invalid"))
             || !IsValidIndexedAttestation(state, vote, verifySignature: true, batch.Defer("Aggregate signature is invalid")))
-            throw new ForkChoiceException("Aggregate indices or signatures are invalid");
+            // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The aggregate signature is valid".
+            throw new ForkChoiceException("Aggregate indices or signatures are invalid") { RejectGossip = true };
 
-        batch.Verify();
+        try
+        {
+            batch.Verify();
+        }
+        catch (BeaconStateException e)
+        {
+            // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The selection proof signature is valid"; "[REJECT] The aggregator signature is valid".
+            throw new ForkChoiceException(e.Message) { RejectGossip = true };
+        }
+    }
+
+    private void RequireCachedKeys(ForkedBeaconState state, ReadOnlySpan<ulong> indices)
+    {
+        int count = state switch
+        {
+            ForkedBeaconState.OfFulu fulu => fulu.State.Validators!.Length,
+            ForkedBeaconState.OfGloas gloas => gloas.State.Validators!.Length,
+            _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
+        };
+        foreach (ulong index in indices)
+        {
+            if (index < (ulong)count && index >= (ulong)_pubkeys.Count)
+                throw new ForkChoiceException("Validator public key cache is incomplete");
+        }
     }
 
     private static Hash256 GetDomain(ForkedBeaconState state, ReadOnlySpan<byte> domainType, ulong epoch) => state switch
@@ -1035,7 +1113,8 @@ public sealed class ForkChoiceRunner
         if (data.Index > 1)
             throw new ForkChoiceException($"Attestation index {data.Index} is not a payload status (0 or 1)");
         if (blockSlot == data.Slot && data.Index != 0)
-            throw new ForkChoiceException($"Attestation for slot {data.Slot} votes for the payload of a block from its own slot");
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] For same-slot attestations, the payload cannot yet be present".
+            throw new ForkChoiceException($"Attestation for slot {data.Slot} votes for the payload of a block from its own slot") { RejectGossip = true };
         if (data.Index == 1 && !_payloads.Contains(data.BeaconBlockRoot!))
             throw new ForkChoiceException($"Attestation votes for the payload of {data.BeaconBlockRoot}, which is not verified");
     }
@@ -1047,24 +1126,25 @@ public sealed class ForkChoiceRunner
     /// </summary>
     /// <remarks>The justified state is the justified block's own post-state, of that block's fork whichever container carried the slashing.</remarks>
     /// <param name="verifySignatures">Skippable for slashings whose signatures were already verified by the state transition.</param>
+    /// <param name="gossipState">The retained head state for gossip authentication before justified-state validation.</param>
     /// <exception cref="ForkChoiceException">The slashing violates an <c>on_attester_slashing</c> assertion.</exception>
-    public void OnAttesterSlashing(AttesterSlashing slashing, bool verifySignatures = true)
+    internal void OnAttesterSlashing(AttesterSlashing slashing, bool verifySignatures = true, ForkedBeaconState? gossipState = null)
     {
         IndexedAttestation attestation1 = slashing.Attestation1!;
         IndexedAttestation attestation2 = slashing.Attestation2!;
         OnAttesterSlashing(
             new IndexedVote(attestation1.AttestingIndices!, attestation1.Data!, attestation1.Signature),
             new IndexedVote(attestation2.AttestingIndices!, attestation2.Data!, attestation2.Signature),
-            verifySignatures);
+            verifySignatures, gossipState);
     }
 
-    /// <inheritdoc cref="OnAttesterSlashing(AttesterSlashing, bool)"/>
+    /// <inheritdoc cref="OnAttesterSlashing(AttesterSlashing, bool, ForkedBeaconState)"/>
     /// <remarks>
     /// The Gloas <c>is_valid_indexed_attestation</c> bound on the attesting indices, which the container's
     /// progressive list no longer carries, is enforced for both attestations before any signature is
     /// aggregated, whichever fork the justified state is; the signature domain stays that state's own.
     /// </remarks>
-    public void OnAttesterSlashing(AttesterSlashingGloas slashing, bool verifySignatures = true)
+    internal void OnAttesterSlashing(AttesterSlashingGloas slashing, bool verifySignatures = true, ForkedBeaconState? gossipState = null)
     {
         IndexedAttestationGloas attestation1 = slashing.Attestation1!;
         IndexedAttestationGloas attestation2 = slashing.Attestation2!;
@@ -1073,19 +1153,33 @@ public sealed class ForkChoiceRunner
         OnAttesterSlashing(
             new IndexedVote(attestation1.AttestingIndices!, attestation1.Data!, attestation1.Signature),
             new IndexedVote(attestation2.AttestingIndices!, attestation2.Data!, attestation2.Signature),
-            verifySignatures);
+            verifySignatures, gossipState);
     }
 
-    private void OnAttesterSlashing(IndexedVote attestation1, IndexedVote attestation2, bool verifySignatures)
+    private void OnAttesterSlashing(IndexedVote attestation1, IndexedVote attestation2, bool verifySignatures, ForkedBeaconState? gossipState)
     {
         if (!BeaconStateAccessors.IsSlashableAttestationData(attestation1.Data, attestation2.Data))
-            throw new ForkChoiceException("Attester slashing votes are not slashable");
+            // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The attestation data is slashable (double vote or surround vote)".
+            throw new ForkChoiceException("Attester slashing votes are not slashable") { RejectGossip = true };
 
+        if (gossipState is not null)
+        {
+            RequireCachedKeys(gossipState, attestation1.AttestingIndices);
+            RequireCachedKeys(gossipState, attestation2.AttestingIndices);
+            if (!IsValidIndexedAttestation(gossipState, attestation1, verifySignatures))
+                // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The first indexed attestation has valid properties".
+                throw new ForkChoiceException("Attester slashing attestation 1 is invalid") { RejectGossip = true };
+            if (!IsValidIndexedAttestation(gossipState, attestation2, verifySignatures))
+                // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The second indexed attestation has valid properties".
+                throw new ForkChoiceException("Attester slashing attestation 2 is invalid") { RejectGossip = true };
+        }
+
+        // ethereum/consensus-specs fork-choice.md on_attester_slashing: "state = store.block_states[store.justified_checkpoint.root]".
         ForkedBeaconState justifiedState = GetBlockState(_store.JustifiedCheckpoint.Root);
         if (!IsValidIndexedAttestation(justifiedState, attestation1, verifySignatures))
-            throw new ForkChoiceException("Attester slashing attestation 1 is invalid");
+            throw new ForkChoiceException("Attester slashing attestation 1 is invalid against the justified state");
         if (!IsValidIndexedAttestation(justifiedState, attestation2, verifySignatures))
-            throw new ForkChoiceException("Attester slashing attestation 2 is invalid");
+            throw new ForkChoiceException("Attester slashing attestation 2 is invalid against the justified state");
 
         HashSet<ulong> indices2 = [.. attestation2.AttestingIndices];
         foreach (ulong index in attestation1.AttestingIndices)
@@ -1715,15 +1809,15 @@ public sealed class ForkChoiceRunner
         Hash256 head = _lastHeadRoot ?? GetHead();
         CheckpointRef headTarget = new(target.Epoch, GetCheckpointBlock(head, target.Epoch));
         ShufflingKey? headKey = GetShufflingKey(headTarget);
-        if (target == headTarget || HasShufflingOf(head, target))
-            return held ?? HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
-
-        if (_protoArray.IsDescendant(target.Root, head))
+        bool sameShuffling = target == headTarget || HasShufflingOf(head, target);
+        if (!sameShuffling && _protoArray.IsDescendant(target.Root, head))
             throw new ForkChoiceException($"Aggregate target {target} is an ancestor of the head with another shuffling than the head's target {headTarget}");
 
-        ForkedBeaconState headState = HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
-        ulong[] headIndices = AttestingIndices(headState, target.Epoch, data, aggregationBits, committeeBits, signature);
+        ForkedBeaconState headState = (sameShuffling ? held : null) ?? HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
+        ulong[] headIndices = AttestingIndices(headState, target.Epoch, data, aggregationBits, committeeBits, signature, rejectGossip: true);
         VerifyAggregator(headState, target.Epoch, data.Slot, committeeBits, proof, new IndexedVote(headIndices, data, signature));
+        if (sameShuffling)
+            return headState;
         if (held is not null)
             return held;
 
@@ -1742,16 +1836,31 @@ public sealed class ForkChoiceRunner
         return null;
     }
 
-    private ulong[] AttestingIndices(ForkedBeaconState state, ulong targetEpoch, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature) => state switch
+    private ulong[] AttestingIndices(ForkedBeaconState state, ulong targetEpoch, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, bool rejectGossip = false)
     {
-        ForkedBeaconState.OfFulu fulu => fulu.State.GetAttestingIndices(
-            new Attestation { AggregationBits = aggregationBits, Data = data, Signature = signature, CommitteeBits = committeeBits },
-            _committees.GetCommitteeCache(fulu.State, targetEpoch)),
-        ForkedBeaconState.OfGloas gloas => gloas.State.GetAttestingIndices(
-            new AttestationGloas { AggregationBits = aggregationBits, Data = data, Signature = signature, CommitteeBits = committeeBits },
-            _committees.GetCommitteeCache(gloas.State, targetEpoch)),
-        _ => throw new NotSupportedException($"Unhandled checkpoint state {state.GetType().Name}"),
-    };
+        CommitteeCache committees = state switch
+        {
+            ForkedBeaconState.OfFulu fulu => _committees.GetCommitteeCache(fulu.State, targetEpoch),
+            ForkedBeaconState.OfGloas gloas => _committees.GetCommitteeCache(gloas.State, targetEpoch),
+            _ => throw new NotSupportedException($"Unhandled checkpoint state {state.GetType().Name}"),
+        };
+        try
+        {
+            return state switch
+            {
+                ForkedBeaconState.OfFulu fulu => fulu.State.GetAttestingIndices(
+                    new Attestation { AggregationBits = aggregationBits, Data = data, Signature = signature, CommitteeBits = committeeBits }, committees),
+                ForkedBeaconState.OfGloas gloas => gloas.State.GetAttestingIndices(
+                    new AttestationGloas { AggregationBits = aggregationBits, Data = data, Signature = signature, CommitteeBits = committeeBits }, committees),
+                _ => throw new NotSupportedException($"Unhandled checkpoint state {state.GetType().Name}"),
+            };
+        }
+        catch (BeaconStateException e)
+        {
+            // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The committee index is within the expected range"; "[REJECT] The number of aggregation bits matches the committee size".
+            throw new ForkChoiceException(e.Message) { RejectGossip = rejectGossip };
+        }
+    }
 
     private ForkedBeaconState? HeldVoteState(CheckpointRef target, ShufflingKey? key)
     {

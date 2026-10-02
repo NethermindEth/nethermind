@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -14,13 +15,14 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Libp2p.Protocols.Pubsub;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
 /// <summary>
 /// The worker gives each gossip message's pending verdict once the gossip checks the router left to it finish: accepted only when every
-/// gossip check passed, which for an envelope is before its payload import; ignored at once when a check fails or a dependency is missing.
+/// gossip check passed; rejected for invalid input and ignored when local data is unavailable.
 /// </summary>
 public partial class BeaconSyncOrchestratorTests
 {
@@ -44,8 +46,8 @@ public partial class BeaconSyncOrchestratorTests
     [TestCase(GossipBlockOutcome.ImportedOnceColumnsArrive, new[] { MessageValidity.Ignored })]
     [TestCase(GossipBlockOutcome.UnknownParent, new[] { MessageValidity.Ignored })]
     [TestCase(GossipBlockOutcome.ImportedOnceParentPayloadIsVerified, new[] { MessageValidity.Accepted })]
-    [TestCase(GossipBlockOutcome.InvalidSignature, new[] { MessageValidity.Ignored })]
-    [TestCase(GossipBlockOutcome.UnexpectedProposer, new[] { MessageValidity.Ignored })]
+    [TestCase(GossipBlockOutcome.InvalidSignature, new[] { MessageValidity.Rejected })]
+    [TestCase(GossipBlockOutcome.UnexpectedProposer, new[] { MessageValidity.Rejected })]
     [TestCase(GossipBlockOutcome.AlreadyKnown, new[] { MessageValidity.Ignored })]
     public async Task Gossip_block_verdict_is_given_once_its_import_settles(GossipBlockOutcome outcome, MessageValidity[] expected)
     {
@@ -121,9 +123,9 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    /// <summary>A vote or slashing is accepted only when fork choice verified it, signatures included; a refusal is ignored, not charged to its sender.</summary>
+    /// <summary>Only a proven invalid slashing penalizes its sender; an unavailable state must not.</summary>
     [Test]
-    public async Task Gossip_slashing_verdict_follows_fork_choice([Values] bool accepted)
+    public async Task Gossip_slashing_verdict_follows_fork_choice([Values(true, false, null)] bool? accepted)
     {
         Harness harness = CreateHarness();
         harness.Importer.AcceptsGossipOperations = accepted;
@@ -138,8 +140,26 @@ public partial class BeaconSyncOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((routed, givenBeforeWork), Is.EqualTo((MessageValidity.Ignored, System.Array.Empty<MessageValidity>())), "the router hands the verdict to the worker");
-            Assert.That(given, Is.EqualTo(new[] { accepted ? MessageValidity.Accepted : MessageValidity.Ignored }));
+            Assert.That(given, Is.EqualTo(new[] { accepted == true ? MessageValidity.Accepted : accepted == false ? MessageValidity.Rejected : MessageValidity.Ignored }));
         }
+    }
+
+    [Test]
+    public async Task Gossip_slashing_seen_while_queued_does_not_charge_the_delivering_peer([Values] bool gloas)
+    {
+        Harness harness = CreateHarness();
+        harness.Importer.AcceptsGossipOperations = false;
+        harness.Orchestrator.RouteGossipEvents();
+        byte[] payload = gloas
+            ? GossipMessageValidatorTests.Encode(GossipMessageValidatorTests.GloasSlashing([1, 2], [2, 3], secondSource: 2, secondTarget: 4))
+            : GossipMessageValidatorTests.Encode(GossipMessageValidatorTests.FuluSlashing([1, 2], [2, 3], secondSource: 2, secondTarget: 4));
+        await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.AttesterSlashing, payload, async verdict =>
+        {
+            harness.Router.Handle(GossipTopics.AttesterSlashing, gloas, payload, verdict);
+            Assert.That(verdict.IsHandedOff, Is.True, "the slashing must reach the queue before another slashing marks its index");
+            harness.Router.MarkSlashedIndicesSeen([2]);
+            await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        }, MessageValidity.Ignored);
     }
 
     /// <summary>
@@ -204,6 +224,74 @@ public partial class BeaconSyncOrchestratorTests
             Assert.That(harness.Router.IsEnvelopeSeen(TestItem.KeccakA, envelope.Message!.BuilderIndex), Is.False);
             Assert.That(harness.Importer.Envelopes, Has.Count.EqualTo(1), "the envelope still imports");
         }
+    }
+
+    [Test]
+    public async Task Gossip_block_local_failure_does_not_charge_the_delivering_peer([Values] bool cancelled)
+    {
+        Harness harness = CreateHarness();
+        SignedBeaconBlock block = TestChain.CreateBlock(WallSlot, TestItem.KeccakA);
+        IBlockImporter importer = Substitute.For<IBlockImporter>();
+        importer.IsKnown(TestItem.KeccakA).Returns(true);
+        importer.IsExpectedProposer(Arg.Any<ForkedSignedBeaconBlock>()).Returns(true);
+        Exception failure = cancelled ? new OperationCanceledException() : new InvalidOperationException("store unavailable");
+        importer.Import(Arg.Any<ForkedSignedBeaconBlock>(), Arg.Any<Hash256>(), true).Returns(_ => throw failure);
+        harness.Orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(0, Hash256.Zero)), Hash256.Zero);
+        await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.BeaconBlock,
+            Snappier.Snappy.CompressToArray(SignedBeaconBlock.Encode(block)), verdict =>
+            {
+                harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfFulu(block), verdict));
+                Assert.That(Assert.CatchAsync(async () => await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None)),
+                    Is.SameAs(failure), "a partially applied import must stop the worker after settling the relay verdict");
+                return Task.CompletedTask;
+            }, MessageValidity.Ignored);
+    }
+
+    internal static async Task AssertBlockVerdictAsync(IBlockImporter importer, ForkedSignedBeaconBlock block, byte[] payload, MessageValidity expected, GossipRouter? router = null)
+    {
+        Harness harness = CreateHarness(anchorSlot: 0, wallSlot: block.Slot);
+        SignedBeaconBlock anchor = TestChain.CreateBlock(0, Hash256.Zero);
+        harness.Orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchor), SszRoots.HashTreeRoot(anchor.Message!));
+        await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.BeaconBlock, payload, async verdict =>
+        {
+            if (router is null)
+            {
+                await harness.Orchestrator.ProcessGossipBlockAsync(block, CancellationToken.None, verdict);
+                return;
+            }
+
+            (ForkedSignedBeaconBlock Block, GossipVerdict Verdict)? received = null;
+            router.BeaconBlockReceived += (decoded, pending) => received = (decoded, pending);
+            MessageValidity immediate = router.Handle(GossipTopics.BeaconBlock, block is ForkedSignedBeaconBlock.OfGloas, payload, verdict);
+            if (received is { } item)
+                await harness.Orchestrator.ProcessGossipBlockAsync(item.Block, CancellationToken.None, item.Verdict);
+            else
+                verdict.Complete(immediate);
+        }, expected);
+    }
+
+    internal static async Task AssertOperationVerdictAsync(IBlockImporter importer, ulong slot, string topic, byte[] payload,
+        Func<GossipVerdict, BeaconSyncOrchestrator.WorkItem> work, MessageValidity expected, GossipRouter? router = null, bool gloas = false)
+    {
+        Harness harness = CreateHarness(anchorSlot: 0, wallSlot: slot);
+        SignedBeaconBlock anchor = TestChain.CreateBlock(0, Hash256.Zero);
+        harness.Orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchor), SszRoots.HashTreeRoot(anchor.Message!));
+        if (router is not null)
+        {
+            router.AggregateAndProofReceived += (aggregate, verdict) => harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipAggregateItem(aggregate, verdict));
+            router.GloasAggregateAndProofReceived += (aggregate, verdict) => harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipGloasAggregateItem(aggregate, verdict));
+        }
+        await GossipRouterTests.AssertDeferredPeerPenaltyAsync(topic, payload, async verdict =>
+        {
+            if (router is null)
+                harness.Orchestrator.WorkWriter.TryWrite(work(verdict));
+            else
+            {
+                MessageValidity immediate = router.Handle(topic, gloas, payload, verdict);
+                if (!verdict.IsHandedOff) verdict.Complete(immediate);
+            }
+            await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        }, expected);
     }
 
     private static (GossipVerdict Verdict, List<MessageValidity> Given) RecordingVerdict()

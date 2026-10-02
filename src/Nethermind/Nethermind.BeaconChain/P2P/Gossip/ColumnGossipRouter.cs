@@ -453,8 +453,9 @@ public sealed class ColumnGossipRouter(
         return ReadImportedHeader(blockRoot, sidecar.SignedBlockHeader.Signature) switch
         {
             ImportedHeader.Found => HandleImportedFulu(sidecar, blockRoot, slot, proposerIndex),
-            // Only the signature verified at import is trusted without a BLS check, so another one is dropped, not rejected.
-            ImportedHeader.SignatureMismatch => Drop(ColumnGossipDropReason.HeaderSignatureMismatch, MessageValidity.Ignored),
+            // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The proposer signature of sidecar.signed_block_header is valid".
+            ImportedHeader.SignatureMismatch => Drop(ColumnGossipDropReason.HeaderSignatureMismatch,
+                CheckHeaderSignature(header, blockRoot, sidecar.SignedBlockHeader.Signature) == HeaderSignature.Invalid ? MessageValidity.Rejected : MessageValidity.Ignored),
             _ => HandleUnimportedFulu(sidecar, header, blockRoot, slot, signatureVerifiedAtImport: false),
         };
     }
@@ -647,8 +648,7 @@ public sealed class ColumnGossipRouter(
     /// the proposer is the expected one and its signature verifies; a failing REJECT rule; or <see cref="BlockHeaderCheck.Unverifiable"/>
     /// when a source cannot answer yet, which the spec turns into an IGNORE.
     /// </returns>
-    /// <remarks>The expected proposer is checked before the signature, so a flood naming another proposer costs no BLS work.</remarks>
-    internal BlockHeaderCheck CheckBlockHeader(BeaconBlockHeader header, Hash256 blockRoot, BlsSignature signature)
+    internal BlockHeaderCheck CheckBlockHeader(BeaconBlockHeader header, Hash256 blockRoot, BlsSignature signature, BeaconBlockBody body)
     {
         // [IGNORE] the parent has been seen, and [REJECT] it passes validation: fork choice holds only valid blocks.
         SnapshotIndex? snapshot = CurrentSnapshot();
@@ -662,6 +662,20 @@ public sealed class ColumnGossipRouter(
         {
             return BlockHeaderCheck.Unverifiable;
         }
+
+        switch (CheckHeaderSignature(header, blockRoot, signature))
+        {
+            case HeaderSignature.Invalid:
+                return BlockHeaderCheck.InvalidSignature;
+            case HeaderSignature.Valid:
+                break;
+            default:
+                return BlockHeaderCheck.Unverifiable;
+        }
+
+        // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The block's execution payload timestamp is correct with respect to the slot".
+        if (body.ExecutionPayload!.Timestamp != (UInt128)spec.GenesisTime + (UInt128)header.Slot * spec.SecondsPerSlot)
+            return BlockHeaderCheck.InvalidTimestamp;
 
         // [REJECT] the block is from a higher slot than its parent.
         if (header.Slot <= parent.Slot)
@@ -678,6 +692,10 @@ public sealed class ColumnGossipRouter(
                 return BlockHeaderCheck.Unverifiable;
         }
 
+        // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The length of KZG commitments is less than or equal to the limit".
+        if ((ulong)(body.BlobKzgCommitments?.Length ?? 0) > (spec.GetBlobParameters(spec.GetEpoch(header.Slot))?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra))
+            return BlockHeaderCheck.ExcessiveCommitments;
+
         // [REJECT] the block is proposed by the expected proposer_index for its slot on its branch.
         switch (proposerLookahead is null ? ExpectedProposer.Unverifiable : CheckExpectedProposer(snapshot, parent, header))
         {
@@ -687,13 +705,7 @@ public sealed class ColumnGossipRouter(
                 return BlockHeaderCheck.Unverifiable;
         }
 
-        // [REJECT] the proposer signature is valid.
-        return CheckHeaderSignature(header, blockRoot, signature) switch
-        {
-            HeaderSignature.Valid => BlockHeaderCheck.Verified,
-            HeaderSignature.Invalid => BlockHeaderCheck.InvalidSignature,
-            _ => BlockHeaderCheck.Unverifiable,
-        };
+        return BlockHeaderCheck.Verified;
     }
 
     /// <summary>fulu/p2p-interface.md: the header's proposer is the expected one for its slot in the shuffling of its branch.</summary>
@@ -1385,6 +1397,8 @@ public sealed class ColumnGossipRouter(
         NotFinalizedDescendant,
         UnexpectedProposer,
         InvalidSignature,
+        InvalidTimestamp,
+        ExcessiveCommitments,
     }
 
     private enum ExpectedProposer

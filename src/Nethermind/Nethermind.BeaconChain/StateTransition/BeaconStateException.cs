@@ -10,7 +10,10 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// out-of-range state access. Maps to a Python <c>assert</c> in consensus-specs, so catching it
 /// during block processing means the block is invalid.
 /// </summary>
-public class BeaconStateException(string message) : Exception(message);
+public class BeaconStateException(string message) : Exception(message)
+{
+    internal bool RejectGossip { get; init; }
+}
 
 /// <summary>
 /// Thrown when a block's proposer signature is invalid. The signature is not part of the block root,

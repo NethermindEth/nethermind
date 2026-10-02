@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Autofac;
 using Google.Protobuf;
 using Nethermind.BeaconChain.Crypto;
@@ -27,6 +28,7 @@ using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.SszRest;
 using NSubstitute;
 using NUnit.Framework;
 using Snappier;
@@ -269,6 +271,22 @@ public class ColumnGossipRouterFuluHeaderTests
         }
     }
 
+    [Test]
+    public async Task Invalid_signature_on_an_imported_header_charges_only_with_available_keys([Values] bool withPubkeys)
+    {
+        (ColumnGossipRouter router, _, BeaconChainStore store) = Create(Ancestry.DescendsFromFinalized, withPubkeys: withPubkeys);
+        DataColumnSidecar sidecar = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        StoreAsImported(store, sidecar);
+        sidecar.SignedBlockHeader!.Signature = default;
+        byte[] payload = Message(sidecar);
+        await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.DataColumnSidecarTopicName(Column), payload, verdict =>
+        {
+            verdict.Complete(router.Handle(Column, gloasTopic: false, payload));
+            return Task.CompletedTask;
+        }, withPubkeys ? MessageValidity.Rejected : MessageValidity.Ignored);
+        Assert.That(router.KzgBatchCount, Is.Zero, "a bad or unverifiable signature must not buy KZG work");
+    }
+
     private static IEnumerable<TestCaseData> ImportedCases()
     {
         yield return Case("sidecar of an imported block is accepted", null, Ancestry.DescendsFromFinalized, MessageValidity.Accepted, kzgBatches: 1, consumed: true, null);
@@ -277,8 +295,8 @@ public class ColumnGossipRouterFuluHeaderTests
             static s => s.KzgCommitmentsInclusionProof![0] = Hash256.Zero, Ancestry.DescendsFromFinalized, MessageValidity.Rejected, kzgBatches: 0, consumed: false, ColumnGossipDropReason.FailedInclusionProof);
         yield return Case("swapped KZG proofs on an imported block are rejected",
             static s => s.KzgProofs = [s.KzgProofs![1], s.KzgProofs[0]], Ancestry.DescendsFromFinalized, MessageValidity.Rejected, kzgBatches: 1, consumed: false, ColumnGossipDropReason.FailedKzgProofs);
-        yield return Case("another signature over an imported header is dropped before KZG",
-            static s => s.SignedBlockHeader!.Signature = new BlsSignature(Enumerable.Repeat((byte)0xAB, BlsSignature.Length).ToArray()), Ancestry.DescendsFromFinalized, MessageValidity.Ignored, kzgBatches: 0, consumed: false, ColumnGossipDropReason.HeaderSignatureMismatch);
+        yield return Case("invalid signature over an imported header is rejected before KZG",
+            static s => s.SignedBlockHeader!.Signature = new BlsSignature(Enumerable.Repeat((byte)0xAB, BlsSignature.Length).ToArray()), Ancestry.DescendsFromFinalized, MessageValidity.Rejected, kzgBatches: 0, consumed: false, ColumnGossipDropReason.HeaderSignatureMismatch);
         yield return Case("imported block off the finalized branch is rejected before KZG", null, Ancestry.OtherBranchFinalized, MessageValidity.Rejected, kzgBatches: 0, consumed: false, ColumnGossipDropReason.NotFinalizedDescendant);
         // The stored block's signature is not BLS-valid here, so a consumed sidecar shows import's verification is trusted.
         yield return Case("imported block the snapshot does not hold yet is accepted through its parent", null, Ancestry.BlockNotInSnapshot, MessageValidity.Accepted, kzgBatches: 1, consumed: true, null);
@@ -662,16 +680,61 @@ public class ColumnGossipRouterFuluHeaderTests
     /// <summary>A child of a parent whose execution payload fork choice invalidated is ignored, not accepted, though its header verifies.</summary>
     /// <remarks>bellatrix p2p-interface.md beacon_block: the parent passes all validation, execution included; fork choice keeps an invalidated node.</remarks>
     [Test]
-    public void Fulu_block_on_a_parent_with_an_invalidated_payload_is_ignored()
+    public async Task Fulu_block_parent_ignore_precedes_later_rejections([Values] bool unknownParent, [Values] BlockFault fault)
     {
         CheckpointRef finalized = new(FinalizedEpoch, ParentRoot);
         ForkChoiceSnapshot snapshot = new(finalized, finalized, Hash256.Zero,
-            [new ForkChoiceSnapshotNode(FinalizedSlot, ParentRoot, null, FinalizedEpoch, FinalizedEpoch, 0, ExecutionStatus.Invalid, Hash256.Zero)]);
-        (GossipRouter router, _) = BlockRouter(ParentRoot, 0, out _, snapshot);
+            unknownParent ? [] : [new ForkChoiceSnapshotNode(fault == BlockFault.ParentSlot ? CurrentSlot : FinalizedSlot,
+                ParentRoot, null, FinalizedEpoch, FinalizedEpoch, 0, ExecutionStatus.Invalid, Hash256.Zero)]);
+        (GossipRouter router, _) = BlockRouter(ParentRoot, fault == BlockFault.Proposer ? 1UL : 0UL, out _, snapshot);
+        SignedBeaconBlock block = SignedBlock(0, Hash256.Zero);
+        switch (fault)
+        {
+            case BlockFault.Timestamp:
+                block.Message!.Body!.ExecutionPayload!.Timestamp++;
+                break;
+            case BlockFault.BlobCount:
+                int count = (int)Spec.GetBlobParameters(Spec.GetEpoch(CurrentSlot))!.Value.MaxBlobsPerBlock + 1;
+                block.Message!.Body!.BlobKzgCommitments = Enumerable.Range(0, count)
+                    .Select(_ => SszKzgCommitment.FromSpan(new byte[SszKzgCommitment.KzgCommitmentLength])).ToArray();
+                break;
+            case BlockFault.Signature:
+                block.Signature = default;
+                break;
+            case BlockFault.ProposerIndex:
+                block.Message!.ProposerIndex = ulong.MaxValue;
+                break;
+        }
 
-        (_, List<MessageValidity> given) = HandleBlock(router, SignedBlock(0, Hash256.Zero));
+        byte[] payload = Snappy.CompressToArray(SignedBeaconBlock.Encode(block));
+        await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.BeaconBlock, payload, verdict =>
+        {
+            MessageValidity immediate = router.Handle(GossipTopics.BeaconBlock, gloasTopic: false, payload, verdict);
+            if (!verdict.IsHandedOff) verdict.Complete(immediate);
+            return Task.CompletedTask;
+        }, MessageValidity.Ignored);
+    }
 
-        Assert.That(given, Is.EqualTo(new[] { MessageValidity.Ignored }));
+    public enum BlockFault { None, Timestamp, BlobCount, ParentSlot, Proposer, Signature, ProposerIndex }
+
+    [Test]
+    public async Task Fulu_block_fields_reject_after_parent_validation([Values] bool wrongTimestamp, [Values] bool lookaheadOnBranch)
+    {
+        (GossipRouter router, _) = BlockRouter(lookaheadOnBranch ? ParentRoot : OtherRoot, 0, out _);
+        SignedBeaconBlock block = SignedBlock(0, Hash256.Zero);
+        if (wrongTimestamp)
+            block.Message!.Body!.ExecutionPayload!.Timestamp++;
+        else
+            block.Message!.Body!.BlobKzgCommitments = Enumerable.Range(0, (int)Spec.GetBlobParameters(Spec.GetEpoch(CurrentSlot))!.Value.MaxBlobsPerBlock + 1)
+                .Select(_ => SszKzgCommitment.FromSpan(new byte[SszKzgCommitment.KzgCommitmentLength])).ToArray();
+        SignBlock(block, 0);
+        byte[] payload = Snappy.CompressToArray(SignedBeaconBlock.Encode(block));
+        await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.BeaconBlock, payload, verdict =>
+        {
+            MessageValidity immediate = router.Handle(GossipTopics.BeaconBlock, gloasTopic: false, payload, verdict);
+            if (!verdict.IsHandedOff) verdict.Complete(immediate);
+            return Task.CompletedTask;
+        }, MessageValidity.Rejected);
     }
 
     /// <summary>
@@ -746,10 +809,15 @@ public class ColumnGossipRouterFuluHeaderTests
         SignedBeaconBlock block = TestChain.CreateBlock(CurrentSlot, ParentRoot);
         block.Message!.ProposerIndex = 0;
         block.Message.Body!.Graffiti = graffiti;
-        Hash256 domain = Domains.ComputeDomain(DomainType.BeaconProposer, Spec.VersionForEpoch(Spec.GetEpoch(CurrentSlot)), Spec.GenesisValidatorsRoot);
+        SignBlock(block, signer);
+        return block;
+    }
+
+    private static void SignBlock(SignedBeaconBlock block, int signer)
+    {
+        Hash256 domain = Domains.ComputeDomain(DomainType.BeaconProposer, Spec.VersionForEpoch(Spec.GetEpoch(block.Message!.Slot)), Spec.GenesisValidatorsRoot);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block.Message), domain);
         block.Signature = new BlsSignature(BlsSigner.Sign(SecretKey(signer), signingRoot.Bytes).Bytes);
-        return block;
     }
 
     [Test]
