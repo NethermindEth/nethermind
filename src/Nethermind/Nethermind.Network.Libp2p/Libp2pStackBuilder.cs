@@ -88,6 +88,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
     {
         // A TXT record may name another dnsaddr, and the library dials every address of a peer at once.
         private const int MaxDnsQueries = 32;
+        private static readonly TimeSpan DnsDeadline = TimeSpan.FromSeconds(10);
         private const int MaxDialAddresses = 16;
 
         private readonly IDnsLookup _dnsLookup;
@@ -170,7 +171,8 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         // A name that does not resolve leaves the other addresses of the peer to dial.
         private async Task<List<Multiaddress>> ResolveAsync(Multiaddress[] addrs)
         {
-            MultiaddrResolver resolver = new(new CountedDnsLookup(_dnsLookup, MaxDnsQueries));
+            using CountedDnsLookup lookup = new(_dnsLookup, MaxDnsQueries, DnsDeadline);
+            MultiaddrResolver resolver = new(lookup);
             List<Multiaddress> resolved = [];
             foreach (Multiaddress addr in addrs)
             {
@@ -190,17 +192,35 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         }
     }
 
-    /// <summary>Refuses queries past <paramref name="maxQueries"/>, which ends a dnsaddr resolution whose records name each other, and answers an
-    /// address query that fails with no addresses, so a name without IPv6 addresses still gets its IPv4 query.</summary>
-    private sealed class CountedDnsLookup(IDnsLookup inner, int maxQueries) : IDnsLookup
+    /// <summary>Refuses queries past <paramref name="maxQueries"/> or <paramref name="deadline"/>, which ends a dnsaddr resolution whose records
+    /// name each other or whose server never answers, and answers a failed address query with no addresses so the other family still runs.</summary>
+    private sealed class CountedDnsLookup(IDnsLookup inner, int maxQueries, TimeSpan deadline) : IDnsLookup, IDisposable
     {
+        private readonly CancellationTokenSource _deadline = new(deadline);
         private int _queries;
 
-        public Task<IEnumerable<string>> QueryTxtAsync(string name) => Count() ? inner.QueryTxtAsync(name) : Refuse<string>(name);
+        public Task<IEnumerable<string>> QueryTxtAsync(string name) => Count() ? Bounded(inner.QueryTxtAsync(name), name) : Refuse<string>(name);
 
-        public Task<IEnumerable<IPAddress>> QueryAAsync(string name) => Count() ? OrNone(inner.QueryAAsync(name)) : Refuse<IPAddress>(name);
+        public Task<IEnumerable<IPAddress>> QueryAAsync(string name) => Count() ? OrNone(Bounded(inner.QueryAAsync(name), name)) : Refuse<IPAddress>(name);
 
-        public Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => Count() ? OrNone(inner.QueryAaaaAsync(name)) : Refuse<IPAddress>(name);
+        public Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => Count() ? OrNone(Bounded(inner.QueryAaaaAsync(name), name)) : Refuse<IPAddress>(name);
+
+        public void Dispose() => _deadline.Dispose();
+
+        // The library's resolver takes no token, so the deadline stops the wait; the query itself is only observed.
+        private async Task<IEnumerable<T>> Bounded<T>(Task<IEnumerable<T>> query, string name)
+        {
+            try
+            {
+                return await query.WaitAsync(_deadline.Token);
+            }
+            catch (OperationCanceledException) when (_deadline.IsCancellationRequested)
+            {
+                _ = query.ContinueWith(static abandoned => _ = abandoned.Exception,
+                    CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                throw new Libp2pException($"Resolving {name} took longer than {deadline}");
+            }
+        }
 
         private static async Task<IEnumerable<IPAddress>> OrNone(Task<IEnumerable<IPAddress>> query)
         {
@@ -214,10 +234,10 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
             }
         }
 
-        private bool Count() => Interlocked.Increment(ref _queries) <= maxQueries;
+        private bool Count() => Interlocked.Increment(ref _queries) <= maxQueries && !_deadline.IsCancellationRequested;
 
         private Task<IEnumerable<T>> Refuse<T>(string name) =>
-            Task.FromException<IEnumerable<T>>(new Libp2pException($"Resolving {name} took more than {maxQueries} DNS queries"));
+            Task.FromException<IEnumerable<T>>(new Libp2pException($"Resolving {name} took more than {maxQueries} DNS queries or {deadline}"));
     }
 }
 

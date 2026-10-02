@@ -202,6 +202,23 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
+    /// <summary>A name whose DNS server never answers is given up within the resolution deadline, and the other addresses of the peer are still dialed.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_name_that_never_resolves_does_not_hold_the_other_addresses(CancellationToken token)
+    {
+        await using Host sequencer = await Host.StartAsync(token);
+        await using Host node = await Host.StartAsync(token, dnsLookup: new LoopbackDns(txt: "", silent: true));
+        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
+        string port = sequencer.Address.ToString().Split('/')[4];
+        Multiaddress[] addresses = [Multiaddress.Decode($"/dns4/silent.test/tcp/{port}/p2p/{sequencerId}"), sequencer.Address];
+
+        // Ten seconds of resolution deadline, then the dial of the literal address.
+        ISession session = await node.Peer.DialAsync(addresses, token).WaitAsync(TimeSpan.FromSeconds(25), token);
+
+        Assert.That(session.RemoteAddress.GetPeerId(), Is.EqualTo(sequencerId));
+    }
+
     /// <summary>A static peer named by a dnsaddr TXT record is connected at the address the record names.</summary>
     [Test]
     [CancelAfter(60_000)]
@@ -388,7 +405,7 @@ public class OptimismGossipLoopbackTests
     }
 
     /// <summary>Answers every name with the loopback address and <paramref name="txt"/>, after failing the first query as a lookup that times out does.</summary>
-    private sealed class LoopbackDns(string txt, bool noIpv6 = false) : IDnsLookup
+    private sealed class LoopbackDns(string txt, bool noIpv6 = false, bool silent = false) : IDnsLookup
     {
         private int _queries;
 
@@ -400,7 +417,8 @@ public class OptimismGossipLoopbackTests
         public Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) =>
             noIpv6 ? Task.FromException<IEnumerable<IPAddress>>(new SocketException((int)SocketError.NoData)) : Answer<IPAddress>([]);
 
-        private Task<IEnumerable<T>> Answer<T>(T[] records) => Interlocked.Increment(ref _queries) == 1
+        private Task<IEnumerable<T>> Answer<T>(T[] records) => silent ? new TaskCompletionSource<IEnumerable<T>>(TaskCreationOptions.RunContinuationsAsynchronously).Task
+            : Interlocked.Increment(ref _queries) == 1
             ? Task.FromException<IEnumerable<T>>(new SocketException((int)SocketError.TimedOut))
             : Task.FromResult<IEnumerable<T>>(records);
     }
