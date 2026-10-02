@@ -19,36 +19,16 @@ internal static class BeaconParallel
 {
     private static readonly ParallelOptions DefaultOptions = new() { TaskScheduler = ComputeScheduler.Instance };
 
-    /// <summary>The loops started on the current thread; lets tests see that a code path uses these threads.</summary>
-    [ThreadStatic]
-    internal static int LoopsStartedOnThisThread;
+    public static void For(int fromInclusive, int toExclusive, Action<int> body) => Parallel.For(fromInclusive, toExclusive, DefaultOptions, body);
 
-    public static void For(int fromInclusive, int toExclusive, Action<int> body)
-    {
-        LoopsStartedOnThisThread++;
-        Parallel.For(fromInclusive, toExclusive, DefaultOptions, body);
-    }
-
-    public static void For(int fromInclusive, int toExclusive, Action<int, ParallelLoopState> body)
-    {
-        LoopsStartedOnThisThread++;
-        Parallel.For(fromInclusive, toExclusive, DefaultOptions, body);
-    }
+    public static void For(int fromInclusive, int toExclusive, Action<int, ParallelLoopState> body) => Parallel.For(fromInclusive, toExclusive, DefaultOptions, body);
 
     /// <param name="maxDegreeOfParallelism">The most threads the loop uses, the calling one included.</param>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> fired.</exception>
-    public static void For(int fromInclusive, int toExclusive, int maxDegreeOfParallelism, CancellationToken cancellationToken, Action<int> body)
-    {
-        LoopsStartedOnThisThread++;
-        ParallelOptions options = new() { TaskScheduler = ComputeScheduler.Instance, MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = cancellationToken };
-        Parallel.For(fromInclusive, toExclusive, options, body);
-    }
+    public static void For(int fromInclusive, int toExclusive, int maxDegreeOfParallelism, CancellationToken cancellationToken, Action<int> body) =>
+        Parallel.For(fromInclusive, toExclusive, new ParallelOptions { TaskScheduler = ComputeScheduler.Instance, MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = cancellationToken }, body);
 
-    public static void ForEach<T>(IEnumerable<T> source, Action<T> body)
-    {
-        LoopsStartedOnThisThread++;
-        Parallel.ForEach(source, DefaultOptions, body);
-    }
+    public static void ForEach<T>(IEnumerable<T> source, Action<T> body) => Parallel.ForEach(source, DefaultOptions, body);
 
     /// <summary>One background thread per processor, started on first use and kept for the life of the process.</summary>
     private sealed class ComputeScheduler : TaskScheduler
