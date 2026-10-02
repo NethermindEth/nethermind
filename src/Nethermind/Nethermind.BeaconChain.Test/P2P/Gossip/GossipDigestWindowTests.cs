@@ -102,7 +102,7 @@ public class GossipDigestWindowTests
     private static bool IsAccepted(GossipMessageValidator validator, GossipRouter router, byte[] digest)
     {
         long unknownBefore = router.GetDropCount(GossipDropReason.UnknownTopic);
-        validator.Verify(new Message { Topic = GossipTopics.Topic(digest, GossipTopics.BeaconBlock), Data = ByteString.CopyFrom(0xff, 0xff, 0xff, 0xff) });
+        validator.Validate(new Message { Topic = GossipTopics.Topic(digest, GossipTopics.BeaconBlock), Data = ByteString.CopyFrom(0xff, 0xff, 0xff, 0xff) }, GossipVerdict.None);
         return router.GetDropCount(GossipDropReason.UnknownTopic) == unknownBefore;
     }
 

@@ -210,7 +210,7 @@ public class NetworkEntryFuzzTests
 
             long invalidSszBefore = InvalidSszDrops();
             long unknownTopicBefore = router.GetDropCount(GossipDropReason.UnknownTopic);
-            MessageValidity validity = validator.Verify(message);
+            MessageValidity validity = validator.Validate(message, GossipVerdict.None);
             string context = $"{topic}, data {SszFuzzer.Preview(data)}";
             if (validity == MessageValidity.Accepted && !IsGloasColumnTopic(topic))
             {
@@ -279,7 +279,7 @@ public class NetworkEntryFuzzTests
         })[0];
         Message message = new() { Topic = Topic(GloasDigest, GossipTopics.ExecutionPayload), Data = ByteString.CopyFrom(Snappy.CompressToArray(envelope)) };
 
-        Assert.That(validator.Verify(message), Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(validator.Validate(message, GossipVerdict.None), Is.EqualTo(MessageValidity.Rejected));
         Assert.That(blocks.FaultedReads, Is.GreaterThan(0), "the validator read the faulting block");
     }
 
@@ -291,11 +291,11 @@ public class NetworkEntryFuzzTests
         string topic = Topic(GloasDigest, GossipTopics.BeaconBlock);
         byte[] bomb = [0x80, 0x80, 0x80, 0x05, 0x00];
         Message message = new() { Topic = topic, Data = ByteString.CopyFrom(bomb) };
-        validator.Verify(new Message { Topic = topic, Data = ByteString.CopyFrom([0x01, 0x00]) });
+        validator.Validate(new Message { Topic = topic, Data = ByteString.CopyFrom([0x01, 0x00]) }, GossipVerdict.None);
         Eth2MessageId.Compute(topic, [0x01, 0x00]);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        MessageValidity validity = validator.Verify(message);
+        MessageValidity validity = validator.Validate(message, GossipVerdict.None);
         long verifyAllocated = GC.GetAllocatedBytesForCurrentThread() - before;
         before = GC.GetAllocatedBytesForCurrentThread();
         Eth2MessageId.Compute(topic, bomb);

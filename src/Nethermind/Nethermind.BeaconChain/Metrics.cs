@@ -24,6 +24,10 @@ public class Metrics
     internal static ulong PeersDroppedCount;
     internal static ulong GossipAcceptedCount;
     internal static ulong GossipDroppedCount;
+    internal static ulong GossipForwardedCount;
+    internal static ulong GossipThrottledCount;
+    internal static ulong GossipAbandonedVerdictCount;
+    internal static ulong GossipLateVerdictCount;
     internal static ulong BlocksImportedCount;
     internal static ulong DialAttemptsCount;
     internal static ulong HeldBlocksDroppedCount;
@@ -101,6 +105,22 @@ public class Metrics
     [CounterMetric]
     [Description("Gossip messages dropped during validation.")]
     public static ulong BeaconChainGossipDropped { get => Volatile.Read(ref GossipDroppedCount); set => Volatile.Write(ref GossipDroppedCount, value); }
+
+    [CounterMetric]
+    [Description("Deferred gossip messages the pubsub router forwarded once their validation accepted them.")]
+    public static ulong BeaconChainGossipForwarded { get => Volatile.Read(ref GossipForwardedCount); set => Volatile.Write(ref GossipForwardedCount, value); }
+
+    [CounterMetric]
+    [Description("Gossip messages refused for validation because the messages or bytes awaiting a verdict reached their bound.")]
+    public static ulong BeaconChainGossipThrottled { get => Volatile.Read(ref GossipThrottledCount); set => Volatile.Write(ref GossipThrottledCount, value); }
+
+    [CounterMetric]
+    [Description("Deferred gossip messages whose verdict was not given before the pending validation timeout or shutdown.")]
+    public static ulong BeaconChainGossipVerdictsAbandoned { get => Volatile.Read(ref GossipAbandonedVerdictCount); set => Volatile.Write(ref GossipAbandonedVerdictCount, value); }
+
+    [CounterMetric]
+    [Description("Gossip verdicts given after the message was abandoned or expired from the router, so neither forwarded nor charged to its sender.")]
+    public static ulong BeaconChainGossipVerdictsLate { get => Volatile.Read(ref GossipLateVerdictCount); set => Volatile.Write(ref GossipLateVerdictCount, value); }
 
     [KeyIsLabel("reason")]
     [Description("Data column gossip messages dropped, by validation reason.")]

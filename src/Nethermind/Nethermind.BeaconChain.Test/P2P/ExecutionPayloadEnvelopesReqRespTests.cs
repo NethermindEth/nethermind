@@ -141,7 +141,7 @@ public class ExecutionPayloadEnvelopesReqRespTests
         SlotClock clock = new(EnvelopeChain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(EnvelopeChain.Spec.GenesisTime + slot * EnvelopeChain.Spec.SecondsPerSlot + 6)));
         GossipRouter router = new(EnvelopeChain.Spec, clock, LimboLogs.Instance, chain.Store, chain.Status);
         int raised = 0;
-        router.ExecutionPayloadEnvelopeReceived += _ => raised++;
+        router.ExecutionPayloadEnvelopeReceived += (_, _) => raised++;
         ExecutionPayloadEnvelopesByRootProtocol protocol = new(EnvelopeChain.Spec, chain.Pool);
         byte[] request = ExecutionPayloadEnvelopeRoots.Encode(new ExecutionPayloadEnvelopeRoots { Roots = [root] });
 

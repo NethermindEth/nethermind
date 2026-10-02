@@ -41,7 +41,7 @@ public partial class GossipRouterTests
         ManualTimestamper time = new(SepoliaSlotStart(PtcSlot).AddSeconds(6));
         GossipRouter router = new(Sepolia, new SlotClock(Sepolia, time), LimboLogs.Instance, failedBlocks: failed);
         int received = 0;
-        router.PayloadAttestationMessageReceived += _ => received++;
+        router.PayloadAttestationMessageReceived += (_, _) => received++;
         PayloadAttestationMessage vote = PtcVote(PtcBlockRoot, (ulong)((long)PtcSlot + slotOffset));
         if (verified)
         {
@@ -83,7 +83,7 @@ public partial class GossipRouterTests
     {
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         int received = 0;
-        router.PayloadAttestationMessageReceived += _ => received++;
+        router.PayloadAttestationMessageReceived += (_, _) => received++;
         ulong blockSlot = testCase == PtcCase.BlockAtAnotherSlot ? PtcSlot - 1 : PtcSlot;
         if (testCase != PtcCase.BlockNotHeld)
             store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(blockSlot)));
@@ -121,7 +121,7 @@ public partial class GossipRouterTests
     {
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoWallSlot);
         int received = 0;
-        router.PayloadAttestationMessageReceived += _ => received++;
+        router.PayloadAttestationMessageReceived += (_, _) => received++;
         ulong dataSlot = (ulong)((long)PtcSlot + slotOffset);
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(dataSlot)));
 
@@ -147,7 +147,7 @@ public partial class GossipRouterTests
     {
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         int received = 0;
-        router.PayloadAttestationMessageReceived += _ => received++;
+        router.PayloadAttestationMessageReceived += (_, _) => received++;
         MessageValidity[] verdicts = new MessageValidity[GossipRouter.PtcBlockSlotReadsPerSlot + 1];
         for (int i = 0; i < verdicts.Length; i++)
         {
@@ -171,7 +171,7 @@ public partial class GossipRouterTests
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         int received = 0;
-        router.PayloadAttestationMessageReceived += _ => received++;
+        router.PayloadAttestationMessageReceived += (_, _) => received++;
         const int repeats = 10;
 
         for (byte seed = 0; seed <= repeats; seed++)
@@ -194,7 +194,7 @@ public partial class GossipRouterTests
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         List<byte> raised = [];
-        router.PayloadAttestationMessageReceived += vote => raised.Add(vote.Signature.Bytes[0]);
+        router.PayloadAttestationMessageReceived += (vote, _) => raised.Add(vote.Signature.Bytes[0]);
         PayloadAttestationMessage genuine = PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 100);
 
         for (byte forged = 1; forged <= forgeriesFirst; forged++)
@@ -217,7 +217,7 @@ public partial class GossipRouterTests
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         int received = 0;
-        router.PayloadAttestationMessageReceived += _ => received++;
+        router.PayloadAttestationMessageReceived += (_, _) => received++;
         PayloadAttestationMessage refused = PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 1);
         Handle(router, refused);
         for (byte seed = 2; seed <= GossipRouter.PayloadAttestationVerifyAttempts; seed++)
@@ -244,7 +244,7 @@ public partial class GossipRouterTests
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         int received = 0;
-        router.PayloadAttestationMessageReceived += _ => Interlocked.Increment(ref received);
+        router.PayloadAttestationMessageReceived += (_, _) => Interlocked.Increment(ref received);
         const int handlers = 16;
         byte[] copy = Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 1)));
         using Barrier start = new(handlers);
@@ -269,7 +269,7 @@ public partial class GossipRouterTests
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         int received = 0;
-        router.PayloadAttestationMessageReceived += _ => Interlocked.Increment(ref received);
+        router.PayloadAttestationMessageReceived += (_, _) => Interlocked.Increment(ref received);
         const int handlers = 16;
         byte[][] messages = [.. Enumerable.Range(0, handlers).Select(i => Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: (byte)(i + 1)))))];
         using Barrier start = new(handlers);
@@ -293,7 +293,7 @@ public partial class GossipRouterTests
         const int handlers = 16;
         const int pairs = 400;
         int[] raised = new int[pairs];
-        router.PayloadAttestationMessageReceived += vote => Interlocked.Increment(ref raised[vote.ValidatorIndex]);
+        router.PayloadAttestationMessageReceived += (vote, _) => Interlocked.Increment(ref raised[vote.ValidatorIndex]);
         byte[][][] messages = [.. Enumerable.Range(0, pairs).Select(v => Enumerable.Range(0, handlers)
             .Select(i => Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, (ulong)v, signatureSeed: (byte)(i + 1))))).ToArray())];
         using Barrier start = new(handlers);
@@ -320,7 +320,7 @@ public partial class GossipRouterTests
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         const int handlers = 2;
         const int pairs = 1500;
-        router.PayloadAttestationMessageReceived += _ => { };
+        router.PayloadAttestationMessageReceived += (_, _) => { };
         byte[][][] messages = [.. Enumerable.Range(0, pairs).Select(v => Enumerable.Range(0, handlers)
             .Select(i => Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, (ulong)v, signatureSeed: (byte)(i + 1))))).ToArray())];
         using Barrier start = new(handlers + 1);
@@ -339,7 +339,7 @@ public partial class GossipRouterTests
         Task.WaitAll(tasks);
 
         int reopened = 0;
-        router.PayloadAttestationMessageReceived += _ => reopened++;
+        router.PayloadAttestationMessageReceived += (_, _) => reopened++;
         for (int pair = 0; pair < pairs; pair++)
         {
             Handle(router, PtcVote(PtcBlockRoot, PtcSlot, (ulong)pair, signatureSeed: 251));
@@ -358,7 +358,7 @@ public partial class GossipRouterTests
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         int raised = 0;
-        router.PayloadAttestationMessageReceived += _ => raised++;
+        router.PayloadAttestationMessageReceived += (_, _) => raised++;
         PayloadAttestationMessage genuine = PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, signatureSeed: 1);
         Handle(router, genuine);
         router.MarkPayloadAttestationVerified(genuine);
@@ -397,7 +397,7 @@ public partial class GossipRouterTests
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         int raised = 0;
-        router.PayloadAttestationMessageReceived += vote => raised += vote.ValidatorIndex == PtcValidator ? 1 : 0;
+        router.PayloadAttestationMessageReceived += (vote, _) => raised += vote.ValidatorIndex == PtcValidator ? 1 : 0;
         for (byte seed = 1; seed <= GossipRouter.PayloadAttestationVerifyAttempts; seed++)
         {
             Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, seed));
@@ -427,7 +427,7 @@ public partial class GossipRouterTests
         router.RequiresPtc = true;
         router.SetPtc(PtcSlot, [PtcValidator]);
         int raised = 0;
-        router.PayloadAttestationMessageReceived += _ => raised++;
+        router.PayloadAttestationMessageReceived += (_, _) => raised++;
         for (byte seed = 1; seed <= GossipRouter.PayloadAttestationVerifyAttempts; seed++)
         {
             Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, seed));
@@ -462,7 +462,7 @@ public partial class GossipRouterTests
         router.RequiresPtc = true;
         router.SetPtc(PtcSlot, [PtcValidator, PtcValidator + 1]);
         List<ulong> raised = [];
-        router.PayloadAttestationMessageReceived += vote => raised.Add(vote.ValidatorIndex);
+        router.PayloadAttestationMessageReceived += (vote, _) => raised.Add(vote.ValidatorIndex);
 
         for (byte seed = 1; seed <= GossipRouter.PayloadAttestationVerifyAttempts + 2; seed++)
         {
@@ -485,7 +485,7 @@ public partial class GossipRouterTests
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         router.RequiresPtc = true;
         int raised = 0;
-        router.PayloadAttestationMessageReceived += _ => raised++;
+        router.PayloadAttestationMessageReceived += (_, _) => raised++;
 
         MessageValidity[] unknown = [.. Enumerable.Range(1, GossipRouter.PayloadAttestationVerifyAttempts + 1).Select(seed => Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: (byte)seed)))];
         int whileUnknown = raised;
@@ -511,7 +511,7 @@ public partial class GossipRouterTests
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         router.RequiresPtc = true;
         int raised = 0;
-        router.PayloadAttestationMessageReceived += _ => raised++;
+        router.PayloadAttestationMessageReceived += (_, _) => raised++;
         router.SetPtc(PtcSlot, [PtcValidator]);
 
         router.SetPtc(PtcSlot, null);
@@ -531,7 +531,7 @@ public partial class GossipRouterTests
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         router.RequiresPtc = true;
         int raised = 0;
-        router.PayloadAttestationMessageReceived += _ => raised++;
+        router.PayloadAttestationMessageReceived += (_, _) => raised++;
         router.SetPtc(PtcSlot, [PtcValidator]);
 
         router.SetPtc(PtcSlot, [PtcValidator + 1]);
@@ -563,7 +563,7 @@ public partial class GossipRouterTests
     {
         (GossipRouter router, BeaconChainStore store) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000);
         int received = 0;
-        router.PayloadAttestationMessageReceived += _ => received++;
+        router.PayloadAttestationMessageReceived += (_, _) => received++;
 
         router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 1))));
         int beforeBlock = received;
@@ -581,8 +581,8 @@ public partial class GossipRouterTests
         store.PutForkedBlock(PtcBlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(PtcSlot)));
         int slashings = 0;
         int votes = 0;
-        router.AttesterSlashingReceived += _ => slashings++;
-        router.PayloadAttestationMessageReceived += _ => votes++;
+        router.AttesterSlashingReceived += (_, _) => slashings++;
+        router.PayloadAttestationMessageReceived += (_, _) => votes++;
         byte[] slashing = GossipMessageValidatorTests.Encode(GossipMessageValidatorTests.FuluSlashing([1, 2], [2, 3], secondSource: 2, secondTarget: 4));
 
         MessageValidity first = router.Handle(GossipTopics.AttesterSlashing, gloasTopic: false, slashing);
