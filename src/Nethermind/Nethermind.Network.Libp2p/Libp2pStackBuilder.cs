@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
-using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -59,33 +58,32 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     }
 }
 
-/// <summary>Resolves a DNS host name to its addresses of <paramref name="family"/>.</summary>
-public delegate Task<IPAddress[]> HostResolver(string host, AddressFamily family, CancellationToken token);
-
 /// <summary>Creates peers that run identify on every new session and push it when their listen addresses change.</summary>
-/// <param name="resolveHost">Resolves DNS names in dialed addresses; the system resolver when null.</param>
+/// <param name="dnsLookup">Answers the DNS queries that resolve names in dialed addresses; DnsClient when null.</param>
 public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings, PeerStore peerStore, IdentifyNotifier identifyNotifier, ILoggerFactory? loggerFactory = null,
-    HostResolver? resolveHost = null)
+    IDnsLookup? dnsLookup = null)
     : PeerFactory(protocolStackSettings, peerStore, loggerFactory: loggerFactory)
 {
     public override ILocalPeer Create(Identity? identity = null) =>
         new IdentifyingPeer(identity ?? new Identity(privateKey: null, KeyType.Secp256K1), PeerStore, protocolStackSettings, identifyNotifier, LoggerFactory,
-            resolveHost ?? (static (host, family, token) => Dns.GetHostAddressesAsync(host, family, token)));
+            dnsLookup ?? new DnsClientLookup());
 
-    /// <remarks>A dial through <see cref="ILocalPeer"/> reaches the library only with resolved TCP addresses of one peer id: Nethermind.Libp2p 1.0.0
-    /// keeps a dial that fails before its first await as the pending dial of that peer id for good, and a failed DNS lookup, an address of a
-    /// transport this stack lacks, or addresses of several peer ids fail that way. Any peer can announce such addresses for any peer id
-    /// through pubsub peer discovery.</remarks>
+    /// <remarks>Dials through <see cref="ILocalPeer"/> reach the library only with resolved TCP addresses of one peer id: Nethermind.Libp2p 1.0.0
+    /// keeps a dial that fails before its first await, as such addresses make it, as that peer id's pending dial for good.</remarks>
     private sealed class IdentifyingPeer : LocalPeer, ILocalPeer
     {
-        private readonly HostResolver _resolveHost;
+        // A TXT record may name another dnsaddr, and the library dials every address of a peer at once.
+        private const int MaxDnsQueries = 32;
+        private const int MaxDialAddresses = 16;
+
+        private readonly IDnsLookup _dnsLookup;
         private int _disposed;
 
         public IdentifyingPeer(Identity identity, PeerStore peerStore, IProtocolStackSettings settings, IdentifyNotifier notifier, ILoggerFactory? loggerFactory,
-            HostResolver resolveHost)
+            IDnsLookup dnsLookup)
             : base(identity, peerStore, settings, loggerFactory: loggerFactory)
         {
-            _resolveHost = resolveHost;
+            _dnsLookup = dnsLookup;
             notifier.TrackChanges(this);
         }
 
@@ -119,18 +117,11 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                 throw new Libp2pException($"A dial to {peerId} has addresses of another peer id");
             }
 
-            List<Multiaddress> tcp = [];
-            foreach (Multiaddress addr in addrs)
-            {
-                foreach (Multiaddress resolved in await ResolveAsync(addr, token))
-                {
-                    // Only IP, TCP and peer id: the library would resolve any other component, such as a name inside, before its first await.
-                    if (resolved.Protocols is [IP4 or IP6, TCP, P2P])
-                    {
-                        tcp.Add(resolved);
-                    }
-                }
-            }
+            // Only IP, TCP and this peer id: the library would resolve any other component, such as a name inside, before its first await.
+            List<Multiaddress> tcp = [.. (await ResolveAsync(addrs).WaitAsync(token))
+                .Where(resolved => resolved.Protocols is [IP4 or IP6, TCP, P2P] && resolved.GetPeerId() == peerId)
+                .Distinct()
+                .Take(MaxDialAddresses)];
 
             if (tcp.Count == 0)
             {
@@ -158,35 +149,43 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         }
 
         // A name that does not resolve leaves the other addresses of the peer to dial.
-        private async Task<Multiaddress[]> ResolveAsync(Multiaddress addr, CancellationToken token)
+        private async Task<List<Multiaddress>> ResolveAsync(Multiaddress[] addrs)
         {
-            try
+            MultiaddrResolver resolver = new(new CountedDnsLookup(_dnsLookup, MaxDnsQueries));
+            List<Multiaddress> resolved = [];
+            foreach (Multiaddress addr in addrs)
             {
-                if (addr.Protocols is [DNS4, ..])
+                try
                 {
-                    IPAddress[] ips = await _resolveHost(addr.Get<DNS4>().ToString(), AddressFamily.InterNetwork, token);
-                    return [.. ips.Select(ip => addr.Clone().Replace<DNS4, IP4>(ip))];
+                    await foreach (Multiaddress address in resolver.Resolve(addr))
+                    {
+                        resolved.Add(address);
+                    }
                 }
-
-                if (addr.Protocols is [DNS6, ..])
+                catch (Exception e) when (e is not OutOfMemoryException)
                 {
-                    IPAddress[] ips = await _resolveHost(addr.Get<DNS6>().ToString(), AddressFamily.InterNetworkV6, token);
-                    return [.. ips.Select(ip => addr.Clone().Replace<DNS6, IP6>(ip))];
                 }
-
-                if (addr.Protocols is [DNS, ..])
-                {
-                    IPAddress[] ips = await _resolveHost(addr.Get<DNS>().ToString(), AddressFamily.Unspecified, token);
-                    return [.. ips.Select(ip => ip.AddressFamily == AddressFamily.InterNetworkV6 ? addr.Clone().Replace<DNS, IP6>(ip) : addr.Clone().Replace<DNS, IP4>(ip))];
-                }
-
-                return [addr];
             }
-            catch (SocketException)
-            {
-                return [];
-            }
+
+            return resolved;
         }
+    }
+
+    /// <summary>Refuses queries past <paramref name="maxQueries"/>, which ends a dnsaddr resolution whose records name each other.</summary>
+    private sealed class CountedDnsLookup(IDnsLookup inner, int maxQueries) : IDnsLookup
+    {
+        private int _queries;
+
+        public Task<IEnumerable<string>> QueryTxtAsync(string name) => Count() ? inner.QueryTxtAsync(name) : Refuse<string>(name);
+
+        public Task<IEnumerable<IPAddress>> QueryAAsync(string name) => Count() ? inner.QueryAAsync(name) : Refuse<IPAddress>(name);
+
+        public Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => Count() ? inner.QueryAaaaAsync(name) : Refuse<IPAddress>(name);
+
+        private bool Count() => Interlocked.Increment(ref _queries) <= maxQueries;
+
+        private Task<IEnumerable<T>> Refuse<T>(string name) =>
+            Task.FromException<IEnumerable<T>>(new Libp2pException($"Resolving {name} took more than {maxQueries} DNS queries"));
     }
 }
 
