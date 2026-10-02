@@ -172,6 +172,15 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         }
     }
 
+    internal bool HasGenerations
+    {
+        get
+        {
+            using Lock.Scope _ = _lock.EnterScope();
+            return _generations.Count > 0;
+        }
+    }
+
     /// <summary><see cref="Drain"/> for a caller holding the gate through <see cref="EnterExclusive"/>.</summary>
     internal void DrainExclusive()
     {

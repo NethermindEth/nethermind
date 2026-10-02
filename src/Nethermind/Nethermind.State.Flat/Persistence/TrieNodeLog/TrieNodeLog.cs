@@ -33,6 +33,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private static readonly FlatDbColumns[] StateColumns = [FlatDbColumns.StateTopNodes, FlatDbColumns.StateNodes];
     private static readonly FlatDbColumns[] StorageColumns = [FlatDbColumns.StorageNodes];
     private readonly SemaphoreSlim _mergeLimiter;
+    private readonly Lock _drainLock = new(); // drains and clears queue behind each other; sync runs bypass batches from several threads
     private readonly ILogger _logger;
     private int _disposed;
 
@@ -182,10 +183,12 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     public void Drain()
     {
+        using Lock.Scope _ = _drainLock.EnterScope();
         int gated = EnterExclusive();
         try
         {
-            Parallel.ForEach(_shards, static shard => shard.DrainExclusive());
+            if (Array.Exists(_shards, static shard => shard.HasGenerations))
+                Parallel.ForEach(_shards, static shard => shard.DrainExclusive());
         }
         finally
         {
@@ -195,6 +198,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     public void Clear()
     {
+        using Lock.Scope _ = _drainLock.EnterScope();
         int gated = EnterExclusive();
         try
         {
@@ -262,6 +266,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         private readonly IColumnsWriteBatch<FlatDbColumns> _rocksDbBatch;
         private readonly ArrayPoolList<TrieNodeLogWriteBatch> _batches;
         private readonly ArrayPoolList<ShardWriter> _writers;
+        private bool _durable;
         private bool _committed;
         private bool _confirmed;
 
@@ -292,6 +297,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 foreach (TrieNodeLogWriteBatch batch in _batches) batch.Abort();
                 throw;
             }
+            _durable = true;
 
             Parallel.ForEach(_batches, static batch => batch.Publish());
             // The RocksDB batch is not thread-safe.
@@ -306,14 +312,14 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         public void Dispose()
         {
             _writers.DisposeRecursive();
-            if (!_committed)
+            if (!_durable)
             {
                 foreach (TrieNodeLogWriteBatch batch in _batches) batch.Abort();
             }
             else if (!_confirmed)
             {
-                // Published, fsynced records whose RocksDB write failed: they cannot be unpublished under readers, and a
-                // later confirmed version would vouch for them, so the shards stop taking batches until a restart.
+                // Fsynced records RocksDB never confirmed, possibly published: they cannot be unpublished under readers,
+                // and a later confirmed version would vouch for them, so the shards stop taking batches until a restart.
                 foreach (TrieNodeLogWriteBatch batch in _batches) batch.Poison();
             }
             _batches.DisposeRecursive();

@@ -432,6 +432,36 @@ public class TrieNodeLogTests
     }
 
     [Test]
+    public void A_commit_failing_after_the_log_is_durable_poisons_the_log()
+    {
+        using (IColumnsWriteBatch<FlatDbColumns> rocksDbBatch = _db.StartWriteBatch())
+        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(new FailingMetadataBatch(rocksDbBatch), bypass: false))
+        {
+            logBatch.Wrap(FlatDbColumns.StateTopNodes, rocksDbBatch.GetColumnBatch(FlatDbColumns.StateTopNodes)).PutSpan(Bytes.FromHexString("0x123450"), Rlp1);
+            Assert.That(logBatch.Commit, Throws.TypeOf<IOException>(), "the version write into the RocksDB batch fails after the log records are fsynced");
+        }
+
+        Assert.That(() => Batch(0, 1), Throws.InvalidOperationException.With.Message.Contains("restart"));
+    }
+
+    /// <summary>A RocksDB batch whose metadata column rejects every write.</summary>
+    private sealed class FailingMetadataBatch(IColumnsWriteBatch<FlatDbColumns> inner) : IColumnsWriteBatch<FlatDbColumns>
+    {
+        public IWriteBatch GetColumnBatch(FlatDbColumns key) => key == FlatDbColumns.Metadata ? new FailingBatch() : inner.GetColumnBatch(key);
+        public void Clear() => inner.Clear();
+        public void Dispose() => inner.Dispose();
+
+        private sealed class FailingBatch : IWriteBatch
+        {
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => throw new IOException("metadata write failed");
+            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => throw new IOException("metadata write failed");
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => throw new IOException("metadata write failed");
+            public void Clear() { }
+            public void Dispose() { }
+        }
+    }
+
+    [Test]
     public async Task A_generation_file_cut_short_before_its_header_is_dropped()
     {
         WriteTop(0, 1, Rlp1);
@@ -452,6 +482,18 @@ public class TrieNodeLogTests
     [TestCase(16, 8192)]
     public void Index_capacity_is_the_budget_over_the_ratio_in_slots(int ratio, int slots) =>
         Assert.That(TrieNodeLogGeneration.CapacityFor(1024 * 1024, ratio), Is.EqualTo(slots));
+
+    [Test]
+    public void Bypass_batches_may_be_created_from_several_threads_at_once()
+    {
+        WriteTop(0, 1, Rlp1);
+        Assert.That(() => Parallel.For(0, 16, index =>
+        {
+            using IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+            sync.SetStateTrieNode(TreePath.FromHexString($"{index:x}bcdef"), Rlp2);
+        }), Throws.Nothing);
+        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1), "the first bypass batch drained the log");
+    }
 
     [Test]
     public void Only_one_log_backed_batch_may_be_open()
