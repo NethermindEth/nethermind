@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -58,7 +59,7 @@ public class NodeViewsTests
                     Assert.That(actual[i].Kind, Is.EqualTo(expected[i].Kind));
                     ValueHash256 expectedHash = rlps[i] is { } encoded ? ValueKeccak.Compute(encoded) : Keccak.EmptyTreeHash.ValueHash256;
                     Assert.That(actual[i].Hash, Is.EqualTo(expectedHash));
-                    Assert.That(actual[i].Rlp.ToArray(), Is.EqualTo(rlps[i] ?? []));
+                    Assert.That(actual[i].Rlp, Is.SequenceEqualTo(rlps[i] ?? []));
                 }
             }
             NodeView expectedParent = NodeViews.Combine(expected);
@@ -67,7 +68,7 @@ public class NodeViewsTests
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(actualParent.Rlp.ToArray(), Is.EqualTo(expectedParent.Rlp.ToArray()));
+                    Assert.That(actualParent.Rlp, Is.SequenceEqualTo(expectedParent.Rlp));
                     Assert.That(actualParent.Hash, Is.EqualTo(expectedParent.Hash));
                 }
                 VerifyArchiveComposition(rlps, expectedParent, interleaved ? 4 : 1);

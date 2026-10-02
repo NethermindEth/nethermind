@@ -418,7 +418,7 @@ public class ScopeProviderTests(bool useFlat)
         else
         {
             using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
-            Assert.That(scope.CodeDb.GetCode(TestItem.KeccakA).ToArray(), Is.EqualTo([1, 2, 3]));
+            Assert.That(scope.CodeDb.GetCode(TestItem.KeccakA), Is.SequenceEqualTo<byte>([1, 2, 3]));
         }
     }
 

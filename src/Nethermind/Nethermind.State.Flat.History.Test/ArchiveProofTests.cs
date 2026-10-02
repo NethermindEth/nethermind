@@ -623,7 +623,7 @@ public class ArchiveProofTests
                 Assert.That(actual.StorageProofs![i].Proof,
                     Is.EqualTo(expected.StorageProofs![i].Proof),
                     "at the last block a window row describes, every storage node of a small trie materializes from its window row, so the slot rows are never read; a missing or wrong storage row would make the resolver fall back to the now-corrupt slot rows and refuse");
-                Assert.That(actual.StorageProofs[i].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs![i].Value!.Value.ToArray()));
+                Assert.That(actual.StorageProofs[i].Value!.Value, Is.SequenceEqualTo(expected.StorageProofs![i].Value!.Value));
             }
         }
     }
@@ -2090,7 +2090,7 @@ public class ArchiveProofTests
 
             for (int i = 0; i < storageKeys.Length; i++)
             {
-                Assert.That(actual.StorageProofs![i].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs![i].Value!.Value.ToArray()),
+                Assert.That(actual.StorageProofs![i].Value!.Value, Is.SequenceEqualTo(expected.StorageProofs![i].Value!.Value),
                     $"slot {storageKeys[i]} must hold its block-{block} value");
                 Assert.That(actual.StorageProofs[i].Proof,
                     Is.EqualTo(expected.StorageProofs![i].Proof),
