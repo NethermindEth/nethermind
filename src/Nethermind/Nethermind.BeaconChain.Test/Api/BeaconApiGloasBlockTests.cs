@@ -54,6 +54,7 @@ public class BeaconApiGloasBlockTests
     [TestCase("/eth/v1/beacon/blocks/{0}/root", Json, true)]
     [TestCase("/eth/v2/beacon/blocks/{0}", Json, true)]
     [TestCase("/eth/v2/beacon/blocks/{0}", OctetStream, true)]
+    [TestCase("/eth/v2/beacon/blocks/{0}/attestations", Json, true)]
     [TestCase("/eth/v2/debug/beacon/states/{1}", OctetStream, true)]
     [TestCase("/eth/v1/beacon/states/{1}/root", Json, false)]
     public async Task Every_block_reading_endpoint_serves_a_gloas_root_instead_of_failing(string template, string accept, bool namesTheFork)
@@ -197,6 +198,27 @@ public class BeaconApiGloasBlockTests
             Assert.That(requests.GetProperty("builder_deposits")[0].GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0xe3)));
             Assert.That(requests.GetProperty("builder_exits")[0].GetProperty("source_address").GetString(), Is.EqualTo(Hex(20, 0xf1)));
             Assert.That(requests.GetProperty("builder_exits")[0].GetProperty("pubkey").GetString(), Is.EqualTo(Hex(48, 0xf2)));
+        }
+    }
+
+    /// <summary>getBlockAttestationsV2 has no gloas version in v5.0.0-alpha.2; the Gloas Attestation is served under gloas, never fulu.</summary>
+    [Test]
+    public async Task Block_attestations_are_the_gloas_attestations_under_the_gloas_version()
+    {
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v2/beacon/blocks/{Root}/attestations", Json);
+        string raw = await response.Content.ReadAsStringAsync();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        JsonElement envelope = JsonDocument.Parse(raw).RootElement;
+        JsonElement attestation = envelope.GetProperty("data").EnumerateArray().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(envelope.GetProperty("version").GetString(), Is.EqualTo("gloas"));
+            Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"));
+            Assert.That(attestation.GetProperty("aggregation_bits").GetString(), Is.EqualTo("0x0d"));
+            Assert.That(attestation.GetProperty("committee_bits").GetString(), Is.EqualTo("0x0200000000000000"));
+            Assert.That(attestation.GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0x43)));
+            Assert.That(attestation.GetProperty("data").GetProperty("beacon_block_root").GetString(), Is.EqualTo(Hex(32, 0xaa)));
         }
     }
 
