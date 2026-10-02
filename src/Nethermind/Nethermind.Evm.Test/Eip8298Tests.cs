@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -331,7 +332,8 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(TestState.AccountExists(source), Is.False);
-        Assert.That(TestState.GetCode(adopter), Is.EqualTo(runtime));
+        ReadOnlyMemory<byte> adoptedCode = TestState.GetCode(adopter);
+        Assert.That(adoptedCode.ToArray(), Is.EqualTo(runtime));
 
         result = Execute(Prepare.EvmCode.CallWithInput(adopter, 50_000, [1]).ReturnInnerCallResult().Done);
 
