@@ -186,23 +186,27 @@ public class IdentifyTests
             Assert.That(IdentifyAgentVersionProbe.Apply(message, session, settings, peerStore),
                 answer == Answer.NoAgentVersion ? Is.Null : Is.EqualTo(ServerAgent), "the agent string is unknown only when the answer carries none");
             Assert.That(peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols, Is.EqualTo(new[] { IdentifyProtocolId }));
-            Assert.That(peerStore.GetPeerInfo(remote.PeerId).Seq, Is.EqualTo(answer is Answer.Valid or Answer.NoAgentVersion ? 7UL : 0UL), "only a verified record's sequence is kept");
-            Assert.That(peerStore.GetPeerInfo(remote.PeerId).SignedPeerRecord, Is.EqualTo(message.SignedPeerRecord), "pubsub peer exchange hands out the stored record");
+            bool verified = answer is Answer.Valid or Answer.NoAgentVersion;
+            Assert.That(peerStore.GetPeerInfo(remote.PeerId).Seq, Is.EqualTo(verified ? 7UL : null), "only a verified record's sequence is kept");
+            Assert.That(peerStore.GetPeerInfo(remote.PeerId).SignedPeerRecord, verified ? Is.EqualTo(message.SignedPeerRecord) : Is.Null,
+                "pubsub peer exchange hands out the stored record, so only a verified one is stored");
         }
     }
 
-    /// <summary>A replayed or older signed record must not roll back what the peer store holds for the peer.</summary>
-    [TestCase(4UL, false)]
-    [TestCase(5UL, false)]
-    [TestCase(6UL, true)]
-    public void A_later_identify_answer_replaces_the_stored_record_only_when_its_sequence_is_newer(ulong seq, bool replaces)
+    /// <summary>A replayed, older or unverified record must not roll back the stored record, but the protocols the peer lists now always replace the stored ones.</summary>
+    /// <remarks>Pubsub picks the gossipsub version from the stored protocols, so a peer must not be held to its first list.</remarks>
+    [TestCase(4UL, false, false)]
+    [TestCase(5UL, false, false)]
+    [TestCase(6UL, false, true)]
+    [TestCase(6UL, true, false)]
+    public void A_later_identify_answer_replaces_the_stored_record_only_when_it_verifies_and_its_sequence_is_newer(ulong seq, bool signedByAnother, bool replaces)
     {
         Identity remote = new(privateKey: null, KeyType.Secp256K1);
         Libp2p.Core.State session = SessionWith(remote);
         PeerStore peerStore = new();
-        IdentifyProtocolSettings settings = new() { PeerRecordsVerificationPolicy = PeerRecordsVerificationPolicy.RequireCorrect };
+        IdentifyProtocolSettings settings = new() { PeerRecordsVerificationPolicy = PeerRecordsVerificationPolicy.RequireWithWarning };
         IdentifyMessage first = AnswerOf(remote, remote, 5, "/stored");
-        IdentifyMessage later = AnswerOf(remote, remote, seq, "/later");
+        IdentifyMessage later = AnswerOf(remote, signedByAnother ? new Identity(privateKey: null, KeyType.Secp256K1) : remote, seq, "/later");
         IdentifyAgentVersionProbe.Apply(first, session, settings, peerStore);
 
         IdentifyAgentVersionProbe.Apply(later, session, settings, peerStore);
@@ -210,7 +214,7 @@ public class IdentifyTests
         PeerStore.PeerInfo stored = peerStore.GetPeerInfo(remote.PeerId);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stored.SupportedProtocols, Is.EqualTo(new[] { replaces ? "/later" : "/stored" }));
+            Assert.That(stored.SupportedProtocols, Is.EqualTo(new[] { "/later" }));
             Assert.That(stored.Seq, Is.EqualTo(replaces ? seq : 5UL));
             Assert.That(stored.SignedPeerRecord, Is.EqualTo(replaces ? later.SignedPeerRecord : first.SignedPeerRecord));
         }
