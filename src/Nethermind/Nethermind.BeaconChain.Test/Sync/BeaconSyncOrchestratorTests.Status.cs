@@ -228,6 +228,30 @@ public partial class BeaconSyncOrchestratorTests
         Assert.DoesNotThrowAsync(() => RequestOneSlotByRangeAsync(pool, slotClock, afterHeadStep), "after the head step");
     }
 
+    /// <summary>
+    /// get_block_root: a checkpoint root is the latest block at or before its epoch's start slot, so an anchor block past its epoch's
+    /// first slot is the checkpoint of the next epoch; the lower epoch get_forkchoice_store gives it makes a peer finalized there look conflicting.
+    /// </summary>
+    [Test]
+    public async Task Status_advertises_the_first_epoch_whose_checkpoint_is_the_anchor_block([Values(0UL, 1UL, 31UL)] ulong slotInEpoch)
+    {
+        ulong anchorSlot = FuluAnchorSlot + slotInEpoch;
+        ulong expectedEpoch = FuluAnchorSlot / Spec.SlotsPerEpoch + (slotInEpoch == 0 ? 0UL : 1UL);
+        CheckpointRef storeFinalized = new(Spec.GetEpoch(anchorSlot), TestChain.BuildLinkedChain(anchorSlot).AnchorRoot);
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(new DataColumnSidecarPool(), anchorSlot, FuluWallSlot, finalized: storeFinalized);
+        ulong atStartup = statusHolder.CurrentStatus.FinalizedEpoch;
+
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FuluAnchorSlot % Spec.SlotsPerEpoch, Is.Zero, "fixture: the anchor offset is its slot in the epoch");
+            Assert.That(atStartup, Is.EqualTo(expectedEpoch), "at startup");
+            Assert.That(statusHolder.CurrentStatus.FinalizedEpoch, Is.EqualTo(expectedEpoch), "after the head step, while fork choice still holds the anchor as finalized");
+            Assert.That(statusHolder.CurrentStatus.FinalizedRoot, Is.EqualTo(storeFinalized.Root));
+        }
+    }
+
     /// <summary>gloas/p2p-interface.md ExecutionPayloadEnvelopesByRange: the head's envelope is served only while fork choice resolves the head FULL.</summary>
     [Test]
     public async Task Head_step_publishes_the_head_root_only_while_the_head_is_full([Values] bool full)
@@ -260,13 +284,13 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 10), "the orchestrator must read the pool the column protocols serve from");
     }
 
-    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false, BeaconChainSpec? forkSpec = null, ulong? backfilledFrom = null)
+    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false, BeaconChainSpec? forkSpec = null, ulong? backfilledFrom = null, CheckpointRef? finalized = null)
     {
         BeaconChainSpec spec = forkSpec ?? Spec;
         ManualTimestamper timestamper = new(WallTime(wallSlot));
         SlotClock slotClock = new(spec, timestamper);
         StubPool peers = new([]);
-        ScriptedImporter importer = ImporterWithHead(anchorSlot, headOffset, headFull);
+        ScriptedImporter importer = ImporterWithHead(anchorSlot, headOffset, headFull, finalized);
         BeaconChainStatusHolder statusHolder = new(spec, timestamper);
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         RangeSync rangeSync = new(peers, LimboLogs.Instance, pool, spec, RangeSyncTests.ClockAtGenesis(spec));
@@ -292,9 +316,9 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     // No execution hash, so the head step never reaches the engine.
-    private static ScriptedImporter ImporterWithHead(ulong anchorSlot, ulong headOffset, bool headFull = false) => new()
+    private static ScriptedImporter ImporterWithHead(ulong anchorSlot, ulong headOffset, bool headFull = false, CheckpointRef? finalized = null) => new()
     {
-        Head = new HeadView(TestItem.KeccakA, anchorSlot + headOffset, null, null, null, new CheckpointRef(0, TestItem.KeccakC), new CheckpointRef(0, TestItem.KeccakD), headFull),
+        Head = new HeadView(TestItem.KeccakA, anchorSlot + headOffset, null, null, null, new CheckpointRef(0, TestItem.KeccakC), finalized ?? new CheckpointRef(0, TestItem.KeccakD), headFull),
     };
 
     private static void Initialize(BeaconSyncOrchestrator orchestrator, ScriptedImporter importer, ulong anchorSlot)

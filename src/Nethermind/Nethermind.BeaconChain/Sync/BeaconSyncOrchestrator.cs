@@ -250,6 +250,7 @@ public sealed class BeaconSyncOrchestrator(
     private (ulong HeadSlot, ulong SinceSlot)? _headSlotSeen;
     private Hash256 _anchorExecutionHash = Hash256.Zero;
     private ulong _anchorSlot;
+    private ulong _anchorCheckpointEpoch;
     private HeadView? _lastHead;
     private bool _elInSync;
 
@@ -504,6 +505,7 @@ public sealed class BeaconSyncOrchestrator(
             ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash!,
             _ => throw new NotSupportedException($"Unhandled anchor block {anchorBlock.GetType().Name}"),
         };
+        _anchorCheckpointEpoch = _anchorSlot / spec.SlotsPerEpoch + (_anchorSlot % spec.SlotsPerEpoch == 0 ? 0UL : 1UL);
         _syncTip = new Tip(anchorRoot, _anchorSlot);
         Volatile.Write(ref _publishedHeadSlot, _anchorSlot);
         RefreshHeadSlotDelay();
@@ -522,13 +524,21 @@ public sealed class BeaconSyncOrchestrator(
         {
             ForkDigest = _currentDigest,
             FinalizedRoot = anchorRoot,
-            FinalizedEpoch = spec.GetEpoch(_anchorSlot),
+            FinalizedEpoch = _anchorCheckpointEpoch,
             HeadRoot = anchorRoot,
             HeadSlot = _anchorSlot,
         };
         statusHolder.CurrentStatus = anchorStatus;
         if (headSnapshots is not null) headSnapshots.Current = new HeadSnapshot(anchorStatus, null, Hash256.Zero, false);
     }
+
+    /// <summary>The epoch a status advertises for <paramref name="finalized"/>.</summary>
+    /// <remarks>
+    /// get_forkchoice_store gives the anchor the epoch of its block's slot, but a checkpoint root is the latest block at or before
+    /// its epoch's start slot (get_block_root), so an anchor block past its epoch's first slot is a checkpoint of a later epoch only.
+    /// </remarks>
+    private ulong AdvertisedFinalizedEpoch(CheckpointRef finalized) =>
+        finalized.Root == _anchorRoot ? Math.Max(finalized.Epoch, _anchorCheckpointEpoch) : finalized.Epoch;
 
     /// <summary>The earliest held block, raised by incomplete columns once all retention blocks are held (fulu/p2p-interface.md Status v2).</summary>
     private ulong EarliestAvailableSlot()
@@ -2268,7 +2278,8 @@ public sealed class BeaconSyncOrchestrator(
         Metrics.BeaconChainHeadSlot = head.HeadSlot;
         Volatile.Write(ref _publishedHeadSlot, head.HeadSlot);
         RefreshHeadSlotDelay();
-        Metrics.BeaconChainFinalizedEpoch = head.Finalized.Epoch;
+        ulong finalizedEpoch = AdvertisedFinalizedEpoch(head.Finalized);
+        Metrics.BeaconChainFinalizedEpoch = finalizedEpoch;
         Metrics.BeaconChainJustifiedEpoch = head.Justified.Epoch;
         Metrics.BeaconChainElInSync = _elInSync ? 1 : 0;
         statusHolder.JustifiedRoot = head.Justified.Root;
@@ -2277,7 +2288,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             ForkDigest = _currentDigest,
             FinalizedRoot = head.Finalized.Root,
-            FinalizedEpoch = head.Finalized.Epoch,
+            FinalizedEpoch = finalizedEpoch,
             HeadRoot = head.HeadRoot,
             HeadSlot = head.HeadSlot,
         };
