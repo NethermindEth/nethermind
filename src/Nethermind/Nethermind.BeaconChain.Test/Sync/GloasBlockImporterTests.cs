@@ -163,11 +163,11 @@ public class GloasBlockImporterTests
 
     /// <summary>
     /// specs/gloas/fork-choice.md <c>notify_forkchoice_updated</c>: a Gloas head maps to its bid's <c>parent_block_hash</c>
-    /// until its payload is verified, since the execution layer has no other payload of it. A VALID envelope does not
-    /// make the block execution-valid: that verdict could not be undone before fork choice splits payload status.
+    /// until its payload is verified, since the execution layer has no other payload of it. A VALID envelope verifies that
+    /// payload and the one it builds on (specs/bellatrix/optimistic-sync.md), so the block and its payload become VALID.
     /// </summary>
     [Test]
-    public void Head_execution_hash_moves_to_the_bid_block_hash_once_the_envelope_verifies_but_stays_optimistic()
+    public void Head_execution_hash_moves_to_the_bid_block_hash_once_the_envelope_verifies()
     {
         SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new();
@@ -187,7 +187,8 @@ public class GloasBlockImporterTests
             Assert.That(beforeEnvelope.HeadExecutionHash, Is.EqualTo(first.Bid.ParentBlockHash));
             Assert.That(afterEnvelope.HeadExecutionHash, Is.EqualTo(first.Bid.BlockHash));
             Assert.That(afterEnvelope.FinalizedExecutionHash, Is.EqualTo(anchorPayloadHash), "a Fulu checkpoint keeps its own payload hash");
-            Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == first.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
+            Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == first.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Valid));
+            Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == first.Root).PayloadValid, Is.True);
         }
     }
 
