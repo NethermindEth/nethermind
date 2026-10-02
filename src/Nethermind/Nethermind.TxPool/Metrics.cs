@@ -57,6 +57,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxNoPayer { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions ignored because their validation prefix is outside the public-mempool grammar.")]
+        public static long PendingTransactionsFrameTxUnrecognizedPrefix { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because they carry a VERIFY frame after their validation prefix.")]
         public static long PendingTransactionsFrameTxVerifyAfterPrefix { get; set; }
 
@@ -135,6 +139,10 @@ namespace Nethermind.TxPool
         [CounterMetric]
         [Description("Number of EIP-8141 frame transactions rejected because the per-head validation-prefix simulation budget was exhausted.")]
         public static long FrameTxSimulationsBudgetExhausted;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 validation-prefix simulations stopped or not started because block processing preempted them.")]
+        public static long FrameTxSimulationsPreempted;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were deferred because this node had spent its own validation-prefix simulation bounds, not because the prefix was judged.")]

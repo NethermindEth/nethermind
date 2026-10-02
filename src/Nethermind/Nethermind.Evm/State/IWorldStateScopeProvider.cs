@@ -61,10 +61,10 @@ public interface IWorldStateScopeProvider
         /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
         /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
         /// </summary>
-        void HintWarmAccount(in ValueAddress address) { }
+        void HintWarmAccount(Address address) { }
 
-        /// <inheritdoc cref="HintWarmAccount"/>
-        void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
+        /// <inheritdoc cref="HintWarmAccount(Address)"/>
+        void HintWarmSlot(Address address, in UInt256 index) { }
 
         /// <summary>
         /// Get the account information for the following address.
@@ -183,7 +183,9 @@ public interface IWorldStateScopeProvider
 
     public interface ICodeDb
     {
-        byte[]? GetCode(in ValueHash256 codeHash);
+        /// <summary>The code stored under <paramref name="codeHash"/>, or <c>default</c> when it is missing.</summary>
+        /// <remarks>Return empty code as <c>Array.Empty&lt;byte&gt;()</c>: <see cref="ReadOnlyMemory{T}.Empty"/> is <c>default</c>, which callers read as missing.</remarks>
+        ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash);
 
         ICodeSetter BeginCodeWrite();
 
@@ -214,6 +216,9 @@ public interface IWorldStateScopeProvider
         /// trie warm-up for the slot path.
         /// </summary>
         void HintSet(in UInt256 index);
+
+        /// <summary>Hint that a transaction committed <paramref name="value"/> to a slot.</summary>
+        void HintSet(in UInt256 index, in UInt256 value) => HintSet(in index);
     }
 
     /// <summary>

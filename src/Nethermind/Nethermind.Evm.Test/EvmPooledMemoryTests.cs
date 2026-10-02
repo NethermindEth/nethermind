@@ -401,6 +401,56 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
+    public void Inline_read_past_initialized_prefix_zeroes_a_bounded_window_and_spills_cleanly([Values(0, 200, 480, 700, 992)] int readOffset)
+    {
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
+        using EvmFrameMemory frameMemory = new();
+        frameMemory.GetSpan().Fill(0xa7);
+        EvmPooledMemory memory = new(frameMemory);
+        UInt256 location = (UInt256)readOffset;
+        UInt256 wordLength = EvmPooledMemory.WordSize;
+        int expectedInitializedSize = (readOffset + EvmPooledMemory.WordSize + 255) & ~255;
+        byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x31);
+        byte[] expected = new byte[EvmPooledMemory.InlineCapacity + EvmPooledMemory.WordSize];
+        word.CopyTo(expected, 0);
+        word.CopyTo(expected, EvmPooledMemory.InlineCapacity);
+
+        try
+        {
+            Assert.That(memory.TryLoadSpan(in location, in wordLength, out Span<byte> read), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(read.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "the read must see zeros, not stale inline bytes");
+                Assert.That(GetBackingMemory(ref memory), Is.Null, "a read inside the inline tier must not spill");
+                Assert.That(GetInitializedSize(ref memory), Is.EqualTo((ulong)expectedInitializedSize),
+                    "only the chunk covering the read is zeroed");
+                if (expectedInitializedSize < EvmPooledMemory.InlineCapacity)
+                {
+                    Assert.That(frameMemory.GetSpan()[expectedInitializedSize], Is.EqualTo(0xa7),
+                        "the inline tail beyond the zeroed chunk must remain lazy");
+                }
+            }
+
+            Assert.That(memory.TrySaveWord(UInt256.Zero, word), Is.True);
+            UInt256 spillLocation = EvmPooledMemory.InlineCapacity;
+            Assert.That(memory.TrySaveWord(in spillLocation, word), Is.True);
+            UInt256 zero = UInt256.Zero;
+            UInt256 totalLength = (UInt256)expected.Length;
+            Assert.That(memory.TryLoadSpan(in zero, in totalLength, out Span<byte> whole), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetBackingMemory(ref memory), Is.Not.Null, "a store past the inline tier must spill");
+                Assert.That(whole.ToArray(), Is.EqualTo(expected), "the spilled memory must hold the writes and zeros elsewhere");
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Test]
     public void CalculateMemoryCost_LengthExceedsLongMax_ShouldReturnOutOfGas()
     {
         EvmPooledMemory memory = new();
@@ -1659,7 +1709,7 @@ public class MyTracer : ITxTracer, IDisposable
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
-    public void ReportCodeChange(Address address, byte[]? before, byte[]? after) => throw new NotSupportedException();
+    public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after) => throw new NotSupportedException();
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 

@@ -137,6 +137,20 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         => new(tx, extraData);
 
     /// <summary>
+    /// Returns a copy of <paramref name="call"/> without its blob fee cap when that cap is zero, so it converts as omitted;
+    /// otherwise returns <paramref name="call"/> unchanged.
+    /// </summary>
+    public static TransactionForRpc WithZeroBlobFeeCapOmitted(TransactionForRpc call)
+    {
+        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true } blobCall)
+            return call;
+
+        BlobTransactionForRpc copy = (BlobTransactionForRpc)blobCall.MemberwiseClone();
+        copy.MaxFeePerBlobGas = null;
+        return copy;
+    }
+
+    /// <summary>
     /// Validates the blob sidecar fields and attaches a <see cref="ShardBlobNetworkWrapper"/>
     /// to the given <see cref="Transaction"/>. Returns an error string on failure, or
     /// <c>null</c> on success.
