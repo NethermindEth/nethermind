@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -23,6 +24,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4;
 [Parallelizable(ParallelScope.Self)]
 public class DiscoveryMessageSerializerTests
 {
+    private const int DiscoveryPacketDataOffset = Hash256.Size + Signature.Size + 1;
+
     private readonly PrivateKey _privateKey =
         new("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
 
@@ -76,6 +79,66 @@ public class DiscoveryMessageSerializerTests
         }
     }
 
+    [TestCaseSource(nameof(PingCompatibilityCases))]
+    public void PingMessage_Accepts_Compatible_Fields(byte[] version, byte[] trailingBytes, Rlp[] extraFields, int expectedVersion, ulong? expectedEnrSequence)
+    {
+        byte[] packet = CreatePingPacket(version, trailingBytes, extraFields);
+
+        PingMsg ping = _messageSerializationService.Deserialize<PingMsg>(packet);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ping.Version, Is.EqualTo(expectedVersion));
+            Assert.That(ping.EnrSequence, Is.EqualTo(expectedEnrSequence));
+            Assert.That(ping.SourceAddress, Is.EqualTo(_farAddress));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> PingCompatibilityCases()
+    {
+        yield return new TestCaseData("not-a-numeric-version"u8.ToArray(), Array.Empty<byte>(), Array.Empty<Rlp>(), 0, null)
+            .SetName("PingMessage_Accepts_Long_Version");
+        yield return new TestCaseData(new byte[] { 0x80, 0, 0, 0 }, Array.Empty<byte>(), Array.Empty<Rlp>(), 0, null)
+            .SetName("PingMessage_Accepts_High_UInt_Version");
+        yield return new TestCaseData(new byte[] { 4 }, Array.Empty<byte>(), new[] { Rlp.Encode("not-an-enr-sequence"u8), Rlp.Encode(42) }, 4, null)
+            .SetName("PingMessage_Ignores_Unknown_Extra_Elements");
+        yield return new TestCaseData(new byte[] { 4 }, Array.Empty<byte>(), new[] { Rlp.Encode(42), Rlp.Encode("extra"u8) }, 4, 42UL)
+            .SetName("PingMessage_Reads_EnrSequence_And_Ignores_Subsequent_Elements");
+        yield return new TestCaseData(new byte[] { 5 }, Array.Empty<byte>(), new[] { Rlp.Encode(42) }, 5, 42UL)
+            .SetName("PingMessage_Reads_EnrSequence_For_Other_Version");
+        yield return new TestCaseData(new byte[] { 4 }, new byte[] { 0xff }, Array.Empty<Rlp>(), 4, null)
+            .SetName("PingMessage_Ignores_Bytes_After_Rlp_List");
+    }
+
+    [Test]
+    public void PingMessage_Rejects_Rlp_Boundary_Violation([Values] bool listExceedsPacket)
+    {
+        byte[] payload = CreatePingPacket([4], Rlp.Encode(42))[DiscoveryPacketDataOffset..];
+        payload[^1] = 0xc1;
+        if (listExceedsPacket)
+        {
+            payload[0]++;
+        }
+        else
+        {
+            payload = [.. payload, 0];
+        }
+
+        byte[] packet = SignAndWrapDiscoveryPacket((byte)MsgType.Ping, payload);
+
+        Assert.That(() => _messageSerializationService.Deserialize<PingMsg>(packet), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void PingMessage_Reports_Truncated_EnrSequence_As_Rlp_Error([Values(0x81, 0x88)] byte prefix)
+    {
+        byte[] payload = CreatePingPacket([4], Rlp.Encode(42))[DiscoveryPacketDataOffset..];
+        payload[^1] = prefix;
+        byte[] packet = SignAndWrapDiscoveryPacket((byte)MsgType.Ping, payload);
+
+        Assert.That(() => _messageSerializationService.Deserialize<PingMsg>(packet), Throws.TypeOf<RlpException>());
+    }
+
     [Test]
     public void PingMessage_rejects_invalid_packet_hash()
     {
@@ -104,7 +167,7 @@ public class DiscoveryMessageSerializerTests
 
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
         byte[] packet = data.ReadAllBytesAsArray();
-        RlpReader ctx = new(packet.AsSpan(98));
+        RlpReader ctx = new(packet.AsSpan(DiscoveryPacketDataOffset));
         ctx.ReadSequenceLength();
         Assert.That(ctx.DecodeInt(), Is.EqualTo(message.Version));
 
@@ -248,7 +311,7 @@ public class DiscoveryMessageSerializerTests
 
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
         byte[] packet = data.ReadAllBytesAsArray();
-        RlpReader ctx = new(packet.AsSpan(98));
+        RlpReader ctx = new(packet.AsSpan(DiscoveryPacketDataOffset));
         ctx.ReadSequenceLength();
         ctx.ReadSequenceLength();
         byte[] encodedIp = ctx.DecodeByteArraySpan().ToArray();
@@ -459,7 +522,7 @@ public class DiscoveryMessageSerializerTests
 
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
         byte[] packet = data.ReadAllBytesAsArray();
-        RlpReader ctx = new(packet.AsSpan(98));
+        RlpReader ctx = new(packet.AsSpan(DiscoveryPacketDataOffset));
         ctx.ReadSequenceLength();
         int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
         int nodeEnd = ctx.ReadSequenceLength() + ctx.Position;
@@ -560,18 +623,31 @@ public class DiscoveryMessageSerializerTests
     private byte[] SignAndWrapDiscoveryPacket(byte msgType, byte[] data)
     {
         // [<mdc 32 bytes><sig 64 bytes><sig recovery id><msg type><data>]
-        byte[] packet = new byte[32 + 64 + 1 + 1 + data.Length];
-        packet[97] = msgType;
-        data.CopyTo(packet, 98);
+        byte[] packet = new byte[DiscoveryPacketDataOffset + data.Length];
+        packet[DiscoveryPacketDataOffset - 1] = msgType;
+        data.CopyTo(packet, DiscoveryPacketDataOffset);
 
-        ValueHash256 toSign = ValueKeccak.Compute(packet.AsSpan(97));
+        ValueHash256 toSign = ValueKeccak.Compute(packet.AsSpan(DiscoveryPacketDataOffset - 1));
         Signature signature = new Ecdsa().Sign(_privateKey, in toSign);
-        signature.Bytes.CopyTo(packet.AsSpan(32));
-        packet[96] = signature.RecoveryId;
+        signature.Bytes.CopyTo(packet.AsSpan(Hash256.Size));
+        packet[Hash256.Size + Signature.Size - 1] = signature.RecoveryId;
 
-        ValueHash256 mdc = ValueKeccak.Compute(packet.AsSpan(32));
+        ValueHash256 mdc = ValueKeccak.Compute(packet.AsSpan(Hash256.Size));
         mdc.BytesAsSpan.CopyTo(packet);
         return packet;
+    }
+
+    private byte[] CreatePingPacket(byte[] version, params Rlp[] extraFields) => CreatePingPacket(version, [], extraFields);
+
+    private byte[] CreatePingPacket(byte[] version, byte[] trailingBytes, params Rlp[] extraFields)
+    {
+        Rlp endpoint = Rlp.Encode(Rlp.Encode(_farAddress.Address.GetAddressBytes()), Rlp.Encode(_farAddress.Port), Rlp.Encode(_farAddress.Port));
+        Rlp[] fields = [Rlp.Encode(version), endpoint, endpoint, Rlp.Encode(_timestamper.UnixTime.SecondsLong + 60), .. extraFields];
+        byte[] payload = Rlp.Encode(fields).Bytes;
+        byte[] data = new byte[payload.Length + trailingBytes.Length];
+        payload.CopyTo(data, 0);
+        trailingBytes.CopyTo(data, payload.Length);
+        return SignAndWrapDiscoveryPacket((byte)MsgType.Ping, data);
     }
 
     private EnrResponseMsg BuildEnrResponse(CompressedPublicKey enrPublicKey)

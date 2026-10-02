@@ -122,6 +122,28 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return new ValueHash256(hash);
     }
 
+    protected static bool IsNextEnrSequence(RlpReader ctx)
+    {
+        byte prefix = ctx.PeekByte();
+        return prefix switch
+        {
+            >= 1 and < 128 or 128 => true,
+            > 128 and <= 136 => IsCanonicalMultiByteInteger(ctx, prefix - 128),
+            _ => false
+        };
+    }
+
+    private static bool IsCanonicalMultiByteInteger(RlpReader ctx, int length)
+    {
+        if (length >= ctx.Length - ctx.Position)
+        {
+            throw new RlpException("Truncated discovery ENR sequence.");
+        }
+
+        byte firstByte = ctx.Peek(1, 1)[0];
+        return length == 1 ? firstByte >= 128 : firstByte != 0;
+    }
+
     protected static void Encode<TWriter>(ref TWriter writer, IPEndPoint address, int length)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
         => Encode(ref writer, address, address.Port, length);
