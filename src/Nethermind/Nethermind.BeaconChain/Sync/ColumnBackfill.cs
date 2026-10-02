@@ -536,8 +536,8 @@ public sealed class ColumnBackfill(
                 return;
             }
 
-            // A whole reply that linked leaves the parent the walk stopped at among the kept blocks it did not reach, so their slots are asked for again; otherwise they stay.
-            if (reply.Count > 0 && stored == reply.Count)
+            // A reply with no unlinked block, even an empty one, leaves the parent the walk stopped at below it, among or under the kept blocks, so their slots are asked for again.
+            if (stored == reply.Count)
             {
                 kept.Clear();
                 askFrom = from;
