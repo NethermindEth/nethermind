@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -33,6 +34,27 @@ public class Eip3298Tests(bool eip3298Enabled) : VirtualMachineTestsBase
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
     protected override ISpecProvider SpecProvider { get; } =
         new TestSpecProvider(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip3298Enabled = eip3298Enabled });
+
+    private delegate RefundResult RefundInvoker(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+        in TransactionSubstate substate, in EthereumGasPolicy gas, in UInt256 gasPrice, ulong codeInsertRefunds,
+        in EthereumGasPolicy floorGas, in EthereumGasPolicy intrinsicGas, long postIntrinsicStateReservoir, bool topLevelCreateStateGasCharged);
+
+    [Test]
+    public void Refund_rejects_a_counter_exceeding_pre_refund_gas()
+    {
+        // Valid execution cannot violate this invariant; inject a corrupt substate into the production refund path.
+        MethodInfo method = typeof(TransactionProcessorBase<EthereumGasPolicy>).GetMethod("Refund", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        RefundInvoker refund = method.CreateDelegate<RefundInvoker>(_processor);
+        Transaction tx = Build.A.Transaction.WithGasLimit(GasLimit).WithSenderAddress(Sender).TestObject;
+        TransactionSubstate substate = new(default, (long)GasLimit + 1, null, null, false);
+        EthereumGasPolicy gas = default;
+        UInt256 price = UInt256.Zero;
+
+        RefundResult result = refund(tx, Build.A.BlockHeader.TestObject, Spec, ExecutionOptions.Commit, in substate, in gas, in price,
+            0, in gas, in gas, 0, false);
+
+        Assert.That(result.Result.Error, Is.EqualTo(eip3298Enabled ? TransactionResult.ErrorType.StateGasInvariantViolated : TransactionResult.ErrorType.None));
+    }
 
     // The EIP's Test Cases table (x = 1, y = 2, z = 3), with the EIP-8038 STORAGE_CLEAR_REFUND net count it strikes.
     [TestCase((byte)0, new byte[] { 1 }, 0, 0, TestName = "0 -> x")]
