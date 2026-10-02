@@ -47,8 +47,8 @@ namespace Nethermind.Evm.Test
                 ? Prepare.EvmCode.PushData(1).Op(instruction).Op(Instruction.POP).Done
                 : Prepare.EvmCode.PushData(TestItem.AddressC).Op(instruction).Op(Instruction.POP).Done;
 
-            TestAllTracerWithOutput tracer = new();
-            if (traceAccess) tracer.IsTracingAccess = true;
+            // Leave the default untouched so false cases catch constructor regressions.
+            TestAllTracerWithOutput tracer = traceAccess ? new() { IsTracingAccess = true } : new();
             Execute(tracer, code);
 
             using (Assert.EnterMultipleScope())
