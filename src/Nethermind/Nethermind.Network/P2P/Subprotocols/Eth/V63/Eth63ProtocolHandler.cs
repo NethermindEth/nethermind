@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -113,9 +114,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return SendRequest(msg, token);
         }
         public override Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
-            GetReceipts(blockHashes, null, token);
+            GetReceipts(blockHashes, ReadOnlyMemory<int>.Empty, token);
 
-        public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, IReadOnlyList<int>? expectedReceiptCounts, CancellationToken token)
+        public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
@@ -125,7 +126,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             IOwnedReadOnlyList<TxReceipt[]> txReceipts = await _nodeStats.RunSizeAndLatencyRequestSizer<IOwnedReadOnlyList<TxReceipt[]>, Hash256, TxReceipt[]>(RequestType.Receipts, blockHashes, async clampedBlockHashes =>
                 await SendRequest(new GetReceiptsMessage(clampedBlockHashes.ToPooledList())
                 {
-                    MaxReceiptsPerBlock = ReceiptsResponseBudget.Slice(expectedReceiptCounts, 0, clampedBlockHashes.Count)
+                    MaxReceiptsPerBlock = expectedReceiptCounts
                 }, token));
 
             return txReceipts;
@@ -138,7 +139,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         /// <param name="fieldsBeforeReceipts">See <see cref="ReceiptsResponseBudget.ThrowIfExceeded"/>.</param>
         /// <param name="request">The request the response answers.</param>
         protected static void ThrowIfReceiptsExceedRequest(IByteBuffer content, int? fieldsBeforeReceipts, GetReceiptsMessage request) =>
-            ReceiptsResponseBudget.ThrowIfExceeded(content, fieldsBeforeReceipts, request.RequestedBlocks, request.MaxReceiptsPerBlock);
+            ReceiptsResponseBudget.ThrowIfExceeded(content, fieldsBeforeReceipts, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span);
 
         protected virtual Task<IByteArrayList> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {

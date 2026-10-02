@@ -51,12 +51,6 @@ public class ReceiptsResponseBudgetTests
         Assert.That(() => ReceiptsResponseBudget.ThrowIfExceeded(content, fieldsBeforeReceipts, 1, [5]), Throws.TypeOf<RlpException>());
     }
 
-    [TestCase(null, 0, 2, null)]
-    [TestCase(new[] { 3, 2, 1 }, 1, 2, new[] { 2, 1 })]
-    [TestCase(new[] { 3 }, 0, 2, new[] { 3, -1 })]
-    public void Slice_takes_the_limits_of_the_requested_blocks(int[]? expectedReceiptCounts, int start, int count, int[]? expected) =>
-        Assert.That(ReceiptsResponseBudget.Slice(expectedReceiptCounts, start, count), Is.EqualTo(expected));
-
     private static ArrayPoolList<TxReceipt[]> BuildBlocks(int[] receiptsPerBlock) =>
         receiptsPerBlock.Select(static count => Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, count).ToArray()).ToPooledList(receiptsPerBlock.Length);
 

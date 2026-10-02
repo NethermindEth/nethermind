@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
@@ -21,30 +20,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63;
 internal static class ReceiptsResponseBudget
 {
     /// <summary>
-    /// Copies the receipt limits of the <paramref name="count"/> blocks starting at <paramref name="start"/>.
-    /// </summary>
-    /// <param name="expectedReceiptCounts">Per block, its transaction count, or a negative value when unknown.</param>
-    /// <param name="start">The index of the first block in the request.</param>
-    /// <param name="count">The number of blocks in the request.</param>
-    /// <returns>The limits, or <see langword="null"/> when <paramref name="expectedReceiptCounts"/> is <see langword="null"/>.</returns>
-    public static int[]? Slice(IReadOnlyList<int>? expectedReceiptCounts, int start, int count)
-    {
-        if (expectedReceiptCounts is null)
-        {
-            return null;
-        }
-
-        int[] limits = new int[count];
-        for (int i = 0; i < limits.Length; i++)
-        {
-            int index = start + i;
-            limits[i] = index < expectedReceiptCounts.Count ? expectedReceiptCounts[index] : -1;
-        }
-
-        return limits;
-    }
-
-    /// <summary>
     /// Throws when the receipts in <paramref name="content"/> exceed what the request allows.
     /// </summary>
     /// <param name="content">The encoded response.</param>
@@ -55,11 +30,14 @@ internal static class ReceiptsResponseBudget
     /// <param name="requestedBlocks">The number of blocks requested.</param>
     /// <param name="maxReceiptsPerBlock">
     /// Per requested block, the most receipts the response may hold for it, negative when unknown;
-    /// <see langword="null"/> when no limit is known.
+    /// blocks past its end have no limit.
+    /// </param>
+    /// <param name="firstBlockReceiptIndex">
+    /// How many receipts of the first block an earlier response already returned; they do not count against its limit.
     /// </param>
     /// <exception cref="SubprotocolException">The response holds more blocks or receipts than allowed.</exception>
     /// <exception cref="RlpException">The response is not well-formed RLP.</exception>
-    public static void ThrowIfExceeded(IByteBuffer content, int? fieldsBeforeReceipts, int requestedBlocks, int[]? maxReceiptsPerBlock)
+    public static void ThrowIfExceeded(IByteBuffer content, int? fieldsBeforeReceipts, int requestedBlocks, ReadOnlySpan<int> maxReceiptsPerBlock, long firstBlockReceiptIndex = 0)
     {
         RlpReader ctx = new(content.AsSpan());
         int limit = ctx.Length;
@@ -79,15 +57,15 @@ internal static class ReceiptsResponseBudget
             ThrowExceeded($"{blocks} blocks for {requestedBlocks} requested");
         }
 
-        if (maxReceiptsPerBlock is null)
-        {
-            return;
-        }
-
         int limitedBlocks = Math.Min(blocks, maxReceiptsPerBlock.Length);
         for (int i = 0; i < limitedBlocks; i++)
         {
-            int maxReceipts = maxReceiptsPerBlock[i];
+            long maxReceipts = maxReceiptsPerBlock[i];
+            if (i == 0 && maxReceipts >= 0)
+            {
+                maxReceipts = Math.Max(maxReceipts - firstBlockReceiptIndex, 0);
+            }
+
             if (maxReceipts < 0 || !ctx.IsSequenceNext())
             {
                 SkipItem(ref ctx, end);
@@ -95,7 +73,7 @@ internal static class ReceiptsResponseBudget
             }
 
             int blockEnd = ReadSequenceEnd(ref ctx, end);
-            if (ctx.PeekNumberOfItemsRemaining(blockEnd, maxReceipts + 1) > maxReceipts)
+            if (ctx.PeekNumberOfItemsRemaining(blockEnd, (int)maxReceipts + 1) > maxReceipts)
             {
                 ThrowExceeded($"more than {maxReceipts} receipts for block {i}");
             }

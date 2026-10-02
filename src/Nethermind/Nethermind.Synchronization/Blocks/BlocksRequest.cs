@@ -19,7 +19,7 @@ public sealed class BlocksRequest : IDisposable
     /// <summary>
     /// Per block in <see cref="ReceiptsRequests"/>, its transaction count, which bounds the receipts a peer may return for it.
     /// </summary>
-    public IOwnedReadOnlyList<int> ExpectedReceiptCounts { get; set; } = IOwnedReadOnlyList<int>.Empty;
+    public ArrayPoolList<int>? ExpectedReceiptCounts { get; set; }
 
     public IOwnedReadOnlyList<TxReceipt[]?>? Receipts { get; set; }
 
@@ -38,7 +38,7 @@ public sealed class BlocksRequest : IDisposable
         BodiesRequests.Dispose();
         BlockAccessListsRequests.Dispose();
         ReceiptsRequests.Dispose();
-        ExpectedReceiptCounts.Dispose();
+        ExpectedReceiptCounts?.Dispose();
         OwnedBodies?.Dispose();
         BlockAccessLists?.Dispose();
         Receipts?.Dispose();

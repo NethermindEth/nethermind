@@ -18,11 +18,11 @@ public class GetReceiptsMessage70(
     public long FirstBlockReceiptIndex { get; set; } = firstBlockReceiptIndex;
 
     /// <summary>
-    /// Per requested block, the most receipts a response may hold for it, negative when unknown; <c>null</c> when no limit is known.
-    /// For the first block it excludes the receipts before <see cref="FirstBlockReceiptIndex"/>.
+    /// Per requested block, the most receipts it has in total, negative when unknown; blocks past its end have no limit.
+    /// The check subtracts the receipts before <see cref="FirstBlockReceiptIndex"/> from the first block.
     /// </summary>
-    /// <remarks>Local bookkeeping for checking the response; not sent to the peer.</remarks>
-    public int[]? MaxReceiptsPerBlock { get; init; }
+    /// <remarks>Local bookkeeping for checking the response; not sent to the peer. It borrows the caller's buffer, which outlives the request.</remarks>
+    public ReadOnlyMemory<int> MaxReceiptsPerBlock { get; init; }
 
     /// <summary>
     /// The number of blocks requested, kept because the message, with its pooled hashes, is disposed once it is sent.

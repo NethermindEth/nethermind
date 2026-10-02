@@ -121,7 +121,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public async Task Receipts_response_is_checked_against_expected_receipt_counts([Values] bool exceedsCount)
         {
             const int count = 3;
-            Task<IOwnedReadOnlyList<TxReceipt[]>> task = _ctx.ProtocolHandler.GetReceipts([Keccak.Zero], [count], CancellationToken.None);
+            Task<IOwnedReadOnlyList<TxReceipt[]>> task = _ctx.ProtocolHandler.GetReceipts([Keccak.Zero], new[] { count }, CancellationToken.None);
 
             if (exceedsCount)
             {

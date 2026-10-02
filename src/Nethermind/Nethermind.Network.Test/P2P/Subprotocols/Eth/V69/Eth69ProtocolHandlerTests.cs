@@ -185,7 +185,7 @@ public class Eth69ProtocolHandlerTests
         });
 
         HandleIncomingStatusMessage();
-        Task<IOwnedReadOnlyList<TxReceipt[]>> getReceiptsTask = _handler.GetReceipts([Keccak.Zero], [count], CancellationToken.None);
+        Task<IOwnedReadOnlyList<TxReceipt[]>> getReceiptsTask = _handler.GetReceipts([Keccak.Zero], new[] { count }, CancellationToken.None);
 
         if (exceedsCount)
         {

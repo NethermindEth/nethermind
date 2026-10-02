@@ -44,7 +44,7 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
         if (request.ReceiptsRequests.Count > 0)
         {
             using ArrayPoolList<Hash256> receiptsHash = BuildHashList(request.ReceiptsRequests);
-            IOwnedReadOnlyList<TxReceipt[]?> ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, request.ExpectedReceiptCounts, cancellationToken);
+            IOwnedReadOnlyList<TxReceipt[]?> ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, request.ExpectedReceiptCounts?.AsMemory() ?? Memory<int>.Empty, cancellationToken);
             request.Receipts = ownedReceipts;
         }
     }
