@@ -68,6 +68,49 @@ public class BlockSignatureBatchTests
         }
     }
 
+    /// <summary>
+    /// IETF BLS draft v4, CoreVerify (section 2.7): every signature <c>S + T</c> with <c>T</c> of order 13 or 23 on the twist (all
+    /// 168 and 528 such points) is refused by the serial and the deferred call sites.
+    /// </summary>
+    /// <remarks>
+    /// The optimal ate pairing alone also refuses each of them, so neither call site's subgroup check changes a verdict here: the
+    /// pairing is not linear in a signature outside G2, and an off-G2 signature it accepts would need a discrete log in GT.
+    /// </remarks>
+    [TestCase(13, 168)]
+    [TestCase(23, 528)]
+    public void Signatures_with_small_order_torsion_are_refused(int prime, int points)
+    {
+        G1Affine publicKey = PublicKey(3);
+        BlsSignature validSignature = SignedBy(3, Message);
+        IReadOnlyCollection<byte[]> torsion = OffSubgroupKeys.G2TorsionOfOrder(prime);
+        Assert.That(torsion, Has.Count.EqualTo(points), "fixture: the whole torsion of that order");
+        int pairingAccepted = 0;
+        int serialAccepted = 0;
+        int deferredAccepted = 0;
+        BlockSignatureBatch batch = new();
+        foreach (byte[] encoded in torsion)
+        {
+            Bls.P2Affine t = new(new long[Bls.P2Affine.Sz]);
+            Assert.That(t.TryDecode(encoded, out _), Is.True);
+            Bls.P2 point = new(new long[Bls.P2.Sz]);
+            point.Decode(validSignature.Bytes);
+            point.Add(t);
+            Assert.That(point.ToAffine().InGroup(), Is.False);
+            BlsSignature signature = new(point.Compress());
+            if (BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), Message.Bytes)) pairingAccepted++;
+            if (BlockSignatureBatch.Verify(publicKey, signature, Message, null)) serialAccepted++;
+            if (BlockSignatureBatch.Verify(publicKey, signature, Message, batch.Defer("outside G2"))) deferredAccepted++;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pairingAccepted, Is.Zero, "the pairing alone");
+            Assert.That(serialAccepted, Is.Zero);
+            Assert.That(deferredAccepted, Is.Zero);
+            Assert.That(batch.Count, Is.Zero);
+        }
+    }
+
     [Test]
     public void A_signature_the_serial_path_cannot_decode_is_refused_at_its_call_site()
     {
