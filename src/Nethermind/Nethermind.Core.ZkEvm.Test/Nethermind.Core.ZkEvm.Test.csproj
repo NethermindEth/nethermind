@@ -8,10 +8,16 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\Nethermind.Core.Test\Threading\ParallelUnbalancedWorkTests.cs" Link="Threading\ParallelUnbalancedWorkTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\Nethermind.Stateless.ZiskGuest\substitutions.xml" Link="ZiskGuest.substitutions.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">
