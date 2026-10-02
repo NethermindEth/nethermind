@@ -226,6 +226,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <returns>The decoded execution block or a decoding error.</returns>
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
+        PrepareWorkerGroup();
         using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
         byte[][] encodedTransactions = Transactions;
         // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
@@ -274,7 +275,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         Block block = new(header, transactions.Data, Array.Empty<BlockHeader>(), Withdrawals)
         {
             EncodedTransactions = encodedTransactions,
-            Workers = Workers
+            Workers = TransferWorkerGroup()
         };
         return block;
     }
@@ -287,7 +288,21 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     private TaskCompletionSource<Hash256>? _txRootCompletion;
     private ParallelUnbalancedWork.BackgroundWork? _txRootWork;
     private ParallelUnbalancedWork.WorkerGroup? _workers;
+    private bool _workersTransferred;
     internal ParallelUnbalancedWork.WorkerGroup Workers => _workers ??= new(RuntimeInformation.ProcessorCount);
+
+    internal void PrepareWorkerGroup()
+    {
+        if (!_workersTransferred) return;
+        _workers = null;
+        _workersTransferred = false;
+    }
+
+    internal ParallelUnbalancedWork.WorkerGroup TransferWorkerGroup()
+    {
+        _workersTransferred = true;
+        return Workers;
+    }
 
     private const int MinTxsForParallelDecoding = 32;
 
@@ -304,6 +319,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </returns>
     internal Task<Hash256>? StartTxRootComputation()
     {
+        PrepareWorkerGroup();
         byte[][] encodedTransactions = _encodedTransactions;
         if (_txRootTask is not null || encodedTransactions.Length < MinTxsForParallelDecoding || RuntimeInformation.IsSingleProcessor)
             return _txRootTask;

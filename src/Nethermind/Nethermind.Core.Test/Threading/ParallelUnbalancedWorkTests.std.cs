@@ -92,6 +92,7 @@ public partial class ParallelUnbalancedWorkTests
     public void Limited_scope_caps_fanouts_and_preserves_parent_runner([Values(1, 2)] int budget)
     {
         ParallelUnbalancedWork.WorkerGroup group = new(4);
+        ParallelOptions options = new() { MaxDegreeOfParallelism = 4 };
         using ManualResetEventSlim entered = new();
         using ParallelUnbalancedWork.WorkerScope parent = group.Enter();
         int active = 0;
@@ -115,15 +116,15 @@ public partial class ParallelUnbalancedWorkTests
         }
 
         using ParallelUnbalancedWork.BackgroundWork warming = ParallelUnbalancedWork.BackgroundFor(0, 1,
-            ParallelUnbalancedWork.DefaultOptions, _ =>
+            options, _ =>
             {
                 using ParallelUnbalancedWork.WorkerScope limited = ParallelUnbalancedWork.BeginLimitedWorkerScope(budget);
                 entered.Set();
                 using ParallelUnbalancedWork.BackgroundWork first = ParallelUnbalancedWork.BackgroundFor(0, 64,
-                    ParallelUnbalancedWork.DefaultOptions, Observe);
+                    options, Observe);
                 using ParallelUnbalancedWork.BackgroundWork second = ParallelUnbalancedWork.BackgroundFor(0, 64,
-                    ParallelUnbalancedWork.DefaultOptions, Observe);
-                ParallelUnbalancedWork.For(0, 64, Observe);
+                    options, Observe);
+                ParallelUnbalancedWork.For(0, 64, options, Observe);
                 first.WaitForCompletion();
                 second.WaitForCompletion();
             });
@@ -528,6 +529,8 @@ public partial class ParallelUnbalancedWorkTests
         start.ArgumentList.Add(typeof(ParallelUnbalancedWorkTests).Assembly.Location);
         start.ArgumentList.Add(BoundedPoolChildArgument);
         start.ArgumentList.Add(childVariant);
+        if (childVariant.StartsWith("pipeline-", StringComparison.Ordinal))
+            start.Environment["DOTNET_PROCESSOR_COUNT"] = childVariant["pipeline-".Length..];
         using Process child = new() { StartInfo = start };
         Assert.That(child.Start(), Is.True);
         Task<string> output = child.StandardOutput.ReadToEndAsync();
