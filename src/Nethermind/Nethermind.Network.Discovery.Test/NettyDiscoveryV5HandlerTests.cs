@@ -126,7 +126,7 @@ namespace Nethermind.Network.Discovery.Test
 
             try
             {
-                Assert.That(forwardedPacket.Buffer.ToArray(), Is.EqualTo(data));
+                Assert.That(forwardedPacket.Buffer, Is.SequenceEqualTo(data));
                 Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(from));
             }
             finally
@@ -222,7 +222,7 @@ namespace Nethermind.Network.Discovery.Test
 
             try
             {
-                Assert.That(forwardedPacket.Buffer.ToArray(), Is.EqualTo(data));
+                Assert.That(forwardedPacket.Buffer, Is.SequenceEqualTo(data));
                 Assert.That(forwardedPacket.RemoteEndPoint, Is.EqualTo(expectedFrom));
             }
             finally
@@ -256,7 +256,7 @@ namespace Nethermind.Network.Discovery.Test
             PooledUdpReceiveResult forwardedPacket = enumerator.Current;
             try
             {
-                Assert.That(forwardedPacket.Buffer.ToArray(), Is.EqualTo(data));
+                Assert.That(forwardedPacket.Buffer, Is.SequenceEqualTo(data));
             }
             finally
             {

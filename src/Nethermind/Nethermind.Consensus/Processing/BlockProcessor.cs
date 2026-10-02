@@ -182,7 +182,15 @@ public partial class BlockProcessor(
     }
 
     protected virtual TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
-        IReleaseSpec spec, TxReceipt[] receipts)
+        IReleaseSpec spec, TxReceipt[] receipts) =>
+        FinalizeBlock<OnFlag>(block, blockTracer, spec, receipts);
+
+    /// <summary>
+    /// Finalizes the block; <typeparamref name="TComputesCommitments"/> selects whether the blooms, the receipts root,
+    /// the storage and state roots and the header hash are derived. A replay whose only product is its trace reads none of them.
+    /// </summary>
+    protected TxReceipt[] FinalizeBlock<TComputesCommitments>(Block block, IBlockTracer blockTracer, IReleaseSpec spec, TxReceipt[] receipts)
+        where TComputesCommitments : struct, IFlag
     {
         BlockHeader header = block.Header;
 
@@ -192,7 +200,7 @@ public partial class BlockProcessor(
         // Genesis keeps the bloom it was declared with.
         bool bloomsRemoved = spec.IsEip7668Enabled && !block.IsGenesis;
         // Receipts are immutable apart from their blooms now; overlap with the first state commit too.
-        using ParallelUnbalancedWork.BackgroundWork? bloomWork = ShouldCalculateReceiptsInBackground(receipts)
+        using ParallelUnbalancedWork.BackgroundWork? bloomWork = TComputesCommitments.IsActive && ShouldCalculateReceiptsInBackground(receipts)
             ? StartBloomComputation(receipts, bloomsRemoved)
             : null;
         using ParallelUnbalancedWork.BackgroundWork? receiptWork = bloomWork?.ContinueWith(() => receiptResults =
@@ -205,7 +213,7 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        if (receiptWork is null)
+        if (receiptWork is null && TComputesCommitments.IsActive)
         {
             if (bloomsRemoved)
             {
@@ -229,16 +237,23 @@ public partial class BlockProcessor(
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
-        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && !bloomsRemoved);
+        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && TComputesCommitments.IsActive && !bloomsRemoved);
 
-        CommitStateAndStorageRoots(spec);
+        if (TComputesCommitments.IsActive)
+        {
+            CommitStateAndStorageRoots(spec);
+        }
+        else
+        {
+            CommitState(spec);
+        }
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
             SetAccountChanges(block);
         }
 
-        if (ShouldComputeStateRoot(header))
+        if (TComputesCommitments.IsActive && ShouldComputeStateRoot(header))
         {
             ComputeStateRoot(header);
         }
@@ -251,7 +266,10 @@ public partial class BlockProcessor(
 
         _balManager.SetBlockAccessList(block);
 
-        header.Hash = header.CalculateHash();
+        if (TComputesCommitments.IsActive)
+        {
+            header.Hash = header.CalculateHash();
+        }
 
         return receipts;
     }

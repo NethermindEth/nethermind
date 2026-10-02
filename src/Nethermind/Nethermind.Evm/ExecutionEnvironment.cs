@@ -67,6 +67,7 @@ namespace Nethermind.Evm
             in ReadOnlyMemory<byte> inputData)
         {
             ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment? pooled) ? pooled : new();
+            PooledObjectLeakDetector.OnRent(env, nameof(ExecutionEnvironment));
             env.CodeInfo = codeInfo;
             env.ExecutingAccount = executingAccount;
             env.Caller = caller;
@@ -82,6 +83,7 @@ namespace Nethermind.Evm
         /// </summary>
         public void Dispose()
         {
+            PooledObjectLeakDetector.OnReturn(this);
             if (ExecutingAccount is not null)
             {
                 CodeInfo = null!;
@@ -93,21 +95,6 @@ namespace Nethermind.Evm
                 InputData = default;
                 _pool.Enqueue(this);
             }
-#if DEBUG
-            GC.SuppressFinalize(this);
-#endif
         }
-
-#if DEBUG
-        private readonly System.Diagnostics.StackTrace _creationStackTrace = new();
-
-        ~ExecutionEnvironment()
-        {
-            if (ExecutingAccount is null)
-            {
-                Console.Error.WriteLine($"Warning: {nameof(ExecutionEnvironment)} was not disposed. Created at: {_creationStackTrace}");
-            }
-        }
-#endif
     }
 }

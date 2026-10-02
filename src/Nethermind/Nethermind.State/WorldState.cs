@@ -313,12 +313,22 @@ namespace Nethermind.State
                 throw;
             }
 
-            scopeCloser = new Reactive.AnonymousDisposable(() =>
-            {
-                EndScope();
-                if (_logger.IsTrace) _logger.Trace($"WorldState scope for {(atTarget ? "target" : "baseblock")} {block?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
-            });
+            scopeCloser = new ScopeCloser(this, block, atTarget);
             return true;
+        }
+
+        /// <summary>Ends the scope on the first dispose. A class rather than a lambda, so a scope allocates one object.</summary>
+        private sealed class ScopeCloser(WorldState worldState, BlockHeader? block, bool atTarget) : IDisposable
+        {
+            private WorldState? _worldState = worldState;
+
+            public void Dispose()
+            {
+                WorldState? owner = Interlocked.Exchange(ref _worldState, null);
+                if (owner is null) return;
+                owner.EndScope();
+                if (owner._logger.IsTrace) owner._logger.Trace($"WorldState scope for {(atTarget ? "target" : "baseblock")} {block?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
+            }
         }
 
         private void EndScope()
@@ -372,13 +382,13 @@ namespace Nethermind.State
             return _persistentStorageProvider.GetStorageRoot(address);
         }
 
-        public byte[] GetCode(Address address)
+        public ReadOnlyMemory<byte> GetCode(Address address)
         {
             DebugGuardInScope();
             return _stateProvider.GetCode(address);
         }
 
-        public byte[] GetCode(in ValueHash256 codeHash)
+        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         {
             DebugGuardInScope();
             return _stateProvider.GetCode(in codeHash);
