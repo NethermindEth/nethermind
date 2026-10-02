@@ -44,7 +44,7 @@ public sealed class CommitteeCache
 
     /// <summary>Builds the committee shuffling for <paramref name="epoch"/> from the state's active set and attester seed.</summary>
     /// <exception cref="BeaconStateException">No validator is active at <paramref name="epoch"/>.</exception>
-    public static CommitteeCache Build(BeaconStateFulu state, ulong epoch)
+    public static CommitteeCache Build(BeaconStateElectra state, ulong epoch)
     {
         int[] activeIndices = state.GetActiveValidatorIndices(epoch);
         if (activeIndices.Length == 0)
@@ -56,7 +56,7 @@ public sealed class CommitteeCache
         return new CommitteeCache(epoch, activeIndices, GetCommitteeCountPerSlot(activeIndices.Length));
     }
 
-    /// <summary><see cref="Build(BeaconStateFulu, ulong)"/> for a post-fork <see cref="BeaconStateGloas"/> (the shuffling itself is unchanged in Gloas).</summary>
+    /// <summary><see cref="Build(BeaconStateElectra, ulong)"/> for a post-fork <see cref="BeaconStateGloas"/> (the shuffling itself is unchanged in Gloas).</summary>
     /// <exception cref="BeaconStateException">No validator is active at <paramref name="epoch"/>.</exception>
     public static CommitteeCache Build(BeaconStateGloas state, ulong epoch)
     {

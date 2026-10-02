@@ -76,7 +76,7 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        BeaconStateFulu state = resolved.State;
+        ApiState state = resolved.State;
         ulong stateEpoch = ctx.Spec.GetEpoch(state.Slot);
         ulong epoch = requestedEpoch ?? stateEpoch;
         // get_randao_mix's age check wraps for an epoch after the state's, which randao_mixes cannot hold yet.
@@ -128,7 +128,7 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        BeaconStateFulu state = resolved.State;
+        ApiState state = resolved.State;
         ulong stateEpoch = ctx.Spec.GetEpoch(state.Slot);
         ulong epoch = requestedEpoch ?? stateEpoch;
         ulong statePeriod = stateEpoch / Presets.EpochsPerSyncCommitteePeriod;
@@ -204,7 +204,7 @@ internal static class BeaconStatesEndpoints
     /// Each operation answers 400 for a state before the fork that introduced its field, so that check precedes decoding.
     /// </remarks>
     private static Task StateList<T>(HttpContext c, string stateId, BeaconApiContext ctx, Func<BeaconChainSpec, ulong> introducedAtEpoch,
-        Func<BeaconStateFulu, T[]> select, Func<T[], byte[]> encodeSsz, Func<BeaconJsonStream, T[], Task> writeJson)
+        Func<ApiState, T[]> select, Func<T[], byte[]> encodeSsz, Func<BeaconJsonStream, T[], Task> writeJson)
     {
         ContentNegotiation.ResponseFormat? format = ContentNegotiation.Negotiate(c, sszSupported: true);
         if (format is null)
@@ -226,7 +226,7 @@ internal static class BeaconStatesEndpoints
         }
 
         ResolvedState resolved = new(raw.Root, ApiStateDecoding.Decode(raw.Ssz, ctx.Spec));
-        BeaconStateFulu state = resolved.State;
+        ApiState state = resolved.State;
         T[] items = select(state);
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
         if (format == ContentNegotiation.ResponseFormat.Ssz)
@@ -253,7 +253,7 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        Fork fork = resolved.State.Fork!;
+        Fork fork = resolved.State.ForkVersion;
         ForkDto dto = new(
             fork.PreviousVersion!.ToHexString(withZeroX: true),
             fork.CurrentVersion!.ToHexString(withZeroX: true),
@@ -361,7 +361,7 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        BeaconStateFulu state = resolved.State;
+        ApiState state = resolved.State;
         Validator[] validators = state.Validators!;
         ulong[] balances = state.Balances!;
         ulong epoch = ctx.Spec.GetEpoch(state.Slot);
@@ -412,7 +412,7 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        BeaconStateFulu state = resolved.State;
+        ApiState state = resolved.State;
         ValidatorIdStatus lookup = TryResolveValidatorIndex(state, validatorId, out int index);
         if (lookup == ValidatorIdStatus.Invalid)
         {
@@ -472,7 +472,7 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        BeaconStateFulu state = resolved.State;
+        ApiState state = resolved.State;
         ulong[] balances = state.Balances!;
         if (!TryResolveIndices(state, idFilters, out List<int>? indices, out string? invalidId))
         {
@@ -527,7 +527,7 @@ internal static class BeaconStatesEndpoints
             return;
         }
 
-        BeaconStateFulu state = resolved.State;
+        ApiState state = resolved.State;
         Validator[] validators = state.Validators!;
         if (!TryResolveIndices(state, [.. ids ?? []], out List<int>? indices, out string? invalidId))
         {
@@ -569,7 +569,7 @@ internal static class BeaconStatesEndpoints
     /// <summary>Resolves request ids to distinct registry indices in first-seen order, dropping well-formed ids that name no validator.</summary>
     /// <remarks>An index and a pubkey naming one validator count once, so repeated ids cannot multiply the response.</remarks>
     /// <param name="indices"><c>null</c> when <paramref name="ids"/> is empty, which selects every validator.</param>
-    private static bool TryResolveIndices(BeaconStateFulu state, List<string> ids, out List<int>? indices, out string? invalidId)
+    private static bool TryResolveIndices(ApiState state, List<string> ids, out List<int>? indices, out string? invalidId)
     {
         indices = null;
         invalidId = null;
@@ -644,7 +644,7 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        BeaconStateFulu state = resolved.State;
+        ApiState state = resolved.State;
         ulong currentEpoch = ctx.Spec.GetEpoch(state.Slot);
         ulong previousEpoch = currentEpoch == 0 ? 0 : currentEpoch - 1;
         ulong nextEpoch = currentEpoch + 1;
@@ -696,7 +696,7 @@ internal static class BeaconStatesEndpoints
         CommitteeCache cache;
         try
         {
-            cache = CommitteeCache.Build(state, epoch);
+            cache = state.BuildCommittees(epoch);
         }
         catch (BeaconStateException e)
         {
@@ -733,7 +733,7 @@ internal static class BeaconStatesEndpoints
     /// <summary>Resolves a beacon-api <c>validator_id</c> path/query segment: a decimal index or a 0x-prefixed pubkey.</summary>
     /// <remarks>Single-id call site only (<see cref="ValidatorById"/>): a pubkey id is resolved by an early-exit
     /// linear scan, which is cheaper than building a map for one lookup.</remarks>
-    private static ValidatorIdStatus TryResolveValidatorIndex(BeaconStateFulu state, string id, out int index)
+    private static ValidatorIdStatus TryResolveValidatorIndex(ApiState state, string id, out int index)
     {
         if (TryResolveNumericIndex(state.Validators!, id, out ValidatorIdStatus numericStatus, out index)) return numericStatus;
 
@@ -756,13 +756,13 @@ internal static class BeaconStatesEndpoints
     }
 
     /// <summary>
-    /// Same contract as <see cref="TryResolveValidatorIndex(BeaconStateFulu, string, out int)"/>, but a pubkey id
+    /// Same contract as <see cref="TryResolveValidatorIndex(ApiState, string, out int)"/>, but a pubkey id
     /// is resolved through <paramref name="pubkeyIndex"/> instead of a linear scan. The caller owns the map's
     /// lifetime - build it lazily on the first pubkey-form id in a request's id-filter loop and reuse it for every
     /// subsequent id, so an all-numeric-id (or id-less) request never pays for it. Building it turns what would
     /// otherwise be an O(validators) scan per pubkey id into one O(validators) build per request.
     /// </summary>
-    private static ValidatorIdStatus TryResolveValidatorIndex(BeaconStateFulu state, string id, ref Dictionary<BlsPublicKey, int>? pubkeyIndex, out int index)
+    private static ValidatorIdStatus TryResolveValidatorIndex(ApiState state, string id, ref Dictionary<BlsPublicKey, int>? pubkeyIndex, out int index)
     {
         if (TryResolveNumericIndex(state.Validators!, id, out ValidatorIdStatus numericStatus, out index)) return numericStatus;
 

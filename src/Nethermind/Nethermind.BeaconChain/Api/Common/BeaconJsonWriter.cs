@@ -605,8 +605,9 @@ internal static class BeaconJsonWriter
         w.WriteEndObject();
     }
 
-    /// <summary>Streams a Fulu <c>BeaconState</c>, flushing between elements of its large lists.</summary>
-    public static async Task WriteBeaconStateAsync(BeaconJsonStream s, BeaconStateFulu state)
+    /// <summary>Streams an Electra or Fulu <c>BeaconState</c>, flushing between elements of its large lists.</summary>
+    /// <remarks>Only a Fulu state carries <c>proposer_lookahead</c> (EIP-7917).</remarks>
+    public static async Task WriteBeaconStateAsync(BeaconJsonStream s, BeaconStateElectra state)
     {
         Utf8JsonWriter w = s.Writer;
         w.WriteStartObject();
@@ -675,7 +676,7 @@ internal static class BeaconJsonWriter
         await WriteArrayAsync(s, "pending_deposits", state.PendingDeposits!, WritePendingDeposit);
         await WriteArrayAsync(s, "pending_partial_withdrawals", state.PendingPartialWithdrawals!, WritePendingPartialWithdrawal);
         await WriteArrayAsync(s, "pending_consolidations", state.PendingConsolidations!, WritePendingConsolidation);
-        await WriteUIntArrayAsync(s, "proposer_lookahead", state.ProposerLookahead!);
+        if (state is BeaconStateFulu fulu) await WriteUIntArrayAsync(s, "proposer_lookahead", fulu.ProposerLookahead!);
         w.WriteEndObject();
     }
 

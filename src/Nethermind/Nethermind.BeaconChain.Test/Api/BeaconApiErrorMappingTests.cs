@@ -29,7 +29,7 @@ using NUnit.Framework;
 namespace Nethermind.BeaconChain.Test.Api;
 
 /// <summary>
-/// A Gloas-fork state must reach the caller as a labelled, actionable 501 and nothing else may: an
+/// A state from before Electra must reach the caller as a labelled, actionable 501 and nothing else may: an
 /// unrelated <see cref="NotSupportedException"/> is a 500 that echoes no internal text. The JSON-only
 /// endpoints must also not claim an SSZ representation they do not serve.
 /// </summary>
@@ -158,14 +158,14 @@ public class BeaconApiErrorMappingTests
     [TestCase("/eth/v1/beacon/states/{0}/finality_checkpoints")]
     [TestCase("/eth/v1/beacon/states/{0}/validators")]
     [TestCase("/eth/v1/beacon/states/{0}/committees")]
-    public async Task Gloas_state_is_501_with_the_fixed_capability_message_not_a_bare_500(string routeTemplate)
+    public async Task Pre_electra_state_is_501_with_the_fixed_capability_message_not_a_bare_500(string routeTemplate)
     {
-        ulong gloasSlot = Spec.GloasForkEpoch * Presets.SlotsPerEpoch;
+        ulong preElectraSlot = (Spec.ElectraForkEpoch - 1) * Presets.SlotsPerEpoch;
         Hash256 root = TestRoot(21);
-        _store.PutState(root, StateBytesForSlot(gloasSlot));
-        _store.SetCanonicalRoot(gloasSlot, root);
+        _store.PutState(root, StateBytesForSlot(preElectraSlot));
+        _store.SetCanonicalRoot(preElectraSlot, root);
 
-        HttpResponseMessage response = await _client.GetAsync(string.Format(routeTemplate, gloasSlot));
+        HttpResponseMessage response = await _client.GetAsync(string.Format(routeTemplate, preElectraSlot));
         string raw = await response.Content.ReadAsStringAsync();
 
         // Only ApiStateDecoding turns the codec's refusal into the API-owned UnsupportedForkException the
