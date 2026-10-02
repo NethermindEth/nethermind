@@ -28,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
+using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -461,6 +462,11 @@ public sealed class BeaconP2P : IAsyncDisposable
                                 && IsNotDropped(_sessionInfo, raced))
         {
             return raced;
+        }
+        // The library's dial skips cancelled attempts, and closing a session cancels its connection, so an empty error is a closed session.
+        catch (AggregateException e) when (e.InnerExceptions.Count == 0)
+        {
+            throw new PeerConnectionException($"Session with {address} closed before it was established", e);
         }
     }
 
@@ -968,16 +974,17 @@ public sealed class BeaconP2P : IAsyncDisposable
             // One identify exchange verifies the remote identity, fills the peer store and reads the agent string.
             _owner._sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot);
             string? agentVersion;
+            using CancellationTokenSource cts = new(IdentifyAgentVersionProbe.ReadTimeout);
             try
             {
-                using CancellationTokenSource cts = new(IdentifyAgentVersionProbe.ReadTimeout);
                 agentVersion = await DialIdentifyAsync(session, _owner.ChannelOpenBound, cts.Token);
             }
             catch (Exception e)
             {
                 slot?.TrySetCanceled();
-                // A cancelled task fails the dial with an empty error, as the library's dial skips cancelled attempts; the timeout names the cause.
-                if (e is OperationCanceledException)
+                // Only the probe's own bound is a timeout, however the pending read reports it; the session's own close cancels the dial too.
+                // A cancelled task would fail the dial with an empty error, as the library's dial skips cancelled attempts.
+                if (cts.IsCancellationRequested)
                 {
                     Interlocked.Increment(ref _owner._identifyTimeouts);
                     throw new TimeoutException($"No identify answer from {session.RemoteAddress} within {IdentifyAgentVersionProbe.ReadTimeout}", e);
