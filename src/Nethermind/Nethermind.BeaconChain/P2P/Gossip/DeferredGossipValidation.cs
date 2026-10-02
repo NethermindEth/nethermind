@@ -86,7 +86,7 @@ internal sealed class DeferredGossipValidation(
         ReleaseExpired();
         long size = message.CalculateSize();
         bool vote = IsVote(message, size);
-        // A batched IWANT answer carries many columns from one peer; only a signed column whose proposer cannot be checked yet waits, held to the global bounds.
+        // A batched IWANT answer carries many columns from one peer; a column holds its reservation only until its checks return.
         bool sharedBySource = !vote && !GossipMessageValidator.IsColumn(message.Topic);
         if (vote ? PendingVotes >= maxPendingVotes
             : Pending >= maxPending || PendingBytes + size > maxPendingBytes || (sharedBySource && _pendingBySource.GetValueOrDefault(source) >= _maxPendingPerSource))

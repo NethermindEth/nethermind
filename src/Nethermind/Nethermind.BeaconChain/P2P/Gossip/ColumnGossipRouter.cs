@@ -101,8 +101,8 @@ public enum ColumnGossipDropReason
 /// finalized checkpoint, its inclusion proof and its KZG proofs, and is <see cref="MessageValidity.Accepted"/> when
 /// all pass. Any other header is checked against the expected proposer in <paramref name="proposerLookahead"/>, then
 /// the parent checks fork choice can answer and its proposer signature against <paramref name="pubkeys"/>, all before
-/// any KZG work; one whose branch or slot the lookahead does not cover runs no KZG work and, when its signature verified, is
-/// queued with its message's verdict until the next snapshot or lookahead is published, else dropped as the spec's IGNORE. A sidecar that passes every check
+/// any KZG work; one whose branch or slot the lookahead does not cover is dropped as the spec's IGNORE without KZG
+/// work and, when its signature verified, queued until the next snapshot or lookahead is published. A sidecar that passes every check
 /// is <see cref="MessageValidity.Accepted"/>. A slot not above a held parent's is rejected first, from the store. KZG work per (block root, index)
 /// stops after <see cref="KzgBatchesPerColumn"/> batches, since every column of a block carries the same header.
 /// <para>
@@ -201,7 +201,7 @@ public sealed class ColumnGossipRouter(
     private readonly Lock _kzgBatchesLock = new();
 
     // Signed sidecars whose expected proposer the published snapshot and lookahead cannot verify yet.
-    private readonly LruCache<(Hash256 BlockRoot, ulong Index), ParkedColumn[]> _parkedColumns = new(ParkedColumnCacheSize, "beacon column gossip parked columns");
+    private readonly LruCache<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> _parkedColumns = new(ParkedColumnCacheSize, "beacon column gossip parked columns");
     private readonly Lock _parkedLock = new();
     private ForkChoiceSnapshot? _retriedSnapshot;
     private ProposerLookaheadSnapshot? _retriedLookahead;
@@ -325,17 +325,13 @@ public sealed class ColumnGossipRouter(
     /// passed every check under an imported block's header or the expected proposer's; otherwise <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>,
     /// including for a consumed Fulu sidecar whose header this node cannot verify.
     /// </returns>
-    internal MessageValidity Handle(ulong subnetId, bool gloasTopic, byte[] message) => Handle(subnetId, gloasTopic, message, GossipVerdict.None);
-
-    /// <inheritdoc cref="Handle(ulong, bool, byte[])"/>
-    /// <param name="verdict">The message's pending verdict, handed off with a Fulu sidecar queued until its expected proposer can be verified.</param>
-    internal MessageValidity Handle(ulong subnetId, bool gloasTopic, byte[] message, GossipVerdict verdict)
+    internal MessageValidity Handle(ulong subnetId, bool gloasTopic, byte[] message)
     {
         bool retrying = _retrying;
         _retrying = false;
         try
         {
-            return HandleReceived(subnetId, gloasTopic, message, verdict);
+            return HandleReceived(subnetId, gloasTopic, message);
         }
         finally
         {
@@ -343,7 +339,7 @@ public sealed class ColumnGossipRouter(
         }
     }
 
-    private MessageValidity HandleReceived(ulong subnetId, bool gloasTopic, byte[] message, GossipVerdict verdict)
+    private MessageValidity HandleReceived(ulong subnetId, bool gloasTopic, byte[] message)
     {
         if (!IsSubscribed(subnetId))
         {
@@ -362,10 +358,10 @@ public sealed class ColumnGossipRouter(
             return Drop(snappy == SnappyDecodeResult.Oversized ? ColumnGossipDropReason.Oversized : ColumnGossipDropReason.InvalidSnappy, MessageValidity.Rejected);
         }
 
-        return gloasTopic ? HandleGloas(subnetId, payload!) : HandleFulu(subnetId, payload!, verdict);
+        return gloasTopic ? HandleGloas(subnetId, payload!) : HandleFulu(subnetId, payload!);
     }
 
-    private MessageValidity HandleFulu(ulong subnetId, byte[] payload, GossipVerdict verdict)
+    private MessageValidity HandleFulu(ulong subnetId, byte[] payload)
     {
         RetryParked();
 
@@ -380,10 +376,10 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.InvalidSsz, MessageValidity.Rejected);
         }
 
-        return ValidateFulu(subnetId, sidecar, verdict);
+        return ValidateFulu(subnetId, sidecar);
     }
 
-    private MessageValidity ValidateFulu(ulong subnetId, DataColumnSidecar sidecar, GossipVerdict verdict)
+    private MessageValidity ValidateFulu(ulong subnetId, DataColumnSidecar sidecar)
     {
         // SSZ containers populate every field on decode, so a wire-decoded sidecar's header is never
         // null; this only guards a sidecar reaching this path some other way (e.g. constructed
@@ -456,10 +452,10 @@ public sealed class ColumnGossipRouter(
         Hash256 blockRoot = SszRoots.HashTreeRoot(header);
         return ReadImportedHeader(blockRoot, sidecar.SignedBlockHeader.Signature) switch
         {
-            ImportedHeader.Found => HandleImportedFulu(sidecar, blockRoot, slot, proposerIndex, verdict),
+            ImportedHeader.Found => HandleImportedFulu(sidecar, blockRoot, slot, proposerIndex),
             // Only the signature verified at import is trusted without a BLS check, so another one is dropped, not rejected.
             ImportedHeader.SignatureMismatch => Drop(ColumnGossipDropReason.HeaderSignatureMismatch, MessageValidity.Ignored),
-            _ => HandleUnimportedFulu(sidecar, header, blockRoot, slot, signatureVerifiedAtImport: false, verdict),
+            _ => HandleUnimportedFulu(sidecar, header, blockRoot, slot, signatureVerifiedAtImport: false),
         };
     }
 
@@ -469,7 +465,7 @@ public sealed class ColumnGossipRouter(
     /// before the finalized-ancestor one has passed and a failure from it on is a REJECT. A sidecar that passes is
     /// <see cref="MessageValidity.Accepted"/>, so the pubsub library forwards it.
     /// </remarks>
-    private MessageValidity HandleImportedFulu(DataColumnSidecar sidecar, Hash256 blockRoot, ulong slot, ulong proposerIndex, GossipVerdict verdict)
+    private MessageValidity HandleImportedFulu(DataColumnSidecar sidecar, Hash256 blockRoot, ulong slot, ulong proposerIndex)
     {
         // [REJECT] the current finalized checkpoint is an ancestor of the block.
         switch (DescendsFromFinalized(CurrentSnapshot(), blockRoot))
@@ -477,7 +473,7 @@ public sealed class ColumnGossipRouter(
             case false:
                 return Drop(ColumnGossipDropReason.NotFinalizedDescendant, MessageValidity.Rejected);
             case null:
-                return HandleUnimportedFulu(sidecar, sidecar.SignedBlockHeader!.Message!, blockRoot, slot, signatureVerifiedAtImport: true, verdict);
+                return HandleUnimportedFulu(sidecar, sidecar.SignedBlockHeader!.Message!, blockRoot, slot, signatureVerifiedAtImport: true);
         }
 
         // [REJECT] verify_data_column_sidecar_inclusion_proof.
@@ -541,7 +537,7 @@ public sealed class ColumnGossipRouter(
     /// (slot, proposer_index, index) it claims.
     /// </remarks>
     /// <param name="signatureVerifiedAtImport">Whether the header is a stored block's with the signature and proposer import verified.</param>
-    private MessageValidity HandleUnimportedFulu(DataColumnSidecar sidecar, BeaconBlockHeader header, Hash256 blockRoot, ulong slot, bool signatureVerifiedAtImport, GossipVerdict verdict)
+    private MessageValidity HandleUnimportedFulu(DataColumnSidecar sidecar, BeaconBlockHeader header, Hash256 blockRoot, ulong slot, bool signatureVerifiedAtImport)
     {
         // [IGNORE] the parent has been seen, and [REJECT] it passes validation: fork choice holds only valid blocks.
         SnapshotIndex? snapshot = CurrentSnapshot();
@@ -620,7 +616,7 @@ public sealed class ColumnGossipRouter(
         {
             if (signatureValid)
             {
-                ParkUnverifiable(sidecar, blockRoot, verdict);
+                ParkUnverifiable(sidecar, blockRoot);
             }
 
             return Drop(ColumnGossipDropReason.ProposerNotVerifiable, MessageValidity.Ignored);
@@ -788,16 +784,13 @@ public sealed class ColumnGossipRouter(
     }
 
     /// <summary>Queues a signed sidecar whose expected proposer cannot be verified yet, keeping at most <see cref="KzgBatchesPerColumn"/> copies per (block root, index).</summary>
-    /// <remarks>
-    /// More copies could never reach KZG, since a verified copy ends the column's KZG work and failures are bounded. A queued copy keeps
-    /// its message's verdict, so the router forwards that message if a retry accepts it.
-    /// </remarks>
-    private void ParkUnverifiable(DataColumnSidecar sidecar, Hash256 blockRoot, GossipVerdict verdict)
+    /// <remarks>More copies could never reach KZG, since a verified copy ends the column's KZG work and failures are bounded.</remarks>
+    private void ParkUnverifiable(DataColumnSidecar sidecar, Hash256 blockRoot)
     {
         (Hash256, ulong) key = (blockRoot, sidecar.Index);
         lock (_parkedLock)
         {
-            ParkedColumn[] copies = _parkedColumns.Get(key) ?? [];
+            DataColumnSidecar[] copies = _parkedColumns.Get(key) ?? [];
             if (copies.Length == 0 && ParkedKeysOf(sidecar.SignedBlockHeader!.Message!.ProposerIndex) >= ParkedColumnsPerProposer)
             {
                 return;
@@ -805,8 +798,7 @@ public sealed class ColumnGossipRouter(
 
             if (copies.Length < KzgBatchesPerColumn)
             {
-                _parkedColumns.Set(key, [.. copies, new ParkedColumn(sidecar, verdict)]);
-                verdict.HandOff();
+                _parkedColumns.Set(key, [.. copies, sidecar]);
             }
         }
     }
@@ -814,9 +806,9 @@ public sealed class ColumnGossipRouter(
     private int ParkedKeysOf(ulong proposerIndex)
     {
         int keys = 0;
-        foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), ParkedColumn[]> entry in _parkedColumns.ToArray())
+        foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> entry in _parkedColumns.ToArray())
         {
-            if (entry.Value[0].Sidecar.SignedBlockHeader!.Message!.ProposerIndex == proposerIndex)
+            if (entry.Value[0].SignedBlockHeader!.Message!.ProposerIndex == proposerIndex)
             {
                 keys++;
             }
@@ -827,9 +819,10 @@ public sealed class ColumnGossipRouter(
 
     /// <summary>Runs every queued sidecar through the checks again once a new fork-choice snapshot or proposer lookahead is published.</summary>
     /// <remarks>
-    /// The retry gives the queued message's verdict, so the router forwards a sidecar that now passes, and charges its sender for one that
-    /// now fails a REJECT rule. A sidecar whose verdict the router no longer awaits is pooled but not forwarded, so its tuple stays unmarked
-    /// for an equal copy that reaches this router. One that still cannot be verified is queued again.
+    /// A queued sidecar's message was already <see cref="MessageValidity.Ignored"/>, so one that now passes is pooled but
+    /// not forwarded; pubsub drops later copies of the same message id before they reach this router, so only a copy
+    /// under another id, such as one received after the seen cache expires, can still be forwarded. One that still cannot
+    /// be verified is queued again.
     /// </remarks>
     private void RetryParked()
     {
@@ -840,7 +833,7 @@ public sealed class ColumnGossipRouter(
             return;
         }
 
-        KeyValuePair<(Hash256 BlockRoot, ulong Index), ParkedColumn[]>[] parked;
+        KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]>[] parked;
         lock (_parkedLock)
         {
             if (ReferenceEquals(snapshot, _retriedSnapshot) && ReferenceEquals(lookahead, _retriedLookahead))
@@ -863,19 +856,13 @@ public sealed class ColumnGossipRouter(
         _retrying = true;
         try
         {
-            foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), ParkedColumn[]> entry in parked)
+            foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> entry in parked)
             {
-                foreach ((DataColumnSidecar sidecar, GossipVerdict verdict) in entry.Value)
+                foreach (DataColumnSidecar sidecar in entry.Value)
                 {
-                    // The handler that queued the copy may still be returning, so its hand-off is never undone; a new one means queued again.
-                    int handOffs = verdict.HandOffCount;
-                    MessageValidity validity = ValidateFulu(CustodyGroups.ComputeSubnetForDataColumnSidecar(sidecar.Index), sidecar, verdict);
-                    if (verdict.HandOffCount != handOffs)
-                    {
-                        continue;
-                    }
-
-                    if (!verdict.Complete(validity) && validity == MessageValidity.Accepted && sidecar.SignedBlockHeader?.Message is { } header)
+                    // Its message was already Ignored, so the tuple stays unmarked for any equal copy that reaches this router.
+                    if (ValidateFulu(CustodyGroups.ComputeSubnetForDataColumnSidecar(sidecar.Index), sidecar) == MessageValidity.Accepted
+                        && sidecar.SignedBlockHeader?.Message is { } header)
                     {
                         _seenSidecars.Delete((header.Slot, header.ProposerIndex, sidecar.Index));
                     }
@@ -1372,8 +1359,6 @@ public sealed class ColumnGossipRouter(
     }
 
     private readonly record struct GloasBlockColumns(ulong Slot, SszKzgCommitment[] Commitments);
-
-    private readonly record struct ParkedColumn(DataColumnSidecar Sidecar, GossipVerdict Verdict);
 
     private enum GloasBlockLookup
     {

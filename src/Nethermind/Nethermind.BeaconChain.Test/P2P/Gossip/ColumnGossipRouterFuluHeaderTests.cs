@@ -601,36 +601,37 @@ public class ColumnGossipRouterFuluHeaderTests
     }
 
     /// <summary>
-    /// A queued sidecar keeps its message's verdict until the retry checks it again: accepted once its proposer verifies, so the router
-    /// forwards it then, and rejected once the lookahead names another proposer, so its sender is charged then.
+    /// A sidecar whose expected proposer cannot be verified yet is ignored at once, so while it is queued its message holds no pending
+    /// verdict, or room for one, in the pubsub router; the retry that verifies it pools it and gives no other verdict.
     /// </summary>
-    /// <remarks>fulu/p2p-interface.md: [REJECT] the sidecar is proposed by the expected proposer_index, checked when it can be verified.</remarks>
-    [TestCase(0UL, MessageValidity.Accepted)]
-    [TestCase(1UL, MessageValidity.Rejected)]
-    public void A_queued_sidecar_gets_its_verdict_from_the_retry(ulong expectedProposer, MessageValidity expected)
+    /// <remarks>fulu/p2p-interface.md: a sidecar whose proposer_index cannot immediately be verified MAY be queued; do not REJECT, instead IGNORE.</remarks>
+    [Test]
+    public void A_queued_sidecar_is_ignored_at_once_and_pooled_by_the_retry()
     {
         ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(OtherRoot, 0) };
-        (ColumnGossipRouter router, _, _) = Create(null, lookaheads: lookaheads, forkChoice: new ForkChoiceSnapshotHolder { Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true) });
+        (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(null, lookaheads: lookaheads, forkChoice: new ForkChoiceSnapshotHolder { Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true) });
+        SlotClock clock = new(Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot + 6)));
+        GossipMessageValidator validator = new(new GossipRouter(Spec, clock, LimboLogs.Instance), router, Spec, clock);
         DataColumnSidecar sidecar = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        Hash256 blockRoot = SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!);
         List<MessageValidity> given = [];
         GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
 
-        MessageValidity routed = router.Handle(Column, gloasTopic: false, Message(sidecar), verdict);
-        // As DeferredGossipValidation does: the verdict of the checks that ran is given unless a consumer took the verdict over.
-        if (!verdict.IsHandedOff)
+        MessageValidity routed = validator.Validate(new Nethermind.Libp2p.Protocols.Pubsub.Dto.Message
         {
-            verdict.Complete(routed);
-        }
-
-        MessageValidity[] givenWhileQueued = [.. given];
-        lookaheads.Current = Lookahead(ParentRoot, expectedProposer);
+            Topic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.DataColumnSidecarTopicName(Column)),
+            Data = ByteString.CopyFrom(Message(sidecar)),
+        }, verdict);
+        bool handedOff = verdict.IsHandedOff;
+        bool pooledWhileQueued = pool.TryGet(blockRoot, Column, out _);
+        lookaheads.Current = Lookahead(ParentRoot, 0);
         router.Handle(Column, gloasTopic: false, UndecodableMessage);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((routed, givenWhileQueued), Is.EqualTo((MessageValidity.Ignored, Array.Empty<MessageValidity>())), "a queued sidecar's verdict waits for the retry");
-            Assert.That(given, Is.EqualTo(new[] { expected }));
-            Assert.That(verdict.IsHandedOff, Is.True, "the retry never undoes the hand-off, which the queuing handler may read only after the retry ran");
+            Assert.That((routed, handedOff, pooledWhileQueued), Is.EqualTo((MessageValidity.Ignored, false, false)), "the caller gives the IGNORE at once");
+            Assert.That(given, Is.Empty, "the retry gives no verdict for a message already ignored");
+            Assert.That(pool.TryGet(blockRoot, Column, out _), Is.True, "the retry pools the queued sidecar");
         }
     }
 
