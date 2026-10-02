@@ -40,15 +40,16 @@ public class CheckpointSyncHttpTests
     }
 
     /// <summary>An epoch-start state advanced beyond its block holds a filled latest header root (consensus-specs beacon-chain.md process_slot).
-    /// The anchor must use that block's verified post-state.</summary>
+    /// The anchor must use that block's verified post-state, which a state file supplies in its sibling file and never from the provider.</summary>
     [Test]
     public async Task An_advanced_checkpoint_uses_its_blocks_post_state(
         [Values] AdvancedCheckpoint advancedCheckpoint, [Values] bool fromFile, [Values] bool invalidPostState, [Values(null, false, true)] bool? conflictingCheckpoint)
     {
         (byte[] advancedState, ForkedSignedBeaconBlock block, byte[] postState, Hash256 stateRoot, _) = BuildAdvancedCheckpoint(advancedCheckpoint);
         Hash256 root = block.ComputeMessageRoot();
-        await using WebApplication provider = await StartProviderAsync(null, advancedState, block, stateRoot, invalidPostState ? advancedState : postState);
-        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(advancedState, block);
+        byte[] servedPostState = invalidPostState || fromFile ? advancedState : postState;
+        await using WebApplication provider = await StartProviderAsync(null, advancedState, block, stateRoot, servedPostState);
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(advancedState, block, invalidPostState ? advancedState : postState);
         await using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig
         {
             CheckpointSyncUrl = provider.Urls.First(),
@@ -76,6 +77,22 @@ public class CheckpointSyncHttpTests
             Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), conflictingCheckpoint is null ? Is.Null : Is.Not.Null);
         }
         sync.ThrowIfResumedAnchorMissesWeakSubjectivityCheckpoint(anchor.State, anchor.BlockRoot);
+    }
+
+    /// <summary>An advanced state file without its block's post-state file is refused by name, not completed from the provider.</summary>
+    [Test]
+    public async Task An_advanced_checkpoint_state_file_without_its_post_state_file_is_refused()
+    {
+        (byte[] advancedState, ForkedSignedBeaconBlock block, byte[] postState, Hash256 stateRoot, _) = BuildAdvancedCheckpoint(AdvancedCheckpoint.AcrossTheGloasUpgrade);
+        await using WebApplication provider = await StartProviderAsync(null, advancedState, block, stateRoot, postState);
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(advancedState, block);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = provider.Urls.First(), CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        System.IO.InvalidDataException refusal = Assert.ThrowsAsync<System.IO.InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+
+        Assert.That(refusal.Message, Does.Contain(files.PostStateFile));
+        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
     public enum ConfiguredCheckpoint
@@ -125,17 +142,18 @@ public class CheckpointSyncHttpTests
     }
 
     [Test]
-    public async Task An_advanced_checkpoint_bounds_its_post_state_body()
+    public async Task An_advanced_checkpoint_bounds_its_post_state_body([Values] bool fromFile)
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         BeaconStateFulu advanced = chain.AnchorState.Clone();
         SlotProcessing.ProcessSlots(advanced, 1, new EpochCache());
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain.AnchorBlock, Signature = new BlsSignature(new byte[BlsSignature.Length]) });
         byte[] stateSsz = BeaconStateFulu.Encode(advanced);
-        await using WebApplication provider = await StartProviderAsync(null, stateSsz, block, chain.AnchorBlock.StateRoot, new byte[stateSsz.Length + 1]);
-        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(stateSsz, block);
+        byte[] oversizedPostState = new byte[stateSsz.Length + 1];
+        await using WebApplication provider = await StartProviderAsync(null, stateSsz, block, chain.AnchorBlock.StateRoot, oversizedPostState);
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(stateSsz, block, oversizedPostState);
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
-        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = provider.Urls.First() }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance)
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = fromFile ? files.StateFile : null, CheckpointSyncUrl = provider.Urls.First() }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance)
         {
             MaxBodyBytes = stateSsz.Length,
         };
