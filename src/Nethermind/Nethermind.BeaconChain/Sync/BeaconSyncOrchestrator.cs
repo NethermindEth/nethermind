@@ -1082,11 +1082,9 @@ public sealed class BeaconSyncOrchestrator(
             // A retried block answers UnknownParent once its parent's state is gone, so it never imports.
             // Only the queued signed block itself leaves the retry set; an invalid copy under its root does not.
             bool wasRetried = isQueued && _pendingRetry.Remove(root);
-            // The block has the root this node asked for, so the peer served an invalid block, unless only this node's own
-            // fork-choice admission refused it (fork-choice.md on_block), which says nothing of the block's data.
-            if (result == BlockImportResult.Invalid && origin == ImportOrigin.ByRoot && refusal != ImportRefusal.LocalAdmission)
+            if (origin == ImportOrigin.ByRoot)
             {
-                servedBy?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Blocks-by-root for {root} returned an invalid block");
+                BlameInvalidFetchedBlock(result, refusal, servedBy, root);
             }
 
             if (result == BlockImportResult.Invalid && (rangeItem is not null || _rangeHeld?.DeferredRoot == root || _rangeHeldRoots.ContainsKey(root)))
@@ -1992,14 +1990,28 @@ public sealed class BeaconSyncOrchestrator(
     /// a later by-root fetch delivers it after its parent. A block the full queue cannot take is not marked seen.
     /// </remarks>
     /// <param name="fetchedByRoot">Whether this node fetched the block, so the importer does not charge it to the gossip regeneration budget.</param>
+    /// <param name="servedBy">The peer that served a block fetched by root, blamed if the block is invalid.</param>
     /// <returns>Whether the block is held.</returns>
-    private async Task<bool> HoldForWaitingParentAsync(ForkedSignedBeaconBlock block, bool fetchedByRoot = false)
+    private async Task<bool> HoldForWaitingParentAsync(ForkedSignedBeaconBlock block, bool fetchedByRoot = false, IBeaconSyncPeer? servedBy = null)
     {
         Hash256 root = block.ComputeMessageRoot();
-        if (_pendingCount >= MaxPendingGossipBlocks
-            || gossipRouter.IsProposalSeen(block.Slot, block.ProposerIndex)
-            || await _importThread.RunAsync(() => fetchedByRoot ? _importer!.ImportRequested(block, root, fetchedByRoot: true) : _importer!.Import(block, root, verifySignatures: true)) != BlockImportResult.ParentPayloadUnverified)
+        if (_pendingCount >= MaxPendingGossipBlocks || gossipRouter.IsProposalSeen(block.Slot, block.ProposerIndex))
         {
+            return false;
+        }
+
+        (BlockImportResult result, ImportRefusal refusal) = await _importThread.RunAsync(() =>
+        {
+            BlockImportResult imported = fetchedByRoot ? _importer!.ImportRequested(block, root, fetchedByRoot: true) : _importer!.Import(block, root, verifySignatures: true);
+            return (imported, _importer!.LastRefusal);
+        });
+        if (result != BlockImportResult.ParentPayloadUnverified)
+        {
+            if (fetchedByRoot)
+            {
+                BlameInvalidFetchedBlock(result, refusal, servedBy, root);
+            }
+
             return false;
         }
 
@@ -2009,6 +2021,19 @@ public sealed class BeaconSyncOrchestrator(
         return true;
     }
 
+    /// <summary>Blames <paramref name="servedBy"/> when the block it served for <paramref name="root"/> imported as invalid.</summary>
+    /// <remarks>
+    /// The block has the root this node asked for, so the peer served an invalid block, unless only this node's own
+    /// fork-choice admission refused it (fork-choice.md on_block), which says nothing of the block's data.
+    /// </remarks>
+    private static void BlameInvalidFetchedBlock(BlockImportResult result, ImportRefusal refusal, IBeaconSyncPeer? servedBy, Hash256 root)
+    {
+        if (result == BlockImportResult.Invalid && refusal != ImportRefusal.LocalAdmission)
+        {
+            servedBy?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Blocks-by-root for {root} returned an invalid block");
+        }
+    }
+
     /// <summary>Holds <paramref name="chain"/> from index <paramref name="from"/> down to its gossip block at index 0, stopping at the first block not held.</summary>
     /// <remarks>A held fetched block keeps its supplier, so its release imports it as fetched by root.</remarks>
     /// <param name="sources">The peer that served each block of <paramref name="chain"/>; <c>null</c> for the gossip block.</param>
@@ -2016,7 +2041,7 @@ public sealed class BeaconSyncOrchestrator(
     {
         for (int i = from; i >= 0; i--)
         {
-            if (!await HoldForWaitingParentAsync(chain[i], fetchedByRoot: i > 0))
+            if (!await HoldForWaitingParentAsync(chain[i], fetchedByRoot: i > 0, servedBy: sources[i]))
             {
                 return;
             }
