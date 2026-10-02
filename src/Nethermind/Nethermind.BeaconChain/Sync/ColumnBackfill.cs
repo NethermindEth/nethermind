@@ -289,6 +289,8 @@ public sealed class ColumnBackfill(
         }
 
         await Task.WhenAll(fetches);
+        // Fetched columns reach the store through the pool's writer; the progress saved from this check must be durable.
+        await pool.WhenStored().WaitAsync(token);
 
         (Hash256 Root, ulong Slot, RangeSync.ColumnFetchRotation Rotation)? highestIncomplete = null;
         foreach ((Hash256 root, ForkedSignedBeaconBlock block, RangeSync.ColumnFetchRotation rotation) in needing)

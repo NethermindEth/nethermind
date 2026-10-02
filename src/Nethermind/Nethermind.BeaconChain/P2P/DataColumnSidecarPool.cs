@@ -606,6 +606,10 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
     }
 
+    /// <summary>Completes once every sidecar added before this call is in the store, or its write failed.</summary>
+    /// <remarks>A reader of the store itself, such as a check of the columns it holds, must wait for this first.</remarks>
+    internal Task WhenStored() => storeWriter?.WhenWritten() ?? Task.CompletedTask;
+
     // Tracked before memory holds the sidecar and released only after the store does, so a reader that misses memory finds one or the other.
     private void TrackUnwritten(Hash256 blockRoot, ulong column, object sidecar)
     {
