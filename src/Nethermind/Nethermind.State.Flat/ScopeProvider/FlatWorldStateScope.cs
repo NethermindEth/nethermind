@@ -518,6 +518,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
+        if (Core.Diagnostics.ExperimentKnobs.StopWarmerAtWriteBatch) Interlocked.Increment(ref _hintSequenceId);
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 

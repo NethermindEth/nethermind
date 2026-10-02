@@ -119,6 +119,15 @@ internal static class DirtyNodeHasher
             dirtyChildren &= dirtyChildren - 1;
         }
 
+        if (Core.Diagnostics.ExperimentKnobs.HashTwoLevels > 0 && count >= Core.Diagnostics.ExperimentKnobs.HashTwoLevels
+            && TryHashGrandchildrenInParallel(root, childIndexes, resolver, pool, maxCollectedNodes))
+        {
+            // The grandchildren are hashed; one level order over the root's subtree now hashes only its dirty children.
+            TreePath rootPath = TreePath.Empty;
+            HashSubtree(root, in rootPath, resolver, pool, maxCollectedNodes);
+            return true;
+        }
+
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
         ParallelUnbalancedWork.For(0, count, RuntimeInformation.ParallelOptionsLogicalCores,
             (childIndexes, root, resolver, pool, maxCollectedNodes),
@@ -135,13 +144,48 @@ internal static class DirtyNodeHasher
         return true;
     }
 
-    private static void HashSubtree(TrieNode subtreeRoot, in TreePath subtreeRootPath, ITrieNodeResolver resolver, ICappedArrayPool? pool, int maxCollectedNodes)
+    /// <summary>Hashes the dirty grandchildren of the root as independent subtrees, two nibbles down.</summary>
+    /// <returns>Whether every dirty child was a branch, so its dirty children could be spread.</returns>
+    private static bool TryHashGrandchildrenInParallel(TrieNode root, int[] childIndexes, ITrieNodeResolver resolver, ICappedArrayPool? pool, int maxCollectedNodes)
+    {
+        using ArrayPoolList<(int Child, int Grandchild)> units = new(childIndexes.Length * BranchChildCount);
+        foreach (int childIndex in childIndexes)
+        {
+            root.TryGetDirtyChild(childIndex, out TrieNode? child);
+            if (!child!.IsBranch) return false;
+            for (int g = 0; g < BranchChildCount; g++)
+            {
+                if (child.TryGetDirtyChild(g, out TrieNode? grandchild) && grandchild.Keccak is null) units.Add((childIndex, g));
+            }
+        }
+
+        (int Child, int Grandchild)[] work = units.AsSpan().ToArray();
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
+        ParallelUnbalancedWork.For(0, work.Length, RuntimeInformation.ParallelOptionsLogicalCores,
+            (work, root, resolver, pool, maxCollectedNodes),
+            static (i, state) =>
+            {
+                (int childIndex, int grandchildIndex) = state.work[i];
+                state.root.TryGetDirtyChild(childIndex, out TrieNode? child);
+                child!.TryGetDirtyChild(grandchildIndex, out TrieNode? grandchild);
+                TreePath path = TreePath.Empty;
+                path.AppendMut(childIndex);
+                path.AppendMut(grandchildIndex);
+                HashSubtree(grandchild!, in path, state.resolver, state.pool, state.maxCollectedNodes, minimumDirtyNodes: 1);
+                return state;
+            });
+
+        return true;
+    }
+
+    private static void HashSubtree(TrieNode subtreeRoot, in TreePath subtreeRootPath, ITrieNodeResolver resolver, ICappedArrayPool? pool, int maxCollectedNodes,
+        int minimumDirtyNodes = MinimumDirtyNodes)
     {
         using ArrayPoolList<PendingNode> pending = new(64);
         TreePath path = subtreeRootPath;
         // A collection the budget cut short is still hashable: Collect adds a node only after all its dirty children.
         Collect(subtreeRoot, ref path, pending, maxCollectedNodes);
-        if (pending.Count < MinimumDirtyNodes) return;
+        if (pending.Count < minimumDirtyNodes) return;
 
         Span<PendingNode> nodes = pending.AsSpan();
         using ArrayPoolList<int> order = new(nodes.Length, nodes.Length);
