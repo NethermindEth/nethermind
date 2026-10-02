@@ -171,6 +171,101 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    // A parent held behind a deeper ancestor that waits for the regeneration budget is not fetched again for another child in the slot.
+    [Test]
+    public async Task Parent_held_behind_a_budget_deferred_ancestor_buys_no_second_backfill()
+    {
+        DeferredAncestorWalk walk = await WalkToBudgetDeferredAncestorAsync();
+        ForkedSignedBeaconBlock sibling = ChildOf(walk.Blocks[1], WallSlot - 1);
+
+        await walk.Harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(sibling, CancellationToken.None);
+        walk.Harness.Importer.RegenerationRefused.Remove(walk.Blocks[0].ComputeMessageRoot());
+        await walk.Harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ByRootRequestsFor(walk.Peer, walk.Blocks[1].ComputeMessageRoot()), Is.EqualTo(1), "the held parent is not fetched again");
+            Assert.That(walk.Harness.Importer.Known, Does.Contain(walk.Blocks[2].ComputeMessageRoot()).And.Contain(sibling.ComputeMessageRoot()), "both children import behind the deferred ancestor");
+        }
+    }
+
+    // Once the cap of refused backfills evicts the held parent nothing holds it, so later children in the same slot may fetch it, each after the last fetch failed.
+    [Test]
+    public async Task Evicted_parent_of_a_budget_deferred_ancestor_may_be_fetched_again_in_the_slot()
+    {
+        DeferredAncestorWalk walk = await WalkToBudgetDeferredAncestorAsync();
+        Hash256 heldParentRoot = walk.Blocks[1].ComputeMessageRoot();
+        // Children of a parent being fetched are held without spending the slot's budget, and evict the oldest held blocks.
+        for (int i = 0; i <= BeaconSyncOrchestrator.MaxHeldRefusedBackfills; i++)
+        {
+            await walk.Harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot + (ulong)i, seed: 0), CancellationToken.None);
+        }
+
+        walk.OtherParentFetch.SetResult([]);
+        await walk.Harness.Orchestrator.SettleWithinAsync(maxPasses: 10, CancellationToken.None);
+        walk.Withheld.Add(heldParentRoot);
+
+        await walk.Harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(walk.Blocks[1], WallSlot - 1), CancellationToken.None);
+        await walk.Harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(walk.Blocks[1], WallSlot), CancellationToken.None);
+
+        Assert.That(ByRootRequestsFor(walk.Peer, heldParentRoot), Is.EqualTo(3), "each later child fetches the evicted parent");
+    }
+
+    /// <summary>
+    /// A held parent that leaves the hold without importing, because it is invalid or its deferred ancestor is, no longer holds
+    /// its backfill: a later child in the same slot fetches it again.
+    /// </summary>
+    [Test]
+    public async Task Held_parent_that_fails_behind_a_budget_deferred_ancestor_may_be_fetched_again_in_the_slot([Values] bool ancestorInvalid)
+    {
+        DeferredAncestorWalk walk = await WalkToBudgetDeferredAncestorAsync();
+        Hash256 deferredRoot = walk.Blocks[0].ComputeMessageRoot();
+        Hash256 heldParentRoot = walk.Blocks[1].ComputeMessageRoot();
+        walk.Harness.Importer.RegenerationRefused.Remove(deferredRoot);
+        walk.Harness.Importer.Forged.Add(ancestorInvalid ? deferredRoot : heldParentRoot);
+
+        await walk.Harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+        bool heldParentFailed = !walk.Harness.Importer.Known.Contains(heldParentRoot) && walk.Harness.Orchestrator.PendingGossipBlockCount == 0;
+        walk.Withheld.Add(heldParentRoot);
+        await walk.Harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(walk.Blocks[1], WallSlot - 1), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldParentFailed, Is.True, "fixture: the held parent left the hold without importing");
+            Assert.That(ByRootRequestsFor(walk.Peer, heldParentRoot), Is.EqualTo(2));
+        }
+    }
+
+    private sealed record DeferredAncestorWalk(Harness Harness, IBeaconSyncPeer Peer, ForkedSignedBeaconBlock[] Blocks, HashSet<Hash256> Withheld, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>> OtherParentFetch);
+
+    /// <summary>
+    /// Walks the gossip block <c>Blocks[2]</c> to its fetched ancestor <c>Blocks[0]</c>, which waits for the regeneration budget,
+    /// so <c>Blocks[1]</c> and <c>Blocks[2]</c> are held behind it. The peer serves the chain by root except the withheld roots,
+    /// and leaves any other root waiting on <c>OtherParentFetch</c>.
+    /// </summary>
+    private static async Task<DeferredAncestorWalk> WalkToBudgetDeferredAncestorAsync()
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 4, WallSlot - 3, WallSlot - 2);
+        ForkedSignedBeaconBlock[] blocks = [.. chain.Select(static b => (ForkedSignedBeaconBlock)new ForkedSignedBeaconBlock.OfFulu(b))];
+        Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = blocks.ToDictionary(static b => b.ComputeMessageRoot());
+        HashSet<Hash256> withheld = [];
+        TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>> otherParentFetch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            Hash256 root = ((Hash256[])call[0])[0];
+            return !byRoot.TryGetValue(root, out ForkedSignedBeaconBlock? served) ? otherParentFetch.Task
+                : Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>(withheld.Contains(root) ? [] : [served]);
+        });
+        Harness harness = CreateHarness(anchorSlot: NearHeadAnchorSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.RegenerationRefused.Add(blocks[0].ComputeMessageRoot());
+
+        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(blocks[2], CancellationToken.None);
+        Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.EqualTo(1), "fixture: the fetched ancestor waits for the regeneration budget");
+        return new DeferredAncestorWalk(harness, peer, blocks, withheld, otherParentFetch);
+    }
+
     /// <summary>A node near the head with one peer; it serves <paramref name="served"/> by root, or nothing.</summary>
     private static (Harness Harness, IBeaconSyncPeer Peer) CreateBackfillHarness(ForkedSignedBeaconBlock? served = null)
     {
