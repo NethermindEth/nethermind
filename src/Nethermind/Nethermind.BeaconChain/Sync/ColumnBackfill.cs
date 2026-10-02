@@ -434,10 +434,14 @@ public sealed class ColumnBackfill(
     /// <remarks>
     /// The walk links blocks from <paramref name="parent"/> at the top of the range down, so a reply cut short, which holds the lowest slots, links only once
     /// the slots above it arrive: the next peer is asked for those alone, and the cut reply's blocks are linked with its answer, never stored on their own.
+    /// When a whole reply links yet the walk stops above kept blocks, they are dropped and their slots asked for again.
+    /// A peer is penalized only once a linked block shows its reply skipped a slot it covered, which BeaconBlocksByRange forbids.
     /// </remarks>
     private async Task FetchRangeAsync(Hash256 parent, ulong from, ulong until, CancellationToken token)
     {
         Dictionary<Hash256, ForkedSignedBeaconBlock> kept = [];
+        List<(IBeaconSyncPeer Peer, ulong From, ulong Last, HashSet<Hash256> Roots)> claims = [];
+        HashSet<IBeaconSyncPeer> penalized = [];
         ulong askFrom = from;
         foreach (IBeaconSyncPeer peer in NextPeers(from))
         {
@@ -453,14 +457,18 @@ public sealed class ColumnBackfill(
                 // BeaconBlocksByRange: a reply is in slot order, so what a failed one delivered is the lowest part of the range.
                 if (e is PartialBlocksException { Received: [.., { } last] received } && last.Slot >= askFrom && last.Slot < until - 1)
                 {
+                    HashSet<Hash256> roots = [];
                     foreach (ForkedSignedBeaconBlock block in received)
                     {
                         if (block.Slot >= askFrom)
                         {
-                            kept[block.ComputeMessageRoot()] = block;
+                            Hash256 root = block.ComputeMessageRoot();
+                            kept[root] = block;
+                            roots.Add(root);
                         }
                     }
 
+                    claims.Add((peer, askFrom, last.Slot, roots));
                     askFrom = last.Slot + 1;
                 }
 
@@ -474,15 +482,26 @@ public sealed class ColumnBackfill(
             }
 
             Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = new(kept);
+            HashSet<Hash256> replyRoots = [];
+            ulong replyLast = askFrom;
             foreach (ForkedSignedBeaconBlock block in reply)
             {
                 if (block.Slot >= askFrom && block.Slot < until)
                 {
-                    byRoot[block.ComputeMessageRoot()] = block;
+                    Hash256 root = block.ComputeMessageRoot();
+                    byRoot[root] = block;
+                    replyRoots.Add(root);
+                    replyLast = Math.Max(replyLast, block.Slot);
                 }
             }
 
+            if (replyRoots.Count > 0)
+            {
+                claims.Add((peer, askFrom, replyLast, replyRoots));
+            }
+
             int stored = 0;
+            ulong lowestLinked = until;
             while (byRoot.Remove(parent, out ForkedSignedBeaconBlock? next))
             {
                 if (!TryStore(parent, next))
@@ -490,11 +509,20 @@ public sealed class ColumnBackfill(
                     return;
                 }
 
-                if (!kept.ContainsKey(parent))
+                foreach ((IBeaconSyncPeer claimant, ulong claimFrom, ulong claimLast, HashSet<Hash256> claimRoots) in claims)
+                {
+                    if (next.Slot >= claimFrom && next.Slot <= claimLast && !claimRoots.Contains(parent) && penalized.Add(claimant))
+                    {
+                        claimant.ReportFailure(PeerFailureReason.ProtocolViolation, $"Blocks-by-range from slot {claimFrom} left out the block at slot {next.Slot}");
+                    }
+                }
+
+                if (!kept.Remove(parent))
                 {
                     stored++;
                 }
 
+                lowestLinked = next.Slot;
                 parent = next.ParentRoot;
             }
 
@@ -503,7 +531,24 @@ public sealed class ColumnBackfill(
                 peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Blocks-by-range [{askFrom}, {until}) returned {reply.Count - stored} blocks that do not link to the chain being fetched");
             }
 
-            return;
+            if (kept.Count == 0)
+            {
+                return;
+            }
+
+            // A whole reply that linked leaves the parent the walk stopped at among the kept blocks it did not reach, so their slots are asked for again; otherwise they stay.
+            if (reply.Count > 0 && stored == reply.Count)
+            {
+                kept.Clear();
+                askFrom = from;
+            }
+
+            if (lowestLinked <= askFrom)
+            {
+                return;
+            }
+
+            until = lowestLinked;
         }
     }
 
