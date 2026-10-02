@@ -38,7 +38,7 @@ internal class XdcBlockProducerTest
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         IEpochSwitchManager epochManager = Substitute.For<IEpochSwitchManager>();
         IWorldState stateProvider = Substitute.For<IWorldState>();
-        stateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        stateProvider.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(true);
 
         PrivateKey[] masterNodes = XdcTestHelper.GeneratePrivateKeys(108);
         epochManager

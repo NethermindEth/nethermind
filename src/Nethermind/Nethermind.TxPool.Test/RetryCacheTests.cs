@@ -8,6 +8,7 @@ using Nethermind.Logging;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -200,6 +201,41 @@ public class RetryCacheTests
 
         Assert.That(result1, Is.EqualTo(AnnounceResult.RequestRequired));
         Assert.That(result2, Is.EqualTo(AnnounceResult.Delayed));
+    }
+
+    [Test]
+    public void TryDefer_GrantsOneDeferralPerRequestSent([Values(0, 1, 4)] int retryPeers)
+    {
+        TestHandler source = new();
+        TestHandler[] peers = new TestHandler[retryPeers];
+        Assert.That(_cache.Announced(1, source), Is.EqualTo(AnnounceResult.RequestRequired));
+        for (int i = 0; i < peers.Length; i++)
+        {
+            peers[i] = new TestHandler();
+            Assert.That(_cache.Announced(1, peers[i]), Is.EqualTo(AnnounceResult.Delayed));
+        }
+
+        int granted = 0;
+        for (int requestsSent = 1; requestsSent <= retryPeers + 1; requestsSent++)
+        {
+            for (int resend = 0; resend < 3; resend++)
+            {
+                if (_cache.TryDefer(1)) granted++;
+            }
+
+            Assert.That(granted, Is.EqualTo(requestsSent));
+            _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            int retriesSent = Math.Min(requestsSent, retryPeers);
+            Assert.That(() => peers.Sum(static peer => peer.HandleMessageCallCount), Is.EqualTo(retriesSent).After(AssertTimeoutMs, 10));
+        }
+
+        Assert.That(() => _cache.TrackedRequestsInUse, Is.Zero.After(AssertTimeoutMs, 10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryDefer(1), Is.False);
+            Assert.That(granted, Is.EqualTo(retryPeers + 1));
+            Assert.That(source.WasCalled, Is.False);
+        }
     }
 
     [Test]

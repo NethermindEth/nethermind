@@ -56,8 +56,8 @@ public abstract class VirtualMachineTestsBase
     protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
-    protected virtual ulong BlockNumber { get; private set; } = DefaultBlockNumber;
-    protected virtual ulong Timestamp { get; private set; } = DefaultTimestamp;
+    protected virtual ulong BlockNumber => DefaultBlockNumber;
+    protected virtual ulong Timestamp => DefaultTimestamp;
 
     /// <summary>Applies a signed <paramref name="adjustment"/> to a block number, e.g. to target just before/after a fork.</summary>
     protected static ulong AdjustBlockNumber(ulong blockNumber, long adjustment) => (ulong)((long)blockNumber + adjustment);
@@ -69,9 +69,6 @@ public abstract class VirtualMachineTestsBase
     [SetUp]
     public virtual void Setup()
     {
-        BlockNumber = DefaultBlockNumber;
-        Timestamp = DefaultTimestamp;
-
         ILogManager logManager = GetLogManager();
 
         _stateDb = new MemDb();
@@ -322,8 +319,6 @@ public abstract class VirtualMachineTestsBase
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas, slotNumber);
-        BlockNumber = block.Header.Number;
-        Timestamp = block.Header.Timestamp;
         return (block, transaction);
     }
 

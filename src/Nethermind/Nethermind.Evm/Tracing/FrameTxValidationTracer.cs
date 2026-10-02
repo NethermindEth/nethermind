@@ -15,6 +15,8 @@ namespace Nethermind.Evm.Tracing;
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
 /// <param name="timeProvider">The clock <paramref name="timeout"/> is measured against; the system clock by default.</param>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
+/// <param name="preempt">Polled with <paramref name="token"/>; once it returns true the simulation stops and
+/// <see cref="Preempted"/> stays set.</param>
 public sealed class FrameTxValidationTracer(
     Address sender,
     Address expiryVerifier,
@@ -22,7 +24,8 @@ public sealed class FrameTxValidationTracer(
     IReleaseSpec spec,
     TimeSpan timeout = default,
     TimeProvider? timeProvider = null,
-    CancellationToken token = default)
+    CancellationToken token = default,
+    Func<bool>? preempt = null)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -40,6 +43,8 @@ public sealed class FrameTxValidationTracer(
     /// <summary>Whether the executing frame is the prefix-opening deploy frame, the only one whose
     /// carve-outs let it write state.</summary>
     private bool _inDeployFrame;
+    private bool _inExpiryFrame;
+    private int _prefixFrameIndex;
 
     /// <summary>Set between a CREATE2 and the creation frame it is expected to open.</summary>
     private bool _createPending;
@@ -56,7 +61,12 @@ public sealed class FrameTxValidationTracer(
     /// <inheritdoc/>
     /// <remarks>Polled by the interpreter every 1024 opcodes; aborting at the first violation denies a
     /// spammer the rest of the <c>MAX_VERIFY_GAS</c> budget per rejected transaction.</remarks>
-    bool ITxTracer.IsCancelled => Violated || TimedOut || token.IsCancellationRequested;
+    bool ITxTracer.IsCancelled => Violated || TimedOut || (_preempted = _preempted || preempt?.Invoke() == true) || token.IsCancellationRequested;
+
+    /// <summary>True once the preemption callback asked the simulation to stop.</summary>
+    public bool Preempted => _preempted;
+
+    private bool _preempted;
 
     /// <summary>True once the wall-clock bound was reached; the transaction is then rejected, not cancelled.</summary>
     public bool TimedOut => _deadline != 0 && _time.GetTimestamp() > _deadline;
@@ -76,6 +86,7 @@ public sealed class FrameTxValidationTracer(
     {
         SettleCreate();
         _inDeployFrame = isDeployFrame;
+        _inExpiryFrame = _prefixFrameIndex++ == 0 && !isDeployFrame && target == expiryVerifier;
 
         // The processor dispatches this target rather than an opcode, so it never meets the CALL* rule below,
         // and it is the one arbitrary address the prefix executes. A delegated factory is mutable by its
@@ -106,8 +117,9 @@ public sealed class FrameTxValidationTracer(
                 }
                 break;
             case Instruction.TIMESTAMP:
-                // Permitted only inside the canonical expiry verifier: address and code hash must match.
-                if (env.ExecutingAccount != expiryVerifier || state.GetCodeHash(expiryVerifier) != Eip8141Constants.ExpiryVerifierCodeHash)
+                // EIP-8141 permits TIMESTAMP only in the leading canonical expiry frame.
+                if (!_inExpiryFrame || env.CallDepth != 0
+                    || state.GetCodeHash(expiryVerifier) != Eip8141Constants.ExpiryVerifierCodeHash)
                 {
                     Violate("banned opcode TIMESTAMP in validation prefix");
                 }

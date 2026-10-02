@@ -245,6 +245,13 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Fail;
         }
 
+        // Runs after the fork checks above, which also guard payloads not bound from JSON and keep their messages.
+        if (executionPayload.HasUnboundField)
+        {
+            error = executionPayload.UnboundFieldError;
+            return ValidationResult.Fail;
+        }
+
         if (spec.IsEip4844Enabled && blobVersionedHashes is null)
         {
             error = "Blob versioned hashes must not be null";
