@@ -18,7 +18,6 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Crypto;
 using Nethermind.BeaconChain.Test.Sync;
-using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,6 +30,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using Snappier;
+using static Nethermind.BeaconChain.Test.P2P.DataColumnSidecarTestFixture;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
@@ -232,18 +232,22 @@ public class ColumnGossipRouterFuluHeaderTests
         Assert.That(router.Handle(honestColumn, gloasTopic: false, Message(honest)), Is.EqualTo(MessageValidity.Accepted));
     }
 
-    // A reconstructed column is not published, so the gossip copy is the only way this node relays it to its mesh.
+    // fulu/das-core.md "Reconstruction and cross-seeding": a reconstructed column of a subscribed subnet is sent to its mesh, so an equal gossip copy is a duplicate.
+    // A failed send must not mark it, or the gossip copy, the only other way this node relays the column, would be dropped too.
     [Test]
-    public void A_reconstructed_column_is_forwarded_once_when_an_equal_copy_arrives_over_gossip()
+    public void A_reconstructed_column_is_published_once_and_an_equal_gossip_copy_is_forwarded_only_when_the_publish_failed([Values] bool publishFails)
     {
         const ulong reconstructedColumn = Eip7594DasConstants.RequiredColumnsForReconstruction;
-        (ColumnGossipRouter router, DataColumnSidecarPool pool, BeaconChainStore store) = Create(Ancestry.DescendsFromFinalized, subnets: AllSubnets);
+        Dictionary<string, SilentTopic> topics = [];
+        (ColumnGossipRouter router, DataColumnSidecarPool pool, BeaconChainStore store) = Create(Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: false), AllSubnets,
+            getTopic: id => topics[id] = new SilentTopic { Fails = publishFails });
         StoreAsImported(store, DataColumnSidecarTestFixture.BuildValidSidecar(0, CurrentSlot));
         MessageValidity[] received = [.. Enumerable.Range(0, Eip7594DasConstants.RequiredColumnsForReconstruction)
             .Select(i => router.Handle((ulong)i, gloasTopic: false, Message(DataColumnSidecarTestFixture.BuildValidSidecar((ulong)i, CurrentSlot))))];
         long batchesBefore = router.KzgBatchCount;
         DataColumnSidecar honest = DataColumnSidecarTestFixture.BuildValidSidecar(reconstructedColumn, CurrentSlot);
         bool reconstructed = pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), reconstructedColumn, out _);
+        string reconstructedTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.DataColumnSidecarTopicName(reconstructedColumn));
 
         DataColumnSidecar forged = DataColumnSidecarTestFixture.BuildValidSidecar(reconstructedColumn, CurrentSlot);
         forged.SignedBlockHeader!.Message!.StateRoot = OtherRoot;
@@ -255,9 +259,11 @@ public class ColumnGossipRouterFuluHeaderTests
         {
             Assert.That(received, Is.All.EqualTo(MessageValidity.Accepted));
             Assert.That(reconstructed, Is.True, "the column was reconstructed before any copy of it arrived");
+            Assert.That(topics[reconstructedTopic].Published, Is.EqualTo(publishFails ? Array.Empty<byte[]>() : new[] { Message(honest) }), "the reconstructed sidecar is sent once, as its snappy SSZ");
             Assert.That(forgedVerdict, Is.Not.EqualTo(MessageValidity.Accepted));
-            Assert.That((first, second), Is.EqualTo((MessageValidity.Accepted, MessageValidity.Ignored)), "the first equal copy is forwarded, later ones are duplicates");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(1));
+            Assert.That((first, second), Is.EqualTo(publishFails ? (MessageValidity.Accepted, MessageValidity.Ignored) : (MessageValidity.Ignored, MessageValidity.Ignored)),
+                "a published column is never forwarded again; an unpublished one is forwarded once");
+            Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(publishFails ? 1 : 3), "a published tuple also drops a forged copy claiming it");
             Assert.That(router.KzgBatchCount, Is.EqualTo(batchesBefore));
             Assert.That(pool.TryGet(SszRoots.HashTreeRoot(forged.SignedBlockHeader.Message), reconstructedColumn, out _), Is.False);
         }
@@ -801,13 +807,6 @@ public class ColumnGossipRouterFuluHeaderTests
 
     /// <summary>Stores a block under <paramref name="sidecar"/>'s header root with the header's signature, as import would have.</summary>
     /// <remarks>The store trusts its key as the block root, so the block body is not made to hash to the header's body root.</remarks>
-    private static void StoreAsImported(BeaconChainStore store, DataColumnSidecar sidecar)
-    {
-        SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(sidecar.SignedBlockHeader!.Message!.Slot);
-        block.Signature = sidecar.SignedBlockHeader.Signature;
-        store.PutBlock(SszRoots.HashTreeRoot(sidecar.SignedBlockHeader.Message), block);
-    }
-
     private static Bls.SecretKey SecretKey(int index) => new(new Bls.SecretKey(MasterSecretKey, Bls.ByteOrder.LittleEndian), (uint)index);
 
     private static PubkeyCache Pubkeys()
@@ -861,14 +860,14 @@ public class ColumnGossipRouterFuluHeaderTests
     private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(Ancestry ancestry, bool parentInSnapshot = false, ulong[]? subnets = null, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, PubkeyCache? keys = null, FailedBlockRoots? failedBlocks = null) =>
         Create(ancestry == Ancestry.NoSource ? null : Snapshot(ancestry, parentInSnapshot), subnets, withSource: ancestry != Ancestry.NoSource, withPubkeys, lookaheads, keys: keys, failedBlocks: failedBlocks);
 
-    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(ForkChoiceSnapshot? snapshot, ulong[]? subnets = null, bool withSource = true, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, ForkChoiceSnapshotHolder? forkChoice = null, PubkeyCache? keys = null, FailedBlockRoots? failedBlocks = null)
+    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(ForkChoiceSnapshot? snapshot, ulong[]? subnets = null, bool withSource = true, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, ForkChoiceSnapshotHolder? forkChoice = null, PubkeyCache? keys = null, FailedBlockRoots? failedBlocks = null, Func<string, ITopic>? getTopic = null)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot).AddSeconds(6);
         DataColumnSidecarPool pool = new();
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
         ForkChoiceSnapshotHolder? holder = forkChoice ?? (withSource ? new ForkChoiceSnapshotHolder { Current = snapshot } : null);
         ColumnGossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance, pool, store, forkChoice: holder, pubkeys: keys ?? (withPubkeys ? Pubkeys() : null), proposerLookahead: lookaheads, failedBlocks: failedBlocks);
-        router.Start(_ => new SilentTopic(), ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), subnets ?? [Column]);
+        router.Start(getTopic ?? (_ => new SilentTopic()), ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), subnets ?? [Column]);
         return (router, pool, store);
     }
 
@@ -903,11 +902,23 @@ public class ColumnGossipRouterFuluHeaderTests
 
         public bool IsSubscribed => true;
 
+        public bool Fails { get; init; }
+
+        public List<byte[]> Published { get; } = [];
+
         public void Subscribe() { }
 
         public void Unsubscribe() { }
 
-        public void Publish(byte[] value) { }
+        public void Publish(byte[] value)
+        {
+            if (Fails)
+            {
+                throw new InvalidOperationException("Router has not been started");
+            }
+
+            Published.Add(value);
+        }
 
         public void Publish(IMessage value) { }
     }

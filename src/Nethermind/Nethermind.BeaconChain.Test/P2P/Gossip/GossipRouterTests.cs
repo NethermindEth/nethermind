@@ -142,6 +142,45 @@ public partial class GossipRouterTests
         }
     }
 
+    /// <summary>
+    /// Under the host's settings the library drops a message carrying from, seqno, signature or key, even an empty one, before the validator,
+    /// and keeps no id for it, so the unsigned copy of the same data is still validated.
+    /// </summary>
+    /// <remarks>p2p-interface.md "Topics and messages": clients MUST enforce <c>StrictNoSign</c>; the validator relies on the library for it.</remarks>
+    [Test]
+    public async Task StrictNoSign_drops_a_present_field_before_the_validator_and_still_validates_the_unsigned_copy(
+        [Values("from", "seqno", "signature", "key")] string field, [Values] bool empty)
+    {
+        using IContainer container = BeaconChainTestContainer.Builder().Build();
+        await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
+        using PubsubRouter pubsub = new(new PeerStore(), p2p.PubsubSettingsForTest);
+        List<Message> verified = [];
+        pubsub.VerifyMessage = (_, message) => { verified.Add(message.Clone()); return MessageValidity.Ignored; };
+        string topicId = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
+        pubsub.GetTopic(topicId);
+        (_, _, Action<Rpc> receive) = ConnectSubscribedPeer(pubsub, topicId);
+        Message unsigned = new() { Topic = topicId, Data = ByteString.CopyFrom([1, 2, 3]) };
+        Message present = unsigned.Clone();
+        ByteString value = empty ? ByteString.Empty : ByteString.CopyFrom([1]);
+        switch (field)
+        {
+            case "from": present.From = value; break;
+            case "seqno": present.Seqno = value; break;
+            case "signature": present.Signature = value; break;
+            case "key": present.Key = value; break;
+        }
+
+        // A wire round trip, so an empty field stays present as it would arrive from a peer.
+        Rpc signedRpc = new();
+        signedRpc.Publish.Add(Message.Parser.ParseFrom(present.ToByteArray()));
+        receive(signedRpc);
+        Rpc unsignedRpc = new();
+        unsignedRpc.Publish.Add(unsigned);
+        receive(unsignedRpc);
+
+        Assert.That(verified, Is.EqualTo(new[] { unsigned }), "only the unsigned copy reaches the validator");
+    }
+
     /// <summary>Registers a connected peer subscribed to <paramref name="topicId"/> with <paramref name="pubsub"/>.</summary>
     /// <returns>The peer, the RPCs the router sends it, and a callback that hands the router an RPC from it.</returns>
     private static (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) ConnectSubscribedPeer(PubsubRouter pubsub, string topicId)

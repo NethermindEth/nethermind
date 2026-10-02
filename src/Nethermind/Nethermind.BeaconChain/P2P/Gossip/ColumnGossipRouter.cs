@@ -23,6 +23,7 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Network.Libp2p;
+using Snappier;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.BeaconChain.P2P.Gossip;
@@ -221,7 +222,13 @@ public sealed class ColumnGossipRouter(
     private readonly Lock _subscriptionLock = new();
     private readonly Dictionary<string, List<(ulong Subnet, ITopic Topic)>> _subscriptions = [];
 
+    // A copy of _subscriptions read without _subscriptionLock: publishing may run under the pubsub router's monitor, which subscribing takes under that lock.
+    private volatile Dictionary<string, List<(ulong Subnet, ITopic Topic)>> _publishTopics = [];
+
     private readonly LruKeyCache<Hash256> _reconstructedBlockRoots = new(SeenCacheSize, "beacon column reconstruction completed blocks");
+
+    // The header signature of each root with a sidecar that passed every check, so columns reconstructed under that signed header may be published.
+    private readonly LruCache<Hash256, BlsSignature> _acceptedHeaders = new(SeenCacheSize, "beacon column gossip accepted headers");
     private readonly HashSet<Hash256> _reconstructionsInFlight = [];
     private readonly Lock _reconstructionLock = new();
 
@@ -285,6 +292,7 @@ public sealed class ColumnGossipRouter(
             }
 
             _subscriptions[key] = subscriptions;
+            _publishTopics = new(_subscriptions);
             if (_logger.IsInfo) _logger.Info($"Subscribed {_subnets.Count} data column sidecar subnets for fork digest 0x{key}");
         }
     }
@@ -299,6 +307,8 @@ public sealed class ColumnGossipRouter(
             {
                 return;
             }
+
+            _publishTopics = new(_subscriptions);
 
             foreach ((ulong _, ITopic topic) in subscriptions)
             {
@@ -488,11 +498,18 @@ public sealed class ColumnGossipRouter(
     }
 
     /// <summary>Consumes a sidecar that passed every check and returns <see cref="MessageValidity.Accepted"/>, so the pubsub library forwards it.</summary>
-    private MessageValidity ConsumeVerified(DataColumnSidecar sidecar, Hash256 blockRoot, ulong slot, ulong proposerIndex) =>
+    private MessageValidity ConsumeVerified(DataColumnSidecar sidecar, Hash256 blockRoot, ulong slot, ulong proposerIndex)
+    {
         // [IGNORE] the first sidecar for (slot, proposer_index, index) with a valid header signature, inclusion proof and KZG proofs.
-        _seenSidecars.Set((slot, proposerIndex, sidecar.Index)) && TryConsume(sidecar, blockRoot, slot)
-            ? Accept(MessageValidity.Accepted)
-            : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
+        if (!_seenSidecars.Set((slot, proposerIndex, sidecar.Index)))
+        {
+            return Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
+        }
+
+        // Before the consume, which may reconstruct the block's other columns and publish them under this header.
+        _acceptedHeaders.Set(blockRoot, sidecar.SignedBlockHeader!.Signature);
+        return TryConsume(sidecar, blockRoot, slot) ? Accept(MessageValidity.Accepted) : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
+    }
 
     /// <summary>
     /// Returns <see cref="MessageValidity.Accepted"/> for the first copy of a (slot, proposer_index, index) whose cells and
@@ -1149,7 +1166,7 @@ public sealed class ColumnGossipRouter(
             _reconstructionsInFlight.Add(blockRoot);
         }
 
-        List<DataColumnSidecar> exposed = [];
+        List<ReconstructedSidecarToPublish> exposed = [];
         try
         {
             if (!Reconstruct(held, out DataColumnSidecar[] fullMatrix))
@@ -1164,7 +1181,7 @@ public sealed class ColumnGossipRouter(
                 {
                     if (ExposeReconstructed(entry, blockRoot))
                     {
-                        exposed.Add(entry.Sidecar);
+                        exposed.Add(entry);
                     }
                 }
 
@@ -1179,20 +1196,15 @@ public sealed class ColumnGossipRouter(
             }
         }
 
-        foreach (DataColumnSidecar sidecar in exposed)
+        foreach (ReconstructedSidecarToPublish entry in exposed)
         {
-            DataColumnSidecarReceived?.Invoke(sidecar);
+            DataColumnSidecarReceived?.Invoke(entry.Sidecar);
         }
+
+        PublishReconstructed(blockRoot, exposed);
     }
 
-    /// <summary>
-    /// Adds a locally reconstructed sidecar to the serving pool, unless a
-    /// gossip copy of its (block root, index) already did.
-    /// </summary>
-    /// <remarks>
-    /// It is not published, so its (slot, proposer_index, index) stays unmarked: the next gossip copy equal to it is
-    /// forwarded without KZG work, which is the only way this node relays the column to its mesh.
-    /// </remarks>
+    /// <summary>Adds a locally reconstructed sidecar to the serving pool, unless a gossip copy of its (block root, index) already did.</summary>
     private bool ExposeReconstructed(ReconstructedSidecarToPublish entry, Hash256 blockRoot)
     {
         if (!_verifiedColumns.Set((blockRoot, entry.Sidecar.Index)))
@@ -1200,10 +1212,53 @@ public sealed class ColumnGossipRouter(
             return false;
         }
 
-        // Not published: Nethermind.Libp2p preview.45 signs every Publish, which StrictNoSign peers drop.
-        // Publish again once the library omits from, seqno, signature and key under SignaturePolicy.StrictNoSign.
         pool?.Add(blockRoot, entry.Slot, entry.Sidecar);
         return true;
+    }
+
+    /// <summary>Sends each reconstructed sidecar of a subscribed subnet to that subnet's topic of the sidecar's own fork digest.</summary>
+    /// <remarks>
+    /// fulu/das-core.md "Reconstruction and cross-seeding": a column of a subscribed subnet MUST go to the topic mesh neighbors.
+    /// A column of any other subnet is only held: its SHOULD-expose through gossip emission is not done. A sidecar is published only under
+    /// the signed header of a sidecar of its block that passed every check, since a held column consumed unverified or pooled by sync may
+    /// carry a forged signature, which reconstruction copies. A failed send releases its (slot, proposer_index, index) tuple, so a later
+    /// gossip copy is free to be forwarded.
+    /// </remarks>
+    private void PublishReconstructed(Hash256 blockRoot, List<ReconstructedSidecarToPublish> entries)
+    {
+        if (entries.Count == 0 || !_acceptedHeaders.TryGet(blockRoot, out BlsSignature accepted))
+        {
+            return;
+        }
+
+        // Every entry is a column of one block, so of one slot and one digest.
+        _publishTopics.TryGetValue(Convert.ToHexStringLower(ForkDigest.Compute(spec, spec.GetEpoch(entries[0].Slot))), out List<(ulong Subnet, ITopic Topic)>? subscribed);
+        foreach (ReconstructedSidecarToPublish entry in entries)
+        {
+            // A reconstructed sidecar carries the signed header of a held column, which sync may have pooled under another signature.
+            ITopic? topic = subscribed?.Find(subscription => subscription.Subnet == entry.Subnet).Topic;
+            if (topic is null || entry.Sidecar.SignedBlockHeader?.Signature != accepted)
+            {
+                continue;
+            }
+
+            // [IGNORE] the first sidecar for (slot, proposer_index, index): claimed as a received copy would be, so an equivocating block's column is not sent.
+            (ulong, ulong, ulong) tuple = (entry.Slot, entry.ProposerIndex, entry.Sidecar.Index);
+            if (!_seenSidecars.Set(tuple))
+            {
+                continue;
+            }
+
+            try
+            {
+                topic.Publish(Snappy.CompressToArray(DataColumnSidecar.Encode(entry.Sidecar)));
+            }
+            catch (InvalidOperationException e)
+            {
+                _seenSidecars.Delete(tuple);
+                if (_logger.IsDebug) _logger.Debug($"Could not publish reconstructed data column {entry.Sidecar.Index} at slot {entry.Slot}: {e.Message}");
+            }
+        }
     }
 
     private ColumnGossipDropReason? ValidateNotFromFuture(ulong slot)

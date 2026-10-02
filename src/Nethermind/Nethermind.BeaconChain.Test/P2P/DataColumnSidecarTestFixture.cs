@@ -4,7 +4,9 @@
 using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Test.DataAvailability;
+using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.SszRest;
@@ -49,6 +51,14 @@ internal static class DataColumnSidecarTestFixture
             },
             KzgCommitmentsInclusionProof = branch,
         };
+    }
+
+    /// <summary>Stores a block under the root of <paramref name="sidecar"/>'s header with its signature, as an imported block whose header the import verified.</summary>
+    public static void StoreAsImported(BeaconChainStore store, DataColumnSidecar sidecar)
+    {
+        SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(sidecar.SignedBlockHeader!.Message!.Slot);
+        block.Signature = sidecar.SignedBlockHeader.Signature;
+        store.PutBlock(SszRoots.HashTreeRoot(sidecar.SignedBlockHeader.Message), block);
     }
 
     /// <summary>Folds <paramref name="leaf"/> up to a root using the same algorithm <c>is_valid_merkle_branch</c> verifies, independently of the verifier under test.</summary>
