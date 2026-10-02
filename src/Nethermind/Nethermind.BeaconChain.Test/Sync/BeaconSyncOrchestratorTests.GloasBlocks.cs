@@ -229,6 +229,135 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
+    /// A walk whose fetched ancestor begins to wait for its parent's payload by another route, in the retry set or held behind a
+    /// block that does, holds its blocks for that payload at once, not when the fetch ends (specs/gloas/p2p-interface.md <c>beacon_block</c>).
+    /// </summary>
+    [Test]
+    public async Task Walk_holds_its_blocks_once_its_fetched_ancestor_waits_for_a_payload_elsewhere([Values] bool ancestorHeld)
+    {
+        ParkedParentScenario scenario = CreateParkedParentScenario();
+        Harness harness = scenario.Harness;
+        TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>> fetch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        scenario.Peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(fetch.Task);
+        ForkedSignedBeaconBlock ancestor = ancestorHeld ? scenario.Child : scenario.Parent;
+        ForkedSignedBeaconBlock walking = ancestorHeld ? scenario.Grandchild : scenario.Child;
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+        if (ancestorHeld)
+        {
+            await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, cts.Token);
+        }
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(walking, cts.Token);
+        await harness.Orchestrator.ProcessGossipBlockAsync(ancestor, cts.Token);
+        int heldWhileFetching = harness.Orchestrator.PendingGossipBlockCount;
+        fetch.SetResult([]);
+        await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
+        await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(scenario.FullRoot, WallSlot), cts.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ByRootRequestsFor(scenario.Peer, ancestor.ComputeMessageRoot()), Is.EqualTo(1), "fixture: the walk fetched the ancestor");
+            Assert.That(heldWhileFetching, Is.EqualTo(ancestorHeld ? 2 : 1), "the walking block is held while the fetch still runs");
+            Assert.That(harness.Importer.Known, Does.Contain(ancestor.ComputeMessageRoot()).And.Contain(walking.ComputeMessageRoot()));
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
+        }
+    }
+
+    /// <summary>
+    /// Two walks overlap: one fetched B and A for gossip C and waits on X, the other waits on a second fetch of A for gossip B.
+    /// When X begins to wait for its parent's payload, the first walk holds A, which resumes the second walk to hold B first;
+    /// the first walk still holds C behind B, and the payload imports the whole chain.
+    /// </summary>
+    [Test]
+    public async Task Overlapping_walks_resumed_by_a_payload_wait_hold_every_block()
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(NearHeadAnchorSlot);
+        ForkedSignedBeaconBlock full = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 1, anchorRoot));
+        Hash256 fullRoot = full.ComputeMessageRoot();
+        ForkedSignedBeaconBlock x = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 2, fullRoot));
+        ForkedSignedBeaconBlock a = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 3, x.ComputeMessageRoot()));
+        ForkedSignedBeaconBlock b = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 4, a.ComputeMessageRoot()));
+        ForkedSignedBeaconBlock c = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 5, b.ComputeMessageRoot()));
+        (Harness harness, IBeaconSyncPeer _, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches) = CreateWaitingByRootHarness();
+        harness.Importer.Known.UnionWith([anchorRoot, fullRoot]);
+        harness.Importer.UnverifiedPayloads.Add(fullRoot);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(c, cts.Token);
+        fetches[b.ComputeMessageRoot()].SetResult([b]);
+        await WaitForFetchAsync(fetches, a.ComputeMessageRoot(), harness, cts.Token);
+        fetches[a.ComputeMessageRoot()].SetResult([a]);
+        await WaitForFetchAsync(fetches, x.ComputeMessageRoot(), harness, cts.Token);
+        await harness.Orchestrator.ProcessGossipBlockAsync(b, cts.Token);
+        int aFetches = fetches.Count(f => f.Key == a.ComputeMessageRoot() && !f.Value.Task.IsCompleted);
+        await harness.Orchestrator.ProcessGossipBlockAsync(x, cts.Token);
+        int held = harness.Orchestrator.PendingGossipBlockCount;
+        foreach (TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>> fetch in fetches.Values)
+        {
+            fetch.TrySetResult([]);
+        }
+
+        await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
+        await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(fullRoot, WallSlot), cts.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(aFetches, Is.EqualTo(1), "fixture: gossip B waits on a second fetch of A");
+            Assert.That(held, Is.EqualTo(3), "A, B and C are held for X's parent payload");
+            Assert.That(harness.Importer.Known, Does.Contain(c.ComputeMessageRoot()));
+            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
+        }
+    }
+
+    /// <summary>
+    /// A fetched copy of a held block that carries a held sibling's signature is not taken as held: the walk served it stops
+    /// there instead of holding its gossip block behind a copy that was never verified.
+    /// </summary>
+    [Test]
+    public async Task Fetched_copy_with_a_held_siblings_signature_is_not_taken_as_held()
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(NearHeadAnchorSlot);
+        ForkedSignedBeaconBlock full = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 1, anchorRoot));
+        Hash256 fullRoot = full.ComputeMessageRoot();
+        ForkedSignedBeaconBlock q = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 2, fullRoot));
+        SignedBeaconBlockGloas signedR = CreateMinimalGloasBlock(NearHeadAnchorSlot + 3, q.ComputeMessageRoot());
+        signedR.Signature = new BlsSignature(Enumerable.Repeat((byte)0x22, 96).ToArray());
+        SignedBeaconBlockGloas signedS = CreateMinimalGloasBlock(NearHeadAnchorSlot + 4, q.ComputeMessageRoot());
+        signedS.Signature = new BlsSignature(Enumerable.Repeat((byte)0x33, 96).ToArray());
+        ForkedSignedBeaconBlock r = new ForkedSignedBeaconBlock.OfGloas(signedR);
+        ForkedSignedBeaconBlock s = new ForkedSignedBeaconBlock.OfGloas(signedS);
+        ForkedSignedBeaconBlock forgedR = new ForkedSignedBeaconBlock.OfGloas(new SignedBeaconBlockGloas { Message = signedR.Message, Signature = signedS.Signature });
+        ForkedSignedBeaconBlock t = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 5, s.ComputeMessageRoot()));
+        ForkedSignedBeaconBlock g = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(NearHeadAnchorSlot + 6, r.ComputeMessageRoot()));
+        (Harness harness, IBeaconSyncPeer _, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches) = CreateWaitingByRootHarness();
+        harness.Importer.Known.UnionWith([anchorRoot, fullRoot]);
+        harness.Importer.UnverifiedPayloads.Add(fullRoot);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+
+        // R's walk, then T's walk through S, then G's walk through the forged R all wait on one fetch of Q, in that order.
+        await harness.Orchestrator.ProcessGossipBlockAsync(r, cts.Token);
+        await harness.Orchestrator.ProcessGossipBlockAsync(t, cts.Token);
+        fetches[s.ComputeMessageRoot()].SetResult([s]);
+        await ProcessUntilOneFetchRunsAsync(harness, cts.Token);
+        await harness.Orchestrator.ProcessGossipBlockAsync(g, cts.Token);
+        fetches[r.ComputeMessageRoot()].SetResult([forgedR]);
+        await ProcessUntilOneFetchRunsAsync(harness, cts.Token);
+        fetches[q.ComputeMessageRoot()].SetResult([q]);
+        await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
+
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(3), "R, S and T are held; G is not held behind the forged R");
+    }
+
+    private static async Task ProcessUntilOneFetchRunsAsync(Harness harness, CancellationToken token)
+    {
+        while (harness.Orchestrator.AncestorFetchesInFlight > 1)
+        {
+            await harness.Orchestrator.WaitForWorkAsync(token);
+            await harness.Orchestrator.ProcessQueuedAsync(token);
+        }
+    }
+
+    /// <summary>
     /// A fetched block held behind a fetched parent that waits for its own parent's payload is released as fetched by root once
     /// the payload arrives: its import is charged to the by-root regeneration budget, and when its state transition fails the
     /// peer that served it is blamed, as for any invalid block it returned by root.

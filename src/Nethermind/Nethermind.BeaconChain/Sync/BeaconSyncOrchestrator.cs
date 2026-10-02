@@ -1090,6 +1090,12 @@ public sealed class BeaconSyncOrchestrator(
             {
                 AwaitColumns(block, root, token);
             }
+
+            // The walks waiting on this block's fetch hold their blocks behind it now, not when the fetch ends.
+            if (IsWaitingForPayload(root))
+            {
+                await ResumeAncestorWalksAsync(root, token);
+            }
         }
         else
         {
@@ -1922,7 +1928,19 @@ public sealed class BeaconSyncOrchestrator(
             }
         }
 
-        // The chains waiting on a by-root fetch of this block resume now; the fetch keeps its place in the bound until it ends.
+        await ResumeAncestorWalksAsync(root, token);
+
+        // A busy worker skips stale slot ticks, so the head step runs here too: the engine API wants forkchoiceUpdated after each head change.
+        if (++_importsSinceHeadStep >= HeadStepImportInterval || slotClock.UnixMilliseconds - _headStepMs >= (long)HeadStepInterval.TotalMilliseconds)
+        {
+            await RunHeadStepAsync(token);
+        }
+    }
+
+    /// <summary>Resumes the walks waiting on the by-root fetch of <paramref name="root"/>, which imported or began to wait for its parent's payload by another route.</summary>
+    /// <remarks>The fetch keeps its place in the bound until it ends.</remarks>
+    private async Task ResumeAncestorWalksAsync(Hash256 root, CancellationToken token)
+    {
         if (_ancestorFetches.TryGetValue(root, out List<(List<ForkedSignedBeaconBlock> Chain, List<IBeaconSyncPeer?> Sources)>? waiting) && waiting.Count > 0)
         {
             (List<ForkedSignedBeaconBlock> Chain, List<IBeaconSyncPeer?> Sources)[] resumed = [.. waiting];
@@ -1931,12 +1949,6 @@ public sealed class BeaconSyncOrchestrator(
             {
                 await AdvanceBackfillAsync(chain, sources, token);
             }
-        }
-
-        // A busy worker skips stale slot ticks, so the head step runs here too: the engine API wants forkchoiceUpdated after each head change.
-        if (++_importsSinceHeadStep >= HeadStepImportInterval || slotClock.UnixMilliseconds - _headStepMs >= (long)HeadStepInterval.TotalMilliseconds)
-        {
-            await RunHeadStepAsync(token);
         }
     }
 
@@ -1976,7 +1988,7 @@ public sealed class BeaconSyncOrchestrator(
         // The parent's import drains this child, so the parent is not fetched again.
         if (IsWaitingForPayload(block.ParentRoot))
         {
-            await HoldForWaitingParentAsync(block);
+            await HoldForWaitingParentAsync(block, token);
             return;
         }
 
@@ -2104,9 +2116,17 @@ public sealed class BeaconSyncOrchestrator(
     /// <param name="fetchedByRoot">Whether this node fetched the block, so the importer does not charge it to the gossip regeneration budget.</param>
     /// <param name="servedBy">The peer that served a block fetched by root, blamed if the block is invalid.</param>
     /// <returns>Whether the block is held.</returns>
-    private async Task<bool> HoldForWaitingParentAsync(ForkedSignedBeaconBlock block, bool fetchedByRoot = false, IBeaconSyncPeer? servedBy = null)
+    private async Task<bool> HoldForWaitingParentAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool fetchedByRoot = false, IBeaconSyncPeer? servedBy = null)
     {
         Hash256 root = block.ComputeMessageRoot();
+        // Another walk may have held the same signed block first, so the caller's descendants are held behind it.
+        if (_heldForPayload.Contains(root)
+            && _pendingByParent.TryGetValue(block.ParentRoot, out List<ForkedSignedBeaconBlock>? held)
+            && held.Exists(heldBlock => IsSameSignedBlock(heldBlock, block) && heldBlock.ComputeMessageRoot() == root))
+        {
+            return true;
+        }
+
         if (_pendingCount >= MaxPendingGossipBlocks || gossipRouter.IsProposalSeen(block.Slot, block.ProposerIndex))
         {
             return false;
@@ -2130,6 +2150,7 @@ public sealed class BeaconSyncOrchestrator(
         QueuePendingGossipBlock(block);
         gossipRouter.MarkProposalSeen(block.Slot, block.ProposerIndex);
         _heldForPayload.Add(root);
+        await ResumeAncestorWalksAsync(root, token);
         return true;
     }
 
@@ -2149,11 +2170,11 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Holds <paramref name="chain"/> from index <paramref name="from"/> down to its gossip block at index 0, stopping at the first block not held.</summary>
     /// <remarks>A held fetched block keeps its supplier, so its release imports it as fetched by root.</remarks>
     /// <param name="sources">The peer that served each block of <paramref name="chain"/>; <c>null</c> for the gossip block.</param>
-    private async Task HoldChainForWaitingParentAsync(List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> sources, int from)
+    private async Task HoldChainForWaitingParentAsync(List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> sources, int from, CancellationToken token)
     {
         for (int i = from; i >= 0; i--)
         {
-            if (!await HoldForWaitingParentAsync(chain[i], fetchedByRoot: i > 0, servedBy: sources[i]))
+            if (!await HoldForWaitingParentAsync(chain[i], token, fetchedByRoot: i > 0, servedBy: sources[i]))
             {
                 return;
             }
@@ -2182,7 +2203,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             if (IsWaitingForPayload(parent))
             {
-                await HoldChainForWaitingParentAsync(chain, sources, chain.Count - 1);
+                await HoldChainForWaitingParentAsync(chain, sources, chain.Count - 1, token);
             }
             else if (_pendingRetry.ContainsKey(parent))
             {
@@ -2208,7 +2229,7 @@ public sealed class BeaconSyncOrchestrator(
             BlockImportResult result = await ImportBlockAsync(chain[i], token, fetchedByRoot: i > 0, servedBy: sources[i]);
             if (result == BlockImportResult.ParentPayloadUnverified && i > 0 && _pendingRetry.ContainsKey(chain[i].ComputeMessageRoot()))
             {
-                await HoldChainForWaitingParentAsync(chain, sources, i - 1);
+                await HoldChainForWaitingParentAsync(chain, sources, i - 1, token);
                 break;
             }
 
