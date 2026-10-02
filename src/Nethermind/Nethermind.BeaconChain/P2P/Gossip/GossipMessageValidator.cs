@@ -15,8 +15,8 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// <summary>The pubsub router's synchronous validator for eth2 gossip messages (see <see cref="PubsubRouter.VerifyMessage"/>).</summary>
 /// <remarks>
 /// <para>
-/// The pubsub library calls the validator once per new message id, after its own signature policy check and before its
-/// message cache and forwarding. It raises topic events only for <see cref="MessageValidity.Accepted"/>, and keeps a
+/// The pubsub library calls the validator once per new message id, after its own <c>StrictNoSign</c> check (which drops a
+/// message carrying any of from, seqno, signature or key without caching its id) and before its message cache and forwarding. It raises topic events only for <see cref="MessageValidity.Accepted"/>, and keeps a
 /// rejected or ignored id for the whole seen TTL without redelivering it. A message that passes every check this node
 /// can run without beacon state is therefore consumed here, by <see cref="GossipRouter"/> raising its typed event, and
 /// returned as <see cref="MessageValidity.Ignored"/>: its signature and state checks run later, so it must not be

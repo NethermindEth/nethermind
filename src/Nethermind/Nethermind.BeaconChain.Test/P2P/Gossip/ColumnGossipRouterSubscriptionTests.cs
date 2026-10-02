@@ -5,11 +5,11 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
-using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -57,7 +57,7 @@ public class ColumnGossipRouterSubscriptionTests
     }
 
     [Test]
-    public void Reconstructed_column_is_published_on_no_digest()
+    public void Reconstructed_column_is_published_only_on_its_own_digest()
     {
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         using IContainer container = BuildContainer();
@@ -66,12 +66,16 @@ public class ColumnGossipRouterSubscriptionTests
         router.Start(id => topics[id] = new RecordingTopic(), Bpo1Digest, [.. Enumerable.Range(0, required + 1).Select(static i => (ulong)i)]);
         router.SubscribeDigest(Bpo2Digest);
 
-        // An imported block's header needs no key cache or lookahead, so its columns reach reconstruction.
+        // An imported block's header on a branch from the finalized checkpoint needs no key cache or lookahead, so its columns pass every check.
         BeaconBlockHeader header = DataColumnSidecarTestFixture.BuildValidSidecar(0, Bpo2Slot).SignedBlockHeader!.Message!;
         Hash256 blockRoot = SszRoots.HashTreeRoot(header);
-        SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(Bpo2Slot);
-        block.Signature = DataColumnSidecarTestFixture.BuildValidSidecar(0, Bpo2Slot).SignedBlockHeader!.Signature;
-        container.Resolve<BeaconChainStore>().PutBlock(blockRoot, block);
+        DataColumnSidecarTestFixture.StoreAsImported(container.Resolve<BeaconChainStore>(), DataColumnSidecarTestFixture.BuildValidSidecar(0, Bpo2Slot));
+        CheckpointRef finalized = new(Bpo1Epoch, header.ParentRoot!);
+        container.Resolve<ForkChoiceSnapshotHolder>().Current = new ForkChoiceSnapshot(finalized, finalized, Hash256.Zero,
+        [
+            new ForkChoiceSnapshotNode(Bpo1Epoch * Spec.SlotsPerEpoch, header.ParentRoot!, null, Bpo1Epoch, Bpo1Epoch, 0, ExecutionStatus.Valid, Hash256.Zero),
+            new ForkChoiceSnapshotNode(Bpo2Slot, blockRoot, header.ParentRoot, Bpo1Epoch, Bpo1Epoch, 0, ExecutionStatus.Valid, Hash256.Zero),
+        ]);
 
         for (ulong column = 0; column < required; column++)
         {
@@ -81,7 +85,8 @@ public class ColumnGossipRouterSubscriptionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(container.Resolve<DataColumnSidecarPool>().TryGet(blockRoot, required, out _), Is.True, "the missing column was reconstructed");
-            Assert.That(topics[SubnetTopic(Bpo2Digest, required)].Published, Is.Empty, "the pinned library signs every publish, which StrictNoSign peers drop");
+            Assert.That(topics[SubnetTopic(Bpo2Digest, required)].Published, Is.EqualTo(new[] { Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(required, Bpo2Slot))) }),
+                "fulu/das-core.md: a reconstructed column of a subscribed subnet goes to its topic of the sidecar's fork digest");
             Assert.That(topics[SubnetTopic(Bpo1Digest, required)].Published, Is.Empty, "never re-broadcast on the other fork's topic");
         }
     }

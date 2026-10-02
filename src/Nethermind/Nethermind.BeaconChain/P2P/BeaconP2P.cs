@@ -184,6 +184,8 @@ public sealed class BeaconP2P : IAsyncDisposable
                 MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
                 // The router redials every closed gossip peer each period, past PeerManager's bans, band and backoff; PeerManager owns redials.
                 ReconnectionPeriod = System.Threading.Timeout.Infinite,
+                // fulu/das-core.md "Reconstruction and cross-seeding": this node publishes only reconstructed columns, which go to the topic mesh neighbors.
+                FloodPublish = false,
             }, ScheduledTopics(spec)))
             .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
