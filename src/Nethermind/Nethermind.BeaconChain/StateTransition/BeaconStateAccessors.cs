@@ -43,7 +43,7 @@ public static class BeaconStateAccessors
     /// <summary>Returns the epoch at which an activation or exit triggered in <paramref name="epoch"/> takes effect.</summary>
     public static ulong ComputeActivationExitEpoch(ulong epoch) => epoch + 1 + Presets.MaxSeedLookahead;
 
-    public static ulong GetCurrentEpoch(this BeaconStateFulu state) => ComputeEpochAtSlot(state.Slot);
+    public static ulong GetCurrentEpoch(this BeaconStateElectra state) => ComputeEpochAtSlot(state.Slot);
 
     public static ulong GetPreviousEpoch(this BeaconStateFulu state)
     {
@@ -72,7 +72,7 @@ public static class BeaconStateAccessors
     /// epoch's mix, so refuse rather than silently return it.
     /// </remarks>
     /// <exception cref="BeaconStateException">The epoch is outside the historical-vector window.</exception>
-    public static Hash256 GetRandaoMix(this BeaconStateFulu state, ulong epoch)
+    public static Hash256 GetRandaoMix(this BeaconStateElectra state, ulong epoch)
     {
         ulong currentEpoch = state.GetCurrentEpoch();
         ulong age = currentEpoch - epoch; // unsigned wraparound rejects a later epoch, except one so near 2^64 that the wrapped age falls inside the window
@@ -84,7 +84,7 @@ public static class BeaconStateAccessors
     }
 
     /// <summary>Returns the shuffling seed for <paramref name="epoch"/> and the given domain type.</summary>
-    public static Hash256 GetSeed(this BeaconStateFulu state, ulong epoch, ReadOnlySpan<byte> domainType)
+    public static Hash256 GetSeed(this BeaconStateElectra state, ulong epoch, ReadOnlySpan<byte> domainType)
     {
         // Unsigned wraparound (not "+ EpochsPerHistoricalVector"): GetRandaoMix now bounds-checks the
         // raw epoch against the state's current epoch, so inflating it by a vector length here would
@@ -162,7 +162,7 @@ public static class BeaconStateAccessors
     }
 
     /// <summary>Returns the indices of validators active in <paramref name="epoch"/>, in ascending order.</summary>
-    public static int[] GetActiveValidatorIndices(this BeaconStateFulu state, ulong epoch)
+    public static int[] GetActiveValidatorIndices(this BeaconStateElectra state, ulong epoch)
     {
         Validator[] validators = state.Validators!;
         List<int> active = new(validators.Length);

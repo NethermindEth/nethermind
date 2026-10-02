@@ -10,9 +10,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.ForkChoice;
-using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
-using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
@@ -131,11 +129,10 @@ internal static class DebugEndpoints
 
     private static Task StateJson(HttpContext c, string stateId, ResolvedRawState resolved, BeaconApiContext ctx)
     {
-        BeaconStateFulu state;
+        ApiState state;
         try
         {
-            // Throws NotSupportedException for a fork this driver cannot decode (Gloas); the host
-            // middleware turns that into a labelled 501 rather than a fabricated Fulu-shaped body.
+            // A fork before Electra throws UnsupportedForkException, which the host middleware turns into a labelled 501.
             state = ApiStateDecoding.Decode(resolved.Ssz, ctx.Spec);
         }
         catch (BeaconStateException e)
@@ -144,12 +141,18 @@ internal static class DebugEndpoints
                 $"The state persisted for '{stateId}' ({resolved.Root}) is not decodable: {e.Message}", c.RequestAborted);
         }
 
-        BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(state.Slot));
+        // beacon-APIs v5.0.0-alpha.2 getStateV2 defines JSON BeaconState types up to Fulu only; SSZ serves every fork.
+        if (state.Electra is not { } electra)
+        {
+            return ApiErrors.Write(c, StatusCodes.Status501NotImplemented,
+                $"The published beacon-APIs define no JSON BeaconState for the {ResponseEnvelope.ForkName(state.Fork)} fork; request application/octet-stream.", c.RequestAborted);
+        }
+
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
-        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
+        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(state.Fork),
             ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
-            s => BeaconJsonWriter.WriteBeaconStateAsync(s, state));
+            s => BeaconJsonWriter.WriteBeaconStateAsync(s, electra));
     }
 
     private sealed record CheckpointDto(

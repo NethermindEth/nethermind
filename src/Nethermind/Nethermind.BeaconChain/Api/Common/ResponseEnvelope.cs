@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
-using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
@@ -81,9 +80,9 @@ internal static class ResponseEnvelope
     /// that block, so its own <c>Slot</c> may name an empty slot or one filled by a different block.
     /// The canonical lookup must use the slot of the block the state is keyed by.
     /// </remarks>
-    public static bool IsFinalized(BeaconApiContext ctx, BeaconStateFulu state, Hash256 root) =>
+    public static bool IsFinalized(BeaconApiContext ctx, ApiState state, Hash256 root) =>
         state.Slot <= ctx.StatusSource.CurrentStatus.FinalizedEpoch * ctx.Spec.SlotsPerEpoch
-        && IsFinalized(ctx, state.LatestBlockHeader!.Slot, root);
+        && IsFinalized(ctx, state.LatestBlockHeader.Slot, root);
 
     public static void ApplyConsensusVersionHeader(HttpContext ctx, BeaconChainSpec spec, ulong slot) =>
         ctx.Response.Headers[ConsensusVersionHeader] = ForkName(spec.ForkAtEpoch(spec.GetEpoch(slot)));

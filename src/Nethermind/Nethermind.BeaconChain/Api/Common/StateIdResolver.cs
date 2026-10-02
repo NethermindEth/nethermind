@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Microsoft.AspNetCore.Http;
-using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
 
 internal readonly record struct ResolvedRawState(Hash256 Root, byte[] Ssz);
-internal readonly record struct ResolvedState(Hash256 Root, BeaconStateFulu State);
+internal readonly record struct ResolvedState(Hash256 Root, ApiState State);
 
 internal static class StateIdResolver
 {
@@ -64,7 +63,7 @@ internal static class StateIdResolver
             return false;
         }
 
-        BeaconStateFulu state = ApiStateDecoding.Decode(raw.Ssz, ctx.Spec);
+        ApiState state = ApiStateDecoding.Decode(raw.Ssz, ctx.Spec);
         resolved = new ResolvedState(raw.Root, state);
         return true;
     }
