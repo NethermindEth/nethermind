@@ -153,7 +153,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
         {
             Assert.That(result.TransactionExecuted, Is.True, result.ToString());
             Assert.That(vm.TxExecutionContext.BalDataMeter!.BalDataBytes, Is.EqualTo(Eip8279Constants.AddressBytes));
-            Assert.That(TestState.GetNonce(created), Is.EqualTo(UInt256.One));
+            Assert.That(TestState.GetNonce(created), Is.EqualTo(1UL));
         }
     }
 
