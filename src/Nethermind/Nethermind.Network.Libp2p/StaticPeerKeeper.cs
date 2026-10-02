@@ -41,8 +41,34 @@ public sealed class StaticPeerKeeper : IDisposable
         _openGossip = openGossip ?? (static (session, token) => session.DialAsync<GossipsubProtocolV11>(token));
     }
 
-    /// <summary>Whether a dial can reach <paramref name="address"/>: an IP address or DNS name, a TCP port and a peer id, or a dnsaddr name and a peer id.</summary>
-    public static bool CanDial(Multiaddress address) => address.Protocols is [IP4 or IP6 or DNS or DNS4 or DNS6, TCP, P2P] or [DnsAddr, P2P];
+    /// <summary>Decodes the entries of <paramref name="setting"/> a dial can reach; each other entry is skipped with an error that names it.</summary>
+    /// <remarks>A dial reaches an IP address or DNS name with a TCP port and a peer id, or a dnsaddr name with a peer id.</remarks>
+    public static Multiaddress[] ParseStaticPeers(IEnumerable<string> entries, string setting, ILogger logger)
+    {
+        List<Multiaddress> peers = [];
+        foreach (string entry in entries)
+        {
+            Multiaddress? address = null;
+            try
+            {
+                address = Multiaddress.Decode(entry);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+            }
+
+            if (address?.Protocols is [IP4 or IP6 or DNS or DNS4 or DNS6, TCP, P2P] or [DnsAddr, P2P])
+            {
+                peers.Add(address);
+            }
+            else if (logger.IsError)
+            {
+                logger.Error($"{setting} entry '{entry}' is skipped: no dial can reach it. It must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>, or /dnsaddr/<name>/p2p/<peer-id>.");
+            }
+        }
+
+        return [.. peers];
+    }
 
     /// <summary>Long enough not to race the router's own reconnect, short enough to win back a lost peer within a minute.</summary>
     public static TimeSpan CheckInterval { get; } = TimeSpan.FromSeconds(30);

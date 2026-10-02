@@ -1,13 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Google.Protobuf;
-using Nethermind.Core.Exceptions;
+using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Optimism.CL;
 using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Optimism.CL.P2P;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.CL;
@@ -16,7 +22,8 @@ public class OptimismGossipSettingsTests
 {
     private const string BlocksTopic = "/optimism/10/2/blocks";
 
-    /// <summary>A static peer the static peer check could never dial stops startup instead of being dropped without a word.</summary>
+    /// <summary>A static peer no dial can reach is skipped with an error that names it, and the other static peers are kept.</summary>
+    /// <remarks>Earlier versions ignored such an entry, so it must not stop startup either.</remarks>
     [TestCase("/ip4/10.0.0.1/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "An IPv4 address")]
     [TestCase("/dns4/sequencer.example/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "A DNS name")]
     [TestCase("/dnsaddr/sequencer.example/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "A dnsaddr name")]
@@ -26,13 +33,14 @@ public class OptimismGossipSettingsTests
     [TestCase("not a multiaddr", false, TestName = "Not a multiaddr")]
     public void Static_peers_are_checked_at_startup(string node, bool dialable)
     {
-        if (dialable)
+        TestLogger logger = new();
+        using OptimismCLP2P p2p = new(Substitute.For<IExecutionEngineManager>(), 10, ["/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", node], new OptimismConfig(), Address.Zero,
+            Substitute.For<ITimestamper>(), Substitute.For<IIPResolver>(), new OneLoggerLogManager(new ILogger(logger)));
+
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(OptimismCLP2P.ParseStaticPeer(node).ToString(), Is.EqualTo(node));
-        }
-        else
-        {
-            Assert.That(() => OptimismCLP2P.ParseStaticPeer(node), Throws.InstanceOf<InvalidConfigurationException>().With.Message.Contains(node));
+            Assert.That(p2p.StaticPeersForTest.Select(static peer => peer.ToString()), Is.EqualTo(dialable ? new[] { "/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", node } : ["/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW"]));
+            Assert.That(logger.LogList.Where(line => line.Contains(node)), dialable ? Is.Empty : Has.Exactly(1).Contains("is skipped"));
         }
     }
 
