@@ -1115,6 +1115,8 @@ public sealed class BeaconSyncOrchestrator(
         {
             _columnFetchRotations.Remove(root);
             ReleaseColumnWatch(root);
+            // A held block that failed to import no longer holds its backfill, so a later child may fetch another copy.
+            ReleaseBackfill(root);
         }
 
         return result;
@@ -1389,6 +1391,7 @@ public sealed class BeaconSyncOrchestrator(
                 _rangeHeldRoots.Remove(childRoot);
                 tipDropped |= _rangeHeld?.Tip.Root == childRoot;
                 ReleaseImporterDeferral(childRoot);
+                ReleaseBackfill(childRoot);
                 dropped.Push(childRoot);
             }
         }
@@ -1930,6 +1933,9 @@ public sealed class BeaconSyncOrchestrator(
                 {
                     _pendingByParent.Remove(oldest.ParentRoot);
                 }
+
+                // Nothing holds the evicted block any more, so a child naming it may fetch it within the slot's budget.
+                ReleaseBackfill(oldest.ComputeMessageRoot());
             }
         }
 
@@ -2077,15 +2083,23 @@ public sealed class BeaconSyncOrchestrator(
         EndBackfill(block);
     }
 
-    /// <summary>Releases the backfill of <paramref name="block"/>'s parent unless it imported or waits for a retry, so a later block may fetch it again within the slot's spent budget.</summary>
-    private void EndBackfill(ForkedSignedBeaconBlock block)
+    /// <summary>Releases the backfill of <paramref name="block"/>'s parent; see <see cref="ReleaseBackfill"/>.</summary>
+    private void EndBackfill(ForkedSignedBeaconBlock block) => ReleaseBackfill(block.ParentRoot);
+
+    /// <summary>Releases the backfill of <paramref name="root"/> unless it imported, waits for a retry or is held behind an ancestor that does, so a later block may fetch it again within the slot's spent budget.</summary>
+    private void ReleaseBackfill(Hash256 root)
     {
-        Hash256 parent = block.ParentRoot;
-        if (!_importer!.IsKnown(parent) && !_pendingRetry.ContainsKey(parent) && !IsWaitingForPayload(parent))
+        if (!_importer!.IsKnown(root) && !_pendingRetry.ContainsKey(root) && !IsWaitingForPayload(root) && !IsHeldFetched(root))
         {
-            _backfilledParents.Remove(parent);
+            _backfilledParents.Remove(root);
         }
     }
+
+    /// <summary>Whether the block fetched by root as <paramref name="root"/> is still held in <see cref="_pendingByParent"/>; the cap of refused backfills can evict it while <see cref="_heldFetched"/> keeps its entry.</summary>
+    private bool IsHeldFetched(Hash256 root) =>
+        _heldFetched.TryGet(root, out HeldFetchedBlock? held)
+        && _pendingByParent.TryGetValue(held.Block.ParentRoot, out List<ForkedSignedBeaconBlock>? siblings)
+        && siblings.Contains(held.Block);
 
     /// <summary>Adds <paramref name="chain"/> to the fetch of <paramref name="root"/>, starting one off the worker unless one runs.</summary>
     private void StartAncestorFetch(Hash256 root, List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> sources, CancellationToken token)
