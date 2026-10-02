@@ -15,7 +15,6 @@ using Nethermind.TxPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Network;
@@ -38,6 +37,7 @@ public class NativeLeanProtocolTests
     private sealed class Scheduler : IBackgroundTaskScheduler
     {
         public bool Defer { get; set; }
+        public CancellationToken Token { get; set; }
         private Func<Task>? _pending;
         public int Scheduled { get; private set; }
         public Task Completion { get; private set; } = Task.CompletedTask;
@@ -45,8 +45,8 @@ public class NativeLeanProtocolTests
             where T : notnull, IBackgroundTaskRequest<T>
         {
             Scheduled++;
-            if (Defer) _pending = () => execute(request, CancellationToken.None);
-            else Completion = execute(request, CancellationToken.None);
+            if (Defer) _pending = () => execute(request, Token);
+            else Completion = execute(request, Token);
             return true;
         }
 
@@ -66,12 +66,15 @@ public class NativeLeanProtocolTests
         }
     }
 
-    private static async Task<Context> Create()
+    private static async Task<Context> Create(ILeanProofVerifier? verifier = null)
     {
         Scheduler scheduler = new();
-        BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
-            .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance))
-            .AddSingleton<IBackgroundTaskScheduler>(scheduler));
+        BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
+        {
+            builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance))
+                .AddSingleton<IBackgroundTaskScheduler>(scheduler);
+            if (verifier is not null) builder.AddSingleton(verifier);
+        });
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 1000, true));
         session.HasAgreedCapability(Arg.Any<Capability>()).Returns(true);
@@ -243,6 +246,60 @@ public class NativeLeanProtocolTests
         Receive(context, new LeanProofWrapperMessage([0]), new LeanProofWrapperMessageSerializer());
         context.Handler.Dispose();
         await context.Scheduler.RunPending();
+        context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    private sealed class CancellingVerifier(CancellationTokenSource cancellation) : ILeanProofVerifier
+    {
+        public void EnsureAvailable() => NativeLeanProofVerifier.Instance.EnsureAvailable();
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 key, ReadOnlySpan<byte> witness)
+        {
+            bool verified = NativeLeanProofVerifier.Instance.VerifyLeanSphincs(in dataHash, in key, witness);
+            cancellation.Cancel();
+            return verified;
+        }
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 key, ReadOnlySpan<byte> witness)
+            => NativeLeanProofVerifier.Instance.VerifyLeanStark(in dataHash, in key, witness);
+        public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof)
+            => NativeLeanProofVerifier.Instance.VerifyRecursiveStark(in hash, key, proof);
+        public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
+            => NativeLeanProofVerifier.Instance.ProveRecursiveStark(in hash, key, input);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Scheduler_cancellation_before_or_during_real_verification_preserves_the_session(bool duringVerification)
+    {
+        using CancellationTokenSource cancellation = new();
+        using Context context = await Create(duringVerification ? new CancellingVerifier(cancellation) : null);
+        context.Scheduler.Token = cancellation.Token;
+        Receive(context, Status(context), new LeanStatusMessageSerializer());
+        byte[] wrapper = CreateValidWrapper(context);
+        if (!duringVerification) cancellation.Cancel();
+        Receive(context, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
+        await context.Scheduler.Completion;
+        context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.Zero);
+        context.Scheduler.Token = CancellationToken.None;
+        Receive(context, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
+        await context.Scheduler.Completion;
+        Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Unknown_hash_only_wrapper_preserves_the_session()
+    {
+        using Context context = await Create();
+        Receive(context, Status(context), new LeanStatusMessageSerializer());
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(TestItem.KeccakA)],
+            Deps = [],
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = []
+        }).Bytes;
+        Receive(context, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
+        await context.Scheduler.Completion;
         context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 

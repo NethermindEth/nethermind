@@ -3,11 +3,11 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -54,6 +54,7 @@ public partial class EthRpcModuleTests
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
             ChainId = context.Test.SpecProvider.ChainId,
             SenderAddress = TestItem.PrivateKeyB.Address,
             Frames = frames,
@@ -81,9 +82,13 @@ public partial class EthRpcModuleTests
         };
         ResultWrapper<Hash256[]> resolved = await context.Test.EthRpcModule.eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(hashOnly).Bytes);
         Assert.That(resolved.Result, Is.EqualTo(Result.Success), resolved.Result.Error);
+        int proofCalls = verifier.ProofCalls;
+        Assert.That(context.Test.EthRpcModule.eth_getProofWrapper().Result.Error, Does.Contain("not ready"));
+        Assert.That(verifier.ProofCalls, Is.EqualTo(proofCalls));
+        Assert.That(context.Test.Container.Resolve<ProofWrapperService>().BuildWrapper().IsSuccess, Is.True);
         ResultWrapper<byte[]> aggregated = context.Test.EthRpcModule.eth_getProofWrapper();
         Assert.That(aggregated.Result, Is.EqualTo(Result.Success), aggregated.Result.Error);
-        Assert.That(verifier.LastInput!.Witnesses[0], Is.EqualTo(new byte[] { 7 }));
+        Assert.That(verifier.LastInput!.Witnesses[0].ToArray(), Is.EqualTo(new byte[] { 7 }));
         RlpReader reader = new(aggregated.Data);
         MempoolWrapper output = MempoolWrapperDecoder.Instance.Decode(ref reader)!;
         using (Assert.EnterMultipleScope())
@@ -109,12 +114,16 @@ public partial class EthRpcModuleTests
 
     private sealed class RecordingProofVerifier : ILeanProofVerifier
     {
+        public void EnsureAvailable() { }
+        public int ProofCalls { get; private set; }
+
         public AggregationInput? LastInput { get; private set; }
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => !witness.IsEmpty;
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => !witness.IsEmpty;
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => !proof.IsEmpty;
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
+            ProofCalls++;
             LastInput = input;
             return [1];
         }

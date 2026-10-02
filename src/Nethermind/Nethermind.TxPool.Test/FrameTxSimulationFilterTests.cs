@@ -7,8 +7,11 @@ using Nethermind.Specs.Forks;
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
@@ -36,6 +39,41 @@ public class FrameTxSimulationFilterTests
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressA));
             simulator.DidNotReceiveWithAnyArgs().Simulate(default!);
+        }
+    }
+
+    [TestCase(0UL, 0UL, true, true)]
+    [TestCase(8190UL, 0UL, true, true)]
+    [TestCase(8191UL, 0UL, false, true)]
+    [TestCase(10UL, 10UL, true, true)]
+    [TestCase(10UL, 11UL, false, true)]
+    [TestCase(10UL, 12UL, false, true)]
+    [TestCase(ulong.MaxValue, 0UL, false, true)]
+    [TestCase(null, 0UL, false, true)]
+    [TestCase(10UL, 10UL, true, false)]
+    public void Recent_roots_are_checked_even_for_legible_prefixes(ulong? headSlot, ulong referenceSlot, bool usable,
+        bool commitmentMatches)
+    {
+        TestReadOnlyStateProvider state = new();
+        state.CreateAccount(TestItem.AddressA, Unit.Ether);
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        ValueHash256 source = TestItem.KeccakA.ValueHash256;
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        tx.RecentRootReferences = [new(source, referenceSlot, root)];
+        state.Set(RecentRootStore.ReferenceCell(source, referenceSlot),
+            RecentRootStore.EntryHash(source, referenceSlot, commitmentMatches ? root : TestItem.KeccakC.ValueHash256).ToUInt256());
+        RunPayerFilter(state, tx);
+        TestChainHeadInfoProvider head = new() { HeadSlotNumber = headSlot, ReadOnlyStateProvider = state };
+        RecentRootFilter filter = new(head);
+        TxFilteringState filteringState = new(tx, state, Eip8288Prototype.Instance);
+
+        AcceptTxResult result = filter.Accept(tx, ref filteringState, TxHandlingOptions.PersistentBroadcast);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressA));
+            Assert.That(result, Is.EqualTo(usable && commitmentMatches
+                ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxRecentRootUnmet));
         }
     }
 

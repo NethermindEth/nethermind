@@ -13,6 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -32,7 +33,7 @@ public class InclusionListValidatorTests
     [TestCase(true, false)]
     [TestCase(false, true)]
     [TestCase(true, true)]
-    public void Proof_bearing_lists_require_a_verifier_only_when_transactions_can_fit(bool dependencies, bool full)
+    public void Invalid_proof_packages_establish_no_mandatory_transactions(bool dependencies, bool full)
     {
         Transaction transaction = BuildFrameTx();
         byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
@@ -44,8 +45,15 @@ public class InclusionListValidatorTests
         if (!dependencies) block.InclusionListRecursiveStark = new([1], Keccak.Zero);
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(full));
+        Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
     }
+
+    private static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator validator)
+        => IsSatisfied(block, block.InclusionListTransactions, state, spec, validator);
+
+    private static bool IsSatisfied(Block block, Transaction[]? list, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator validator)
+        => InclusionListValidator.IsSatisfied(block, list, state, spec, validator, block.InclusionListRecursiveStark,
+            Substitute.For<ILeanProofVerifier>());
 
     public static IEnumerable<TestCaseData> SatisfactionCases
     {
@@ -105,7 +113,7 @@ public class InclusionListValidatorTests
             .TestObject;
 
         IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
-        Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
+        Assert.That(IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
     }
 
     [Test]
@@ -126,7 +134,7 @@ public class InclusionListValidatorTests
         if (included) block = new Block(block.Header, [tx], block.Uncles);
 
         bool expected = included || underpriced || remainingBlobGas < Eip4844Constants.GasPerBlob;
-        Assert.That(InclusionListValidator.IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(expected));
+        Assert.That(IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(expected));
     }
 
     // Withdrawals land after the block's transactions, so judging against the raw post-block balance
@@ -149,7 +157,7 @@ public class InclusionListValidatorTests
             .TestObject;
 
         // Withdrawing 9.5 of the 10 ether leaves 0.5, below _validTx's ~1.001 ether cost.
-        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+        return IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
     // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent
@@ -171,7 +179,7 @@ public class InclusionListValidatorTests
             .TestObject;
         if (dimensionsKnown) block.Header.GasUsedPerDimension = (513_317, 97_920);
 
-        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+        return IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
     // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use. The
@@ -191,7 +199,7 @@ public class InclusionListValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
-            Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
+            Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
         }
     }
 
@@ -217,7 +225,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), Prague.Instance, _txValidator), Is.True);
+        Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), Prague.Instance, _txValidator), Is.True);
     }
 
     // EIP-3607: a sender that has deployed (non-delegation) code cannot send a tx.
@@ -241,7 +249,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        return InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator);
+        return IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator);
     }
 
     private static Transaction BuildTx(ulong gasLimit = 100_000, ulong nonce = 0, UInt256? gasPrice = null, UInt256? value = null, Address? to = null) =>

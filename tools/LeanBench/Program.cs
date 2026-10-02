@@ -52,8 +52,7 @@ public static class Program
         if (!double.IsFinite(seconds) || seconds <= 0 || queueCapacity < 1 || warmups < 0 || repetitions < 1 || sizes.Any(s => s < 1 || s > LeanProofStore.MaxWrapperBytes) || rates.Any(r => !double.IsFinite(r) || r <= 0) || objectRates.Any(r => !double.IsFinite(r) || r <= 0) || protocolRates.Any(r => !double.IsFinite(r) || r <= 0)) throw new ArgumentException("Positive duration, queue and rates required");
         Directory.CreateDirectory(output);
         Fixtures fixtures = new(fixtureDirectory);
-        if (NativeLeanProofVerifier.AbiVersion != 2 || !NativeLeanProofVerifier.AggregatedVerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
-            throw new InvalidOperationException("Pinned native backend required");
+        NativeLeanProofVerifier.Instance.EnsureAvailable();
         object metadata = new
         {
             commandLine = Environment.CommandLine,
@@ -279,6 +278,7 @@ public static class Program
             ChainId = chain.SpecProvider.ChainId,
             SenderAddress = key.Address,
             Nonce = (ulong)nonce,
+            NonceKeys = [UInt256.Zero],
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,

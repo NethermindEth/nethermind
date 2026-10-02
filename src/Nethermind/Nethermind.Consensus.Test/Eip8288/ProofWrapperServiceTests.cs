@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -16,6 +18,8 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -24,6 +28,56 @@ namespace Nethermind.Consensus.Test.Eip8288;
 
 public class ProofWrapperServiceTests
 {
+    [TestCase("post-tx")]
+    [TestCase("keyed")]
+    [TestCase("recent-roots")]
+    [TestCase("scalar")]
+    public async Task Frame_fork_mismatch_is_local_and_can_be_retried_without_a_negative_memo(string scenario)
+    {
+        OverridableReleaseSpec spec = new(Eip8288Prototype.Instance)
+        {
+            IsEip7906Enabled = scenario != "post-tx",
+            IsEip8250Enabled = scenario != "keyed",
+            IsEip8272Enabled = scenario != "recent-roots"
+        };
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        TxFrame dependencyFrame = new(FrameMode.DepVerify, FrameFlags.None, null,
+            Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]));
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            NonceKeys = scenario == "scalar" ? null : [UInt256.Zero],
+            RecentRootReferences = scenario == "recent-roots" ? [] : null,
+            Frames = scenario == "post-tx"
+                ? [dependencyFrame, new(FrameMode.PostTx, FrameFlags.None, Address.Zero, 1000, UInt256.Zero, default)]
+                : [dependencyFrame]
+        };
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier, spec);
+        byte[] Encode() => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction)], Deps = [dependency],
+            Mode = MempoolWrapper.ModeDirect, Proofs = [[1]]
+        }).Bytes;
+        byte[] wrapper = Encode();
+
+        ProofWrapperAcceptance deferred = await service.AcceptDetailedAsync(wrapper);
+        Assert.That(deferred.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+        Assert.That(verifier.VerificationCalls, Is.Zero);
+        spec.IsEip7906Enabled = true;
+        spec.IsEip8250Enabled = scenario != "scalar";
+        spec.IsEip8272Enabled = true;
+        Assert.That((await service.AcceptDetailedAsync(wrapper)).HasValidProof, Is.True);
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+
+        transaction.Frames![0] = new(FrameMode.DepVerify, (FrameFlags)0xff, null,
+            Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]));
+        Assert.That((await service.AcceptDetailedAsync(Encode())).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Invalid));
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "intrinsic malformed data is rejected before verification");
+    }
+
     [Test]
     public async Task Oversized_dependency_frames_are_rejected_before_proof_verification([Values] bool inclusionList)
     {
@@ -33,6 +87,7 @@ public class ProofWrapperServiceTests
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
             ChainId = 1,
             SenderAddress = Address.Zero,
             Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
@@ -58,6 +113,147 @@ public class ProofWrapperServiceTests
             Assert.That(accepted.Error, Is.EqualTo(FrameTxValidation.TooManyDependenciesPerFrame));
             Assert.That(verifier.VerificationCalls, Is.Zero);
         }
+    }
+
+    [Test]
+    public async Task Scalar_nonce_is_rejected_before_proof_verification([Values] bool inclusionList)
+    {
+        (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(0, 0);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+        };
+        RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
+        Result<Hash256[]> accepted = inclusionList
+            ? await service.AcceptInclusionListAsync(FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
+            {
+                Transactions = [transaction], RecursiveStark = recursive
+            }).Bytes)
+            : await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+            {
+                Transactions = [new WrapperTransaction(transaction)], Deps = [dependency],
+                Mode = MempoolWrapper.ModeRecursive, RecursiveStark = recursive
+            }).Bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted.Error, Is.EqualTo(FrameTxValidation.LegacyNonceNotAllowed));
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Recent_root_envelopes_before_their_fork_are_rejected_before_proof_verification([Values] bool inclusionList)
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEip8272Enabled = false };
+        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier, spec);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx, NonceKeys = [UInt256.Zero], ChainId = 1, SenderAddress = Address.Zero,
+            RecentRootReferences = [new(default, 0, default)],
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+        };
+        RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
+        Result<Hash256[]> accepted = inclusionList
+            ? await service.AcceptInclusionListAsync(FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
+            {
+                Transactions = [transaction], RecursiveStark = recursive
+            }).Bytes)
+            : await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+            {
+                Transactions = [new WrapperTransaction(transaction)], Deps = [dependency],
+                Mode = MempoolWrapper.ModeRecursive, RecursiveStark = recursive
+            }).Bytes);
+        Assert.That(accepted.Error, Is.EqualTo(FrameTxValidation.RecentRootReferencesNotEnabled));
+        Assert.That(verifier.VerificationCalls, Is.Zero);
+    }
+
+    [Test]
+    public async Task Pool_eviction_after_preflight_retains_the_verified_verdict_without_peer_penalty()
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx, NonceKeys = [UInt256.Zero], ChainId = 1, SenderAddress = Address.Zero,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+        };
+        transaction.Hash = transaction.CalculateHash();
+        ITxPool pool = Substitute.For<ITxPool>();
+        bool missingAfterPreflight = true;
+        int resolves = 0;
+        pool.TryGetPendingTransaction(transaction.Hash.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            bool found = !missingAfterPreflight || ++resolves == 1;
+            call[1] = found ? transaction : null;
+            return found;
+        });
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder.Head.Returns(Build.A.Block.TestObject);
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, new LeanProofStore(), verifier);
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction.Hash)], Deps = [dependency], Mode = MempoolWrapper.ModeDirect, Proofs = [[1]]
+        }).Bytes;
+        ProofWrapperAcceptance first = await service.AcceptDetailedAsync(wrapper);
+        Assert.That(first.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        missingAfterPreflight = false;
+        ProofWrapperAcceptance retry = await service.AcceptDetailedAsync(wrapper);
+        Assert.That(retry.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Local_pool_exceptions_are_nonfatal_and_do_not_retain_unadmitted_proofs([Values] bool argumentError)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx, NonceKeys = [UInt256.Zero], ChainId = 1, SenderAddress = Address.Zero,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+        };
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
+            throw (argumentError ? new ArgumentException("local argument") : new InvalidOperationException("local state")));
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder.Head.Returns(Build.A.Block.TestObject);
+        FakeLeanProofVerifier verifier = new(true);
+        LeanProofStore store = new();
+        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, verifier);
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction)], Deps = [dependency], Mode = MempoolWrapper.ModeDirect, Proofs = [[1]]
+        }).Bytes;
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper);
+        Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+        Assert.That(store.Covers(transaction), Is.False);
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Public_snapshot_reads_never_invoke_the_prover_and_return_owned_buffers()
+    {
+        (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(1, 0);
+        Assert.That(service.GetLatestWrapper().IsSuccess, Is.False);
+        byte[] built = service.BuildWrapper().Data!;
+        ValueHash256 expected = ValueKeccak.Compute(built);
+        for (int i = 0; i < 10; i++)
+        {
+            byte[] snapshot = service.GetLatestWrapper().Data!;
+            Assert.That(ValueKeccak.Compute(snapshot), Is.EqualTo(expected));
+            snapshot[0] ^= 0xff;
+        }
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
     [Test]
@@ -103,6 +299,7 @@ public class ProofWrapperServiceTests
             transactions[i] = new Transaction
             {
                 Type = TxType.FrameTx,
+                NonceKeys = [UInt256.Zero],
                 ChainId = 1,
                 SenderAddress = Address.Zero,
                 Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
@@ -128,6 +325,7 @@ public class ProofWrapperServiceTests
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
             ChainId = 1,
             SenderAddress = Address.Zero,
             Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
@@ -143,6 +341,7 @@ public class ProofWrapperServiceTests
         Transaction later = new()
         {
             Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
             ChainId = 1,
             SenderAddress = Address.Zero,
             Nonce = 1,
@@ -187,6 +386,7 @@ public class ProofWrapperServiceTests
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
             ChainId = 1,
             SenderAddress = Address.Zero,
             Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
@@ -226,6 +426,7 @@ public class ProofWrapperServiceTests
         Transaction[] transactions = new[] { first, second }.Select((dependency, index) => new Transaction
         {
             Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
             ChainId = 1,
             SenderAddress = Address.Zero,
             Nonce = (ulong)index,
@@ -280,6 +481,7 @@ public class ProofWrapperServiceTests
         Transaction[] transactions = Enumerable.Range(0, count).Select(index => new Transaction
         {
             Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
             ChainId = 1,
             SenderAddress = Address.Zero,
             Nonce = (ulong)index,
@@ -297,14 +499,14 @@ public class ProofWrapperServiceTests
         return (CreateService(transactions, store, verifier), verifier);
     }
 
-    private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, FakeLeanProofVerifier verifier)
+    private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, FakeLeanProofVerifier verifier, IReleaseSpec? spec = null)
     {
         ITxPool pool = Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns(transactions);
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
-        return new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, verifier);
+        return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier);
     }
 
     private static MempoolWrapper Decode(byte[] encoded)

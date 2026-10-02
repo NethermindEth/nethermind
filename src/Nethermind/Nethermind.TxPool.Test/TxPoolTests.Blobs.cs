@@ -2211,6 +2211,7 @@ namespace Nethermind.TxPool.Test
         private async Task AddEmptyBlock()
         {
             BlockHeader bh = new(_blockTree.Head.Hash, Keccak.EmptyTreeHash, TestItem.AddressA, 0, _blockTree.Head.Number + 1, _blockTree.Head.GasLimit, _blockTree.Head.Timestamp + 1, []);
+            bh.SlotNumber = _blockTree.Head.Header.SlotNumber is { } slot ? slot + 1 : null;
             _blockTree.BestSuggestedHeader = bh;
             Block block = new(bh, new BlockBody([], []));
             await RaiseBlockAddedToMainAndWaitForNewHead(block, _blockTree.Head);

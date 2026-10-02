@@ -254,6 +254,7 @@ public class GetPayloadDirectResponseTests
         byte[] actual = await WriteStreamableAsync(direct);
 
         Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
+        Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["inclusionListRecursiveStark"], Is.Null);
     }
 
     [Test]

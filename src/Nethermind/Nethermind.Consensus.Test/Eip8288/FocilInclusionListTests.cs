@@ -10,6 +10,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Eip8288;
@@ -48,6 +50,34 @@ public class FocilInclusionListTests
         deps = ValueKeccak.Compute([2]);
         Assert.That(verifier.VerifyRecursiveStark(in deps, key, proof), Is.True);
         Assert.That(backend.VerificationCalls, Is.EqualTo(4));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Fork_invalid_frame_envelopes_are_rejected_before_proof_verification(bool recentRoots)
+    {
+        OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip8272Enabled = !recentRoots };
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = Address.Zero,
+            NonceKeys = recentRoots ? [UInt256.Zero] : null,
+            RecentRootReferences = recentRoots ? [new(default, 0, default)] : null,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+        };
+        FakeLeanProofVerifier verifier = new(true);
+        RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
+
+        bool valid = FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out string? error, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Is.EqualTo(recentRoots ? FrameTxValidation.RecentRootReferencesNotEnabled : FrameTxValidation.LegacyNonceNotAllowed));
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
     }
 
     [Test]

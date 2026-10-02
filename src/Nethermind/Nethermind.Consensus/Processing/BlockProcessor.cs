@@ -47,14 +47,12 @@ public partial class BlockProcessor(
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
-    ILeanProofVerifier leanProofVerifier,
-    LeanProofStore? leanProofStore = null)
+    ILeanProofVerifier leanProofVerifier)
     : IBlockProcessor
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
     protected readonly ISpecProvider _specProvider = specProvider;
     private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier));
-    private readonly LeanProofStore? _leanProofStore = leanProofStore;
     private (ValueHash256 Dependencies, ValueHash256 VerificationKey)? _productionProofKey;
     private byte[]? _productionProof;
     protected readonly IWorldState _stateProvider = stateProvider;
@@ -94,6 +92,17 @@ public partial class BlockProcessor(
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
+        if (spec.IsEip8288Enabled && options.ContainsFlag(ProcessingOptions.ProducingBlock) && block is not BlockToProduce)
+        {
+            if (_blockTransactionsExecutor is not IBlockProductionTransactionsExecutor)
+                throw new ArgumentException("EIP-8288 production requires a block-production transaction executor.", nameof(options));
+            block = new BlockToProduce(block.Header, block.Transactions, block.Uncles, block.Withdrawals)
+            {
+                BlockAccessList = block.BlockAccessList,
+                InclusionListTransactions = block.InclusionListTransactions,
+                InclusionListRecursiveStark = block.InclusionListRecursiveStark
+            };
+        }
         TxReceipt[] receipts;
         bool processed = false;
         try
@@ -203,23 +212,21 @@ public partial class BlockProcessor(
             (ValueHash256, ValueHash256) key = (depsHash, new ValueHash256(Eip8288Constants.AggregatedVk));
             byte[] proof;
             if (_productionProofKey == key && _productionProof is not null)
-                proof = (byte[])_productionProof.Clone();
+                proof = _productionProof;
             else
             {
                 AggregationInput input = new();
                 if (block is BlockToProduce producing)
                     input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
-                else if (deps.Count != 0 && (_leanProofStore is null || !_leanProofStore.TryGetInput(deps, out input)))
-                    throw new InvalidOperationException("Missing verified EIP-8288 dependency witnesses.");
                 proof = RecursiveStarkAggregator.Prove(input, _leanProofVerifier, in depsHash);
                 if (proof.Length is 0 or > Eip8288Constants.MaxProofBytes
                     || !_leanProofVerifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof))
                     throw new InvalidOperationException("Produced EIP-8288 proof failed verification.");
                 // One verified result per processor/backend; improvement passes reuse it without retaining old blocks.
-                _productionProof = (byte[])proof.Clone();
+                _productionProof = proof;
                 _productionProofKey = key;
             }
-            block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
+            block.Header.RecursiveStark = new RecursiveStark((byte[])proof.Clone(), new Hash256(depsHash));
         }
         return FinalizeBlock<OnFlag>(block, blockTracer, spec, receipts);
     }

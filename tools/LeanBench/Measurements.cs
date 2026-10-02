@@ -85,6 +85,7 @@ public sealed class BenchmarkRow
 /// <summary>Measures native verification invoked by the actual shared admission service.</summary>
 public sealed class MeasuredVerifier : ILeanProofVerifier
 {
+    public void EnsureAvailable() => NativeLeanProofVerifier.Instance.EnsureAvailable();
     public Action<ValueHash256, double, double>? Verified { get; set; }
     public double VerifyWallMs { get; private set; }
     public double VerifyCpuMs { get; private set; }

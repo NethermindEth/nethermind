@@ -9,6 +9,8 @@ namespace Nethermind.Consensus.Test.Eip8288;
 /// <summary>Test verifier with a fixed verdict, to exercise both accept and reject paths.</summary>
 internal sealed class FakeLeanProofVerifier(bool result) : ILeanProofVerifier
 {
+    public void EnsureAvailable() { }
+
     public int LargestRecursiveInput { get; private set; }
     public int ProofCalls { get; private set; }
     public int VerificationCalls { get; private set; }

@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 namespace Nethermind.Init.Steps;
 
@@ -17,8 +16,8 @@ public sealed class InitializeLeanBackend(ISpecProvider specProvider, ILeanProof
     public Task Execute(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (specProvider.GetFinalSpec().IsEip8288Enabled && proofVerifier is NativeLeanProofVerifier native)
-            native.EnsureAvailable();
+        if (specProvider.GetFinalSpec().IsEip8288Enabled)
+            proofVerifier.EnsureAvailable();
         return Task.CompletedTask;
     }
 }

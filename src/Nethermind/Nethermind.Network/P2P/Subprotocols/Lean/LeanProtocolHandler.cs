@@ -40,6 +40,8 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
     private LeanProofWrapperMessage? _pending;
     private bool _initialized;
     private int _disposed;
+    private long _receiveWindow = Environment.TickCount64;
+    private int _receivedBytes;
 
     public LeanProtocolHandler(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer,
         IBackgroundTaskScheduler backgroundTaskScheduler, ILogManager logManager,
@@ -59,7 +61,7 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
             Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Lean capability was not negotiated");
             return;
         }
-        if (!_wrappers.IsEnabled || _blockTree.Genesis?.Hash is not { } genesis)
+        if (_blockTree.Genesis?.Hash is not { } genesis)
         {
             Dispose();
             return;
@@ -86,17 +88,35 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
                 Dispose();
                 return true;
             }
-            _initialized = true;
-            ReceivedProtocolInitMsg(status);
-            _gossip.AddPeer(Broadcast);
+            lock (_receiveLock)
+            {
+                if (Volatile.Read(ref _disposed) != 0) return true;
+                _initialized = true;
+                ReceivedProtocolInitMsg(status);
+                _gossip.AddPeer(Broadcast);
+            }
             NotifyProtocolInitialized(new ProtocolInitializedEventArgs(this));
             return true;
         }
         if (message.PacketType != 1) return false;
-        if (!_initialized || Volatile.Read(ref _disposed) != 0 || !_wrappers.IsEnabled)
+        if (!_initialized)
         {
             Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Lean wrapper before handshake");
             return true;
+        }
+        if (!_wrappers.IsEnabled) return true;
+        lock (_receiveLock)
+        {
+            long now = Environment.TickCount64;
+            if (now - _receiveWindow >= 1000)
+            {
+                _receiveWindow = now;
+                _receivedBytes = 0;
+            }
+            // Bound repeated replacement allocations as well as retained queue memory.
+            int length = message.Content.ReadableBytes;
+            if (length > 2 * LeanProofStore.MaxWrapperBytes - _receivedBytes) return true;
+            _receivedBytes += length;
         }
         LeanProofWrapperMessage wrapper = Deserialize<LeanProofWrapperMessage>(message.Content);
         lock (_receiveLock)
@@ -160,7 +180,7 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
             }
             if (schedule) ScheduleReceive();
         }
-        catch (OperationCanceledException) when (_stopToken.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
         finally { if (!completed) ClearReceive(); }
     }
 
@@ -183,7 +203,7 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
     public override void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _gossip.RemovePeer(Broadcast);
+        lock (_receiveLock) _gossip.RemovePeer(Broadcast);
         _stop.Cancel();
         ClearReceive();
         _stop.Dispose();

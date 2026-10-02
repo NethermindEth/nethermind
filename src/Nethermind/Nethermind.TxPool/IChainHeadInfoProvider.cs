@@ -33,6 +33,9 @@ namespace Nethermind.TxPool
         /// <summary>Timestamp (Unix seconds) of the current chain head.</summary>
         ulong HeadTimestamp { get; }
 
+        /// <summary>The current head's consensus slot, when supplied by the active fork.</summary>
+        ulong? HeadSlotNumber { get; }
+
         ulong? BlockGasLimit { get; }
 
         UInt256 CurrentBaseFee { get; }

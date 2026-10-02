@@ -22,7 +22,7 @@ public class NativeLeanProofVerifierTests
     public void EnsureNativeLibraryLoads()
     {
         NativeLeanProofVerifier.Instance.EnsureAvailable();
-        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(2u));
+        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(3u));
         Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
     }
 
@@ -57,7 +57,7 @@ public class NativeLeanProofVerifierTests
     {
         byte[] fixtures = Fixture(distinctKeys ? "sphincs-multi-keys" : "sphincs-multi");
         FrameDependency[] deps = new FrameDependency[count];
-        byte[][] witnesses = new byte[count][];
+        ReadOnlyMemory<byte>[] witnesses = new ReadOnlyMemory<byte>[count];
         for (int i = 0; i < count; i++)
         {
             int offset = i * (32 + Eip8288Constants.LeanSphincsWitnessBytes);
@@ -70,6 +70,14 @@ public class NativeLeanProofVerifierTests
         Assert.That(Native.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proof), Is.True);
         deps[^1] = deps[0];
         Assert.That(Native.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash(deps), Eip8288Constants.AggregatedVk, proof), Is.False);
+    }
+
+    [Test]
+    public void Default_child_input_is_rejected_as_an_argument_error()
+    {
+        AggregationInput input = new() { RecursiveProofs = [default] };
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([]);
+        Assert.Throws<ArgumentException>(() => Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input));
     }
 
     [Test]

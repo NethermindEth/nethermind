@@ -21,11 +21,8 @@ public static class InclusionListValidator
 {
     private const int StackAllocEntries = 256;
 
-    public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
-        => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator, block.InclusionListRecursiveStark);
-
     public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
-        RecursiveStark? proof = null, ILeanProofVerifier? verifier = null, Func<Transaction, bool>? frameCanInclude = null)
+        RecursiveStark? proof, ILeanProofVerifier verifier, Func<Transaction, bool>? frameCanInclude = null)
     {
         if (!spec.InclusionListsEnabled) return true;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
@@ -35,17 +32,8 @@ public static class InclusionListValidator
 
         if (spec.IsEip8288Enabled)
         {
-            if (verifier is null)
-            {
-                if (proof is not null) return false;
-                foreach (Transaction tx in il)
-                {
-                    if (tx is null) return false;
-                    foreach (TxFrame frame in tx.Frames ?? [])
-                        if (Eip8288Dependencies.IsDependencyFrame(frame)) return false;
-                }
-            }
-            else if (!FocilInclusionListValidator.Validate(il, proof, verifier, out _, out _, spec)) return false;
+            // An invalid FOCIL package establishes no mandatory transactions.
+            if (!FocilInclusionListValidator.Validate(il, proof, verifier, out _, out _, spec)) return true;
         }
 
         // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.

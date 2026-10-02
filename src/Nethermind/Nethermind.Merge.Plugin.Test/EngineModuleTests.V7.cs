@@ -765,7 +765,12 @@ public partial class EngineModuleTests
         HeadStateInterceptor headState = new();
         StatusOverridingNewPayloadHandler newPayloadHandler = new();
         using MergeTestBlockchain chain = await CreateBlockchainWithHeadState(headState,
-            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 100 },
+            new MergeConfig
+            {
+                TerminalTotalDifficulty = "0",
+                NewPayloadBlockProcessingTimeout = newPayloadStatus == PayloadStatus.Syncing
+                    ? 100 : MergeConfig.DefaultNewPayloadBlockProcessingTimeout
+            },
             builder => builder.AddDecorator<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>((_, inner) =>
             {
                 newPayloadHandler.Inner = inner;
@@ -798,6 +803,9 @@ public partial class EngineModuleTests
                 payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(newPayloadHandler.LastStatus?.Status,
+                    Is.EqualTo(newPayloadStatus == PayloadStatus.Accepted ? PayloadStatus.Valid : PayloadStatus.Syncing),
+                    newPayloadHandler.LastStatus?.ValidationError);
                 Assert.That(newPayload.Data.Status, Is.EqualTo(newPayloadStatus));
                 Assert.That(newPayload.Data.InclusionListSatisfied, Is.Null);
             }
@@ -1204,11 +1212,15 @@ public partial class EngineModuleTests
 
         /// <summary>Status to answer with, or <c>null</c> to pass the wrapped handler's result through.</summary>
         public string? Status { get; set; }
+        public PayloadStatusV1? LastStatus { get; private set; }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
         {
             ResultWrapper<PayloadStatusV1> result = await Inner.HandleAsync(request);
-            return Status is { } status ? ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = status }) : result;
+            LastStatus = result.Data;
+            // ACCEPTED models a deferred answer for a valid payload, never a hidden invalidity or timeout.
+            return Status is { } status && result.Data.Status == PayloadStatus.Valid
+                ? ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = status }) : result;
         }
     }
 

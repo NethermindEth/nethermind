@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Eip8288;
@@ -26,7 +29,7 @@ public class RecursiveStarkAggregatorTests
         AggregationInput input = new()
         {
             Deps = [a, b, a],
-            Witnesses = [[1], [1], [1]],
+            Witnesses = [new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }],
         };
 
         bool ok = RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 depsHash);
@@ -44,7 +47,7 @@ public class RecursiveStarkAggregatorTests
         AggregationInput input = new()
         {
             Deps = [a, b],
-            Witnesses = [[1], [1]],
+            Witnesses = [new byte[] { 1 }, new byte[] { 1 }],
             Discards = [a],
         };
 
@@ -61,7 +64,7 @@ public class RecursiveStarkAggregatorTests
         AggregationInput input = new()
         {
             Deps = [a],
-            Witnesses = [[1]],
+            Witnesses = [new byte[] { 1 }],
             RecursiveProofs = [new RecursiveProofInput([b], [9])],
         };
 
@@ -81,7 +84,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Aggregate_fails_when_verifier_rejects()
     {
-        AggregationInput input = new() { Deps = [Sphincs("a")], Witnesses = [[1]] };
+        AggregationInput input = new() { Deps = [Sphincs("a")], Witnesses = [new byte[] { 1 }] };
 
         Assert.That(RecursiveStarkAggregator.TryAggregate(input, Rejecting, out _, out _), Is.False);
     }
@@ -107,7 +110,7 @@ public class RecursiveStarkAggregatorTests
         else
         {
             Assert.That(input.Deps, Is.EqualTo(new[] { b }));
-            Assert.That(input.Witnesses[0], Is.EqualTo(new byte[] { 2 }));
+            Assert.That(input.Witnesses[0].ToArray(), Is.EqualTo(new byte[] { 2 }));
         }
     }
 
@@ -142,6 +145,43 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
+    public void Hierarchical_children_prune_discarded_generic_claims_before_the_native_count_limit()
+    {
+        FrameDependency[] dependencies = new FrameDependency[33];
+        RecursiveProofInput[] children = new RecursiveProofInput[33];
+        for (int i = 0; i < children.Length; i++)
+        {
+            dependencies[i] = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(i.ToString()), default);
+            children[i] = new([dependencies[i]], [1]);
+        }
+        GenericBoundedVerifier verifier = new();
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependencies[0]]);
+        byte[] proof = RecursiveStarkAggregator.Prove(new()
+        {
+            RecursiveProofs = children, Discards = dependencies[1..]
+        }, verifier, hash);
+        Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
+        Assert.That(verifier.ProofCalls, Is.EqualTo(4));
+    }
+
+    private sealed class GenericBoundedVerifier : ILeanProofVerifier
+    {
+        public int ProofCalls { get; private set; }
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 hash, in ValueHash256 key, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyLeanStark(in ValueHash256 hash, in ValueHash256 key, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof) => true;
+        public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
+        {
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
+            Assert.That(actual, Is.EqualTo(hash));
+            Assert.That(dependencies.Count, Is.LessThanOrEqualTo(Eip8288Constants.MaxGenericStarkProofs));
+            ProofCalls++;
+            return hash.ToByteArray();
+        }
+    }
+
+    [Test]
     public void Proof_store_evicts_oldest_coverage_without_removing_newer_witnesses([Values] bool sameDependency)
     {
         LeanProofStore store = new();
@@ -169,9 +209,48 @@ public class RecursiveStarkAggregatorTests
         store.AddVerified([honest], [[1]], null);
         for (int i = 0; i < 1025; i++) store.AddVerified([repeated], null, [2]);
         Assert.That(store.TryGetInput([honest], out _), Is.True);
-        Assert.That(store.TryGetRecursiveProof([repeated], out byte[] proof), Is.True);
+        Assert.That(store.TryGetRecursiveProof([repeated], out byte[]? proof), Is.True);
         Assert.That(proof, Is.EqualTo(new byte[] { 2 }));
         Assert.That(store.TryGetRecursiveProof([honest, repeated], out _), Is.False);
+    }
+
+    [Test]
+    public void New_proof_identities_for_pending_coverage_do_not_evict_other_transactions()
+    {
+        LeanProofStore store = new();
+        FrameDependency honest = Sphincs("honest");
+        FrameDependency pending = Sphincs("pending");
+        store.AddVerified([honest], [[1]], null);
+        store.AddVerified([pending], null, [2]);
+        for (int i = 0; i < 1025; i++)
+            store.AddVerified([pending], null, BitConverter.GetBytes(i), admittedDependencies: [pending]);
+        Assert.That(store.TryGetInput([honest, pending], out _), Is.True);
+        Assert.That(store.TryGetRecursiveProof([pending], out byte[]? proof), Is.True);
+        Assert.That(proof, Is.EqualTo(new byte[] { 2 }));
+    }
+
+    [Test]
+    public void Candidate_snapshots_share_owned_read_only_witness_buffers([Values] bool recursive)
+    {
+        LeanProofStore store = new();
+        FrameDependency dependency = Sphincs("large");
+        byte[] proof = new byte[4 * 1024 * 1024];
+        store.AddVerified([dependency], recursive ? null : [proof], recursive ? proof : null);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 100; i++)
+            Assert.That(store.TryGetInput([dependency], out _), Is.True);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.That(allocated, Is.LessThan(1024 * 1024));
+    }
+
+    [Test]
+    public void Uninitialized_recursive_inputs_report_an_argument_error()
+    {
+        AggregationInput input = new() { RecursiveProofs = [default] };
+        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.Prove(input, Accepting, default));
+        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.TryAggregate(input, Accepting, out _, out _));
+        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.Combine([input], []));
+        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.InputSize(input));
     }
 
     [Test]
@@ -215,7 +294,7 @@ public class RecursiveStarkAggregatorTests
     {
         FrameDependency a = Sphincs("a");
         FrameDependency b = Sphincs("b");
-        AggregationInput input = new() { Deps = [a], Witnesses = [[1]], RecursiveProofs = [new([b], [2])] };
+        AggregationInput input = new() { Deps = [a], Witnesses = [new byte[] { 1 }], RecursiveProofs = [new([b], [2])] };
         AggregationInput combined = RecursiveStarkAggregator.Combine([input, input, input], [a, b]);
         using (Assert.EnterMultipleScope())
         {

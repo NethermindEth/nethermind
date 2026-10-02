@@ -86,6 +86,11 @@ namespace Nethermind.Consensus.Processing
                     required = Eip8288Dependencies.Canonicalize(required);
                     if (required.Count > Eip8288Constants.MaxProofDependencies)
                         return args.Set(TxAction.Skip, "Dependency proof count limit exceeded");
+                    int genericProofs = 0;
+                    foreach (FrameDependency dependency in required)
+                        if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) genericProofs++;
+                    if (genericProofs > Eip8288Constants.MaxGenericStarkProofs)
+                        return args.Set(TxAction.Skip, "Generic STARK proof count limit exceeded");
                     candidateInput = RecursiveStarkAggregator.Combine(inputs, required);
                     if (required.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies)
                         return args.Set(TxAction.Skip, "Dependency witness coverage limit exceeded");

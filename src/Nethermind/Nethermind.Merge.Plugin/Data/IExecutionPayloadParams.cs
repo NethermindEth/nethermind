@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -114,13 +113,6 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
-        if (executionPayload.InclusionListRecursiveStark is { } proof
-            && (!spec.IsEip8288Enabled || !spec.InclusionListsEnabled || InclusionListTransactions is null
-                || proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes }))
-        {
-            error = "Invalid inclusion-list recursive STARK";
-            return ValidationResult.Fail;
-        }
         ValidationResult result = ValidateInitialParams(spec, out error);
         if (result != ValidationResult.Success)
         {
@@ -131,6 +123,14 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         if (result != ValidationResult.Success)
         {
             return result;
+        }
+
+        if (executionPayload.InclusionListRecursiveStark is { } proof
+            && (!spec.IsEip8288Enabled || !spec.InclusionListsEnabled || InclusionListTransactions is null
+                || proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes }))
+        {
+            error = "Invalid inclusion-list recursive STARK";
+            return ValidationResult.Fail;
         }
 
         bool isEmptyPreForkV4 = version == EngineApiVersions.NewPayload.V4 &&

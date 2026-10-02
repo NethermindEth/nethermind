@@ -9,6 +9,7 @@ namespace Nethermind.Consensus.Eip8288;
 /// <summary>Shares one exact proof verdict across a request's gas-dimension checks.</summary>
 public sealed class InclusionListProofVerifier(ILeanProofVerifier verifier) : ILeanProofVerifier
 {
+    public void EnsureAvailable() => verifier.EnsureAvailable();
     private ValueHash256 _depsHash;
     private byte[]? _verificationKey;
     private byte[]? _proof;

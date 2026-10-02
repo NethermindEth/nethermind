@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -39,7 +40,14 @@ public static class FocilInclusionListValidator
             foreach (Transaction tx in transactions)
             {
                 if (tx is null) { error = InvalidProof; return false; }
-                if (spec is not null && tx.SupportsFrames && !FrameTxValidation.IsWellFormed(tx, spec, out error)) return false;
+                if (spec is not null && tx.SupportsFrames)
+                {
+                    if (!FrameTxValidation.IsWellFormed(tx, spec, out error)) return false;
+                    ValidationResult nonceKeys = FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, spec);
+                    if (!nonceKeys) { error = nonceKeys.Error; return false; }
+                    ValidationResult envelope = FrameTxEnvelopeTxValidator.Instance.IsWellFormed(tx, spec);
+                    if (!envelope) { error = envelope.Error; return false; }
+                }
                 deps.AddRange(Eip8288Dependencies.ForTransaction(tx));
             }
             deps = Eip8288Dependencies.Canonicalize(deps);

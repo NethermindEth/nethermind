@@ -3,16 +3,24 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Processing;
+using Nethermind.Evm.Tracing;
 using Autofac;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -42,6 +50,7 @@ public class Eip8288BlockProductionTests
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
             ChainId = chain.SpecProvider.ChainId,
             SenderAddress = TestItem.PrivateKeyB.Address,
             Frames = frames,
@@ -78,10 +87,179 @@ public class Eip8288BlockProductionTests
         Assert.That(verifier.ProofCalls, Is.EqualTo(3));
     }
 
+    [Test]
+    public async Task Plain_producing_blocks_skip_uncovered_transactions_before_execution()
+    {
+        CountingVerifier verifier = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, new LeanProofStore());
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
+        Assert.That(template, Is.Not.Null);
+        Block plain = new(template!.Header, [transaction], [], template.Withdrawals);
+        await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
+        Block? processed = environment.ChainProcessor.Process(plain, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+        Assert.That(processed, Is.Not.Null);
+        Assert.That(processed!.Transactions, Is.Empty);
+        Assert.That(Eip8288Dependencies.ForBlock(processed), Is.Empty);
+        Assert.That(processed.Header.RecursiveStark!.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(processed).ToByteArray()));
+    }
+
+    [Test]
+    public async Task Proof_wrappers_preserve_independent_keyed_nonce_domains_through_production()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction first = CreateTransaction(chain, dependency, [1, 7]);
+        Transaction independent = CreateTransaction(chain, dependency, [9]);
+        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
+        Assert.That((await service.AcceptAsync(EncodeWrapper(dependency, first, independent))).IsSuccess, Is.True);
+        Block block = await ProduceAndImport(chain, slot: 1);
+        Assert.That(block.Transactions, Has.Length.EqualTo(2));
+        using (chain.MainWorldState.BeginScope(block.Header))
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.MainWorldState.GetNonce(TestItem.PrivateKeyB.Address), Is.Zero);
+            foreach (UInt256 key in (UInt256[])[1, 7, 9])
+                Assert.That(KeyedNonceManager.CurrentNonceSeq(chain.MainWorldState, TestItem.PrivateKeyB.Address, key), Is.EqualTo(1));
+        }
+        Transaction replay = CreateTransaction(chain, dependency, [1]);
+        Result<Hash256[]> result = await service.AcceptAsync(EncodeWrapper(dependency, replay));
+        Assert.That(result.IsSuccess, Is.False);
+    }
+
+    [TestCase(true, 1UL, 1)]
+    [TestCase(true, 8192UL, 0)]
+    [TestCase(false, 1UL, 0)]
+    public async Task Proof_wrappers_enforce_recent_root_commitments_and_execution_slot_age(bool matchingRoot, ulong slot, int included)
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new();
+        ValueHash256 sourceId = RecentRootStore.SourceId(TestItem.AddressD, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs, builder =>
+            builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((state, spec) => new FunctionalGenesisPostProcessor(_ =>
+            {
+                state.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, nonce: 1);
+                state.Set(RecentRootStore.ReferenceCell(sourceId, 0), RecentRootStore.EntryHash(sourceId, 0, root).ToUInt256());
+                state.CreateAccount(TestItem.AddressD, UInt256.Zero);
+                state.InsertCode(TestItem.AddressD, Prepare.EvmCode.PushData(0).PushData(2).Op(Instruction.RECENTROOTREFLOAD)
+                    .PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done, spec.GenesisSpec);
+                state.RecalculateStateRoot();
+            })));
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero],
+            [new(sourceId, 0, matchingRoot ? root : TestItem.KeccakC.ValueHash256)],
+            new(FrameMode.Sender, FrameFlags.None, TestItem.AddressD, executionGasLimit: 100_000, stateGasLimit: GasCostOf.SSetState, UInt256.Zero, default),
+            FrameTxTestFrames.PostTx(10_000));
+        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
+        Result<Hash256[]> accepted = await service.AcceptAsync(EncodeWrapper(dependency, transaction));
+        Assert.That(accepted.IsSuccess, Is.EqualTo(matchingRoot));
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(matchingRoot ? 1 : 0));
+        if (!matchingRoot)
+        {
+            using (proofs.BeginAdmission([dependency]))
+                Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.FrameTxRecentRootUnmet));
+        }
+        Block block = await ProduceAndImport(chain, slot);
+        Assert.That(block.Transactions, Has.Length.EqualTo(included));
+        using (chain.MainWorldState.BeginScope(block.Header))
+        {
+            chain.MainWorldState.Get(new StorageCell(TestItem.AddressD, UInt256.Zero), out UInt256 stored);
+            Assert.That(stored, Is.EqualTo(included == 1 ? root.ToUInt256() : UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public async Task Expired_recent_roots_are_rejected_before_native_wrapper_verification()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new();
+        ValueHash256 source = TestItem.KeccakA.ValueHash256;
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs, builder =>
+            builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((state, spec) => new FunctionalGenesisPostProcessor(_ =>
+            {
+                state.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, nonce: 1);
+                state.Set(RecentRootStore.ReferenceCell(source, 0), RecentRootStore.EntryHash(source, 0, root).ToUInt256());
+            })));
+        await ProduceAndImport(chain, 8191);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero], [new(source, 0, root)]);
+        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
+        Result<Hash256[]> accepted = await service.AcceptAsync(EncodeWrapper(dependency, transaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted.IsSuccess, Is.False);
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+            Assert.That(chain.TxPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+    }
+
+    private static Task<BasicTestBlockchain> CreateChain(CountingVerifier verifier, LeanProofStore proofs, Action<ContainerBuilder>? configure = null) =>
+        BasicTestBlockchain.Create(builder =>
+        {
+            builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance));
+            builder.AddSingleton<ILeanProofVerifier>(verifier);
+            builder.AddSingleton(proofs);
+            builder.ConfigureTestConfiguration(configuration => configuration.AddBlockOnStart = false);
+            configure?.Invoke(builder);
+        });
+
+    private static Transaction CreateTransaction(BasicTestBlockchain chain, FrameDependency dependency, UInt256[] keys,
+        RecentRootReference[]? roots = null, params TxFrame[] execution)
+    {
+        ulong stateGas = keys.Length == 1 && keys[0].IsZero ? 0 : (ulong)keys.Length * GasCostOf.SSetState;
+        TxFrame[] frames =
+        [
+            new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, executionGasLimit: FrameTxTestFrames.PrefixFrameGas,
+                stateGasLimit: stateGas, UInt256.Zero, default),
+            new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency])),
+            .. execution
+        ];
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx, ChainId = chain.SpecProvider.ChainId, SenderAddress = TestItem.PrivateKeyB.Address,
+            NonceKeys = keys, RecentRootReferences = roots, Frames = frames,
+            GasLimit = FrameTxValidation.TotalGasLimit(frames), GasPrice = 1.GWei, DecodedMaxFeePerGas = 100.GWei
+        };
+        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
+    }
+
+    private static byte[] EncodeWrapper(FrameDependency dependency, params Transaction[] transactions) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+    {
+        Transactions = Array.ConvertAll(transactions, static transaction => new WrapperTransaction(transaction)),
+        Deps = [dependency], Mode = MempoolWrapper.ModeDirect, Proofs = [[1]]
+    }).Bytes;
+
+    private static async Task<Block> ProduceAndImport(BasicTestBlockchain chain, ulong slot)
+    {
+        Block? block = await chain.BlockProducer.BuildBlock(payloadAttributes: new PayloadAttributes
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1, SlotNumber = slot
+        });
+        Assert.That(block, Is.Not.Null);
+        Task imported = chain.WaitForNewHeadWhere(added => added.Hash == block!.Hash);
+        Assert.That(chain.BlockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
+        await imported;
+        return block!;
+    }
+
     private sealed class CountingVerifier : ILeanProofVerifier
     {
+        public void EnsureAvailable() { }
         public int ProofCalls { get; private set; }
-        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public int VerificationCalls { get; private set; }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
+        {
+            VerificationCalls++;
+            return true;
+        }
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => proof.SequenceEqual(depsHash.Bytes);
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)

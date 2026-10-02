@@ -48,8 +48,8 @@ public class InclusionListTxSource(
     }
 
     /// <inheritdoc/>
-    /// <remarks>Decoding and sender recovery are deferred to the first <see cref="GetTransactions"/> call, so
-    /// a forkchoice update that never starts a build pays nothing.</remarks>
+    /// <remarks>Inputs are snapshotted within the IL byte bounds. Decoding, sender recovery and proof
+    /// verification are deferred until the first <see cref="GetTransactions"/> call.</remarks>
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec, RecursiveStark? proof = null)
     {
         if (inclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions) return;
@@ -60,10 +60,13 @@ public class InclusionListTxSource(
             if (bytes > Eip7805Constants.MaxAggregateInclusionListBytes) return;
         }
         if (proof is not null && (proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes })) return;
+        if (_decodedByAttributes.TryGetValue(inclusionListTransactions, out BuildInclusionList? existing)
+            && ReferenceEquals(existing.Spec, spec)
+            && existing.MatchesInput(inclusionListTransactions, proof)) return;
         byte[][] snapshot = new byte[inclusionListTransactions.Length][];
         for (int i = 0; i < snapshot.Length; i++) snapshot[i] = inclusionListTransactions[i] is { } entry ? entry.AsSpan().ToArray() : null!;
         RecursiveStark? proofSnapshot = proof is null ? null : new(proof.StarkProof.AsSpan().ToArray(), proof.BlockDepsHash);
-        _decodedByAttributes.AddOrUpdate(inclusionListTransactions, new BuildInclusionList(spec.IsEip8288Enabled,
+        _decodedByAttributes.AddOrUpdate(inclusionListTransactions, new BuildInclusionList(spec, snapshot,
             proofSnapshot, new Lazy<Transaction[]>(() => PrepareSafely(snapshot, proofSnapshot, spec))));
     }
 
@@ -100,8 +103,18 @@ public class InclusionListTxSource(
         return OrderForProduction(FilterBlobs(transactions));
     }
 
-    private sealed record BuildInclusionList(bool DependenciesEnabled, RecursiveStark? Proof, Lazy<Transaction[]> Transactions)
+    private sealed record BuildInclusionList(IReleaseSpec Spec, byte[][] EncodedTransactions, RecursiveStark? Proof, Lazy<Transaction[]> Transactions)
     {
+        public bool DependenciesEnabled => Spec.IsEip8288Enabled;
+
+        public bool MatchesInput(byte[][] transactions, RecursiveStark? proof)
+        {
+            if (transactions.Length != EncodedTransactions.Length || !MatchesProof(proof)) return false;
+            for (int i = 0; i < transactions.Length; i++)
+                if (!transactions[i].AsSpan().SequenceEqual(EncodedTransactions[i])) return false;
+            return true;
+        }
+
         public bool MatchesProof(RecursiveStark? proof) => Proof is null ? proof is null
             : proof is not null && Proof.BlockDepsHash == proof.BlockDepsHash && Proof.StarkProof.AsSpan().SequenceEqual(proof.StarkProof);
     }

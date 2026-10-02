@@ -35,6 +35,16 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
     private bool _disposed;
     private byte[]? _lastWrapper;
 
+    /// <summary>Starts the shared producer, including nodes serving wrappers before their first peer connects.</summary>
+    public void Start()
+    {
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _loop ??= Task.Run(RunAsync);
+        }
+    }
+
     public void AddPeer(Func<byte[], bool> send)
     {
         byte[]? last;
@@ -64,7 +74,7 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
             {
                 Peer[] peers;
                 lock (_lock) peers = [.. _peers.Values];
-                if (peers.Length == 0 || !wrappers.IsEnabled) continue;
+                if (!wrappers.IsEnabled) continue;
                 try
                 {
                     Result<byte[]> result = wrappers.BuildWrapper(skipEmpty: true, cancellationToken: _stop.Token);

@@ -112,10 +112,73 @@ namespace Nethermind.Network.Test.P2P
                 if (buffer.ReferenceCount > 0) buffer.SafeRelease();
             }
         }
-        private class TestMessage : P2PMessage
+        [Test]
+        public void Backpressure_defers_control_traffic_and_retries_bulk_gossip([Values("eth", "lean")] string controlProtocol)
         {
-            public override int PacketType { get; } = 0;
-            public override string Protocol { get; } = "";
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage _) = SetupChannel(true);
+            TestMessage lean = new("lean", packetType: 1);
+            TestMessage eth = new(controlProtocol);
+            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(32);
+            buffer.WriteZero(32);
+            serializer.ZeroSerialize(eth, Arg.Any<IByteBufferAllocator>()).Returns(buffer);
+            context.Channel.IsWritable.Returns(false);
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            try
+            {
+                Assert.That(sender.Enqueue(lean), Is.Zero);
+                Assert.That(sender.Enqueue(eth), Is.EqualTo(32));
+                context.DidNotReceive().WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+                serializer.DidNotReceive().ZeroSerialize(lean, Arg.Any<IByteBufferAllocator>());
+                context.Channel.IsWritable.Returns(true);
+                sender.ChannelWritabilityChanged(context);
+                context.Received(1).WriteAndFlushAsync(buffer);
+                sender.ChannelWritabilityChanged(context);
+                context.Received(1).WriteAndFlushAsync(buffer);
+            }
+            finally
+            {
+                sender.HandlerRemoved(context);
+                if (buffer.ReferenceCount > 0) buffer.SafeRelease();
+            }
+        }
+
+        [Test]
+        public void Deferred_traffic_has_a_byte_budget_and_is_released_on_close()
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage _) = SetupChannel(true);
+            context.Channel.IsWritable.Returns(false);
+            TestMessage first = new("eth");
+            TestMessage second = new("eth");
+            IByteBuffer retained = PooledByteBufferAllocator.Default.Buffer(8 * 1024 * 1024);
+            retained.WriteZero(8 * 1024 * 1024);
+            IByteBuffer rejected = PooledByteBufferAllocator.Default.Buffer(8 * 1024 * 1024);
+            rejected.WriteZero(8 * 1024 * 1024);
+            serializer.ZeroSerialize(first, Arg.Any<IByteBufferAllocator>()).Returns(retained);
+            serializer.ZeroSerialize(second, Arg.Any<IByteBufferAllocator>()).Returns(rejected);
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            try
+            {
+                Assert.That(sender.Enqueue(first), Is.EqualTo(8 * 1024 * 1024));
+                Assert.That(sender.Enqueue(second), Is.Zero);
+                Assert.That(rejected.ReferenceCount, Is.Zero);
+                sender.HandlerRemoved(context);
+                Assert.That(retained.ReferenceCount, Is.Zero);
+                Assert.That(sender.Enqueue(first), Is.Zero);
+                context.DidNotReceive().WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+            }
+            finally
+            {
+                if (retained.ReferenceCount > 0) retained.SafeRelease();
+                if (rejected.ReferenceCount > 0) rejected.SafeRelease();
+            }
+        }
+
+        private class TestMessage(string protocol = "", int packetType = 0) : P2PMessage
+        {
+            public override int PacketType { get; } = packetType;
+            public override string Protocol { get; } = protocol;
         }
     }
 }

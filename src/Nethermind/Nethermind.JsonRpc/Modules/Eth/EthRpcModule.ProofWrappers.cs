@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,8 +35,7 @@ public partial class EthRpcModule
     {
         if (proofWrapperService?.IsEnabled != true)
             return ResultWrapper<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.", ErrorCodes.MethodNotFound);
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        Result<byte[]> result = proofWrapperService.BuildWrapper(cancellationToken: timeout.Token, rateLimit: true);
+        Result<byte[]> result = proofWrapperService.GetLatestWrapper();
         return result.IsSuccess ? ResultWrapper<byte[]>.Success(result.Data!)
             : ResultWrapper<byte[]>.Fail(result.Error!, ErrorCodes.TransactionRejected);
     }

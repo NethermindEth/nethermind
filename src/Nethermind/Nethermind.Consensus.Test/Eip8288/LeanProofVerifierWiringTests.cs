@@ -1,26 +1,50 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
-using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Consensus.Test.Eip8288;
 
 [NonParallelizable]
 public class LeanProofVerifierWiringTests
 {
+    [Test]
+    public async Task Startup_checks_a_decorated_backend_through_its_interface()
+    {
+        ILeanProofVerifier backend = Substitute.For<ILeanProofVerifier>();
+        InclusionListProofVerifier decorator = new(backend);
+        InitializeLeanBackend step = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), decorator);
+
+        await step.Execute(CancellationToken.None);
+
+        backend.Received(1).EnsureAvailable();
+    }
+
+    [Test]
+    public void Startup_propagates_missing_backend_failure_through_a_decorator()
+    {
+        ILeanProofVerifier backend = Substitute.For<ILeanProofVerifier>();
+        backend.When(verifier => verifier.EnsureAvailable()).Do(_ => throw new DllNotFoundException("lean backend missing"));
+        InitializeLeanBackend step = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), new InclusionListProofVerifier(backend));
+
+        Assert.That(() => step.Execute(CancellationToken.None), Throws.TypeOf<DllNotFoundException>());
+    }
+
     [Test]
     public async Task Production_module_registers_native_verifier_without_loading_the_backend()
     {

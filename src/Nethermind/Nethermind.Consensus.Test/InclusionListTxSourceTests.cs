@@ -61,7 +61,10 @@ public class InclusionListTxSourceTests
         RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)));
         PayloadAttributes attributes = new() { InclusionListTransactions = list, InclusionListRecursiveStark = proof };
         source.Set(list, spec, proof);
+        source.Set(list, spec, proof);
         Assert.That(verifier.VerificationCalls, Is.Zero);
+        Assert.That(GetTransactions(source, attributes).Single().Nonce, Is.Zero);
+        source.Set(list, spec, proof);
         // The registered build owns its snapshot even if the caller mutates the encoded list.
         list[0][0] = 0xff;
         for (int improvement = 0; improvement < 12; improvement++)

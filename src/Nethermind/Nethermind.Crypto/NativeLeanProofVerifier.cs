@@ -16,6 +16,8 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
+    private const uint ExpectedAbiVersion = 3;
+    private const int MaxRecursiveInputs = 16;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
     public static readonly NativeLeanProofVerifier Instance = new();
@@ -29,6 +31,14 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         {
             if (!AggregatedVerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
+            Span<uint> limits = stackalloc uint[7];
+            ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
+                MaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes,
+                Eip8288Constants.MaxGenericStarkProofs, 16384, 65535];
+            fixed (uint* p = limits)
+                if (nlean_limits(p, (nuint)limits.Length) != 1 ||
+                    !limits.SequenceEqual(expectedLimits))
+                    throw new InvalidOperationException("The native Lean acceptance bounds do not match this node.");
             return true;
         }
         catch (Exception exception) when (IsUnavailable(exception) || exception is InvalidOperationException)
@@ -48,7 +58,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             byte[] key = new byte[32];
             fixed (byte* p = key)
             {
-                if (AbiVersion != 2 || nlean_aggregated_vk(p) != 1) throw new InvalidOperationException("Lean verification key unavailable");
+                if (AbiVersion != ExpectedAbiVersion || nlean_aggregated_vk(p) != 1) throw new InvalidOperationException("Lean verification key unavailable");
             }
             return key;
         }
@@ -63,7 +73,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* d = dataHash.Bytes)
             fixed (byte* v = verificationKey.Bytes)
             fixed (byte* w = witness)
-                return AbiVersion == 2 && nlean_verify_leansphincs(d, v, w, (nuint)witness.Length) == 1;
+                return AbiVersion == ExpectedAbiVersion && nlean_verify_leansphincs(d, v, w, (nuint)witness.Length) == 1;
         }
         catch (Exception e) when (IsUnavailable(e)) { return false; }
     }
@@ -77,7 +87,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* d = dataHash.Bytes)
             fixed (byte* v = verificationKey.Bytes)
             fixed (byte* w = witness)
-                return AbiVersion == 2 && nlean_verify_leanstark(d, v, w, (nuint)witness.Length) == 1;
+                return AbiVersion == ExpectedAbiVersion && nlean_verify_leanstark(d, v, w, (nuint)witness.Length) == 1;
         }
         catch (Exception e) when (IsUnavailable(e)) { return false; }
     }
@@ -91,7 +101,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* h = depsHash.Bytes)
             fixed (byte* vk = aggregatedVk)
             fixed (byte* p = proof)
-                return AbiVersion == 2 && nlean_verify_recursive(h, vk, (nuint)aggregatedVk.Length, p, (nuint)proof.Length) == 1;
+                return AbiVersion == ExpectedAbiVersion && nlean_verify_recursive(h, vk, (nuint)aggregatedVk.Length, p, (nuint)proof.Length) == 1;
         }
         catch (Exception e) when (IsUnavailable(e)) { return false; }
     }
@@ -110,7 +120,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     {
         ArgumentNullException.ThrowIfNull(input);
         byte[] witness = SerializeInput(input);
-        if (aggregatedVk.Length != 32 || AbiVersion != 2) throw new InvalidOperationException("Incompatible Lean verifier ABI or key");
+        if (aggregatedVk.Length != 32 || AbiVersion != ExpectedAbiVersion) throw new InvalidOperationException("Incompatible Lean verifier ABI or key");
         byte* proof = null;
         nuint length = 0;
         try
@@ -131,7 +141,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 
     private static byte[] SerializeInput(AggregationInput input)
     {
-        if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > 16 || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
+        if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > MaxRecursiveInputs || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
             throw new ArgumentException("Invalid Lean aggregation input", nameof(input));
         using MemoryStream stream = new();
         using BinaryWriter writer = new(stream);
@@ -139,12 +149,13 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         for (int i = 0; i < input.Deps.Count; i++)
         {
             WriteDependency(writer, input.Deps[i]);
-            WriteBlob(writer, input.Witnesses[i]);
+            WriteBlob(writer, input.Witnesses[i].Span);
         }
         writer.Write(input.RecursiveProofs.Count);
         foreach (RecursiveProofInput child in input.RecursiveProofs)
         {
-            if (child.InnerDeps.Count > Eip8288Constants.MaxProofDependencies) throw new ArgumentException("Too many child dependencies", nameof(input));
+            if (child.InnerDeps is null || child.Proof.IsEmpty || child.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
+                throw new ArgumentException("Invalid child dependencies", nameof(input));
             writer.Write(child.InnerDeps.Count);
             foreach (FrameDependency dep in child.InnerDeps) WriteDependency(writer, dep);
             WriteBlob(writer, child.Proof.Span);
@@ -181,6 +192,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial uint nlean_abi_version();
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int nlean_limits(uint* output, nuint length);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial int nlean_aggregated_vk(byte* output);

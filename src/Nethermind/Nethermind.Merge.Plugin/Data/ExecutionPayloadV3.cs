@@ -34,7 +34,6 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.BlobGasUsed = block.BlobGasUsed;
         executionPayload.ExcessBlobGas = block.ExcessBlobGas;
         executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
-        executionPayload.InclusionListRecursiveStark = block.InclusionListRecursiveStark;
         if (block.Header.RecursiveStark is { } recursiveStark)
         {
             executionPayload.RecursiveStarkProof = recursiveStark.StarkProof;

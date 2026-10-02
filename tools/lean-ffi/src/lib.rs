@@ -9,6 +9,7 @@ use leanvm_core::cpu::{self, Program};
 use primitives::field::F192;
 use rec_aggregation::{ClaimSelection, EthereumProof, SignatureClaims};
 use sphincs::{SphincsPublicKey, SphincsSignature};
+use std::cell::Cell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use tiny_keccak::{Hasher, Keccak};
@@ -16,6 +17,9 @@ use tiny_keccak::{Hasher, Keccak};
 pub const MAX_BYTES: usize = 8 * 1024 * 1024;
 const MAX_DEPS: usize = 4096;
 const MAX_INSTRUCTIONS: usize = 16384;
+const MAX_OPERAND: u32 = 65535;
+const MAX_GENERIC_STARKS: usize = 16;
+const MAX_DECODE_BYTES: usize = 32 * 1024 * 1024;
 const MAGIC: &[u8; 4] = b"NLR2";
 static PROVER: Mutex<()> = Mutex::new(());
 type Dep = [u8; 96];
@@ -57,6 +61,69 @@ fn wire() -> impl Options {
     bincode::DefaultOptions::new()
         .with_fixint_encoding()
         .with_limit(MAX_BYTES as u64)
+}
+
+// Pinned fixed-int serde layout. Validate every allocation hint without allocating.
+struct Preflight<'a> {
+    reader: Reader<'a>,
+    allocated: usize,
+}
+impl<'a> Preflight<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            reader: Reader { bytes },
+            allocated: 0,
+        }
+    }
+    fn count(&mut self, max: usize, width: usize) -> Result<usize, ()> {
+        let n = usize::try_from(u64::from_le_bytes(
+            self.reader.take(8)?.try_into().map_err(|_| ())?,
+        ))
+        .map_err(|_| ())?;
+        if n > max || n > self.reader.bytes.len() / width {
+            return Err(());
+        }
+        self.allocated = self
+            .allocated
+            .checked_add(n.checked_mul(width).ok_or(())?)
+            .ok_or(())?;
+        if self.allocated > MAX_DECODE_BYTES {
+            return Err(());
+        }
+        Ok(n)
+    }
+    fn vector(&mut self, max: usize, width: usize) -> Result<(), ()> {
+        let n = self.count(max, width)?;
+        self.reader.take(n * width)?;
+        Ok(())
+    }
+    fn cpu(&mut self) -> Result<(), ()> {
+        self.vector(MAX_BYTES / 24, 24)?; // scalar stream
+        let phases = self.count(128, 16)?;
+        for _ in 0..phases {
+            let rows = self.count(4096, 8)?;
+            self.allocated = self.allocated.checked_add(rows * 24).ok_or(())?;
+            if self.allocated > MAX_DECODE_BYTES {
+                return Err(());
+            }
+            for _ in 0..rows {
+                self.vector(MAX_BYTES / 8, 8)?;
+            }
+            self.vector(MAX_BYTES / 32, 32)?;
+        }
+        Ok(())
+    }
+    fn ethereum(&mut self) -> Result<(), ()> {
+        self.vector(0, 1)?; // XMSS is unsupported
+        self.vector(MAX_DEPS, 64)?; // public key + message
+        self.vector(0, 32)?; // DA commitments are unsupported
+        self.vector(32, 24)?;
+        self.vector(32, 24)?;
+        self.cpu()
+    }
+    fn end(self) -> Result<(), ()> {
+        self.reader.end()
+    }
 }
 
 struct Reader<'a> {
@@ -202,6 +269,13 @@ fn stark_program(code: &[u8]) -> Result<Program, ()> {
             *x = u64::from_le_bytes(r.take(8)?.try_into().map_err(|_| ())?);
         }
         let md = r.number()? as u32;
+        // Upstream precomputes g-powers up to the largest operand at assembly.
+        if a.iter().any(|v| *v > MAX_OPERAND)
+            || md > MAX_OPERAND
+            || (tag == 5 && (k[0] > MAX_OPERAND as u64 || k[1] > MAX_OPERAND as u64))
+        {
+            return Err(());
+        }
         let op = match tag {
             0 => Op::Xor {
                 a: a[0],
@@ -256,8 +330,12 @@ fn verify_stark(hash: &[u8; 32], vk: &[u8; 32], witness: &[u8]) -> bool {
         if keccak(code) != *vk {
             return Err(());
         }
+        let program = stark_program(code)?;
+        let mut preflight = Preflight::new(r.bytes);
+        preflight.cpu()?;
+        preflight.end()?;
         let proof: cpu::Proof = wire().deserialize(r.bytes).map_err(|_| ())?;
-        cpu::verify(&stark_program(code)?, &pi(hash), &proof).map_err(|_| ())?;
+        cpu::verify(&program, &pi(hash), &proof).map_err(|_| ())?;
         Ok(())
     };
     result().is_ok()
@@ -280,6 +358,9 @@ fn decode_aggregate_with_hash(bytes: &[u8], expected: Option<&[u8; 32]>) -> Resu
     if !deps.windows(2).all(|w| w[0] < w[1]) {
         return Err(());
     }
+    if deps.iter().filter(|d| d[31] == 0x11).count() > MAX_GENERIC_STARKS {
+        return Err(());
+    }
     if expected.is_some_and(|hash| commitment(&deps) != *hash) {
         return Err(());
     }
@@ -287,21 +368,17 @@ fn decode_aggregate_with_hash(bytes: &[u8], expected: Option<&[u8; 32]>) -> Resu
     let sphincs = if proof.is_empty() {
         None
     } else {
-        // Bound decoding before upstream recomputes its deferred polynomial claims.
-        type Core = (Vec<[u8; 32]>, Vec<F192>, Vec<F192>, cpu::Proof);
-        let (claims, core): (SignatureClaims, Core) = wire().deserialize(proof).map_err(|_| ())?;
-        if !claims.xmss.is_empty()
-            || claims.sphincs.len() > MAX_DEPS
-            || !core.0.is_empty()
-            || core.1.len() > 32
-            || core.2.len() > 32
-        {
-            return Err(());
-        }
+        let mut preflight = Preflight::new(proof);
+        preflight.ethereum()?;
+        preflight.end()?;
         Some(EthereumProof::from_bytes(proof).map_err(|_| ())?)
     };
     let mut starks = HashMap::new();
-    for _ in 0..r.count()? {
+    let stark_count = r.count()?;
+    if stark_count > MAX_GENERIC_STARKS {
+        return Err(());
+    }
+    for _ in 0..stark_count {
         let dep = r.dep()?;
         if dep[31] != 0x11 || starks.insert(dep, r.blob()?.to_vec()).is_some() {
             return Err(());
@@ -412,7 +489,10 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    if deps.len() > MAX_DEPS || commitment(&deps) != *hash {
+    if deps.len() > MAX_DEPS
+        || deps.iter().filter(|d| d[31] == 0x11).count() > MAX_GENERIC_STARKS
+        || commitment(&deps) != *hash
+    {
         return Err(());
     }
     let signatures = SignatureClaims {
@@ -469,6 +549,23 @@ unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8], ()> {
     }
 }
 fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
+    static HOOK: OnceLock<()> = OnceLock::new();
+    thread_local! { static IN_ABI: Cell<bool> = const { Cell::new(false) }; }
+    HOOK.get_or_init(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if !IN_ABI.with(Cell::get) {
+                previous(info);
+            }
+        }));
+    });
+    struct CallGuard(bool);
+    impl Drop for CallGuard {
+        fn drop(&mut self) {
+            IN_ABI.with(|flag| flag.set(self.0));
+        }
+    }
+    let _guard = CallGuard(IN_ABI.with(|flag| flag.replace(true)));
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
         .ok()
         .and_then(Result::ok)
@@ -476,7 +573,28 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
-    2
+    3
+}
+/// # Safety
+/// Output must hold seven writable u32 values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nlean_limits(out: *mut u32, len: usize) -> i32 {
+    if out.is_null() || len != 7 {
+        return 0;
+    }
+    let limits = [
+        MAX_BYTES as u32,
+        MAX_DEPS as u32,
+        rec_aggregation::MAX_RECURSIONS as u32,
+        (sphincs::PUB_KEY_SIZE + sphincs::SIG_SIZE) as u32,
+        MAX_GENERIC_STARKS as u32,
+        MAX_INSTRUCTIONS as u32,
+        MAX_OPERAND,
+    ];
+    unsafe {
+        std::ptr::copy_nonoverlapping(limits.as_ptr(), out, limits.len());
+    }
+    1
 }
 /// # Safety
 /// Input pointers must reference their declared lengths; output pointers must be writable.
@@ -743,5 +861,54 @@ mod tests {
         put_blob(&mut envelope, &wire().serialize(&(claims, core)).unwrap());
         put_number(&mut envelope, 0);
         assert!(decode_aggregate(&envelope).is_err());
+    }
+    #[test]
+    fn preflight_rejects_allocation_hints_and_excess_generic_claims() {
+        let mut stream = u64::MAX.to_le_bytes().to_vec();
+        stream.extend_from_slice(&0u64.to_le_bytes());
+        assert!(Preflight::new(&stream).cpu().is_err());
+        for (phases, rows, words) in [(129, 0, 0), (1, 4097, 0), (1, 1, u64::MAX)] {
+            let mut proof = 0u64.to_le_bytes().to_vec();
+            proof.extend_from_slice(&(phases as u64).to_le_bytes());
+            proof.extend_from_slice(&(rows as u64).to_le_bytes());
+            proof.extend_from_slice(&words.to_le_bytes());
+            assert!(Preflight::new(&proof).cpu().is_err());
+        }
+        let mut deps = vec![[0u8; 96]; MAX_GENERIC_STARKS + 1];
+        for (i, dep) in deps.iter_mut().enumerate() {
+            dep[31] = 0x11;
+            dep[63] = i as u8;
+        }
+        let mut envelope = MAGIC.to_vec();
+        put_deps(&mut envelope, &deps);
+        assert!(decode_aggregate(&envelope).is_err());
+    }
+    #[test]
+    fn bytecode_offsets_are_bounded_before_upstream_assembly() {
+        let mut code = 1u32.to_le_bytes().to_vec();
+        code.push(2); // SET
+        code.extend_from_slice(&u32::MAX.to_le_bytes());
+        code.extend_from_slice(&[0; 40]);
+        assert!(stark_program(&code).is_err());
+    }
+    #[test]
+    fn exported_limits_match_and_panics_fail_closed() {
+        let mut limits = [0u32; 7];
+        assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 7) }, 1);
+        assert_eq!(
+            limits,
+            [
+                MAX_BYTES as u32,
+                MAX_DEPS as u32,
+                rec_aggregation::MAX_RECURSIONS as u32,
+                (sphincs::PUB_KEY_SIZE + sphincs::SIG_SIZE) as u32,
+                MAX_GENERIC_STARKS as u32,
+                MAX_INSTRUCTIONS as u32,
+                MAX_OPERAND
+            ]
+        );
+        assert_eq!(unsafe { nlean_limits(std::ptr::null_mut(), 7) }, 0);
+        assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 6) }, 0);
+        assert_eq!(checked(|| panic!("contained upstream failure")), 0);
     }
 }

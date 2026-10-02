@@ -21,9 +21,12 @@ public static class RecursiveStarkAggregator
     public static long InputSize(AggregationInput input)
     {
         long size = 12 + (long)input.Discards.Count * Eip8288Constants.DependencyTripleLength;
-        foreach (byte[] witness in input.Witnesses) size += Eip8288Constants.DependencyTripleLength + 4 + witness.Length;
+        foreach (ReadOnlyMemory<byte> witness in input.Witnesses) size += Eip8288Constants.DependencyTripleLength + 4 + witness.Length;
         foreach (RecursiveProofInput proof in input.RecursiveProofs)
+        {
+            if (proof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
             size += 8 + (long)proof.InnerDeps.Count * Eip8288Constants.DependencyTripleLength + proof.Proof.Length;
+        }
         return size;
     }
 
@@ -31,7 +34,7 @@ public static class RecursiveStarkAggregator
     public static AggregationInput Combine(IReadOnlyList<AggregationInput> inputs, IReadOnlyList<FrameDependency> required)
     {
         List<FrameDependency> direct = [];
-        List<byte[]> witnesses = [];
+        List<ReadOnlyMemory<byte>> witnesses = [];
         List<RecursiveProofInput> recursive = [];
         HashSet<FrameDependency> wanted = [.. required];
         HashSet<FrameDependency> discards = [];
@@ -41,6 +44,7 @@ public static class RecursiveStarkAggregator
         {
             foreach (RecursiveProofInput child in input.RecursiveProofs)
             {
+                if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(inputs));
                 if (!seenProofs.Add(child.ProofHash)) continue;
                 recursive.Add(child);
                 foreach (FrameDependency dep in child.InnerDeps)
@@ -67,18 +71,21 @@ public static class RecursiveStarkAggregator
     public static byte[] Prove(AggregationInput input, ILeanProofVerifier verifier, in ValueHash256 depsHash, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        foreach (RecursiveProofInput child in input.RecursiveProofs)
+            if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
         if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize)
             return verifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, input);
 
+        HashSet<FrameDependency> discarded = [.. input.Discards];
         List<RecursiveProofInput> children = [.. input.RecursiveProofs];
         for (int offset = 0; offset < input.Deps.Count;)
         {
             List<FrameDependency> deps = [];
-            List<byte[]> witnesses = [];
+            List<ReadOnlyMemory<byte>> witnesses = [];
             long bytes = 12;
             do
             {
-                byte[] witness = input.Witnesses[offset];
+                ReadOnlyMemory<byte> witness = input.Witnesses[offset];
                 long entrySize = Eip8288Constants.DependencyTripleLength + 4L + witness.Length;
                 if (deps.Count > 0 && bytes + entrySize > MaxProductionWitnessBytes) break;
                 deps.Add(input.Deps[offset]);
@@ -107,7 +114,15 @@ public static class RecursiveStarkAggregator
         RecursiveProofInput ProveChild(AggregationInput childInput, IReadOnlyList<FrameDependency> dependencies)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(dependencies);
+            List<FrameDependency> retained = [];
+            foreach (FrameDependency dependency in dependencies)
+                if (!discarded.Contains(dependency)) retained.Add(dependency);
+            List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(retained);
+            childInput = new()
+            {
+                Deps = childInput.Deps, Witnesses = childInput.Witnesses,
+                RecursiveProofs = childInput.RecursiveProofs, Discards = input.Discards
+            };
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(canonical);
             byte[] proof = verifier.ProveRecursiveStark(in hash, Eip8288Constants.AggregatedVk, childInput);
             return new(canonical, proof);
@@ -130,11 +145,11 @@ public static class RecursiveStarkAggregator
         for (int i = 0; i < input.Deps.Count; i++)
         {
             FrameDependency dep = input.Deps[i];
-            byte[] witness = input.Witnesses[i];
+            ReadOnlyMemory<byte> witness = input.Witnesses[i];
             bool valid = dep.Scheme switch
             {
-                Eip8288Constants.LeanSphincsScheme => verifier.VerifyLeanSphincs(dep.DataHash, dep.VerificationKey, witness),
-                Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dep.DataHash, dep.VerificationKey, witness),
+                Eip8288Constants.LeanSphincsScheme => verifier.VerifyLeanSphincs(dep.DataHash, dep.VerificationKey, witness.Span),
+                Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dep.DataHash, dep.VerificationKey, witness.Span),
                 _ => false,
             };
             if (!valid) return false;
@@ -143,6 +158,7 @@ public static class RecursiveStarkAggregator
 
         foreach (RecursiveProofInput recursiveProof in input.RecursiveProofs)
         {
+            if (recursiveProof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
             ValueHash256 innerHash = Eip8288Dependencies.ComputeDepsHash(recursiveProof.InnerDeps);
             if (!verifier.VerifyRecursiveStark(in innerHash, Eip8288Constants.AggregatedVk, recursiveProof.Proof.Span)) return false;
             allDeps.AddRange(recursiveProof.InnerDeps);

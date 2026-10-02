@@ -60,6 +60,27 @@ public class HeaderStoreTests
         context.AssertReads(() => Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(100)), numberReads: 1);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Large_proofs_are_persisted_without_retaining_them_in_the_header_cache(bool explicitCache)
+    {
+        HeaderStore store = new(new MemDb(), new MemDb());
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        header.RecursiveStark = new RecursiveStark(new byte[128 * 1024], TestItem.KeccakA);
+        header.Hash = Keccak.Compute(Rlp.Encode(header).Bytes);
+        store.Insert(header);
+        if (explicitCache) store.Cache(header);
+        BlockHeader decoded = store.Get(header.Hash!, shouldCache: true)!;
+        BlockHeader again = store.Get(header.Hash!, shouldCache: true)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.RecursiveStark!.StarkProof, Has.Length.EqualTo(128 * 1024));
+            Assert.That(again.Hash, Is.EqualTo(header.Hash));
+            Assert.That(again, Is.Not.SameAs(decoded));
+            Assert.That(decoded, Is.Not.SameAs(header));
+        }
+    }
+
     [Test]
     public void TestCanDeleteHeader([Values] bool cacheBeforeDelete)
     {

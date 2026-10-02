@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -77,6 +76,7 @@ public class NativeBlockProductionTests
             Type = TxType.FrameTx,
             ChainId = chain.SpecProvider.ChainId,
             SenderAddress = TestItem.PrivateKeyB.Address,
+            NonceKeys = [UInt256.Zero],
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,

@@ -45,6 +45,7 @@ namespace Nethermind.TxPool
     {
         private const int RevalidationAbandonmentWarningThreshold = 3;
         private const int MarkerPublicationDeferralWarningThreshold = 3;
+        private static readonly AddressAsKey[] RecentRootDependency = [Eip8272Constants.RecentRootAddress];
 
         private readonly RetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
 
@@ -332,6 +333,7 @@ namespace Nethermind.TxPool
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new KeyedNonceFilter(chainHeadInfoProvider.ReadOnlyStateProvider, txPoolConfig, _transactions, _blobTransactions), // the three above skip keyed sets, this one owns them
+                new RecentRootFilter(chainHeadInfoProvider),
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
                 new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve recovery per signature, up to the decoder's 1024, so let the cheap filters reject first
@@ -655,11 +657,13 @@ namespace Nethermind.TxPool
             // A delegated sender runs the delegate's code, so that account is a dependency too; the sender's
             // own code hash only pins the designation.
             Address? delegated = resolveDelegation ? DelegationTargetOf(tx.SenderAddress!) : null;
-            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (delegated is not null ? 1 : 0)];
+            bool hasRecentRoots = tx.RecentRootReferences is { Length: > 0 };
+            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (delegated is not null ? 1 : 0) + (hasRecentRoots ? 1 : 0)];
             int next = 0;
             accounts[next++] = tx.SenderAddress!;
             if (hasDistinctPayer) accounts[next++] = payer!;
-            if (delegated is not null) accounts[next] = delegated;
+            if (delegated is not null) accounts[next++] = delegated;
+            if (hasRecentRoots) accounts[next] = Eip8272Constants.RecentRootAddress;
 
             if (onlyIfTracked) _frameDependencies.Update(tx.Hash!.ValueHash256, accounts);
             else _frameDependencies.Set(tx.Hash!.ValueHash256, accounts);
@@ -1235,7 +1239,12 @@ namespace Nethermind.TxPool
             if (_frameDependencies.Count > 0)
             {
                 if (completeAccountChanges is null) _frameDependencies.CollectAll(_frameTxsToRevalidate);
-                else _frameDependencies.CollectAffected(completeAccountChanges, _frameTxsToRevalidate);
+                else
+                {
+                    _frameDependencies.CollectAffected(completeAccountChanges, _frameTxsToRevalidate);
+                    // Reference age advances even when the commitment account did not change.
+                    _frameDependencies.CollectAffected(RecentRootDependency, _frameTxsToRevalidate);
+                }
             }
 
             // Carried from the previous head: a bound this node spent judged nothing, and a one-off change
@@ -1367,6 +1376,7 @@ namespace Nethermind.TxPool
         private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, out Address? resolvedPayer)
         {
             resolvedPayer = null;
+            if (!RecentRootFilter.IsValid(tx, state, _headInfo.HeadSlotNumber)) return false;
 
             // Matches TxFilteringState: a never-seen sender must read back as code-free, not zero-hashed.
             if (!_accounts.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount)) senderAccount = AccountStruct.TotallyEmpty;

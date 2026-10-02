@@ -28,6 +28,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -3612,6 +3613,40 @@ namespace Nethermind.TxPool.Test
             return frameTx;
         }
 
+        private void CommitRecentRoots(RecentRootReference[] references)
+        {
+            foreach (RecentRootReference reference in references)
+                _stateProvider.Set(RecentRootStore.ReferenceCell(reference.SourceId, reference.Slot),
+                    RecentRootStore.EntryHash(reference.SourceId, reference.Slot, reference.Root).ToUInt256());
+        }
+
+        [Test]
+        public async Task Recent_roots_are_revalidated_for_commitment_and_slot_changes([Values] bool commitmentChanged)
+        {
+            _blockTree.Head.Header.SlotNumber = commitmentChanged ? 0UL : 8190UL;
+            OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(spec));
+            RecentRootReference[] references = [new(TestItem.KeccakA, 0, TestItem.KeccakB)];
+            CommitRecentRoots(references);
+            Transaction transaction = SignedFrameTx([SelfVerifyPrefixFrame()], references);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            BlockHeader header = Build.A.BlockHeader.WithParent(_blockTree.Head.Header).WithNumber(_blockTree.Head.Number + 1)
+                .WithTimestamp(_blockTree.Head.Timestamp + 1).WithGasLimit(FixtureHeadGasLimit)
+                .WithSlotNumber(commitmentChanged ? 1UL : 8191UL).TestObject;
+            Block block = new(header, [], []);
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1);
+            if (commitmentChanged)
+            {
+                _stateProvider.Set(RecentRootStore.ReferenceCell(TestItem.KeccakA.ValueHash256, 0), UInt256.Zero);
+                block.AccountChanges.Add(Eip8272Constants.RecentRootAddress);
+            }
+            await RaiseBlockAddedToMainAndWaitForNewHead(block, _blockTree.Head);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+
         /// <summary>The frame-transaction properties a change of head specification can turn from valid to invalid.</summary>
         public enum FrameForkGate { PostTx, RecentRoots, ExecutionGasCap }
 
@@ -3627,6 +3662,11 @@ namespace Nethermind.TxPool.Test
         public async Task Frame_transaction_invalidated_by_the_new_head_is_evicted(FrameForkGate gate, bool revokedAtFork)
         {
             Block head = _blockTree.Head;
+            if (gate == FrameForkGate.RecentRoots)
+            {
+                head.Header.SlotNumber = 1;
+                CommitRecentRoots([new RecentRootReference(TestItem.KeccakA, 1, TestItem.KeccakB)]);
+            }
             _blockTree.BestSuggestedHeader = head.Header;
 
             OverridableReleaseSpec preForkSpec = new(Eip8141Prototype.Instance)
@@ -3705,6 +3745,7 @@ namespace Nethermind.TxPool.Test
         public void SubmitTx_LocallyBuiltFrameTx_IsPricedOnMeasuredReferenceCalldata(bool overCapOnceMeasured)
         {
             OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
+            _blockTree.Head.Header.SlotNumber = Eip8272Constants.MaxRecentRootReferences;
             _txPool = CreatePool(new TxPoolConfig { GasLimit = long.MaxValue, FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(spec));
             _headInfo.BlockGasLimit = long.MaxValue;
 
@@ -3714,6 +3755,7 @@ namespace Nethermind.TxPool.Test
                 references[i] = new RecentRootReference(TestItem.KeccakA, (ulong)i + 1, TestItem.KeccakB);
             }
 
+            CommitRecentRoots(references);
             Transaction probe = ReferenceFrameTx(0);
             probe.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(references);
             Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(probe, spec, out ulong measured, out _), Is.True);

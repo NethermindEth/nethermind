@@ -246,8 +246,7 @@ namespace Nethermind.Consensus.Producers
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals)
             {
                 InclusionListTransactions = payloadAttributes?.InclusionListTransactions is { } il
-                    ? Nethermind.Serialization.Rlp.TxsDecoder.DecodeTxs(il, skipErrors: true).Transactions : null,
-                InclusionListRecursiveStark = payloadAttributes?.InclusionListRecursiveStark
+                    ? Nethermind.Serialization.Rlp.TxsDecoder.DecodeTxs(il, skipErrors: true).Transactions : null
             };
         }
 

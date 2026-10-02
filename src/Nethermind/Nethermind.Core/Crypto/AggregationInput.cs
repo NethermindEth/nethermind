@@ -13,7 +13,7 @@ public readonly struct RecursiveProofInput
     {
         ArgumentNullException.ThrowIfNull(innerDeps);
         ArgumentNullException.ThrowIfNull(proof);
-        InnerDeps = [.. innerDeps];
+        InnerDeps = Array.AsReadOnly<FrameDependency>([.. innerDeps]);
         byte[] snapshot = (byte[])proof.Clone();
         Proof = snapshot;
         ProofHash = ValueKeccak.Compute(snapshot);
@@ -35,7 +35,7 @@ public readonly struct RecursiveProofInput
 public sealed class AggregationInput
 {
     public IReadOnlyList<FrameDependency> Deps { get; init; } = [];
-    public IReadOnlyList<byte[]> Witnesses { get; init; } = [];
+    public IReadOnlyList<ReadOnlyMemory<byte>> Witnesses { get; init; } = [];
     public IReadOnlyList<RecursiveProofInput> RecursiveProofs { get; init; } = [];
     public IReadOnlyList<FrameDependency> Discards { get; init; } = [];
 }

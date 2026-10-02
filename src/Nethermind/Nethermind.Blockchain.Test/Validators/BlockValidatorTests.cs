@@ -231,6 +231,8 @@ public class BlockValidatorTests
 
     private sealed class FixedLeanProofVerifier(bool result) : ILeanProofVerifier
     {
+        public void EnsureAvailable() { }
+
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => result;

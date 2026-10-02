@@ -8,6 +8,9 @@ namespace Nethermind.Core.Crypto;
 /// <summary>Verifies Lean Ethereum signatures and proofs for dependency validation and aggregation.</summary>
 public interface ILeanProofVerifier
 {
+    /// <summary>Checks that the backend is ready before a configured dependency-proof fork starts.</summary>
+    void EnsureAvailable();
+
     /// <summary>Verifies a leanSPHINCS signature over <paramref name="dataHash"/> under <paramref name="verificationKey"/>.</summary>
     bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness);
 

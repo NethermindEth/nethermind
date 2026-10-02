@@ -11,7 +11,8 @@ public enum ProofWrapperAcceptanceStatus
     Invalid,
     Accepted,
     PoolRejected,
-    Busy
+    Busy,
+    LocalFailure
 }
 
 /// <summary>A valid proof can cover transactions rejected by local pool policy.</summary>
@@ -19,4 +20,5 @@ public readonly record struct ProofWrapperAcceptance(ProofWrapperAcceptanceStatu
 {
     public bool HasValidProof => Status is ProofWrapperAcceptanceStatus.Accepted or ProofWrapperAcceptanceStatus.PoolRejected;
     public static ProofWrapperAcceptance Invalid(string error) => new(ProofWrapperAcceptanceStatus.Invalid, Result<Hash256[]>.Fail(error));
+    public static ProofWrapperAcceptance LocalFailure(string error) => new(ProofWrapperAcceptanceStatus.LocalFailure, Result<Hash256[]>.Fail(error));
 }

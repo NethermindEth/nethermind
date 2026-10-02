@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -16,6 +17,56 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class ProofInclusionListPayloadTests
 {
+    [Test]
+    public void Version_errors_precede_inclusion_proof_shape_errors()
+    {
+        PayloadAttributes attributes = new()
+        {
+            Timestamp = 1,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = TestItem.AddressA,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Zero,
+            SlotNumber = 1,
+            TargetGasLimit = 30_000_000,
+            InclusionListTransactions = []
+        };
+        TestSpecProvider provider = new(Bogota.Instance);
+        PayloadAttributesValidationResult expected = attributes.Validate(provider, 4, out string? expectedError);
+        attributes.InclusionListRecursiveStark = new([], Keccak.Zero);
+        Assert.That(attributes.Validate(provider, 4, out string? actualError), Is.EqualTo(expected));
+        Assert.That(actualError, Is.EqualTo(expectedError));
+
+        ExecutionPayloadV4 payload = new()
+        {
+            Withdrawals = [],
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+            SlotNumber = 1,
+            BlockAccessList = [],
+            InclusionListRecursiveStark = new([], Keccak.Zero)
+        };
+        ExecutionPayloadParams<ExecutionPayloadV4> parameters = new(payload, [], Keccak.Zero, [], []);
+        Assert.That(parameters.ValidateParams(Bogota.Instance, 4, out string? error), Is.EqualTo(ValidationResult.Fail));
+        Assert.That(error, Does.StartWith("Slot number"));
+    }
+
+    [Test]
+    public void Compliance_digest_separates_transactions_from_proof_metadata()
+    {
+        byte[] proofBytes = [1];
+        Hash256 proofHash = new(ValueKeccak.Compute(proofBytes));
+        Block ordinary = Build.A.Block.TestObject;
+        ordinary.InclusionListTransactions = [new() { Hash = TestItem.KeccakA }, new() { Hash = TestItem.KeccakB }, new() { Hash = proofHash }];
+        Block proven = Build.A.Block.TestObject;
+        proven.InclusionListTransactions = [new() { Hash = TestItem.KeccakA }];
+        proven.InclusionListRecursiveStark = new(proofBytes, TestItem.KeccakB);
+        ValueHash256 digest = NewPayloadHandler.ComputeInclusionListDigest(proven);
+        Assert.That(digest, Is.Not.EqualTo(NewPayloadHandler.ComputeInclusionListDigest(ordinary)));
+        proofBytes[0] = 2;
+        Assert.That(NewPayloadHandler.ComputeInclusionListDigest(proven), Is.Not.EqualTo(digest));
+    }
+
     [TestCase("missing-list")]
     [TestCase("missing-hash")]
     [TestCase("empty-proof")]
@@ -43,14 +94,18 @@ public class ProofInclusionListPayloadTests
     }
 
     [Test]
-    public void Sidecar_survives_payload_and_block_header_replacement()
+    public void Inclusion_proof_is_input_metadata_and_is_not_echoed_by_get_payload()
     {
         RecursiveStark proof = new([1], Keccak.Zero);
         Block block = Build.A.Block.WithNumber(1).TestObject;
         block.InclusionListTransactions = [];
         block.InclusionListRecursiveStark = proof;
         block = block.WithReplacedHeader(block.Header.Clone());
+        Assert.That(block.InclusionListRecursiveStark, Is.SameAs(proof));
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
+        Assert.That(payload.InclusionListRecursiveStark, Is.Null);
+        // The CL supplies its own list proof on newPayload.
+        payload.InclusionListRecursiveStark = proof;
         Result<Block> result = payload.TryGetBlock();
         Assert.That(result.IsError, Is.False, result.Error);
         Assert.That(result.Data!.InclusionListRecursiveStark, Is.SameAs(proof));

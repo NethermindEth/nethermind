@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +20,12 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
     private readonly ILogger _logger = logManager?.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly TimeSpan _sendLatency = sendLatency;
     private readonly CancellationTokenSource _cts = new();
+    private const int MaxDeferredBytes = 12 * 1024 * 1024;
+    private const int MaxDeferredMessages = 64;
+    private readonly Lock _deferredLock = new();
+    private readonly Queue<IByteBuffer> _deferred = [];
+    private int _deferredBytes;
+    private bool _removed;
     private IChannelHandlerContext _context;
     private Action<Task, object?> _delayThenWrite;
     private Action<Task, object?> _observeWriteCompletion;
@@ -30,18 +37,47 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
 
     public int Enqueue<T>(T message) where T : P2PMessage
     {
-        if (!_context.Channel.IsWritable || !_context.Channel.Active)
+        lock (_deferredLock)
         {
-            return 0;
+            if (_removed || !_context.Channel.Active) return 0;
+            bool deferred = !_context.Channel.IsWritable || _deferred.Count != 0;
+            // Bulk proof gossip retries from its own bounded latest view. Reserve the
+            // channel's deferred budget for eth, snap and session control traffic.
+            if (deferred && ((message.Protocol == "lean" && message.PacketType == 1) || _deferred.Count == MaxDeferredMessages
+                || _deferredBytes == MaxDeferredBytes)) return 0;
+
+            IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
+            int length = buffer.ReadableBytes;
+            if (deferred)
+            {
+                if (length > MaxDeferredBytes - _deferredBytes)
+                {
+                    buffer.Release();
+                    return 0;
+                }
+                _deferred.Enqueue(buffer);
+                _deferredBytes += length;
+                if (_context.Channel.IsWritable) DrainDeferred();
+            }
+            else SendBuffer(buffer);
+
+            return length;
         }
+    }
 
-        IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
-        int length = buffer.ReadableBytes;
+    private void DrainDeferred()
+    {
+        while (!_removed && _context.Channel.Active && _context.Channel.IsWritable && _deferred.TryDequeue(out IByteBuffer? buffer))
+        {
+            _deferredBytes -= buffer.ReadableBytes;
+            SendBuffer(buffer);
+        }
+    }
 
-        // Running in background
-        SendBuffer(buffer);
-
-        return length;
+    public override void ChannelWritabilityChanged(IChannelHandlerContext context)
+    {
+        lock (_deferredLock) DrainDeferred();
+        context.FireChannelWritabilityChanged();
     }
 
     private void SendBuffer(IByteBuffer buffer)
@@ -161,6 +197,12 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
 
     public override void HandlerRemoved(IChannelHandlerContext context)
     {
+        lock (_deferredLock)
+        {
+            _removed = true;
+            while (_deferred.TryDequeue(out IByteBuffer? buffer)) buffer.Release();
+            _deferredBytes = 0;
+        }
         _cts.Cancel();
         _cts.Dispose();
     }

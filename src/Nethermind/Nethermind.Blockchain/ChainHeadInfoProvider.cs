@@ -33,6 +33,7 @@ namespace Nethermind.Blockchain
             Block? head = blockTree.Head;
             HeadNumber = head?.Number ?? 0;
             HeadTimestamp = head?.Timestamp ?? 0;
+            HeadSlotNumber = head?.Header.SlotNumber;
             // Genesis is not a head worth pricing or bounding transactions on while syncing. Keep the
             // gas limit, fees, and proof version at their defaults until the first head change.
             if (head is not null && !head.IsGenesis) ReadHead(head.Header);
@@ -48,6 +49,8 @@ namespace Nethermind.Blockchain
         public ulong HeadNumber { get; private set; }
 
         public ulong HeadTimestamp { get; private set; }
+
+        public ulong? HeadSlotNumber { get; private set; }
 
         public ulong? BlockGasLimit { get; internal set; }
 
@@ -79,6 +82,7 @@ namespace Nethermind.Blockchain
         {
             HeadNumber = e.Block.Number;
             HeadTimestamp = e.Block.Timestamp;
+            HeadSlotNumber = e.Block.Header.SlotNumber;
             ReadHead(e.Block.Header);
             HeadChanged?.Invoke(sender, e);
         }

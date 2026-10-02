@@ -10,7 +10,7 @@ namespace Nethermind.Core.Crypto;
 /// <summary>Bounded, thread-safe storage of verified dependency witnesses for block production.</summary>
 public sealed class LeanProofStore
 {
-    // Leave room for Snappy's worst-case expansion within the 12 MiB inbound frame cap.
+    // Leave room for Snappy's worst-case expansion within the 16 MiB inbound frame cap.
     public const int MaxWrapperBytes = 10 * 1024 * 1024;
     public const int MaxWrapperTransactions = 4096;
     private const long MaxStoredBytes = 64 * 1024 * 1024;
@@ -24,7 +24,11 @@ public sealed class LeanProofStore
     private long _storedBytes;
 
     private sealed record ProofRecord(FrameDependency[] Dependencies, byte[][]? Witnesses, byte[]? RecursiveProof,
-        long Size, ValueHash256 Identity, ValueHash256 DependencyHash, ValueHash256 ProofHash);
+        long Size, ValueHash256 Identity, ValueHash256 DependencyHash, ValueHash256 ProofHash)
+    {
+        public RecursiveProofInput RecursiveInput { get; } = RecursiveProof is null ? default
+            : new(Array.AsReadOnly(Dependencies), RecursiveProof, ProofHash);
+    }
 
     private sealed class AdmissionScope(LeanProofStore store, AdmissionScope? previous, IReadOnlyList<FrameDependency> dependencies) : IDisposable
     {
@@ -64,6 +68,11 @@ public sealed class LeanProofStore
             foreach (FrameDependency dependency in admittedDependencies)
                 if (!declared.Contains(dependency)) throw new ArgumentException("Admitted dependencies must be covered by the proof.");
         }
+        IReadOnlyList<FrameDependency> coverage = admittedDependencies ?? dependencies;
+        lock (_lock)
+        {
+            if (admittedDependencies is not null && HasCoverage(coverage)) return;
+        }
         byte[] dependencyBytes = Eip8288Dependencies.Serialize(dependencies);
         ValueHash256 dependencyHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
         ValueHash256 proofHash = recursiveProof is null ? default : ValueKeccak.Compute(recursiveProof);
@@ -78,9 +87,9 @@ public sealed class LeanProofStore
             }
         else proofHash.Bytes.CopyTo(identityBytes.AsSpan(dependencyBytes.Length + 1));
         ValueHash256 identity = ValueKeccak.Compute(identityBytes);
-        IReadOnlyList<FrameDependency> coverage = admittedDependencies ?? dependencies;
         lock (_lock)
         {
+            if (HasCoverage(coverage) && (recursiveProof is null || admittedDependencies is not null || _recursiveByDeps.ContainsKey(dependencyHash))) return;
             if (_identities.TryGetValue(identity, out ProofRecord? existing))
             {
                 foreach (FrameDependency dep in coverage) _coverage[dep] = existing;
@@ -105,6 +114,7 @@ public sealed class LeanProofStore
             identity, dependencyHash, proofHash);
         lock (_lock)
         {
+            if (HasCoverage(coverage) && (recursiveProof is null || admittedDependencies is not null || _recursiveByDeps.ContainsKey(dependencyHash))) return;
             if (_identities.TryGetValue(identity, out ProofRecord? existing))
             {
                 foreach (FrameDependency dep in coverage) _coverage[dep] = existing;
@@ -126,6 +136,13 @@ public sealed class LeanProofStore
                     if (_coverage.TryGetValue(dep, out ProofRecord? currentCoverage) && ReferenceEquals(currentCoverage, oldest)) _coverage.Remove(dep);
             }
         }
+    }
+
+    private bool HasCoverage(IReadOnlyList<FrameDependency> dependencies)
+    {
+        foreach (FrameDependency dependency in dependencies)
+            if (!_coverage.ContainsKey(dependency)) return false;
+        return true;
     }
 
     /// <summary>Checks whether every dependency of a candidate transaction has a verified witness.</summary>
@@ -161,7 +178,7 @@ public sealed class LeanProofStore
         input = new();
         HashSet<FrameDependency> required = [.. dependencies];
         List<FrameDependency> directDeps = [];
-        List<byte[]> witnesses = [];
+        List<ReadOnlyMemory<byte>> witnesses = [];
         List<RecursiveProofInput> recursive = [];
         HashSet<ProofRecord> selected = [];
         HashSet<FrameDependency> discards = [];
@@ -174,11 +191,11 @@ public sealed class LeanProofStore
                 {
                     int index = Array.IndexOf(record.Dependencies, dep);
                     directDeps.Add(dep);
-                    witnesses.Add((byte[])record.Witnesses[index].Clone());
+                    witnesses.Add(record.Witnesses[index]);
                 }
                 else if (selected.Add(record))
                 {
-                    recursive.Add(new RecursiveProofInput((FrameDependency[])record.Dependencies.Clone(), (byte[])record.RecursiveProof!.Clone(), record.ProofHash));
+                    recursive.Add(record.RecursiveInput);
                     foreach (FrameDependency nestedDep in record.Dependencies)
                         if (!required.Contains(nestedDep)) discards.Add(nestedDep);
                 }

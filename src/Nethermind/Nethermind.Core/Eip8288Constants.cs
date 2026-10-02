@@ -23,6 +23,7 @@ public static class Eip8288Constants
 
     /// <summary>Maximum distinct dependencies covered by the prototype native proof envelope.</summary>
     public const int MaxProofDependencies = 4096;
+    public const int MaxGenericStarkProofs = 16;
 
     /// <summary>Maximum encoded native witness or recursive proof size.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;

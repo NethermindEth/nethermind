@@ -24,6 +24,7 @@ public class HeaderStore(
 {
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
+    internal const int MaxCachedProofBytes = 64 * 1024;
 
     private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
 
@@ -62,12 +63,18 @@ public class HeaderStore(
         BlockHeader? header = null;
         if (blockNumber is not null)
         {
-            header = headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            header = headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: false);
         }
-        return header ?? headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+        header ??= headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false);
+        if (shouldCache && header is not null) Cache(header);
+        return header;
     }
 
-    public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);
+    public void Cache(BlockHeader header)
+    {
+        if (header.RecursiveStark?.StarkProof.Length is > MaxCachedProofBytes) return;
+        _headerCache.Set(in header.Hash.ValueHash256, header);
+    }
 
     public void Delete(Hash256 blockHash)
     {

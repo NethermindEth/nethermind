@@ -1,5 +1,8 @@
 # Lean proof and devp2p benchmarks
 
+[Measured baseline and graphs](results/2026-10-02/README.md) retain the source revision,
+binary hashes, raw row CSVs and separate preparation/receive measurements.
+
 This standalone tool measures the pinned native leanVM/SPHINCS backend and production RLPx Snappy/AES/MAC codecs over localhost TCP. It uses a real production transaction pool through the test node's DI setup. Session secrets are preset; capability exchange, Internet latency and TCP/IP headers are outside the wire-byte measurement.
 
 Requires .NET 10 and Rust 1.99. Run from the repository root:

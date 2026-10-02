@@ -11,7 +11,7 @@ public sealed class NativeTestSetup
     [OneTimeSetUp]
     public void RequireNativeTestOptIn()
 #if NATIVE_LEAN_TESTS
-        => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(2u));
+        => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(3u));
 #else
         => Assert.Ignore("Live Lean integration requires -p:BuildLeanFfi=true; ordinary builds compile this suite without Rust.");
 #endif

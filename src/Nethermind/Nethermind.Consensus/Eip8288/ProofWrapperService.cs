@@ -9,14 +9,16 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Consensus.Validators;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Evm;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Eip8288;
 
 /// <summary>Shared proof-wrapper validation, admission and aggregation for RPC and negotiated peers.</summary>
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
-    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier)
+    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier, IChainHeadInfoProvider? headInfo = null)
 {
     internal const int MaxWrapperTransactionBytes = LeanProofStore.MaxWrapperBytes - Eip8288Constants.MaxProofBytes - 4096;
     private readonly object _aggregationLock = new();
@@ -35,8 +37,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>Separates invalid proofs from ordinary pool admission failures.</summary>
     public async Task<ProofWrapperAcceptance> AcceptDetailedAsync(byte[] wrapper, CancellationToken cancellationToken = default)
     {
-        if (!IsEnabled)
-            return ProofWrapperAcceptance.Invalid("EIP-8288 proof wrappers are unavailable.");
+        Block? head = blockFinder.Head;
+        IReleaseSpec? admissionSpec = head is null ? null : specProvider.GetSpec(head.Header);
+        if (admissionSpec?.IsEip8288Enabled != true)
+            return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
         if (wrapper.Length > LeanProofStore.MaxWrapperBytes)
             return ProofWrapperAcceptance.Invalid("Proof wrapper exceeds the size limit.");
         if (Interlocked.CompareExchange(ref _admissionActive, 1, 0) != 0)
@@ -44,18 +48,36 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            MempoolWrapper decoded = DecodeProofWrapper(wrapper);
+            MempoolWrapper decoded;
+            try { decoded = DecodeProofWrapper(wrapper); }
+            catch (Exception exception) when (exception is RlpException or ArgumentException)
+            {
+                return ProofWrapperAcceptance.Invalid("Invalid proof wrapper RLP.");
+            }
+            Dictionary<ValueHash256, Transaction> resolved = [];
             foreach (WrapperTransaction entry in decoded.Transactions)
             {
                 Transaction? transaction = entry.Full ?? (entry.Hash is null ? null : ResolvePending(entry.Hash));
-                if (transaction is null) return ProofWrapperAcceptance.Invalid(MempoolWrapperValidator.UnknownTransaction);
-                if (!Preflight(transaction, out string? frameError)) return ProofWrapperAcceptance.Invalid(frameError!);
+                if (transaction is null) return ProofWrapperAcceptance.LocalFailure(MempoolWrapperValidator.UnknownTransaction);
+                if (!Preflight(transaction, out string? frameError, admissionSpec))
+                    return frameError is FrameTxValidation.PostTxNotEnabled or FrameTxValidation.KeyedNoncesNotEnabled
+                        or FrameTxValidation.RecentRootReferencesNotEnabled or FrameTxValidation.LegacyNonceNotAllowed
+                        ? ProofWrapperAcceptance.LocalFailure(frameError) : ProofWrapperAcceptance.Invalid(frameError!);
+                if (transaction.RecentRootReferences is { Length: > 0 })
+                {
+                    if (headInfo is null) return ProofWrapperAcceptance.LocalFailure("Recent-root state is unavailable.");
+                    if (!AreAdmissionRootsValid(transaction))
+                        return ProofWrapperAcceptance.LocalFailure(TxPoolErrorMessages.FrameTxRecentRootUnmet);
+                }
+                if (entry.Hash is { } hash) resolved[hash.ValueHash256] = transaction;
             }
             ValueHash256 wrapperHash = ValueKeccak.Compute(wrapper);
             if (!_verifiedWrappers.TryGetValue(wrapperHash, out string? error))
             {
-                if (!MempoolWrapperValidator.Validate(decoded, leanProofVerifier, out error, ResolvePending))
+                if (!MempoolWrapperValidator.Validate(decoded, leanProofVerifier, out error,
+                    hash => resolved.GetValueOrDefault(hash.ValueHash256)))
                 {
+                    if (error == MempoolWrapperValidator.UnknownTransaction) return ProofWrapperAcceptance.LocalFailure(error);
                     RememberVerification(wrapperHash, error);
                     return ProofWrapperAcceptance.Invalid(error!);
                 }
@@ -81,15 +103,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
         catch (RlpException)
         {
-            return ProofWrapperAcceptance.Invalid("Invalid proof wrapper RLP.");
+            return ProofWrapperAcceptance.LocalFailure("Local proof admission failed.");
         }
         catch (ArgumentException exception)
         {
-            return ProofWrapperAcceptance.Invalid(exception.Message);
+            return ProofWrapperAcceptance.LocalFailure(exception.Message);
         }
         catch (InvalidOperationException exception)
         {
-            return ProofWrapperAcceptance.Invalid(exception.Message);
+            return ProofWrapperAcceptance.LocalFailure(exception.Message);
         }
         finally { Volatile.Write(ref _admissionActive, 0); }
     }
@@ -108,7 +130,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             cancellationToken.ThrowIfCancellationRequested();
             FocilInclusionList decoded = DecodeProofInclusionList(inclusionList);
             foreach (Transaction transaction in decoded.Transactions)
+            {
                 if (!Preflight(transaction, out string? frameError)) return Result<Hash256[]>.Fail(frameError!);
+                if (transaction.RecentRootReferences is { Length: > 0 })
+                {
+                    if (headInfo is null) return Result<Hash256[]>.Fail("Recent-root state is unavailable.");
+                    if (!AreAdmissionRootsValid(transaction)) return Result<Hash256[]>.Fail(TxPoolErrorMessages.FrameTxRecentRootUnmet);
+                }
+            }
             if (!FocilInclusionListValidator.Validate(decoded, leanProofVerifier, out string? error))
                 return Result<Hash256[]>.Fail(error!);
             cancellationToken.ThrowIfCancellationRequested();
@@ -170,6 +199,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 hashes[i] = entry.Hash!;
                 if (ResolvePending(entry.Hash!) is { } pending) admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(pending));
+                else firstError ??= MempoolWrapperValidator.UnknownTransaction;
                 continue;
             }
             if (entry.Full.Hash is { } existingHash && txPool.TryGetPendingTransaction(existingHash.ValueHash256, out _))
@@ -204,6 +234,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             return BuildWrapperCore(skipEmpty, cancellationToken);
         }
         finally { Monitor.Exit(_aggregationLock); }
+    }
+
+    /// <summary>Returns the latest background-produced wrapper without invoking the prover.</summary>
+    public Result<byte[]> GetLatestWrapper()
+    {
+        if (!IsEnabled) return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
+        byte[]? wrapper = Volatile.Read(ref _cachedWrapper);
+        return wrapper is null ? Result<byte[]>.Fail("Proof wrapper is not ready; retry after the next background cycle.")
+            : Result<byte[]>.Success((byte[])wrapper.Clone());
     }
 
     private Result<byte[]> BuildWrapperCore(bool skipEmpty, CancellationToken cancellationToken)
@@ -284,7 +323,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (encoded.Length > LeanProofStore.MaxWrapperBytes)
                 return Result<byte[]>.Fail("Aggregated wrapper exceeds the size limit.");
             _cachedSelection = selectionHash;
-            _cachedWrapper = (byte[])encoded.Clone();
+            Volatile.Write(ref _cachedWrapper, (byte[])encoded.Clone());
             return Result<byte[]>.Success(encoded);
         }
         catch (InvalidOperationException exception)
@@ -302,10 +341,31 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     private Transaction? ResolvePending(Hash256 hash) => txPool.TryGetPendingTransaction(hash.ValueHash256, out Transaction? transaction) ? transaction : null;
 
-    private bool Preflight(Transaction transaction, out string? error)
+    private bool AreAdmissionRootsValid(Transaction transaction)
+        => RecentRootReferences.Validate(headInfo!.ReadOnlyStateProvider, transaction.RecentRootReferences,
+            headInfo.HeadSlotNumber is { } slot && slot < ulong.MaxValue ? slot + 1 : null);
+
+    private bool Preflight(Transaction transaction, out string? error, IReleaseSpec? admissionSpec = null)
     {
         error = null;
-        return !transaction.SupportsFrames || FrameTxValidation.IsWellFormed(transaction, specProvider.GetSpec(blockFinder.Head!.Header), out error);
+        if (!transaction.SupportsFrames) return true;
+        admissionSpec ??= blockFinder.Head is { } head ? specProvider.GetSpec(head.Header) : null;
+        if (admissionSpec is null)
+        {
+            error = "EIP-8288 proof wrappers are unavailable.";
+            return false;
+        }
+        IReleaseSpec spec = admissionSpec;
+        if (!FrameTxValidation.IsWellFormed(transaction, spec, out error)) return false;
+        ValidationResult nonceKeys = FrameTxNonceKeysTxValidator.Instance.IsWellFormed(transaction, spec);
+        if (!nonceKeys)
+        {
+            error = nonceKeys.Error;
+            return false;
+        }
+        ValidationResult envelope = FrameTxEnvelopeTxValidator.Instance.IsWellFormed(transaction, spec);
+        error = envelope.Error;
+        return envelope;
     }
 
     private static FocilInclusionList DecodeProofInclusionList(byte[] encoded)

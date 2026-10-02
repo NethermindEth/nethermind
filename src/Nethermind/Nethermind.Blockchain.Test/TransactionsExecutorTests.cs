@@ -394,6 +394,25 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        public void BlockProductionTransactionPicker_caps_generic_stark_verification_work([Values(16, 17)] int count)
+        {
+            FrameDependency[] dependencies = Enumerable.Range(0, count).Select(index =>
+                new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(index.ToString()), default)).ToArray();
+            Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            transaction.Type = TxType.FrameTx;
+            transaction.NonceKeys = [UInt256.Zero];
+            transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanStarkVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))];
+            LeanProofStore proofs = new();
+            proofs.AddVerified(dependencies, Enumerable.Repeat(new byte[] { 1 }, count).ToArray(), null);
+            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
+            Block block = Build.A.Block.WithGasLimit(10_000_000).TestObject;
+            BlockProcessor.AddingTxEventArgs result = picker.CanAddTransaction(block, transaction, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
+            Assert.That(result.Action, Is.EqualTo(count == 16 ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
+            if (count == 17) Assert.That(result.Reason, Is.EqualTo("Generic STARK proof count limit exceeded"));
+        }
+
+        [Test]
         public void BlockProductionTransactionsExecutor_calculates_block_size_using_proper_tx_form()
         {
             Transaction transactionInMempoolForm = Build.A.Transaction

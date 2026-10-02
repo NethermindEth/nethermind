@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -34,10 +33,13 @@ public class ProofInclusionListEnforcementTests
     [TestCase("unfunded", true)]
     [TestCase("withdrawal-funded", true)]
     [TestCase("proof-gas-full", true)]
-    [TestCase("missing-proof", false)]
-    [TestCase("bad-proof", false)]
+    [TestCase("missing-proof", true)]
+    [TestCase("bad-proof", true)]
     [TestCase("full-bad-proof", true)]
-    [TestCase("wrong-commitment", false)]
+    [TestCase("wrong-commitment", true)]
+    [TestCase("mixed-omit-frame", false)]
+    [TestCase("mixed-omit-legacy", false)]
+    [TestCase("mixed-included", true)]
     public async Task Enforces_proven_frame_prefixes_through_production_processor(string scenario, bool satisfied)
     {
         OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
@@ -48,6 +50,7 @@ public class ProofInclusionListEnforcementTests
         IWorldState state = chain.MainWorldState;
         using System.IDisposable stateScope = state.BeginScope(chain.BlockTree.Head!.Header);
         Address sender = TestItem.PrivateKeyA.Address;
+        bool mixed = scenario.StartsWith("mixed-", System.StringComparison.Ordinal);
         byte[] approve = Prepare.EvmCode.PushData((byte)FrameFlags.ApproveExecutionAndPayment)
             .PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         byte[] code = scenario switch
@@ -59,17 +62,20 @@ public class ProofInclusionListEnforcementTests
         state.InsertCode(sender, code, spec);
         state.SubtractFromBalance(sender, state.GetBalance(sender), spec, out _);
         if (scenario != "unfunded") state.AddToBalance(sender, 1.Ether, spec, out _);
+        if (mixed) state.AddToBalance(TestItem.PrivateKeyB.Address, 1.Ether, spec, out _);
         state.Commit(spec);
 
         byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
         dependency[31] = Eip8288Constants.LeanSphincsScheme;
         TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
             new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependency)];
+        if (mixed) frames = [.. frames, new(FrameMode.PostTx, FrameFlags.None, TestItem.AddressD, 10_000, UInt256.Zero, default)];
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
             ChainId = chain.SpecProvider.ChainId,
             Nonce = scenario == "nonce" ? 1UL : 0UL,
+            NonceKeys = [0],
             SenderAddress = sender,
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
@@ -78,9 +84,18 @@ public class ProofInclusionListEnforcementTests
         };
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyA, sender);
         transaction.Hash = transaction.CalculateHash();
+        Transaction legacy = Build.A.Transaction.WithNonce(0).WithGasLimit(21_000).WithGasPrice(1.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction[] includedTransactions = scenario switch
+        {
+            "included" or "mixed-omit-legacy" => [transaction],
+            "mixed-omit-frame" => [legacy],
+            "mixed-included" => [legacy, transaction],
+            _ => []
+        };
         Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
             .WithBaseFeePerGas(0).WithBeneficiary(TestItem.AddressD)
-            .WithTransactions(scenario == "included" ? [transaction] : []).TestObject;
+            .WithTransactions(includedTransactions).TestObject;
         block.Header.GasUsedPerDimension = (0, 0);
         if (scenario == "proof-gas-full")
         {
@@ -93,7 +108,7 @@ public class ProofInclusionListEnforcementTests
             block.Header.GasUsedPerDimension = (executionUsed, 0);
         }
         if (scenario == "full-bad-proof") block.Header.GasUsed = block.GasLimit;
-        block.InclusionListTransactions = [transaction];
+        block.InclusionListTransactions = mixed ? [legacy, transaction] : [transaction];
         if (scenario == "withdrawal-funded")
             block = block.WithReplacedBody(new(block.Transactions, block.Uncles,
                 [new Withdrawal { Address = sender, AmountInGwei = 1_000_000_000 }]));

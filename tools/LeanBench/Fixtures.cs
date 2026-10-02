@@ -45,7 +45,7 @@ public sealed class Fixtures
     public AggregationInput Input(BenchCase scenario, int index)
     {
         List<FrameDependency> deps = [];
-        List<byte[]> witnesses = [];
+        List<ReadOnlyMemory<byte>> witnesses = [];
         for (int i = 0; i < scenario.SphincsCount; i++)
         {
             WitnessFixture fixture = Sphincs[checked(index * scenario.SphincsCount + i)];

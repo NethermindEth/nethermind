@@ -12,7 +12,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
@@ -26,28 +25,34 @@ public partial class EngineModuleTests
     [TestCase("wrong-commitment")]
     public async Task NewPayload_bad_inclusion_proof_does_not_invalidate_the_block(string scenario)
     {
-        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        OverridableReleaseSpec spec = InclusionProofEngineSpec();
         using MergeTestBlockchain chain = await CreateBlockchain(spec, new MergeConfig { TerminalTotalDifficulty = "0" },
             configurer: builder => builder.AddSingleton<ILeanProofVerifier>(new EngineListProofVerifier()));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 parent = chain.BlockTree.HeadHash!;
+        Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
+        byte[][] list = [TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes];
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction));
+        RecursiveStark? proof = scenario == "missing-proof" ? null
+            : new([2], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash));
+        PayloadAttributes attributes = BuildBogotaPayloadAttributes(list);
+        attributes.InclusionListRecursiveStark = proof;
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
-            new(parent, Keccak.Zero, parent), BuildBogotaPayloadAttributes([]));
+            new(parent, Keccak.Zero, parent), attributes);
         Assert.That(build.Result.ResultType, Is.EqualTo(ResultType.Success), build.Result.Error);
         GetPayloadV6Result produced = (await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!))).Data!;
-        Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction));
-        produced.ExecutionPayload.InclusionListRecursiveStark = scenario == "missing-proof" ? null
-            : new([2], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash));
+        Assert.That(produced.ExecutionPayload.InclusionListRecursiveStark, Is.Null);
+        Assert.That(produced.ExecutionPayload.Transactions, Is.Empty);
+        produced.ExecutionPayload.InclusionListRecursiveStark = proof;
 
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(produced.ExecutionPayload,
-            [], Keccak.Zero, produced.ExecutionRequests, [TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes]);
+            [], Keccak.Zero, produced.ExecutionRequests, list);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(result.Data.InclusionListSatisfied, Is.False);
+            Assert.That(result.Data.InclusionListSatisfied, Is.True);
             Assert.That(result.Data.LatestValidHash, Is.EqualTo(produced.ExecutionPayload.BlockHash));
         }
     }
@@ -57,7 +62,7 @@ public partial class EngineModuleTests
     [TestCase("empty-proof")]
     public async Task Forkchoice_applies_checkpoints_before_inclusion_proof_attributes(string scenario)
     {
-        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        OverridableReleaseSpec spec = InclusionProofEngineSpec();
         using MergeTestBlockchain chain = await CreateBlockchain(spec, new MergeConfig { TerminalTotalDifficulty = "0" },
             configurer: builder => builder.AddSingleton<ILeanProofVerifier>(new EngineListProofVerifier()));
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -86,6 +91,15 @@ public partial class EngineModuleTests
         }
     }
 
+    private static OverridableReleaseSpec InclusionProofEngineSpec() => new(Bogota.Instance)
+    {
+        IsEip8141Enabled = true,
+        IsEip8288Enabled = true,
+        IsEip8250Enabled = true,
+        IsEip8272Enabled = true,
+        IsEip7906Enabled = true
+    };
+
     private static Transaction InclusionDependencyTransaction(ulong chainId)
     {
         byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
@@ -96,6 +110,7 @@ public partial class EngineModuleTests
             Type = TxType.FrameTx,
             ChainId = chainId,
             SenderAddress = TestItem.AddressA,
+            NonceKeys = [UInt256.Zero],
             Frames = frames,
             FrameSignatures = [],
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
@@ -106,6 +121,7 @@ public partial class EngineModuleTests
 
     private sealed class EngineListProofVerifier : ILeanProofVerifier
     {
+        public void EnsureAvailable() { }
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => proof is [1];

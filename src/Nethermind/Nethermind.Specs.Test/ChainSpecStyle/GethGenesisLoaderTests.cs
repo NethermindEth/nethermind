@@ -338,8 +338,14 @@ public class GethGenesisLoaderTests
         {
             Assert.That(chainSpec.Parameters.Eip8288TransitionTimestamp, Is.EqualTo(15UL));
             Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(15UL));
+            Assert.That(chainSpec.Parameters.Eip8250TransitionTimestamp, Is.EqualTo(15UL));
+            Assert.That(chainSpec.Parameters.Eip8272TransitionTimestamp, Is.EqualTo(15UL));
+            Assert.That(chainSpec.Parameters.Eip7906TransitionTimestamp, Is.EqualTo(15UL));
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip8288Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8288Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8250Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8272Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip7906Enabled, Is.True);
         }
     }
 

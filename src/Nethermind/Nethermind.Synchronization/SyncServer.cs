@@ -56,6 +56,7 @@ namespace Nethermind.Synchronization
         private readonly IHistoryPruner _historyPruner;
         private readonly ISyncPointers? _syncPointers;
         private readonly ISyncConfig _syncConfig;
+        private readonly IHeaderDecoder _headerDecoder;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -85,11 +86,13 @@ namespace Nethermind.Synchronization
             IHistoryPruner historyPruner,
             ISpecProvider specProvider,
             ILogManager logManager,
-            ISyncPointers? syncPointers = null)
+            ISyncPointers? syncPointers = null,
+            IHeaderDecoder? headerDecoder = null)
         {
             _syncPointers = syncPointers;
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncConfig = config;
+            _headerDecoder = headerDecoder ?? new HeaderDecoder();
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -444,12 +447,11 @@ namespace Nethermind.Synchronization
             ArrayPoolList<BlockHeader> headers = new(Math.Min(numberOfBlocks, 64));
             try
             {
-                HeaderDecoder decoder = new();
                 int contentLength = 0;
                 BlockHeader? current = first;
                 while (current is not null && headers.Count < numberOfBlocks)
                 {
-                    int headerLength = decoder.GetLength(current, RlpBehaviors.None);
+                    int headerLength = _headerDecoder.GetLength(current, RlpBehaviors.None);
                     // Reserve the ETH/66 request ID and enclosing list before allocating the response.
                     const int envelopeBytes = 64;
                     if (headerLength > Eip8288Constants.MaxHeaderResponseBytes - envelopeBytes - contentLength
@@ -473,13 +475,12 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private static IOwnedReadOnlyList<BlockHeader> BoundLegacyHeaders(IOwnedReadOnlyList<BlockHeader> headers)
+        private IOwnedReadOnlyList<BlockHeader> BoundLegacyHeaders(IOwnedReadOnlyList<BlockHeader> headers)
         {
-            HeaderDecoder decoder = new();
             int contentLength = 0;
             for (int i = 0; i < headers.Count; i++)
             {
-                int length = headers[i] is { } header ? decoder.GetLength(header, RlpBehaviors.None) : 1;
+                int length = headers[i] is { } header ? _headerDecoder.GetLength(header, RlpBehaviors.None) : 1;
                 if (length > Eip8288Constants.MaxHeaderResponseBytes - 64 - contentLength
                     || Rlp.LengthOfSequence(contentLength + length) > Eip8288Constants.MaxHeaderResponseBytes - 64)
                 {
