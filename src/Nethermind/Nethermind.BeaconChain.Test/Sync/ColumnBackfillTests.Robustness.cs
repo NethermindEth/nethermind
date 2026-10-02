@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -377,6 +378,35 @@ public partial class ColumnBackfillTests
         int attempted = await observed.Task.WaitAsync(token);
         await run.WaitAsync(token);
         Assert.That(attempted, Is.EqualTo(3));
+    }
+
+    /// <summary>
+    /// A cut reply ending at a forged block under empty slots gets an empty answer for those slots, which links nothing yet leaves nothing unlinked:
+    /// the whole range is asked for again rather than the window being fetched by root, and the forger is penalized once the real block arrives.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_forged_cut_reply_under_empty_slots_is_asked_for_again_and_its_peer_penalized(CancellationToken token)
+    {
+        await using HistoryFixture p = HistoryFixture.Build([2], 5);
+        StubPeer forger = new("forger", p.HeadSlot, (_, _) => throw new PartialBlocksException(
+            new TimeoutException("request timed out"), [new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(2, Hash256.Zero))]));
+        StubPeer empty = p.Honest("empty");
+        StubPeer next = p.Honest("next");
+
+        Task run = p.Start(token, forger, empty, next);
+        await p.UntilFloor(0, token);
+        await run.WaitAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forger.RequestedRanges[0], Is.EqualTo((0UL, 5UL)));
+            Assert.That(empty.RequestedRanges[0], Is.EqualTo((3UL, 2UL)), "only the empty slots above the forged block");
+            Assert.That(next.RequestedRanges[0], Is.EqualTo((0UL, 5UL)), "then the whole range again");
+            Assert.That(forger.RootBlockRequests + empty.RootBlockRequests + next.RootBlockRequests, Is.Zero, "nothing is fetched by root");
+            Assert.That(forger.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed, PeerFailureReason.ProtocolViolation }));
+            Assert.That(empty.Reports.Concat(next.Reports), Is.Empty);
+        }
     }
 
     [Test]
