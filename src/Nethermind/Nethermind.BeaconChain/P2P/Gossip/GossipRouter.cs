@@ -730,9 +730,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         Verdict Invalid(GossipDropReason reason) => timing is null ? Verdict.Reject(reason) : Verdict.Ignore(reason);
     }
 
-    // phase0 p2p-interface.md beacon_block: the parent, slot, finalized-ancestor, proposer-signature and expected-proposer rules. A block that
-    // passes them all is accepted before its data and execution payload are checked, which beacon_block does not require; one that cannot be
-    // checked yet is ignored, so no verdict waits on it.
+    // phase0 p2p-interface.md beacon_block parent, slot, finalized-ancestor, signature and proposer rules: a block passing them is accepted before
+    // its data and payload, which the topic does not require; one that cannot be checked yet is ignored, so no verdict waits on it.
     private Verdict CheckHeader(BeaconBlock message, BlsSignature signature)
     {
         BeaconBlockHeader header = new()
@@ -901,10 +900,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
         switch (ReadEnvelopeBlock(blockRoot, payload.SlotNumber, out EnvelopeBlock? block))
         {
-            // Handle does not pass this topic's fork, so an unheld envelope for a pre-Gloas slot is dropped by its payload slot
-            // rather than queued; a held Gloas block reaches the spec's slot-match REJECT instead.
-            // [IGNORE] the block has not been seen, which MAY be queued: the envelope still imports once it is, but its block-dependent rules
-            // did not run here, so it is not accepted later.
+            // [IGNORE] the block is unseen (MAY queue): the envelope still imports, but is never accepted as its block rules did not run. A pre-Gloas
+            // payload slot is dropped instead; a held Gloas block reaches the slot-match REJECT.
             case EnvelopeBlockLookup.NotHeld:
                 return SignedBeaconBlockCodec.IsGloasSlot(payload.SlotNumber, spec) ? Verdict.Settle(MessageValidity.Ignored) : Verdict.Ignore(GossipDropReason.InvalidField);
             case EnvelopeBlockLookup.BudgetSpent:
