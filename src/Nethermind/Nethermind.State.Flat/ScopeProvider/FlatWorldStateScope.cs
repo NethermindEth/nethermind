@@ -54,6 +54,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private volatile ReadOnlyBlockAccessList? _warmupWriteSet;
 
     private readonly IdleStorageApplier? _earlyApplier;
+
+    // This block's early account trie; closed from the block-end write batch on, and for blocks that follow another
+    // without an idle gap.
+    private EarlyAccountTrie? _earlyAccounts;
+    private bool _earlyAccountsClosed;
+    private bool _wroteThisBlock;
+    private int _earlyAccountsAdopted;
+
+    /// <summary>How many blocks of this scope adopted their early account trie. For tests.</summary>
+    internal int EarlyAccountsAdopted => _earlyAccountsAdopted;
+    private static long s_lastBlockCommit;
     // Closed from the block-end write batch on.
     private volatile bool _earlyApplyClosed;
     // Advanced by every commit, so trees of an earlier block are skipped.
@@ -101,6 +112,24 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
+
+        _earlyAccountsClosed = !Core.Diagnostics.ExperimentKnobs.EarlyAccountApply || isReadOnly || _trieless || configuration.VerifyWithTrie
+            || snapshotBundle._usage != ResourcePool.Usage.MainBlockProcessing || !FollowsAccountIdleGap();
+    }
+
+    private static bool FollowsAccountIdleGap()
+    {
+        long last = Volatile.Read(ref s_lastBlockCommit);
+        return last == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(last) >= IdleStorageApplier.MinIdleGap;
+    }
+
+    /// <summary>This block's early account trie, if one was started. For tests.</summary>
+    internal EarlyAccountTrie? EarlyAccounts => _earlyAccounts;
+
+    public void HintAccountWrite(Address address, Account? account)
+    {
+        if (_earlyAccountsClosed || IsDisposed) return;
+        (_earlyAccounts ??= new EarlyAccountTrie(_snapshotBundle, _currentStateId.StateRoot.ToCommitment(), _logManager)).Add(address, account);
     }
 
     internal bool AppliesStorageWritesEarly => _earlyApplier is not null && !_earlyApplyClosed;
@@ -518,6 +547,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
+        _earlyAccountsClosed = true;
         if (Core.Diagnostics.ExperimentKnobs.StopWarmerAtWriteBatch) Interlocked.Increment(ref _hintSequenceId);
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
@@ -557,6 +587,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
         _pausePrewarmer = false;
+
+        _earlyAccounts = null;
+        _wroteThisBlock = false;
+        Volatile.Write(ref s_lastBlockCommit, System.Diagnostics.Stopwatch.GetTimestamp());
+        // A block that follows straight on from this one has no idle gap for the early account trie.
+        _earlyAccountsClosed = true;
 
         if (_earlyApplier is not null) ReportEarlyApply(blockNumber);
     }
@@ -678,14 +714,27 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
-                    if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
+                    Dictionary<AddressAsKey, Account?> toSet = _dirtyAccounts;
+                    // Only the block's first write batch may adopt: the early trie starts from the block's pre-state.
+                    if (scope._earlyAccounts is { } early)
                     {
-                        scope.StateTree.SetAccounts(_dirtyAccounts);
+                        scope._earlyAccounts = null;
+                        if (!scope._wroteThisBlock && early.TryAdopt(scope.StateTree, _dirtyAccounts, out Dictionary<AddressAsKey, Account?> remaining))
+                        {
+                            toSet = remaining;
+                            scope._earlyAccountsAdopted++;
+                        }
+                    }
+
+                    scope._wroteThisBlock = true;
+                    if (Avx2.IsSupported && toSet.Count >= KeyHashBatch.MinimumBatchSize)
+                    {
+                        scope.StateTree.SetAccounts(toSet);
                     }
                     else
                     {
-                        using StateTree.StateTreeBulkSetter stateSetter = scope.StateTree.BeginSet(_dirtyAccounts.Count);
-                        foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                        using StateTree.StateTreeBulkSetter stateSetter = scope.StateTree.BeginSet(toSet.Count);
+                        foreach (KeyValuePair<AddressAsKey, Account?> kv in toSet)
                         {
                             stateSetter.Set(kv.Key, kv.Value);
                         }

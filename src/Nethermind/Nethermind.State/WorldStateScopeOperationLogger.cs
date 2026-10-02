@@ -56,6 +56,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     {
         public void HintWarmAccount(Address address) => innerScope.HintWarmAccount(address);
 
+        public void HintAccountWrite(Address address, Account? account) => innerScope.HintAccountWrite(address, account);
+
         public void HintWarmSlot(Address address, in UInt256 index) => innerScope.HintWarmSlot(address, in index);
 
         public void Dispose()
