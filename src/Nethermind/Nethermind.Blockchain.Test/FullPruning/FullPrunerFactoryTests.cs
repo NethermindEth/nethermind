@@ -30,24 +30,23 @@ public class FullPrunerFactoryTests
 
     private static IEnumerable<TestCaseData> ThresholdCases()
     {
-        // The required space is date-extrapolated, so the boundary is read at run time.
-        long boundaryMb = FullPruner.GetRequiredFreeSpace(ChainSizes.CreateChainSizeInfo(BlockchainIds.Mainnet))!.Value / 1.MB;
+        yield return Case(() => 1, BlockchainIds.Mainnet, FullPruningTrigger.VolumeFreeSpace, true).Returns(true).SetName("Far below required space");
+        yield return Case(BoundaryMb, BlockchainIds.Mainnet, FullPruningTrigger.VolumeFreeSpace, true).Returns(true).SetName("At required space");
+        yield return Case(() => BoundaryMb() + 1, BlockchainIds.Mainnet, FullPruningTrigger.VolumeFreeSpace, true).Returns(false).SetName("Just above required space");
+        yield return Case(() => 1_000_000_000, BlockchainIds.Mainnet, FullPruningTrigger.VolumeFreeSpace, true).Returns(false).SetName("Far above required space");
+        yield return Case(() => 1, ChainWithoutPruningEstimate, FullPruningTrigger.VolumeFreeSpace, true).Returns(false).SetName("No pruning-size estimate");
+        yield return Case(() => 1, BlockchainIds.Mainnet, FullPruningTrigger.VolumeFreeSpace, false).Returns(false).SetName("Available space check disabled");
+        yield return Case(() => 1, BlockchainIds.Mainnet, FullPruningTrigger.Manual, true).Returns(false).SetName("Manual trigger");
 
-        yield return Case(1, BlockchainIds.Mainnet, FullPruningTrigger.VolumeFreeSpace, true).Returns(true).SetName("Far below required space");
-        yield return Case(boundaryMb, BlockchainIds.Mainnet, FullPruningTrigger.VolumeFreeSpace, true).Returns(true).SetName("At required space");
-        yield return Case(boundaryMb + 1, BlockchainIds.Mainnet, FullPruningTrigger.VolumeFreeSpace, true).Returns(false).SetName("Just above required space");
-        yield return Case(1_000_000_000, BlockchainIds.Mainnet, FullPruningTrigger.VolumeFreeSpace, true).Returns(false).SetName("Far above required space");
-        yield return Case(1, ChainWithoutPruningEstimate, FullPruningTrigger.VolumeFreeSpace, true).Returns(false).SetName("No pruning-size estimate");
-        yield return Case(1, BlockchainIds.Mainnet, FullPruningTrigger.VolumeFreeSpace, false).Returns(false).SetName("Available space check disabled");
-        yield return Case(1, BlockchainIds.Mainnet, FullPruningTrigger.Manual, true).Returns(false).SetName("Manual trigger");
+        static long BoundaryMb() => FullPruner.GetRequiredFreeSpace(ChainSizes.CreateChainSizeInfo(BlockchainIds.Mainnet))!.Value / 1.MB;
 
-        static TestCaseData Case(long thresholdMb, ulong chainId, FullPruningTrigger trigger, bool availableSpaceCheckEnabled) =>
+        static TestCaseData Case(Func<long> thresholdMb, ulong chainId, FullPruningTrigger trigger, bool availableSpaceCheckEnabled) =>
             new(thresholdMb, chainId, trigger, availableSpaceCheckEnabled);
     }
 
     [TestCaseSource(nameof(ThresholdCases))]
     public bool Warns_when_free_space_threshold_is_at_or_below_required_space(
-        long thresholdMb, ulong chainId, FullPruningTrigger trigger, bool availableSpaceCheckEnabled)
+        Func<long> thresholdMb, ulong chainId, FullPruningTrigger trigger, bool availableSpaceCheckEnabled)
     {
         // GetDriveInfos creates the pruning directory on the real disk.
         using TempPath baseDbPath = TempPath.GetTempDirectory();
@@ -65,13 +64,14 @@ public class FullPrunerFactoryTests
         ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
         timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(Substitute.For<ITimer>());
 
+        DateTime estimateDate = DateTime.UtcNow.Date;
         FullPrunerFactory factory = new(
             new InitConfig { BaseDbPath = baseDbPath.Path },
             new PruningConfig
             {
                 Mode = PruningMode.Full,
                 FullPruningTrigger = trigger,
-                FullPruningThresholdMb = thresholdMb,
+                FullPruningThresholdMb = thresholdMb(),
                 AvailableSpaceCheckEnabled = availableSpaceCheckEnabled
             },
             dbProvider,
@@ -89,6 +89,7 @@ public class FullPrunerFactoryTests
         using FullPruner? pruner = factory.Create(Substitute.For<IWorldStateManager>(), Substitute.For<IPruningTrieStore>());
 
         Assert.That(pruner, Is.Not.Null);
+        Assume.That(DateTime.UtcNow.Date, Is.EqualTo(estimateDate), "The chain-size estimate changed during the test.");
         return logger.ReceivedCalls().Any(static call =>
             call.GetMethodInfo().Name == nameof(InterfaceLogger.Warn)
             && call.GetArguments() is [string text]
