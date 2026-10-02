@@ -4914,7 +4914,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task Revalidation_short_of_width_sheds_the_same_transaction_whatever_the_admission_order([Values] bool reversed)
+        public async Task Revalidation_short_of_width_keeps_only_the_admitted_baseline([Values] bool reversed, [Values] bool baselineLeft)
         {
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
@@ -4927,16 +4927,16 @@ namespace Nethermind.TxPool.Test
                 SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1]),
                 SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]),
             ];
-            Transaction kept = txs.MinBy(static tx => tx.Hash!.ValueHash256)!;
             if (reversed) Array.Reverse(txs);
             _txPool.EarnWidthOnFinalization(Build.A.Block.WithTransactions(txs[0]).TestObject, [new TxReceipt { GasUsed = (ulong)FrameTxWidthCharge.For(txs[1], 1000) }]);
 
             Assert.That(_txPool.SubmitTx(txs[0], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(txs[1], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            if (baselineLeft) Assert.That(_txPool.RemoveTransaction(txs[0].Hash), Is.True);
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
-            Assert.That(_txPool.GetPendingTransactions().Select(static tx => tx.Hash), Is.EqualTo(new[] { kept.Hash }));
+            Assert.That(_txPool.GetPendingTransactions().Select(static tx => tx.Hash), Is.EqualTo(baselineLeft ? Array.Empty<Hash256>() : new[] { txs[0].Hash }));
         }
 
         // Each carried deferral costs a simulation under the head write lock, so an unbounded carry lets a

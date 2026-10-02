@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Threading;
+using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -16,8 +18,9 @@ namespace Nethermind.TxPool.Filters;
 /// </summary>
 /// <remarks>
 /// Sender-keyed only: the sender pays whether or not a paymaster sponsors the transaction, and the charge scales
-/// with the transaction's admission gas. A replacement displaces a pending entry rather than adding one, so it is judged against the count
-/// without the incumbent. Spent width is never returned, which is what bounds repeated mass invalidation, so a fee
+/// with the transaction's admission gas. The baseline is the transaction admitted while the sender had none pending, and a
+/// replacement of it stays the baseline; replacing any other pending transaction spends width. Once the baseline leaves, no
+/// other pending transaction takes its place until the sender's pending set empties. Spent width is never returned, which is what bounds repeated mass invalidation, so a fee
 /// bump beyond the baseline spends width like any admission: its rerun is real work. Width is spent when this filter
 /// accepts, so a transaction that a later pool check rejects, such as a disallowed replacement or a fee too low to
 /// compete, still spends it. Only the sender's pending
@@ -31,6 +34,7 @@ internal sealed class FrameTxWidthFilter(
     TxDistinctSortedPool standardPool,
     TxDistinctSortedPool blobPool,
     SenderWidthCache senderWidth,
+    ConcurrentDictionary<AddressAsKey, ValueHash256> senderBaselines,
     ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
@@ -41,9 +45,13 @@ internal sealed class FrameTxWidthFilter(
         }
 
         Address sender = tx.SenderAddress!;
-        int pending = PendingKeyedFrameTxs(sender, PendingReplacement.Find(tx, standardPool, blobPool));
-        if (pending < FrameTxWidthCharge.Eip8141PublicMempoolBaseline)
+        int pending = PendingKeyedFrameTxs(sender);
+        Transaction? replaced = PendingReplacement.Find(tx, standardPool, blobPool);
+        if (replaced is null
+                ? pending < FrameTxWidthCharge.Eip8141PublicMempoolBaseline
+                : senderBaselines.TryGetValue(sender, out ValueHash256 baseline) && baseline == replaced.Hash!.ValueHash256)
         {
+            state.TakesSenderBaseline = true;
             return AcceptTxResult.Accepted;
         }
 
@@ -59,27 +67,21 @@ internal sealed class FrameTxWidthFilter(
         return AcceptTxResult.Accepted;
     }
 
-    private int PendingKeyedFrameTxs(Address sender, Transaction? replaced)
+    private int PendingKeyedFrameTxs(Address sender)
     {
-        PendingCount count = new(replaced);
+        int count = 0;
         standardPool.VisitBucket(sender, ref count, CountKeyedFrameTx);
         blobPool.VisitBucket(sender, ref count, CountKeyedFrameTx);
-        return count.Count;
+        return count;
     }
 
-    private static bool CountKeyedFrameTx(Transaction pending, ref PendingCount state)
+    private static bool CountKeyedFrameTx(Transaction pending, ref int count)
     {
-        if (!ReferenceEquals(pending, state.Replaced) && pending.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(pending))
+        if (pending.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(pending))
         {
-            state.Count++;
+            count++;
         }
 
-        return state.Count < FrameTxWidthCharge.Eip8141PublicMempoolBaseline;
-    }
-
-    private struct PendingCount(Transaction? replaced)
-    {
-        public readonly Transaction? Replaced = replaced;
-        public int Count;
+        return count < FrameTxWidthCharge.Eip8141PublicMempoolBaseline;
     }
 }

@@ -4,10 +4,12 @@
 #nullable enable
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -110,14 +112,16 @@ public class FrameTxWidthFilterTests
         }
     }
 
-    [TestCase(true, true, TestName = "fee bump of a pending keyed transaction")]
-    [TestCase(false, false, TestName = "next sequence from the same sender")]
-    public void Accept_ReplacementIsNotAnAdditionalAdmission(bool replaces, bool accepted)
+    [TestCase(true, true, true, TestName = "fee bump of the pending baseline")]
+    [TestCase(true, false, false, TestName = "fee bump of a pending transaction that is not the baseline")]
+    [TestCase(false, true, false, TestName = "next sequence from the same sender")]
+    public void Accept_OnlyReplacingTheBaselineIsFree(bool replaces, bool pendingIsBaseline, bool accepted)
     {
         SenderWidthCache cache = new();
         Transaction incoming = KeyedTx(nonceSeq: replaces ? Baseline - 1 : Baseline, gasPrice: 2);
+        Transaction pending = KeyedTx(nonceSeq: Baseline - 1);
 
-        AcceptTxResult result = Accept(cache, incoming, PendingKeyedTxs((int)Baseline));
+        AcceptTxResult result = Accept(cache, incoming, Pool(pending), baseline: pendingIsBaseline ? pending : null);
 
         Assert.That(result, Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.WidthUnmet));
     }
@@ -275,10 +279,12 @@ public class FrameTxWidthFilterTests
         Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)90_000));
     }
 
-    private static AcceptTxResult Accept(SenderWidthCache cache, Transaction tx, TxDistinctSortedPool pending, bool enabled = true, ulong permille = SafetyFactorPermille)
+    private static AcceptTxResult Accept(SenderWidthCache cache, Transaction tx, TxDistinctSortedPool pending, bool enabled = true, ulong permille = SafetyFactorPermille, Transaction? baseline = null)
     {
         TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthSafetyFactorPermille = permille };
-        FrameTxWidthFilter filter = new(config, pending, Pool(), cache, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
+        ConcurrentDictionary<AddressAsKey, ValueHash256> baselines = new();
+        if (baseline is not null) baselines[Sender] = baseline.Hash!.ValueHash256;
+        FrameTxWidthFilter filter = new(config, pending, Pool(), cache, baselines, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }

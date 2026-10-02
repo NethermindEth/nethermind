@@ -76,6 +76,7 @@ namespace Nethermind.TxPool
         private readonly PendingPaymasterCache _pendingPaymasters = new();
         private readonly SenderWidthCache _senderWidth = new();
         private readonly SenderAdmissionGates _senderAdmissionGates = new();
+        private readonly ConcurrentDictionary<AddressAsKey, ValueHash256> _senderBaselines = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
         // Consecutive heads each deferred transaction has been carried across. Written only under the head write
@@ -365,7 +366,7 @@ namespace Nethermind.TxPool
             {
                 postHashFilters.Add(new SenderAdmissionGateFilter(_senderAdmissionGates));
                 postHashFilters.Add(new KeyedNonceDisjointnessFilter(_transactions, _blobTransactions));
-                postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _transactions, _blobTransactions, _senderWidth, _logger));
+                postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _transactions, _blobTransactions, _senderWidth, _senderBaselines, _logger));
             }
 
             _postHashFilters = postHashFilters.ToArray();
@@ -585,6 +586,7 @@ namespace Nethermind.TxPool
             if (args.Value.SupportsFrames)
             {
                 _frameDependencies.Remove(args.Value.Hash!.ValueHash256);
+                if (_txPoolConfig.FrameTxWidthEnabled) _senderBaselines.TryRemove(new KeyValuePair<AddressAsKey, ValueHash256>(args.Value.SenderAddress!, args.Value.Hash!.ValueHash256));
                 // The budget, not IsEmpty: this runs under the owning pool's lock, and IsEmpty takes all of the
                 // dictionary's locks whenever it is empty, which is always at the default budget.
                 if (_frameEvictionRetryBudget > 1 && _frameEvictionAttempts.TryRemove(args.Value.Hash!.ValueHash256, out _))
@@ -1324,8 +1326,6 @@ namespace Nethermind.TxPool
         /// prefix leaves the transaction pending. The fork gate reads the incoming block's spec, matching
         /// <see cref="RemoveExpiredFrameTransactions"/>. Nothing here re-prices or moves a reservation: the
         /// pooled record is left as admission wrote it, so removal releases exactly what admission took.
-        /// Transactions are rechecked in ascending nonce, then hash, order, so every node exempts the same
-        /// transaction from the width charge and sheds the same ones.
         /// </remarks>
         private void RevalidateFrameTransactions(Block block)
         {
@@ -1337,9 +1337,7 @@ namespace Nethermind.TxPool
             }
 
             IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
-            HashSet<AddressAsKey> baselineExempt = [];
 
-            using ArrayPoolList<Transaction> ordered = new(_frameTxsToRevalidate.Count);
             foreach (ValueHash256 hash in _frameTxsToRevalidate)
             {
                 // A type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both.
@@ -1349,19 +1347,10 @@ namespace Nethermind.TxPool
                     continue;
                 }
 
-                if (tx.SupportsFrames && tx.Frames is not null) ordered.Add(tx);
-            }
+                if (!tx.SupportsFrames || tx.Frames is null) continue;
 
-            ordered.AsSpan().Sort(static (x, y) =>
-            {
-                int byNonce = x.Nonce.CompareTo(y.Nonce);
-                return byNonce != 0 ? byNonce : x.Hash!.ValueHash256.CompareTo(y.Hash!.ValueHash256);
-            });
-
-            foreach (Transaction tx in ordered)
-            {
                 Interlocked.Increment(ref Metrics.FrameTxRevalidations);
-                if (!TryRevalidateFrameTransaction(tx, state, baselineExempt))
+                if (!TryRevalidateFrameTransaction(tx, state))
                 {
                     // The record is untouched, so the Removed handler releases exactly what admission took.
                     // The blob pool reconstitutes the full transaction above, so the events must carry the
@@ -1394,14 +1383,14 @@ namespace Nethermind.TxPool
         /// re-index is update-only: block production evicts without the head lock, so it can drop the
         /// transaction while the prefix simulates, and recreating the entry here would leak it.
         /// </remarks>
-        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state, HashSet<AddressAsKey> baselineExempt)
+        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state)
         {
-            bool stillValid = ResolveFrameTxAgainstHead(tx, state, baselineExempt, out Address? resolvedPayer);
+            bool stillValid = ResolveFrameTxAgainstHead(tx, state, out Address? resolvedPayer);
             if (stillValid) IndexFrameTxDependencies(tx, resolvedPayer, onlyIfTracked: true);
             return stillValid;
         }
 
-        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, HashSet<AddressAsKey> baselineExempt, out Address? resolvedPayer)
+        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, out Address? resolvedPayer)
         {
             resolvedPayer = null;
 
@@ -1422,7 +1411,7 @@ namespace Nethermind.TxPool
                     if (_frameTxPrefixSimulator is null) return true;
                     UInt256 widthCharge = _txPoolConfig.FrameTxWidthEnabled
                         && KeyedNonceManager.UsesKeyedNonce(tx)
-                        && !baselineExempt.Add(tx.SenderAddress!)
+                        && !(_senderBaselines.TryGetValue(tx.SenderAddress!, out ValueHash256 baseline) && baseline == tx.Hash!.ValueHash256)
                         ? FrameTxWidthCharge.For(tx, _txPoolConfig.FrameTxWidthSafetyFactorPermille)
                         : UInt256.Zero;
                     if (_senderWidth.GetWidth(tx.SenderAddress!) < widthCharge)
@@ -1801,6 +1790,12 @@ namespace Nethermind.TxPool
                 }
 
                 relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, _updateBucketAdded);
+                if (state.TakesSenderBaseline)
+                {
+                    KeyValuePair<AddressAsKey, ValueHash256> baseline = new(tx.SenderAddress!, tx.Hash!.ValueHash256);
+                    _senderBaselines[baseline.Key] = baseline.Value;
+                    if (!relevantPool.ContainsKey(baseline.Value)) _senderBaselines.TryRemove(baseline);
+                }
                 Interlocked.Increment(ref Metrics.PendingTransactionsAdded);
                 Interlocked.Increment(ref _pendingTransactionsAdded);
                 if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
