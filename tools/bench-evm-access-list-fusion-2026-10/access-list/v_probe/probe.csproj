@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <NoWarn>CS8604;CS8600;CS8602;CS8619;CS8620;CS8714;CS8631;CS8621;CS8767;CS8765</NoWarn>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Nethermind.Core"><HintPath>$(NmBin)/Nethermind.Core.dll</HintPath></Reference>
+    <Reference Include="Nethermind.Int256"><HintPath>$(NmBin)/Nethermind.Int256.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

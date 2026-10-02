@@ -1,0 +1,67 @@
+diff --git a/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs b/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs
+index 22d4d4a0ca..62310a9f71 100644
+--- a/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs
++++ b/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs
+@@ -83,12 +83,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+                 goto Fused;
+             }
+ 
+-            // The result replaces the deepest input.
+-            ref byte top = ref stack.PeekBytesByRefUnchecked();
+-            EvmInstructions.WriteSmallWordToSlot(
+-                ref Unsafe.Subtract(ref top, (TCondition.Inputs - 1) * EvmStack.WordSize), TCondition.Evaluate(ref top) ? 1UL : 0UL);
+-            if (TCondition.Inputs > 1)
+-                stack.Head -= TCondition.Inputs - 1;
++            TCondition.ExecuteAlone(ref stack);
+             gasLeft -= VeryLowGasCost.GasCost;
+             pc++;
+             opCodeCount++;
+@@ -300,6 +295,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+             /// <summary>Evaluates the comparison on the words from the top slot down, in limb layout.</summary>
+             /// <param name="top">The top slot; the caller has established that the stack holds <see cref="Inputs"/> words.</param>
+             static abstract bool Evaluate(ref byte top);
++
++            /// <summary>Runs the comparison alone, as its plain handler's body does, on a stack that holds its inputs.</summary>
++            /// <remarks>
++            /// The plain body rather than <see cref="Evaluate"/>: on AVX2 hosts the plain ISZERO and EQ store one of two
++            /// constants behind a branch, so the next opcode reads a value that waits on nothing but the prediction. A result
++            /// built from the flags waits on the load and the test, and through the slot so does every opcode reading it, which
++            /// tripled a chain of ISZERO NOT.
++            /// </remarks>
++            static abstract void ExecuteAlone(ref EvmStack stack);
+         }
+ 
+         /// <summary>ISZERO: whether the top word is zero.</summary>
+@@ -309,6 +313,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+ 
+             [MethodImpl(MethodImplOptions.AggressiveInlining)]
+             public static bool Evaluate(ref byte top) => EvmStack.IsSlotZero(ref top);
++
++            [MethodImpl(MethodImplOptions.AggressiveInlining)]
++            public static void ExecuteAlone(ref EvmStack stack) =>
++                EvmInstructions.Math1ParamCore<EvmInstructions.OpIsZero, OffFlag, OffFlag>(ref stack);
+         }
+ 
+         /// <summary>EQ: whether the top two words are equal.</summary>
+@@ -328,6 +336,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+                 return ((a ^ b) | (Unsafe.Add(ref a, 1) ^ Unsafe.Add(ref b, 1)) |
+                     (Unsafe.Add(ref a, 2) ^ Unsafe.Add(ref b, 2)) | (Unsafe.Add(ref a, 3) ^ Unsafe.Add(ref b, 3))) == 0;
+             }
++
++            [MethodImpl(MethodImplOptions.AggressiveInlining)]
++            public static void ExecuteAlone(ref EvmStack stack) =>
++                EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseEq, OffFlag, OffFlag>(ref stack);
+         }
+ 
+         /// <summary>LT, GT, SLT or SGT: how the top word orders against the one under it.</summary>
+@@ -340,6 +352,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+             [MethodImpl(MethodImplOptions.AggressiveInlining)]
+             public static bool Evaluate(ref byte top) => EvmInstructions.CompareScalar<TOpMath>(
+                 ref Unsafe.As<byte, ulong>(ref top), ref Unsafe.As<byte, ulong>(ref Unsafe.Subtract(ref top, EvmStack.WordSize)));
++
++            [MethodImpl(MethodImplOptions.AggressiveInlining)]
++            public static void ExecuteAlone(ref EvmStack stack) =>
++                EvmInstructions.Math2ParamCore<TOpMath, OffFlag, OffFlag>(ref stack);
+         }
+     }
+ }

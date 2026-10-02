@@ -1,0 +1,159 @@
+     16 72df623d6f40
+      5 72df623d6f41
+      1 72df623d6f4a
+      2 72df623d6f56
+      9 72df623d6f75
+      8 72df623d6f81
+      6 72df623d6f91
+      2 72df623d6f94
+      1 72df623d6f99
+      4 72df623d6f9e
+      2 72df623d6fa2
+      7 72df623d6fa7
+      5 72df623d6faf
+      9 72df623d6fb8
+     12 72df623d6fbc
+     18 72df623d6fc5
+      8 72df623d6fc9
+     10 72df623d6fd2
+     13 72df623d6fdb
+     19 72df623d6fed
+      5 72df623d7009
+      9 72df623d700c
+     23 72df623d7010
+      4 72df623d7013
+     11 72df623d7016
+      6 72df623d7029
+     16 72df623d702d
+      2 72df623d7030
+      1 72df623d703a
+     28 72df623d703e
+      1 72df623d7046
+    337 72df623d704f
+      2 72df623d7051
+      2 72df623d7057
+      7 72df623d705b
+      1 72df623d7061
+      9 72df623d706c
+     65 72df623d706f
+      3 72df623d7078
+     12 72df623d707d
+      1 72df623d7081
+     14 72df623d708d
+      2 72df623d7091
+     11 72df623d7093
+      1 72df623d70b8
+      2 72df623d70cf
+      3 72df623d70db
+      4 72df623d70dd
+      2 72df623d70ff
+      1 72df623d711f
+      1 72df623d7123
+      1 72df623d7135
+      1 72df623d7140
+      1 72df623d7147
+     22 72df623d7158
+      1 72df623d7164
+      1 72df623d7188
+      1 72df623d718b
+      1 72df623d719b
+      1 72df623d719f
+      6 72df623d71a4
+      8 A 72df623c01a0
+      6 A 72df623c01a1
+      3 A 72df623c01a7
+      2 A 72df623c01aa
+      5 A 72df623c01b3
+      2 A 72df623c01b7
+      2 A 72df623c01c1
+     22 A 72df623c01c9
+      1 A 72df623c01cf
+      6 A 72df623c01d3
+     57 A 72df623c01f0
+     37 A 72df623c01f3
+     37 A 72df623c01fa
+      1 A 72df623c01fd
+      3 A 72df623c0214
+      6 A 72df623c0224
+      3 A 72df623c0232
+      1 A 72df623c0237
+      1 A 72df623c0244
+      1 A 72df623c0256
+      4 A 72df623c025c
+      1 A 72df623c0266
+      5 A 72df623c0275
+     37 A 72df623c0279
+      1 A 72df623c027c
+      1 A 72df623c0288
+      2 A 72df623c028c
+      2 A 72df623c0295
+      3 A 72df623c029d
+      1 A 72df623c02ac
+     39 A 72df623c02b3
+      1 A 72df623c02b6
+      1 A 72df623c02e6
+      1 A 72df623c02f2
+     37 A 72df623c02f6
+      1 A 72df623c02fb
+      1 A 72df623c0304
+      5 A 72df623c0320
+      1 A 72df623c0326
+      1 A 72df623c0328
+      1 A 72df623c0345
+      6 A 72df623c034d
+      1 A 72df623c0353
+      6 A 72df623c0357
+      1 A 72df623c0359
+      2 A 72df623c0421
+      1 A 72df623c0475
+      2 A 72df623c048b
+      1 A 72df623c049d
+      3 A 72df623c04ac
+      1 A 72df623c04e0
+      1 A 72df623c05cd
+      1 R 72df646beb27
+      1 R 72df646beb69
+      1 R 72df646bebc9
+      1 R 72df646bec1d
+      1 R 72df646bec82
+      2 R 72df646becb1
+      1 R 72df646beccf
+      1 R 72df646becf1
+      1 R 72df646bed36
+      1 R 72df646bed59
+      2 R 72df646bed6a
+      1 R 72df646bedde
+      1 R 72df646bee2b
+      1 R 72df646bee5d
+      1 R 72df646bee8d
+      1 R 72df646beed4
+      1 R 72df646beed9
+      1 R 72df646beedd
+      2 R 72df646beee1
+      1 R 72df646beeea
+      1 R 72df646beef7
+      5 R 72df646bef42
+      1 R 72df646bef48
+      1 R 72df646bef4c
+      4 R 72df646bef69
+      1 R 72df646bef6c
+      1 R 72df646bef75
+      1 R 72df646bef79
+     29 R 72df646bef92
+      3 R 72df646befbc
+      2 R 72df646befc3
+      6 R 72df646befc6
+      2 R 72df646befe1
+      2 R 72df646befe6
+     29 R 72df646beff5
+      4 R 72df646beffc
+      2 R 72df646bf000
+      2 R 72df646bf006
+      1 R 72df646bf052
+      1 R 72df646bf125
+      1 R 72df646bf12c
+      1 R 72df646bf13b
+      1 R 72df646bf13e
+      1 R 72df646bf165
+      2 R 72df646bf212
+      1 R 72df646bf385

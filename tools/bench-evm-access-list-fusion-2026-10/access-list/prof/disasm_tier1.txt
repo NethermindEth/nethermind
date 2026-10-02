@@ -1,0 +1,341 @@
+; Assembly listing for method System.Collections.Generic.HashSet`1[Nethermind.Core.StorageCell]:AddIfNotPresent(Nethermind.Core.StorageCell,byref):bool:this (Tier1)
+; Emitting BLENDED_CODE for generic X64 + VEX + EVEX on Unix
+; Tier1 code
+; optimized code
+; optimized using Synthesized PGO
+; rbp based frame
+; fully interruptible
+; with Synthesized PGO: fgCalledCount is 1344512
+; 1 inlinees with PGO data; 39 single block inlinees; 9 inlinees without PGO data
+
+G_M000_IG01:                ;; offset=0x0000
+       55                   push     rbp
+       4157                 push     r15
+       4156                 push     r14
+       4155                 push     r13
+       4154                 push     r12
+       53                   push     rbx
+       4883EC78             sub      rsp, 120
+       488DAC24A0000000     lea      rbp, [rsp+0xA0]
+       488BDF               mov      rbx, rdi
+       4C8BFE               mov      r15, rsi
+ 
+G_M000_IG02:                ;; offset=0x001C
+       48837B0800           cmp      gword ptr [rbx+0x08], 0
+       0F84E4010000         je       G_M000_IG15
+ 
+G_M000_IG03:                ;; offset=0x0027
+       4C8B7310             mov      r14, gword ptr [rbx+0x10]
+       4C8B6B18             mov      r13, gword ptr [rbx+0x18]
+       4533E4               xor      r12d, r12d
+       4D85ED               test     r13, r13
+       0F851F020000         jne      G_M000_IG19
+       488B5510             mov      rdx, gword ptr [rbp+0x10]
+       3812                 cmp      byte  ptr [rdx], dl
+       4883C208             add      rdx, 8
+       C5F81005B3030000     vmovups  xmm0, xmmword ptr [reloc @RWD00]
+       C5F8100A             vmovups  xmm1, xmmword ptr [rdx]
+       8B5210               mov      edx, dword ptr [rdx+0x10]
+       C5F8105518           vmovups  xmm2, xmmword ptr [rbp+0x18]
+       C5F8105D28           vmovups  xmm3, xmmword ptr [rbp+0x28]
+       C5F9EFC9             vpxor    xmm1, xmm0, xmm1
+       C4E271DCC0           vaesenc  xmm0, xmm1, xmm0
+       C5F96ECA             vmovd    xmm1, edx
+       C5F1EFC0             vpxor    xmm0, xmm1, xmm0
+       C4E279DC0598030000   vaesenc  xmm0, xmm0, xmmword ptr [reloc @RWD16]
+       C5F9EFC2             vpxor    xmm0, xmm0, xmm2
+       C4E279DC059B030000   vaesenc  xmm0, xmm0, xmmword ptr [reloc @RWD32]
+       C5F9EFC3             vpxor    xmm0, xmm0, xmm3
+       C4E279DC059E030000   vaesenc  xmm0, xmm0, xmmword ptr [reloc @RWD48]
+       C4E279DC05A5030000   vaesenc  xmm0, xmm0, xmmword ptr [reloc @RWD64]
+       C4E1F97EC2           vmovq    rdx, xmm0
+       48B9157C4A7FB979379E mov      rcx, 0x9E3779B97F4A7C15
+       4833D1               xor      rdx, rcx
+       C4E3F916C101         vpextrq  rcx, xmm0, 1
+       48BFB9E5E41C6D4758BF mov      rdi, 0xBF58476D1CE4E5B9
+       4833CF               xor      rcx, rdi
+       488D7DC8             lea      rdi, [rbp-0x38]
+       C462CBF6E9           mulx     r13, rsi, rcx
+       488937               mov      qword ptr [rdi], rsi
+       488B45C8             mov      rax, qword ptr [rbp-0x38]
+       4C33E8               xor      r13, rax
+       498BC5               mov      rax, r13
+       48C1E820             shr      rax, 32
+       4433E8               xor      r13d, eax
+       488B4B08             mov      rcx, gword ptr [rbx+0x08]
+       418BFD               mov      edi, r13d
+       480FAF7B20           imul     rdi, qword ptr [rbx+0x20]
+       48C1EF20             shr      rdi, 32
+       48FFC7               inc      rdi
+       8B7108               mov      esi, dword ptr [rcx+0x08]
+       448BDE               mov      r11d, esi
+       490FAFFB             imul     rdi, r11
+       48C1EF20             shr      rdi, 32
+       3BFE                 cmp      edi, esi
+       0F83EF020000         jae      G_M000_IG27
+       8BFF                 mov      edi, edi
+       488D44B910           lea      rax, bword ptr [rcx+4*rdi+0x10]
+       8B08                 mov      ecx, dword ptr [rax]
+       FFC9                 dec      ecx
+       7872                 js       SHORT G_M000_IG10
+ 
+G_M000_IG04:                ;; offset=0x0113
+       413B4E08             cmp      ecx, dword ptr [r14+0x08]
+       0F83D8020000         jae      G_M000_IG27
+       8BF9                 mov      edi, ecx
+       486BFF30             imul     rdi, rdi, 48
+       498D7C3E10           lea      rdi, bword ptr [r14+rdi+0x10]
+       44392F               cmp      dword ptr [rdi], r13d
+       7544                 jne      SHORT G_M000_IG09
+ 
+G_M000_IG05:                ;; offset=0x012D
+       488D7708             lea      rsi, bword ptr [rdi+0x08]
+       4C8B1E               mov      r11, gword ptr [rsi]
+       C5FC104608           vmovups  ymm0, ymmword ptr [rsi+0x08]
+       488B7510             mov      rsi, gword ptr [rbp+0x10]
+       C5FC104D18           vmovups  ymm1, ymmword ptr [rbp+0x18]
+       62F3FD281EC904       vpcmpfalseuq k1, ymm0, ymm1
+       C5F998C9             kortestb k1, k1
+       7520                 jne      SHORT G_M000_IG09
+       4C3BDE               cmp      r11, rsi
+       0F85C1000000         jne      G_M000_IG16
+ 
+G_M000_IG06:                ;; offset=0x0158
+       41890F               mov      dword ptr [r15], ecx
+ 
+G_M000_IG07:                ;; offset=0x015B
+       33C0                 xor      eax, eax
+ 
+G_M000_IG08:                ;; offset=0x015D
+       C5F877               vzeroupper 
+       4883C478             add      rsp, 120
+       5B                   pop      rbx
+       415C                 pop      r12
+       415D                 pop      r13
+       415E                 pop      r14
+       415F                 pop      r15
+       5D                   pop      rbp
+       C3                   ret      
+ 
+G_M000_IG09:                ;; offset=0x016F
+       8B4F04               mov      ecx, dword ptr [rdi+0x04]
+       41FFC4               inc      r12d
+       45396608             cmp      dword ptr [r14+0x08], r12d
+       0F8209020000         jb       G_M000_IG24
+       85C9                 test     ecx, ecx
+       7D90                 jge      SHORT G_M000_IG04
+ 
+G_M000_IG10:                ;; offset=0x0183
+       837B3000             cmp      dword ptr [rbx+0x30], 0
+       0F8F02020000         jg       G_M000_IG25
+ 
+G_M000_IG11:                ;; offset=0x018D
+       448B6328             mov      r12d, dword ptr [rbx+0x28]
+       45396608             cmp      dword ptr [r14+0x08], r12d
+       0F8419020000         je       G_M000_IG26
+ 
+G_M000_IG12:                ;; offset=0x019B
+       418D4C2401           lea      ecx, [r12+0x01]
+       894B28               mov      dword ptr [rbx+0x28], ecx
+       4C8B7310             mov      r14, gword ptr [rbx+0x10]
+ 
+G_M000_IG13:                ;; offset=0x01A7
+       453B6608             cmp      r12d, dword ptr [r14+0x08]
+       0F8342020000         jae      G_M000_IG27
+       418BCC               mov      ecx, r12d
+       486BC930             imul     rcx, rcx, 48
+       498D7C0E10           lea      rdi, bword ptr [r14+rcx+0x10]
+       44892F               mov      dword ptr [rdi], r13d
+       488945C0             mov      bword ptr [rbp-0x40], rax
+       8B08                 mov      ecx, dword ptr [rax]
+       FFC9                 dec      ecx
+       894F04               mov      dword ptr [rdi+0x04], ecx
+       4883C708             add      rdi, 8
+       488D7510             lea      rsi, bword ptr [rbp+0x10]
+       E89828567E           call     CORINFO_HELP_ASSIGN_BYREF
+       B904000000           mov      ecx, 4
+       F348A5               rep movsq 
+       418D442401           lea      eax, [r12+0x01]
+       4C8B75C0             mov      r14, bword ptr [rbp-0x40]
+       418906               mov      dword ptr [r14], eax
+       FF4334               inc      dword ptr [rbx+0x34]
+       458927               mov      dword ptr [r15], r12d
+       B801000000           mov      eax, 1
+ 
+G_M000_IG14:                ;; offset=0x01F7
+       C5F877               vzeroupper 
+       4883C478             add      rsp, 120
+       5B                   pop      rbx
+       415C                 pop      r12
+       415D                 pop      r13
+       415E                 pop      r14
+       415F                 pop      r15
+       5D                   pop      rbp
+       C3                   ret      
+ 
+G_M000_IG15:                ;; offset=0x0209
+       488BFB               mov      rdi, rbx
+       33F6                 xor      esi, esi
+       FF15C462FBFF         call     [System.Collections.Generic.HashSet`1[Nethermind.Core.StorageCell]:Initialize(int):int:this]
+       E90EFEFFFF           jmp      G_M000_IG03
+ 
+G_M000_IG16:                ;; offset=0x0219
+       45381B               cmp      byte  ptr [r11], r11b
+       4983C308             add      r11, 8
+       4883C608             add      rsi, 8
+       C4C1781003           vmovups  xmm0, xmmword ptr [r11]
+       62F17D08740E         vpcmpeqb k1, xmm0, xmmword ptr [rsi]
+       C5F898C9             kortestw k1, k1
+       7312                 jae      SHORT G_M000_IG17
+       458B5B10             mov      r11d, dword ptr [r11+0x10]
+       443B5E10             cmp      r11d, dword ptr [rsi+0x10]
+       400F94C6             sete     sil
+       400FB6F6             movzx    rsi, sil
+       EB02                 jmp      SHORT G_M000_IG18
+ 
+G_M000_IG17:                ;; offset=0x0247
+       33F6                 xor      esi, esi
+ 
+G_M000_IG18:                ;; offset=0x0249
+       85F6                 test     esi, esi
+       0F841EFFFFFF         je       G_M000_IG09
+       E902FFFFFF           jmp      G_M000_IG06
+ 
+G_M000_IG19:                ;; offset=0x0256
+       488D3C24             lea      rdi, [rsp]
+       488D7510             lea      rsi, [rbp+0x10]
+       488B0E               mov      rcx, gword ptr [rsi]
+       48890C24             mov      gword ptr [rsp], rcx
+       4883C608             add      rsi, 8
+       4883C708             add      rdi, 8
+       B904000000           mov      ecx, 4
+       F348A5               rep movsq 
+       498BFD               mov      rdi, r13
+       49BB600046ADDF740000 mov      r11, 0x74DFAD460060
+       41FF13               call     [r11]System.Collections.Generic.IEqualityComparer`1[Nethermind.Core.StorageCell]:GetHashCode(Nethermind.Core.StorageCell):int:this
+       488B4B08             mov      rcx, gword ptr [rbx+0x08]
+       8BF8                 mov      edi, eax
+       480FAF7B20           imul     rdi, qword ptr [rbx+0x20]
+       48C1EF20             shr      rdi, 32
+       48FFC7               inc      rdi
+       8B7108               mov      esi, dword ptr [rcx+0x08]
+       480FAFFE             imul     rdi, rsi
+       48C1EF20             shr      rdi, 32
+       3B7908               cmp      edi, dword ptr [rcx+0x08]
+       0F8346010000         jae      G_M000_IG27
+       8BFF                 mov      edi, edi
+       488D4CB910           lea      rcx, bword ptr [rcx+4*rdi+0x10]
+       488BD1               mov      rdx, rcx
+       488955C0             mov      bword ptr [rbp-0x40], rdx
+       448B02               mov      r8d, dword ptr [rdx]
+       41FFC8               dec      r8d
+       790C                 jns      SHORT G_M000_IG20
+       448BE8               mov      r13d, eax
+       488B45C0             mov      rax, bword ptr [rbp-0x40]
+       E9B6FEFFFF           jmp      G_M000_IG10
+ 
+G_M000_IG20:                ;; offset=0x02CD
+       453B4608             cmp      r8d, dword ptr [r14+0x08]
+       0F831A010000         jae      G_M000_IG27
+       448945D0             mov      dword ptr [rbp-0x30], r8d
+       418BC8               mov      ecx, r8d
+       486BC930             imul     rcx, rcx, 48
+       4D8D4C0E10           lea      r9, bword ptr [r14+rcx+0x10]
+       4C894DB8             mov      bword ptr [rbp-0x48], r9
+       8945D4               mov      dword ptr [rbp-0x2C], eax
+       413901               cmp      dword ptr [r9], eax
+       755B                 jne      SHORT G_M000_IG21
+       4D8D5908             lea      r11, bword ptr [r9+0x08]
+       488D3C24             lea      rdi, [rsp]
+       498BF3               mov      rsi, r11
+       488B0E               mov      rcx, gword ptr [rsi]
+       48890C24             mov      gword ptr [rsp], rcx
+       4883C608             add      rsi, 8
+       4883C708             add      rdi, 8
+       B904000000           mov      ecx, 4
+       F348A5               rep movsq 
+       488D7C2428           lea      rdi, [rsp+0x28]
+       488D7510             lea      rsi, [rbp+0x10]
+       488B0E               mov      rcx, gword ptr [rsi]
+       48894C2428           mov      gword ptr [rsp+0x28], rcx
+       4883C608             add      rsi, 8
+       4883C708             add      rdi, 8
+       B904000000           mov      ecx, 4
+       F348A5               rep movsq 
+       498BFD               mov      rdi, r13
+       49BB680046ADDF740000 mov      r11, 0x74DFAD460068
+       41FF13               call     [r11]System.Collections.Generic.IEqualityComparer`1[Nethermind.Core.StorageCell]:Equals(Nethermind.Core.StorageCell,Nethermind.Core.StorageCell):bool:this
+       85C0                 test     eax, eax
+       4C8B4DB8             mov      r9, bword ptr [rbp-0x48]
+       752C                 jne      SHORT G_M000_IG23
+ 
+G_M000_IG21:                ;; offset=0x034E
+       458B4104             mov      r8d, dword ptr [r9+0x04]
+       418BF8               mov      edi, r8d
+       41FFC4               inc      r12d
+       45396608             cmp      dword ptr [r14+0x08], r12d
+       7228                 jb       SHORT G_M000_IG24
+       85FF                 test     edi, edi
+       448BC7               mov      r8d, edi
+       7D0D                 jge      SHORT G_M000_IG22
+       488B45C0             mov      rax, bword ptr [rbp-0x40]
+       448B6DD4             mov      r13d, dword ptr [rbp-0x2C]
+       E911FEFFFF           jmp      G_M000_IG10
+ 
+G_M000_IG22:                ;; offset=0x0372
+       8B45D4               mov      eax, dword ptr [rbp-0x2C]
+       E953FFFFFF           jmp      G_M000_IG20
+ 
+G_M000_IG23:                ;; offset=0x037A
+       448B45D0             mov      r8d, dword ptr [rbp-0x30]
+       458907               mov      dword ptr [r15], r8d
+       E9D5FDFFFF           jmp      G_M000_IG07
+ 
+G_M000_IG24:                ;; offset=0x0386
+       FF15AC61FBFF         call     [System.ThrowHelper:ThrowInvalidOperationException_ConcurrentOperationsNotSupported()]
+       CC                   int3     
+ 
+G_M000_IG25:                ;; offset=0x038D
+       8B4B2C               mov      ecx, dword ptr [rbx+0x2C]
+       448BE1               mov      r12d, ecx
+       FF4B30               dec      dword ptr [rbx+0x30]
+       413B4E08             cmp      ecx, dword ptr [r14+0x08]
+       7355                 jae      SHORT G_M000_IG27
+       486BC930             imul     rcx, rcx, 48
+       418B4C0E14           mov      ecx, dword ptr [r14+rcx+0x14]
+       F7D9                 neg      ecx
+       83C1FD               add      ecx, -3
+       894B2C               mov      dword ptr [rbx+0x2C], ecx
+       E9F5FDFFFF           jmp      G_M000_IG13
+ 
+G_M000_IG26:                ;; offset=0x03B2
+       488BFB               mov      rdi, rbx
+       FF159561FBFF         call     [System.Collections.Generic.HashSet`1[Nethermind.Core.StorageCell]:Resize():this]
+       488B4B08             mov      rcx, gword ptr [rbx+0x08]
+       418BFD               mov      edi, r13d
+       480FAF7B20           imul     rdi, qword ptr [rbx+0x20]
+       48C1EF20             shr      rdi, 32
+       48FFC7               inc      rdi
+       8B7108               mov      esi, dword ptr [rcx+0x08]
+       8BC6                 mov      eax, esi
+       480FAFF8             imul     rdi, rax
+       48C1EF20             shr      rdi, 32
+       3BFE                 cmp      edi, esi
+       7312                 jae      SHORT G_M000_IG27
+       8BFF                 mov      edi, edi
+       488D44B910           lea      rax, bword ptr [rcx+4*rdi+0x10]
+       4C8BF0               mov      r14, rax
+       498BC6               mov      rax, r14
+       E9AAFDFFFF           jmp      G_M000_IG12
+ 
+G_M000_IG27:                ;; offset=0x03F1
+       E8FA85FAFF           call     CORINFO_HELP_RNGCHKFAIL
+       CC                   int3     
+ 
+RWD00  	dq	A1F56505F6061572h, C3B9E1768B75A567h
+RWD16  	dq	E10D8DCFBC0B3412h, EDA70CC6C9FFC651h
+RWD32  	dq	35252CBEE5370499h, E6FC15E7C419787Ah
+RWD48  	dq	A9D20ACEA518B594h, F28956CFADA647C7h
+RWD64  	dq	46F61BD456B23DA9h, 4D058B8617FD6384h
+
+; Total bytes of code 1015

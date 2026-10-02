@@ -1,0 +1,126 @@
+diff --git a/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs b/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs
+index f97f0606a8..620a7aefc8 100644
+--- a/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs
++++ b/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs
+@@ -161,10 +161,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+         /// Compilers branch on nearly every comparison they emit, so fusing saves the comparison its result slot, and the
+         /// PUSH2 and any ISZERO before it their dispatches. The fused step charges and counts every opcode it covers, the
+         /// JUMPDEST a taken branch lands on included, and like JUMPI it leaves for a cancellation poll only on a taken
+-        /// branch. When the opcodes after the comparison are not that sequence, or with too little gas for all of them, a
+-        /// stack the PUSH2 would overflow, or a taken branch onto an invalid destination, the comparison's plain handler
+-        /// runs the comparison alone and the opcodes after it run as they would, so a fault lands on the same opcode with
+-        /// the same gas. Only the comparison's own handler enters it, once it has seen the PUSH2 or the ISZERO.
++        /// branch. When the opcodes after the comparison are not that sequence, the comparison runs alone, as in its own
++        /// handler. With too little gas for all of them, a stack the PUSH2 would overflow, or a taken branch onto an invalid
++        /// destination, the comparison's plain handler runs the comparison alone and the opcodes after it run as they
++        /// would, so a fault lands on the same opcode with the same gas. Only the comparison's own handler enters it, once
++        /// it has seen the PUSH2 or the ISZERO.
+         /// </remarks>
+         [SkipLocalsInit]
+         [MethodImpl(MethodImplOptions.NoInlining)]
+@@ -183,7 +184,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+             // The comparison's handler has seen the PUSH2, or the ISZERO, after it; the code is padded with STOP, so reading
+             // past it stays inside the code, and a branch that the end of the code cuts short does not match.
+             if (TInverted.IsActive ? !IsBranch(ref stack.Code, pc + 2) : Unsafe.Add(ref stack.Code, pc + 4) != (byte)Instruction.JUMPI)
+-                goto Plain;
++                goto Alone;
+             // The branch's PUSH2 overflows a stack the comparison leaves full, which only ISZERO can.
+             if (TCondition.Inputs == 1 && stack.Head >= EvmStack.MaxStackSize - 1)
+                 goto Plain;
+@@ -264,6 +265,96 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+             IL.Emit.Ret();
+             throw IL.Unreachable();
+ 
++        Alone:
++            // No branch after all, as in ISZERO ISZERO PUSH2 JUMPI: the comparison runs alone, and the ISZERO after it may
++            // fuse in turn. Out of line, so that this handler keeps its registers for the branch.
++            nint alone = (nint)(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)
++                &ExecuteCompareAlone<TCondition>;
++            IL.EnsureLocal(in alone);
++
++            IL.Emit.Ldarg(nameof(stack));
++            IL.Emit.Ldarg(nameof(gas));
++            IL.Emit.Ldarg(nameof(state));
++            IL.Emit.Ldarg(nameof(pc));
++            IL.Emit.Ldarg(nameof(opCodeCount));
++            IL.Push(alone);
++            IL.Emit.Tail();
++            IL.Emit.Calli(new StandAloneMethodSig(
++                CallingConventions.Standard,
++                TypeRef.Type<EvmExceptionType>(),
++                TypeRef.Type<EvmStack>().MakeByRefType(),
++                TypeRef.Type<TGasPolicy>().MakeByRefType(),
++                TypeRef.Type<DispatchState>().MakeByRefType(),
++                TypeRef.Type<nint>(),
++                TypeRef.Type<nint>()));
++            IL.Emit.Ret();
++            throw IL.Unreachable();
++
++        Plain:
++            nint plain = (nint)(state.OpcodeHandlers + FallbackHandlersOffset)[Unsafe.Add(ref stack.Code, pc)];
++            IL.EnsureLocal(in plain);
++
++            IL.Emit.Ldarg(nameof(stack));
++            IL.Emit.Ldarg(nameof(gas));
++            IL.Emit.Ldarg(nameof(state));
++            IL.Emit.Ldarg(nameof(pc));
++            IL.Emit.Ldarg(nameof(opCodeCount));
++            IL.Push(plain);
++            IL.Emit.Tail();
++            IL.Emit.Calli(new StandAloneMethodSig(
++                CallingConventions.Standard,
++                TypeRef.Type<EvmExceptionType>(),
++                TypeRef.Type<EvmStack>().MakeByRefType(),
++                TypeRef.Type<TGasPolicy>().MakeByRefType(),
++                TypeRef.Type<DispatchState>().MakeByRefType(),
++                TypeRef.Type<nint>(),
++                TypeRef.Type<nint>()));
++            IL.Emit.Ret();
++            throw IL.Unreachable();
++        }
++
++        /// <summary>
++        /// A comparison that <see cref="ExecuteFusedBranch{TCondition, TCancelable, TInverted}"/> found no branch after, run
++        /// alone as <see cref="ExecuteCompareBranch{TCondition, TCancelable}"/> runs one; otherwise its plain handler faults.
++        /// </summary>
++        [SkipLocalsInit]
++        [MethodImpl(MethodImplOptions.NoInlining)]
++        private static EvmExceptionType ExecuteCompareAlone<TCondition>(
++            ref EvmStack stack,
++            ref TGasPolicy gas,
++            ref DispatchState state,
++            nint pc,
++            nint opCodeCount)
++            where TCondition : struct, IStackCondition
++        {
++            ref ulong gasLeft = ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas).Value;
++            if (gasLeft < VeryLowGasCost.GasCost || TCondition.ExecuteAlone(ref stack) != EvmExceptionType.None)
++                goto Plain;
++            gasLeft -= VeryLowGasCost.GasCost;
++            pc++;
++            opCodeCount++;
++
++            nint next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
++            IL.EnsureLocal(in next);
++
++            IL.Emit.Ldarg(nameof(stack));
++            IL.Emit.Ldarg(nameof(gas));
++            IL.Emit.Ldarg(nameof(state));
++            IL.Emit.Ldarg(nameof(pc));
++            IL.Emit.Ldarg(nameof(opCodeCount));
++            IL.Push(next);
++            IL.Emit.Tail();
++            IL.Emit.Calli(new StandAloneMethodSig(
++                CallingConventions.Standard,
++                TypeRef.Type<EvmExceptionType>(),
++                TypeRef.Type<EvmStack>().MakeByRefType(),
++                TypeRef.Type<TGasPolicy>().MakeByRefType(),
++                TypeRef.Type<DispatchState>().MakeByRefType(),
++                TypeRef.Type<nint>(),
++                TypeRef.Type<nint>()));
++            IL.Emit.Ret();
++            throw IL.Unreachable();
++
+         Plain:
+             nint plain = (nint)(state.OpcodeHandlers + FallbackHandlersOffset)[Unsafe.Add(ref stack.Code, pc)];
+             IL.EnsureLocal(in plain);

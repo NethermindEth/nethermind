@@ -1,0 +1,124 @@
+diff --git a/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs b/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs
+index 22d4d4a0ca..58078b3f5b 100644
+--- a/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs
++++ b/src/Nethermind/Nethermind.Evm/VirtualMachine.HostHandlers.std.cs
+@@ -62,33 +62,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+             where TCondition : struct, IStackCondition
+             where TCancelable : struct, IFlag
+         {
++            // The gas is read first, so its load is the null check its reference needs rather than a separate one.
+             ref ulong gasLeft = ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas).Value;
+-            if (stack.Head < TCondition.Inputs || gasLeft < VeryLowGasCost.GasCost)
++            if (gasLeft < VeryLowGasCost.GasCost || stack.Head < TCondition.Inputs)
+                 goto Plain;
+ 
+             // The code is padded with STOP, so reading past the comparison stays inside it, and a branch that the end of
+-            // the code cuts short does not match.
+-            nint fused;
+-            if (IsBranch(ref stack.Code, pc + 1))
+-            {
+-                fused = (nint)(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)
+-                    &ExecuteFusedBranch<TCondition, TCancelable, OffFlag>;
+-                goto Fused;
+-            }
+-
+-            if (Unsafe.Add(ref stack.Code, pc + 1) == (byte)Instruction.ISZERO && IsBranch(ref stack.Code, pc + 2))
+-            {
+-                fused = (nint)(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)
+-                    &ExecuteFusedBranch<TCondition, TCancelable, OnFlag>;
+-                goto Fused;
+-            }
+-
+-            // The result replaces the deepest input.
+-            ref byte top = ref stack.PeekBytesByRefUnchecked();
+-            EvmInstructions.WriteSmallWordToSlot(
+-                ref Unsafe.Subtract(ref top, (TCondition.Inputs - 1) * EvmStack.WordSize), TCondition.Evaluate(ref top) ? 1UL : 0UL);
+-            if (TCondition.Inputs > 1)
+-                stack.Head -= TCondition.Inputs - 1;
++            // the code cuts short does not match. Only a PUSH2 or an ISZERO after the comparison leaves the path that runs
++            // it alone, so that path stays straight. Nothing read here is kept for it: a value live to its end would take
++            // a callee-saved register, which the plain handler does not need.
++            byte following = Unsafe.Add(ref stack.Code, pc + 1);
++            if (following == (byte)Instruction.PUSH2 || following == (byte)Instruction.ISZERO)
++                goto Branch;
++
++        Alone:
++            TCondition.ExecuteAlone(ref stack);
+             gasLeft -= VeryLowGasCost.GasCost;
+             pc++;
+             opCodeCount++;
+@@ -114,6 +102,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+             IL.Emit.Ret();
+             throw IL.Unreachable();
+ 
++        Branch:
++            nint fused;
++            if (Unsafe.Add(ref stack.Code, pc + 1) == (byte)Instruction.PUSH2)
++            {
++                if (Unsafe.Add(ref stack.Code, pc + 4) != (byte)Instruction.JUMPI)
++                    goto Alone;
++                fused = (nint)(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)
++                    &ExecuteFusedBranch<TCondition, TCancelable, OffFlag>;
++            }
++            else
++            {
++                if (!IsBranch(ref stack.Code, pc + 2))
++                    goto Alone;
++                fused = (nint)(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)
++                    &ExecuteFusedBranch<TCondition, TCancelable, OnFlag>;
++            }
++
++            goto Fused;
++
+         Plain:
+             nint plain = (nint)(state.OpcodeHandlers + FallbackHandlersOffset)[Unsafe.Add(ref stack.Code, pc)];
+             IL.EnsureLocal(in plain);
+@@ -300,6 +307,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+             /// <summary>Evaluates the comparison on the words from the top slot down, in limb layout.</summary>
+             /// <param name="top">The top slot; the caller has established that the stack holds <see cref="Inputs"/> words.</param>
+             static abstract bool Evaluate(ref byte top);
++
++            /// <summary>Runs the comparison alone, as its plain handler's body does, on a stack that holds its inputs.</summary>
++            /// <remarks>
++            /// The plain body rather than <see cref="Evaluate"/>: on AVX2 hosts the plain ISZERO and EQ store one of two
++            /// constants behind a branch, so the next opcode reads a value that waits on nothing but the prediction. A result
++            /// built from the flags waits on the load and the test, and through the slot so does every opcode reading it, which
++            /// tripled a chain of ISZERO NOT.
++            /// </remarks>
++            static abstract void ExecuteAlone(ref EvmStack stack);
+         }
+ 
+         /// <summary>ISZERO: whether the top word is zero.</summary>
+@@ -309,6 +325,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+ 
+             [MethodImpl(MethodImplOptions.AggressiveInlining)]
+             public static bool Evaluate(ref byte top) => EvmStack.IsSlotZero(ref top);
++
++            [MethodImpl(MethodImplOptions.AggressiveInlining)]
++            public static void ExecuteAlone(ref EvmStack stack) =>
++                EvmInstructions.Math1ParamCore<EvmInstructions.OpIsZero, OffFlag, OffFlag>(ref stack);
+         }
+ 
+         /// <summary>EQ: whether the top two words are equal.</summary>
+@@ -328,6 +348,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+                 return ((a ^ b) | (Unsafe.Add(ref a, 1) ^ Unsafe.Add(ref b, 1)) |
+                     (Unsafe.Add(ref a, 2) ^ Unsafe.Add(ref b, 2)) | (Unsafe.Add(ref a, 3) ^ Unsafe.Add(ref b, 3))) == 0;
+             }
++
++            [MethodImpl(MethodImplOptions.AggressiveInlining)]
++            public static void ExecuteAlone(ref EvmStack stack) =>
++                EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseEq, OffFlag, OffFlag>(ref stack);
+         }
+ 
+         /// <summary>LT, GT, SLT or SGT: how the top word orders against the one under it.</summary>
+@@ -340,6 +364,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
+             [MethodImpl(MethodImplOptions.AggressiveInlining)]
+             public static bool Evaluate(ref byte top) => EvmInstructions.CompareScalar<TOpMath>(
+                 ref Unsafe.As<byte, ulong>(ref top), ref Unsafe.As<byte, ulong>(ref Unsafe.Subtract(ref top, EvmStack.WordSize)));
++
++            [MethodImpl(MethodImplOptions.AggressiveInlining)]
++            public static void ExecuteAlone(ref EvmStack stack) =>
++                EvmInstructions.Math2ParamCore<TOpMath, OffFlag, OffFlag>(ref stack);
+         }
+     }
+ }

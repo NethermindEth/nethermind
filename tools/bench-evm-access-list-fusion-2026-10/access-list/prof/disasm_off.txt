@@ -1,0 +1,297 @@
+G_M000_IG01:                ;; offset=0x0000
+  0000 push     rbp
+  0001 push     r15
+  0003 push     r14
+  0005 push     r13
+  0007 push     r12
+  0009 push     rbx
+  000a sub      rsp, 120
+  000e lea      rbp, [rsp+0xA0]
+  0016 mov      rbx, rdi
+  0019 mov      r15, rsi
+G_M000_IG02:                ;; offset=0x001C
+  001c cmp      gword ptr [rbx+0x08], 0
+  0021 je       G_M000_IG15
+G_M000_IG03:                ;; offset=0x0027
+  0027 mov      r14, gword ptr [rbx+0x10]
+  002b mov      r13, gword ptr [rbx+0x18]
+  002f xor      r12d, r12d
+  0032 test     r13, r13
+  0035 jne      G_M000_IG19
+  003b mov      rdx, gword ptr [rbp+0x10]
+  003f cmp      byte  ptr [rdx], dl
+  0041 add      rdx, 8
+  0045 vmovups  xmm0, xmmword ptr [reloc @RWD00]
+  004d vmovups  xmm1, xmmword ptr [rdx]
+  0051 mov      edx, dword ptr [rdx+0x10]
+  0054 vmovups  xmm2, xmmword ptr [rbp+0x18]
+  0059 vmovups  xmm3, xmmword ptr [rbp+0x28]
+  005e vpxor    xmm1, xmm0, xmm1
+  0062 vaesenc  xmm0, xmm1, xmm0
+  0067 vmovd    xmm1, edx
+  006b vpxor    xmm0, xmm1, xmm0
+  006f vaesenc  xmm0, xmm0, xmmword ptr [reloc @RWD16]
+  0078 vpxor    xmm0, xmm0, xmm2
+  007c vaesenc  xmm0, xmm0, xmmword ptr [reloc @RWD32]
+  0085 vpxor    xmm0, xmm0, xmm3
+  0089 vaesenc  xmm0, xmm0, xmmword ptr [reloc @RWD48]
+  0092 vaesenc  xmm0, xmm0, xmmword ptr [reloc @RWD64]
+  009b vmovq    rdx, xmm0
+  00a0 mov      rcx, 0x9E3779B97F4A7C15
+  00aa xor      rdx, rcx
+  00ad vpextrq  rcx, xmm0, 1
+  00b3 mov      rdi, 0xBF58476D1CE4E5B9
+  00bd xor      rcx, rdi
+  00c0 lea      rdi, [rbp-0x38]
+  00c4 mulx     r13, rsi, rcx
+  00c9 mov      qword ptr [rdi], rsi
+  00cc mov      rax, qword ptr [rbp-0x38]
+  00d0 xor      r13, rax
+  00d3 mov      rax, r13
+  00d6 shr      rax, 32
+  00da xor      r13d, eax
+  00dd mov      rcx, gword ptr [rbx+0x08]
+  00e1 mov      edi, r13d
+  00e4 imul     rdi, qword ptr [rbx+0x20]
+  00e9 shr      rdi, 32
+  00ed inc      rdi
+  00f0 mov      esi, dword ptr [rcx+0x08]
+  00f3 mov      r11d, esi
+  00f6 imul     rdi, r11
+  00fa shr      rdi, 32
+  00fe cmp      edi, esi
+  0100 jae      G_M000_IG27
+  0106 mov      edi, edi
+  0108 lea      rax, bword ptr [rcx+4*rdi+0x10]
+  010d mov      ecx, dword ptr [rax]
+  010f dec      ecx
+  0111 js       SHORT G_M000_IG10
+G_M000_IG04:                ;; offset=0x0113
+  0113 cmp      ecx, dword ptr [r14+0x08]
+  0117 jae      G_M000_IG27
+  011d mov      edi, ecx
+  011f imul     rdi, rdi, 48
+  0123 lea      rdi, bword ptr [r14+rdi+0x10]
+  0128 cmp      dword ptr [rdi], r13d
+  012b jne      SHORT G_M000_IG09
+G_M000_IG05:                ;; offset=0x012D
+  012d lea      rsi, bword ptr [rdi+0x08]
+  0131 mov      r11, gword ptr [rsi]
+  0134 vmovups  ymm0, ymmword ptr [rsi+0x08]
+  0139 mov      rsi, gword ptr [rbp+0x10]
+  013d vmovups  ymm1, ymmword ptr [rbp+0x18]
+  0142 vpcmpfalseuq k1, ymm0, ymm1
+  0149 kortestb k1, k1
+  014d jne      SHORT G_M000_IG09
+  014f cmp      r11, rsi
+  0152 jne      G_M000_IG16
+G_M000_IG06:                ;; offset=0x0158
+  0158 mov      dword ptr [r15], ecx
+G_M000_IG07:                ;; offset=0x015B
+  015b xor      eax, eax
+G_M000_IG08:                ;; offset=0x015D
+  015d vzeroupper
+  0160 add      rsp, 120
+  0164 pop      rbx
+  0165 pop      r12
+  0167 pop      r13
+  0169 pop      r14
+  016b pop      r15
+  016d pop      rbp
+  016e ret
+G_M000_IG09:                ;; offset=0x016F
+  016f mov      ecx, dword ptr [rdi+0x04]
+  0172 inc      r12d
+  0175 cmp      dword ptr [r14+0x08], r12d
+  0179 jb       G_M000_IG24
+  017f test     ecx, ecx
+  0181 jge      SHORT G_M000_IG04
+G_M000_IG10:                ;; offset=0x0183
+  0183 cmp      dword ptr [rbx+0x30], 0
+  0187 jg       G_M000_IG25
+G_M000_IG11:                ;; offset=0x018D
+  018d mov      r12d, dword ptr [rbx+0x28]
+  0191 cmp      dword ptr [r14+0x08], r12d
+  0195 je       G_M000_IG26
+G_M000_IG12:                ;; offset=0x019B
+  019b lea      ecx, [r12+0x01]
+  01a0 mov      dword ptr [rbx+0x28], ecx
+  01a3 mov      r14, gword ptr [rbx+0x10]
+G_M000_IG13:                ;; offset=0x01A7
+  01a7 cmp      r12d, dword ptr [r14+0x08]
+  01ab jae      G_M000_IG27
+  01b1 mov      ecx, r12d
+  01b4 imul     rcx, rcx, 48
+  01b8 lea      rdi, bword ptr [r14+rcx+0x10]
+  01bd mov      dword ptr [rdi], r13d
+  01c0 mov      bword ptr [rbp-0x40], rax
+  01c4 mov      ecx, dword ptr [rax]
+  01c6 dec      ecx
+  01c8 mov      dword ptr [rdi+0x04], ecx
+  01cb add      rdi, 8
+  01cf lea      rsi, bword ptr [rbp+0x10]
+  01d3 call     CORINFO_HELP_ASSIGN_BYREF
+  01d8 mov      ecx, 4
+  01dd rep movsq
+  01e0 lea      eax, [r12+0x01]
+  01e5 mov      r14, bword ptr [rbp-0x40]
+  01e9 mov      dword ptr [r14], eax
+  01ec inc      dword ptr [rbx+0x34]
+  01ef mov      dword ptr [r15], r12d
+  01f2 mov      eax, 1
+G_M000_IG14:                ;; offset=0x01F7
+  01f7 vzeroupper
+  01fa add      rsp, 120
+  01fe pop      rbx
+  01ff pop      r12
+  0201 pop      r13
+  0203 pop      r14
+  0205 pop      r15
+  0207 pop      rbp
+  0208 ret
+G_M000_IG15:                ;; offset=0x0209
+  0209 mov      rdi, rbx
+  020c xor      esi, esi
+  020e call     [System.Collections.Generic.HashSet`1[Nethermind.Core.StorageCell]:Initialize(int):int:this]
+  0214 jmp      G_M000_IG03
+G_M000_IG16:                ;; offset=0x0219
+  0219 cmp      byte  ptr [r11], r11b
+  021c add      r11, 8
+  0220 add      rsi, 8
+  0224 vmovups  xmm0, xmmword ptr [r11]
+  0229 vpcmpeqb k1, xmm0, xmmword ptr [rsi]
+  022f kortestw k1, k1
+  0233 jae      SHORT G_M000_IG17
+  0235 mov      r11d, dword ptr [r11+0x10]
+  0239 cmp      r11d, dword ptr [rsi+0x10]
+  023d sete     sil
+  0241 movzx    rsi, sil
+  0245 jmp      SHORT G_M000_IG18
+G_M000_IG17:                ;; offset=0x0247
+  0247 xor      esi, esi
+G_M000_IG18:                ;; offset=0x0249
+  0249 test     esi, esi
+  024b je       G_M000_IG09
+  0251 jmp      G_M000_IG06
+G_M000_IG19:                ;; offset=0x0256
+  0256 lea      rdi, [rsp]
+  025a lea      rsi, [rbp+0x10]
+  025e mov      rcx, gword ptr [rsi]
+  0261 mov      gword ptr [rsp], rcx
+  0265 add      rsi, 8
+  0269 add      rdi, 8
+  026d mov      ecx, 4
+  0272 rep movsq
+  0275 mov      rdi, r13
+  0278 mov      r11, 0x74DFAD460060
+  0282 call     [r11]System.Collections.Generic.IEqualityComparer`1[Nethermind.Core.StorageCell]:GetHashCode(Nethermind.Core.StorageCell):int:this
+  0285 mov      rcx, gword ptr [rbx+0x08]
+  0289 mov      edi, eax
+  028b imul     rdi, qword ptr [rbx+0x20]
+  0290 shr      rdi, 32
+  0294 inc      rdi
+  0297 mov      esi, dword ptr [rcx+0x08]
+  029a imul     rdi, rsi
+  029e shr      rdi, 32
+  02a2 cmp      edi, dword ptr [rcx+0x08]
+  02a5 jae      G_M000_IG27
+  02ab mov      edi, edi
+  02ad lea      rcx, bword ptr [rcx+4*rdi+0x10]
+  02b2 mov      rdx, rcx
+  02b5 mov      bword ptr [rbp-0x40], rdx
+  02b9 mov      r8d, dword ptr [rdx]
+  02bc dec      r8d
+  02bf jns      SHORT G_M000_IG20
+  02c1 mov      r13d, eax
+  02c4 mov      rax, bword ptr [rbp-0x40]
+  02c8 jmp      G_M000_IG10
+G_M000_IG20:                ;; offset=0x02CD
+  02cd cmp      r8d, dword ptr [r14+0x08]
+  02d1 jae      G_M000_IG27
+  02d7 mov      dword ptr [rbp-0x30], r8d
+  02db mov      ecx, r8d
+  02de imul     rcx, rcx, 48
+  02e2 lea      r9, bword ptr [r14+rcx+0x10]
+  02e7 mov      bword ptr [rbp-0x48], r9
+  02eb mov      dword ptr [rbp-0x2C], eax
+  02ee cmp      dword ptr [r9], eax
+  02f1 jne      SHORT G_M000_IG21
+  02f3 lea      r11, bword ptr [r9+0x08]
+  02f7 lea      rdi, [rsp]
+  02fb mov      rsi, r11
+  02fe mov      rcx, gword ptr [rsi]
+  0301 mov      gword ptr [rsp], rcx
+  0305 add      rsi, 8
+  0309 add      rdi, 8
+  030d mov      ecx, 4
+  0312 rep movsq
+  0315 lea      rdi, [rsp+0x28]
+  031a lea      rsi, [rbp+0x10]
+  031e mov      rcx, gword ptr [rsi]
+  0321 mov      gword ptr [rsp+0x28], rcx
+  0326 add      rsi, 8
+  032a add      rdi, 8
+  032e mov      ecx, 4
+  0333 rep movsq
+  0336 mov      rdi, r13
+  0339 mov      r11, 0x74DFAD460068
+  0343 call     [r11]System.Collections.Generic.IEqualityComparer`1[Nethermind.Core.StorageCell]:Equals(Nethermind.Core.StorageCell,Nethermind.Core.StorageCell):bool:this
+  0346 test     eax, eax
+  0348 mov      r9, bword ptr [rbp-0x48]
+  034c jne      SHORT G_M000_IG23
+G_M000_IG21:                ;; offset=0x034E
+  034e mov      r8d, dword ptr [r9+0x04]
+  0352 mov      edi, r8d
+  0355 inc      r12d
+  0358 cmp      dword ptr [r14+0x08], r12d
+  035c jb       SHORT G_M000_IG24
+  035e test     edi, edi
+  0360 mov      r8d, edi
+  0363 jge      SHORT G_M000_IG22
+  0365 mov      rax, bword ptr [rbp-0x40]
+  0369 mov      r13d, dword ptr [rbp-0x2C]
+  036d jmp      G_M000_IG10
+G_M000_IG22:                ;; offset=0x0372
+  0372 mov      eax, dword ptr [rbp-0x2C]
+  0375 jmp      G_M000_IG20
+G_M000_IG23:                ;; offset=0x037A
+  037a mov      r8d, dword ptr [rbp-0x30]
+  037e mov      dword ptr [r15], r8d
+  0381 jmp      G_M000_IG07
+G_M000_IG24:                ;; offset=0x0386
+  0386 call     [System.ThrowHelper:ThrowInvalidOperationException_ConcurrentOperationsNotSupported()]
+  038c int3
+G_M000_IG25:                ;; offset=0x038D
+  038d mov      ecx, dword ptr [rbx+0x2C]
+  0390 mov      r12d, ecx
+  0393 dec      dword ptr [rbx+0x30]
+  0396 cmp      ecx, dword ptr [r14+0x08]
+  039a jae      SHORT G_M000_IG27
+  039c imul     rcx, rcx, 48
+  03a0 mov      ecx, dword ptr [r14+rcx+0x14]
+  03a5 neg      ecx
+  03a7 add      ecx, -3
+  03aa mov      dword ptr [rbx+0x2C], ecx
+  03ad jmp      G_M000_IG13
+G_M000_IG26:                ;; offset=0x03B2
+  03b2 mov      rdi, rbx
+  03b5 call     [System.Collections.Generic.HashSet`1[Nethermind.Core.StorageCell]:Resize():this]
+  03bb mov      rcx, gword ptr [rbx+0x08]
+  03bf mov      edi, r13d
+  03c2 imul     rdi, qword ptr [rbx+0x20]
+  03c7 shr      rdi, 32
+  03cb inc      rdi
+  03ce mov      esi, dword ptr [rcx+0x08]
+  03d1 mov      eax, esi
+  03d3 imul     rdi, rax
+  03d7 shr      rdi, 32
+  03db cmp      edi, esi
+  03dd jae      SHORT G_M000_IG27
+  03df mov      edi, edi
+  03e1 lea      rax, bword ptr [rcx+4*rdi+0x10]
+  03e6 mov      r14, rax
+  03e9 mov      rax, r14
+  03ec jmp      G_M000_IG12
+G_M000_IG27:                ;; offset=0x03F1
+  03f1 call     CORINFO_HELP_RNGCHKFAIL
+  03f6 int3
