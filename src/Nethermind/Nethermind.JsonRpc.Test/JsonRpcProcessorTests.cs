@@ -951,26 +951,50 @@ public class JsonRpcProcessorTests
     /// <remarks>
     /// The unauthenticated read timeout is only observed by reads that can wait for data. A pipe over an in-memory
     /// message never waits and ignores the token, so an expired timeout does not cut the message short on either path.
+    /// The timeout never fires on its own; the first dispatch expires it, so both paths see it expire at the same point.
+    /// Non-parallelizable because the planted timeout source sits in the process-wide pool until this request rents it.
     /// </remarks>
     [Test]
+    [NonParallelizable]
     public async Task Timeout_expiring_mid_message_is_handled_alike_from_memory_and_incrementally([Values] bool isAuthenticated)
     {
-        const int timeoutMs = 50;
         byte[] bytes = Encoding.UTF8.GetBytes(
             CreateRequest("1", "eth_blockNumber") + "\n" + CreateRequest("2", "eth_chainId") + "\n" + CreateRequest("3", "net_version") + "\n");
-        JsonRpcConfig config = new() { Timeout = timeoutMs };
-        Action<JsonRpcRequest> outlastTimeout = static request =>
-        {
-            if (request.Method == "eth_blockNumber") Thread.Sleep(timeoutMs * 4);
-        };
+        JsonRpcConfig config = new() { Timeout = Timeout.Infinite };
 
-        (string fromMemory, _) = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsPipe, config, isAuthenticated, outlastTimeout);
-        (string incremental, _) = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsSegmentedPipe, config, isAuthenticated, outlastTimeout);
+        (string fromMemory, int memoryTimeoutReturns) = await ProcessExpiringAtFirstDispatchAsync(RequestTransport.WsPipe);
+        (string incremental, int incrementalTimeoutReturns) = await ProcessExpiringAtFirstDispatchAsync(RequestTransport.WsSegmentedPipe);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fromMemory, Is.EqualTo(incremental));
             Assert.That(fromMemory, Does.Contain("dispatched: eth_blockNumber #1 | eth_chainId #2 | net_version #3; thrown: nothing"));
+            // An expired source cannot be reset, so returning it disposes it: that proves the request used the planted one.
+            Assert.That(memoryTimeoutReturns, Is.EqualTo(isAuthenticated ? 0 : 1));
+            Assert.That(incrementalTimeoutReturns, Is.EqualTo(isAuthenticated ? 0 : 1));
+        }
+
+        async Task<(string Outcome, int TimeoutDisposals)> ProcessExpiringAtFirstDispatchAsync(RequestTransport transport)
+        {
+            if (isAuthenticated)
+            {
+                (string authenticatedOutcome, _) = await DescribeMultipleDocumentProcessingAsync(bytes, transport, config, isAuthenticated);
+                return (authenticatedOutcome, 0);
+            }
+
+            TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+            try
+            {
+                (string outcome, _) = await DescribeMultipleDocumentProcessingAsync(bytes, transport, config, isAuthenticated, request =>
+                {
+                    if (request.Method == "eth_blockNumber") timeout.Cancel();
+                });
+                return (outcome, timeout.DisposeCount);
+            }
+            finally
+            {
+                TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+            }
         }
     }
 
