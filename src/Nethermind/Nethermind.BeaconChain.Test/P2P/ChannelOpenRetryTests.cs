@@ -201,6 +201,54 @@ public class ChannelOpenRetryTests
         Assert.That((attempts, seen.Distinct().Count()), Is.EqualTo((2, 2)), "each channel carries its own attempt, so a late open of the first cannot pass for the second");
     }
 
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task ConnectedTo_retries_an_unopened_identify_channel_before_completing_the_dial(CancellationToken token)
+    {
+        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(10));
+        await node.StartAsync(token);
+        LocalPeer peer = node.LocalPeerForTest!;
+        Nethermind.Libp2p.Core.Identity remote = new(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1);
+        LocalPeer.Session session = new(peer);
+        session.State.RemotePublicKey = remote.PublicKey;
+        session.State.RemoteAddress = Multiformats.Address.Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{remote.PeerId}");
+
+        using INewSessionContext context = peer.UpgradeToSession(session, new ProtocolRef(Substitute.For<IProtocol>()), isListener: false, activity: null);
+        using CancellationTokenRegistration cancellation = token.Register(() => _ = session.DisconnectAsync());
+        Task<ISession> dial = peer.DialAsync(session.RemoteAddress, token);
+        Task answer = Task.Run(() =>
+        {
+            // Leave the first open unanswered, as when negotiation never reaches the identify probe.
+            using IEnumerator<UpgradeOptions> requests = context.DialRequests.GetEnumerator();
+            Assert.That(requests.MoveNext(), Is.True);
+            UpgradeOptions first = requests.Current;
+            Assert.That(requests.MoveNext(), Is.True, "ConnectedTo must open identify again before its overall budget expires");
+            UpgradeOptions second = requests.Current;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.SelectedProtocol, Is.TypeOf<IdentifyAgentVersionProbe>());
+                Assert.That(second.SelectedProtocol, Is.TypeOf<IdentifyAgentVersionProbe>());
+                Assert.That(second.Argument, Is.Not.SameAs(first.Argument), "the retry has its own open state");
+                Assert.That(first.CancellationToken.IsCancellationRequested, Is.True, "the dropped channel is cancelled before the retry");
+                Assert.That(dial.IsCompleted, Is.False, "a dial cannot succeed before identify answers");
+            }
+
+            ((IdentifyAgentVersionProbe.Attempt)second.Argument!).Open();
+            second.CompletionSource!.SetResult("retry-agent");
+        }, token);
+
+        await Task.WhenAll(answer, dial);
+        BeaconP2P.SessionInfo info = await node.GetSessionInfoAsync(session, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await dial, Is.SameAs(session), "the original connection succeeds through the identify retry");
+            Assert.That(info, Is.EqualTo(new BeaconP2P.SessionInfo(PeerDirection.Outbound, "retry-agent")));
+            Assert.That(node.IdentifyTimeoutsForTest, Is.Zero, "a recovered channel open does not count as an identify timeout");
+        }
+    }
+
     private static BeaconP2P CreateHost(TimeSpan requestTimeout) =>
         new(new BeaconChainConfig { P2PPort = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new BeaconChainStatusHolder(Spec, Timestamper.Default),
             new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance)
