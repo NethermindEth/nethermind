@@ -100,12 +100,8 @@ internal static class BeaconJsonWriter
         }
         w.WriteEndArray();
 
-        w.WriteStartArray("attestations");
-        foreach (Attestation attestation in body.Attestations!)
-        {
-            WriteAttestation(w, attestation);
-        }
-        w.WriteEndArray();
+        w.WritePropertyName("attestations");
+        WriteAttestations(w, body.Attestations!);
 
         WriteDeposits(w, body.Deposits!);
         WriteVoluntaryExits(w, body.VoluntaryExits!);
@@ -161,12 +157,8 @@ internal static class BeaconJsonWriter
         }
         w.WriteEndArray();
 
-        w.WriteStartArray("attestations");
-        foreach (AttestationGloas attestation in body.Attestations!)
-        {
-            WriteAttestation(w, attestation.AggregationBits!, attestation.Data!, attestation.Signature, attestation.CommitteeBits!);
-        }
-        w.WriteEndArray();
+        w.WritePropertyName("attestations");
+        WriteAttestations(w, body.Attestations!);
 
         WriteDeposits(w, body.Deposits!);
         WriteVoluntaryExits(w, body.VoluntaryExits!);
@@ -448,8 +440,25 @@ internal static class BeaconJsonWriter
         w.WriteEndObject();
     }
 
-    private static void WriteAttestation(Utf8JsonWriter w, Attestation attestation) =>
-        WriteAttestation(w, attestation.AggregationBits!, attestation.Data!, attestation.Signature, attestation.CommitteeBits!);
+    public static void WriteAttestations(Utf8JsonWriter w, Attestation[] attestations)
+    {
+        w.WriteStartArray();
+        foreach (Attestation attestation in attestations)
+        {
+            WriteAttestation(w, attestation.AggregationBits!, attestation.Data!, attestation.Signature, attestation.CommitteeBits!);
+        }
+        w.WriteEndArray();
+    }
+
+    public static void WriteAttestations(Utf8JsonWriter w, AttestationGloas[] attestations)
+    {
+        w.WriteStartArray();
+        foreach (AttestationGloas attestation in attestations)
+        {
+            WriteAttestation(w, attestation.AggregationBits!, attestation.Data!, attestation.Signature, attestation.CommitteeBits!);
+        }
+        w.WriteEndArray();
+    }
 
     /// <remarks>A Gloas <c>ProgressiveBitList</c> serializes like a bitlist, with the same length sentinel.</remarks>
     private static void WriteAttestation(Utf8JsonWriter w, BitArray aggregationBits, AttestationData data, BlsSignature signature, BitArray committeeBits)
