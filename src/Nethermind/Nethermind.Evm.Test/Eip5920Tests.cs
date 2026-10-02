@@ -243,7 +243,7 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     }
 
     [TestCase(true, TestName = "Successful PAY is reported as a codeless zero-gas CALL")]
-    [TestCase(false, TestName = "PAY with insufficient balance reports no action")]
+    [TestCase(false, TestName = "PAY with insufficient balance reports a rejected zero-gas CALL")]
     public void Pay_is_reported_to_action_tracers(bool withinBalance)
     {
         TestState.CreateAccount(Existing, 5);
@@ -253,16 +253,19 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
 
         AssertSucceeded(result);
         TestAllTracerWithOutput.ActionTrace[] payActions = result.Actions.Skip(1).ToArray();
-        Assert.That(payActions, withinBalance
-            ? Is.EqualTo(new[] { new TestAllTracerWithOutput.ActionTrace(0, value, Recipient, Existing, ExecutionType.CALL, false) })
-            : Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payActions, Is.EqualTo(new[] { new TestAllTracerWithOutput.ActionTrace(0, value, Recipient, Existing, ExecutionType.CALL, false) }));
+            Assert.That(result.RejectedActionError, Is.EqualTo(withinBalance ? EvmExceptionType.None : EvmExceptionType.NotEnoughBalance));
+        }
     }
 
     [Test]
-    public void Trace_module_shows_pay_as_a_call_subtrace()
+    public void Trace_module_shows_pay_as_a_call_subtrace([Values] bool withinBalance)
     {
         TestState.CreateAccount(Existing, 5);
-        (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, Pay(Prepare.EvmCode, Existing, 7).STOP().Done);
+        UInt256 value = withinBalance ? 7 : UInt256.MaxValue;
+        (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, Pay(Prepare.EvmCode, Existing, value).STOP().Done);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace);
 
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -270,16 +273,17 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
         ParityTraceAction pay = tracer.BuildResult().Action!.Subtraces.Single();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((pay.CallType, pay.From, pay.To, pay.Value), Is.EqualTo(("call", Recipient, Existing, (UInt256)7)));
-            Assert.That(pay.Result?.GasUsed, Is.EqualTo(0UL));
+            Assert.That((pay.CallType, pay.From, pay.To, pay.Value), Is.EqualTo(("call", Recipient, Existing, value)));
+            Assert.That(pay.Result?.GasUsed, Is.EqualTo(withinBalance ? (ulong?)0 : null));
+            Assert.That(pay.Error, Is.EqualTo(withinBalance ? null : "Insufficient balance for transfer"));
         }
     }
 
     [Test]
-    public void Vm_trace_reports_pay_cost_and_push([Values] bool streaming)
+    public void Vm_trace_reports_pay_cost_and_push([Values] bool streaming, [Values] bool withinBalance)
     {
         TestState.CreateAccount(Existing, 5);
-        byte[] code = Pay(Prepare.EvmCode, Existing, 7).Op(Instruction.POP).STOP().Done;
+        byte[] code = Pay(Prepare.EvmCode, Existing, withinBalance ? 7 : UInt256.MaxValue).Op(Instruction.POP).STOP().Done;
 
         IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations = TraceVmOperations(code, streaming);
 
@@ -427,6 +431,14 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     private sealed class LogTracer : TestAllTracerWithOutput
     {
         public LogEntry[] Logs { get; private set; } = [];
+        public EvmExceptionType RejectedActionError { get; private set; }
+
+        public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+            ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+        {
+            ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+            RejectedActionError = error;
+        }
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {

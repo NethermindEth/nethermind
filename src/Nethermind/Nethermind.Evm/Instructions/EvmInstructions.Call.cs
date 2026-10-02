@@ -337,6 +337,8 @@ public static partial class EvmInstructions
         {
             if (chargesNewAccount)
                 vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetNewAccountStateCost());
+            if (vm.IsTracingActions)
+                vm.TxTracer.ReportRejectedAction(0, 0, value, executingAccount, target, default, ExecutionType.CALL, EvmExceptionType.NotEnoughBalance);
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
