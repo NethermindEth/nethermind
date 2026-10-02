@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.State.OverridableEnv;
@@ -15,6 +16,6 @@ namespace Nethermind.State.OverridableEnv;
 /// </remarks>
 public sealed class CodeOverrideStore
 {
-    internal Dictionary<Address, CodeInfo> Code { get; } = [];
+    internal Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> Code { get; } = [];
     internal Dictionary<Address, CodeInfo> Precompiles { get; } = [];
 }

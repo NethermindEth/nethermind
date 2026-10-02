@@ -14,6 +14,7 @@ using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -145,12 +146,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(execution.ToArray(), Is.EqualTo(code.ToArray()));
+                Assert.That(execution, Is.SequenceEqualTo(code));
                 Assert.That(padding.ToArray(), Is.All.EqualTo(0));
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.CodeSpan), ref MemoryMarshal.GetReference(execution)), Is.True,
                     "Code must be served from the padded copy rather than keep the caller's array alongside it");
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.ExecutionCodeSpan), ref MemoryMarshal.GetReference(execution)), Is.True);
-                Assert.That(earlierView.ToArray(), Is.EqualTo(code.ToArray()));
+                Assert.That(earlierView, Is.SequenceEqualTo(code));
             }
         }
 
@@ -167,7 +168,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(execution.ToArray(), Is.EqualTo(code.ToArray()));
+                Assert.That(execution, Is.SequenceEqualTo(code));
                 Assert.That(padding.ToArray(), Is.All.EqualTo(0));
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(code.Span), ref MemoryMarshal.GetReference(execution)), Is.True);
             }
@@ -185,7 +186,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(execution.ToArray(), Is.EqualTo(new byte[] { 0x60, 0x60 }));
+                Assert.That(execution, Is.SequenceEqualTo(new byte[] { 0x60, 0x60 }));
                 Assert.That(padding.ToArray(), Is.All.EqualTo(0));
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(code.Span), ref MemoryMarshal.GetReference(execution)), Is.False);
             }

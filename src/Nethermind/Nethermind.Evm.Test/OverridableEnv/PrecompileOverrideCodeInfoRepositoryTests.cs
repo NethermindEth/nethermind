@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
@@ -27,7 +29,8 @@ public class PrecompileOverrideCodeInfoRepositoryTests
         Assert.That(Cancun.Instance.IsPrecompile(bls12G1Add), Is.False);
         Assert.That(Prague.Instance.IsPrecompile(bls12G1Add), Is.True);
 
-        IWorldState worldState = Substitute.For<IWorldState>();
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
         OverridableCodeInfoRepository repository = new(new EthereumCodeInfoRepository(worldState), worldState);
         repository.SetCodeOverride(Cancun.Instance, bls12G1Add, new CodeInfo(new byte[] { 0x00 }));
 

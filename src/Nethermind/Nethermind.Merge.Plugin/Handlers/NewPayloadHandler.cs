@@ -21,6 +21,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -28,6 +29,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -39,7 +41,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
 /// Shanghai</a> specification.
 /// </summary>
-public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>, IDisposable
+public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>, IInclusionListComplianceEvaluator, IDisposable
 {
     private readonly IPayloadPreparationService _payloadPreparationService;
     private readonly IBlockValidator _blockValidator;
@@ -127,10 +129,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
-        // Overlaps ecrecover with everything that follows, block processing included; the pipeline
-        // recovers inline whatever it reaches before the background recovery does.
-        StartSenderRecovery(request);
-
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
         {
@@ -138,6 +136,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
+
+        // Overlaps ecrecover with everything that follows, block processing included; the pipeline
+        // recovers inline whatever it reaches before the background recovery does. Started only once the block is
+        // built: TryGetBlock has already finished hashing the transactions-trie root before recovery competes for
+        // pool workers.
+        StartSenderRecovery(request);
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
@@ -247,8 +251,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 if (_stateReader.HasStateForBlock(block.Header)
                     || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && _stateReader.HasStateForBlock(block.Header)))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
-                    return EvaluateInclusionListFromState(block);
+                    if (EvaluateInclusionListFromState(block) is { } fromState)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                        return fromState;
+                    }
+
+                    // Fall through: only execution recovers the EIP-8037 dimensions this answer needs, and where
+                    // re-executing is unsafe the ancestry check below answers SYNCING — bogota.md newPayloadV6
+                    // (2.2) leaves `inclusionListSatisfied` null there, which (2.1) would not allow for VALID.
                 }
             }
         }
@@ -411,22 +422,133 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <remarks>
     /// EIP-7805 appendability is judged against the state the block committed, which for a canonical block
     /// is readable at its own state root, so the only work left is recovering the list's senders.
+    /// Null when EIP-8037 leaves the answer undecidable from state alone: only execution records the gas
+    /// dimensions appendability is judged on, so the caller must fall through to it rather than guess.
+    /// After cache loss or restart, even resending the current head can therefore answer SYNCING.
     /// </remarks>
-    private ResultWrapper<PayloadStatusV1> EvaluateInclusionListFromState(Block block)
+    private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block)
     {
-        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-        _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
+        Hash256 hash = block.GetOrCalculateHash();
+        // A decoded payload has no EIP-8037 dimensions, and neither the state root nor the header's
+        // max(execution, state) carries them back, so without what execution recorded this would answer on a
+        // coarser gas rule than the processing path and could report real censorship as absent.
+        block.Header.GasUsedPerDimension = RecordedGasDimensions(hash);
+        bool? satisfied = IsInclusionListSatisfied(block, block.InclusionListTransactions!);
+        if (satisfied is null) return null;
 
-        ValidationResult result = InclusionListValidator.IsSatisfied(
-            block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
-            ? ValidationResult.Valid
-            : ValidationResult.InclusionListUnsatisfied;
+        ValidationResult result = satisfied.Value ? ValidationResult.Valid : ValidationResult.InclusionListUnsatisfied;
 
-        _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, null, ComputeInclusionListDigest(block)));
+        _latestBlocks?.Set(hash, new CachedPayloadResult(result, null, ComputeInclusionListDigest(block), block.Header.GasUsedPerDimension));
         return result == ValidationResult.Valid
             ? NewPayloadV1Result.Valid(block.Hash)
             : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
     }
+
+    /// <inheritdoc/>
+    /// <remarks>Without EIP-8037 gas dimensions, answers only when every possible assignment gives the same verdict.</remarks>
+    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
+    {
+        Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        if (block is null || !_stateReader.HasStateForBlock(block.Header)) return null;
+        // Gas bounds must not mutate the tree's shared header while another request reads it.
+        block = block.WithReplacedBodyCloned(block.Body);
+        block.Header.GasUsedPerDimension = RecordedGasDimensions(blockHash);
+
+        // Undecodable entries are dropped rather than failing the answer: a censoring proposer must not be
+        // able to escape the check by having one bad entry gossiped into the aggregate.
+        return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
+    }
+
+    private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
+    {
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
+
+        SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
+        return spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
+            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
+            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator);
+    }
+
+    /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
+    /// <remarks>Account reads are shared across the gas bounds.</remarks>
+    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
+    {
+        state = new CachedAccountStateProvider(state);
+        // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
+        try
+        {
+            block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator)) return false;
+
+            block.Header.GasUsedPerDimension = (block.GasUsed, 0);
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator)) return null;
+
+            block.Header.GasUsedPerDimension = (0, block.GasUsed);
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator) ? true : null;
+        }
+        finally
+        {
+            // Bounds must never escape as recorded execution totals, including through the payload cache.
+            block.Header.GasUsedPerDimension = null;
+        }
+    }
+
+    /// <summary>Shares account reads across one request's inclusion-list checks.</summary>
+    private sealed class CachedAccountStateProvider(IReadOnlyStateProvider state) : IReadOnlyStateProvider
+    {
+        private Dictionary<AddressAsKey, (bool Exists, AccountStruct Account)>? _accounts;
+
+        /// <inheritdoc/>
+        public Hash256 StateRoot => state.StateRoot;
+
+        /// <inheritdoc/>
+        public bool TryGetAccount(Address address, out AccountStruct account)
+        {
+            _accounts ??= [];
+            if (!_accounts.TryGetValue(address, out (bool Exists, AccountStruct Account) cached))
+            {
+                bool exists = state.TryGetAccount(address, out account);
+                cached = (exists, account);
+                _accounts.Add(address, cached);
+            }
+            account = cached.Account;
+            return cached.Exists;
+        }
+
+        /// <inheritdoc/>
+        public ReadOnlyMemory<byte> GetCode(Address address)
+        {
+            TryGetAccount(address, out AccountStruct account);
+            return !account.HasCode ? Array.Empty<byte>() : state.GetCode(account.CodeHash);
+        }
+
+        /// <inheritdoc/>
+        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => state.GetCode(in codeHash);
+
+        /// <inheritdoc/>
+        public bool IsContract(Address address) => state.IsContract(address);
+
+        /// <inheritdoc/>
+        public bool AccountExists(Address address) => state.AccountExists(address);
+
+        /// <inheritdoc/>
+        public bool IsDeadAccount(Address address) => state.IsDeadAccount(address);
+
+        /// <inheritdoc/>
+        public void Get(in StorageCell storageCell, out UInt256 value) => state.Get(in storageCell, out value);
+    }
+
+    /// <summary>The EIP-8037 gas dimensions execution recorded for the block <paramref name="hash"/> names.</summary>
+    /// <remarks>Two in-memory copies outlive the payload the dimensions were recorded from — the cached answer,
+    /// which a resend under a different inclusion list misses only once evicted, and the tree's own block, which
+    /// <c>BranchProcessor</c> stamps. Null once neither is left: nothing persists them, and <see cref="BlockHeader.GasUsed"/>
+    /// reduces them to a maximum that cannot be inverted.</remarks>
+    private (ulong Execution, ulong State)? RecordedGasDimensions(Hash256 hash) =>
+        (_latestBlocks is not null && _latestBlocks.TryGet(hash, out CachedPayloadResult cached)
+            ? cached.GasUsedPerDimension
+            : null)
+        ?? _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.GasUsedPerDimension;
 
     // Only a "valid block" outcome short-circuits: never resurrect a stale Invalid/Syncing for a block
     // the tree treats as canonical.
@@ -534,7 +656,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
-            // TryGetBlock reports the decoding error; nothing to recover otherwise.
+            // TryGetBlock has already decoded these, so only an empty block has nothing to recover.
             return;
 
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
@@ -586,7 +708,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // Cache terminal outcomes only; SYNCING isn't terminal (we haven't processed the block yet).
             if (result is ValidationResult.Invalid or ValidationResult.Valid or ValidationResult.InclusionListUnsatisfied)
             {
-                _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest));
+                _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest, block.Header.GasUsedPerDimension));
                 // The verdict is given before the commit, so the block can be gone without committing by the time
                 // this runs. Whichever of the two marks the completion first, the other takes the entry back out.
                 if (completion?.MarkAnswerCached() == false) _latestBlocks?.Delete(block.GetOrCalculateHash());
@@ -916,5 +1038,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     }
 
     // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
-    private readonly record struct CachedPayloadResult(ValidationResult Result, string? Message, ValueHash256 InclusionListDigest);
+    /// <param name="GasUsedPerDimension">What execution recorded for this block, so a re-validation under a
+    /// different inclusion list judges appendability on the same EIP-8037 gas the processing path did.</param>
+    private readonly record struct CachedPayloadResult(
+        ValidationResult Result,
+        string? Message,
+        ValueHash256 InclusionListDigest,
+        (ulong Execution, ulong State)? GasUsedPerDimension);
 }
