@@ -232,6 +232,25 @@ public class HostMemoryFastPathTests
         }
     }
 
+    [Test]
+    public void Jump_counts_landed_destination_once_across_tables_and_runs()
+    {
+        Harness harness = new();
+        byte[] code = [PUSH1, 3, JUMP, JUMPDEST, STOP];
+
+        foreach (Table table in Tables)
+        {
+            Outcome first = harness.Run(code, AmpleGas, table, Setup.Fresh);
+            Outcome second = harness.Run(code, AmpleGas, table, Setup.DirtyInline);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.OpCodeCount, Is.EqualTo((nint)4), $"{table} first run");
+                Assert.That(second.OpCodeCount, Is.EqualTo((nint)4), $"{table} second run");
+            }
+        }
+    }
+
     /// <summary>Every mainnet fork, found by reflection so that a fork added later is swept too, with a seed of its own.</summary>
     private static IEnumerable<TestCaseData> Forks()
     {
@@ -466,9 +485,9 @@ public class HostMemoryFastPathTests
             {
                 if (table == Table.PlainNoTrace) continue;
                 Outcome outcome = Run(code, gas, table, setup, input, stack);
-                // Untraced dispatch skips opcodes the traced table runs, such as the JUMPDEST after a taken JUMPI, so it
-                // counts fewer. It also leaves out a push that ends the code, and a checked body that faults reports its
-                // program counter one short; nothing can read either.
+                // Untraced dispatch skips handler calls for markers after taken jumps, but the aggregate count still
+                // includes those logical opcodes. It also leaves out a push that ends the code, and a checked body that
+                // faults reports its program counter one short; nothing can read either.
                 if (table == Table.Traced)
                 {
                     outcome = outcome with { OpCodeCount = plain.OpCodeCount };
@@ -493,6 +512,7 @@ public class HostMemoryFastPathTests
                 EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, accessTracker, default);
             frame.Memory = CreateMemory(setup);
             _vm.Enter(frame);
+            int vmOpCodeCountBefore = _vm.OpCodeCount;
 
             Array.Clear(_stackBytes);
             stack.CopyTo(_stackBytes, _stackStart);
@@ -567,6 +587,9 @@ public class HostMemoryFastPathTests
                 pc = code.Length;
                 opCodeCount--;
             }
+
+            // Match RunDispatchLoop's aggregate and keep successive Harness.Run calls independent.
+            opCodeCount += _vm.OpCodeCount - vmOpCodeCountBefore;
 
             _vm.ReturnData = null;
             inspect?.Invoke(ref frame.Memory);
