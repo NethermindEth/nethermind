@@ -14,7 +14,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -285,7 +284,6 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
     /// </summary>
     public void PreprocessQueued(Block block)
     {
-        using ParallelUnbalancedWork.WorkerScope? workers = block.Workers?.Enter();
         for (int i = 0; i < _preprocessorSteps.Count; i++)
         {
             _preprocessorSteps[i].RecoverDataForQueuedProcessing(block);

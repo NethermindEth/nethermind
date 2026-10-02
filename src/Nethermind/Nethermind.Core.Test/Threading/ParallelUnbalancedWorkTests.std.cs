@@ -616,7 +616,6 @@ public partial class ParallelUnbalancedWorkTests
             Block block = Build.A.Block.WithParent(parent).WithNumber(1).WithGasLimit(30_000_000)
                 .WithBaseFeePerGas(1.GWei).WithTransactions(txs).TestObject;
             block.Header.IsPostMerge = true;
-            block.Workers = group;
             RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
             using (group.Enter()) recovery.StartRecovery(block.Hash!, block.Transactions, London.Instance);
             context.BranchProcessor.BlockProcessing += (_, _) =>
@@ -631,8 +630,12 @@ public partial class ParallelUnbalancedWorkTests
             if (outcome == "failure") context.BlockProcessor.TransactionsExecuted += FailAfterTransactions;
             try
             {
-                void Process() => context.BranchProcessor.Process(parent, [block], ProcessingOptions.NoValidation,
-                    NullBlockTracer.Instance, cancellation.Token);
+                void Process()
+                {
+                    using ParallelUnbalancedWork.WorkerScope workers = group.Enter();
+                    context.BranchProcessor.Process(parent, [block], ProcessingOptions.NoValidation,
+                        NullBlockTracer.Instance, cancellation.Token);
+                }
                 if (outcome == "cancel") Assert.Throws<OperationCanceledException>(Process);
                 else if (outcome == "failure") Assert.Throws<InvalidOperationException>(Process);
                 else

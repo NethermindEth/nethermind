@@ -274,8 +274,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
         Block block = new(header, transactions.Data, Array.Empty<BlockHeader>(), Withdrawals)
         {
-            EncodedTransactions = encodedTransactions,
-            Workers = TransferWorkerGroup()
+            EncodedTransactions = encodedTransactions
         };
         return block;
     }

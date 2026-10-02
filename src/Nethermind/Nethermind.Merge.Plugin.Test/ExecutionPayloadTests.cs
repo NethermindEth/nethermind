@@ -293,6 +293,7 @@ public class ExecutionPayloadTests
         payload.PrepareWorkerGroup();
         Assert.That(payload.Workers, Is.SameAs(firstWorkers));
         Result<Block> block = payload.TryGetBlock();
+        Assert.That(payload.TransferWorkerGroup(), Is.SameAs(firstWorkers));
         payload.StartTxRootComputation();
         ParallelUnbalancedWork.WorkerGroup nextWorkers = payload.Workers;
         Result<Block> resent = payload.TryGetBlock();
@@ -302,9 +303,8 @@ public class ExecutionPayloadTests
             // A single processor computes the root inline instead of starting the task.
             Assert.That(rootTask, Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor ? Is.Null : Is.Not.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
-            Assert.That(block.Data.Workers, Is.SameAs(firstWorkers));
             Assert.That(nextWorkers, Is.Not.SameAs(firstWorkers));
-            Assert.That(resent.Data!.Workers, Is.SameAs(nextWorkers));
+            Assert.That(payload.TransferWorkerGroup(), Is.SameAs(nextWorkers));
             Assert.That(resent.Data.Header.TxRoot, Is.EqualTo(block.Data.Header.TxRoot));
         }
     }

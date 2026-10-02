@@ -250,13 +250,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     {
         Block block = PostMergeBlock();
 
-        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ParallelUnbalancedWork.WorkerGroup?> enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
         processingQueue
             .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
             .Returns(_ =>
             {
-                enqueued.TrySetResult();
+                enqueued.TrySetResult(ParallelUnbalancedWork.GetCurrentGroup());
                 return ValueTask.CompletedTask;
             });
 
@@ -268,14 +268,16 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             processingQueue: processingQueue,
             timeoutMs: 5_000);
 
-        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
-        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        ExecutionPayload payload = ExecutionPayload.Create(block);
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
+        ParallelUnbalancedWork.WorkerGroup? queuedWorkers = await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         // The verdict lands; BlockRemoved never does, as if the commit were still running.
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         ResultWrapper<PayloadStatusV1> result = await request;
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(queuedWorkers, Is.SameAs(payload.Workers));
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0), "an answered request must not leave its completion behind");
         }

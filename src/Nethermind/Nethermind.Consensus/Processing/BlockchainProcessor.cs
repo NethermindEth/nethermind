@@ -58,14 +58,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
 
-    private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>(
+    private readonly Channel<ProcessingWork> _recoveryQueue = Channel.CreateUnbounded<ProcessingWork>(
         new UnboundedChannelOptions()
         {
             // Optimize for single reader concurrency
             SingleReader = true,
         });
 
-    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(
+    private readonly Channel<ProcessingWork> _blockQueue = Channel.CreateBounded<ProcessingWork>(
         new BoundedChannelOptions(MaxProcessingQueueSize)
         {
             // Optimize for single reader concurrency
@@ -73,6 +73,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // If queues are empty we want the block processing to continue on NewPayload thread and inherit its priority
             AllowSynchronousContinuations = true,
         });
+
+    private readonly record struct ProcessingWork(BlockRef Reference, ParallelUnbalancedWork.WorkerGroup? Workers);
 
     private bool _recoveryComplete = false;
     private int _queueCount;
@@ -353,8 +355,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         // InclusionListTransactions aren't in RLP, so a hash-only ref re-resolved from the DB would drop
         // them and pass a censoring payload.
         BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx && block.InclusionListTransactions is null
-            ? new BlockRef(blockHash, processingOptions, block.Workers)
+            ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
+        ProcessingWork work = new(blockRef, ParallelUnbalancedWork.GetCurrentGroup());
 
         if (!_recoveryComplete)
         {
@@ -371,7 +374,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     if (_queueCount > 1)
                     {
                         Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
-                        if (!_recoveryQueue.Writer.TryWrite(blockRef))
+                        if (!_recoveryQueue.Writer.TryWrite(work))
                         {
                             // Refused only once the queue is completed, at shutdown. Dropped silently it would leave
                             // the in-flight entry a copy nothing takes off, and every later wait on that hash hanging.
@@ -383,9 +386,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     else
                     {
                         // Skip recovery queue if nothing in queue
-                        if (!_blockQueue.Writer.TryWrite(blockRef))
+                        if (!_blockQueue.Writer.TryWrite(work))
                         {
-                            await _blockQueue.Writer.WriteAsync(blockRef);
+                            await _blockQueue.Writer.WriteAsync(work);
                         }
                     }
                 }
@@ -524,18 +527,19 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
         _lastProcessedBlock = DateTime.UtcNow;
-        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(CancellationToken))
+        await foreach (ProcessingWork work in _recoveryQueue.Reader.ReadAllAsync(CancellationToken))
         {
+            BlockRef blockRef = work.Reference;
             bool notified = false;
             try
             {
                 Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
-                Preprocess(blockRef.Block);
+                using (work.Workers?.Enter()) Preprocess(blockRef.Block);
 
                 try
                 {
-                    await _blockQueue.Writer.WriteAsync(blockRef);
+                    await _blockQueue.Writer.WriteAsync(work);
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
@@ -629,8 +633,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private void ProcessBlocks()
     {
         bool isTrace = _logger.IsTrace;
-        while (!_pauseGate.IsPaused && _blockQueue.Reader.TryRead(out BlockRef blockRef))
+        while (!_pauseGate.IsPaused && _blockQueue.Reader.TryRead(out ProcessingWork work))
         {
+            BlockRef blockRef = work.Reference;
             try
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
@@ -642,7 +647,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
+                Block processedBlock;
+                string? error;
+                using (work.Workers?.Enter())
+                    processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out error);
 
                 if (processedBlock is null)
                 {

@@ -56,9 +56,8 @@ public class BranchProcessor(
         if (suggestedBlocks.Count == 0) return [];
 
         Block suggestedBlock = suggestedBlocks[0];
-        ParallelUnbalancedWork.WorkerGroup GetWorkers(Block block) =>
-            (options.ContainsFlag(ProcessingOptions.ReadOnlyChain) ? null : block.Workers) ?? new(Environment.ProcessorCount);
-        ParallelUnbalancedWork.WorkerGroup workerGroup = GetWorkers(suggestedBlock);
+        ParallelUnbalancedWork.WorkerGroup workerGroup =
+            (options.ContainsFlag(ProcessingOptions.ReadOnlyChain) ? null : ParallelUnbalancedWork.GetCurrentGroup()) ?? new(Environment.ProcessorCount);
         // The scope is opened at the target's parent, but baseBlock still selects the prewarmed caches, so an
         // inconsistent pair would warm one state and execute another without any other symptom.
         Debug.Assert(suggestedBlock.IsGenesis ? baseBlock is null : baseBlock?.Hash == suggestedBlock.ParentHash,
@@ -120,7 +119,6 @@ public class BranchProcessor(
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
-                if (i > 0) workerGroup = GetWorkers(suggestedBlock);
                 using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)
                 {

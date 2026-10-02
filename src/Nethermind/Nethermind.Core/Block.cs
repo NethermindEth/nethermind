@@ -13,15 +13,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Threading;
 
 namespace Nethermind.Core;
 
 [DebuggerDisplay("{Hash} ({Number})")]
 public class Block
 {
-    internal ParallelUnbalancedWork.WorkerGroup? Workers { get; set; }
-
     public Block(BlockHeader header, BlockBody body, ReadOnlyBlockAccessList? bal = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));

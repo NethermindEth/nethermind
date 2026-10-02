@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -11,6 +12,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -28,21 +30,23 @@ namespace Nethermind.Consensus.Test.Processing;
 public class BranchProcessorVerdictTests
 {
     [Test]
-    public async Task Concurrent_read_only_processing_uses_independent_worker_groups([Values] bool attached)
+    public async Task Concurrent_processing_uses_invocation_worker_groups([Values] bool readOnly, [Values] bool ambient)
     {
         Block block = Build.A.Block.WithNumber(0).TestObject;
-        ParallelUnbalancedWork.WorkerGroup original = attached ? new(2) : null;
-        block.Workers = original;
         using CountdownEvent entered = new(2);
         using ManualResetEventSlim release = new();
         ConcurrentBag<ParallelUnbalancedWork.WorkerGroup> groups = [];
         Task Process() => Task.Run(() =>
         {
+            ParallelUnbalancedWork.WorkerGroup original = ambient ? new(2) : null;
+            using ParallelUnbalancedWork.WorkerScope workers = original?.Enter();
             IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
             blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
                 .Returns(_ =>
                 {
-                    groups.Add(ParallelUnbalancedWork.GetCurrentGroup());
+                    ParallelUnbalancedWork.WorkerGroup current = ParallelUnbalancedWork.GetCurrentGroup();
+                    Assert.That(current, ambient && !readOnly ? Is.SameAs(original) : Is.Not.SameAs(original));
+                    groups.Add(current);
                     entered.Signal();
                     if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Processing was not released");
                     return (block, Array.Empty<TxReceipt>());
@@ -53,7 +57,8 @@ public class BranchProcessorVerdictTests
                 .AddSingleton(Substitute.For<IBlockCachePreWarmer>())
                 .Build();
             container.Resolve<IMainProcessingContext>().BranchProcessor.Process(null, [block],
-                ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+                ProcessingOptions.NoValidation | (readOnly ? ProcessingOptions.ReadOnlyChain : ProcessingOptions.None), NullBlockTracer.Instance);
+            Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.SameAs(original));
         });
         Task first = Process();
         Task second = Process();
@@ -68,23 +73,61 @@ public class BranchProcessorVerdictTests
             Assert.That(observed, Has.Length.EqualTo(2));
             Assert.That(observed, Is.All.Not.Null);
             Assert.That(observed[0], Is.Not.SameAs(observed[1]));
-            Assert.That(observed, Has.None.SameAs(original));
-            Assert.That(block.Workers, Is.SameAs(original));
         }
     }
 
     [Test]
-    public void Hash_only_queue_reference_restores_the_worker_group()
+    public async Task Queue_transfers_the_invocation_group_to_preprocessing_and_execution([Values] bool hashOnly)
     {
-        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-        IBlockTree tree = container.Resolve<IBlockTree>();
         Block block = Build.A.Block.WithNumber(0).TestObject;
+        ConcurrentBag<ParallelUnbalancedWork.WorkerGroup> preprocessing = [];
+        ConcurrentBag<ParallelUnbalancedWork.WorkerGroup> execution = [];
+        IBlockPreprocessorStep preprocessor = Substitute.For<IBlockPreprocessorStep>();
+        preprocessor.When(step => step.RecoverDataForQueuedProcessing(Arg.Any<Block>()))
+            .Do(_ => preprocessing.Add(ParallelUnbalancedWork.GetCurrentGroup()));
+        IBranchProcessor branchProcessor = Substitute.For<IBranchProcessor>();
+        branchProcessor.Process(Arg.Any<BlockHeader>(), Arg.Any<IReadOnlyList<Block>>(), Arg.Any<ProcessingOptions>(),
+            Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(_ =>
+            {
+                execution.Add(ParallelUnbalancedWork.GetCurrentGroup());
+                return new[] { block };
+            });
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddLast<IBlockPreprocessorStep>(_ => preprocessor)
+            .AddSingleton(branchProcessor)
+            .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
         tree.SuggestBlock(block, BlockTreeSuggestOptions.None);
-        ParallelUnbalancedWork.WorkerGroup group = new(2);
-        BlockRef reference = new(block.Hash!, ProcessingOptions.NoValidation, group);
-
-        Assert.That(reference.Resolve(tree), Is.True);
-        Assert.That(reference.Block!.Workers, Is.SameAs(group));
+        BlockchainProcessor queue = (BlockchainProcessor)container.Resolve<IMainProcessingContext>().BlockchainProcessor;
+        if (hashOnly) queue.SoftMaxRecoveryQueueSizeInTx = 0;
+        queue.Pause();
+        queue.Start();
+        ParallelUnbalancedWork.WorkerGroup[] groups = [new(2), new(2)];
+        try
+        {
+            foreach (ParallelUnbalancedWork.WorkerGroup group in groups)
+            {
+                ValueTask enqueue;
+                using (group.Enter()) enqueue = queue.Enqueue(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain);
+                await enqueue;
+            }
+            Task removed = queue.WaitUntilRemovedAsync(block.Hash!).AsTask();
+            queue.Resume();
+            await removed.WaitAsync(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(execution, Is.EquivalentTo(groups));
+                Assert.That(preprocessing, Does.Contain(groups[0]).And.Contain(groups[1]));
+                Assert.That(preprocessing, Has.None.Null);
+                Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.Null);
+            }
+        }
+        finally
+        {
+            queue.Resume();
+            await queue.StopAsync();
+        }
     }
 
     /// <summary>
