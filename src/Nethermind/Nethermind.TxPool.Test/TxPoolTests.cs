@@ -3560,11 +3560,10 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // Simulation admits this layout and stops at the payer, so it never reaches the trailing VERIFY frame
-        // that can invalidate the transaction later. FrameTxValidationPrefixSimulationTests runs the real one.
-        [TestCase(false, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingSenderFrame_IsAccepted")]
+        // A successful simulation does not make an unrecognized prefix eligible for the public pool.
+        [TestCase(false, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingSenderFrame_IsRejected")]
         [TestCase(true, TestName = "SubmitTx_UnrecognizedPrefixWithATrailingVerifyFrame_IsRejected")]
-        public void SubmitTx_FrameTransactionBehindAnUnrecognizedPrefix_IsJudgedOnItsTrailingFrame(bool trailingVerify)
+        public void SubmitTx_FrameTransactionWithAnUnrecognizedPrefix_IsRejected(bool trailingVerify)
         {
             CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
@@ -3577,8 +3576,8 @@ namespace Nethermind.TxPool.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.EqualTo(trailingVerify ? AcceptTxResult.FrameTxVerifyAfterPrefix : AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(trailingVerify ? 0 : 1));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxUnrecognizedPrefix));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
             }
         }
 
@@ -5144,6 +5143,51 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
                 simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
             }
+        }
+
+        [Test]
+        public async Task Revalidation_reapplies_the_noncanonical_paymaster_cap(
+            [Values] bool gainsCode, [Values] bool simulationIndeterminate)
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+            Transaction[] sponsored = new Transaction[senders.Length];
+            UInt256 totalCost = UInt256.Zero;
+            for (int i = 0; i < senders.Length; i++)
+            {
+                EnsureSenderBalance(senders[i].Address, UInt256.MaxValue);
+                sponsored[i] = SponsoredFrameTx(senders[i], TestItem.PrivateKeyD);
+                Assert.That(FrameTxValidation.TryCalculateMaxCost(sponsored[i], Eip8141Prototype.Instance, out UInt256 cost), Is.True);
+                totalCost += cost;
+            }
+            EnsureSenderBalance(TestItem.AddressD, totalCost);
+            foreach (Transaction tx in sponsored)
+            {
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Block baseline = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(baseline);
+            if (gainsCode) _stateProvider.InsertCode([0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00], TestItem.AddressD);
+            if (simulationIndeterminate) SimulatesAs(simulator, FrameTxSimulationResult.Undecided("simulator unavailable"));
+            Block head = Build.A.Block.WithNumber(2).WithParent(baseline).TestObject;
+            head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressD };
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+
+            Transaction[] pending = _txPool.GetPendingTransactions();
+            int expectedCount = gainsCode ? Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster : sponsored.Length;
+            Assert.That(pending, Has.Length.EqualTo(expectedCount));
+            if (!gainsCode) return;
+
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            Transaction[] evicted = sponsored.Where(tx => tx.Hash != pending[0].Hash).ToArray();
+            Assert.That(_txPool.SubmitTx(evicted[0], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+            _txPool.RemoveTransaction(pending[0].Hash);
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(evicted[1], Eip8141Prototype.Instance, out UInt256 remainingCost), Is.True);
+            EnsureSenderBalance(TestItem.AddressD, remainingCost);
+            _txPool.ResetAddress(TestItem.AddressD);
+            Assert.That(_txPool.SubmitTx(evicted[1], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted),
+                "head eviction releases payer exposure and the paymaster slot, leaving the transaction resubmittable");
         }
 
         [Test]

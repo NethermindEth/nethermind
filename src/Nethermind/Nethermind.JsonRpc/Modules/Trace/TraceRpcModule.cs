@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using FastEnumUtility;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -32,6 +33,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -120,10 +122,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
-            Result<Transaction> txResult = ToCallTransaction(call, specProvider.GetSpec(headerSearch.Object!));
+            Result<Transaction> txResult = ToCallTransaction(call, headerSearch.Object!);
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
-                : TraceTx(transaction, traceTypes, blockParameter, stateOverride);
+                : TraceTx(transaction, traceTypes, headerSearch, stateOverride);
         }
 
         /// <summary>
@@ -162,7 +164,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Transaction[] txs = new Transaction[calls.Count];
             for (int i = 0; i < calls.Count; i++)
             {
-                Result<Transaction> txResult = ToCallTransaction(calls[i].Transaction, specProvider.GetSpec(header));
+                Result<Transaction> txResult = ToCallTransaction(calls[i].Transaction, header);
                 if (!txResult.Success(out Transaction? tx, out string? error))
                 {
                     return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(error, ErrorCodes.InvalidInput);
@@ -197,14 +199,24 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
-        /// Converts <paramref name="call"/> for trace_call and trace_callMany, rejecting a priority fee above the fee cap as eth_call does.
+        /// Converts <paramref name="call"/> for trace_call and trace_callMany on top of <paramref name="header"/> as eth_call does:
+        /// it rejects a priority fee above the fee cap, and gives a blob call without a positive blob fee cap a zero cap, with
+        /// which <see cref="UnpricedCallTraceAdapter"/> runs it at a zero blob base fee.
         /// </summary>
-        private Result<Transaction> ToCallTransaction(TransactionForRpc call, IReleaseSpec spec)
+        private Result<Transaction> ToCallTransaction(TransactionForRpc call, BlockHeader header)
         {
-            Result<Transaction> result = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: spec);
-            return result.Success(out Transaction? tx, out _) && tx.GetTipAboveFeeCapError(spec) is { } tipAboveFeeCap
-                ? Result<Transaction>.Fail(tipAboveFeeCap)
-                : result;
+            IReleaseSpec spec = specProvider.GetSpec(header);
+            Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: spec);
+            if (!result.Success(out Transaction? tx, out _))
+                return result;
+
+            if (tx.GetTipAboveFeeCapError(spec) is { } tipAboveFeeCap)
+                return Result<Transaction>.Fail(tipAboveFeeCap);
+
+            if (tx.CarriesBlobs)
+                tx.MaxFeePerBlobGas ??= UInt256.Zero;
+
+            return result;
         }
 
         /// <summary>
@@ -292,7 +304,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                         $"Signed transaction gas limit exceeds the RPC gas cap of {gasCap}.",
                         ErrorCodes.ClientLimitExceededError);
                 }
-                return TraceTx(tx, traceTypes, BlockParameter.Latest, isSigned: true);
+                return TraceTx(tx, traceTypes, blockFinder.SearchForHeader(BlockParameter.Latest), isSigned: true);
             }
             catch (RlpException)
             {
@@ -300,7 +312,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
         }
 
-        private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
+        private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, SearchResult<BlockHeader> headerSearch,
             Dictionary<Address, AccountOverride>? stateOverride = null, bool isSigned = false)
         {
             if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
@@ -308,7 +320,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return InvalidTraceTypes<ParityTxTraceFromReplay>();
             }
 
-            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
@@ -737,8 +748,20 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         private static void TraceConstructedBlock(ITracer tracer, Block block, IBlockTracer blockTracer, bool isSigned)
         {
-            if (isSigned) tracer.ExecuteSigned(block, blockTracer);
-            else tracer.Trace(block, blockTracer);
+            if (isSigned)
+            {
+                tracer.ExecuteSigned(block, blockTracer);
+                return;
+            }
+
+            try
+            {
+                tracer.Trace(block, blockTracer);
+            }
+            catch (InvalidTransactionException e)
+            {
+                throw new RejectedCallException(e);
+            }
         }
 
         /// <summary>A covered block is traced one transaction per worker, rewards last on the seeded end state; any
@@ -920,7 +943,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private void TraceBlockStreaming(Block block, ParityLikeBlockTracer tracer, CancellationToken ct)
         {
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(block.Header);
-            env.Component.Trace(block, tracer.WithCancellation(ct));
+            TraceConstructedBlock(env.Component, block, tracer.WithCancellation(ct), isSigned: false);
         }
 
         private void ExecuteBlockStreaming(BlockHeader baseHeader, Block block, ParityLikeBlockTracer tracer, CancellationToken ct, IReleaseSpec? specOverride = null, Hash256? transactionHash = null)

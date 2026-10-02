@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State.Flat.History.Changesets;
 using NUnit.Framework;
@@ -23,8 +24,8 @@ public class ChangesetCodecTests
         {
             Assert.That(entries.MoveNext(), Is.True);
             Assert.That(entries.Kind, Is.EqualTo(ChangesetCodec.AccountKind));
-            Assert.That(entries.Address.ToArray(), Is.EqualTo(TestItem.AddressA.Bytes.ToArray()));
-            Assert.That(entries.Balance.ToArray(), Is.EqualTo(new byte[] { 0x2a }));
+            Assert.That(entries.Address, Is.SequenceEqualTo(TestItem.AddressA.Bytes));
+            Assert.That(entries.Balance, Is.SequenceEqualTo(new byte[] { 0x2a }));
             Assert.That(entries.Nonce.IsEmpty, Is.True, "a field the transaction left alone keeps the value the previous block holds, so the entry must not restate it");
             Assert.That(entries.CodeHash.IsEmpty, Is.True);
             Assert.That(entries.Deleted, Is.False);
@@ -44,9 +45,9 @@ public class ChangesetCodecTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(entries.MoveNext(), Is.True);
-            Assert.That(entries.Balance.ToArray(), Is.EqualTo(new byte[] { 0x01, 0x02 }));
-            Assert.That(entries.Nonce.ToArray(), Is.EqualTo(new byte[] { 0x07 }));
-            Assert.That(entries.CodeHash.ToArray(), Is.EqualTo(codeHash));
+            Assert.That(entries.Balance, Is.SequenceEqualTo(new byte[] { 0x01, 0x02 }));
+            Assert.That(entries.Nonce, Is.SequenceEqualTo(new byte[] { 0x07 }));
+            Assert.That(entries.CodeHash, Is.SequenceEqualTo(codeHash));
             Assert.That(entries.StorageCleared, Is.True);
         }
     }
@@ -83,9 +84,9 @@ public class ChangesetCodecTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(entries.Kind, Is.EqualTo(ChangesetCodec.StorageKind));
-            Assert.That(entries.Address.ToArray(), Is.EqualTo(TestItem.AddressB.Bytes.ToArray()));
-            Assert.That(entries.Index.ToArray(), Is.EqualTo(index));
-            Assert.That(entries.Value.ToArray(), Is.EqualTo(value));
+            Assert.That(entries.Address, Is.SequenceEqualTo(TestItem.AddressB.Bytes));
+            Assert.That(entries.Index, Is.SequenceEqualTo(index));
+            Assert.That(entries.Value, Is.SequenceEqualTo(value));
         }
     }
 
@@ -104,7 +105,7 @@ public class ChangesetCodecTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(entries.Address.ToArray(), Is.EqualTo(TestItem.AddressC.Bytes.ToArray()));
+            Assert.That(entries.Address, Is.SequenceEqualTo(TestItem.AddressC.Bytes));
             Assert.That(entries.Deleted, Is.True);
             Assert.That(entries.MoveNext(), Is.False);
         }
