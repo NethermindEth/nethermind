@@ -130,6 +130,74 @@ public class BranchProcessorVerdictTests
         }
     }
 
+    [Test]
+    public async Task Inline_queue_processing_does_not_share_the_callers_group_with_unscoped_items([Values] bool hashOnly)
+    {
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        using ManualResetEventSlim recovered = new();
+        int preprocessingCalls = 0;
+        IBlockPreprocessorStep preprocessor = Substitute.For<IBlockPreprocessorStep>();
+        preprocessor.When(step => step.RecoverDataForQueuedProcessing(Arg.Any<Block>())).Do(_ =>
+        {
+            // Reaching the next recovery item means the preceding item is in the processing queue.
+            if (Interlocked.Increment(ref preprocessingCalls) == 3) recovered.Set();
+        });
+        List<(ParallelUnbalancedWork.WorkerGroup Group, int Thread)> execution = [];
+        BlockchainProcessor queue = null;
+        IBranchProcessor branchProcessor = Substitute.For<IBranchProcessor>();
+        branchProcessor.Process(Arg.Any<BlockHeader>(), Arg.Any<IReadOnlyList<Block>>(), Arg.Any<ProcessingOptions>(),
+            Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(_ =>
+            {
+                execution.Add((ParallelUnbalancedWork.GetCurrentGroup(), Environment.CurrentManagedThreadId));
+                if (execution.Count == 1)
+                {
+                    Task.Run(async () =>
+                    {
+                        await queue.Enqueue(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain);
+                        await queue.Enqueue(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain);
+                    }).GetAwaiter().GetResult();
+                    if (!recovered.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Queued recovery did not finish");
+                }
+                return new[] { block };
+            });
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddLast<IBlockPreprocessorStep>(_ => preprocessor)
+            .AddSingleton(branchProcessor)
+            .Build();
+        container.Resolve<IBlockTree>().SuggestBlock(block, BlockTreeSuggestOptions.None);
+        queue = (BlockchainProcessor)container.Resolve<IMainProcessingContext>().BlockchainProcessor;
+        if (hashOnly) queue.SoftMaxRecoveryQueueSizeInTx = 0;
+        ParallelUnbalancedWork.WorkerGroup group = new(2);
+        int enqueueThread = 0;
+        try
+        {
+            await Task.Run(async () =>
+            {
+                queue.Start();
+                enqueueThread = Environment.CurrentManagedThreadId;
+                ValueTask enqueue;
+                using (group.Enter()) enqueue = queue.Enqueue(block, ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain);
+                await enqueue;
+                await queue.WaitUntilRemovedAsync(block.Hash!).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.Null);
+            }).WaitAsync(TimeSpan.FromSeconds(20));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(execution, Has.Count.EqualTo(3));
+                Assert.That(execution[0].Group, Is.SameAs(group));
+                Assert.That(execution[0].Thread, Is.EqualTo(enqueueThread));
+                Assert.That(execution[1].Thread, Is.EqualTo(enqueueThread));
+                Assert.That(execution[1].Group, Is.Not.Null.And.Not.SameAs(group));
+                Assert.That(execution[2].Group, Is.Not.Null.And.Not.SameAs(group).And.Not.SameAs(execution[1].Group));
+            }
+        }
+        finally
+        {
+            await queue.StopAsync();
+        }
+    }
+
     /// <summary>
     /// A block that fails after its verdict keeps the invalid-block handling unless a request was actually answered
     /// VALID for it: only then does the failure belong to the commit rather than to the block. Sync and every other

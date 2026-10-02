@@ -635,6 +635,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         bool isTrace = _logger.IsTrace;
         while (!_pauseGate.IsPaused && _blockQueue.Reader.TryRead(out ProcessingWork work))
         {
+            using ParallelUnbalancedWork.WorkerScope workers = (work.Workers ?? new(Environment.ProcessorCount)).Enter();
             BlockRef blockRef = work.Reference;
             try
             {
@@ -647,10 +648,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();
-                Block processedBlock;
-                string? error;
-                using (work.Workers?.Enter())
-                    processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out error);
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
 
                 if (processedBlock is null)
                 {

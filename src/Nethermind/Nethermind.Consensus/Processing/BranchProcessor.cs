@@ -102,6 +102,7 @@ public class BranchProcessor(
             Task? prefetchBlockhash;
             using (workerGroup.Enter())
             {
+                // Start prewarming as early as possible.
                 prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
                 prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
                 blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
