@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.P2P;
@@ -43,6 +44,22 @@ public sealed class ColumnStoreWriter : IDisposable
         catch (InvalidOperationException)
         {
             if (_logger.IsDebug) _logger.Debug("Data column sidecar store write dropped at shutdown");
+        }
+    }
+
+    /// <summary>Completes once every write posted before this call has run; already complete after <see cref="Dispose"/>.</summary>
+    /// <remarks>Waits on the caller for room when the queue is full, as <see cref="Post"/> does.</remarks>
+    public Task WhenWritten()
+    {
+        TaskCompletionSource written = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            _writes.Add(written.SetResult);
+            return written.Task;
+        }
+        catch (InvalidOperationException)
+        {
+            return Task.CompletedTask;
         }
     }
 
