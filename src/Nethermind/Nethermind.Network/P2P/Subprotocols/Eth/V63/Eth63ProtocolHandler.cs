@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -57,6 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, Handle);
                     return true;
                 case Eth63MessageCode.Receipts:
+                    ThrowIfReceiptsExceedRequest(message.Content, null, _receiptsRequests.GetPendingRequest());
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
                     ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
@@ -110,7 +112,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             // maybe remeasure allocations on another network since goerli has been phased out.
             return SendRequest(msg, token);
         }
-        public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        public override Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
+            GetReceipts(blockHashes, null, token);
+
+        public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, IReadOnlyList<int>? expectedReceiptCounts, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
@@ -118,10 +123,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             }
 
             IOwnedReadOnlyList<TxReceipt[]> txReceipts = await _nodeStats.RunSizeAndLatencyRequestSizer<IOwnedReadOnlyList<TxReceipt[]>, Hash256, TxReceipt[]>(RequestType.Receipts, blockHashes, async clampedBlockHashes =>
-                await SendRequest(new GetReceiptsMessage(clampedBlockHashes.ToPooledList()), token));
+                await SendRequest(new GetReceiptsMessage(clampedBlockHashes.ToPooledList())
+                {
+                    MaxReceiptsPerBlock = ReceiptsResponseBudget.Slice(expectedReceiptCounts, 0, clampedBlockHashes.Count)
+                }, token));
 
             return txReceipts;
         }
+
+        /// <summary>
+        /// Rejects a receipts response that holds more blocks or receipts than <paramref name="request"/> allows, before it is decoded.
+        /// </summary>
+        /// <param name="content">The encoded response.</param>
+        /// <param name="fieldsBeforeReceipts">See <see cref="ReceiptsResponseBudget.ThrowIfExceeded"/>.</param>
+        /// <param name="request">The request the response answers.</param>
+        protected static void ThrowIfReceiptsExceedRequest(IByteBuffer content, int? fieldsBeforeReceipts, GetReceiptsMessage request) =>
+            ReceiptsResponseBudget.ThrowIfExceeded(content, fieldsBeforeReceipts, request.RequestedBlocks, request.MaxReceiptsPerBlock);
 
         protected virtual Task<IByteArrayList> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {

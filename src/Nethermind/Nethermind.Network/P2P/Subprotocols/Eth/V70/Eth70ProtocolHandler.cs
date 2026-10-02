@@ -15,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
@@ -72,7 +73,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         switch (message.PacketType)
         {
             case Eth70MessageCode.Receipts:
-                _receiptsRequests70.ThrowIfNotRequested(message.Content);
+                GetReceiptsMessage70 request = _receiptsRequests70.GetPendingRequest(message.Content);
+                ReceiptsResponseBudget.ThrowIfExceeded(message.Content, 2, request.RequestedBlocks, request.MaxReceiptsPerBlock);
                 ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content);
                 ReportIn(receiptsMessage, size);
                 Handle(receiptsMessage, size);
@@ -229,7 +231,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         }
     }
 
-    public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+    public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, IReadOnlyList<int>? expectedReceiptCounts, CancellationToken token)
     {
         if (blockHashes.Count == 0)
         {
@@ -242,11 +244,17 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             async clampedHashes =>
             {
                 using ArrayPoolList<Hash256> ownedHashes = clampedHashes.ToPooledList();
-                return await SendGetReceiptsWithPaging(ownedHashes, token);
+                return await SendGetReceiptsWithPaging(ownedHashes, expectedReceiptCounts, token);
             });
     }
 
-    private async Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendGetReceiptsWithPaging(IOwnedReadOnlyList<Hash256> blockHashes, CancellationToken token)
+    /// <param name="blockHashes">The blocks to get the receipts of.</param>
+    /// <param name="expectedReceiptCounts">
+    /// Per block, from the caller, its transaction count or a negative value when unknown; blocks without a count
+    /// are bounded by the transactions of the local block body when there is one.
+    /// </param>
+    /// <param name="token">Cancels the requests.</param>
+    private async Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendGetReceiptsWithPaging(IOwnedReadOnlyList<Hash256> blockHashes, IReadOnlyList<int>? expectedReceiptCounts, CancellationToken token)
     {
         ArrayPoolList<TxReceipt[]> aggregated = new(blockHashes.Count);
         ArrayPoolList<TxReceipt>? partialReceipts = null;
@@ -292,11 +300,18 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             }
         }
 
+        int[] maxReceiptsPerBlock = new int[blockHashes.Count];
+        for (int i = 0; i < maxReceiptsPerBlock.Length; i++)
+        {
+            int expected = expectedReceiptCounts is not null && i < expectedReceiptCounts.Count ? expectedReceiptCounts[i] : -1;
+            maxReceiptsPerBlock[i] = expected >= 0 ? expected : blockTransactions[i]?.Length ?? -1;
+        }
+
         try
         {
             while (blockIndex < blockHashes.Count)
             {
-                using GetReceiptsMessage70 request = BuildRequest(blockHashes, blockIndex, firstBlockReceiptIndex);
+                using GetReceiptsMessage70 request = BuildRequest(blockHashes, blockIndex, firstBlockReceiptIndex, maxReceiptsPerBlock);
                 (ReceiptsMessage70 response, ulong size) = await SendRequest(request, token);
 
                 using (response)
@@ -490,11 +505,18 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             ? ulong.MaxValue
             : (ulong)Rlp.LengthOfSequence((int)contentSize);
 
-    private static GetReceiptsMessage70 BuildRequest(IOwnedReadOnlyList<Hash256> blockHashes, int startIndex, int firstReceiptIndex)
+    private static GetReceiptsMessage70 BuildRequest(IOwnedReadOnlyList<Hash256> blockHashes, int startIndex, int firstReceiptIndex, int[] maxReceiptsPerBlock)
     {
-        IOwnedReadOnlyList<Hash256> remainingHashes = blockHashes.Slice(startIndex, blockHashes.Count - startIndex);
+        int remaining = blockHashes.Count - startIndex;
+        IOwnedReadOnlyList<Hash256> remainingHashes = blockHashes.Slice(startIndex, remaining);
 
-        return new GetReceiptsMessage70(remainingHashes, firstReceiptIndex);
+        int[] remainingLimits = maxReceiptsPerBlock.AsSpan(startIndex, remaining).ToArray();
+        if (remainingLimits[0] >= 0)
+        {
+            remainingLimits[0] = Math.Max(remainingLimits[0] - firstReceiptIndex, 0);
+        }
+
+        return new GetReceiptsMessage70(remainingHashes, firstReceiptIndex) { MaxReceiptsPerBlock = remainingLimits };
     }
 
     private async Task<(ReceiptsMessage70 response, ulong size)> SendRequest(GetReceiptsMessage70 message, CancellationToken token)

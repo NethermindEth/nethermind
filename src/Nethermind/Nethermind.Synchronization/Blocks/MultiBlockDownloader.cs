@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -44,7 +45,8 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
         if (request.ReceiptsRequests.Count > 0)
         {
             using ArrayPoolList<Hash256> receiptsHash = BuildHashList(request.ReceiptsRequests);
-            IOwnedReadOnlyList<TxReceipt[]?> ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, cancellationToken);
+            IReadOnlyList<int>? expectedReceiptCounts = request.ExpectedReceiptCounts.Count == request.ReceiptsRequests.Count ? request.ExpectedReceiptCounts : null;
+            IOwnedReadOnlyList<TxReceipt[]?> ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, expectedReceiptCounts, cancellationToken);
             request.Receipts = ownedReceipts;
         }
     }

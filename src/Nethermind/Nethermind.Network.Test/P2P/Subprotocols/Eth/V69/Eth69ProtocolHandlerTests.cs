@@ -150,16 +150,8 @@ public class Eth69ProtocolHandlerTests
     {
         const int count = 100;
 
-        TxReceipt[][] receipts = Enumerable.Repeat(
-            Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 10).ToArray(), count
-        ).ToArray();
-        using ReceiptsMessage69 msg = new(0, new(receipts.ToPooledList()));
-
-        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage66>())).Do(call =>
-        {
-            GetReceiptsMessage66 message = (GetReceiptsMessage66)call[0];
-            msg.RequestId = message.RequestId;
-        });
+        GetReceiptsMessage66? request = null;
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage66>())).Do(call => request = (GetReceiptsMessage66)call[0]);
 
         HandleIncomingStatusMessage();
         Task<IOwnedReadOnlyList<TxReceipt[]>> getReceiptsTask = _handler.GetReceipts(
@@ -167,11 +159,46 @@ public class Eth69ProtocolHandlerTests
         );
 
         _session.Received(1).DeliverMessage(Arg.Any<GetReceiptsMessage66>());
+        int requested = request!.EthMessage.Hashes.Count;
+        TxReceipt[][] receipts = Enumerable.Repeat(
+            Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 10).ToArray(), requested
+        ).ToArray();
+        using ReceiptsMessage69 msg = new(request.RequestId, new(receipts.ToPooledList()));
         HandleZeroMessage(msg, Eth63MessageCode.Receipts);
 
         IOwnedReadOnlyList<TxReceipt[]>? response = await getReceiptsTask;
 
-        Assert.That(response.Count, Is.EqualTo(count));
+        Assert.That(response.Count, Is.EqualTo(requested));
+    }
+
+    [Test]
+    public async Task Receipts_response_is_checked_against_expected_receipt_counts([Values] bool exceedsCount)
+    {
+        const int count = 3;
+        long requestId = 0;
+        // A real session disposes a message once it has serialized it.
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage66>())).Do(call =>
+        {
+            GetReceiptsMessage66 sent = (GetReceiptsMessage66)call[0];
+            requestId = sent.RequestId;
+            sent.Dispose();
+        });
+
+        HandleIncomingStatusMessage();
+        Task<IOwnedReadOnlyList<TxReceipt[]>> getReceiptsTask = _handler.GetReceipts([Keccak.Zero], [count], CancellationToken.None);
+
+        if (exceedsCount)
+        {
+            UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_handler.HandleMessage, UndecodableResponse.CreateReceipts(requestId, count + 1), Eth69MessageCode.Receipts);
+            return;
+        }
+
+        TxReceipt[] blockReceipts = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, count).ToArray();
+        using ReceiptsMessage69 msg = new(requestId, new(new[] { blockReceipts }.ToPooledList()));
+        HandleZeroMessage(msg, Eth69MessageCode.Receipts);
+
+        using IOwnedReadOnlyList<TxReceipt[]> response = await getReceiptsTask;
+        Assert.That(response[0], Has.Length.EqualTo(count));
     }
 
     [Test]
