@@ -129,5 +129,5 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
     }
 
     [StackTraceHidden, DoesNotReturn]
-    private static void ThrowNotRequested() => throw new SubprotocolException($"Received a response to {nameof(T66Msg)} that has not been requested");
+    private static void ThrowNotRequested() => throw new SubprotocolException($"Received a response to {typeof(T66Msg).Name} that has not been requested");
 }
