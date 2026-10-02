@@ -552,7 +552,8 @@ internal static class BeaconStatesEndpoints
             c.RequestAborted);
     }
 
-    /// <summary>Resolves request ids to registry indices in request order, dropping well-formed ids that name no validator.</summary>
+    /// <summary>Resolves request ids to distinct registry indices in first-seen order, dropping well-formed ids that name no validator.</summary>
+    /// <remarks>An index and a pubkey naming one validator count once, so repeated ids cannot multiply the response.</remarks>
     /// <param name="indices"><c>null</c> when <paramref name="ids"/> is empty, which selects every validator.</param>
     private static bool TryResolveIndices(BeaconStateFulu state, List<string> ids, out List<int>? indices, out string? invalidId)
     {
@@ -561,6 +562,7 @@ internal static class BeaconStatesEndpoints
         if (ids.Count == 0) return true;
 
         indices = new List<int>(ids.Count);
+        HashSet<int> seen = new(ids.Count);
         Dictionary<BlsPublicKey, int>? pubkeyIndex = null;
         foreach (string id in ids)
         {
@@ -571,7 +573,7 @@ internal static class BeaconStatesEndpoints
                 return false;
             }
 
-            if (lookup == ValidatorIdStatus.Ok) indices.Add(index);
+            if (lookup == ValidatorIdStatus.Ok && seen.Add(index)) indices.Add(index);
         }
 
         return true;
