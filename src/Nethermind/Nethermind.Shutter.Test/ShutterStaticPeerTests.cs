@@ -40,6 +40,9 @@ public class ShutterStaticPeerTests
         Task nodeRun = node.Start([keyperAddress], static _ => Task.CompletedTask, stop.Token);
         await WaitUntilAsync(() => node.RoutingStateForTest.ConnectedPeers.Contains(keyperId), "the node never connected to its bootnode", token);
 
+        LocalPeer nodePeer = (LocalPeer)node.PeerForTest;
+        // The static peer check can reconnect within one 200 ms period, faster than a poll sees the peer gone, so a new session is the signal.
+        ISession[] closed = nodePeer.Sessions.ToArray<ISession>();
         foreach (ShutterP2P host in new[] { node, keyper })
         {
             foreach (ISession session in ((LocalPeer)host.PeerForTest).Sessions.ToArray())
@@ -48,8 +51,8 @@ public class ShutterStaticPeerTests
             }
         }
 
-        await WaitUntilAsync(() => !node.RoutingStateForTest.ConnectedPeers.Contains(keyperId), "the router kept the closed bootnode", token);
-        await WaitUntilAsync(() => node.RoutingStateForTest.ConnectedPeers.Contains(keyperId), "the bootnode was never connected again", token);
+        await WaitUntilAsync(() => nodePeer.Sessions.Any(session => !closed.Contains(session)) && node.RoutingStateForTest.ConnectedPeers.Contains(keyperId),
+            "the bootnode was never connected again", token);
 
         stop.Cancel();
         await Task.WhenAll(keyperRun, nodeRun);
