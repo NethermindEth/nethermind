@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -308,6 +309,64 @@ public class GossipLoopbackTests
 
         Assert.That(received.Task.IsCompleted, Is.True, "no gossip crossed the admitted session");
         Assert.That(await received.Task, Is.EqualTo(message));
+    }
+
+    /// <summary>
+    /// A gossip channel that ends while its session lives, here closed by the remote, is opened again by the peer manager, so gossip resumes
+    /// on the same session; before, the peer stayed admitted with no gossip for the rest of the session.
+    /// </summary>
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Gossip_resumes_when_the_channel_ends_while_the_session_lives(CancellationToken token)
+    {
+        string topicId = GossipTopics.Topic(ForkDigest.Compute(Spec, 0), GossipTopics.BeaconBlock);
+        await using BeaconP2P node = CreateHost();
+        await using BeaconP2P remote = CreateHost();
+        await node.StartAsync(token);
+        await remote.StartAsync(token);
+        Dictionary<byte, TaskCompletionSource> received = new() { [1] = new(TaskCreationOptions.RunContinuationsAsynchronously), [2] = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        node.GetTopic(topicId).OnMessage += (_, data) => { if (data is [byte id] && received.TryGetValue(id, out TaskCompletionSource? arrived)) arrived.TrySetResult(); };
+        ITopic topic = remote.GetTopic(topicId);
+
+        // The remote opens the first channel itself, under a token the test holds, and the node's router answers with its own.
+        ISession session = await remote.DialPeerAsync(PeerSessionNodes.LoopbackAddress(node), token);
+        using CancellationTokenSource remoteChannel = CancellationTokenSource.CreateLinkedTokenSource(token);
+        _ = session.DialAsync<GossipsubProtocolV13>(remoteChannel.Token);
+        await PeerSessionNodes.WaitUntilAsync(() => node.HasGossipChannel(remote.LocalPeerId!) && remote.HasGossipChannel(node.LocalPeerId!), "the remote's channel was never answered", token);
+        PeerManager manager = CreatePeerManager(node);
+        manager.GossipChannelCheckInterval = TimeSpan.FromSeconds(5);
+        Assert.That(await manager.TryAddPeerAsync(PeerSessionNodes.LoopbackAddressText(remote), token), Is.True, "the peer manager did not admit the session");
+        Assert.That(await DeliversAsync(topic, 1, received[1].Task, token), Is.True, "no gossip crossed the admitted session");
+
+        remoteChannel.Cancel();
+        await PeerSessionNodes.WaitUntilAsync(() => !node.HasGossipChannel(remote.LocalPeerId!), "closing the remote's channel did not end the node's", token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await DeliversAsync(topic, 2, received[2].Task, token), Is.True, "gossip did not resume after the channel ended");
+            Assert.That(node.SessionCountForTest, Is.EqualTo(1), "the same session carries the new channel");
+        }
+    }
+
+    /// <summary>Each gossip channel that does not last doubles the wait before the next is opened, up to a minute, so a peer that keeps closing it costs few dials.</summary>
+    [TestCase(1, 2)]
+    [TestCase(40, 60)]
+    [TestCase(60, 60)]
+    public void Wait_before_reopening_a_gossip_channel_doubles_up_to_its_bound(int seconds, int expectedSeconds) =>
+        Assert.That(PeerManager.NextGossipRedialDelay(TimeSpan.FromSeconds(seconds)), Is.EqualTo(TimeSpan.FromSeconds(expectedSeconds)));
+
+    /// <summary>Publishes <paramref name="id"/> until <paramref name="received"/> ends or 30 s pass; the publisher sends only to peers whose subscription it has learnt.</summary>
+    private static async Task<bool> DeliversAsync(ITopic topic, byte id, Task received, CancellationToken token)
+    {
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bounded.CancelAfter(TimeSpan.FromSeconds(30));
+        while (!received.IsCompleted && !bounded.IsCancellationRequested)
+        {
+            topic.Publish([id]);
+            await Task.WhenAny(received, Task.Delay(500, CancellationToken.None));
+        }
+
+        return received.IsCompleted;
     }
 
     /// <summary>A gossip message of any legal size crosses a real session whole, so its sender is not disconnected for a truncated RPC.</summary>
