@@ -212,7 +212,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The checkpoint anchor's root, whose payload no import of this process recorded (specs/gloas/fork-choice.md get_forkchoice_store: <c>payloads={}</c>).</summary>
     private Hash256? _anchorRoot;
 
-    /// <summary>The unknown parent roots whose backfill started in wall-clock slot <see cref="_backfillSlot"/>.</summary>
+    /// <summary>The unknown parent roots whose backfill started, kept past the slot it started in while the parent is fetched, waits for a retry or is held.</summary>
     private readonly HashSet<Hash256> _backfilledParents = [];
     private int _backfillsThisSlot;
     private ulong _backfillSlot;
@@ -1546,6 +1546,7 @@ public sealed class BeaconSyncOrchestrator(
                 _columnFetchRotations.Remove(root);
                 ReleaseColumnWatch(root);
                 DropPendingChildren(root, retry.Block.Slot <= finalizedSlot ? "it fell behind finality" : "its retry expired");
+                ReleaseBackfill(root);
                 if (retry.Block.Slot > finalizedSlot && _logger.IsWarn)
                     _logger.Warn($"Dropping block {root} at slot {retry.Block.Slot}: its data did not become available within {MaxPendingRetryAgeEpochs} epochs");
                 // Nothing else brings back a dropped block the head waits on: range sync re-delivers it from the head.
@@ -2017,7 +2018,7 @@ public sealed class BeaconSyncOrchestrator(
         if (currentSlot != _backfillSlot)
         {
             _backfillSlot = currentSlot;
-            _backfilledParents.Clear();
+            PruneBackfilledParents();
             _backfillsThisSlot = 0;
         }
 
@@ -2250,10 +2251,34 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Releases the backfill of <paramref name="root"/> unless it imported, waits for a retry or is held behind an ancestor that does, so a later block may fetch it again within the slot's spent budget.</summary>
     private void ReleaseBackfill(Hash256 root)
     {
-        if (!_importer!.IsKnown(root) && !_pendingRetry.ContainsKey(root) && !IsWaitingForPayload(root) && !IsHeldFetched(root))
+        if (!_importer!.IsKnown(root) && !HoldsBackfill(root))
         {
             _backfilledParents.Remove(root);
         }
+    }
+
+    /// <summary>Whether <paramref name="root"/> waits for a retry or for its payload, or is held behind an ancestor that does, so it is not fetched again.</summary>
+    private bool HoldsBackfill(Hash256 root) => _pendingRetry.ContainsKey(root) || IsWaitingForPayload(root) || IsHeldFetched(root);
+
+    /// <summary>Forgets, at the start of a slot, the backfilled parents that no walk in flight started from and nothing retries or holds.</summary>
+    /// <remarks>A kept parent would otherwise be fetched again by the next block naming it; the ones kept are bounded by the retry set, the held queue and the walks in flight.</remarks>
+    private void PruneBackfilledParents()
+    {
+        if (_backfilledParents.Count == 0)
+        {
+            return;
+        }
+
+        HashSet<Hash256> walked = [];
+        foreach (List<(List<ForkedSignedBeaconBlock> Chain, List<IBeaconSyncPeer?> Sources)> walks in _ancestorFetches.Values)
+        {
+            foreach ((List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> _) in walks)
+            {
+                walked.Add(chain[0].ParentRoot);
+            }
+        }
+
+        _backfilledParents.RemoveWhere(root => !HoldsBackfill(root) && !walked.Contains(root));
     }
 
     /// <summary>Whether the block fetched by root as <paramref name="root"/> is still held in <see cref="_pendingByParent"/>; the cap of refused backfills can evict it while <see cref="_heldFetched"/> keeps its entry.</summary>
