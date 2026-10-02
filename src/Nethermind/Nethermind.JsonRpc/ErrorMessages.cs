@@ -5,6 +5,8 @@ namespace Nethermind.JsonRpc;
 
 public static class ErrorMessages
 {
+    internal const string BlockHashAndRange = "cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other";
+
     /// <summary>
     /// EIP-4444 message for <see cref="ErrorCodes.PrunedHistoryUnavailable"/>
     /// </summary>

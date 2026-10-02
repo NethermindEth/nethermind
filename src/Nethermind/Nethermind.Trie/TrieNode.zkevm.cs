@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
 {
@@ -15,6 +17,81 @@ namespace Nethermind.Trie
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private byte ReadBlockAndFlags() => _blockAndFlags;
+
+        /// <summary>Reads <c>_nodeData</c> directly &mdash; see the std counterpart for the acquire read this replaces.</summary>
+        /// <remarks>Read by every node type test, several times per node touched on a trie walk.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private INodeData? ReadNodeData() => _nodeData;
+
+        /// <summary>Whether this node is a leaf.</summary>
+        /// <remarks>
+        /// A type test rather than the std form's <see cref="NodeType"/> compare: the guest's whole-program
+        /// compilation sees no class derived from <see cref="LeafData"/>, so this is one method-table
+        /// compare instead of a dispatch over every node data class.
+        /// </remarks>
+        public bool IsLeaf => _nodeData is LeafData;
+
+        /// <summary>Whether this node is an extension.</summary>
+        /// <remarks><inheritdoc cref="IsLeaf" path="/remarks"/></remarks>
+        public bool IsExtension => _nodeData is ExtensionData;
+
+        // The node type, key, child slots and memory size go through INodeData here, as before. The std forms test
+        // the sealed classes to avoid the JIT's dispatch stubs and cast cache, which the guest's whole-program
+        // compilation doesn't have; in the guest the type tests cost more steps than the calls they replace.
+        public NodeType NodeType => ReadNodeData()?.NodeType ?? NodeType.Unknown;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte[]? ReadKey() => _nodeData is INodeWithKey node ? node?.Key : null;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private ref object? DataItem(int i) => ref _nodeData![i];
+
+        public long GetMemorySize(bool recursive)
+        {
+            int keccakSize = Keccak is null ? MemorySizes.RefSize : MemorySizes.RefSize + Hash256.MemorySize;
+            CappedArray<byte> rlp = ReadRlp();
+            long rlpSize = MemorySizes.RefSize + (rlp.IsNotNull ? MemorySizes.ArrayOverhead + rlp.UnderlyingLength : 0);
+            long dataSize = MemorySizes.RefSize + (_nodeData?.MemorySize ?? 0);
+            int objectOverhead = MemorySizes.ObjectHeaderMethodTable;
+            int blockAndFlagsSize = sizeof(long);
+
+            if (_nodeData is BranchData data)
+            {
+                for (int i = 0; i < data.Length; i++)
+                {
+                    object? child = data[i];
+                    dataSize += child switch
+                    {
+                        null => 0,
+                        Hash256 => Hash256.MemorySize,
+                        byte[] array => MemorySizes.ArrayOverhead + array.Length,
+                        CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength +
+                                                         MemorySizes.SmallObjectOverhead,
+                        _ => recursive && child is TrieNode node ? node.GetMemorySize(true) : 0
+                    };
+                }
+            }
+            else if (_nodeData is ExtensionData extensionData)
+            {
+                dataSize += extensionData.Value switch
+                {
+                    null => 0,
+                    Hash256 => Hash256.MemorySize,
+                    byte[] array => MemorySizes.ArrayOverhead + array.Length,
+                    CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength +
+                                                     MemorySizes.SmallObjectOverhead,
+                    _ => recursive && extensionData.Value is TrieNode node ? node.GetMemorySize(true) : 0
+                };
+            }
+
+            long unaligned = keccakSize +
+                             rlpSize +
+                             dataSize +
+                             blockAndFlagsSize +
+                             objectOverhead;
+
+            return MemorySizes.Align(unaligned);
+        }
 
         /// <summary>Stores <c>_blockAndFlags</c> and reports the exchange as having succeeded.</summary>
         /// <remarks>

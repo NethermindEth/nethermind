@@ -24,6 +24,7 @@ public static class EvmExceptionExtensions
             EvmExceptionType.InvalidCode => "invalid code: must not begin with 0xef",
             EvmExceptionType.ReturnStackOverflow => "return stack limit reached",
             EvmExceptionType.ReturnStackUnderflow => "return stack underflow",
+            EvmExceptionType.CallDepthExceeded => "max call depth exceeded",
             _ => "error"
         };
 }

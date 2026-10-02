@@ -53,6 +53,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     [MethodImpl(MethodImplOptions.NoInlining)]
     private long[] CreateJumpAndCallDestinationBitmap(bool eip8024)
     {
+        Metrics.IncrementContractsAnalysed();
         ReadOnlySpan<byte> code = MachineCode.Span;
         if ((uint)code.Length < (uint)1 || code[0] == (byte)Instruction.STOP) return _emptyJumpDestinationBitmap;
 
@@ -93,7 +94,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
         // Cast to uint to change negative numbers to very int high numbers
         // Then do length check, this both reduces check by 1 and eliminates the bounds
         // check from accessing the span.
-        return (uint)destination < (uint)MachineCode.Length && IsJumpDestination(bitmap, destination);
+        return (uint)destination < (uint)codeInfo.CodeLength && IsJumpDestination(bitmap, destination);
     }
 
     /// <summary>
@@ -707,7 +708,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MarkJumpDestinations(Span<long> jumpDestinationBitmap, nuint pos, long flags)
     {
-        uint offset = (uint)pos >> BitShiftPerInt64;
+        nuint offset = pos >> BitShiftPerInt64;
         ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetReference(jumpDestinationBitmap), offset);
         segment = segment | flags;
     }

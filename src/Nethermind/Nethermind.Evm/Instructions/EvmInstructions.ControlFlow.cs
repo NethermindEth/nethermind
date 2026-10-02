@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
@@ -161,7 +160,8 @@ public static partial class EvmInstructions
         if (TSkipJumpDest.IsActive)
         {
             // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
-            vm.OpCodeCount++;
+            if (DispatchFlags.CountOpcodes)
+                vm.OpCodeCount++;
             programCounter++;
             return TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas);
         }
@@ -258,13 +258,12 @@ public static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
-            !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
         {
             goto OutOfGas;
         }
 
-        vm.StageReturnData(returnData.Span);
+        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length));
 
         return EvmExceptionType.Revert;
         // Jump forward to be unpredicted by the branch predictor.

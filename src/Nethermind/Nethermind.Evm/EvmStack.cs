@@ -72,8 +72,26 @@ public ref partial struct EvmStack
     /// with a program counter.
     /// </remarks>
     internal readonly nint CodeLength;
+    /// <summary>The first byte of the frame's input data, set by <see cref="HoistInputData"/>.</summary>
+    /// <remarks>Empty until hoisted: a stack built for execution must call <see cref="HoistInputData"/>, or calldata reads return zeros.</remarks>
+    internal ref readonly byte InputData;
+    /// <summary>The length of <see cref="InputData"/>; native width for the same reason as <see cref="CodeLength"/>.</summary>
+    internal nint InputDataLength;
     private readonly CodeInfo? _codeInfo;
     private long[]? _jumpDestinations;
+
+    /// <summary>Records the frame's input data so CALLDATALOAD and CALLDATACOPY skip resolving it on every opcode.</summary>
+    /// <remarks>
+    /// The input is the transaction data or a view over the caller's memory. The caller does not run while this
+    /// frame does, so that range is neither written nor freed; pinning the view may spill the caller's inline
+    /// tier to an identical copy, leaving this reference valid. The stack is rebuilt, and the input hoisted
+    /// again, whenever the frame resumes.
+    /// </remarks>
+    internal void HoistInputData(ReadOnlySpan<byte> inputData)
+    {
+        InputData = ref MemoryMarshal.GetReference(inputData);
+        InputDataLength = inputData.Length;
+    }
 
     /// <summary>Resolves the jump-destination bitmap when the stack is built, where the build flavour wants it.</summary>
     partial void InitializeJumpDestinations();
@@ -2142,14 +2160,16 @@ public ref partial struct EvmStack
         ref byte bottom = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
         ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
 
-        EvmWord buffer = Unsafe.ReadUnaligned<EvmWord>(ref bottom);
-        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
-        Unsafe.WriteUnaligned(ref top, buffer);
+        SwapWords(ref bottom, ref top);
 
         if (TTracingInst.IsActive) Trace(depth);
 
         return EvmExceptionType.None;
     }
+
+    /// <summary>Exchanges the two 32-byte stack words at <paramref name="bottom"/> and <paramref name="top"/>.</summary>
+    /// <remarks>Split per target; see <c>EvmStack.Swap.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial void SwapWords(ref byte bottom, ref byte top);
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
