@@ -1219,6 +1219,29 @@ public class JsonRpcProcessorTests
         }
     }
 
+    [Test]
+    public async Task Whitespace_around_a_single_document_request_is_ignored(
+        [Values(RequestTransport.HttpMemory, RequestTransport.HttpPipe)] RequestTransport transport)
+    {
+        int dispatched = 0;
+        IJsonRpcService service = CreateService(request =>
+        {
+            dispatched++;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(
+            processor, Encoding.UTF8.GetBytes(" \r\n\t" + CreateRequest("1", "eth_blockNumber") + " \r\n\t"), transport);
+
+        JsonRpcResponse response = AssertSingleResponse(result).Response!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+            Assert.That(dispatched, Is.EqualTo(1));
+        }
+    }
+
     /// <remarks>
     /// The complete-body fast path reports its buffer consumed on the way out of a throwing dispatch as well: the read
     /// loop ends either way, and reporting examined-only would ask a reader with nothing left to give for another read.

@@ -198,7 +198,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             session.Start(() =>
             {
                 // The coordinator owns the caller slot; all nested fan-outs share the remaining workers.
-                using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(_concurrencyLevel);
+                using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
                 using ParallelUnbalancedWork.BackgroundWork addressWork = ParallelUnbalancedWork.BackgroundFor(
                     0, 1, HelperOptions, _ => ((IThreadPoolWorkItem)addressWarmer).Execute());
                 using ParallelUnbalancedWork.BackgroundWork? discoveryWork = discoveryCandidates is null ? null
