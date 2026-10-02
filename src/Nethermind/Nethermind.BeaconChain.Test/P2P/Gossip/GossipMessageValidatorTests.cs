@@ -110,6 +110,26 @@ public class GossipMessageValidatorTests
         yield return Case("payload attestation message for a pre-Gloas slot", Topic(GloasDigest, GossipTopics.PayloadAttestationMessage), Encode(PtcVote(FuluSlot)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
     }
 
+    /// <summary>
+    /// gloas/p2p-interface.md execution_payload: [IGNORE] an envelope whose block has not been seen, which MAY be queued; it still reaches
+    /// the import pipeline, but its block-dependent rules did not run, so its verdict is given at once and never becomes an accept.
+    /// </summary>
+    [Test]
+    public void Envelope_for_a_block_not_held_is_ignored_at_once_and_still_consumed()
+    {
+        (GossipMessageValidator validator, _, List<object> raised) = Create();
+        List<MessageValidity> given = [];
+        GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
+
+        MessageValidity validity = validator.Validate(Message(Topic(GloasDigest, GossipTopics.ExecutionPayload), Encode(Envelope())), verdict);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((validity, given.SingleOrDefault()), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored)));
+            Assert.That(raised, Has.Count.EqualTo(1), "the envelope still reaches the import pipeline");
+        }
+    }
+
     [Test]
     public void Metrics_concurrent_gossip_drops_preserve_every_increment()
     {

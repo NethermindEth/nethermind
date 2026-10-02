@@ -260,9 +260,10 @@ public class NetworkEntryFuzzTests
         }
     }
 
-    // Verify runs on the pubsub thread, so a store fault while validating must end as a verdict rather than escape.
+    // A store fault while validating is this node's, not the sender's: it must not become a REJECT that charges an honest peer, so it reaches
+    // the caller, which throttles the message without a penalty and caches no id for it.
     [Test]
-    public void Gossip_validator_rejects_an_envelope_whose_block_read_faults()
+    public void Gossip_validator_leaves_a_store_fault_to_its_caller_rather_than_rejecting()
     {
         Hash256 root = Keccak.Compute("held block");
         FaultingReadsDb blocks = new();
@@ -279,7 +280,7 @@ public class NetworkEntryFuzzTests
         })[0];
         Message message = new() { Topic = Topic(GloasDigest, GossipTopics.ExecutionPayload), Data = ByteString.CopyFrom(Snappy.CompressToArray(envelope)) };
 
-        Assert.That(validator.Validate(message, GossipVerdict.None), Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(() => validator.Validate(message, GossipVerdict.None), Throws.InstanceOf<IOException>());
         Assert.That(blocks.FaultedReads, Is.GreaterThan(0), "the validator read the faulting block");
     }
 

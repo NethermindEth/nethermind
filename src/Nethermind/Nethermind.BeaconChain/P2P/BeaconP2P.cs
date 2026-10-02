@@ -189,9 +189,9 @@ public sealed class BeaconP2P : IAsyncDisposable
                 ReconnectionPeriod = System.Threading.Timeout.Infinite,
                 // fulu/das-core.md "Reconstruction and cross-seeding": this node publishes only reconstructed columns, which go to the topic mesh neighbors.
                 FloodPublish = false,
-                // DeferredGossipValidation throttles at the configured bounds first; its byte count leaves out the messages of the RPC being read.
-                MaxPendingValidationMessages = config.GossipMaxPendingValidations,
-                MaxPendingValidationBytes = config.GossipMaxPendingValidationBytes + Eth2MessageId.MaxMessageSize,
+                // The sum of DeferredGossipValidation's bounds, which reserve every message they defer, so the router dispatches each of them.
+                MaxPendingValidationMessages = PendingValidationMessagesBackstop(config),
+                MaxPendingValidationBytes = PendingValidationBytesBackstop(config),
                 // gossipsub v1.2 IDONTWANT: announce each accepted or published message of at least 1 KiB to the v1.2 mesh peers, and keep a
                 // peer's announcement for three heartbeats.
                 IdontwantMessageThreshold = 1024,
@@ -202,6 +202,15 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
     }
+
+    /// <summary>The router's own bound on messages awaiting a verdict: the node's bound and the vote queue, each reserved by DeferredGossipValidation, twice over.</summary>
+    /// <remarks>The margin covers a message the router still holds for a moment after the node released its reservation.</remarks>
+    internal static int PendingValidationMessagesBackstop(IBeaconChainConfig config) =>
+        checked(2 * (config.GossipMaxPendingValidations + BeaconSyncOrchestrator.VoteQueueCapacity));
+
+    /// <summary>The router's own bound on bytes awaiting a verdict: the node's bound and a full vote queue of the largest votes, twice over.</summary>
+    internal static int PendingValidationBytesBackstop(IBeaconChainConfig config) =>
+        checked(2 * (config.GossipMaxPendingValidationBytes + BeaconSyncOrchestrator.VoteQueueCapacity * DeferredGossipValidation.MaxVoteMessageBytes));
 
     /// <summary>The most message ids in one IDONTWANT control entry.</summary>
     internal const int IdontwantIdsPerControl = 10;
@@ -301,7 +310,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             {
                 PubsubSettings settings = _serviceProvider.GetRequiredService<PubsubSettings>();
                 _deferredValidation = new DeferredGossipValidation(_router, _messageValidator, _config.GossipMaxPendingValidations, _config.GossipMaxPendingValidationBytes,
-                    settings.PendingValidationTimeout, _logger, _startCts.Token);
+                    BeaconSyncOrchestrator.VoteQueueCapacity, settings.PendingValidationTimeout, _logger, _startCts.Token);
                 _gossipSubscriptions = new GossipTopicSubscriptions(_router, _deferredValidation.Verify);
                 _router.VerifyMessage = _gossipSubscriptions.Verify;
                 _router.OnDeferredMessage = _deferredValidation.ValidateAsync;
