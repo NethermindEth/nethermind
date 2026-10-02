@@ -3,18 +3,25 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Multiformats.Address;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Logging;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
 using Nethermind.Shutter.Config;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Shutter.Test;
 
 public class ShutterGossipSettingsTests
 {
-    /// <summary>A bootnode a dial could never reach stops startup instead of being dropped without a word.</summary>
+    /// <summary>A bootnode no dial can reach is skipped with an error that names it, and the other bootnodes are kept.</summary>
+    /// <remarks>Earlier versions ignored such an entry, so it must not stop startup either.</remarks>
     [TestCase("/ip4/10.0.0.1/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "An IPv4 address")]
     [TestCase("/dns4/sequencer.example/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "A DNS name")]
     [TestCase("/dnsaddr/sequencer.example/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "A dnsaddr name")]
@@ -24,24 +31,26 @@ public class ShutterGossipSettingsTests
     [TestCase("not a multiaddr", false, TestName = "Not a multiaddr")]
     public void Bootnodes_are_checked_at_startup(string bootnode, bool dialable)
     {
-        IShutterConfig config = new ShutterConfig
+        ShutterConfig config = new()
         {
             ValidatorRegistryContractAddress = Address.Zero.ToString(),
             KeyBroadcastContractAddress = Address.Zero.ToString(),
             KeyperSetManagerContractAddress = Address.Zero.ToString(),
             SequencerContractAddress = Address.Zero.ToString(),
             Validator = false,
-            BootnodeP2PAddresses = [bootnode],
+            BootnodeP2PAddresses = ["/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", bootnode],
         };
+        IShutterApi api = Substitute.For<IShutterApi>();
+        IEnumerable<Multiaddress>? started = null;
+        api.StartP2P(Arg.Do<IEnumerable<Multiaddress>>(bootnodes => started = bootnodes), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        TestLogger logger = new();
 
-        if (dialable)
+        new RunShutterP2P(config, api, Substitute.For<IProcessExitSource>(), new OneLoggerLogManager(new ILogger(logger))).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
         {
-            config.Validate(out IEnumerable<Multiaddress> bootnodes);
-            Assert.That(bootnodes.Select(static address => address.ToString()), Is.EqualTo(new[] { bootnode }));
-        }
-        else
-        {
-            Assert.That(() => config.Validate(out _), Throws.ArgumentException.With.Message.Contains(bootnode));
+            Assert.That(started?.Select(static address => address.ToString()), Is.EqualTo(dialable ? new[] { "/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", bootnode } : ["/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW"]));
+            Assert.That(logger.LogList.Where(line => line.Contains(bootnode)), dialable ? Is.Empty : Has.Exactly(1).Contains("is skipped"));
         }
     }
 
