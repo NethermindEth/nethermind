@@ -71,8 +71,9 @@ public class ShutterStaticPeerTests
         await WaitUntilAsync(() => keyper.PeerForTest.ListenAddresses.Count > 0, "the keyper never listened", token);
         LocalPeer keyperPeer = (LocalPeer)keyper.PeerForTest;
         Multiaddress keyperAddress = Multiaddress.Decode($"{keyperPeer.ListenAddresses.First().ToString().Split("/p2p/")[0]}/p2p/{keyperPeer.Identity.PeerId}");
+        // The dialer's own session: closed as soon as it is added after disposal, so the remote may never list it.
         TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        keyperPeer.Sessions.CollectionChanged += (_, change) =>
+        ((LocalPeer)node.PeerForTest).Sessions.CollectionChanged += (_, change) =>
         {
             if (change.Action == NotifyCollectionChangedAction.Add) reached.TrySetResult();
         };
