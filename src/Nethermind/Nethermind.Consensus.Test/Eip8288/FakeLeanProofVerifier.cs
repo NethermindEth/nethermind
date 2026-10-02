@@ -11,9 +11,15 @@ internal sealed class FakeLeanProofVerifier(bool result) : ILeanProofVerifier
 {
     public int LargestRecursiveInput { get; private set; }
     public int ProofCalls { get; private set; }
-    public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
-    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
-    public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => result;
+    public int VerificationCalls { get; private set; }
+    private bool Verify()
+    {
+        VerificationCalls++;
+        return result;
+    }
+    public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Verify();
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Verify();
+    public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => Verify();
     public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
     {
         LargestRecursiveInput = Math.Max(LargestRecursiveInput, input.RecursiveProofs.Count);

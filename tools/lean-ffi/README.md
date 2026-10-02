@@ -15,9 +15,10 @@ dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -c rele
 ```
 
 `BuildLeanFfi=true` builds and copies the host native library into consumer build/publish
-outputs. Cross compilation and distribution of native libraries for other RIDs remain release
-packaging work. Ordinary builds do not require Rust. Verification fails closed if the native
-library is absent or has an incompatible ABI; proving requires the library.
+outputs and rejects a different target RID. Build on each target platform; cross compilation
+and distribution remain release packaging work. Ordinary builds do not require Rust.
+Verification fails closed if the native library is absent or has an incompatible ABI;
+proving requires the library.
 
 `cargo run --release --locked --manifest-path tools/lean-ffi/Cargo.toml --example fixtures -- <directory>`
 produces genuine test signatures/proofs and the pinned recursive verification key. The live
@@ -25,6 +26,12 @@ FFI tests build these fixtures with `BuildLeanFfi=true` and fail if the native l
 The main solution compiles the test project without requiring Rust. Without the opt-in property,
 the native suite is explicitly skipped. With it, the backend and fixtures are required and
 missing libraries fail the run.
+
+The C ABI is version 2, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
+Verification/proving return 1 on success and 0 on failure. Callers initialize proof output
+pointers to null; successful proof allocations must be released once with `nlean_free`
+using the returned pointer and length. Verification contains upstream panics and never
+accepts malformed inputs.
 
 ## Prototype wire format
 
@@ -65,12 +72,15 @@ is separate work; this implementation does not claim that functionality.
 The upstream project remains experimental and unaudited. This integration is a prototype,
 with a pinned backend and explicit wire choices, rather than a finalized network protocol.
 
-
 ## Running an EIP-8288 node
 
 Build the native library and copy it beside the Nethermind executable (or put its directory
 on the host's native library search path). The native backend is always selected for
 EIP-8288; missing libraries or invalid proofs fail validation. There is no placeholder switch.
+
+Prototype proof payloads use the JSON Engine API and RLP transport. Standard Engine SSZ
+schemas cannot carry block or inclusion-list proofs; proof-bearing SSZ payloads are rejected
+with `UnsupportedFork` rather than losing their proofs.
 
 Enable EIP-8141 and EIP-8288 in a development chainspec with `eip8288TransitionTimestamp`,
 or the geth genesis key `eip8288PrototypeTime`. This prototype uses dependency frame mode
@@ -95,7 +105,8 @@ selected witnesses, recursively fold batches of at most sixteen children, discar
 outside the selected transaction set, and verify the produced header proof. Selection reserves
 recursive-proof gas from both execution and state gas budgets. Witness storage is bounded to
 64 MiB; production reserves at most 4 MiB of serialized witnesses per block to stay within the
-native 8 MiB input and proof bounds and the 4096-dependency envelope limit. Transactions beyond the current witness budget remain
+native 8 MiB input and proof bounds and the 4096-dependency envelope limit. Production also
+bounds witness coverage, including dependencies it discards, to 4096. Transactions beyond the current witness budget remain
 pending for another block.
 
 ## Negotiated proof gossip
@@ -105,7 +116,8 @@ normal Ethereum capabilities. Only peers that negotiate `lean/1` exchange proof 
 Message 0 is a 72-byte status: chain ID (u64 big-endian), genesis hash (32 bytes), pinned
 recursive guest key (32 bytes). All three must match before message 1 is accepted.
 Message 1 carries a complete RLP mempool wrapper, including full transactions, bounded
-by the shared wrapper size limit. A peer may have only one pending verification task;
+by 16 MiB and 4096 transactions. Outgoing selection reserves 8 MiB for the proof before
+encoding transactions. A peer may have only one pending verification task;
 invalid wrappers disconnect the peer.
 
 One node-wide worker aggregates eligible pending transactions every second, using the

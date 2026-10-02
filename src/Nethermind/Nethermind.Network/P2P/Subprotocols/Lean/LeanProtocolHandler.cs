@@ -111,6 +111,7 @@ public sealed class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtoc
             Result<Hash256[]> result = await _wrappers.AcceptAsync(message.Wrapper, linked.Token);
             if (!result.IsSuccess) throw new RlpException(result.Error ?? "Invalid lean proof wrapper");
         }
+        catch (OperationCanceledException) when (_stopToken.IsCancellationRequested) { }
         finally
         {
             Interlocked.Exchange(ref _receiving, 0);

@@ -1548,6 +1548,24 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task GetPayload_proof_extension_returns_unsupported_fork(bool inclusionProof)
+    {
+        Block block = MakeMinimalBlock();
+        if (inclusionProof) block.InclusionListRecursiveStark = new([1], Keccak.Zero);
+        else block.Header.RecursiveStark = new([1], Keccak.Zero);
+        GetPayloadV6Result result = new(block, UInt256.Zero, new BlobsBundleV2(block), [], false);
+        _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(ResultWrapper<GetPayloadV6Result?>.Success(result));
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/payloads/0x0102030405060708", fork: "amsterdam");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+        Assert.That(ctx.Response.ContentType, Is.EqualTo("application/problem+json"));
+        Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain("/engine-api/errors/unsupported-fork"));
+    }
+
     [TestCase(null, TestName = "Get_accept_absent_is_served")]
     [TestCase("*/*", TestName = "Get_accept_wildcard_is_served")]
     [TestCase("application/*", TestName = "Get_accept_application_wildcard_is_served")]

@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp.Eip7928;
@@ -196,7 +197,7 @@ public class ExecutionPayloadV4Tests
             GasLimit = 30_000_000,
             ReceiptsRoot = Keccak.EmptyTreeHash,
             StateRoot = Keccak.EmptyTreeHash,
-            RecursiveStarkProof = new byte[NativeLeanProofVerifier.MaxProofBytes + 1],
+            RecursiveStarkProof = new byte[Eip8288Constants.MaxProofBytes + 1],
             RecursiveStarkBlockDepsHash = new byte[Hash256.Size],
         };
 
@@ -244,7 +245,7 @@ public class ExecutionPayloadV4Tests
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
 
         EthereumJsonSerializer serializer = new();
-        ExecutionPayloadV4 deserialized = serializer.Deserialize<ExecutionPayloadV4>(serializer.Serialize(payload));
+        ExecutionPayloadV4 deserialized = serializer.Deserialize<ExecutionPayloadV4>(serializer.Serialize(payload))!;
 
         Assert.That(deserialized.RecursiveStarkProof, Is.EqualTo(proof));
         Assert.That(deserialized.RecursiveStarkBlockDepsHash, Is.EqualTo(depsHash.Bytes.ToArray()));

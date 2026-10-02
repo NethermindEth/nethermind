@@ -167,7 +167,7 @@ public class BlockValidatorTests
         block.Header.RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block)));
         block.Header.Hash = block.Header.CalculateHash();
 
-        Block decoded = Rlp.Decode<Block>(Rlp.Encode(block).Bytes);
+        Block decoded = Rlp.Decode<Block>(Rlp.Encode(block).Bytes)!;
 
         Assert.That(decoded.Header.RecursiveStark, Is.Not.Null);
         Assert.That(decoded.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(block.Header.RecursiveStark!.BlockDepsHash));

@@ -30,9 +30,11 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         List<WrapperTransaction> transactions = [];
         while (decoderContext.Position < txCheck)
         {
+            if (transactions.Count == LeanProofStore.MaxWrapperTransactions)
+                throw new RlpException("Proof wrapper exceeds the transaction count limit.");
             // A 32-byte entry is an already-broadcast tx hash; anything else is a full tx (a real
             // transaction encoding is never exactly 32 bytes).
-            byte[] entry = decoderContext.DecodeByteArray();
+            byte[] entry = decoderContext.DecodeByteArray(RlpLimit.For<MempoolWrapper>(LeanProofStore.MaxWrapperBytes, nameof(MempoolWrapper.Transactions)));
             transactions.Add(entry.Length == Hash256.Size
                 ? new WrapperTransaction(new Hash256(entry))
                 : new WrapperTransaction(TxDecoder.Instance.DecodeCompleteNotNull(entry, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
@@ -66,6 +68,8 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             proofs = [];
             while (decoderContext.Position < proofsCheck)
             {
+                if (proofs.Count == Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper)
+                    throw new RlpException("Proof wrapper exceeds the witness count limit.");
                 proofs.Add(decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(MempoolWrapper.Proofs))));
             }
             decoderContext.Check(proofsCheck);
@@ -130,7 +134,11 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
 
     public override int GetLength(MempoolWrapper item, RlpBehaviors rlpBehaviors)
     {
-        (int txContentLength, _) = GetTransactionsContent(item);
+        int txContentLength = 0;
+        foreach (WrapperTransaction transaction in item.Transactions)
+            txContentLength += transaction.IsHashOnly
+                ? Rlp.LengthOf(transaction.Hash)
+                : Rlp.LengthOfByteString(TxDecoder.Instance.GetLength(transaction.Full!, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping), 0);
         byte[] depsBytes = Eip8288Dependencies.Serialize(item.Deps);
         (int contentContentLength, _) = GetContentLengths(item, depsBytes);
 
@@ -147,7 +155,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         for (int i = 0; i < entries.Length; i++)
         {
             WrapperTransaction tx = item.Transactions[i];
-            entries[i] = tx.IsHashOnly ? tx.Hash!.Bytes.ToArray() : Rlp.Encode(tx.Full!, RlpBehaviors.InMempoolForm).Bytes;
+            entries[i] = tx.IsHashOnly ? tx.Hash!.Bytes.ToArray() : Rlp.Encode(tx.Full!, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
             contentLength += Rlp.LengthOf(entries[i]);
         }
 

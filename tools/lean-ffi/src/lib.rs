@@ -680,5 +680,34 @@ mod tests {
             0
         );
         assert!(decode_aggregate(b"NLR2\xff\xff\xff\xff").is_err());
+        // Reject malicious nested vector lengths before upstream claim reconstruction.
+        for preceding_vectors in 0..7 {
+            let mut nested = vec![0; preceding_vectors * 8];
+            nested.extend_from_slice(&u64::MAX.to_le_bytes());
+            let mut envelope = MAGIC.to_vec();
+            put_deps(&mut envelope, &[]);
+            put_blob(&mut envelope, &nested);
+            put_number(&mut envelope, 0);
+            assert!(decode_aggregate(&envelope).is_err());
+        }
+        let (_, pk) = sphincs::key_gen_from_seed([42; 32]);
+        let claims = SignatureClaims {
+            xmss: vec![],
+            sphincs: vec![(pk, [7; 32]); MAX_DEPS + 1],
+        };
+        let core = (
+            Vec::<[u8; 32]>::new(),
+            Vec::<F192>::new(),
+            Vec::<F192>::new(),
+            cpu::Proof {
+                stream: vec![],
+                merkle: vec![],
+            },
+        );
+        let mut envelope = MAGIC.to_vec();
+        put_deps(&mut envelope, &[]);
+        put_blob(&mut envelope, &wire().serialize(&(claims, core)).unwrap());
+        put_number(&mut envelope, 0);
+        assert!(decode_aggregate(&envelope).is_err());
     }
 }

@@ -151,6 +151,16 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
+    public void Empty_dependency_proofs_do_not_evict_useful_witnesses()
+    {
+        LeanProofStore store = new();
+        FrameDependency dependency = Sphincs("useful");
+        store.AddVerified([dependency], [[1]], null);
+        for (int i = 0; i < 1025; i++) store.AddVerified([], null, [2]);
+        Assert.That(store.TryGetInput([dependency], out _), Is.True);
+    }
+
+    [Test]
     public void Combining_shared_dependencies_retains_one_witness_and_one_identical_parent()
     {
         FrameDependency a = Sphincs("a");

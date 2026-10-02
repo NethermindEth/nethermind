@@ -25,6 +25,40 @@ namespace Nethermind.Merge.Plugin.Test.SszRest;
 public class SszCodecTests
 {
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Ssz_payload_rejects_unrepresentable_proof_fields(bool inclusionProof)
+    {
+        ExecutionPayloadV4 payload = new();
+        if (inclusionProof) payload.InclusionListRecursiveStark = new RecursiveStark([1], Keccak.Zero);
+        else payload.RecursiveStarkProof = [1];
+        Assert.That(() => new SszExecutionPayloadV4(payload), Throws.TypeOf<NotSupportedException>());
+    }
+
+    [TestCase(1, false)]
+    [TestCase(1, true)]
+    [TestCase(2, false)]
+    [TestCase(2, true)]
+    [TestCase(3, false)]
+    [TestCase(3, true)]
+    [TestCase(4, false)]
+    [TestCase(4, true)]
+    public void Ssz_block_factory_rejects_proofs_before_payload_conversion(int version, bool inclusionProof)
+    {
+        Block block = Build.A.Block.TestObject;
+        RecursiveStark proof = new([1], Keccak.Zero);
+        if (inclusionProof) block.InclusionListRecursiveStark = proof;
+        else block.Header.RecursiveStark = proof;
+        Func<SszExecutionPayloadV1> create = () => version switch
+        {
+            1 => SszExecutionPayloadV1.From(block),
+            2 => SszExecutionPayloadV2.From(block),
+            3 => SszExecutionPayloadV3.From(block),
+            _ => SszExecutionPayloadV4.From(block)
+        };
+        Assert.That(create, Throws.TypeOf<NotSupportedException>());
+    }
+
     /// <summary>
     /// Calls <paramref name="encode"/> against an <see cref="ArrayBufferWriter{T}"/>
     /// and returns the written bytes — the test-side analogue of writing into the

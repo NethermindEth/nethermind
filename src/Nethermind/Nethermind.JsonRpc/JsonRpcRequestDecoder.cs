@@ -41,14 +41,23 @@ internal static class JsonRpcRequestDecoder
 
     /// <summary>Reads <paramref name="memory"/> as a single complete JSON-RPC request object.</summary>
     /// <returns><c>false</c> if the body is not exactly one JSON object, in which case the caller must parse it another way.</returns>
+    /// <remarks>
+    /// The envelope pass doubles as the single-document check: it stops at the root object's end, so only the
+    /// remaining bytes need a whitespace scan.
+    /// </remarks>
     public static bool TryReadSingleObjectRequest(
         ReadOnlyMemory<byte> memory,
         [NotNullWhen(true)] out JsonRpcRequest? request)
     {
         request = null;
+        ReadOnlyMemory<byte> body = memory[CountLeadingJsonWhitespace(memory.Span)..];
+        if (body.IsEmpty || !TryReadObjectRequest(body, out request, out int objectLength) || HasNonWhitespace(body.Span[objectLength..]))
+        {
+            request = null;
+            return false;
+        }
 
-        return TryGetSingleDocumentBody(memory, JsonTokenType.StartObject, out ReadOnlyMemory<byte> objectBody)
-            && TryReadObjectRequest(objectBody, out request);
+        return true;
     }
 
     /// <summary>
@@ -88,15 +97,24 @@ internal static class JsonRpcRequestDecoder
     /// <summary>Reads one JSON object body as a request, keeping <c>params</c> as a slice of <paramref name="objectBody"/>.</summary>
     public static bool TryReadObjectRequest(
         ReadOnlyMemory<byte> objectBody,
-        [NotNullWhen(true)] out JsonRpcRequest? request)
+        [NotNullWhen(true)] out JsonRpcRequest? request) =>
+        TryReadObjectRequest(objectBody, out request, out _);
+
+    private static bool TryReadObjectRequest(
+        ReadOnlyMemory<byte> objectBody,
+        [NotNullWhen(true)] out JsonRpcRequest? request,
+        out int objectLength)
     {
         request = null;
+        objectLength = 0;
 
         JsonRpcEnvelopeReader envelopeReader = new(objectBody.Span);
         if (!envelopeReader.TryRead(out JsonRpcEnvelope envelope))
         {
             return false;
         }
+
+        objectLength = envelopeReader.ObjectLength;
 
         ReadOnlyMemory<byte> paramsUtf8 = envelope.HasParams
             ? objectBody.Slice(envelope.ParamsStart, envelope.ParamsLength)

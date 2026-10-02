@@ -146,6 +146,15 @@ internal static class GetPayloadDirectResponseWriter
             WriteHexString(writer, recursiveStark.BlockDepsHash.Bytes, chunked: false);
         }
 
+        if (block.InclusionListRecursiveStark is { } inclusionProof)
+        {
+            writer.Write(",\"inclusionListRecursiveStark\":{\"starkProof\":"u8);
+            WriteHexString(writer, inclusionProof.StarkProof, chunked: inclusionProof.StarkProof.Length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
+            writer.Write(",\"blockDepsHash\":"u8);
+            WriteHexString(writer, inclusionProof.BlockDepsHash.Bytes, chunked: false);
+            writer.Write("}"u8);
+        }
+
         writer.Write("}"u8);
         return false;
     }

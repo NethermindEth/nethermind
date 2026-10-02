@@ -7,6 +7,8 @@
     <LeanFfiLibName Condition="'$(LeanFfiLibName)' == ''">libnethermind_lean.so</LeanFfiLibName>
   </PropertyGroup>
   <Target Name="BuildNativeLean" BeforeTargets="GetCopyToOutputDirectoryItems;BeforeBuild" Condition="'$(BuildLeanFfi)' == 'true'">
+    <Error Condition="'$(RuntimeIdentifier)' != '' and '$(NETCoreSdkRuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != '$(NETCoreSdkRuntimeIdentifier)'"
+           Text="BuildLeanFfi requires a host RID build; build the native backend on the target platform." />
     <Exec Command="cargo build --release --locked --manifest-path &quot;$(LeanFfiManifest)&quot;" />
     <ItemGroup>
       <Content Include="$(LeanFfiOutDir)/$(LeanFfiLibName)" Link="$(LeanFfiLibName)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

@@ -478,7 +478,7 @@ public class ScopeProviderTests(bool useFlat)
 
         // Collect results via HintBal(bal, sink) — the merged trie warmup + BAL read pass
         CollectingBalSink sink = new(useFlat ? null : () =>
-            Assert.That(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0,
+            Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0,
                 Is.EqualTo(Core.Cpu.RuntimeInformation.IsSingleProcessor ? 0 : Environment.ProcessorCount)));
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {

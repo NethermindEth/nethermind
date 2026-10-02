@@ -37,13 +37,18 @@ public class NativeLeanProtocolTests
 {
     private sealed class Scheduler : IBackgroundTaskScheduler
     {
+        public bool Defer { get; set; }
+        private Func<Task>? _pending;
         public Task Completion { get; private set; } = Task.CompletedTask;
         public bool TryScheduleTask<T>(T request, Func<T, CancellationToken, Task> execute, TimeSpan? timeout = null)
             where T : notnull, IBackgroundTaskRequest<T>
         {
-            Completion = execute(request, CancellationToken.None);
+            if (Defer) _pending = () => execute(request, CancellationToken.None);
+            else Completion = execute(request, CancellationToken.None);
             return true;
         }
+
+        public Task RunPending() => Completion = (_pending ?? throw new InvalidOperationException("No pending receive"))();
     }
 
     private sealed class Context(BasicTestBlockchain chain, ISession session, LeanProtocolHandler handler, Scheduler scheduler) : IDisposable
@@ -129,6 +134,9 @@ public class NativeLeanProtocolTests
     {
         using Context source = await Create();
         using Context target = await Create();
+        TaskCompletionSource<byte[]> broadcast = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.Session.When(session => session.DeliverMessage(Arg.Any<LeanProofWrapperMessage>()))
+            .Do(call => broadcast.TrySetResult(call.Arg<LeanProofWrapperMessage>().Wrapper));
         Receive(source, Status(source), new LeanStatusMessageSerializer());
         Receive(target, Status(source), new LeanStatusMessageSerializer());
         Transaction transaction = NativeBlockProductionTests.CreateTransaction(source.Chain);
@@ -137,9 +145,8 @@ public class NativeLeanProtocolTests
         source.Chain.Container.Resolve<LeanProofStore>().AddVerified([sphincs,stark],
             [NativeLeanProofVerifierTests.Witness("sphincs"),NativeLeanProofVerifierTests.Witness("stark")],null);
         Assert.That(source.Chain.TxPool.SubmitTx(transaction,TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-        Result<byte[]> wrapper = source.Chain.Container.Resolve<ProofWrapperService>().BuildWrapper(skipEmpty:true);
-        Assert.That(wrapper.IsSuccess,Is.True,wrapper.Error);
-        Receive(target,new LeanProofWrapperMessage(wrapper.Data!),new LeanProofWrapperMessageSerializer());
+        byte[] wrapper = await broadcast.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Receive(target,new LeanProofWrapperMessage(wrapper),new LeanProofWrapperMessageSerializer());
         await target.Scheduler.Completion.WaitAsync(TimeSpan.FromSeconds(10));
         using (Assert.EnterMultipleScope())
         {
@@ -155,6 +162,18 @@ public class NativeLeanProtocolTests
         IByteBuffer buffer = Unpooled.WrappedBuffer(new byte[LeanProofStore.MaxWrapperBytes + 1]);
         try { Assert.Throws<RlpException>(() => new LeanProofWrapperMessageSerializer().Deserialize(buffer)); }
         finally { buffer.Release(); }
+    }
+
+    [Test]
+    public async Task Disposing_a_pending_receive_does_not_report_peer_failure()
+    {
+        using Context context = await Create();
+        Receive(context, Status(context), new LeanStatusMessageSerializer());
+        context.Scheduler.Defer = true;
+        Receive(context, new LeanProofWrapperMessage([0]), new LeanProofWrapperMessageSerializer());
+        context.Handler.Dispose();
+        await context.Scheduler.RunPending();
+        context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
     [Test]

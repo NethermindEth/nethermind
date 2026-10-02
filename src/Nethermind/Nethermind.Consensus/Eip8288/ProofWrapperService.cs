@@ -15,9 +15,10 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.Eip8288;
 
 /// <summary>Shared proof-wrapper validation, admission and aggregation for RPC and negotiated peers.</summary>
-public sealed class ProofWrapperService(ITxPool txPool, ITxSender txSender, ISpecProvider specProvider,
+public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
     IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier)
 {
+    internal const int MaxWrapperTransactionBytes = LeanProofStore.MaxWrapperBytes - Eip8288Constants.MaxProofBytes - 4096;
     private readonly object _aggregationLock = new();
     private int _rotation;
     private ValueHash256? _cachedSelection;
@@ -32,9 +33,17 @@ public sealed class ProofWrapperService(ITxPool txPool, ITxSender txSender, ISpe
             return Result<Hash256[]>.Fail("Proof wrapper exceeds the size limit.");
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             MempoolWrapper decoded = DecodeProofWrapper(wrapper);
+            foreach (WrapperTransaction entry in decoded.Transactions)
+            {
+                Transaction? transaction = entry.Full ?? (entry.Hash is null ? null : ResolvePending(entry.Hash));
+                if (transaction is null) return Result<Hash256[]>.Fail(MempoolWrapperValidator.UnknownTransaction);
+                if (!Preflight(transaction, out string? frameError)) return Result<Hash256[]>.Fail(frameError!);
+            }
             if (!MempoolWrapperValidator.Validate(decoded, leanProofVerifier, out string? error, ResolvePending))
                 return Result<Hash256[]>.Fail(error!);
+            cancellationToken.ThrowIfCancellationRequested();
             leanProofStore.AddVerified(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof);
             return await SubmitProofTransactions(decoded.Transactions, cancellationToken);
         }
@@ -61,9 +70,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ITxSender txSender, ISpe
             return Result<Hash256[]>.Fail("Proof inclusion list exceeds the size limit.");
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             FocilInclusionList decoded = DecodeProofInclusionList(inclusionList);
+            foreach (Transaction transaction in decoded.Transactions)
+                if (!Preflight(transaction, out string? frameError)) return Result<Hash256[]>.Fail(frameError!);
             if (!FocilInclusionListValidator.Validate(decoded, leanProofVerifier, out string? error))
                 return Result<Hash256[]>.Fail(error!);
+            cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> deps = [];
             List<WrapperTransaction> transactions = [];
             foreach (Transaction transaction in decoded.Transactions)
@@ -88,7 +101,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ITxSender txSender, ISpe
         }
     }
 
-    private async Task<Result<Hash256[]>> SubmitProofTransactions(IReadOnlyList<WrapperTransaction> transactions, CancellationToken cancellationToken)
+    private Task<Result<Hash256[]>> SubmitProofTransactions(IReadOnlyList<WrapperTransaction> transactions, CancellationToken cancellationToken)
     {
         Hash256[] hashes = new Hash256[transactions.Count];
         for (int i = 0; i < hashes.Length; i++)
@@ -105,12 +118,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ITxSender txSender, ISpe
                 hashes[i] = existingHash;
                 continue;
             }
-            (Hash256 hash, AcceptTxResult? result) = await txSender.SendTransaction(entry.Full, TxHandlingOptions.PersistentBroadcast);
+            Hash256 hash = entry.Full.Hash!;
+            AcceptTxResult result = txPool.SubmitTx(entry.Full, TxHandlingOptions.PersistentBroadcast);
             if (result != AcceptTxResult.Accepted)
-                return Result<Hash256[]>.Fail(result?.ToString() ?? "Transaction submission failed.");
+                return Task.FromResult(Result<Hash256[]>.Fail(result.ToString()));
             hashes[i] = hash;
         }
-        return Result<Hash256[]>.Success(hashes);
+        return Task.FromResult(Result<Hash256[]>.Success(hashes));
     }
 
     /// <summary>Builds a recursive wrapper over the current proof-backed pool view.</summary>
@@ -125,6 +139,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ITxSender txSender, ISpe
             return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
         List<WrapperTransaction> transactions = [];
         List<FrameDependency> deps = [];
+        int transactionBytes = 0;
         List<Transaction> candidates = [.. txPool.GetPendingTransactions()];
         foreach (Transaction[] blobBucket in txPool.GetPendingLightBlobTransactionsBySender().Values)
             foreach (Transaction light in blobBucket)
@@ -133,16 +148,21 @@ public sealed class ProofWrapperService(ITxPool txPool, ITxSender txSender, ISpe
         int start = candidates.Count == 0 ? 0 : (int)((uint)_rotation++ % (uint)candidates.Count);
         for (int i = 0; i < candidates.Count; i++)
         {
+            if (transactions.Count == LeanProofStore.MaxWrapperTransactions) break;
             Transaction transaction = candidates[(start + i) % candidates.Count];
             if (!transaction.SupportsFrames || Eip8288Dependencies.RecursiveStarkGas(transaction) == 0 || !leanProofStore.Covers(transaction)) continue;
+            int encodedLength = Rlp.LengthOfByteString(TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping), 0);
+            if (encodedLength > MaxWrapperTransactionBytes - transactionBytes) continue;
             List<FrameDependency> combined = Eip8288Dependencies.Canonicalize(deps);
             combined.AddRange(Eip8288Dependencies.ForTransaction(transaction));
             combined = Eip8288Dependencies.Canonicalize(combined);
             (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(combined);
             if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper || stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper) continue;
             if (!leanProofStore.TryGetInput(combined, out AggregationInput candidateInput)
+                || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies
                 || RecursiveStarkAggregator.InputSize(candidateInput) > RecursiveStarkAggregator.MaxProductionWitnessBytes) continue;
             deps = combined;
+            transactionBytes += encodedLength;
             transactions.Add(new WrapperTransaction(transaction));
         }
         if (skipEmpty && transactions.Count == 0)
@@ -190,6 +210,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ITxSender txSender, ISpe
     public bool IsEnabled => blockFinder.Head is { } head && specProvider.GetSpec(head.Header).IsEip8288Enabled;
 
     private Transaction? ResolvePending(Hash256 hash) => txPool.TryGetPendingTransaction(hash.ValueHash256, out Transaction? transaction) ? transaction : null;
+
+    private bool Preflight(Transaction transaction, out string? error)
+    {
+        error = null;
+        return !transaction.SupportsFrames || FrameTxValidation.IsWellFormed(transaction, specProvider.GetSpec(blockFinder.Head!.Header), out error);
+    }
 
     private static FocilInclusionList DecodeProofInclusionList(byte[] encoded)
     {

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -75,6 +76,21 @@ public class FocilInclusionListTests
         Assert.That(error, Is.EqualTo(FocilInclusionListValidator.DepsHashMismatch));
     }
     [Test]
+    public void Typed_transactions_use_canonical_inclusion_list_encoding()
+    {
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        FocilInclusionList list = new() { Transactions = [tx], RecursiveStark = new([1], Keccak.Zero) };
+        Rlp encoded = FocilInclusionListDecoder.Instance.Encode(list);
+        RlpReader reader = new(encoded.Bytes);
+        reader.ReadSequenceLength();
+        reader.ReadSequenceLength();
+        byte[] entry = reader.DecodeByteArray();
+        Assert.That(entry[0], Is.EqualTo((byte)TxType.EIP1559));
+        reader = new(encoded.Bytes);
+        Assert.That(FocilInclusionListDecoder.Instance.Decode(ref reader)!.Transactions[0].Hash, Is.EqualTo(tx.Hash));
+    }
+
+    [Test]
     public void Rejects_null_transaction_entry()
     {
         Rlp encoded = Rlp.Encode(Rlp.Encode(new[] { Rlp.Encode(new byte[] { 0xc0 }) }),
@@ -103,11 +119,11 @@ public class FocilInclusionListTests
         }
         else
         {
-            Assert.Throws<RlpException>(() =>
+            Assert.That(() =>
             {
                 RlpReader reader = new(encoded.Bytes);
                 FocilInclusionListDecoder.Instance.Decode(ref reader);
-            });
+            }, Throws.InstanceOf<RlpException>());
         }
     }
 

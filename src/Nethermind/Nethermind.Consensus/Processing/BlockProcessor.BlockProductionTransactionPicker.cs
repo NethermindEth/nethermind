@@ -87,6 +87,8 @@ namespace Nethermind.Consensus.Processing
                     if (required.Count > Eip8288Constants.MaxProofDependencies)
                         return args.Set(TxAction.Skip, "Dependency proof count limit exceeded");
                     candidateInput = RecursiveStarkAggregator.Combine(inputs, required);
+                    if (required.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies)
+                        return args.Set(TxAction.Skip, "Dependency witness coverage limit exceeded");
                     long witnessBytes = RecursiveStarkAggregator.InputSize(candidateInput);
                     if (witnessBytes > RecursiveStarkAggregator.MaxProductionWitnessBytes)
                         return args.Set(TxAction.Skip, "Dependency witness budget exceeded");

@@ -234,6 +234,34 @@ public class MempoolWrapperTests
             Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(wrapper.Deps))]
         });
 
+    [Test]
+    public void Decode_rejects_excessive_transaction_entries()
+    {
+        MempoolWrapper wrapper = new()
+        {
+            Transactions = Enumerable.Range(0, LeanProofStore.MaxWrapperTransactions + 1)
+                .Select(_ => new WrapperTransaction(Keccak.Zero)).ToArray(),
+            Deps = [],
+            Proofs = [],
+            Mode = MempoolWrapper.ModeDirect
+        };
+        Assert.That(() => RoundTrip(wrapper), Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
+    public void Decode_rejects_excessive_witness_entries()
+    {
+        MempoolWrapper wrapper = new()
+        {
+            Transactions = [],
+            Deps = [],
+            Proofs = Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper + 1)
+                .Select(_ => (byte[])[]).ToArray(),
+            Mode = MempoolWrapper.ModeDirect
+        };
+        Assert.That(() => RoundTrip(wrapper), Throws.InstanceOf<RlpException>());
+    }
+
     private static MempoolWrapper RoundTrip(MempoolWrapper wrapper)
     {
         Rlp rlp = MempoolWrapperDecoder.Instance.Encode(wrapper);

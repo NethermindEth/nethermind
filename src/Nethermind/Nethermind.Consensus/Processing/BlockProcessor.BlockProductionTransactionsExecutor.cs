@@ -128,6 +128,9 @@ namespace Nethermind.Consensus.Processing
                             producing.LeanProofInputs.Clear();
                             producing.LeanProofInputs.Add(proofInput);
                             producing.LeanDependencies.AddRange(Eip8288Dependencies.ForTransaction(currentTx));
+                            List<FrameDependency> canonicalDependencies = Eip8288Dependencies.Canonicalize(producing.LeanDependencies);
+                            producing.LeanDependencies.Clear();
+                            producing.LeanDependencies.AddRange(canonicalDependencies);
                             producing.LeanWitnessBytes = args.LeanWitnessBytes;
                         }
                     }

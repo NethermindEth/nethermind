@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -35,9 +36,24 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
     public SszExecutionPayloadV1() : this(new ExecutionPayload()) { }
 
     /// <inheritdoc/>
-    public static SszExecutionPayloadV1 From(Block block) => new(ExecutionPayload.Create(block));
+    public static SszExecutionPayloadV1 From(Block block) => new(ExecutionPayload.Create(RequireStandardBlock(block)));
 
-    protected virtual ExecutionPayload Inner { get; private set; } = payload;
+    protected virtual ExecutionPayload Inner { get; private set; } = RequireStandardPayload(payload);
+
+    protected static Block RequireStandardBlock(Block block)
+    {
+        if (block.Header.RecursiveStark is not null || block.InclusionListRecursiveStark is not null)
+            throw new NotSupportedException("EIP-8288 proof payloads require the JSON Engine API; the SSZ schema has no proof fields.");
+        return block;
+    }
+
+    private static ExecutionPayload RequireStandardPayload(ExecutionPayload payload)
+    {
+        if (payload.InclusionListRecursiveStark is not null || payload is ExecutionPayloadV3
+            { RecursiveStarkProof: not null } or ExecutionPayloadV3 { RecursiveStarkBlockDepsHash: not null })
+            throw new NotSupportedException("EIP-8288 proof payloads require the JSON Engine API; the SSZ schema has no proof fields.");
+        return payload;
+    }
 
     public virtual ExecutionPayload AsExecutionPayload() => Inner;
 
@@ -160,7 +176,7 @@ public partial class SszExecutionPayloadV2(ExecutionPayload payload)
     public SszExecutionPayloadV2() : this(new ExecutionPayload()) { }
 
     /// <inheritdoc/>
-    public new static SszExecutionPayloadV2 From(Block block) => new(ExecutionPayload.Create(block));
+    public new static SszExecutionPayloadV2 From(Block block) => new(ExecutionPayload.Create(RequireStandardBlock(block)));
 
     [SszList(16)]
     public SszWithdrawal[] Withdrawals
@@ -228,7 +244,7 @@ public partial class SszExecutionPayloadV3(ExecutionPayload payload)
     public SszExecutionPayloadV3() : this(new ExecutionPayloadV3()) { }
 
     /// <inheritdoc/>
-    public new static SszExecutionPayloadV3 From(Block block) => new(ExecutionPayloadV3.Create(block));
+    public new static SszExecutionPayloadV3 From(Block block) => new(ExecutionPayloadV3.Create(RequireStandardBlock(block)));
 
     public override ExecutionPayloadV3 AsExecutionPayload() => Inner;
 
@@ -258,7 +274,7 @@ public partial class SszExecutionPayloadV4(ExecutionPayloadV4 payload)
     public SszExecutionPayloadV4() : this(new ExecutionPayloadV4()) { }
 
     /// <inheritdoc/>
-    public new static SszExecutionPayloadV4 From(Block block) => new(ExecutionPayloadV4.Create(block));
+    public new static SszExecutionPayloadV4 From(Block block) => new(ExecutionPayloadV4.Create(RequireStandardBlock(block)));
 
     public override ExecutionPayloadV4 AsExecutionPayload() => Inner;
 

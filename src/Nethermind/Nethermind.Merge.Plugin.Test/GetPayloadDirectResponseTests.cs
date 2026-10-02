@@ -235,13 +235,17 @@ public class GetPayloadDirectResponseTests
 
     // The hand-rolled writer is the path a CL actually receives, and recursive_stark is the one field the
     // parity matrix does not vary: an empty proof and one past the hex chunking threshold both risk drift.
-    [TestCase(0, TestName = "Direct_response_json_matches_dto_json_with_an_empty_recursive_stark_proof")]
-    [TestCase(3, TestName = "Direct_response_json_matches_dto_json_with_a_small_recursive_stark_proof")]
-    [TestCase(PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1, TestName = "Direct_response_json_matches_dto_json_with_a_chunked_recursive_stark_proof")]
-    public async Task Direct_response_json_matches_dto_json_with_recursive_stark(int proofLength)
+    [TestCase(0, false)]
+    [TestCase(0, true)]
+    [TestCase(3, false)]
+    [TestCase(3, true)]
+    [TestCase(PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1, false)]
+    [TestCase(PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1, true)]
+    public async Task Direct_response_json_matches_dto_json_with_recursive_stark(int proofLength, bool inclusionProof)
     {
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
         block.Header.RecursiveStark = new RecursiveStark(new byte[proofLength], Keccak.Compute("deps"));
+        if (inclusionProof) block.InclusionListRecursiveStark = new RecursiveStark(new byte[proofLength], Keccak.Compute("il-deps"));
 
         object plain = CreatePlainResult(6, block, blobsBundle, executionRequests);
         IStreamableResult direct = CreateDirectResult(6, block, blobsBundle, executionRequests);

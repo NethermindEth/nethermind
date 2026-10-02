@@ -33,7 +33,11 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
             _loop ??= Task.Run(RunAsync);
             last = _lastWrapper;
         }
-        if (last is not null && wrappers.IsEnabled) send(last);
+        if (last is not null && wrappers.IsEnabled)
+        {
+            try { send(last); }
+            catch (Exception exception) { if (_logger.IsDebug) _logger.Debug($"Lean proof peer send failed: {exception.Message}"); }
+        }
     }
 
     public void RemovePeer(Action<byte[]> send)

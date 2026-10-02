@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
@@ -74,6 +75,7 @@ public class ProofInclusionListEnforcementTests
             DecodedMaxFeePerGas = 100.GWei
         };
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyA, sender);
+        transaction.Hash = transaction.CalculateHash();
         Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
             .WithBaseFeePerGas(0).WithBeneficiary(TestItem.AddressD)
             .WithTransactions(scenario == "included" ? [transaction] : []).TestObject;

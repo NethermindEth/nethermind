@@ -33,7 +33,7 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
             transactionBytes += encoded.Length;
             if (transactionBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
                 throw new RlpException("Inclusion-list transactions exceed the aggregate byte limit");
-            transactions.Add(TxDecoder.Instance.DecodeCompleteNotNull(encoded));
+            transactions.Add(TxDecoder.Instance.DecodeCompleteNotNull(encoded, RlpBehaviors.SkipTypedWrapping));
         }
 
         decoderContext.Check(txCheck);
@@ -83,7 +83,7 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
         int contentLength = 0;
         for (int i = 0; i < entries.Length; i++)
         {
-            entries[i] = Rlp.Encode(item.Transactions[i]).Bytes;
+            entries[i] = Rlp.Encode(item.Transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
             contentLength += Rlp.LengthOf(entries[i]);
         }
 

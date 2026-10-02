@@ -10,6 +10,7 @@ namespace Nethermind.Core.Crypto;
 public sealed class LeanProofStore
 {
     public const int MaxWrapperBytes = 16 * 1024 * 1024;
+    public const int MaxWrapperTransactions = 4096;
     private const long MaxStoredBytes = 64 * 1024 * 1024;
     private const int MaxStoredWrappers = 1024;
     private readonly object _lock = new();
@@ -24,6 +25,7 @@ public sealed class LeanProofStore
     {
         if ((witnesses is null) == (recursiveProof is null) || witnesses is not null && witnesses.Count != dependencies.Count)
             throw new ArgumentException("Exactly one proof form must cover the dependencies.");
+        if (dependencies.Count == 0) return;
         FrameDependency[] deps = new FrameDependency[dependencies.Count];
         byte[][]? copiedWitnesses = witnesses is null ? null : new byte[witnesses.Count][];
         long size = (long)dependencies.Count * Eip8288Constants.DependencyTripleLength + (recursiveProof?.Length ?? 0);

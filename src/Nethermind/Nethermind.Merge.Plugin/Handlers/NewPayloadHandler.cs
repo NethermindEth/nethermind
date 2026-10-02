@@ -21,6 +21,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -132,19 +133,20 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
-        Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        using ExecutionPayloadPreparation preparation = new(request);
+        Result<Block> decodingResult;
+        using (preparation.Workers.Enter())
+        {
+            StartSenderRecovery(request);
+            decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        }
         if (decodingResult.IsError)
         {
             if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
-
-        // Overlaps ecrecover with everything that follows, block processing included; the pipeline
-        // recovers inline whatever it reaches before the background recovery does. Started only once the block is
-        // built: TryGetBlock has already finished hashing the transactions-trie root before recovery competes for
-        // pool workers.
-        StartSenderRecovery(request);
+        ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
@@ -340,7 +342,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
         // never be restored.
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers);
 
         switch (result)
         {
@@ -678,7 +680,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
-            // TryGetBlock has already decoded these, so only an empty block has nothing to recover.
+            // TryGetBlock reports the decoding error; nothing to recover otherwise.
             return;
 
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
@@ -719,7 +721,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers)
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
@@ -828,7 +830,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
-                _ = Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed));
+                _ = Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
@@ -883,11 +885,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { Number: ulong number }
         && _blockTree.WasProcessed(number, blockHash);
 
-    private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed)
+    private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
     {
         try
         {
-            await _processingQueue.Enqueue(block, processingOptions);
+            ValueTask enqueue;
+            using (workers.Enter()) enqueue = _processingQueue.Enqueue(block, processingOptions);
+            await enqueue;
         }
         catch (Exception e)
         {

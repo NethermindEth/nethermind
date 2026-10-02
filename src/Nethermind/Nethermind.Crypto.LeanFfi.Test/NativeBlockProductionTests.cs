@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -44,15 +45,18 @@ public class NativeBlockProductionTests
         Assert.That((bool)wellFormed, Is.True, wellFormed.ToString());
         AcceptTxResult accepted = chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         Assert.That(accepted, Is.EqualTo(AcceptTxResult.Accepted), accepted.ToString());
-        Block block = await chain.AddBlock(transaction);
+        Block block = await chain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);
         ValueHash256 commitment = Eip8288Dependencies.ComputeBlockDepsHash(block);
         Assert.That(block.Transactions, Has.Length.EqualTo(1));
         Assert.That(block.Header.RecursiveStark, Is.Not.Null);
+        Assert.That(block.Header.GasUsedPerDimension, Is.Not.Null);
+        (ulong Execution, ulong State) dimensions = block.Header.GasUsedPerDimension!.Value;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Eip8288Dependencies.ForBlock(block), Has.Count.EqualTo(2));
             Assert.That(Eip8288Dependencies.DependencyDeclarationCount(block), Is.EqualTo(3));
             Assert.That(block.GasUsed, Is.LessThanOrEqualTo(block.GasLimit));
+            Assert.That(Math.Max(dimensions.Execution, dimensions.State) + 3 * Eip8288Constants.LeanStarkVerificationGas, Is.EqualTo(block.GasUsed));
             Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk,
                 block.Header.RecursiveStark!.StarkProof), Is.True);
             Assert.That(chain.ReceiptStorage.Get(block)[0].GasUsed + 3 * Eip8288Constants.LeanStarkVerificationGas, Is.EqualTo(block.GasUsed));
@@ -73,13 +77,14 @@ public class NativeBlockProductionTests
         {
             Type = TxType.FrameTx,
             ChainId = chain.SpecProvider.ChainId,
-            SenderAddress = TestItem.PrivateKeyA.Address,
+            SenderAddress = TestItem.PrivateKeyB.Address,
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 100.GWei,
         };
-        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyA, TestItem.PrivateKeyA.Address);
+        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        transaction.Hash = transaction.CalculateHash();
         return transaction;
     }
 
