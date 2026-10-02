@@ -26,6 +26,10 @@ public sealed record ForkChoiceSnapshot(
 /// <summary>One proto-array node, with the parent index already resolved to a root.</summary>
 /// <param name="ParentRoot"><c>null</c> for the tree root, whose parent is the anchor's or was pruned.</param>
 /// <param name="ExecutionBlockHash"><c>null</c> only for a payload-less block (<see cref="ExecutionStatus.Irrelevant"/>).</param>
+/// <param name="PayloadValid">
+/// Whether the block's own execution payload is known VALID. For a Gloas block that is the payload of its envelope, which
+/// <paramref name="ExecutionStatus"/> does not describe: that is the status of the payload its bid builds on.
+/// </param>
 public sealed record ForkChoiceSnapshotNode(
     ulong Slot,
     Hash256 Root,
@@ -34,7 +38,8 @@ public sealed record ForkChoiceSnapshotNode(
     ulong FinalizedEpoch,
     ulong Weight,
     ExecutionStatus ExecutionStatus,
-    Hash256? ExecutionBlockHash);
+    Hash256? ExecutionBlockHash,
+    bool PayloadValid = false);
 
 /// <summary>
 /// Hands the importer's latest <see cref="ForkChoiceSnapshot"/> to readers on other threads (the
