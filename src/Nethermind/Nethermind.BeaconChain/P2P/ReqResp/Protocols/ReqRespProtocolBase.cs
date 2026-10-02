@@ -29,7 +29,7 @@ public enum ReqRespFailureReason
     /// <summary>A peer answered with a non-success response code.</summary>
     PeerError,
 
-    /// <summary>The stream failed below the req/resp framing: a channel read, write or half-close did not succeed.</summary>
+    /// <summary>The channel failed below the req/resp framing: a read, write or half-close did not succeed.</summary>
     Transport,
 }
 
