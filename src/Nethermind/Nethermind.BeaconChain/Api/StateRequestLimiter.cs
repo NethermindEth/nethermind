@@ -12,6 +12,7 @@ using System.Threading.RateLimiting;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
+using Nethermind.BeaconChain.Spec;
 
 namespace Nethermind.BeaconChain.Api;
 
@@ -37,6 +38,9 @@ internal sealed class StateRequestLimiter : IDisposable
     /// <summary>The largest single write forwarded to the response, so a slow reader shows progress within a chunk rather than only after a whole state.</summary>
     internal const int WriteChunkBytes = 64 * 1024;
 
+    /// <summary>A lower bound on any beacon state's SSZ size: its fixed-length <c>randao_mixes</c>, <c>block_roots</c> and <c>state_roots</c> vectors (beacon-chain.md BeaconState).</summary>
+    internal const long MinStateBytes = (long)(Presets.EpochsPerHistoricalVector + 2 * Presets.SlotsPerHistoricalRoot) * 32;
+
     private readonly int _maxConcurrent;
     private readonly int _maxPerClient;
     private readonly TimeSpan _responseTimeout;
@@ -56,6 +60,13 @@ internal sealed class StateRequestLimiter : IDisposable
         ArgumentOutOfRangeException.ThrowIfGreaterThan(config.StateResponseTimeoutSeconds, MaxResponseTimeoutSeconds, nameof(IBeaconApiConfig.StateResponseTimeoutSeconds));
         ArgumentOutOfRangeException.ThrowIfLessThan(config.StateResponseIdleTimeoutSeconds, 1, nameof(IBeaconApiConfig.StateResponseIdleTimeoutSeconds));
         ArgumentOutOfRangeException.ThrowIfGreaterThan(config.StateResponseIdleTimeoutSeconds, MaxResponseTimeoutSeconds, nameof(IBeaconApiConfig.StateResponseIdleTimeoutSeconds));
+        // A reader just fast enough to finish the smallest state within the total cap must be able to accept one chunk within the idle bound.
+        long minIdleSeconds = (WriteChunkBytes * (long)config.StateResponseTimeoutSeconds + MinStateBytes - 1) / MinStateBytes;
+        if (config.StateResponseIdleTimeoutSeconds < minIdleSeconds)
+        {
+            throw new ArgumentOutOfRangeException(nameof(IBeaconApiConfig.StateResponseIdleTimeoutSeconds), config.StateResponseIdleTimeoutSeconds,
+                $"A reader just fast enough to download a {MinStateBytes}-byte state within {nameof(IBeaconApiConfig.StateResponseTimeoutSeconds)} ({config.StateResponseTimeoutSeconds} s) takes up to {minIdleSeconds} s to accept one {WriteChunkBytes}-byte chunk, so {nameof(IBeaconApiConfig.StateResponseIdleTimeoutSeconds)} must be at least {minIdleSeconds}; raise it or lower the total.");
+        }
 
         _maxConcurrent = config.MaxConcurrentStateRequests;
         _responseTimeout = TimeSpan.FromSeconds(config.StateResponseTimeoutSeconds);

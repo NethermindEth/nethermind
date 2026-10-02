@@ -214,7 +214,7 @@ public class StateRequestLimiterTests
     public async Task A_slow_but_steady_download_completes_past_the_idle_bound_even_when_one_write_is_larger_than_it_can_send_in_that_time(
         [Values(16 * 1024, 256 * 1024)] int writeBytes)
     {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 60, StateResponseIdleTimeoutSeconds = 1 });
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 40, StateResponseIdleTimeoutSeconds = 1 });
         using PacedStream reader = new(TimeSpan.FromMilliseconds(100), 16 * 1024);
         DefaultHttpContext download = StateRequest(Download, "192.0.2.7");
         download.Response.Body = reader;
@@ -232,7 +232,7 @@ public class StateRequestLimiterTests
     [Test]
     public async Task A_response_that_stops_being_written_is_cut_at_the_idle_bound_however_generous_the_total_cap()
     {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 3600, StateResponseIdleTimeoutSeconds = 1 });
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 40, StateResponseIdleTimeoutSeconds = 1 });
         DefaultHttpContext stalled = StateRequest(Download, "192.0.2.7");
         stalled.Response.Body = new PacedStream(TimeSpan.Zero);
 
@@ -259,7 +259,7 @@ public class StateRequestLimiterTests
     [Test]
     public async Task A_state_that_takes_longer_than_the_idle_bound_to_load_is_not_cut_before_its_first_write()
     {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 60, StateResponseIdleTimeoutSeconds = 1 });
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 40, StateResponseIdleTimeoutSeconds = 1 });
         PacedStream reader = new(TimeSpan.Zero);
         DefaultHttpContext download = StateRequest(Download, "192.0.2.7");
         download.Response.Body = reader;
@@ -280,7 +280,7 @@ public class StateRequestLimiterTests
     [Test]
     public async Task A_first_write_that_never_completes_is_cut_at_the_idle_bound_however_generous_the_total_cap()
     {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 3600, StateResponseIdleTimeoutSeconds = 1 });
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 40, StateResponseIdleTimeoutSeconds = 1 });
         DefaultHttpContext blocked = StateRequest(Download, "192.0.2.7");
         blocked.Response.Body = new PacedStream(Timeout.InfiniteTimeSpan);
 
@@ -301,7 +301,7 @@ public class StateRequestLimiterTests
     }
 
     [TestCase(1, 120, TestName = "A client that stops reading a state cannot hold its permit past the total cap")]
-    [TestCase(3600, 1, TestName = "A client that stops reading a state cannot hold its permit past the idle bound")]
+    [TestCase(40, 1, TestName = "A client that stops reading a state cannot hold its permit past the idle bound")]
     public async Task A_client_that_stops_reading_a_state_cannot_hold_its_permit_past_the_deadline(int totalSeconds, int idleSeconds)
     {
         using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = totalSeconds, StateResponseIdleTimeoutSeconds = idleSeconds });
@@ -390,6 +390,23 @@ public class StateRequestLimiterTests
     public void An_idle_bound_out_of_range_fails_the_host_start([Values(0, StateRequestLimiter.MaxResponseTimeoutSeconds + 1)] int idleSeconds) =>
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet,
             apiConfig: new BeaconApiConfig { StateResponseIdleTimeoutSeconds = idleSeconds }));
+
+    /// <summary>
+    /// A reader just fast enough to download the smallest state within the total cap takes total / 40 s to accept one chunk, so a
+    /// shorter idle bound would cut a steady download the total cap allows.
+    /// </summary>
+    [TestCase(3600, 89, false)]
+    [TestCase(3600, 90, true)]
+    [TestCase(41, 1, false)]
+    [TestCase(40, 1, true)]
+    public void An_idle_bound_shorter_than_one_chunk_at_the_slowest_finishing_rate_is_refused(int totalSeconds, int idleSeconds, bool accepted)
+    {
+        BeaconApiConfig config = new() { StateResponseTimeoutSeconds = totalSeconds, StateResponseIdleTimeoutSeconds = idleSeconds };
+
+        Assert.That(() => new StateRequestLimiter(config).Dispose(), accepted
+            ? Throws.Nothing
+            : Throws.TypeOf<ArgumentOutOfRangeException>().With.Message.Contains($"{nameof(IBeaconApiConfig.StateResponseIdleTimeoutSeconds)} must be at least {(totalSeconds + 39) / 40}"));
+    }
 
     [TestCase(0, 600, TestName = "No state request per client allowed")]
     [TestCase(1, 0, TestName = "No time to answer a state request")]
