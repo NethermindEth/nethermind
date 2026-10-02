@@ -1468,7 +1468,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 // Checked just before dialing: a channel the remote opened first makes the router dial back, and a second one would stay open unused.
                 if (_p2p.HasGossipChannel(remotePeerId))
                 {
-                    // Pubsub 1.0.0 keeps a record of every channel that ends, so a peer that keeps closing new ones is held to the longest wait.
+                    // Only a channel that outlasts the longest wait resets it, so a peer that keeps closing new channels stays at that wait.
                     if (Stopwatch.GetElapsedTime(dialedAt) >= MaxGossipRedialDelay)
                     {
                         redialDelay = GossipChannelCheckInterval;
