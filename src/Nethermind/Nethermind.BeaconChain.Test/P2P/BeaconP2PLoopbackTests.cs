@@ -37,6 +37,72 @@ public class BeaconP2PLoopbackTests
 
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
+    /// <summary>A dial its caller cancelled before it began does not keep the peer from being dialed afterwards.</summary>
+    /// <remarks>Nethermind.Libp2p 1.0.0 keeps a dial cancelled before its first await as the pending dial of the peer id for good.</remarks>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_cancelled_dial_does_not_lose_the_peer(CancellationToken token)
+    {
+        await using BeaconP2P server = PeerSessionNodes.Create().P2P;
+        await using BeaconP2P client = PeerSessionNodes.Create().P2P;
+        await server.StartAsync(token);
+        await client.StartAsync(token);
+        Multiaddress address = PeerSessionNodes.LoopbackAddress(server);
+        using CancellationTokenSource cancelled = new();
+        await cancelled.CancelAsync();
+
+        Assert.That(async () => await client.DialPeerAsync(address, cancelled.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the dial is cancelled");
+        Assert.That(await client.DialPeerAsync(address, token).WaitAsync(TimeSpan.FromSeconds(20), token), Is.Not.Null);
+    }
+
+    /// <summary>A dial its caller stopped waiting for, which then fails, leaves no unobserved failure behind.</summary>
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(60_000)]
+    public async Task An_abandoned_dial_that_fails_is_observed(CancellationToken token)
+    {
+        await using BeaconP2P client = PeerSessionNodes.Create().P2P;
+        await client.StartAsync(token);
+        using TcpListener closed = new(IPAddress.Loopback, 0);
+        closed.Start();
+        int port = ((IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+        string refusing = $"/ip4/127.0.0.1/tcp/{port}/p2p/{new Identity().PeerId}";
+        int unobserved = 0;
+        void OnUnobserved(object? sender, UnobservedTaskExceptionEventArgs args)
+        {
+            if (args.Exception.Flatten().InnerExceptions.Any(e => e.Message.Contains(refusing)))
+            {
+                Interlocked.Increment(ref unobserved);
+            }
+        }
+
+        TaskScheduler.UnobservedTaskException += OnUnobserved;
+        try
+        {
+            await AbandonAsync(client, Multiaddress.Decode(refusing), token);
+            // The library dial fails within milliseconds on a refused connection; its task is then collectable.
+            await Task.Delay(1000, token);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+
+        Assert.That(Volatile.Read(ref unobserved), Is.Zero, "the failed dial reached UnobservedTaskException");
+    }
+
+    // Kept out of the test method so no local holds the dial task when the collector runs.
+    private static async Task AbandonAsync(BeaconP2P client, Multiaddress address, CancellationToken token)
+    {
+        using CancellationTokenSource abandoned = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await abandoned.CancelAsync();
+        Assert.That(async () => await client.DialPeerAsync(address, abandoned.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the caller stops waiting");
+    }
+
     [Test]
     [CancelAfter(30_000)]
     public async Task Start_rejects_an_occupied_TCP_port(CancellationToken token)
@@ -403,7 +469,7 @@ public class BeaconP2PLoopbackTests
         BeaconChainStatusHolder statusHolder = new(spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
         DataColumnSidecarPool pool = new();
-        BeaconP2P p2p = PeerSessionNodes.Watched(logs => new BeaconP2P(config, spec, store, statusHolder, metadataSource, pool, new ExecutionPayloadEnvelopePool(), logs));
+        BeaconP2P p2p = new(config, spec, store, statusHolder, metadataSource, pool, new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
         return new Node(p2p, store, statusHolder, metadataSource, config, pool);
     }
 }

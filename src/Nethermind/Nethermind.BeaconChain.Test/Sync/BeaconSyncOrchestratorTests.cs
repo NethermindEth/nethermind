@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -1973,7 +1974,7 @@ public partial class BeaconSyncOrchestratorTests
 
     private sealed class FakeTopic : ITopic
     {
-        public event Action<byte[]>? OnMessage { add { } remove { } }
+        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
 
         public bool IsSubscribed { get; private set; }
 

@@ -3,23 +3,24 @@
 
 using System;
 using System.Collections.Concurrent;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 
 namespace Nethermind.BeaconChain.P2P.Gossip;
 
 /// <summary>Hands out pubsub topics whose <see cref="ITopic.Unsubscribe"/> leaves the topic and stops its messages at the pubsub validator.</summary>
-/// <remarks>altair p2p-interface.md "Transitioning the gossip": leave retired topics; preview.45 needs a direct router call.
-/// Its retained mesh requires dropping retired messages before validation and caching, under the RPC handler monitor.</remarks>
+/// <remarks>altair p2p-interface.md "Transitioning the gossip": leave retired topics. The router still validates messages on a topic it left,
+/// so retired messages are dropped before validation and caching, under the RPC handler monitor.</remarks>
 internal sealed class GossipTopicSubscriptions(PubsubRouter router, Func<Message, MessageValidity> verify)
 {
     private readonly PubsubRouter _router = router;
     private readonly ConcurrentDictionary<string, byte> _retired = new();
 
-    /// <summary>The pubsub validator: <see cref="MessageValidity.Trottled"/> for a retired topic, else the wrapped validator's verdict.</summary>
-    /// <remarks>The router neither caches nor forwards a <see cref="MessageValidity.Trottled"/> message.</remarks>
-    internal MessageValidity Verify(Message message) =>
-        _retired.ContainsKey(message.Topic) ? MessageValidity.Trottled : verify(message);
+    /// <summary>The pubsub validator: <see cref="MessageValidity.Throttled"/> for a retired topic, else the wrapped validator's verdict.</summary>
+    /// <remarks>The router neither caches nor forwards a <see cref="MessageValidity.Throttled"/> message.</remarks>
+    internal MessageValidity Verify(PeerId source, Message message) =>
+        _retired.ContainsKey(message.Topic) ? MessageValidity.Throttled : verify(message);
 
     /// <summary>Gets and subscribes the topic, clearing any earlier retirement.</summary>
     internal ITopic GetTopic(string topicId)
@@ -35,7 +36,7 @@ internal sealed class GossipTopicSubscriptions(PubsubRouter router, Func<Message
     {
         public bool IsSubscribed => topic.IsSubscribed;
 
-        public event Action<byte[]>? OnMessage
+        public event Action<PeerId, byte[]>? OnMessage
         {
             add => topic.OnMessage += value;
             remove => topic.OnMessage -= value;
@@ -59,7 +60,7 @@ internal sealed class GossipTopicSubscriptions(PubsubRouter router, Func<Message
                 // altair p2p-interface.md "Transitioning the gossip": pre-fork topics SHOULD be unsubscribed from.
                 if (owner._retired.TryAdd(topicId, 0))
                 {
-                    owner._router.Unsubscribe(topicId);
+                    topic.Unsubscribe();
                 }
             }
         }

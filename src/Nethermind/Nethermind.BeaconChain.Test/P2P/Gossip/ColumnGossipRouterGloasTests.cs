@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
@@ -854,7 +855,9 @@ public class ColumnGossipRouterGloasTests
 
     private sealed class ForwardingTopic : ITopic
     {
-        public event Action<byte[]>? OnMessage;
+        private static readonly PeerId DeliveringPeer = new Nethermind.Libp2p.Core.Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+
+        public event Action<PeerId, byte[]>? OnMessage;
 
         public bool IsSubscribed => true;
 
@@ -866,6 +869,6 @@ public class ColumnGossipRouterGloasTests
 
         public void Publish(IMessage value) { }
 
-        public void Deliver(byte[] message) => OnMessage?.Invoke(message);
+        public void Deliver(byte[] message) => OnMessage?.Invoke(DeliveringPeer, message);
     }
 }

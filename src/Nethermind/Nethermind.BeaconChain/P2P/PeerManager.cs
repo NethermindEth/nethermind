@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
+using Multiformats.Address.Protocols;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -19,10 +20,12 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Logging;
@@ -148,8 +151,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly ConcurrentDictionary<string, Reservation> _dialing = new();
     private readonly object _admissionLock = new();
 
-    // Admissions in flight per session, guarded by _admissionLock: a dial address without /p2p/ lets two
-    // admission paths hold one session at once (see AdmitSessionAsync).
+    // Admissions in flight per session, guarded by _admissionLock: more than one admission path can hold
+    // one session at once (see AdmitSessionAsync).
     private readonly Dictionary<ISession, int> _admittingSessions = [];
 
     /// <summary>What an admission in flight already knows about its peer: enough for the directory's
@@ -177,6 +180,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         _dialHistory = discovery?.DialHistory ?? new PeerDialHistory(_timestamper);
         _localCustody = new DiscoveryNodeCustodySource(discovery);
         _outboundDialGate = new SemaphoreSlim(Math.Max(1, config.MaxConcurrentOutboundDials));
+        ValidateStaticPeers(StaticPeerAddresses());
 
         // A session the remote side opened has no dial here to admit it through; this is its only way in.
         p2p.SessionEstablished += OnSessionEstablished;
@@ -715,6 +719,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// </remarks>
     public async Task<bool> TryAddPeerAsync(string address, CancellationToken token, string? enr = null)
     {
+        if (!address.Contains(PeerIdSeparator, StringComparison.Ordinal))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Not dialing {address}: the address has no {PeerIdSeparator} peer id");
+            return false;
+        }
+
         if (IsConnected(address))
         {
             return true;
@@ -1031,12 +1041,52 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private string[] StaticPeerAddresses() =>
         _config.StaticPeers?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
 
-    /// <summary>The stable part of a dial address to key the ban list and diagnostics on: the libp2p
-    /// peer id after the last <c>/p2p/</c> component, or the whole address when it has none.</summary>
+    /// <summary>Refuses a static peer the maintenance round could never dial.</summary>
+    /// <remarks>The libp2p dial needs the <c>/p2p/</c> peer id, and it keeps a dial whose name resolution failed as the
+    /// answer for that peer id from then on, so a static peer must name its IP address.</remarks>
+    /// <exception cref="InvalidConfigurationException">An address does not decode, has no peer id, or names a DNS host.</exception>
+    private static void ValidateStaticPeers(string[] addresses)
+    {
+        foreach (string address in addresses)
+        {
+            Multiaddress multiaddress;
+            try
+            {
+                multiaddress = Multiaddress.Decode(address);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                throw new InvalidConfigurationException($"BeaconChain.StaticPeers entry '{address}' is not a multiaddr: {e.Message}", ExitCodes.ForbiddenOptionValue);
+            }
+
+            if (multiaddress.GetPeerId() is null || !(multiaddress.Has<IP4>() || multiaddress.Has<IP6>()))
+            {
+                throw new InvalidConfigurationException($"BeaconChain.StaticPeers entry '{address}' must be /ip4 or /ip6 with a /p2p/<peer-id> component.", ExitCodes.ForbiddenOptionValue);
+            }
+        }
+    }
+
+    /// <summary>The stable part of a dial address to key the ban list and diagnostics on: the libp2p peer id after the last <c>/p2p/</c> component.</summary>
+    /// <exception cref="ArgumentException"><paramref name="address"/> has no <c>/p2p/</c> component.</exception>
     private static string ExtractPeerId(string address)
     {
         int index = address.LastIndexOf(PeerIdSeparator, StringComparison.Ordinal);
-        return index < 0 ? address : address[(index + PeerIdSeparator.Length)..];
+        return index < 0
+            ? throw new ArgumentException($"{address} has no {PeerIdSeparator} peer id", nameof(address))
+            : address[(index + PeerIdSeparator.Length)..];
+    }
+
+    /// <summary>The peer id a dial address names, or <c>null</c> when it does not decode.</summary>
+    private static PeerId? TryDecodePeerId(string address)
+    {
+        try
+        {
+            return Multiaddress.Decode(address).GetPeerId();
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Internal so a test can check the ban key derivation directly.</summary>
@@ -1152,13 +1202,14 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         try
         {
             using CancellationTokenSource dialCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            using BeaconP2P.SessionWatch? sessions = TryDecodePeerId(address) is { } remotePeerId ? _p2p.WatchSessions(remotePeerId) : null;
             try
             {
                 Interlocked.Increment(ref Metrics.DialAttemptsCount);
                 DialOutcome outcome = await DialAndAdmitAsync(address, peerId, enr, dial, dialCancellation.Token, () => dialCancellation.CancelAfter(DialTimeout));
                 // The peer can still hold its half of the collapsed session when a redial arrives and refuses it, so redials back off.
                 for (int redials = 1; redials <= MaxRedialsAfterSimultaneousDial
-                    && outcome.LostSessionPeerId is { } lostPeerId && RedialsAfterSimultaneousDial(lostPeerId); redials++)
+                    && outcome.LostSessionPeerId is { } lostPeerId && sessions?.Opened > 0 && RedialsAfterSimultaneousDial(lostPeerId); redials++)
                 {
                     await Task.Delay(RedialBackoff * redials, dialCancellation.Token);
                     outcome = await DialAndAdmitAsync(address, peerId, enr, dial, dialCancellation.Token);
@@ -1266,7 +1317,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <remarks>Two peers that dial each other at once can each keep the session it opened and refuse the other's
     /// as a second session, which closes both connections. Only the side with the lower peer id redials, so redials never
     /// cross each other, and the other side admits one as a session the remote opened. The peer can still hold its half of the
-    /// collapsed session for a while and refuse a redial as a second session, which is why the caller backs off and retries.</remarks>
+    /// collapsed session for a while and refuse a redial as a second session, which is why the caller backs off and retries.
+    /// The caller redials only once a session with the peer opened during the dial: a connection that never authenticated the
+    /// peer, as to an unreachable or dead address, is no sign of a crossing dial.</remarks>
     private bool RedialsAfterSimultaneousDial(string remotePeerId) =>
         _p2p.LocalPeerId is { } localPeerId && string.CompareOrdinal(localPeerId.ToString(), remotePeerId) < 0;
 
@@ -1299,8 +1352,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Libp2pException e) when (!token.IsCancellationRequested)
         {
-            // The pinned dial throws this, unwrapped, when the connection opened but its session was refused or closed,
-            // which is how our side of a simultaneous dial can end as well as the session closing before identify.
+            // The dial throws this when its connection closed before a session formed, which is how our side of a
+            // simultaneous dial can end, and also when no connection opened at all.
             if (_logger.IsDebug) _logger.Debug($"Connection to beacon chain peer {address} closed before a session was established: {DescribeFailure(e)}");
             return new DialOutcome(false, Multiaddress.Decode(address).GetPeerId()?.ToString());
         }
@@ -1352,8 +1405,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     private async Task<bool> ExchangeStatusAndRecordAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, string? enr, CancellationToken token, DialRecord? dial)
     {
-        // A dial address without a /p2p/ component keys on the whole address, so the session's real
-        // peer id is the only reliable way to notice it is already admitted under another address.
+        // A peer's inbound and dialed addresses differ, so the record is matched by the session's authenticated peer id.
         string establishedId = BeaconP2P.RemotePeerIdOf(session)?.ToString() ?? peerId;
         if (IsRecorded(session, establishedId))
         {
@@ -1366,16 +1418,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return false;
         }
 
+        // The ceiling reads _peers.Count under the same lock.
         lock (_admissionLock)
         {
-            // A dial address without /p2p/ cannot be matched by id to the remote-opened session until
-            // now, so two admissions can hold the same session and both pass the check above: one
-            // session, one entry, decided under the same lock the ceiling reads _peers.Count under.
-            if (IsRecorded(session, establishedId))
-            {
-                return true;
-            }
-
             _peers[address] = peer;
             Metrics.BeaconChainPeerCount = _peers.Count;
         }

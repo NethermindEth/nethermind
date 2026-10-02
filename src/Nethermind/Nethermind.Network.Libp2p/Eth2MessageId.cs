@@ -8,7 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Snappier;
 
-namespace Nethermind.BeaconChain.P2P.Gossip;
+namespace Nethermind.Network.Libp2p;
 
 /// <summary>Outcome of capped snappy block decompression of a gossip payload.</summary>
 public enum SnappyDecodeResult
@@ -35,7 +35,10 @@ public static class Eth2MessageId
     public const int MaxGossipSize = 10 * 1024 * 1024;
 
     /// <summary>phase0 p2p "Gossipsub size limits": a compressed gossip payload must not exceed <c>max_compressed_len(MAX_PAYLOAD_SIZE)</c>.</summary>
-    internal static readonly int MaxCompressedGossipSize = MaxCompressedLength(MaxGossipSize);
+    public static readonly int MaxCompressedGossipSize = MaxCompressedLength(MaxGossipSize);
+
+    /// <summary>phase0 p2p <c>max_message_size()</c>: the bound on an encoded gossipsub RPC, framing and control messages included.</summary>
+    public static readonly int MaxMessageSize = Math.Max(MaxCompressedGossipSize + 1024, 1024 * 1024);
 
     private const int MessageIdLength = 20;
 

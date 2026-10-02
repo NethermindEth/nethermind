@@ -85,7 +85,6 @@ public class PeerColumnCustodyTests
         PeerBandTests.Node client = PeerBandTests.CreateNode();
         PeerBandTests.SetMatchingStatus(server, client);
         server.Metadata.Current.CustodyGroupCount = 8;
-        // A key below 2^255: the pinned libp2p reads a secp256k1 private key as a signed integer.
         using PrivateKey serverKey = new("1c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f29111");
         server.Store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, serverKey.KeyBytes);
 

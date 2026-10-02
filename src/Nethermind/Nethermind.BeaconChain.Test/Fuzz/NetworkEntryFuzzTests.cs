@@ -21,6 +21,7 @@ using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
+using Nethermind.Network.Libp2p;
 using Nethermind.Serialization.Ssz;
 using NSubstitute;
 using NUnit.Framework;

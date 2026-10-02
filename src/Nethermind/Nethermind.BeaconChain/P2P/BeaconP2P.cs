@@ -8,6 +8,7 @@ using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,7 +26,6 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Core.Dto;
@@ -33,6 +33,7 @@ using Nethermind.Libp2p.Protocols;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Logging.Microsoft;
+using Nethermind.Network.Libp2p;
 using ILogger = Nethermind.Logging.ILogger;
 using ILoggerFactory = Microsoft.Extensions.Logging.ILoggerFactory;
 
@@ -47,8 +48,7 @@ namespace Nethermind.BeaconChain.P2P;
 /// stable across restarts (and reusable for the discv5 ENR in a later milestone). Gossipsub uses
 /// the eth2 parameters: <c>StrictNoSign</c>, the eth2 message-id function
 /// (<see cref="Eth2MessageId"/>), D=8/D_low=6/D_high=12/D_lazy=6, a 700 ms heartbeat, and a seen
-/// TTL of two epochs (p2p-interface.md, gossipsub parameters). Note that the pinned libp2p preview always signs published messages,
-/// which StrictNoSign peers reject — receiving gossip works, but publishing needs a library fix.
+/// TTL of two epochs (p2p-interface.md, gossipsub parameters).
 /// </remarks>
 public sealed class BeaconP2P : IAsyncDisposable
 {
@@ -73,7 +73,9 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     // Cancelled when the library drops the session, so a request on it ends then instead of at its timeout.
     private readonly ConcurrentDictionary<ISession, SessionLifetime> _sessionClosed = new();
+    private readonly ConcurrentDictionary<SessionWatch, byte> _sessionWatches = new();
     private int _identifyTimeouts;
+    private int _disposed;
 
     private LocalPeer? _localPeer;
     private CancellationTokenSource? _startCts;
@@ -126,18 +128,18 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation })
             .AddLibp2p(builder => builder
                 .WithPubsub()
-                .AddAppLayerProtocol<StatusProtocolV1>()
-                .AddAppLayerProtocol<StatusProtocolV2>()
-                .AddAppLayerProtocol<GoodbyeProtocol>()
-                .AddAppLayerProtocol<Eth2PingProtocol>()
-                .AddAppLayerProtocol<MetaDataProtocolV3>()
-                .AddAppLayerProtocol<BeaconBlocksByRangeProtocolV2>()
-                .AddAppLayerProtocol<BeaconBlocksByRootProtocolV2>()
-                .AddAppLayerProtocol<DataColumnSidecarsByRangeProtocol>()
-                .AddAppLayerProtocol<DataColumnSidecarsByRootProtocol>()
-                .AddAppLayerProtocol<ExecutionPayloadEnvelopesByRangeProtocol>()
-                .AddAppLayerProtocol<ExecutionPayloadEnvelopesByRootProtocol>()
-                .AddAppLayerProtocol<IdentifyAgentVersionProbe>())
+                .AddProtocol<StatusProtocolV1>()
+                .AddProtocol<StatusProtocolV2>()
+                .AddProtocol<GoodbyeProtocol>()
+                .AddProtocol<Eth2PingProtocol>()
+                .AddProtocol<MetaDataProtocolV3>()
+                .AddProtocol<BeaconBlocksByRangeProtocolV2>()
+                .AddProtocol<BeaconBlocksByRootProtocolV2>()
+                .AddProtocol<DataColumnSidecarsByRangeProtocol>()
+                .AddProtocol<DataColumnSidecarsByRootProtocol>()
+                .AddProtocol<ExecutionPayloadEnvelopesByRangeProtocol>()
+                .AddProtocol<ExecutionPayloadEnvelopesByRootProtocol>()
+                .AddProtocol<IdentifyAgentVersionProbe>())
             // One identify instance: the library's own stack slot and the probe's listen fallback
             // both resolve to it, so an inbound identify request is answered the same way whichever
             // of the two same-id protocols multistream picks.
@@ -148,7 +150,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton<IdentifyAgentVersionProbe>()
             // The library's peer class is internal; this one does the same identify handshake and also
             // records the session direction and agent string (see BeaconLocalPeer).
-            .AddSingleton<Libp2pPeerFactory>(sp =>
+            .AddSingleton<Libp2pStackPeerFactory>(sp =>
             {
                 IProtocolStackSettings settings = sp.GetRequiredService<IProtocolStackSettings>();
                 PeerStore peerStore = sp.GetRequiredService<PeerStore>();
@@ -163,7 +165,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 AgentVersion = ClientAgentVersion,
             })
             // The eth2 gossipsub parameters (consensus-specs p2p-interface "The gossip domain: gossipsub").
-            .AddSingleton(new PubsubSettings
+            .AddSingleton(UnscoredGossip.Configure(new PubsubSettings
             {
                 DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
                 GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data.Span)),
@@ -176,9 +178,44 @@ public sealed class BeaconP2P : IAsyncDisposable
                 mcache_len = 6,
                 mcache_gossip = 3,
                 MessageCacheTtl = checked((int)(spec.SecondsPerSlot * 1000 * spec.SlotsPerEpoch * 2)), // seen_ttl: two epochs, in ms
-            })
+                MaxSeenMessageIds = MaxSeenMessageIds(spec),
+                // phase0 p2p "Gossipsub size limits": an encoded RPC, an IWANT answer included, may reach max_message_size().
+                MaxRpcBytes = Eth2MessageId.MaxMessageSize,
+                MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
+                // The router redials every closed gossip peer each period, past PeerManager's bans, band and backoff; PeerManager owns redials.
+                ReconnectionPeriod = System.Threading.Timeout.Infinite,
+            }, ScheduledTopics(spec)))
             .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
+    }
+
+    /// <summary>The seen and limbo cache capacity, sized for the honest traffic of the subscribed topics over the two-epoch seen_ttl.</summary>
+    /// <remarks>Per slot: the target aggregators of every committee, one vote per PTC member, one column per subnet and one block, envelope and slashing.
+    /// Aggregator selection is probabilistic and invalid traffic is unbounded, so this is an estimate: past it the library evicts the oldest id early
+    /// and a late duplicate is validated again (phase0 p2p-interface.md: clients SHOULD bound their queues).</remarks>
+    internal static int MaxSeenMessageIds(BeaconChainSpec spec) =>
+        checked((int)((Presets.MaxCommitteesPerSlot * Presets.TargetAggregatorsPerCommittee + Presets.PtcSize + Eip7594DasConstants.DataColumnSidecarSubnetCount
+            + (ulong)(GossipTopics.SubscribedTopicNames.Length + GossipTopics.GloasTopicNames.Length)) * spec.SlotsPerEpoch * 2));
+
+    /// <summary>Every topic this node can subscribe, of every scheduled fork digest.</summary>
+    /// <remarks>This node returns <see cref="MessageValidity.Ignored"/> for gossip it consumes, so a delivery score would count each honest mesh peer
+    /// as under-delivering; <see cref="UnscoredGossip"/> gives these topics zero weight before the router starts.</remarks>
+    internal static IEnumerable<string> ScheduledTopics(BeaconChainSpec spec)
+    {
+        string[] names =
+        [
+            .. GossipTopics.SubscribedTopicNames,
+            .. GossipTopics.GloasTopicNames,
+            .. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static subnet => GossipTopics.DataColumnSidecarTopicName((ulong)subnet)),
+        ];
+        foreach (ulong epoch in GossipTopics.DigestRotationEpochs(spec, 0).Prepend(0UL))
+        {
+            byte[] digest = ForkDigest.Compute(spec, epoch);
+            foreach (string name in names)
+            {
+                yield return GossipTopics.Topic(digest, name);
+            }
+        }
     }
 
     /// <summary>The logger factory for libp2p's own categories: nothing it logs reaches our log above Trace.</summary>
@@ -338,17 +375,18 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>Internal so a test can tell a session closed for an unanswered identify from a failure of the code under test.</summary>
     internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
 
+    /// <summary>Internal so a test can see which peers the started router holds a gossip connection to.</summary>
+    internal IRoutingStateContainer? RoutingStateForTest => _router;
+
     /// <summary>Internal so a test can see the validator installed on the started router; without it the node forwards every message unchecked.</summary>
-    internal Func<Libp2p.Protocols.Pubsub.Dto.Message, MessageValidity>? VerifyMessageForTest => _router?.VerifyMessage;
+    internal Func<PeerId, Libp2p.Protocols.Pubsub.Dto.Message, MessageValidity>? VerifyMessageForTest => _router?.VerifyMessage;
 
     /// <summary>Dials the peer, or returns the existing session when one is already established (for example inbound).</summary>
     /// <remarks>
-    /// The existing-session check mirrors newer dotnet-libp2p behavior; in the pinned preview a
-    /// second dial to an already-connected peer fails the upgrade with a session-exists error
-    /// instead of reusing the connection. The same check runs again after a failed dial: when both
-    /// sides dial at once ours loses the upgrade to the session the remote opened, and that session
-    /// is the connection to hand back, not a failure. The caller's own cancellation is neither: it
-    /// propagates even when such a session exists.
+    /// The existing-session check prefers a session whose handshake completed; the library's own check also hands back one
+    /// still upgrading. The same check runs again after a failed dial: when both sides dial at once ours loses the upgrade to
+    /// the session the remote opened, and that session is the connection to hand back, not a failure. The caller's own
+    /// cancellation is neither: it propagates even when such a session exists.
     /// </remarks>
     public async Task<ISession> DialPeerAsync(Multiaddress address, CancellationToken token)
     {
@@ -361,14 +399,29 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         try
         {
-            return await localPeer.DialAsync(address, token);
+            // Nethermind.Libp2p 1.0.0 keeps a dial cancelled before its first await as the peer id's pending dial for good, so the token
+            // stops only this wait; the dial itself ends within the library's connection timeout.
+            Task<ISession> dial = localPeer.DialAsync(address, CancellationToken.None);
+            _ = dial.ContinueWith(static (completed, state) =>
+            {
+                // Disposal closes only the sessions it sees, so one a dial makes afterwards is closed here.
+                if (completed.IsCompletedSuccessfully)
+                {
+                    if (Volatile.Read(ref ((BeaconP2P)state!)._disposed) == 1)
+                    {
+                        _ = completed.Result.DisconnectAsync();
+                    }
+                }
+                // A caller that stopped waiting leaves the failure unobserved; observing it keeps it out of UnobservedTaskException.
+                else _ = completed.Exception;
+            }, this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return await dial.WaitAsync(token);
         }
         catch (Exception e) when (e is not OperationCanceledException && token.IsCancellationRequested)
         {
-            // The pinned library can end a dial the caller cancelled with its own exception rather than a cancellation.
             throw new OperationCanceledException("The dial was cancelled by the caller", e, token);
         }
-        catch (Exception) when (remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced)
+        catch (Exception) when (!token.IsCancellationRequested && remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced)
                                 && IsNotDropped(_sessionInfo, raced))
         {
             return raced;
@@ -383,6 +436,28 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// </remarks>
     internal static bool IsNotDropped(ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> sessionInfo, ISession session) =>
         sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot) && !slot.Task.IsCanceled;
+
+    /// <summary>Counts the sessions with <paramref name="peerId"/> the libp2p layer opens in either direction until the watch is disposed.</summary>
+    internal SessionWatch WatchSessions(PeerId peerId)
+    {
+        SessionWatch watch = new(this, peerId);
+        _sessionWatches.TryAdd(watch, 0);
+        return watch;
+    }
+
+    /// <summary>Sessions opened with one peer since <see cref="WatchSessions"/>, including ones closed again.</summary>
+    internal sealed class SessionWatch(BeaconP2P owner, PeerId peerId) : IDisposable
+    {
+        private int _opened;
+
+        public PeerId PeerId => peerId;
+
+        public int Opened => Volatile.Read(ref _opened);
+
+        internal void Count() => Interlocked.Increment(ref _opened);
+
+        public void Dispose() => owner._sessionWatches.TryRemove(this, out _);
+    }
 
     /// <summary>Exchanges <c>status</c> with the peer, preferring v2 and falling back to v1 (with <c>earliest_available_slot</c> of 0).</summary>
     /// <remarks>Falls back only when v2 failed as an exchange (<see cref="Eth2ReqRespException"/>) or went unanswered
@@ -612,9 +687,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     };
 
     /// <summary>Loads a stored secp256k1 private key as the libp2p identity whose public key discovery derives from the same bytes.</summary>
-    /// <remarks>The pinned libp2p reads the key as a signed big-endian integer, so a key with the top bit set would load as a different key and change the peer id away from the ENR's.</remarks>
-    internal static Identity IdentityFromStoredKey(byte[] privateKey) =>
-        new(privateKey.Length > 0 && privateKey[0] >= 0x80 ? [0, .. privateKey] : privateKey, KeyType.Secp256K1);
+    internal static Identity IdentityFromStoredKey(byte[] privateKey) => new(privateKey, KeyType.Secp256K1);
 
     private Identity LoadOrCreateIdentity()
     {
@@ -632,7 +705,7 @@ public sealed class BeaconP2P : IAsyncDisposable
         return identity;
     }
 
-    private Task OnSessionConnected(ISession session)
+    private void OnSessionConnected(ISession session)
     {
         // Runs on the library's continuation after ConnectedTo completed, so the slot is filled by now;
         // a throwing subscriber must not cost the session.
@@ -647,8 +720,6 @@ public sealed class BeaconP2P : IAsyncDisposable
         {
             if (_logger.IsError) _logger.Error($"Session-established handler failed for {session.RemoteAddress}", e);
         }
-
-        return Task.CompletedTask;
     }
 
     private void OnSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -664,6 +735,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                     {
                         _sessionInfo.TryAdd(session, new TaskCompletionSource<SessionInfo>(TaskCreationOptions.RunContinuationsAsynchronously));
                         _sessionClosed.GetOrAdd(session, static _ => new SessionLifetime());
+                        CountSession(RemotePeerIdOf(session));
                     }
                 }
 
@@ -701,6 +773,17 @@ public sealed class BeaconP2P : IAsyncDisposable
         }
     }
 
+    private void CountSession(PeerId? remotePeerId)
+    {
+        foreach (KeyValuePair<SessionWatch, byte> watch in _sessionWatches)
+        {
+            if (watch.Key.PeerId.Equals(remotePeerId))
+            {
+                watch.Key.Count();
+            }
+        }
+    }
+
     private sealed class SessionLifetime
     {
         private readonly CancellationTokenSource _closed = new();
@@ -724,6 +807,7 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Volatile.Write(ref _disposed, 1);
         if (_startCts is not null)
         {
             await _startCts.CancelAsync();
@@ -822,7 +906,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>Only the creation delegate is captured: the stack settings and peer store go to the base
     /// class alone, which is what lets this stay a primary constructor without double-capturing them.</summary>
     private sealed class BeaconPeerFactory(IProtocolStackSettings settings, PeerStore peerStore, IdentifyNotifier notifier, ILoggerFactory? loggerFactory, Func<Identity, ILocalPeer> create)
-        : Libp2pPeerFactory(settings, peerStore, notifier, loggerFactory: loggerFactory)
+        : Libp2pStackPeerFactory(settings, peerStore, notifier, loggerFactory)
     {
         public override ILocalPeer Create(Identity? identity = null) => create(identity ?? new Identity(privateKey: null, KeyType.Secp256K1));
     }

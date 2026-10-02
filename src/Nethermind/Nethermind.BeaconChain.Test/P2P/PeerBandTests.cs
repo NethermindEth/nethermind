@@ -16,9 +16,9 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
-using Nethermind.Libp2p.Protocols;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -34,10 +34,51 @@ public class PeerBandTests
     private const ulong AnchorSlot = 13_410_304;
 
     [TestCase("/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAm", ExpectedResult = "16Uiu2HAm")]
-    [TestCase("/ip4/1.2.3.4/tcp/9000", ExpectedResult = "/ip4/1.2.3.4/tcp/9000")] // no /p2p/: the whole address is the identity
-    [TestCase("", ExpectedResult = "")]
     public string Peer_id_is_extracted_from_the_p2p_multiaddr_component(string address) =>
         PeerManager.ExtractPeerIdForTest(address);
+
+    /// <summary>The libp2p layer dials only an address that names its peer id, so no other address is ever keyed.</summary>
+    [TestCase("/ip4/1.2.3.4/tcp/9000")]
+    [TestCase("")]
+    public void An_address_without_a_peer_id_has_no_key(string address) =>
+        Assert.That(() => PeerManager.ExtractPeerIdForTest(address), Throws.ArgumentException);
+
+    /// <summary>A static peer the maintenance round could never dial stops the node at startup instead of failing every round.</summary>
+    /// <remarks>The libp2p dial keeps a failed name resolution as the answer for that peer id, so a DNS name is refused too.</remarks>
+    [TestCase("not a multiaddr")]
+    [TestCase("/ip4/1.2.3.4/tcp/9000")]
+    [TestCase("/dns4/example.org/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
+    public void A_static_peer_that_cannot_be_dialed_is_a_configuration_error(string address)
+    {
+        Node node = CreateNode();
+        node.Config.StaticPeers = address;
+
+        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance), Throws.TypeOf<InvalidConfigurationException>());
+    }
+
+    [Test]
+    public void A_static_peer_with_an_ip_address_and_peer_id_is_accepted()
+    {
+        Node node = CreateNode();
+        node.Config.StaticPeers = "/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e, /ip6/::1/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e";
+
+        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance), Throws.Nothing);
+    }
+
+    /// <summary>An address whose peer id does not decode fails its own dial, not the maintenance round or caller around it.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_dial_address_that_does_not_decode_is_refused_without_throwing(CancellationToken token)
+    {
+        Node node = CreateNode();
+        await using (node.P2P)
+        {
+            await node.P2P.StartAsync(token);
+            PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+
+            Assert.That(await peerManager.TryAddPeerAsync("/ip4/127.0.0.1/tcp/1/p2p/not-a-peer-id", token), Is.False);
+        }
+    }
 
     /// <summary>
     /// A peer dropped for timing out is routine, and log watchers treat an exception type name in an Info line as a
@@ -453,7 +494,8 @@ public class PeerBandTests
             PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
 
-            await knocking.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            using BeaconP2P.SessionWatch knockingSessions = local.P2P.WatchSessions(knocking.P2P.LocalPeerId!);
+            await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
 
             string knockingId = knocking.P2P.LocalPeerId!.ToString();
             // The knocking side losing its session proves the refusal ran to its disconnect, so the
@@ -462,6 +504,7 @@ public class PeerBandTests
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 1, token, "the refused session was not torn down");
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(knockingSessions.Opened, Is.EqualTo(1), "the knocking session reached this node, so the refusal path ran");
                 Assert.That(peerManager.PeerCount, Is.EqualTo(1), "an inbound session must not take the pool past MaxPeerCount");
                 Assert.That(peerManager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), Is.False,
                     "a never-admitted id must not get a record: distinct knockers at the ceiling would otherwise evict real peers' history");
@@ -492,7 +535,7 @@ public class PeerBandTests
             peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
 
-            await knocking.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
             await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId).LastDisconnectReason == "TooManyPeers", token, "the refusal was never recorded");
 
             // Being turned away while we are full says nothing about the peer's behaviour: the fault
@@ -523,7 +566,7 @@ public class PeerBandTests
             peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
             Assert.That(peerManager.IsBannedForTest(bannedId), Is.True, "test setup: three faults must have banned it already");
 
-            await banned.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await PeerSessionNodes.DialToBeRefusedAsync(banned.P2P, local.P2P, token);
 
             await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == bannedId).LastDisconnectReason == "Banned", token, "the refusal was never recorded");
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
@@ -534,7 +577,7 @@ public class PeerBandTests
     [Test]
     [CancelAfter(60_000)]
     public Task A_session_the_remote_opened_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token) =>
-        PeerSessionNodes.RetryStalledAsync(StatusExchangeFailsAsync, token, TimeSpan.FromSeconds(25));
+        StatusExchangeFailsAsync(token);
 
     private static async Task<bool> StatusExchangeFailsAsync(CancellationToken token)
     {
@@ -550,12 +593,11 @@ public class PeerBandTests
             await local.P2P.StartAsync(token);
             PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
 
-            await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await PeerSessionNodes.DialToBeRefusedAsync(remote.P2P, local.P2P, token);
 
             // Both status versions were refused over the open session, so the admission provably threw
             // after the session existed: a count of zero below cannot be the pre-connect zero.
-            await PeerSessionNodes.WaitUntilAsync(() => refusing.Requests >= 2, "the status exchange never reached the remote", token,
-                stallCheck: [local.P2P, remote.P2P]);
+            await PeerSessionNodes.WaitUntilAsync(() => refusing.Requests >= 2, "the status exchange never reached the remote", token);
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
             Assert.That(peerManager.PeerCount, Is.EqualTo(0));
         }
@@ -752,12 +794,11 @@ public class PeerBandTests
     [Test]
     public void TryGetPeer_refuses_an_empty_id_even_when_an_unresolved_dialing_address_would_otherwise_match_it()
     {
-        // An address with no /p2p/ component extracts to itself, not "" - the only way a tracked
-        // entry's derived peer id is ever "" is a raw "" address, reached here directly since a real
-        // dial to "" fails and clears its reservation before a test could observe it.
+        // An address ending in /p2p/ is the only way a tracked entry's derived peer id is "", reached here directly
+        // since a real dial to it fails and clears its reservation before a test could observe it.
         Node node = CreateNode();
         PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
-        peerManager.ReserveDialingForTest("");
+        peerManager.ReserveDialingForTest("/ip4/1.2.3.4/tcp/9000/p2p/");
         IPeerDirectory directory = peerManager;
 
         Assert.That(directory.TryGetPeer("", out _), Is.False, "an empty id must never be treated as a wildcard, even when a raw '' address is technically tracked");
@@ -1028,23 +1069,11 @@ public class PeerBandTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
-        BeaconP2P p2p = PeerSessionNodes.Watched(logs =>
-        {
-            ILogManager hostLogs = logManager is null ? logs : new HostLogs(logs, logManager);
-            return requestTimeout is { } timeout
-                ? new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs) { RequestTimeout = timeout }
-                : new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs);
-        });
+        ILogManager hostLogs = logManager ?? LimboLogs.Instance;
+        BeaconP2P p2p = requestTimeout is { } timeout
+            ? new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs) { RequestTimeout = timeout }
+            : new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs);
         return new Node(p2p, statusHolder, config, store, metadataSource);
-    }
-
-    private sealed class HostLogs(ILogManager transport, ILogManager admission) : ILogManager
-    {
-        public ILogger GetClassLogger<T>() => GetLogger(ILogManager.GetLoggerName(typeof(T)));
-
-        public ILogger GetLogger(string loggerName) => loggerName.EndsWith(nameof(YamuxProtocol), StringComparison.Ordinal)
-            ? transport.GetLogger(loggerName)
-            : admission.GetLogger(loggerName);
     }
 
     /// <summary>

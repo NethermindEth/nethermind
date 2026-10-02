@@ -1,0 +1,91 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers;
+using System.Threading.Tasks;
+using Nethermind.Libp2p.Core;
+
+namespace Nethermind.Network.Libp2p;
+
+/// <summary>Sits between yamux and multistream on every yamux channel and hands each received segment upward as a chunk of its own.</summary>
+/// <remarks>Nethermind.Libp2p 1.0.0 <c>Channel.ReadAsync</c> keeps only the first segment of each later chunk when it gathers an exact length,
+/// which truncated gossip RPCs spanning yamux frames; single-segment chunks avoid that without copying megabyte frames.</remarks>
+public sealed class ContiguousChunkProtocol : IConnectionProtocol
+{
+    /// <summary>Never negotiated: the stack connects it directly after yamux.</summary>
+    public string Id => "/nethermind/contiguous-chunks";
+
+    public Task ListenAsync(IChannel downChannel, IConnectionContext context) => RelayAsync(downChannel, context.Upgrade());
+
+    public Task DialAsync(IChannel downChannel, IConnectionContext context) => RelayAsync(downChannel, context.Upgrade());
+
+    /// <summary>Relays both directions between <paramref name="lower"/> (yamux) and <paramref name="upper"/> (multistream) until both have ended.</summary>
+    /// <remarks>Each direction forwards its end of data on its own, so a half-closed request keeps receiving its response. A full close of
+    /// either side closes the other, so a channel the protocol above abandons does not stay open below while the peer keeps it open. The data the
+    /// closed side wrote before its close is passed on first.</remarks>
+    internal static async Task RelayAsync(IChannel lower, IChannel upper)
+    {
+        Task upward = PumpAsync(lower, upper, bySegment: true);
+        Task downward = PumpAsync(upper, lower, bySegment: false);
+        Task pumps = Task.WhenAll(upward, downward);
+        Task lowerClosed = ClosedAsync(lower);
+        Task upperClosed = ClosedAsync(upper);
+        Task first = await Task.WhenAny(pumps, lowerClosed, upperClosed);
+        if (first != pumps)
+        {
+            await (first == upperClosed ? downward : upward);
+            await lower.CloseAsync();
+            await upper.CloseAsync();
+        }
+
+        await pumps;
+    }
+
+    private static async Task ClosedAsync(IChannel channel) => await channel;
+
+    private static async Task PumpAsync(IChannel from, IChannel to, bool bySegment)
+    {
+        while (true)
+        {
+            ReadResult read = await from.ReadAsync(0, ReadBlockingMode.WaitAny);
+            if (read.Result != IOResult.Ok)
+            {
+                if (read.Result == IOResult.Ended)
+                {
+                    await to.WriteEofAsync();
+                }
+                else
+                {
+                    await to.CloseAsync();
+                }
+
+                return;
+            }
+
+            if (!await WriteAsync(to, read.Data, bySegment))
+            {
+                await from.CloseAsync();
+                return;
+            }
+        }
+    }
+
+    private static async ValueTask<bool> WriteAsync(IChannel to, ReadOnlySequence<byte> data, bool bySegment)
+    {
+        if (!bySegment || data.IsSingleSegment)
+        {
+            return await to.WriteAsync(data) == IOResult.Ok;
+        }
+
+        foreach (ReadOnlyMemory<byte> segment in data)
+        {
+            if (await to.WriteAsync(new ReadOnlySequence<byte>(segment)) != IOResult.Ok)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}

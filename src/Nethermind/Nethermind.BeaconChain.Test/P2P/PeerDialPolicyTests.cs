@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -50,28 +51,20 @@ public class PeerDialPolicyTests
                 throw new InvalidOperationException("caller cancelled during admission");
             };
             string address = LoopbackAddress(remote.P2P);
-            for (int attempt = 0; attempt < 3 && !caller.IsCancellationRequested; attempt++)
+            int quality = discovery.DialHistory.Quality(address);
+            try
             {
-                int quality = discovery.DialHistory.Quality(address);
-                try
-                {
-                    await manager.TryAddPeerAsync(address, caller.Token);
-                }
-                catch (OperationCanceledException) when (caller.IsCancellationRequested)
-                {
-                }
-
-                if (caller.IsCancellationRequested)
-                {
-                    Assert.That(discovery.DialHistory.Quality(address), Is.EqualTo(quality), "caller cancellation was recorded as an endpoint failure");
-                }
-                else
-                {
-                    clock.Add(PeerDialHistory.MaximumBackoff);
-                }
+                await manager.TryAddPeerAsync(address, caller.Token);
+            }
+            catch (OperationCanceledException) when (caller.IsCancellationRequested)
+            {
             }
 
-            Assert.That(caller.IsCancellationRequested, Is.True, "the admission callback never ran");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(caller.IsCancellationRequested, Is.True, "the admission callback never ran");
+                Assert.That(discovery.DialHistory.Quality(address), Is.EqualTo(quality), "caller cancellation was recorded as an endpoint failure");
+            }
         }
         finally
         {
@@ -138,10 +131,10 @@ public class PeerDialPolicyTests
             ManualTimestamper clock = new();
             PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: clock);
 
-            Assert.That(await AdmitWithRetriesAsync(manager, remote, clock, token, attempts: 3), Is.EqualTo(!conflicting));
+            Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.EqualTo(!conflicting));
             if (conflicting)
             {
-                // A lost dial looks the same from outside, so the recorded disconnect proves the refusal was for the checkpoint.
+                // The recorded disconnect proves the refusal was for the checkpoint, not a failed dial.
                 PeerManager.PeerDiagnostics diagnostics = manager.GetPeerDiagnostics().Single(d => d.PeerId == remote.P2P.LocalPeerId!.ToString());
                 using (Assert.EnterMultipleScope())
                 {
@@ -197,19 +190,8 @@ public class PeerDialPolicyTests
 
             async Task<bool> OfferUntilConnectedAsync()
             {
-                // The pinned libp2p can lose a fresh session, so a failed attempt waits out its backoff and is offered again.
-                for (int attempt = 0; attempt < 3; attempt++)
-                {
-                    await offered.Writer.WriteAsync(candidate, token);
-                    if (await EventuallyAsync(() => manager.PeerCount == 1, TimeSpan.FromSeconds(10), token))
-                    {
-                        return true;
-                    }
-
-                    clock.Add(PeerDialHistory.MaximumBackoff);
-                }
-
-                return false;
+                await offered.Writer.WriteAsync(candidate, token);
+                return await EventuallyAsync(() => manager.PeerCount == 1, TimeSpan.FromSeconds(10), token);
             }
         }
         finally
@@ -225,6 +207,64 @@ public class PeerDialPolicyTests
 
             await local.P2P.DisposeAsync();
             await remote.P2P.DisposeAsync();
+        }
+    }
+
+    /// <summary>A connection that closes before any session forms is no sign of a crossing dial, so it is made once and the address backs off.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_dial_to_an_address_that_drops_every_connection_is_made_once_then_backs_off(CancellationToken token)
+    {
+        Node local = CreateNode();
+        using TcpListener dead = new(IPAddress.Loopback, 0);
+        dead.Start();
+        int connections = 0;
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task accepting = Task.Run(async () =>
+        {
+            while (true)
+            {
+                using Socket socket = await dead.AcceptSocketAsync(stop.Token);
+                Interlocked.Increment(ref connections);
+            }
+        }, stop.Token);
+        try
+        {
+            await local.P2P.StartAsync(token);
+            PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: new ManualTimestamper());
+            // Only the side with the lower peer id redials after a crossing dial, so this node would redial this peer.
+            Nethermind.Libp2p.Core.PeerId remote;
+            do
+            {
+                remote = new Nethermind.Libp2p.Core.Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+            }
+            while (string.CompareOrdinal(local.P2P.LocalPeerId!.ToString(), remote.ToString()) >= 0);
+
+            string address = $"/ip4/127.0.0.1/tcp/{((IPEndPoint)dead.LocalEndpoint).Port}/p2p/{remote}";
+            bool first = await manager.TryAddPeerAsync(address, token);
+            bool second = await manager.TryAddPeerAsync(address, token);
+            // A redial would have connected within its backoff of at most a few hundred milliseconds.
+            await Task.Delay(TimeSpan.FromSeconds(1), token);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first, Is.False);
+                Assert.That(second, Is.False, "the failed address is dialed again before its backoff ends");
+                Assert.That(Volatile.Read(ref connections), Is.EqualTo(1), "the failed dial was repeated");
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            try
+            {
+                await accepting;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            await local.P2P.DisposeAsync();
         }
     }
 
@@ -306,21 +346,6 @@ public class PeerDialPolicyTests
     }
 
     private static Hash256 Root(int fill) => fill == 0 ? Hash256.Zero : new Hash256(Enumerable.Repeat((byte)fill, Hash256.Size).ToArray());
-
-    private static async Task<bool> AdmitWithRetriesAsync(PeerManager manager, Node remote, ManualTimestamper clock, CancellationToken token, int attempts)
-    {
-        for (int attempt = 0; attempt < attempts; attempt++)
-        {
-            if (await manager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token))
-            {
-                return true;
-            }
-
-            clock.Add(PeerDialHistory.MaximumBackoff);
-        }
-
-        return false;
-    }
 
     private static async Task<bool> EventuallyAsync(Func<bool> condition, TimeSpan bound, CancellationToken token)
     {
