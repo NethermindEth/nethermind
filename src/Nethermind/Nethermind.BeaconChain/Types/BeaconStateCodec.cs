@@ -70,12 +70,14 @@ public static class BeaconStateCodec
 
     private static BeaconFork ForkOf(ReadOnlySpan<byte> ssz, BeaconChainSpec spec, out ulong slot)
     {
-        if (ssz.Length < SlotOffset + sizeof(ulong))
-        {
-            throw new BeaconStateException($"Beacon state SSZ is {ssz.Length} bytes, too short to contain a slot");
-        }
-
-        slot = BinaryPrimitives.ReadUInt64LittleEndian(ssz[SlotOffset..]);
+        slot = ReadSlot(ssz);
         return spec.ForkAtEpoch(spec.GetEpoch(slot));
     }
+
+    /// <summary>Reads <c>slot</c> without decoding the rest of the state.</summary>
+    /// <exception cref="BeaconStateException">The state is too short to carry a slot.</exception>
+    internal static ulong ReadSlot(ReadOnlySpan<byte> ssz) =>
+        ssz.Length < SlotOffset + sizeof(ulong)
+            ? throw new BeaconStateException($"Beacon state SSZ is {ssz.Length} bytes, too short to contain a slot")
+            : BinaryPrimitives.ReadUInt64LittleEndian(ssz[SlotOffset..]);
 }

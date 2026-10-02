@@ -609,35 +609,46 @@ internal static class BeaconJsonWriter
         WriteUInt(w, "consolidation_balance_to_consume", state.ConsolidationBalanceToConsume);
         WriteUInt(w, "earliest_consolidation_epoch", state.EarliestConsolidationEpoch);
 
-        await WriteArrayAsync(s, "pending_deposits", state.PendingDeposits!, static (w, deposit) =>
-        {
-            w.WriteStartObject();
-            WriteHex(w, "pubkey", deposit.Pubkey.Bytes);
-            WriteHex(w, "withdrawal_credentials", deposit.WithdrawalCredentials!.Bytes);
-            WriteUInt(w, "amount", deposit.Amount);
-            WriteHex(w, "signature", deposit.Signature.Bytes);
-            WriteUInt(w, "slot", deposit.Slot);
-            w.WriteEndObject();
-        });
-
-        await WriteArrayAsync(s, "pending_partial_withdrawals", state.PendingPartialWithdrawals!, static (w, withdrawal) =>
-        {
-            w.WriteStartObject();
-            WriteUInt(w, "validator_index", withdrawal.ValidatorIndex);
-            WriteUInt(w, "amount", withdrawal.Amount);
-            WriteUInt(w, "withdrawable_epoch", withdrawal.WithdrawableEpoch);
-            w.WriteEndObject();
-        });
-
-        await WriteArrayAsync(s, "pending_consolidations", state.PendingConsolidations!, static (w, consolidation) =>
-        {
-            w.WriteStartObject();
-            WriteUInt(w, "source_index", consolidation.SourceIndex);
-            WriteUInt(w, "target_index", consolidation.TargetIndex);
-            w.WriteEndObject();
-        });
-
+        await WriteArrayAsync(s, "pending_deposits", state.PendingDeposits!, WritePendingDeposit);
+        await WriteArrayAsync(s, "pending_partial_withdrawals", state.PendingPartialWithdrawals!, WritePendingPartialWithdrawal);
+        await WriteArrayAsync(s, "pending_consolidations", state.PendingConsolidations!, WritePendingConsolidation);
         await WriteUIntArrayAsync(s, "proposer_lookahead", state.ProposerLookahead!);
+        w.WriteEndObject();
+    }
+
+    public static Task WritePendingDepositsAsync(BeaconJsonStream s, PendingDeposit[] deposits) => WriteArrayValueAsync(s, deposits, WritePendingDeposit);
+
+    public static Task WritePendingPartialWithdrawalsAsync(BeaconJsonStream s, PendingPartialWithdrawal[] withdrawals) => WriteArrayValueAsync(s, withdrawals, WritePendingPartialWithdrawal);
+
+    public static Task WritePendingConsolidationsAsync(BeaconJsonStream s, PendingConsolidation[] consolidations) => WriteArrayValueAsync(s, consolidations, WritePendingConsolidation);
+
+    public static Task WriteUIntArrayValueAsync(BeaconJsonStream s, ulong[] items) => WriteArrayValueAsync(s, items, WriteUIntValue);
+
+    private static void WritePendingDeposit(Utf8JsonWriter w, PendingDeposit deposit)
+    {
+        w.WriteStartObject();
+        WriteHex(w, "pubkey", deposit.Pubkey.Bytes);
+        WriteHex(w, "withdrawal_credentials", deposit.WithdrawalCredentials!.Bytes);
+        WriteUInt(w, "amount", deposit.Amount);
+        WriteHex(w, "signature", deposit.Signature.Bytes);
+        WriteUInt(w, "slot", deposit.Slot);
+        w.WriteEndObject();
+    }
+
+    private static void WritePendingPartialWithdrawal(Utf8JsonWriter w, PendingPartialWithdrawal withdrawal)
+    {
+        w.WriteStartObject();
+        WriteUInt(w, "validator_index", withdrawal.ValidatorIndex);
+        WriteUInt(w, "amount", withdrawal.Amount);
+        WriteUInt(w, "withdrawable_epoch", withdrawal.WithdrawableEpoch);
+        w.WriteEndObject();
+    }
+
+    private static void WritePendingConsolidation(Utf8JsonWriter w, PendingConsolidation consolidation)
+    {
+        w.WriteStartObject();
+        WriteUInt(w, "source_index", consolidation.SourceIndex);
+        WriteUInt(w, "target_index", consolidation.TargetIndex);
         w.WriteEndObject();
     }
 
@@ -657,9 +668,15 @@ internal static class BeaconJsonWriter
         w.WriteEndObject();
     }
 
-    private static async Task WriteArrayAsync<T>(BeaconJsonStream s, string name, T[] items, Action<Utf8JsonWriter, T> writeItem)
+    private static Task WriteArrayAsync<T>(BeaconJsonStream s, string name, T[] items, Action<Utf8JsonWriter, T> writeItem)
     {
-        s.Writer.WriteStartArray(name);
+        s.Writer.WritePropertyName(name);
+        return WriteArrayValueAsync(s, items, writeItem);
+    }
+
+    private static async Task WriteArrayValueAsync<T>(BeaconJsonStream s, T[] items, Action<Utf8JsonWriter, T> writeItem)
+    {
+        s.Writer.WriteStartArray();
         foreach (T item in items)
         {
             writeItem(s.Writer, item);
