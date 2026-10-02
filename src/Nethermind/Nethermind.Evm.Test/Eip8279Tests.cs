@@ -122,6 +122,62 @@ public class Eip8279Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Call_meters_the_cold_delegation_target([Values] bool warmTarget)
+    {
+        Address authority = new("0x0000000000000000000000000000000000000042");
+        TestState.CreateAccount(authority, 0);
+        CodeInfoRepository.SetDelegation(ColdAccount, authority, Spec8279);
+        Prepare code = Prepare.EvmCode;
+        if (warmTarget) code.PushData(ColdAccount).Op(Instruction.BALANCE).Op(Instruction.POP);
+        code.Call(authority, 50_000).STOP();
+
+        (ulong gasSpent, ulong staticFloor, _, _) = Run(code.Done, GasLimit);
+
+        Assert.That(gasSpent, Is.EqualTo(staticFloor + 40 * Eip8131Constants.FloorGasPerByte));
+    }
+
+    [Test]
+    public void Create_collision_meters_no_nonce_bytes()
+    {
+        Address created = ContractAddress.From(Executing, UInt256.Zero);
+        TestState.CreateAccount(created, 0, nonce: 1);
+        byte[] code = Prepare.EvmCode.Create([], 0).STOP().Done;
+
+        (Block block, Transaction tx) = PrepareFloorBindingTx(code, GasLimit);
+        (EthereumVirtualMachine vm, TransactionProcessor<EthereumGasPolicy> processor, _) = CreateProcessor();
+        CallOutputTracer tracer = new();
+
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, Spec8279), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ToString());
+            Assert.That(vm.TxExecutionContext.BalDataMeter!.BalDataBytes, Is.EqualTo(Eip8279Constants.AddressBytes));
+            Assert.That(TestState.GetNonce(created), Is.EqualTo(UInt256.One));
+        }
+    }
+
+    [Test]
+    public void Code_deposit_meter_out_of_gas_fails_opcode_creation()
+    {
+        byte[] deployed = [1, 2, 3, 4, 5];
+        byte[] code = Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(deployed).Done, 0)
+            .PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done;
+        (Block block, Transaction tx) = PrepareFloorBindingTx(code, GasLimit);
+        ulong staticFloor = IntrinsicGasCalculator.Calculate(tx, Spec8279).FloorGas;
+        tx.GasLimit = staticFloor + (Eip8279Constants.AddressBytes + Eip8279Constants.NonceBytes) * Eip8131Constants.FloorGasPerByte;
+
+        (_, CallOutputTracer tracer, _) = Execute(block, tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.ReturnValue, Is.EqualTo(new byte[32]));
+            Assert.That(TestState.GetCodeSpan(ContractAddress.From(Executing, UInt256.Zero)).IsEmpty, Is.True);
+        }
+    }
+
+    [Test]
     public void Contract_creation_transaction_meters_deployed_code()
     {
         byte[] deployed = [1, 2, 3, 4, 5, 6, 7];
