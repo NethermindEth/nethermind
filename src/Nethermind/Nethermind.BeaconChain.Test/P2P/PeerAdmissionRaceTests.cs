@@ -40,11 +40,8 @@ public class PeerAdmissionRaceTests
     /// <summary>A dial that fails after the peer's own session appeared returns that session, unless the caller cancelled.</summary>
     [Test]
     [CancelAfter(120_000)]
-    public Task A_dial_that_fails_hands_back_the_session_the_peer_opened_meanwhile_but_not_after_the_caller_cancels(
-        [Values(DialOutcome.DialFails, DialOutcome.CallerCancels)] DialOutcome outcome, CancellationToken token) =>
-        DialThatFailsAsync(outcome, token);
-
-    private static async Task<bool> DialThatFailsAsync(DialOutcome outcome, CancellationToken token)
+    public async Task A_dial_that_fails_hands_back_the_session_the_peer_opened_meanwhile_but_not_after_the_caller_cancels(
+        [Values(DialOutcome.DialFails, DialOutcome.CallerCancels)] DialOutcome outcome, CancellationToken token)
     {
         Node local = Create();
         Node remote = Create();
@@ -78,8 +75,6 @@ public class PeerAdmissionRaceTests
                 Assert.CatchAsync<OperationCanceledException>(() => dial.WaitAsync(Hold, token), "the caller's cancellation propagates even though a session exists");
             }
         }
-
-        return true;
     }
 
     /// <summary>
@@ -89,10 +84,7 @@ public class PeerAdmissionRaceTests
     /// </summary>
     [Test]
     [CancelAfter(120_000)]
-    public Task A_session_the_peer_opened_during_our_dial_to_it_is_admitted_unless_the_caller_cancelled([Values] DialOutcome outcome, CancellationToken token) =>
-        SessionOpenedDuringOurDialAsync(outcome, token);
-
-    private static async Task<bool> SessionOpenedDuringOurDialAsync(DialOutcome outcome, CancellationToken token)
+    public async Task A_session_the_peer_opened_during_our_dial_to_it_is_admitted_unless_the_caller_cancelled([Values] DialOutcome outcome, CancellationToken token)
     {
         ScriptedStatusSource served = new(static _ => Status);
         Node local = Create();
@@ -146,14 +138,12 @@ public class PeerAdmissionRaceTests
                     Assert.That(peerManager.PeerCount, Is.Zero, "no admission after the caller cancelled");
                 }
 
-                return true;
+                return;
             }
 
             await WaitUntilAsync(() => peerManager.PeerCount == 1, $"the peer's session was left unadmitted ({local.P2P.SessionCountForTest} open)", token, TimeSpan.FromSeconds(5));
             Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1));
         }
-
-        return true;
     }
 
     /// <summary>
@@ -163,10 +153,7 @@ public class PeerAdmissionRaceTests
     [Test]
     [Repeat(8)]
     [CancelAfter(120_000)]
-    public Task Peers_dialing_each_other_at_once_end_with_one_session_on_both_sides(CancellationToken token) =>
-        DialEachOtherAtOnceAsync(token);
-
-    private static async Task<bool> DialEachOtherAtOnceAsync(CancellationToken token)
+    public async Task Peers_dialing_each_other_at_once_end_with_one_session_on_both_sides(CancellationToken token)
     {
         Node first = Create();
         Node second = Create();
@@ -197,8 +184,6 @@ public class PeerAdmissionRaceTests
             await WaitUntilAsync(Settled, $"dials {dialed[0]}/{dialed[1]} left peers {firstManager.PeerCount}/{secondManager.PeerCount}, sessions {first.P2P.SessionCountForTest}/{second.P2P.SessionCountForTest}", token, TimeSpan.FromSeconds(3));
             Assert.That(dialed, Has.Some.True, "at least one dial admitted the peer");
         }
-
-        return true;
     }
 
     /// <summary>
@@ -207,10 +192,7 @@ public class PeerAdmissionRaceTests
     /// </summary>
     [Test]
     [CancelAfter(60_000)]
-    public Task A_redial_the_peer_refuses_while_it_still_holds_our_old_session_is_admitted_once_that_session_closes(CancellationToken token) =>
-        RedialRefusedWhileOldSessionLingersAsync(token);
-
-    private static async Task<bool> RedialRefusedWhileOldSessionLingersAsync(CancellationToken token)
+    public async Task A_redial_the_peer_refuses_while_it_still_holds_our_old_session_is_admitted_once_that_session_closes(CancellationToken token)
     {
         (byte[] lowerKey, byte[] higherKey) = OrderedKeys();
         PeerId lower = PeerIdOf(lowerKey);
@@ -257,8 +239,6 @@ public class PeerAdmissionRaceTests
                 }
             }
         }
-
-        return true;
     }
 
     /// <summary>A peer whose session closed is dialed again only by the peer manager, never by the gossipsub router.</summary>
@@ -410,10 +390,7 @@ public class PeerAdmissionRaceTests
     /// cannot stall the next dial behind <see cref="IBeaconChainConfig.MaxConcurrentOutboundDials"/>.</summary>
     [Test]
     [CancelAfter(120_000)]
-    public Task A_slow_teardown_of_a_failed_dial_does_not_hold_the_dial_slot(CancellationToken token) =>
-        SlowTeardownOfAFailedDialAsync(token);
-
-    private static async Task<bool> SlowTeardownOfAFailedDialAsync(CancellationToken token)
+    public async Task A_slow_teardown_of_a_failed_dial_does_not_hold_the_dial_slot(CancellationToken token)
     {
         using ManualResetEventSlim refuse = new();
         using ManualResetEventSlim teardownEntered = new();
@@ -460,7 +437,5 @@ public class PeerAdmissionRaceTests
 
             Assert.That(await failing, Is.False);
         }
-
-        return true;
     }
 }

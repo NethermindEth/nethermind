@@ -15,9 +15,9 @@ using IdentifyMessage = Nethermind.Libp2p.Protocols.Identify.Dto.Identify;
 namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>
-/// The session's one <c>/ipfs/id/1.0.0</c> dial: it checks the peer's identity and fills the peer store as the
-/// pinned libp2p identify dial does, and also returns <c>agentVersion</c>, the client string the Beacon API's
-/// <c>node/peers</c> surface reports, which the library's own dial reads and then discards.
+/// The session's one <c>/ipfs/id/1.0.0</c> dial: it checks the peer's identity and records the answer in the peer store,
+/// and also returns <c>agentVersion</c>, the client string the Beacon API's <c>node/peers</c> surface reports, which the
+/// library's own dial reads and then discards.
 /// </summary>
 /// <remarks>
 /// Shares the identify protocol id, so it must never answer an inbound identify request differently
@@ -58,9 +58,8 @@ public sealed class IdentifyAgentVersionProbe(IdentifyProtocol identify, Identif
     /// <summary>Verifies an identify answer against the session's authenticated remote key and records it in the peer store.</summary>
     /// <returns>The answer's <c>agentVersion</c>, or <c>null</c> when it carries none.</returns>
     /// <exception cref="PeerConnectionException">The answer names another key, or its signed peer record fails the configured policy.</exception>
-    /// <remarks>The checks and the peer-store rule are the pinned library identify dial's, except that the verified record
-    /// sequence number is stored rather than 0. An absent record reads as empty and fails verification, as it does there,
-    /// so only <see cref="PeerRecordsVerificationPolicy.RequireCorrect"/> refuses it.</remarks>
+    /// <remarks>The answer's protocols, record and sequence number are stored together, and only when none is stored yet or the stored one is lower.
+    /// An absent record reads as empty and fails verification, so only <see cref="PeerRecordsVerificationPolicy.RequireCorrect"/> refuses it.</remarks>
     internal static string? Apply(IdentifyMessage message, Libp2p.Core.State remote, IdentifyProtocolSettings settings, PeerStore peerStore)
     {
         PublicKey remoteKey = remote.RemotePublicKey ?? throw new PeerConnectionException("Identify before the remote key is authenticated");

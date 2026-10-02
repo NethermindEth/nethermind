@@ -56,12 +56,6 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
         }
         Metrics.BeaconChainGossipReceivedByTopic.Increment(columnLabel ?? new StringLabel(label));
 
-        // p2p-interface.md "Topics and messages": StrictNoSign requires all four optional fields to be absent.
-        if (message.HasFrom || message.HasSeqno || message.HasSignature || message.HasKey)
-        {
-            return Drop(label, GossipDropReason.SignedMessage, MessageValidity.Rejected);
-        }
-
         // phase0 p2p: MUST reject messages with an unknown topic.
         if (!parsed || !GossipTopics.IsEth2TopicName(name!))
         {

@@ -576,10 +576,7 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(60_000)]
-    public Task A_session_the_remote_opened_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token) =>
-        StatusExchangeFailsAsync(token);
-
-    private static async Task<bool> StatusExchangeFailsAsync(CancellationToken token)
+    public async Task A_session_the_remote_opened_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token)
     {
         RefusingStatusSource refusing = new();
         Node remote = CreateNode(refusing);
@@ -601,8 +598,6 @@ public class PeerBandTests
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
             Assert.That(peerManager.PeerCount, Is.EqualTo(0));
         }
-
-        return true;
     }
 
     [Test]

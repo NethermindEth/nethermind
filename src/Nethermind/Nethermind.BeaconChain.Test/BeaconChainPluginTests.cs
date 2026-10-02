@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
-using Google.Protobuf;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
@@ -57,12 +56,23 @@ public class BeaconChainPluginTests
 
         await p2p.StartAsync(token);
 
-        // Without the validator the library accepts and forwards every message, including a signed one StrictNoSign forbids.
-        Message signed = new() { Topic = "/eth2/00000000/beacon_block/ssz_snappy", Signature = ByteString.CopyFrom([1]) };
-        Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, signed), Is.EqualTo(MessageValidity.Rejected));
-        ITopic topic = p2p.GetTopic(signed.Topic);
+        // Without the validator the library accepts and forwards every message, including one on a topic that is not eth2's.
+        Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = "/eth2/beacon_block" }), Is.EqualTo(MessageValidity.Rejected));
+        const string blockTopic = "/eth2/00000000/beacon_block/ssz_snappy";
+        ITopic topic = p2p.GetTopic(blockTopic);
         topic.Unsubscribe();
-        Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = signed.Topic }), Is.EqualTo(MessageValidity.Throttled));
+        Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = blockTopic }), Is.EqualTo(MessageValidity.Throttled));
+    }
+
+    /// <summary>p2p-interface.md "Topics and messages": the router drops a message carrying from, seqno, signature or key before the validator runs.</summary>
+    /// <remarks>The validator does not check these fields itself, so the host must run the library's <c>StrictNoSign</c> policy.</remarks>
+    [Test]
+    public async Task Gossipsub_runs_the_StrictNoSign_policy()
+    {
+        using IContainer container = BeaconChainTestContainer.Builder().Build();
+        await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
+
+        Assert.That(p2p.PubsubSettingsForTest.DefaultSignaturePolicy, Is.EqualTo(PubsubSettings.SignaturePolicy.StrictNoSign));
     }
 
     /// <summary>p2p-interface.md gossipsub parameters: seen_ttl is SLOT_DURATION_MS * SLOTS_PER_EPOCH * 2 // 1000 seconds.</summary>

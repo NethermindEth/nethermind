@@ -32,9 +32,16 @@ public class IdentityKeyTests
     {
         for (int i = 0; i < 256; i++)
         {
-            byte[] stored = new Identity(privateKey: null, KeyType.Secp256K1).PrivateKey!.Data.ToByteArray();
+            Identity generated = new(privateKey: null, KeyType.Secp256K1);
+            byte[] stored = generated.PrivateKey!.Data.ToByteArray();
+            string loaded = BeaconP2P.IdentityFromStoredKey(stored).PeerId.ToString();
 
-            Assert.That(BeaconP2P.IdentityFromStoredKey(stored).PeerId.ToString(), Is.EqualTo(BeaconDiscovery.DerivePeerId(new PrivateKey(stored).CompressedPublicKey)), stored.ToHexString());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(loaded, Is.EqualTo(BeaconDiscovery.DerivePeerId(new PrivateKey(stored).CompressedPublicKey)), stored.ToHexString());
+                // A first start runs on the generated identity, every restart on the stored bytes.
+                Assert.That(generated.PeerId.ToString(), Is.EqualTo(loaded), stored.ToHexString());
+            }
         }
     }
 }
