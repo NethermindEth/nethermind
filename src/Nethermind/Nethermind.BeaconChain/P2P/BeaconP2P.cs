@@ -969,9 +969,11 @@ public sealed class BeaconP2P : IAsyncDisposable
             catch (Exception e)
             {
                 slot?.TrySetCanceled();
+                // A cancelled task fails the dial with an empty error, as the library's dial skips cancelled attempts; the timeout names the cause.
                 if (e is OperationCanceledException)
                 {
                     Interlocked.Increment(ref _owner._identifyTimeouts);
+                    throw new TimeoutException($"No identify answer from {session.RemoteAddress} within {IdentifyAgentVersionProbe.ReadTimeout}", e);
                 }
 
                 throw;
