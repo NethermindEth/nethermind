@@ -67,7 +67,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             ? parallelOptions.MaxDegreeOfParallelism
             : Environment.ProcessorCount;
 
-        if (WorkerScope.Current is { } scope) maxWorkers = Math.Min(maxWorkers, scope.Concurrency);
+        if (WorkerScheduler.Current is { } scheduler) maxWorkers = Math.Min(maxWorkers, scheduler.Concurrency);
         return (int)Math.Min(rangeLength, maxWorkers);
     }
 
@@ -141,9 +141,9 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// </summary>
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
 
-        /// <summary>The scope and queue holding the unstarted workers, set by the caller when it queues them in a scope.</summary>
-        internal WorkerScope? Scope;
-        internal WorkerScope.WorkQueue? Queue;
+        /// <summary>The scheduler and queue holding the unstarted workers.</summary>
+        internal WorkerScheduler? Scheduler;
+        internal WorkerScheduler.WorkQueue? Queue;
         public ManualResetEventSlim Event { get; } = new(initialState: false);
         private int _activeThreads = threads;
         // Workers queued straight to the thread pool that no thread has started yet.
@@ -194,8 +194,8 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// </summary>
         public bool TryStartQueued()
         {
-            // Scoped workers are withdrawn through their scope instead.
-            if (Scope is not null) return true;
+            // Scoped workers are withdrawn through their scheduler instead.
+            if (Scheduler is not null) return true;
             int unstarted = Volatile.Read(ref _unstarted);
             while (unstarted > 0)
             {
@@ -439,8 +439,8 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         private bool _joined;
         private ExceptionDispatchInfo? _exception;
 
-        private readonly WorkerScope? _scope;
-        private readonly WorkerScope.WorkQueue? _queue;
+        private readonly WorkerScheduler? _scheduler;
+        private readonly WorkerScheduler.WorkQueue? _queue;
         private readonly BackgroundWork? _dependency;
         private readonly int _workers;
         private BackgroundWork? _continuation;
@@ -448,11 +448,11 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         internal BackgroundWork(int from, int to, ParallelOptions options, Action<int> action, Action? completed,
             BackgroundWork? dependency = null)
         {
-            _scope = dependency?._scope ?? WorkerScope.Current;
-            _queue = _scope is null ? null : new(this);
+            _scheduler = dependency?._scheduler ?? WorkerScheduler.Current;
+            _queue = _scheduler is null ? null : new(this);
             options.CancellationToken.ThrowIfCancellationRequested();
             int limit = options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Environment.ProcessorCount;
-            if (_scope is not null) limit = Math.Min(limit, _scope.Concurrency);
+            if (_scheduler is not null) limit = Math.Min(limit, _scheduler.Concurrency);
             // The reserved caller slot must not reduce the number of iterations that can start in the background.
             _workers = from < to ? (int)Math.Min((long)to - from + 1, limit) : 1;
             _dependency = dependency;
@@ -469,7 +469,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
 
         private void QueueWorker(int count = 1, bool resuming = false)
         {
-            if (_scope is not null) _scope.Enqueue(_queue!, this, resuming, count);
+            if (_scheduler is not null) _scheduler.Enqueue(_queue!, this, resuming, count);
             else
             {
                 for (int i = 0; i < count; i++)
@@ -479,7 +479,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
 
         private void Run()
         {
-            if (_scope is not null) _scope.Run(this, _queue!);
+            if (_scheduler is not null) _scheduler.Run(this, _queue!);
             else Execute();
         }
 
@@ -500,10 +500,10 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         public partial bool TryHelp()
         {
             using WorkerScope? entered = EnterGroup();
-            return !_joined && _scope is not null && _scope.TryExecute(_queue!);
+            return !_joined && _scheduler is not null && _scheduler.TryExecute(_queue!);
         }
 
-        private WorkerScope? EnterGroup() => _scope?.EnterForJoin();
+        private WorkerScope? EnterGroup() => _scheduler?.EnterForJoin();
 
         public partial void WaitForCompletion()
         {
@@ -536,7 +536,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
                     Capture(ex);
                 }
             }
-            if (_scope is not null)
+            if (_scheduler is not null)
             {
                 JoinScoped();
                 _joined = true;
@@ -580,7 +580,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
                 // The caller slot is reserved, so claim queued slots only after it stops: taking one first
                 // retires a requested runner and loses a thread for the whole range.
                 Run();
-                while (_scope!.TryExecute(_queue!, includeDescendants: true)) { }
+                while (_scheduler!.TryExecute(_queue!, includeDescendants: true)) { }
                 // Short tails finish without the kernel wake-up a monitor wait costs.
                 SpinWait spinner = default;
                 while (!Volatile.Read(ref _complete) && !spinner.NextSpinWillYield) spinner.SpinOnce();
@@ -590,7 +590,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
                     // before rechecking, so an executor either sees the waiter or leaves a state that ends it.
                     Interlocked.Exchange(ref _joinerWaiting, 1);
                     int active = Volatile.Read(ref _active);
-                    if (!_complete && !_scope!.HasReadyWork(_queue!) && (active == 0 || active >= _workers || (active > 0 &&
+                    if (!_complete && !_scheduler!.HasReadyWork(_queue!) && (active == 0 || active >= _workers || (active > 0 &&
                         (Volatile.Read(ref _next.Value) >= _to || _abandoned || _token.IsCancellationRequested || _exception is not null))))
                     {
 #if DEBUG
@@ -620,7 +620,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             // -1 reserves the first executor; zero permanently closes registration. Queued callbacks
             // arriving after completion cannot touch buffers released by the joiner.
             int active = Volatile.Read(ref _active);
-            while (active != 0 && (_scope is null && _dependency is null || active < _workers))
+            while (active != 0 && (_scheduler is null && _dependency is null || active < _workers))
             {
                 int observed = Interlocked.CompareExchange(ref _active, active < 0 ? 1 : active + 1, active);
                 if (observed == active) return true;
@@ -633,7 +633,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
 
         private void Execute()
         {
-            if (_scope is not null)
+            if (_scheduler is not null)
             {
                 ExecuteChunk();
                 return;
@@ -681,7 +681,7 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
                 {
                     if (count == 16)
                     {
-                        if (!joining && _scope!.HasOtherReadyWork(_queue!)) break;
+                        if (!joining && _scheduler!.HasOtherReadyWork(_queue!)) break;
                         count = 0;
                     }
                     long i = Interlocked.Increment(ref _next.Value) - 1;

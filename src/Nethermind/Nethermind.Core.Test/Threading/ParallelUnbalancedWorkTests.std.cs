@@ -100,7 +100,7 @@ public partial class ParallelUnbalancedWorkTests
         int calls = 0;
         void Observe(int _)
         {
-            Assert.That(ParallelUnbalancedWork.WorkerScope.Current!.Concurrency, Is.EqualTo(budget));
+            Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current!.Concurrency, Is.EqualTo(budget));
             using (group.Enter()) Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.SameAs(group));
             int current = Interlocked.Increment(ref active);
             int observed = Volatile.Read(ref maximum);
@@ -152,7 +152,7 @@ public partial class ParallelUnbalancedWorkTests
                 new ParallelOptions { CancellationToken = cancellation.Token }, _ =>
                 {
                     Assert.That(ParallelUnbalancedWork.GetCurrentGroup(), Is.SameAs(group));
-                    Assert.That(ParallelUnbalancedWork.WorkerScope.Current!.Concurrency, Is.EqualTo(1));
+                    Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current!.Concurrency, Is.EqualTo(1));
                     Interlocked.Increment(ref calls);
                 });
         }
@@ -201,17 +201,17 @@ public partial class ParallelUnbalancedWorkTests
         InvalidOperationException expected = new();
         CallbackWork work = new(() =>
         {
-            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(root));
+            Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current, Is.SameAs(root.Scheduler));
             if (throws) throw expected;
         });
 
-        if (throws) Assert.That(Assert.Throws<InvalidOperationException>(() => root.Run(work, new())), Is.SameAs(expected));
-        else root.Run(work, new());
+        if (throws) Assert.That(Assert.Throws<InvalidOperationException>(() => root.Scheduler.Run(work, new())), Is.SameAs(expected));
+        else root.Scheduler.Run(work, new());
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(caller ?? root));
-            Assert.That(new ParallelUnbalancedWork.WorkerScope.WorkQueue().Parent, Is.Null);
+            Assert.That(new ParallelUnbalancedWork.WorkerScheduler.WorkQueue().Parent, Is.Null);
         }
     }
 
@@ -223,18 +223,18 @@ public partial class ParallelUnbalancedWorkTests
         int unrelatedCalls = 0;
         CallbackWork unrelated = new(() => unrelatedCalls++);
         for (int i = 0; i < otherOperations; i++)
-            scope.Enqueue(new ParallelUnbalancedWork.WorkerScope.WorkQueue(), unrelated);
-        ParallelUnbalancedWork.WorkerScope.WorkQueue target = new();
+            scope.Scheduler.Enqueue(new ParallelUnbalancedWork.WorkerScheduler.WorkQueue(), unrelated);
+        ParallelUnbalancedWork.WorkerScheduler.WorkQueue target = new();
         List<int> results = [];
         CallbackWork targetWork = new(() => results.Add(results.Count + 1));
-        scope.Enqueue(target, targetWork);
-        scope.Enqueue(target, targetWork, count: 2);
-        if (withdraw) Assert.That(scope.Withdraw(target), Is.EqualTo(3));
-        while (scope.TryExecute(target)) { }
+        scope.Scheduler.Enqueue(target, targetWork);
+        scope.Scheduler.Enqueue(target, targetWork, count: 2);
+        if (withdraw) Assert.That(scope.Scheduler.Withdraw(target), Is.EqualTo(3));
+        while (scope.Scheduler.TryExecute(target)) { }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(results, Is.EqualTo(withdraw ? Array.Empty<int>() : new[] { 1, 2, 3 }), "Withdrawn callbacks must never run.");
-            Assert.That(scope.Withdraw(target), Is.Zero);
+            Assert.That(scope.Scheduler.Withdraw(target), Is.Zero);
             Assert.That(target.Work, Is.Null, "A drained queue must not keep its work item alive.");
             Assert.That(unrelatedCalls, Is.Zero);
         }
@@ -252,21 +252,21 @@ public partial class ParallelUnbalancedWorkTests
             requests++;
             scheduled.Enqueue(runner);
         });
-        ParallelUnbalancedWork.WorkerScope.WorkQueue queue = new();
+        ParallelUnbalancedWork.WorkerScheduler.WorkQueue queue = new();
         int calls = 0;
         CallbackWork? work = null;
         work = new(() =>
         {
-            if (++calls < 1000) scope.Enqueue(queue, work!, resuming);
+            if (++calls < 1000) scope.Scheduler.Enqueue(queue, work!, resuming);
         });
-        scope.Enqueue(queue, work);
+        scope.Scheduler.Enqueue(queue, work);
         while (scheduled.TryDequeue(out IThreadPoolWorkItem? runner)) runner.Execute();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(calls, Is.EqualTo(1000));
             Assert.That(requests, Is.EqualTo(resuming ? 1 : 2), "A requested or yielding runner already covers the next callback.");
         }
-        scope.Enqueue(queue, new CallbackWork(() => calls++), resuming: true);
+        scope.Scheduler.Enqueue(queue, new CallbackWork(() => calls++), resuming: true);
         Assert.That(scheduled, Has.Count.EqualTo(1), "The caller must not inherit the retired runner's context.");
         while (scheduled.TryDequeue(out IThreadPoolWorkItem? runner)) runner.Execute();
         Assert.That(calls, Is.EqualTo(1001));
@@ -278,7 +278,7 @@ public partial class ParallelUnbalancedWorkTests
         Queue<IThreadPoolWorkItem> scheduled = new();
         using ParallelUnbalancedWork.WorkerScope scope = new(8, scheduled.Enqueue);
         int calls = 0;
-        scope.Enqueue(new ParallelUnbalancedWork.WorkerScope.WorkQueue(), new CallbackWork(() => calls++), count: count);
+        scope.Scheduler.Enqueue(new ParallelUnbalancedWork.WorkerScheduler.WorkQueue(), new CallbackWork(() => calls++), count: count);
         Assert.That(scheduled, Has.Count.EqualTo(Math.Min(count, 7)), "The caller covers one slot; each other queued callback needs a runner.");
         while (scheduled.TryDequeue(out IThreadPoolWorkItem? runner)) runner.Execute();
         Assert.That(calls, Is.EqualTo(count));
@@ -289,15 +289,15 @@ public partial class ParallelUnbalancedWorkTests
     {
         Queue<IThreadPoolWorkItem> scheduled = new();
         using ParallelUnbalancedWork.WorkerScope scope = new(4, scheduled.Enqueue);
-        ParallelUnbalancedWork.WorkerScope.WorkQueue own = new();
-        ParallelUnbalancedWork.WorkerScope.WorkQueue other = new();
+        ParallelUnbalancedWork.WorkerScheduler.WorkQueue own = new();
+        ParallelUnbalancedWork.WorkerScheduler.WorkQueue other = new();
         CallbackWork work = new(() => { });
-        Assert.That(scope.HasOtherReadyWork(own), Is.False);
-        if (otherFirst) scope.Enqueue(other, work);
-        scope.Enqueue(own, work, count: 2);
-        Assert.That(scope.HasOtherReadyWork(own), Is.EqualTo(otherFirst), "Yielding to its own queued slots only requeues the operation.");
-        if (!otherFirst) scope.Enqueue(other, work);
-        Assert.That(scope.HasOtherReadyWork(own), Is.True);
+        Assert.That(scope.Scheduler.HasOtherReadyWork(own), Is.False);
+        if (otherFirst) scope.Scheduler.Enqueue(other, work);
+        scope.Scheduler.Enqueue(own, work, count: 2);
+        Assert.That(scope.Scheduler.HasOtherReadyWork(own), Is.EqualTo(otherFirst), "Yielding to its own queued slots only requeues the operation.");
+        if (!otherFirst) scope.Scheduler.Enqueue(other, work);
+        Assert.That(scope.Scheduler.HasOtherReadyWork(own), Is.True);
     }
 
     [Test]
@@ -335,7 +335,7 @@ public partial class ParallelUnbalancedWorkTests
         int helperThread = 0;
         int unrelatedCalls = 0;
         bool nestedCompleted = true;
-        scope.Enqueue(new(), new CallbackWork(() => unrelatedCalls++));
+        scope.Scheduler.Enqueue(new(), new CallbackWork(() => unrelatedCalls++));
         using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, 1,
             new ParallelOptions { MaxDegreeOfParallelism = 2 }, _ =>
             {
@@ -347,7 +347,7 @@ public partial class ParallelUnbalancedWorkTests
         {
             if (remainingDepth > 1)
             {
-                scope.Run(new CallbackWork(() => RunNested(remainingDepth - 1)), new());
+                scope.Scheduler.Run(new CallbackWork(() => RunNested(remainingDepth - 1)), new());
                 return;
             }
             ParallelUnbalancedWork.For(0, 2, new ParallelOptions { MaxDegreeOfParallelism = 2 }, _ =>
@@ -383,7 +383,7 @@ public partial class ParallelUnbalancedWorkTests
                 Assert.That(nestedCompleted, Is.True, "The nested loop must progress before its running iteration times out.");
                 Assert.That(helperThread, Is.EqualTo(joiningThread.ManagedThreadId));
                 Assert.That(unrelatedCalls, Is.Zero);
-                Assert.That(new ParallelUnbalancedWork.WorkerScope.WorkQueue().Parent, Is.Null);
+                Assert.That(new ParallelUnbalancedWork.WorkerScheduler.WorkQueue().Parent, Is.Null);
             }
         }
         finally
@@ -401,37 +401,37 @@ public partial class ParallelUnbalancedWorkTests
     public void Worker_scope_tracks_ready_descendants_through_drain_and_requeue([Values] bool withdraw)
     {
         using ParallelUnbalancedWork.WorkerScope scope = new(2, static _ => { });
-        ParallelUnbalancedWork.WorkerScope.WorkQueue parent = new();
-        ParallelUnbalancedWork.WorkerScope.WorkQueue? child = null;
-        ParallelUnbalancedWork.WorkerScope.WorkQueue? grandchild = null;
+        ParallelUnbalancedWork.WorkerScheduler.WorkQueue parent = new();
+        ParallelUnbalancedWork.WorkerScheduler.WorkQueue? child = null;
+        ParallelUnbalancedWork.WorkerScheduler.WorkQueue? grandchild = null;
         int calls = 0;
         CallbackWork work = new(() => calls++);
-        scope.Run(new CallbackWork(() =>
+        scope.Scheduler.Run(new CallbackWork(() =>
         {
             child = new();
-            scope.Run(new CallbackWork(() => grandchild = new()), child);
+            scope.Scheduler.Run(new CallbackWork(() => grandchild = new()), child);
         }), parent);
         for (int pass = 0; pass < 2; pass++)
         {
-            scope.Enqueue(grandchild!, work, count: 2);
+            scope.Scheduler.Enqueue(grandchild!, work, count: 2);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(parent.ReadyDescendants, Is.EqualTo(1));
                 Assert.That(child!.ReadyDescendants, Is.EqualTo(1));
-                Assert.That(scope.HasReadyWork(parent), Is.True);
+                Assert.That(scope.Scheduler.HasReadyWork(parent), Is.True);
             }
-            if (withdraw) Assert.That(scope.Withdraw(grandchild!), Is.EqualTo(2));
+            if (withdraw) Assert.That(scope.Scheduler.Withdraw(grandchild!), Is.EqualTo(2));
             else
             {
-                Assert.That(scope.TryExecute(parent, includeDescendants: true), Is.True);
+                Assert.That(scope.Scheduler.TryExecute(parent, includeDescendants: true), Is.True);
                 Assert.That(parent.ReadyDescendants, Is.EqualTo(1));
-                Assert.That(scope.TryExecute(parent, includeDescendants: true), Is.True);
+                Assert.That(scope.Scheduler.TryExecute(parent, includeDescendants: true), Is.True);
             }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(parent.ReadyDescendants, Is.Zero);
                 Assert.That(child!.ReadyDescendants, Is.Zero);
-                Assert.That(scope.HasReadyWork(parent), Is.False);
+                Assert.That(scope.Scheduler.HasReadyWork(parent), Is.False);
             }
         }
         Assert.That(calls, Is.EqualTo(withdraw ? 0 : 4));
@@ -441,17 +441,17 @@ public partial class ParallelUnbalancedWorkTests
     public void Worker_scope_does_not_assist_detached_background_descendants()
     {
         using ParallelUnbalancedWork.WorkerScope scope = new(2, static _ => { });
-        ParallelUnbalancedWork.WorkerScope.WorkQueue parent = new();
+        ParallelUnbalancedWork.WorkerScheduler.WorkQueue parent = new();
         ParallelUnbalancedWork.BackgroundWork? detached = null;
         int calls = 0;
         try
         {
-            scope.Run(new CallbackWork(() => detached = ParallelUnbalancedWork.BackgroundFor(0, 1,
+            scope.Scheduler.Run(new CallbackWork(() => detached = ParallelUnbalancedWork.BackgroundFor(0, 1,
                 new ParallelOptions { MaxDegreeOfParallelism = 2 }, _ => calls++)), parent);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(scope.HasReadyWork(parent), Is.False);
-                Assert.That(scope.TryExecute(parent, includeDescendants: true), Is.False);
+                Assert.That(scope.Scheduler.HasReadyWork(parent), Is.False);
+                Assert.That(scope.Scheduler.TryExecute(parent, includeDescendants: true), Is.False);
                 Assert.That(calls, Is.Zero);
             }
             detached!.WaitForCompletion();
@@ -471,7 +471,7 @@ public partial class ParallelUnbalancedWorkTests
         });
         try
         {
-            scope.Enqueue(new ParallelUnbalancedWork.WorkerScope.WorkQueue(), new CallbackWork(() => { }));
+            scope.Scheduler.Enqueue(new ParallelUnbalancedWork.WorkerScheduler.WorkQueue(), new CallbackWork(() => { }));
         }
         finally { runner?.GetAwaiter().GetResult(); }
     }
@@ -483,7 +483,7 @@ public partial class ParallelUnbalancedWorkTests
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         using ManualResetEventSlim completed = new();
-        ParallelUnbalancedWork.WorkerScope.WorkQueue queue = new();
+        ParallelUnbalancedWork.WorkerScheduler.WorkQueue queue = new();
         int timedOut = 0;
         CallbackWork first = new(() =>
         {
@@ -498,10 +498,10 @@ public partial class ParallelUnbalancedWorkTests
                 entered.Reset();
                 release.Reset();
                 completed.Reset();
-                scope.Enqueue(queue, first);
+                scope.Scheduler.Enqueue(queue, first);
                 Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
                 release.Set();
-                scope.Enqueue(queue, second);
+                scope.Scheduler.Enqueue(queue, second);
                 Assert.That(completed.Wait(TimeSpan.FromSeconds(10)), Is.True, "Completion must not require a joining caller.");
             }
         }

@@ -2264,7 +2264,7 @@ public class BlockCachePreWarmerTests
         hint.GetAccessList(Arg.Any<Block>(), Arg.Any<IReleaseSpec>()).Returns(_ =>
         {
             ParallelUnbalancedWork.For(0, 16, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
-                _ => observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0));
+                _ => observedBudgets.Add(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0));
             return null;
         });
         using ILifetimeScope warmingScope = _processingScope.BeginLifetimeScope(b => b

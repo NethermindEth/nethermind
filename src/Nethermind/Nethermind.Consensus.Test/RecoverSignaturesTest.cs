@@ -134,7 +134,7 @@ public class RecoverSignaturesTest
         IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
         ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<ValueHash256>()).Returns(_ =>
         {
-            observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0);
+            observedBudgets.Add(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0);
             return TestItem.AddressA;
         });
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
