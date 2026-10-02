@@ -196,6 +196,32 @@ public partial class ColumnBackfillTests
         }
     }
 
+    /// <summary>A range reply cut short holds the lowest slots, which link only below the slots above them: the next peer is asked for those alone, and nothing is fetched by root.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_range_reply_cut_short_keeps_its_blocks_and_only_the_slots_above_them_are_requested(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer source = fixture.Peer("source");
+        StubPeer cutShort = new("cut-short", HeadSlot, (start, _) => throw new PartialBlocksException(
+            new TimeoutException("request timed out"), [.. source.RequestBlocksByRangeAsync(start, 2, token).Result]));
+        StubPeer honest = fixture.Peer("honest");
+
+        Task run = fixture.StartBackfill(token, cutShort, honest);
+        await fixture.UntilFloorAsync(0, token);
+        await run.WaitAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cutShort.RequestedRanges, Is.EqualTo(new[] { (0UL, AnchorSlot) }));
+            Assert.That(honest.RequestedRanges, Is.EqualTo(new[] { (2UL, AnchorSlot - 2) }), "only the slots above the kept blocks");
+            Assert.That(cutShort.RootBlockRequests + honest.RootBlockRequests, Is.Zero, "the kept blocks link without a by-root fetch");
+            Assert.That(cutShort.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
+            Assert.That(honest.Reports, Is.Empty);
+            Assert.That(fixture.Roots[..4].All(fixture.Store.HasBlock), Is.True);
+        }
+    }
+
     [Test]
     [CancelAfter(60_000)]
     public async Task A_block_that_does_not_link_to_the_chain_is_penalized_and_never_stored(CancellationToken token)

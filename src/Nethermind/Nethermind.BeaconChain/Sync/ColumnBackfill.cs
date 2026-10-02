@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -430,32 +431,52 @@ public sealed class ColumnBackfill(
         return false;
     }
 
+    /// <remarks>
+    /// The walk links blocks from <paramref name="parent"/> at the top of the range down, so a reply cut short, which holds the lowest slots, links only once
+    /// the slots above it arrive: the next peer is asked for those alone, and the cut reply's blocks are linked with its answer, never stored on their own.
+    /// </remarks>
     private async Task FetchRangeAsync(Hash256 parent, ulong from, ulong until, CancellationToken token)
     {
+        Dictionary<Hash256, ForkedSignedBeaconBlock> kept = [];
+        ulong askFrom = from;
         foreach (IBeaconSyncPeer peer in NextPeers(from))
         {
             if (!IsFollowingHead()) return;
             IReadOnlyList<ForkedSignedBeaconBlock> reply;
             try
             {
-                reply = await peer.RequestBlocksByRangeAsync(from, until - from, token);
+                reply = await peer.RequestBlocksByRangeAsync(askFrom, until - askFrom, token);
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
-                peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Blocks-by-range [{from}, {until}) failed: {PeerManager.DescribeFailure(e)}");
+                peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Blocks-by-range [{askFrom}, {until}) failed: {PeerManager.DescribeFailure(e)}");
+                // BeaconBlocksByRange: a reply is in slot order, so what a failed one delivered is the lowest part of the range.
+                if (e is PartialBlocksException { Received: [.., { } last] received } && last.Slot >= askFrom && last.Slot < until - 1)
+                {
+                    foreach (ForkedSignedBeaconBlock block in received)
+                    {
+                        if (block.Slot >= askFrom)
+                        {
+                            kept[block.ComputeMessageRoot()] = block;
+                        }
+                    }
+
+                    askFrom = last.Slot + 1;
+                }
+
                 continue;
             }
 
-            if ((ulong)reply.Count > until - from)
+            if ((ulong)reply.Count > until - askFrom)
             {
                 peer.ReportFailure(PeerFailureReason.ProtocolViolation, "Too many blocks in range reply");
                 continue;
             }
 
-            Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = [];
+            Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = new(kept);
             foreach (ForkedSignedBeaconBlock block in reply)
             {
-                if (block.Slot >= from && block.Slot < until)
+                if (block.Slot >= askFrom && block.Slot < until)
                 {
                     byRoot[block.ComputeMessageRoot()] = block;
                 }
@@ -469,13 +490,17 @@ public sealed class ColumnBackfill(
                     return;
                 }
 
-                stored++;
+                if (!kept.ContainsKey(parent))
+                {
+                    stored++;
+                }
+
                 parent = next.ParentRoot;
             }
 
             if (stored != reply.Count)
             {
-                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Blocks-by-range [{from}, {until}) returned {reply.Count - stored} blocks that do not link to the chain being fetched");
+                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Blocks-by-range [{askFrom}, {until}) returned {reply.Count - stored} blocks that do not link to the chain being fetched");
             }
 
             return;
