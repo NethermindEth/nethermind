@@ -1192,6 +1192,31 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
+    internal const int MinCalldataWordsForAddressWarm = 8;
+    internal const int MaxCalldataAddressesPerBlock = 4096;
+
+    internal static List<Address>? CollectCalldataAddresses(Block block)
+    {
+        HashSet<AddressAsKey>? seen = null;
+        List<Address>? addresses = null;
+        foreach (Transaction tx in block.Transactions)
+        {
+            ReadOnlySpan<byte> data = tx.Data.Span;
+            if (data.Length < 4 + MinCalldataWordsForAddressWarm * 32) continue;
+            for (int offset = 4; offset + 32 <= data.Length; offset += 32)
+            {
+                ReadOnlySpan<byte> word = data.Slice(offset, 32);
+                if (word[..12].IndexOfAnyExcept((byte)0) >= 0 || word.Slice(12, 4).IndexOfAnyExcept((byte)0) < 0) continue;
+                Address address = new(word[12..]);
+                if (!(seen ??= []).Add(address)) continue;
+                (addresses ??= []).Add(address);
+                if (addresses.Count == MaxCalldataAddressesPerBlock) return addresses;
+            }
+        }
+
+        return addresses;
+    }
+
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, IReleaseSpec spec, bool warmSystemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
     {
@@ -1309,6 +1334,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             return state;
                         },
                         WarmingState<(Block, int, int)>.FinallyAction);
+
+                    WarmCalldataAddresses(parallelOptions, block, envPool);
                 }
             }
             catch (OperationCanceledException)
@@ -1356,6 +1383,38 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             return warmed;
+        }
+
+        /// <summary>
+        /// Reads the accounts that large calldata names as ABI address words, all of them across the fan-out.
+        /// </summary>
+        /// <remarks>
+        /// A batch transfer lists its recipients in calldata and touches each one, and the transaction warm reads them
+        /// one after another in a single job, which a chain of such transactions leaves far behind the main thread. A
+        /// word counts as an address when its top twelve bytes are zero and the address's top four bytes are not, so
+        /// amounts, offsets and lengths never match; a word that only looks like an address costs one account read.
+        /// </remarks>
+        private static void WarmCalldataAddresses(ParallelOptions parallelOptions, Block block, ObjectPool<IPrewarmerEnv> envPool)
+        {
+            List<Address>? addresses = CollectCalldataAddresses(block);
+            if (addresses is null || parallelOptions.CancellationToken.IsCancellationRequested) return;
+
+            int rangeSize = Math.Max(8, addresses.Count / (parallelOptions.MaxDegreeOfParallelism * 4));
+            WarmingState<(List<Address> Addresses, int RangeSize)> baseState = new(envPool, (addresses, rangeSize), block.Header);
+            ParallelUnbalancedWork.For(
+                0,
+                (addresses.Count + rangeSize - 1) / rangeSize,
+                parallelOptions,
+                baseState.InitThreadState,
+                static (range, state) =>
+                {
+                    (List<Address> addresses, int rangeSize) = state.Payload;
+                    IWorldState worldState = state.Scope!.WorldState;
+                    int end = Math.Min((range + 1) * rangeSize, addresses.Count);
+                    for (int i = range * rangeSize; i < end; i++) WarmupSender(addresses[i], null, worldState);
+                    return state;
+                },
+                WarmingState<(List<Address>, int)>.FinallyAction);
         }
 
         private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)

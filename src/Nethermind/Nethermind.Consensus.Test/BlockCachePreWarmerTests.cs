@@ -247,6 +247,44 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
+    /// The accounts that large calldata names as ABI address words are read at the start of the block, while
+    /// amounts and offsets in the same calldata are never taken for addresses.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WarmsTheAccountsLargeCalldataNames()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        Address first = new("0x95323debf3e1084237250e6b17a40b9299d7daf0");
+        Address second = new("0x0e17015cb81c1eb8049764d80e133bf5d6b97d19");
+        Address small = Address.FromNumber(5);
+        byte[] data = new byte[4 + 10 * 32];
+        first.Bytes.CopyTo(data.AsSpan(4 + 2 * 32 + 12));
+        second.Bytes.CopyTo(data.AsSpan(4 + 3 * 32 + 12));
+        small.Bytes.CopyTo(data.AsSpan(4 + 4 * 32 + 12));
+        data[4 + 32 - 1] = 0x40;
+
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(
+                Build.A.Transaction.WithData(data).WithGasLimit(1_000_000).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                // Below three transactions a block gets no reactive warm at all.
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .TestObject;
+        Assert.That(BlockCachePreWarmer.CollectCalldataAddresses(block), Is.EqualTo(new[] { first, second }));
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.StateCache.TryGetValue(first, out _), Is.True, "a recipient named in calldata is read");
+            Assert.That(preBlockCaches.StateCache.TryGetValue(second, out _), Is.True, "a recipient named in calldata is read");
+            Assert.That(preBlockCaches.StateCache.TryGetValue(small, out _), Is.False, "a small integer is not an address");
+        }
+    }
+
+    /// <summary>
     /// Verifies that BAL-based prewarming populates the storage cache for storage slots
     /// listed as both changed and read-only in the BAL.
     /// </summary>
