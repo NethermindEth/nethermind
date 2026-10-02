@@ -1021,14 +1021,20 @@ public class PeerBandTests
 
     /// <param name="statusSource">What the node serves over <c>status</c>; defaults to its own settable holder.</param>
     /// <param name="logManager">Where the node's P2P host logs; silent by default.</param>
-    internal static Node CreateNode(IBeaconChainStatusSource? statusSource = null, ILogManager? logManager = null)
+    /// <param name="requestTimeout">The fixed request budget of the node's own requests; the production value by default.</param>
+    internal static Node CreateNode(IBeaconChainStatusSource? statusSource = null, ILogManager? logManager = null, TimeSpan? requestTimeout = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
-        BeaconP2P p2p = PeerSessionNodes.Watched(logs => new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource,
-            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logManager is null ? logs : new HostLogs(logs, logManager)));
+        BeaconP2P p2p = PeerSessionNodes.Watched(logs =>
+        {
+            ILogManager hostLogs = logManager is null ? logs : new HostLogs(logs, logManager);
+            return requestTimeout is { } timeout
+                ? new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs) { RequestTimeout = timeout }
+                : new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs);
+        });
         return new Node(p2p, statusHolder, config, store, metadataSource);
     }
 

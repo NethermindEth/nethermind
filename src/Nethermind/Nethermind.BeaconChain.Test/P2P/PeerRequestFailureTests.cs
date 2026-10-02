@@ -370,6 +370,8 @@ public class PeerRequestFailureTests
 
     private sealed class Fixture : IAsyncDisposable
     {
+        private static readonly TimeSpan SilentPeerRequestTimeout = TimeSpan.FromSeconds(3);
+
         private Node _client = null!;
         private Node _server = null!;
         private Node? _usable;
@@ -394,7 +396,8 @@ public class PeerRequestFailureTests
         /// <param name="withUsablePeer">Connects a second peer that stays under the request-failure limit, so the limit takes <see cref="Peer"/> out of selection.</param>
         public static async Task<Fixture> CreateAsync(CancellationToken token, ulong? serverEarliestAvailableSlot = null, bool hangable = false, bool withUsablePeer = false)
         {
-            Fixture fixture = new() { _client = CreateNode() };
+            // A silent peer costs two request timeouts per health check (status v2, then v1); what is counted does not depend on their length.
+            Fixture fixture = new() { _client = CreateNode(requestTimeout: hangable ? SilentPeerRequestTimeout : null) };
             if (hangable)
             {
                 fixture._hang = new HangableStatusSource(fixture._client.StatusHolder);

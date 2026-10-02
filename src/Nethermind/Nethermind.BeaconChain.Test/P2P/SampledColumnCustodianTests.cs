@@ -16,10 +16,10 @@ using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -147,7 +147,7 @@ public class SampledColumnCustodianTests
         Node client = CreateNode();
         SetMatchingStatus(server, client);
         serverStatus.Status = server.StatusHolder.CurrentStatus;
-        TestLogger logger = new() { IsDebug = false, IsTrace = false };
+        RangeSyncPeerSelectionTests.AllLevelsCapture logger = new() { IsDebug = false, IsTrace = false };
 
         await using (client.P2P)
         await using (server.P2P)
@@ -160,7 +160,7 @@ public class SampledColumnCustodianTests
             serverStatus.Refuse = true;
             await peerManager.RunMaintenanceRoundAsync(token);
 
-            string[] drops = [.. logger.LogList.Where(static l => l.StartsWith("Dropping beacon chain peer", StringComparison.Ordinal))];
+            string[] drops = [.. logger.Lines.Where(static l => l.StartsWith("Dropping beacon chain peer", StringComparison.Ordinal))];
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(peerManager.PeerCount, Is.Zero, "the failed health check that makes eight consecutive failures drops the peer");
