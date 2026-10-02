@@ -1401,7 +1401,7 @@ public sealed class BeaconSyncOrchestrator(
         if (count > 0)
         {
             DropHeldColumnFetchesOfDroppedBlocks();
-            Metrics.BeaconChainHeldBlocksDropped += (ulong)count;
+            Interlocked.Add(ref Metrics.HeldBlocksDroppedCount, (ulong)count);
             if (_logger.IsInfo) _logger.Info($"Dropped the {count} held block{(count == 1 ? "" : "s")} behind {parentRoot}: {cause}");
         }
     }

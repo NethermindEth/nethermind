@@ -74,7 +74,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         BeaconBlockBody body = message.Body!;
         ExecutionPayloadV3 payload = PayloadConverter.ToExecutionPayloadV3(body.ExecutionPayload!);
 
-        Metrics.BeaconChainNewPayloadCalls++;
+        Interlocked.Increment(ref Metrics.NewPayloadCallsCount);
         long started = Stopwatch.GetTimestamp();
         // EIP-4788: the payload's parent_beacon_block_root is the parent root of the beacon block carrying it.
         Hash256?[] versionedHashes = PayloadConverter.ToBlobVersionedHashes(body.BlobKzgCommitments);
@@ -83,7 +83,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         {
             detector.ThrowIfStoodDown();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(payload, versionedHashes, message.ParentRoot, requests);
-            Metrics.BeaconChainNewPayloadMilliseconds += (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             return UnwrapNewPayload(result.Result, result.Data, "newPayloadV4");
         });
     }
@@ -103,7 +103,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
         CallEngineAsync("forkchoiceUpdated", async () =>
         {
-            Metrics.BeaconChainForkchoiceUpdatedCalls++;
+            Interlocked.Increment(ref Metrics.ForkchoiceUpdatedCallsCount);
             ForkchoiceStateV1 state = new(headExecHash, finalizedExecHash, safeExecHash);
             // execution-apis paris.md engine_forkchoiceUpdatedV1 "timeout: 8s"; Task.Run keeps synchronous EL work inside the deadline.
             Task<PayloadStatusV1> pending = Task.Run(() => SendForkchoiceUpdatedAsync(state));
@@ -173,7 +173,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// </summary>
     public async Task<PayloadStatusV1> NewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests)
     {
-        Metrics.BeaconChainNewPayloadCalls++;
+        Interlocked.Increment(ref Metrics.NewPayloadCallsCount);
         long started = Stopwatch.GetTimestamp();
         ExecutionPayloadV4 converted = PayloadConverter.ToExecutionPayloadV4(payload);
         byte[][] requests = PayloadConverter.ToExecutionRequestsList(executionRequests);
@@ -181,7 +181,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         {
             detector.ThrowIfStoodDown();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(converted, versionedHashes, parentBeaconBlockRoot, requests);
-            Metrics.BeaconChainNewPayloadMilliseconds += (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             return UnwrapNewPayload(result.Result, result.Data, "newPayloadV5");
         });
     }
