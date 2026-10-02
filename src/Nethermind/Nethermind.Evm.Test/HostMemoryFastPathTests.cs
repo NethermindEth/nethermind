@@ -425,19 +425,19 @@ public class HostMemoryFastPathTests
     private static byte[] Repeated(int times, params byte[] ops) => Enumerable.Repeat(ops, times).SelectMany(static o => o).ToArray();
 
     private static unsafe EvmExceptionType CountingLoadFallback(
-        ref EvmStack stack, ref EthereumGasPolicy gas, ref DispatchState state, nint pc, nint opCodeCount)
+        ref EvmStack stack, ulong gas, ref DispatchState state, nint pc, nint opCodeCount)
     {
         _fallbacks++;
-        return ((delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)_plainLoad)(
-            ref stack, ref gas, ref state, pc, opCodeCount);
+        return ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)_plainLoad)(
+            ref stack, gas, ref state, pc, opCodeCount);
     }
 
     private static unsafe EvmExceptionType CountingStoreFallback(
-        ref EvmStack stack, ref EthereumGasPolicy gas, ref DispatchState state, nint pc, nint opCodeCount)
+        ref EvmStack stack, ulong gas, ref DispatchState state, nint pc, nint opCodeCount)
     {
         _fallbacks++;
-        return ((delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)_plainStore)(
-            ref stack, ref gas, ref state, pc, opCodeCount);
+        return ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)_plainStore)(
+            ref stack, gas, ref state, pc, opCodeCount);
     }
 
     /// <summary>Runs code through the dispatch tables of one virtual machine and one aligned stack.</summary>
@@ -510,8 +510,12 @@ public class HostMemoryFastPathTests
                 handlers = (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])handlers.Clone();
                 _plainLoad = (nint)handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD];
                 _plainStore = (nint)handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE];
-                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD] = &CountingLoadFallback;
-                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE] = &CountingStoreFallback;
+                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MLOAD] =
+                    (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)(
+                        delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)&CountingLoadFallback;
+                handlers[VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset + MSTORE] =
+                    (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)(
+                        delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)&CountingStoreFallback;
                 _fallbacks = 0;
             }
 
@@ -528,12 +532,19 @@ public class HostMemoryFastPathTests
 
                 EvmStack evmStack = new(head, _vm.Tracer, ref _stackBytes[_stackStart], codeInfo.ExecutionCodeSpan, codeInfo);
                 evmStack.HoistInputData(input);
-                DispatchState state = new() { OpcodeHandlers = dispatch, Vm = _vm, CancellationPollAt = CancellationPollInterval };
+                DispatchState state = new()
+                {
+                    Gas = ref Unsafe.AsRef(in gasPolicy),
+                    OpcodeHandlers = dispatch,
+                    Vm = _vm,
+                    CancellationPollAt = CancellationPollInterval,
+                };
                 pc = 0;
                 opCodeCount = 0;
                 while (true)
                 {
-                    exception = dispatch[code[pc]](ref evmStack, ref gasPolicy, ref state, pc, opCodeCount);
+                    exception = ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)(nint)dispatch[code[pc]])(
+                        ref evmStack, table == Table.Traced ? 0 : gasPolicy.Value, ref state, pc, opCodeCount);
                     // The cancelable loop's re-entry after a poll, as RunDispatchLoop makes it.
                     if (!cancelable || exception != EvmExceptionType.None || state.OpCodeCount < state.CancellationPollAt ||
                         (nuint)state.FinalProgramCounter >= (nuint)code.Length)
