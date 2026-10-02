@@ -4,10 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Multiformats.Address;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Network.Libp2p;
 
 namespace Nethermind.Shutter.Config;
 
@@ -134,13 +134,28 @@ public interface IShutterConfig : IConfig
             throw new ArgumentNullException(nameof(BootnodeP2PAddresses));
         }
 
-        try
+        List<Multiaddress> bootnodes = [];
+        foreach (string bootnode in BootnodeP2PAddresses)
         {
-            bootnodeP2PAddresses = BootnodeP2PAddresses.Select(static addr => Multiaddress.Decode(addr));
+            Multiaddress address;
+            try
+            {
+                address = Multiaddress.Decode(bootnode);
+            }
+            catch (Exception e) when (e is not OutOfMemoryException)
+            {
+                throw new ArgumentException($"Could not decode Shutter bootnode p2p address '{bootnode}'.", e);
+            }
+
+            if (!StaticPeerKeeper.CanDial(address))
+            {
+                throw new ArgumentException(
+                    $"Shutter bootnode '{bootnode}' must be /ip4, /ip6, /dns, /dns4 or /dns6, then /tcp/<port> and /p2p/<peer-id>; /dnsaddr is not supported.");
+            }
+
+            bootnodes.Add(address);
         }
-        catch (NotSupportedException e)
-        {
-            throw new ArgumentException($"Could not decode Shutter bootnode p2p addresses.", e);
-        }
+
+        bootnodeP2PAddresses = bootnodes;
     }
 }

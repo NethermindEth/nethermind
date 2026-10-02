@@ -1,14 +1,50 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
+using Multiformats.Address;
+using Nethermind.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
+using Nethermind.Shutter.Config;
 using NUnit.Framework;
 
 namespace Nethermind.Shutter.Test;
 
 public class ShutterGossipSettingsTests
 {
+    /// <summary>A bootnode a dial could never reach stops startup instead of being dropped without a word.</summary>
+    [TestCase("/ip4/10.0.0.1/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "An IPv4 address")]
+    [TestCase("/dns4/sequencer.example/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "A DNS name")]
+    [TestCase("/dnsaddr/sequencer.example/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", false, TestName = "A dnsaddr name")]
+    [TestCase("/ip4/10.0.0.1/tcp/9222/dnsaddr/sequencer.example/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", false, TestName = "A dnsaddr name after an address")]
+    [TestCase("/ip4/10.0.0.1/udp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", false, TestName = "A transport other than TCP")]
+    [TestCase("/ip4/10.0.0.1/tcp/9222", false, TestName = "No peer id")]
+    [TestCase("not a multiaddr", false, TestName = "Not a multiaddr")]
+    public void Bootnodes_are_checked_at_startup(string bootnode, bool dialable)
+    {
+        IShutterConfig config = new ShutterConfig
+        {
+            ValidatorRegistryContractAddress = Address.Zero.ToString(),
+            KeyBroadcastContractAddress = Address.Zero.ToString(),
+            KeyperSetManagerContractAddress = Address.Zero.ToString(),
+            SequencerContractAddress = Address.Zero.ToString(),
+            Validator = false,
+            BootnodeP2PAddresses = [bootnode],
+        };
+
+        if (dialable)
+        {
+            config.Validate(out IEnumerable<Multiaddress> bootnodes);
+            Assert.That(bootnodes.Select(static address => address.ToString()), Is.EqualTo(new[] { bootnode }));
+        }
+        else
+        {
+            Assert.That(() => config.Validate(out _), Throws.ArgumentException.With.Message.Contains(bootnode));
+        }
+    }
+
     /// <summary>No delivery on the key or discovery topics, unanswered IWANT or shared address moves a keyper peer's score.</summary>
     /// <remarks>A delivery score would count a mesh peer of a quiet topic as under-delivering and prune it.</remarks>
     [Test]
