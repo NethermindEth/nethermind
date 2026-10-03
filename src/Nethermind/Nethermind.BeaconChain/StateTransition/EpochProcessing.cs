@@ -150,9 +150,11 @@ public static class EpochProcessing
 
         ulong previousEpoch = state.GetPreviousEpoch();
         bool isInInactivityLeak = IsInInactivityLeak(state);
-        Validator[] validators = state.Validators!;
-        ulong[] inactivityScores = state.InactivityScores!;
-        byte[] previousParticipation = state.PreviousEpochParticipation ?? [];
+        ProcessInactivityUpdates(state.Validators!, state.InactivityScores!, state.PreviousEpochParticipation ?? [], previousEpoch, isInInactivityLeak);
+    }
+
+    internal static void ProcessInactivityUpdates(Validator[] validators, ulong[] inactivityScores, byte[] previousParticipation, ulong previousEpoch, bool isInInactivityLeak)
+    {
         for (int i = 0; i < validators.Length; i++)
         {
             Validator validator = validators[i];
@@ -270,8 +272,13 @@ public static class EpochProcessing
     {
         ulong epoch = state.GetCurrentEpoch();
         ulong totalBalance = state.GetTotalActiveBalance(cache);
+        ProcessSlashings(state.Validators!, state.Balances!, state.Slashings!, epoch, totalBalance);
+    }
+
+    internal static void ProcessSlashings(Validator[] validators, ulong[] balances, ulong[] slashings, ulong epoch, ulong totalBalance)
+    {
         ulong totalSlashings = 0;
-        foreach (ulong slashing in state.Slashings!)
+        foreach (ulong slashing in slashings)
         {
             totalSlashings += slashing;
         }
@@ -279,12 +286,11 @@ public static class EpochProcessing
         ulong penaltyPerEffectiveBalanceIncrement = adjustedTotalSlashingBalance / (totalBalance / Presets.EffectiveBalanceIncrement);
         ulong targetWithdrawableEpoch = epoch + Presets.EpochsPerSlashingsVector / 2;
 
-        Validator[] validators = state.Validators!;
         for (int i = 0; i < validators.Length; i++)
         {
             Validator validator = validators[i];
             if (validator.Slashed && targetWithdrawableEpoch == validator.WithdrawableEpoch)
-                state.DecreaseBalance(i, penaltyPerEffectiveBalanceIncrement * (validator.EffectiveBalance / Presets.EffectiveBalanceIncrement));
+                DecreaseBalance(ref balances[i], penaltyPerEffectiveBalanceIncrement * (validator.EffectiveBalance / Presets.EffectiveBalanceIncrement));
         }
     }
 
@@ -394,12 +400,17 @@ public static class EpochProcessing
     /// <summary>Electra <c>process_pending_consolidations</c> (EIP-7251): sweep consolidations whose source is withdrawable.</summary>
     public static void ProcessPendingConsolidations(BeaconStateFulu state)
     {
-        ulong nextEpoch = state.GetCurrentEpoch() + 1;
-        int nextPendingConsolidation = 0;
         PendingConsolidation[] pendingConsolidations = state.PendingConsolidations ?? [];
+        int nextPendingConsolidation = ProcessPendingConsolidations(state.Validators!, state.Balances!, pendingConsolidations, state.GetCurrentEpoch() + 1);
+        state.PendingConsolidations = pendingConsolidations[nextPendingConsolidation..];
+    }
+
+    internal static int ProcessPendingConsolidations(Validator[] validators, ulong[] balances, PendingConsolidation[] pendingConsolidations, ulong nextEpoch)
+    {
+        int nextPendingConsolidation = 0;
         foreach (PendingConsolidation pendingConsolidation in pendingConsolidations)
         {
-            Validator sourceValidator = state.Validators![(int)pendingConsolidation.SourceIndex];
+            Validator sourceValidator = validators[(int)pendingConsolidation.SourceIndex];
             if (sourceValidator.Slashed)
             {
                 nextPendingConsolidation++;
@@ -409,27 +420,32 @@ public static class EpochProcessing
                 break;
 
             // Move the active balance to the target; excess balance is withdrawable.
-            ulong sourceEffectiveBalance = Math.Min(state.Balances![(int)pendingConsolidation.SourceIndex], sourceValidator.EffectiveBalance);
-            state.DecreaseBalance((int)pendingConsolidation.SourceIndex, sourceEffectiveBalance);
-            state.IncreaseBalance((int)pendingConsolidation.TargetIndex, sourceEffectiveBalance);
+            ulong sourceEffectiveBalance = Math.Min(balances[(int)pendingConsolidation.SourceIndex], sourceValidator.EffectiveBalance);
+            DecreaseBalance(ref balances[(int)pendingConsolidation.SourceIndex], sourceEffectiveBalance);
+            balances[(int)pendingConsolidation.TargetIndex] += sourceEffectiveBalance;
             nextPendingConsolidation++;
         }
 
-        state.PendingConsolidations = pendingConsolidations[nextPendingConsolidation..];
+        return nextPendingConsolidation;
     }
 
     /// <summary>Electra <c>process_effective_balance_updates</c>: hysteresis against the EIP-7251 per-validator max effective balance.</summary>
     public static void ProcessEffectiveBalanceUpdates(BeaconStateFulu state, EpochCache cache)
     {
+        ProcessEffectiveBalanceUpdates(state.Validators!, state.Balances!);
+        cache.InvalidateTotalActiveBalance();
+    }
+
+    internal static void ProcessEffectiveBalanceUpdates(Validator[] validators, ulong[] balances)
+    {
         const ulong hysteresisIncrement = Presets.EffectiveBalanceIncrement / Presets.HysteresisQuotient;
         const ulong downwardThreshold = hysteresisIncrement * Presets.HysteresisDownwardMultiplier;
         const ulong upwardThreshold = hysteresisIncrement * Presets.HysteresisUpwardMultiplier;
 
-        Validator[] validators = state.Validators!;
         for (int i = 0; i < validators.Length; i++)
         {
             Validator validator = validators[i];
-            ulong balance = state.Balances![i];
+            ulong balance = balances[i];
             if (balance + downwardThreshold < validator.EffectiveBalance || validator.EffectiveBalance + upwardThreshold < balance)
             {
                 Validator updated = validator.Clone();
@@ -437,8 +453,6 @@ public static class EpochProcessing
                 validators[i] = updated;
             }
         }
-
-        cache.InvalidateTotalActiveBalance();
     }
 
     /// <summary>Phase0 <c>process_slashings_reset</c>.</summary>
@@ -550,6 +564,9 @@ public static class EpochProcessing
         ulong[] lastEpochProposers = state.ComputeProposerIndices(state.GetCurrentEpoch() + Presets.MinSeedLookahead + 1);
         lastEpochProposers.CopyTo(lookahead, lookahead.Length - slotsPerEpoch);
     }
+
+    private static void DecreaseBalance(ref ulong balance, ulong delta) =>
+        balance -= Math.Min(balance, delta);
 
     /// <summary>Phase0 <c>get_eligible_validator_indices</c> membership: validators that earn rewards/penalties for the previous epoch.</summary>
     private static bool IsEligibleValidator(Validator validator, ulong previousEpoch) =>

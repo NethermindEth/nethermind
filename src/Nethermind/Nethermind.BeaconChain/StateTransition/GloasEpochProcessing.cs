@@ -27,8 +27,8 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// balance updates) rotates the builder payment window, <c>process_ptc_window</c> (new, last)
 /// rotates the payload timeliness committees, <c>process_pending_deposits</c> consumes the EIP-8061
 /// activation-only churn and drops the retired Eth1-bridge gate, and proposer selection excludes
-/// slashed validators (EIP-8045). Every other step is the Fulu step re-typed; it is duplicated
-/// rather than shared for the reason <see cref="GloasStateAccessors"/> gives. The total-active-balance
+/// slashed validators (EIP-8045). Common validator loops are shared with the Fulu pipeline through
+/// array-based kernels. The total-active-balance
 /// memo in <see cref="EpochCache"/> stays valid until <see cref="ProcessEffectiveBalanceUpdates"/>
 /// invalidates it, exactly as in the Fulu pipeline.
 /// </remarks>
@@ -145,22 +145,7 @@ public static class GloasEpochProcessing
 
         ulong previousEpoch = state.GetPreviousEpoch();
         bool isInInactivityLeak = IsInInactivityLeak(state);
-        Validator[] validators = state.Validators!;
-        ulong[] inactivityScores = state.InactivityScores!;
-        byte[] previousParticipation = state.PreviousEpochParticipation ?? [];
-        for (int i = 0; i < validators.Length; i++)
-        {
-            Validator validator = validators[i];
-            if (!IsEligibleValidator(validator, previousEpoch))
-                continue;
-
-            if (IsUnslashedParticipant(validator, previousParticipation[i], Presets.TimelyTargetFlagIndex, previousEpoch))
-                inactivityScores[i] -= Math.Min(1, inactivityScores[i]);
-            else
-                inactivityScores[i] += Presets.InactivityScoreBias;
-            if (!isInInactivityLeak)
-                inactivityScores[i] -= Math.Min(Presets.InactivityScoreRecoveryRate, inactivityScores[i]);
-        }
+        EpochProcessing.ProcessInactivityUpdates(state.Validators!, state.InactivityScores!, state.PreviousEpochParticipation ?? [], previousEpoch, isInInactivityLeak);
     }
 
     /// <summary>Altair <c>process_rewards_and_penalties</c>, unmodified in Gloas; fused per validator like the Fulu port (see <see cref="EpochProcessing.ProcessRewardsAndPenalties"/>).</summary>
@@ -252,22 +237,7 @@ public static class GloasEpochProcessing
     {
         ulong epoch = state.GetCurrentEpoch();
         ulong totalBalance = state.GetTotalActiveBalance(cache);
-        ulong totalSlashings = 0;
-        foreach (ulong slashing in state.Slashings!)
-        {
-            totalSlashings += slashing;
-        }
-        ulong adjustedTotalSlashingBalance = Math.Min(totalSlashings * Presets.ProportionalSlashingMultiplierBellatrix, totalBalance);
-        ulong penaltyPerEffectiveBalanceIncrement = adjustedTotalSlashingBalance / (totalBalance / Presets.EffectiveBalanceIncrement);
-        ulong targetWithdrawableEpoch = epoch + Presets.EpochsPerSlashingsVector / 2;
-
-        Validator[] validators = state.Validators!;
-        for (int i = 0; i < validators.Length; i++)
-        {
-            Validator validator = validators[i];
-            if (validator.Slashed && targetWithdrawableEpoch == validator.WithdrawableEpoch)
-                state.DecreaseBalance(i, penaltyPerEffectiveBalanceIncrement * (validator.EffectiveBalance / Presets.EffectiveBalanceIncrement));
-        }
+        EpochProcessing.ProcessSlashings(state.Validators!, state.Balances!, state.Slashings!, epoch, totalBalance);
     }
 
     /// <summary>Phase0 <c>process_eth1_data_reset</c>.</summary>
@@ -365,26 +335,8 @@ public static class GloasEpochProcessing
     /// <summary>Electra <c>process_pending_consolidations</c>, unmodified in Gloas.</summary>
     public static void ProcessPendingConsolidations(BeaconStateGloas state)
     {
-        ulong nextEpoch = state.GetCurrentEpoch() + 1;
-        int nextPendingConsolidation = 0;
         PendingConsolidation[] pendingConsolidations = state.PendingConsolidations ?? [];
-        foreach (PendingConsolidation pendingConsolidation in pendingConsolidations)
-        {
-            Validator sourceValidator = state.Validators![(int)pendingConsolidation.SourceIndex];
-            if (sourceValidator.Slashed)
-            {
-                nextPendingConsolidation++;
-                continue;
-            }
-            if (sourceValidator.WithdrawableEpoch > nextEpoch)
-                break;
-
-            ulong sourceEffectiveBalance = Math.Min(state.Balances![(int)pendingConsolidation.SourceIndex], sourceValidator.EffectiveBalance);
-            state.DecreaseBalance((int)pendingConsolidation.SourceIndex, sourceEffectiveBalance);
-            state.IncreaseBalance((int)pendingConsolidation.TargetIndex, sourceEffectiveBalance);
-            nextPendingConsolidation++;
-        }
-
+        int nextPendingConsolidation = EpochProcessing.ProcessPendingConsolidations(state.Validators!, state.Balances!, pendingConsolidations, state.GetCurrentEpoch() + 1);
         state.PendingConsolidations = pendingConsolidations[nextPendingConsolidation..];
     }
 
@@ -420,23 +372,7 @@ public static class GloasEpochProcessing
     /// <summary>Electra <c>process_effective_balance_updates</c>, unmodified in Gloas.</summary>
     public static void ProcessEffectiveBalanceUpdates(BeaconStateGloas state, EpochCache cache)
     {
-        const ulong hysteresisIncrement = Presets.EffectiveBalanceIncrement / Presets.HysteresisQuotient;
-        const ulong downwardThreshold = hysteresisIncrement * Presets.HysteresisDownwardMultiplier;
-        const ulong upwardThreshold = hysteresisIncrement * Presets.HysteresisUpwardMultiplier;
-
-        Validator[] validators = state.Validators!;
-        for (int i = 0; i < validators.Length; i++)
-        {
-            Validator validator = validators[i];
-            ulong balance = state.Balances![i];
-            if (balance + downwardThreshold < validator.EffectiveBalance || validator.EffectiveBalance + upwardThreshold < balance)
-            {
-                Validator updated = validator.Clone();
-                updated.EffectiveBalance = Math.Min(balance - balance % Presets.EffectiveBalanceIncrement, validator.GetMaxEffectiveBalance());
-                validators[i] = updated;
-            }
-        }
-
+        EpochProcessing.ProcessEffectiveBalanceUpdates(state.Validators!, state.Balances!);
         cache.InvalidateTotalActiveBalance();
     }
 
