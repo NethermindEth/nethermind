@@ -290,7 +290,12 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return true;
         }
 
-        CacheLastToken(token, iat);
+        // The cache only tracks iat. Tokens with an earlier explicit expiration
+        // must go through lifetime validation on every request.
+        if (exp <= 0)
+        {
+            CacheLastToken(token, iat);
+        }
         accepted = true;
         return true;
 
@@ -426,7 +431,10 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return false;
         }
 
-        CacheLastToken(token, issuedAtUnix);
+        if (jwtToken.ValidTo == DateTime.MinValue)
+        {
+            CacheLastToken(token, issuedAtUnix);
+        }
         if (_logger.IsTrace) TraceAuth(jwtToken, nowUnixSeconds, token);
         return true;
 
