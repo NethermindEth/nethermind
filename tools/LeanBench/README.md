@@ -48,3 +48,17 @@ This mode explicitly enables the prototype bulk path on production `PacketSender
 The terminal socket writer paces encrypted bytes in 4KiB quanta. `wire-mbps` is a simulated application bandwidth cap, with no kernel network shaping, packet loss or WAN RTT. Probe latency measures scheduled request-to-receiver delivery, not a response round trip. Rows report p50/p95/maximum control latency, object goodput, encrypted bytes including controls, whole-process CPU and drops. Raw object/control samples and compiled binary hashes are saved.
 
 SPHINCS wrappers with one/sixteen distinct claims and a single generic STARK wrapper are natively proved and verified before transport timing. `block-stark16` transports a real raw block-proof envelope; it is not a mempool wrapper, whose generic dependency limit is one. Repeated delivery measures transport and scheduling only; it makes no admission or crypto throughput claim. Preparation timings are single observations. Set `--proof-cases=` to run synthetic objects without native fixtures. Sender queue overflow fails the run rather than presenting missing controls as successful delivery.
+
+## Archived measurements
+
+Large captured JSON files are stored as deterministic `.json.gz`; decompression preserves every
+byte of their original metadata and samples. [Archive checksums](results/archive-integrity.json)
+record both compressed and original SHA-256 values. CSVs, provenance and mobile PNGs remain
+readable. Generated SVGs are omitted from version control; regenerate them with:
+
+```sh
+python3 tools/LeanBench/plot.py tools/LeanBench/results/2026-10-03/daisugi/full/results.json.gz --svg --output=/tmp/lean-daisugi-plots
+```
+
+The Daisugi full and mixed captures share the identical [fixture timing CSV](results/2026-10-03/daisugi/fixture-generation.csv).
+Packaging changes do not change the captured source revisions or measured values.

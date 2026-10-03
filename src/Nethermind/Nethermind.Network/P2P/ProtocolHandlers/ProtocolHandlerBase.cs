@@ -130,7 +130,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 int size = Session.DeliverMessage(message);
                 NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, messageString, size);
             }
-            else Session.DeliverMessage(message);
+            else
+                Session.DeliverMessage(message);
         }
 
         protected async Task CheckProtocolInitTimeout()

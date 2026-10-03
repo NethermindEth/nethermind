@@ -2,7 +2,7 @@
 
 Measured source `ca380a6eaf4dfa35ef75ff5269109fe7f04d7cde`, leanVM `f33f31bf7c1191667e29a68a3acae63b9164c1c6`; Apple M2 Max, 32 GiB RAM, 12 logical cores, macOS 15.7.4, .NET 10.0.9. Daisugi signatures are 6,176 bytes; witnesses include the 32-byte key (6,208 bytes). The resource-bounded prover uses four-signature leaves and binary recursion.
 
-[Full rows](full/results.csv) · [Full JSON and 1,616 batch samples](full/results.json) · [Mixed rows](mixed/results.csv) · [Mixed JSON](mixed/results.json) · [Source, commands and fixture hashes](provenance.json)
+[Full rows](full/results.csv) · [Full JSON and 1,616 batch samples](full/results.json.gz) · [Mixed rows](mixed/results.csv) · [Mixed JSON](mixed/results.json.gz) · [Source, commands and fixture hashes](provenance.json)
 
 ## Proving and admission
 

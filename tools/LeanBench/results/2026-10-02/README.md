@@ -77,7 +77,7 @@ other graphs excludes proof/wrapper bytes.
 
 ![Measured large-object throughput](plots/large-object-throughput.png)
 
-Each directory includes `summary.json` and unmodified `results.csv`. The shared
+Each directory includes a summary (`full/summary.json.gz` for the large capture) and unmodified `results.csv`. The shared
 [fixture-generation cost CSV](fixture-generation.csv) records client proving costs. The original full JSON and per-batch samples were
 retained outside the repository; the summaries retain all measured rows and
 original file hashes. No figures contain modeled or synthesized data.

@@ -6,6 +6,7 @@
 
 import argparse
 import html
+import gzip
 import json
 import os
 from collections import defaultdict
@@ -16,8 +17,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("results", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--svg", action="store_true", help="Also generate reproducible vector plots")
     args = parser.parse_args()
-    data = json.loads(args.results.read_text())
+    text = gzip.decompress(args.results.read_bytes()).decode() if args.results.suffix == ".gz" else args.results.read_text()
+    data = json.loads(text)
     rows = data["results"]
     if not rows:
         raise SystemExit("No measured results to plot")
@@ -56,7 +59,7 @@ def main():
         fig.text(0.01, 0.012, "Measured on one host; see metadata and raw samples for scope.",
                  fontsize=8, color="#586174")
         fig.tight_layout(rect=(0, 0.04, 1, 0.96))
-        for suffix in ("png", "svg"):
+        for suffix in (("png", "svg") if args.svg else ("png",)):
             output = args.output / f"{name}.{suffix}"
             fig.savefig(output, bbox_inches="tight")
             if suffix == "svg":
@@ -268,7 +271,8 @@ def main():
 
     meta = html.escape(json.dumps(data.get("metadata", {}), indent=2))
     sections = "".join(f'<section><h2>{html.escape(caption)}</h2><img src="{name}.png" alt="{html.escape(caption)}">'
-                       f'<p><a href="{name}.svg">SVG</a></p></section>' for name, caption in charts)
+                       + (f'<p><a href="{name}.svg">SVG</a></p>' if args.svg else '') + '</section>'
+                       for name, caption in charts)
     sample_link = '<a href="../samples.csv">Sample CSV</a>' if (args.results.parent / "samples.csv").exists() else 'Samples are included in the JSON'
     (args.output / "index.html").write_text(
         '<!doctype html><meta charset="utf-8"><title>Lean integration measurements</title>'
@@ -276,7 +280,7 @@ def main():
         'img{max-width:100%}section{margin:40px 0}pre{white-space:pre-wrap;background:#f4f6fa;padding:20px}</style>'
         '<h1>Lean integration measurements</h1><p>Localhost results are not WAN or mainnet capacity estimates. '
         'Load durations include drain time; consult raw rejection reasons and samples.</p>'
-        '<p><a href="../results.json">Raw JSON and samples</a> · '
+        f'<p><a href="../{html.escape(args.results.name)}">Raw JSON and samples</a> · '
         '<a href="../results.csv">Row CSV</a> · ' + sample_link + '</p>'
         + sections + '<h2>Measurement metadata</h2><pre>' + meta + '</pre>')
     print(json.dumps({"output": str(args.output), "charts": [name for name, _ in charts]}))

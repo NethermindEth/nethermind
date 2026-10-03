@@ -69,6 +69,7 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
 [TestFixture]
 public class StatelessSchemaTests
 {
+    private static readonly ILeanProofVerifier _leanProofVerifier = NativeLeanProofVerifier.Instance;
     private const ulong ChainId = BlockchainIds.Mainnet;
 
     // Past every Mainnet fork activation, so the current-fork schema resolves to the newest known rules
