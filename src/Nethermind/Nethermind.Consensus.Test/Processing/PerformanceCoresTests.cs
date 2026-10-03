@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
@@ -155,6 +156,77 @@ public class PerformanceCoresTests
     [Test]
     public void TryBuildMask_Dedicated_SiblingsUnknown_DoesNotNarrow() =>
         Assert.That(PerformanceCores.TryBuildMask(ProcessingCores.Dedicated, PerformanceCpus, Allowed("0-19"), static _ => null, out _, out _), Is.False);
+
+    /// <summary>One kind of core, hyperthreads numbered after every core as on most AMD CPUs: 0 and 8 share a core.</summary>
+    [Test]
+    public void TryBuildUniformDedicated_GivesTheProcessingThreadACoreAndPrewarmTheRest()
+    {
+        static string Uniform(int cpu) => $"{cpu % 8},{cpu % 8 + 8}";
+        bool built = PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-15"), Uniform,
+            out PerformanceCores.Selection dedicated, out PerformanceCores.PrewarmSplit prewarm);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True);
+            Assert.That(dedicated.Cpus, Is.EqualTo(new[] { 1, 9 }), "both hyperthreads of the first core without CPU 0");
+            Assert.That(prewarm.Near.Cpus, Is.EqualTo(new[] { 0, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15 }));
+            Assert.That(prewarm.Far.Cpus, Is.EqualTo(prewarm.Near.Cpus), "every prewarm worker stays off the processing core");
+            Assert.That(prewarm.NearWorkers, Is.EqualTo(14));
+        }
+    }
+
+    [Test]
+    public void MoveOffDedicatedCore_NarrowsOtherThreadsButNotTheKeptOne()
+    {
+        if (!OperatingSystem.IsLinux()) Assert.Ignore("Thread affinity is read and set through Linux system calls.");
+        Assert.That(PerformanceCores.TryGetAffinity(0, out PerformanceCores.CpuMask allowed), Is.True);
+        int[] cpus = Enumerable.Range(0, PerformanceCores.MaxCpus).Where(cpu => allowed.Contains(cpu)).ToArray();
+        if (cpus.Length < 2) Assert.Ignore("A thread needs two CPUs to be moved between.");
+
+        PerformanceCores.CpuMask dedicated = default;
+        dedicated.Add(cpus[^1]);
+        PerformanceCores.CpuMask others = default;
+        foreach (int cpu in cpus[..^1]) others.Add(cpu);
+
+        using ManualResetEventSlim started = new();
+        using ManualResetEventSlim release = new();
+        int otherThread = 0;
+        Thread thread = new(() =>
+        {
+            PerformanceCores.TryGetCurrentThreadId(out otherThread);
+            started.Set();
+            release.Wait();
+        });
+        thread.Start();
+        try
+        {
+            started.Wait();
+            Assert.That(PerformanceCores.TryGetCurrentThreadId(out int self), Is.True);
+            int moved = PerformanceCores.MoveOffDedicatedCore([otherThread, self], others, dedicated, keep: self);
+
+            Assert.That(PerformanceCores.TryGetAffinity(otherThread, out PerformanceCores.CpuMask otherMask), Is.True);
+            Assert.That(PerformanceCores.TryGetAffinity(self, out PerformanceCores.CpuMask selfMask), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(moved, Is.EqualTo(1));
+                Assert.That(otherMask.Overlaps(dedicated), Is.False, "the other thread leaves the dedicated core");
+                Assert.That(selfMask.Overlaps(dedicated), Is.True, "the kept thread stays where it was");
+            }
+        }
+        finally
+        {
+            release.Set();
+            thread.Join();
+        }
+    }
+
+    [Test]
+    public void TryBuildUniformDedicated_SiblingsUnknown_DoesNotNarrow() =>
+        Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-15"), static _ => null, out _, out _), Is.False);
+
+    [Test]
+    public void TryBuildUniformDedicated_OneCoreAllowed_HasNothingToLeavePrewarm() =>
+        Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("1,9"), static cpu => "1,9", out _, out _), Is.False);
 
     [Test]
     public void TryExclude_LeavesTheDedicatedCoreToTheProcessingThread()
