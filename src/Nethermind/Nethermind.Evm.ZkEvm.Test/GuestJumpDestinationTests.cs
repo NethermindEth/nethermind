@@ -60,6 +60,9 @@ public class GuestJumpDestinationTests
         push32Run[396] = JUMPDEST;
         yield return Shape("JUMPDEST after a PUSH32 run longer than the look-back distance", push32Run);
 
+        // Once the first JUMPDEST is marked, the later ones scan from it: one inside the PUSH32's data, one past it.
+        yield return Shape("JUMPDESTs scanned from a marked one", Code(160, (40, JUMPDEST), (70, PUSH32), (100, JUMPDEST), (120, JUMPDEST)));
+
         yield return Shape("every byte a JUMPDEST", Filled(200, JUMPDEST));
         yield return Shape("every byte a PUSH32", Filled(200, PUSH32));
         yield return Shape("no byte in range", Filled(200, (byte)Instruction.STOP));

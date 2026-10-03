@@ -1155,7 +1155,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             nint target = (nint)Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
             Debug.Assert((nuint)target < (nuint)stack.CodeLength);
-            if (stack.TryMarkJumpDestination(target))
+            if (stack.TryMarkJumpDestination(target, ref code))
             {
                 head -= TConditional.IsActive ? 2 : 1;
                 gas -= JumpAndJumpDestGas<TConditional>();

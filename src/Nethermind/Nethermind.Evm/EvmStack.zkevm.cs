@@ -39,16 +39,18 @@ public ref partial struct EvmStack
 
     /// <summary>
     /// Marks <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, when a single
-    /// look-back proves it a jump destination, and reports whether it did.
+    /// look-back proves it the destination of the jump running, and reports whether it did.
     /// </summary>
+    /// <param name="destination">The destination.</param>
+    /// <param name="code">The first byte of <see cref="Code"/>, as dispatch carries it.</param>
     /// <remarks>
     /// A false answer leaves the destination to <see cref="AnalyzeJumpDestination"/>. The bitmap is reached only once
     /// the destination is proven, so a frameless handler does not hold it through the look-back.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal readonly bool TryMarkJumpDestination(nint destination)
+    internal readonly bool TryMarkJumpDestination(nint destination, ref byte code)
     {
-        if (_codeInfo is null || !_codeInfo.IsJumpProvenByLookBack(destination, ref Code)) return false;
+        if (_codeInfo is null || !_codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
 
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
         segment |= 1L << (int)destination;
