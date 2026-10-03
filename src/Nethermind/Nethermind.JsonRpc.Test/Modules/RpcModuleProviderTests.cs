@@ -4,10 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.IO.Pipelines;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -18,6 +21,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -230,6 +234,34 @@ public class RpcModuleProviderTests
             Assert.That(module.AsyncCalls, Is.EqualTo(1));
             Assert.That(module.ParameterCalls, Is.EqualTo(1));
             Assert.That(module.FourParameterCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Evm_execution_flag_marks_exactly_the_evm_executing_methods()
+    {
+        // The Engine API is swept too: a gated engine method would shed consensus-client calls under load.
+        IEnumerable<string> flagged = new[] { typeof(IRpcModule).Assembly, typeof(IEngineRpcModule).Assembly }
+            .SelectMany(static a => a.GetTypes())
+            .Where(static t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t))
+            .SelectMany(static t => t.GetMethods())
+            .Where(static m => m.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsEvmExecution == true)
+            .Select(static m => m.Name);
+
+        Assert.That(flagged, Is.EquivalentTo(new[] { "eth_call", "eth_estimateGas", "eth_createAccessList", "eth_simulateV1", "eth_fillTransaction" }));
+    }
+
+    [Test]
+    public void Evm_execution_flag_reaches_the_resolved_method_and_rejects_a_streamed_result()
+    {
+        _moduleProvider.Register(new TestModulePool<EvmExecutionRpcModule>(new EvmExecutionRpcModule()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_moduleProvider.Resolve(nameof(EvmExecutionRpcModule.evm_gated))!.IsEvmExecution, Is.True);
+            Assert.That(_moduleProvider.Resolve(nameof(EvmExecutionRpcModule.evm_streamed))!.IsEvmExecution, Is.False);
+            Assert.That(() => _moduleProvider.Register(new TestModulePool<StreamedEvmExecutionRpcModule>(new StreamedEvmExecutionRpcModule())),
+                Throws.InvalidOperationException.With.Message.Contains(nameof(IStreamableResult)));
         }
     }
 
@@ -518,6 +550,28 @@ public class RpcModuleProviderTests
 
     [RpcModule(ModuleType.Eth)]
     private interface ITestRpcModule : IRpcModule { }
+
+    [RpcModule(ModuleType.Net)]
+    private sealed class EvmExecutionRpcModule : IRpcModule
+    {
+        [JsonRpcMethod(IsEvmExecution = true)]
+        public ResultWrapper<string> evm_gated() => ResultWrapper<string>.Success(string.Empty);
+
+        [JsonRpcMethod]
+        public ResultWrapper<TestStreamableResult> evm_streamed() => ResultWrapper<TestStreamableResult>.Success(new());
+    }
+
+    [RpcModule(ModuleType.Net)]
+    private sealed class StreamedEvmExecutionRpcModule : IRpcModule
+    {
+        [JsonRpcMethod(IsEvmExecution = true)]
+        public ResultWrapper<TestStreamableResult> evm_gated_streamed() => ResultWrapper<TestStreamableResult>.Success(new());
+    }
+
+    private sealed class TestStreamableResult : IStreamableResult
+    {
+        public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) => default;
+    }
 
     [RpcModule(ModuleType.Admin)]
     public interface ITestAdminRpcModule : IRpcModule
