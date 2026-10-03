@@ -400,12 +400,6 @@ namespace Nethermind.State
             return _stateProvider.GetCode(address);
         }
 
-        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
-        {
-            DebugGuardInScope();
-            return _stateProvider.GetCode(in codeHash);
-        }
-
         public ref readonly ValueHash256 GetCodeHash(Address address)
         {
             DebugGuardInScope();
