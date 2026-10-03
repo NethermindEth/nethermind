@@ -136,8 +136,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
-            StartSenderRecovery(request);
+            // With the knob, recovery starts once TryGetBlock has joined the transactions-root work, so the two do not
+            // compete for the payload's workers while the request waits on the root.
+            bool recoverAfterRoot = Core.Diagnostics.ExperimentKnobs.RecoveryAfterRoot;
+            if (!recoverAfterRoot) StartSenderRecovery(request);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            if (recoverAfterRoot && !decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
         {
