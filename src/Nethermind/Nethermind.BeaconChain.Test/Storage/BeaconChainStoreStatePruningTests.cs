@@ -117,23 +117,17 @@ public class BeaconChainStoreStatePruningTests
     }
 
     /// <summary>A record whose slot cannot be read may still be a state some reader resolves, so it is not swept up with the finalized range.</summary>
-    [Test]
-    public void A_state_with_no_readable_slot_is_kept()
+    /// <remarks>A rewrite to an empty state leaves the old chunk 0 behind; the manifest, not that chunk, says the state has no slot.</remarks>
+    [TestCase(false, TestName = "A_state_with_no_readable_slot_is_kept")]
+    [TestCase(true, TestName = "An_empty_state_rewritten_over_a_stale_chunk_is_kept")]
+    public void A_state_without_a_readable_slot_is_kept(bool rewrite)
     {
-        _store.PutState(Root(1), [9]);
-        Put(2, slot: 40);
+        if (rewrite)
+        {
+            Put(1, slot: 10);
+        }
 
-        _store.SetAnchor(Root(2), 40);
-
-        Assert.That(Has(1), Is.True);
-    }
-
-    /// <summary>A rewrite to an empty state leaves the old chunk 0 behind; the manifest, not that chunk, says the state has no slot.</summary>
-    [Test]
-    public void An_empty_state_rewritten_over_a_stale_chunk_is_kept()
-    {
-        Put(1, slot: 10);
-        _store.PutState(Root(1), []);
+        _store.PutState(Root(1), rewrite ? [] : [9]);
         Put(2, slot: 40);
 
         _store.SetAnchor(Root(2), 40);
