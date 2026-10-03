@@ -162,9 +162,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// The journal only ever holds cells this contract has written, so for one that has written nothing
     /// the probe cannot hit and is pure cost — and it is the more expensive of the two lookups, hashing
     /// the whole <see cref="StorageCell"/> rather than just the index. That probe is skipped only when the
-    /// last-resolved contract is this one and its filter rules out a journalled write to this slot this round: a
-    /// reference compare against the memo, never a map probe. Every other case falls back to the probe-first path, which does not resolve
-    /// the contract on a journal hit — so a read that alternates between contracts keeps its original cost
+    /// last-resolved contract is this one and its filter rules out a journalled write to this slot this
+    /// round: a reference compare against the memo, never a map probe. Every other case falls back to the
+    /// probe-first path, which does not resolve the contract on a journal hit — so a read that alternates between contracts keeps its original cost
     /// rather than paying <see cref="GetOrCreateStorage"/> on every hit.
     /// </remarks>
     protected override void GetCurrentValue(in StorageCell storageCell, out UInt256 value)

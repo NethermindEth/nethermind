@@ -218,6 +218,40 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    /// <summary>A clear must hide committed values from slots the journal filter never marked, until it is reverted.</summary>
+    /// <remarks><c>ClearSlot</c> journals zeros without a mark, so the cleared slot map, not the probe, answers slot 2; 65 shares slot 1's filter bit.</remarks>
+    [Test]
+    public void Clear_is_visible_to_reads_of_slots_outside_the_journal_filter([Values(2, 65)] int otherSlot)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        StorageCell written = new(ctx.Address1, (UInt256)1);
+        StorageCell other = new(ctx.Address1, (UInt256)otherSlot);
+
+        provider.Set(in other, (UInt256)4);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(ReadSlot(provider, other), Is.EqualTo((UInt256)4), "precondition: committed value");
+        provider.Set(in written, (UInt256)3);
+        Snapshot beforeClear = provider.TakeSnapshot();
+        provider.ClearStorage(ctx.Address1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSlot(provider, other), Is.EqualTo(UInt256.Zero), "other slot after clear");
+            Assert.That(ReadSlot(provider, written), Is.EqualTo(UInt256.Zero), "written slot after clear");
+        }
+
+        provider.Restore(beforeClear);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSlot(provider, other), Is.EqualTo((UInt256)4), "other slot after revert");
+            Assert.That(ReadSlot(provider, written), Is.EqualTo((UInt256)3), "written slot after revert");
+        }
+    }
+
     /// <summary>A contract that never wrote in this block must read its committed values even while another
     /// contract's writes sit in the journal.</summary>
     /// <remarks>This is the branch the journal gate adds: the read-only contract is seeded in a completed
