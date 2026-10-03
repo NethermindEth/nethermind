@@ -121,9 +121,9 @@ public partial class EthRpcModuleTests
             "a call may leave its blob gas unpriced, but a transaction to sign must carry a non-zero blob fee cap");
     }
 
-    [TestCase(false, typeof(EIP1559TransactionForRpc), TestName = "WithoutExplicitType_PromotedToEip1559")]
-    [TestCase(true, typeof(LegacyTransactionForRpc), TestName = "WithExplicitLegacyType_StaysLegacy")]
-    public async Task SignTransaction_LegacyShapeJson_RespectsExplicitTypePinning(bool withExplicitType, Type expectedEchoType)
+    [TestCase(false, typeof(EIP1559TransactionForRpc), "0x2", TestName = "WithoutExplicitType_PromotedToEip1559")]
+    [TestCase(true, typeof(LegacyTransactionForRpc), "0x0", TestName = "WithExplicitLegacyType_StaysLegacy")]
+    public async Task SignTransaction_LegacyShapeJson_RespectsExplicitTypePinning(bool withExplicitType, Type expectedEchoType, string expectedJsonType)
     {
         // Bypasses BuildTx because constructed C# instances always serialize the `type` field;
         // we need raw JSON that omits it to drive HasExplicitType=false on the server.
@@ -149,6 +149,9 @@ public partial class EthRpcModuleTests
 
         Assert.That(response.Result!.Tx, Is.TypeOf(expectedEchoType),
             "no-type input must auto-promote to EIP-1559; explicit type must be preserved");
+        // The echo is read back through the converter, which picks the class from the fields, so check the raw type too.
+        Assert.That(JsonDocument.Parse(serialized).RootElement.GetProperty("result").GetProperty("tx").GetProperty("type").GetString(),
+            Is.EqualTo(expectedJsonType));
     }
 
     [TestCase(TxType.Legacy, typeof(LegacyTransactionForRpc), TestName = "Legacy")]
@@ -174,6 +177,29 @@ public partial class EthRpcModuleTests
 
         Assert.That(result.Tx, Is.TypeOf(expectedEchoType),
             "tx echo must preserve subclass so JSON shape survives for clients that branch on type");
+    }
+
+    [Test]
+    public async Task SignTransaction_WhenExplicitTypeConflictsWithFields_ReturnsInvalidInput()
+    {
+        // Type 0x0 with dynamic fees runs as an EIP-1559 call, but a signed transaction must not change type.
+        JsonElement param = JsonSerializer.Deserialize<JsonElement>($$"""
+            {
+                "type": "0x0",
+                "from": "{{UnlockedTestAccount}}",
+                "to": "0x2d44c0e097f6cd0f514edac633d82e01280b4a5c",
+                "gas": "0x76c0",
+                "maxFeePerGas": "0x9184e72a000",
+                "maxPriorityFeePerGas": "0x1",
+                "nonce": "0x0"
+            }
+            """);
+
+        using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+        string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", param);
+
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}").And.Contain("conflicts with the fields present"));
     }
 
     private async Task<string> SignTransaction(TransactionForRpc rpcTx)

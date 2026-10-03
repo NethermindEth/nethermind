@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -194,6 +195,38 @@ public class OptimismEthRpcModuleTest
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
             Assert.That(result.Result.Error, Is.EqualTo(TxPoolErrorMessages.FailedToRecoverSender));
         }
+    }
+
+    [Test]
+    public async Task Send_transaction_rejects_an_explicit_type_its_fields_do_not_fit()
+    {
+        ITxSealer sealer = Substitute.For<ITxSealer>();
+        using TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: null /* explicitly using null to behave as Sequencer */,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: sealer,
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+        // Type 0x0 with dynamic fees runs as an EIP-1559 call, but a sent transaction must not change type.
+        JsonElement rpcTx = JsonSerializer.Deserialize<JsonElement>($$"""
+            {
+                "type": "0x0",
+                "from": "{{TestItem.AddressA}}",
+                "to": "{{TestItem.AddressB}}",
+                "gas": "0x76c0",
+                "maxFeePerGas": "0x9184e72a000",
+                "maxPriorityFeePerGas": "0x1",
+                "nonce": "0x0"
+            }
+            """);
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendTransaction", rpcTx);
+
+        sealer.DidNotReceive().TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}").And.Contain("conflicts with the fields present"));
     }
 
     [Test]
