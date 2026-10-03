@@ -74,6 +74,21 @@ public static class RecursiveStarkAggregator
         if (input.Deps.Count != input.Witnesses.Count) throw new ArgumentException("Witness count mismatch", nameof(input));
         foreach (RecursiveProofInput child in input.RecursiveProofs)
             if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
+        if (input.Deps.Count == 0 && input.RecursiveProofs.Count == 1 && input.Discards.Count == 0)
+        {
+            RecursiveProofInput parent = input.RecursiveProofs[0];
+            if (parent.InnerDeps.Count <= Eip8288Constants.MaxProofDependencies
+                && Eip8288Dependencies.ComputeDepsHash(parent.InnerDeps) == depsHash)
+            {
+                // The same verified statement needs no new recursive guest execution.
+                cancellationToken.ThrowIfCancellationRequested();
+                if (parent.Proof.Length is 0 or > Eip8288Constants.MaxProofBytes
+                    || !verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, parent.Proof.Span))
+                    throw new InvalidOperationException("Invalid recursive dependency proof.");
+                cancellationToken.ThrowIfCancellationRequested();
+                return parent.Proof.ToArray();
+            }
+        }
         if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize
             && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
             && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)

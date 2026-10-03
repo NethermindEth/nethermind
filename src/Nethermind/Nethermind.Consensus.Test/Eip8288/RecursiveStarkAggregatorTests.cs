@@ -142,6 +142,83 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
+    public void Unchanged_parent_is_verified_and_reused_without_proving()
+    {
+        FrameDependency a = Sphincs("unchanged-a"), b = Sphincs("unchanged-b");
+        byte[] parent = [2, 3];
+        AggregationInput input = new() { RecursiveProofs = [new([b, a], parent)] };
+        FakeLeanProofVerifier verifier = new(true);
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([a, b]);
+
+        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof, Is.EqualTo(parent));
+            Assert.That(proof, Is.Not.SameAs(parent));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+            Assert.That(verifier.ProofCalls, Is.Zero);
+        }
+        proof[0] = 9;
+        Assert.That(parent[0], Is.EqualTo(2));
+    }
+
+    public enum StatementChange { DirectWitness, Discard, TargetHash, ExtraParent }
+
+    [Test]
+    public void Changed_statement_still_requires_proving([Values] StatementChange change)
+    {
+        FrameDependency a = Sphincs("parent-a"), b = Sphincs("parent-b");
+        AggregationInput input = new()
+        {
+            Deps = change == StatementChange.DirectWitness ? [b] : [],
+            Witnesses = change == StatementChange.DirectWitness ? [new byte[] { 1 }] : [],
+            Discards = change == StatementChange.Discard ? [a] : [],
+            RecursiveProofs = change == StatementChange.ExtraParent ? [new([a], [2]), new([b], [3])] : [new([a], [2])]
+        };
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(change == StatementChange.TargetHash ? [b] : [a]);
+        FakeLeanProofVerifier verifier = new(true);
+
+        RecursiveStarkAggregator.Prove(input, verifier, hash);
+
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Unchanged_parent_cannot_bypass_failed_verification()
+    {
+        FrameDependency dependency = Sphincs("invalid-parent");
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
+        FakeLeanProofVerifier verifier = new(false);
+        AggregationInput input = new() { RecursiveProofs = [new([dependency], [2])] };
+
+        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+            Assert.That(verifier.ProofCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Cancellation_stops_unchanged_parent_reuse([Values] bool beforeVerification)
+    {
+        using System.Threading.CancellationTokenSource cancellation = new();
+        FakeLeanProofVerifier verifier = new(true) { OnVerification = cancellation.Cancel };
+        FrameDependency dependency = Sphincs("canceled-parent");
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
+        AggregationInput input = new() { RecursiveProofs = [new([dependency], [2])] };
+        if (beforeVerification) cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash, cancellation.Token));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(beforeVerification ? 0 : 1));
+            Assert.That(verifier.ProofCalls, Is.Zero);
+        }
+    }
+
+    [Test]
     public void Prover_hierarchically_folds_more_than_sixteen_recursive_children()
     {
         List<RecursiveProofInput> recursive = [];
