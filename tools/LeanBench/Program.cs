@@ -74,7 +74,7 @@ public static partial class Program
             backendCommit = BackendCommit,
             sphincsWitnessBytes = Eip8288Constants.LeanSphincsWitnessBytes,
             transport = "localhost TCP; production Snappy/AES/MAC RLPx codecs; preset session secrets; shared production wrapper admission; no WAN or capability-handshake timing",
-            protocolPreprovedTransport = "lean/2; 64KiB chunks; production reassembly and admission; codec/TCP transport excludes PacketSender",
+            protocolPreprovedTransport = "lean/1; 64KiB chunks; production reassembly and admission; codec/TCP transport excludes PacketSender",
             warmupBatches = warmups,
             cryptoRepetitions = repetitions,
             durationSeconds = seconds,
