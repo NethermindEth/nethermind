@@ -84,7 +84,7 @@ public class ColumnGossipRouterFuluHeaderTests
             verdicts.Add(router.Handle(Column, gloasTopic: false, Message(forged)));
         }
 
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
         MessageValidity honestVerdict = router.Handle(Column, gloasTopic: false, Message(honest));
 
         using (Assert.EnterMultipleScope())
@@ -123,8 +123,8 @@ public class ColumnGossipRouterFuluHeaderTests
     public void Garbage_under_the_real_header_before_import_never_shadows_the_honest_copy()
     {
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(Ancestry.DescendsFromFinalized, parentInSnapshot: true);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
-        DataColumnSidecar garbage = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
+        DataColumnSidecar garbage = SignedSidecar();
         garbage.KzgProofs = [garbage.KzgProofs![1], garbage.KzgProofs[0]];
 
         MessageValidity first = router.Handle(Column, gloasTopic: false, Message(garbage));
@@ -147,7 +147,7 @@ public class ColumnGossipRouterFuluHeaderTests
         FailedBlockRoots failedBlocks = new();
         failedBlocks.Add(parentFailed ? ParentRoot : OtherRoot, CurrentSlot - 1);
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(Ancestry.DescendsFromFinalized, parentInSnapshot: true, failedBlocks: failedBlocks);
-        DataColumnSidecar sidecar = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar sidecar = SignedSidecar();
 
         AssertVerdict(router, pool, sidecar, expected, kzgBatches, consumed, reason);
     }
@@ -157,7 +157,7 @@ public class ColumnGossipRouterFuluHeaderTests
     {
         const int copies = 20;
         (ColumnGossipRouter router, DataColumnSidecarPool pool, BeaconChainStore store) = Create(Ancestry.DescendsFromFinalized);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
         if (verifiedOverGossip)
         {
             router.Handle(Column, gloasTopic: false, Message(honest));
@@ -170,7 +170,7 @@ public class ColumnGossipRouterFuluHeaderTests
 
         StoreAsImported(store, honest);
         long batchesBefore = router.KzgBatchCount;
-        DataColumnSidecar garbage = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar garbage = SignedSidecar();
         garbage.KzgProofs = [garbage.KzgProofs![1], garbage.KzgProofs[0]];
         MessageValidity[] verdicts = [.. Enumerable.Range(0, copies).Select(_ => router.Handle(Column, gloasTopic: false, Message(garbage)))];
 
@@ -190,7 +190,7 @@ public class ColumnGossipRouterFuluHeaderTests
         // Import verified the proposer; otherwise only a covered expected proposer lets a copy be forwarded.
         bool forwardable = imported || proposerCovered;
         (ColumnGossipRouter router, DataColumnSidecarPool pool, BeaconChainStore store) = Create(Ancestry.DescendsFromFinalized, lookaheads: lookaheads);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
         pool.Add(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), CurrentSlot, honest);
         if (imported)
         {
@@ -275,7 +275,7 @@ public class ColumnGossipRouterFuluHeaderTests
     public async Task Invalid_signature_on_an_imported_header_charges_only_with_available_keys([Values] bool withPubkeys)
     {
         (ColumnGossipRouter router, _, BeaconChainStore store) = Create(Ancestry.DescendsFromFinalized, withPubkeys: withPubkeys);
-        DataColumnSidecar sidecar = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar sidecar = SignedSidecar();
         StoreAsImported(store, sidecar);
         sidecar.SignedBlockHeader!.Signature = default;
         byte[] payload = Message(sidecar);
@@ -349,19 +349,25 @@ public class ColumnGossipRouterFuluHeaderTests
         AssertVerdict(router, pool, Signed(sidecar, signer), expected, kzgBatches, consumed, reason);
     }
 
-    [Test]
-    public void Another_signature_over_a_header_that_already_verified_is_rejected()
+    [TestCase(false, TestName = nameof(Another_signature_over_a_header_that_already_verified_is_rejected))]
+    [TestCase(true, TestName = "A_failed_signature_does_not_evict_the_verified_one_so_the_honest_signature_pairs_once")]
+    public void Another_signature_over_a_header_that_already_verified_is_rejected(bool repeatHonest)
     {
         (ColumnGossipRouter router, _, _) = Create(Ancestry.DescendsFromFinalized, parentInSnapshot: true);
-        router.Handle(Column, gloasTopic: false, Message(Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0)));
-        DataColumnSidecar resigned = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 1);
+        router.Handle(Column, gloasTopic: false, Message(SignedSidecar()));
+        DataColumnSidecar resigned = SignedSidecar(signer: 1);
 
         MessageValidity verdict = router.Handle(Column, gloasTopic: false, Message(resigned));
+        if (repeatHonest)
+        {
+            router.Handle(Column, gloasTopic: false, Message(SignedSidecar()));
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected));
             Assert.That(router.GetDropCount(ColumnGossipDropReason.InvalidHeaderSignature), Is.EqualTo(1));
+            Assert.That(router.HeaderSignatureVerificationCount, Is.EqualTo(2), "one pairing per distinct signature; the honest one stays cached across the failed one");
         }
     }
 
@@ -412,7 +418,7 @@ public class ColumnGossipRouterFuluHeaderTests
         int raised = 0;
         router.DataColumnSidecarReceived += _ => raised++;
 
-        MessageValidity verdict = router.Handle(Column, gloasTopic: false, Message(Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0)));
+        MessageValidity verdict = router.Handle(Column, gloasTopic: false, Message(SignedSidecar()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -504,7 +510,7 @@ public class ColumnGossipRouterFuluHeaderTests
         ProposerLookaheadHolder lookaheads = new() { Current = order == ImportOrder.UncoveredUntilImport ? null : Lookahead(ParentRoot, 0) };
         ForkChoiceSnapshotHolder snapshots = new() { Current = Snapshot(order == ImportOrder.AncestryUnknownUntilImport ? Ancestry.ParentAncestryUnknown : Ancestry.DescendsFromFinalized, parentInSnapshot: false) };
         (ColumnGossipRouter router, DataColumnSidecarPool pool, BeaconChainStore store) = Create(null, lookaheads: lookaheads, forkChoice: snapshots);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
         int raised = 0;
         router.DataColumnSidecarReceived += _ => raised++;
         if (order == ImportOrder.AfterImport)
@@ -540,7 +546,7 @@ public class ColumnGossipRouterFuluHeaderTests
         const int alteredAfterHonest = 200;
         ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(ParentRoot, 0) };
         (ColumnGossipRouter router, DataColumnSidecarPool pool, BeaconChainStore store) = Create(Ancestry.DescendsFromFinalized, lookaheads: lookaheads);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
         Hash256 blockRoot = SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!);
         if (imported)
         {
@@ -585,7 +591,7 @@ public class ColumnGossipRouterFuluHeaderTests
         ForkChoiceSnapshotHolder snapshots = new() { Current = resolution == Resolution.ParentPublished ? Snapshot(Ancestry.BlockAndParentNotInSnapshot, parentInSnapshot: true) : withParent };
         ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(resolution == Resolution.ParentPublished ? ParentRoot : OtherRoot, 0) };
         (ColumnGossipRouter router, DataColumnSidecarPool pool, BeaconChainStore store) = Create(null, lookaheads: lookaheads, forkChoice: snapshots);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
         Hash256 blockRoot = SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!);
         int raised = 0;
         router.DataColumnSidecarReceived += _ => raised++;
@@ -630,7 +636,7 @@ public class ColumnGossipRouterFuluHeaderTests
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(null, lookaheads: lookaheads, forkChoice: new ForkChoiceSnapshotHolder { Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true) });
         SlotClock clock = new(Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot + 6)));
         GossipMessageValidator validator = new(new GossipRouter(Spec, clock, LimboLogs.Instance), router, Spec, clock);
-        DataColumnSidecar sidecar = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar sidecar = SignedSidecar();
         Hash256 blockRoot = SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!);
         List<MessageValidity> given = [];
         GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
@@ -688,6 +694,37 @@ public class ColumnGossipRouterFuluHeaderTests
                 ParentRoot, null, FinalizedEpoch, FinalizedEpoch, 0, ExecutionStatus.Invalid, Hash256.Zero)]);
         (GossipRouter router, _) = BlockRouter(ParentRoot, fault == BlockFault.Proposer ? 1UL : 0UL, out _, snapshot);
         SignedBeaconBlock block = SignedBlock(0, Hash256.Zero);
+        ApplyBlockFault(block, fault);
+
+        await AssertBlockPeerPenalty(router, block, MessageValidity.Ignored);
+    }
+
+    public enum BlockFault { None, Timestamp, BlobCount, ParentSlot, Proposer, Signature, ProposerIndex }
+
+    [Test]
+    public async Task Fulu_block_fields_reject_after_parent_validation([Values] bool wrongTimestamp, [Values] bool lookaheadOnBranch)
+    {
+        (GossipRouter router, _) = BlockRouter(lookaheadOnBranch ? ParentRoot : OtherRoot, 0, out _);
+        SignedBeaconBlock block = SignedBlock(0, Hash256.Zero);
+        ApplyBlockFault(block, wrongTimestamp ? BlockFault.Timestamp : BlockFault.BlobCount);
+        SignBlock(block, 0);
+
+        await AssertBlockPeerPenalty(router, block, MessageValidity.Rejected);
+    }
+
+    private static Task AssertBlockPeerPenalty(GossipRouter router, SignedBeaconBlock block, MessageValidity expected)
+    {
+        byte[] payload = Snappy.CompressToArray(SignedBeaconBlock.Encode(block));
+        return GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.BeaconBlock, payload, verdict =>
+        {
+            MessageValidity immediate = router.Handle(GossipTopics.BeaconBlock, gloasTopic: false, payload, verdict);
+            if (!verdict.IsHandedOff) verdict.Complete(immediate);
+            return Task.CompletedTask;
+        }, expected);
+    }
+
+    private static void ApplyBlockFault(SignedBeaconBlock block, BlockFault fault)
+    {
         switch (fault)
         {
             case BlockFault.Timestamp:
@@ -705,36 +742,6 @@ public class ColumnGossipRouterFuluHeaderTests
                 block.Message!.ProposerIndex = ulong.MaxValue;
                 break;
         }
-
-        byte[] payload = Snappy.CompressToArray(SignedBeaconBlock.Encode(block));
-        await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.BeaconBlock, payload, verdict =>
-        {
-            MessageValidity immediate = router.Handle(GossipTopics.BeaconBlock, gloasTopic: false, payload, verdict);
-            if (!verdict.IsHandedOff) verdict.Complete(immediate);
-            return Task.CompletedTask;
-        }, MessageValidity.Ignored);
-    }
-
-    public enum BlockFault { None, Timestamp, BlobCount, ParentSlot, Proposer, Signature, ProposerIndex }
-
-    [Test]
-    public async Task Fulu_block_fields_reject_after_parent_validation([Values] bool wrongTimestamp, [Values] bool lookaheadOnBranch)
-    {
-        (GossipRouter router, _) = BlockRouter(lookaheadOnBranch ? ParentRoot : OtherRoot, 0, out _);
-        SignedBeaconBlock block = SignedBlock(0, Hash256.Zero);
-        if (wrongTimestamp)
-            block.Message!.Body!.ExecutionPayload!.Timestamp++;
-        else
-            block.Message!.Body!.BlobKzgCommitments = Enumerable.Range(0, (int)Spec.GetBlobParameters(Spec.GetEpoch(CurrentSlot))!.Value.MaxBlobsPerBlock + 1)
-                .Select(_ => SszKzgCommitment.FromSpan(new byte[SszKzgCommitment.KzgCommitmentLength])).ToArray();
-        SignBlock(block, 0);
-        byte[] payload = Snappy.CompressToArray(SignedBeaconBlock.Encode(block));
-        await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.BeaconBlock, payload, verdict =>
-        {
-            MessageValidity immediate = router.Handle(GossipTopics.BeaconBlock, gloasTopic: false, payload, verdict);
-            if (!verdict.IsHandedOff) verdict.Complete(immediate);
-            return Task.CompletedTask;
-        }, MessageValidity.Rejected);
     }
 
     /// <summary>
@@ -827,7 +834,7 @@ public class ColumnGossipRouterFuluHeaderTests
         ForkChoiceSnapshotHolder snapshots = new() { Current = Snapshot(Ancestry.BlockAndParentNotInSnapshot, parentInSnapshot: true) };
         ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(ParentRoot, 0) };
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(null, lookaheads: lookaheads, forkChoice: snapshots);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
         router.Handle(Column, gloasTopic: false, Message(honest));
         snapshots.Current = withParent with { };
         router.Handle(Column, gloasTopic: false, UndecodableMessage);
@@ -857,7 +864,7 @@ public class ColumnGossipRouterFuluHeaderTests
         ForkChoiceSnapshotHolder snapshots = new() { Current = Snapshot(Ancestry.BlockAndParentNotInSnapshot, parentInSnapshot: true) };
         ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(ParentRoot, 0) };
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(null, lookaheads: lookaheads, forkChoice: snapshots);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
         Hash256 blockRoot = SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!);
 
         router.Handle(Column, gloasTopic: false, Message(Altered(honest, 0)));
@@ -899,20 +906,6 @@ public class ColumnGossipRouterFuluHeaderTests
     }
 
     [Test]
-    public void A_failed_signature_does_not_evict_the_verified_one_so_the_honest_signature_pairs_once()
-    {
-        (ColumnGossipRouter router, _, _) = Create(Ancestry.DescendsFromFinalized, parentInSnapshot: true);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
-        DataColumnSidecar resigned = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 1);
-
-        router.Handle(Column, gloasTopic: false, Message(honest));
-        router.Handle(Column, gloasTopic: false, Message(resigned));
-        router.Handle(Column, gloasTopic: false, Message(honest));
-
-        Assert.That(router.HeaderSignatureVerificationCount, Is.EqualTo(2), "one pairing per distinct signature; the honest one stays cached across the failed one");
-    }
-
-    [Test]
     public void A_header_signed_under_a_cached_key_outside_the_subgroup_is_refused([Values] bool offSubgroup)
     {
         Validator[] validators = KeyedValidators();
@@ -924,7 +917,7 @@ public class ColumnGossipRouterFuluHeaderTests
         PubkeyCache keys = new();
         keys.Build(validators);
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(Ancestry.DescendsFromFinalized, parentInSnapshot: true, keys: keys);
-        DataColumnSidecar sidecar = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar sidecar = SignedSidecar();
 
         MessageValidity verdict = router.Handle(Column, gloasTopic: false, Message(sidecar));
 
@@ -944,7 +937,7 @@ public class ColumnGossipRouterFuluHeaderTests
         // Starts an epoch early so the lookahead covers every slot the flood signs.
         ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(ParentRoot, 0, Spec.GetEpoch(CurrentSlot) - 1) };
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(null, subnets: AllSubnets, lookaheads: lookaheads, forkChoice: snapshots);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
         router.Handle(Column, gloasTopic: false, Message(honest));
 
         // The inclusion proof does not cover the slot or the index, so one built sidecar serves every key; KZG never runs while queued.
@@ -976,7 +969,7 @@ public class ColumnGossipRouterFuluHeaderTests
         ForkChoiceSnapshotHolder snapshots = new() { Current = Snapshot(Ancestry.BlockAndParentNotInSnapshot, parentInSnapshot: true) };
         ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(ParentRoot, 0, Spec.GetEpoch(CurrentSlot) - 1) };
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(null, subnets: AllSubnets, lookaheads: lookaheads, forkChoice: snapshots);
-        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+        DataColumnSidecar honest = SignedSidecar();
         router.Handle(Column, gloasTopic: false, Message(honest));
         ulong acceptedBefore = Metrics.BeaconChainGossipAccepted;
         ulong droppedBefore = Metrics.BeaconChainGossipDropped;
@@ -1037,6 +1030,8 @@ public class ColumnGossipRouterFuluHeaderTests
     }
 
     private static Validator[] KeyedValidators() => [.. Enumerable.Range(0, Validators).Select(i => new Validator { Pubkey = new BlsPublicKey(new Bls.P1(SecretKey(i)).Compress()) })];
+
+    private static DataColumnSidecar SignedSidecar(int signer = 0) => Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer);
 
     /// <summary>Signs the header of <paramref name="sidecar"/> with validator <paramref name="signer"/>'s key, whatever proposer index it claims.</summary>
     private static DataColumnSidecar Signed(DataColumnSidecar sidecar, int signer)
