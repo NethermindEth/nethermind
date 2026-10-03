@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -25,7 +26,8 @@ namespace Nethermind.Merge.Plugin;
 /// client, and also any stretch of three epochs or more without finality while the consensus client stays online;
 /// in both cases the older blocks are skipped and logged. Skipping only withholds width and never grants any. Senders come from the frame transaction's own
 /// <c>sender</c> field, so receipts are read without signature recovery. Inert unless the pool holds a width ledger and
-/// <see cref="ITxPoolConfig.FrameTxWidthEnabled"/> is set.
+/// <see cref="ITxPoolConfig.FrameTxWidthEnabled"/> is set. The block tree raises finalizations outside its own lock, so
+/// the handler serializes them: overlapping finalizations credit each block once and never move the watermark back.
 /// </remarks>
 public class FrameTxWidthFinalizer : IDisposable
 {
@@ -35,6 +37,7 @@ public class FrameTxWidthFinalizer : IDisposable
     private readonly IReceiptFinder _receiptFinder;
     private readonly IFrameTxWidthLedger? _ledger;
     private readonly ILogger _logger;
+    private readonly Lock _finalizationLock = new();
     private ulong _lastFinalizedBlock;
     private bool _seenFinalization;
 
@@ -53,6 +56,7 @@ public class FrameTxWidthFinalizer : IDisposable
 
     private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
     {
+        using Lock.Scope _ = _finalizationLock.EnterScope();
         try
         {
             ulong finalized = e.FinalizedBlock.Number;

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -58,6 +60,38 @@ public class FrameTxWidthFinalizerTests
             chain.Ledger.Received(1).EarnWidthOnFinalization(Same(gap), Arg.Any<TxReceipt[]>());
             chain.Ledger.Received(2).EarnWidthOnFinalization(Same(last), Arg.Any<TxReceipt[]>());
             chain.Ledger.Received(1).EarnWidthOnFinalization(Same(next), Arg.Any<TxReceipt[]>());
+        }
+    }
+
+    [Test]
+    public async Task Overlapping_finalizations_credit_each_block_once()
+    {
+        using FinalizingChain chain = new(Enabled(), canonicalLength: 7);
+        Block paused = chain.Canonical[6];
+        Block last = chain.Canonical[7];
+        using SemaphoreSlim pausedCredits = new(0);
+        using ManualResetEventSlim resume = new();
+        chain.Ledger.When(l => l.EarnWidthOnFinalization(Same(paused), Arg.Any<TxReceipt[]>()))
+            .Do(_ =>
+            {
+                pausedCredits.Release();
+                resume.Wait(TimeSpan.FromSeconds(10));
+            });
+        chain.FinalizeAt(chain.Canonical[5]);
+
+        Task slower = Task.Run(() => chain.FinalizeAt(paused));
+        bool firstCreditPaused = await pausedCredits.WaitAsync(TimeSpan.FromSeconds(10));
+        Task overlapping = Task.Run(() => chain.FinalizeAt(last));
+        bool creditedAgain = await pausedCredits.WaitAsync(TimeSpan.FromMilliseconds(500));
+        resume.Set();
+        await Task.WhenAll(slower, overlapping);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCreditPaused, Is.True);
+            Assert.That(creditedAgain, Is.False);
+            chain.Ledger.Received(1).EarnWidthOnFinalization(Same(paused), Arg.Any<TxReceipt[]>());
+            chain.Ledger.Received(1).EarnWidthOnFinalization(Same(last), Arg.Any<TxReceipt[]>());
         }
     }
 
