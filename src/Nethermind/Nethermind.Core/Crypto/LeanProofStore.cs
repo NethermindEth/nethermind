@@ -18,8 +18,8 @@ public sealed class LeanProofStore
     /// <summary>Distinct witness records a sender may retain through pending transactions.</summary>
     public const int MaxSenderPinnedRecords = 256;
     private const long MaxStoredBytes = 64 * 1024 * 1024;
-    // Enough record slots for 2048 transactions with 16 independent signatures each;
-    // the byte bound still limits large witnesses independently.
+    // Metadata ceiling only: the 64 MiB byte bound usually fills first and does not
+    // guarantee witness coverage for every transaction in a full pool.
     private const int MaxStoredRecords = 2048 * 16;
     private const int MaxCachedRecursiveRecords = 1024;
     private readonly object _lock = new();
