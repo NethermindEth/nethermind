@@ -15,7 +15,6 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -225,23 +224,9 @@ public class GloasColumnReqRespTests
         pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, GloasStartSlot + 2, heldRoot));
         pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, GloasStartSlot + 2, pendingRoot), GloasStartSlot + 2);
         DataColumnSidecarsByRootProtocol protocol = new(Spec, pool);
-        ISessionContext context = Substitute.For<ISessionContext>();
-        context.State.Returns(new Nethermind.Libp2p.Core.State());
-
-        Channel channel = new();
-        Task listen = Task.Run(() => ListenThenCloseAsync(protocol, channel.Reverse, context, token), token);
-        Stream stream = new ChannelStreamAdapter(channel);
         DataColumnsByRootIdentifier[] request = [new() { BlockRoot = pendingRoot, Columns = [3] }, new() { BlockRoot = heldRoot, Columns = [3] }];
-        await ReqRespFraming.WriteRequestAsync(stream, DataColumnSidecarsByRootRequest.Encode(new DataColumnSidecarsByRootRequest { Identifiers = request }), token);
-        await channel.WriteEofAsync(token);
-
-        List<ResponseChunk> chunks = [];
-        while (await ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, token) is { } chunk)
-        {
-            chunks.Add(chunk);
-        }
-
-        await listen.WaitAsync(token);
+        List<ResponseChunk> chunks = await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync,
+            DataColumnSidecarsByRootRequest.Encode(new DataColumnSidecarsByRootRequest { Identifiers = request }), token);
         Assert.That(chunks, Has.Count.EqualTo(1), "the pending candidate is not served");
         DataColumnSidecarGloas.Decode(chunks[0].Payload, out DataColumnSidecarGloas served);
         using (Assert.EnterMultipleScope())
@@ -299,19 +284,6 @@ public class GloasColumnReqRespTests
         }
 
         await channel.WriteEofAsync();
-    }
-
-    // The libp2p host closes the response stream once the handler returns, even when it faults; the dial side reads until then.
-    private static async Task ListenThenCloseAsync(DataColumnSidecarsByRootProtocol protocol, IChannel channel, ISessionContext context, CancellationToken token)
-    {
-        try
-        {
-            await protocol.ListenAsync(channel, context);
-        }
-        finally
-        {
-            await channel.WriteEofAsync(token);
-        }
     }
 
     /// <summary>Exposes the protected chunked-response readers for direct testing.</summary>
