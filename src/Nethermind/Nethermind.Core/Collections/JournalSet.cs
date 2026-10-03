@@ -23,7 +23,7 @@ namespace Nethermind.Core.Collections
         private const int SparseClearCapacityDivisor = 256;
 
         private readonly List<T> _items = [];
-        private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
+        private readonly OptimizedHashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
 
         public int TakeSnapshot() => Position;
 

@@ -193,7 +193,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         // stack the captured original is the answer.
         if (_transactionChangesSnapshots.Count != 0 && _intraBlockCache.Count != 0)
         {
-            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, storageCell);
+            ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(storageCell);
             if (!Unsafe.IsNullRef(ref head))
             {
                 int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
@@ -765,7 +765,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             foreach (KeyValuePair<StorageCell, UInt256> readCell in originalValues)
             {
-                ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, readCell.Key, out bool exists);
+                ref HeadChange head = ref _intraBlockCache.GetValueRefOrAddDefault(readCell.Key, out bool exists);
                 if (!exists)
                 {
                     ClearSlot(readCell.Key, ref head, exists: false);

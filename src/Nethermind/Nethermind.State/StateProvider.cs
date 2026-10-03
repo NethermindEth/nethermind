@@ -32,7 +32,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
 
     // Address -> index of its newest change in _changes; older changes reachable via Change.PrevIdx.
-    private readonly Dictionary<AddressAsKey, int> _intraTxCache = [];
+    private readonly OptimizedDictionary<AddressAsKey, int> _intraTxCache = [];
     private readonly HashSet<AddressAsKey> _committedThisRound = [];
     private readonly HashSet<AddressAsKey> _nullAccountReads = [];
     // Only guarding against hot duplicates within the current block; the cross-block
@@ -44,7 +44,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // Code staged for CodeDb by the current transaction, paired with the change-log position of the
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
     private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
-    private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+    private readonly OptimizedDictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
     private List<AddressAsKey>? _spareRemovedWithStorage;
@@ -407,7 +407,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         for (int nextPosition = changes.Length - 1; nextPosition > snapshot; nextPosition--)
         {
             ref readonly Change change = ref changes[nextPosition];
-            ref int head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraTxCache, change.Address);
+            ref int head = ref _intraTxCache.GetValueRefOrNullRef(change.Address);
 
             if (Unsafe.IsNullRef(ref head)) ThrowUnexpectedPosition(nextPosition, -1);
             if (head != nextPosition) ThrowUnexpectedPosition(nextPosition, head);
@@ -862,7 +862,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         foreach (AddressAsKey key in _blockChanges.Keys)
         {
-            ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+            ref ChangeTrace change = ref _blockChanges.GetValueRefOrNullRef(key);
             if (change.Before != change.After)
             {
                 change.Before = change.After;
@@ -886,7 +886,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ref ChangeTrace GetOrAddBlockChange(AddressAsKey key, out bool exists)
-        => ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, key, out exists);
+        => ref _blockChanges.GetValueRefOrAddDefault(key, out exists);
 
     internal Account? GetPureRead(Address address) => GetState(address);
 
@@ -899,7 +899,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         foreach (AddressAsKey key in _blockChanges.Keys)
         {
-            ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+            ref ChangeTrace change = ref _blockChanges.GetValueRefOrNullRef(key);
             if (overlay.TryGetAccount(key.Value, change.After, out Account? account)) change.After = account;
         }
     }
@@ -1003,7 +1003,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     private void Push(Address address, Account? touchedAccount, ChangeType changeType)
     {
-        ref int head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
+        ref int head = ref _intraTxCache.GetValueRefOrAddDefault(address, out bool exists);
         if (changeType == ChangeType.Touch
             && exists && _changes[head].ChangeType == ChangeType.Touch)
         {
