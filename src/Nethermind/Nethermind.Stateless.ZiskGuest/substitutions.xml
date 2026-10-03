@@ -34,5 +34,9 @@
     <type fullname="Nethermind.Core.Extensions.ZiskMemmoveFlag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
+    <!-- ZisK lowers Zbb's rev8 to one native instruction, so byte swaps take ReverseEndianness. -->
+    <type fullname="Nethermind.Core.Extensions.ZkEvmBitOperations">
+      <method signature="System.Boolean get_HasByteReverse()" body="stub" value="true" />
+    </type>
   </assembly>
 </linker>
