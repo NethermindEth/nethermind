@@ -13,6 +13,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -61,6 +62,10 @@ public abstract class TransactionForRpc
     [JsonIgnore]
     internal TxType? RequestedType { get; set; }
 
+    // True once WithRequestedType made this a transaction to build or sign rather than a call.
+    [JsonIgnore]
+    internal bool IsSigningRequest { get; set; }
+
     /// <summary>
     /// This request as the explicit type it named, for the methods that build or sign a transaction. For the
     /// Ethereum types the fields pick the class during deserialization, so a call never takes a requirement
@@ -70,6 +75,7 @@ public abstract class TransactionForRpc
     /// </summary>
     public Result<TransactionForRpc> WithRequestedType()
     {
+        IsSigningRequest = true;
         if (RequestedType is not { } requested) return this;
         bool defaulted = IsTypeDefaulted;
         IsTypeDefaulted = false;
@@ -95,6 +101,7 @@ public abstract class TransactionForRpc
         }
 
         promoted.RequestedType = requested;
+        promoted.IsSigningRequest = true;
         return promoted;
     }
 
@@ -111,7 +118,15 @@ public abstract class TransactionForRpc
     }
 
     public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
-        => new Transaction { Type = ResolveType(spec) };
+    {
+        TxType type = ResolveType(spec);
+        // A call's fields chose this type, so a field the fork of the call's block lacks names a type it doesn't
+        // enable, even when its value is zero or empty. A defaulted type names no field, and a transaction to build
+        // or sign keeps the type it asked for.
+        return spec is not null && !IsTypeDefaulted && !IsSigningRequest && !spec.IsTxTypeEnabled(type)
+            ? TxErrorMessages.InvalidTxType(spec.Name)
+            : new Transaction { Type = type };
+    }
 
     /// <summary>
     /// Converts the request with its input validated, rejecting a fee cap below the priority fee as well; a call that

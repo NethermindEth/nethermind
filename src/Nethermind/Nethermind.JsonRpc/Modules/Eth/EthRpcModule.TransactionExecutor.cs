@@ -54,7 +54,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 if (AcceptsZeroBlobFeeCap)
                     call = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call);
 
-                IReleaseSpec spec = GetSpec(header);
+                // The call converts against the fork it runs in, which a block override can change.
+                IReleaseSpec spec = GetSpec(_blockOverride?.ApplyTo(header) ?? header);
                 Result<Transaction> result = ValidatesFeeCapOrder
                     ? call.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec)
                     : call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);

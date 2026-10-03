@@ -152,10 +152,9 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.Legacy, """{"type":"0x1"}""", Istanbul.Instance);
 
             // Discriminator-matched type is not defaulted → preserved
-            yield return Make(TxType.AccessList, """{"accessList":[]}""", Istanbul.Instance);
-            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""", Istanbul.Instance);
+            yield return Make(TxType.AccessList, """{"accessList":[]}""", Berlin.Instance);
             yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""", London.Instance);
-            yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""", Istanbul.Instance);
+            yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""", London.Instance);
 
             // gasPrice → Legacy: defaulted, but downgrade is a no-op so result is Legacy on any spec
             yield return Make(TxType.Legacy, """{"gasPrice":"0x1"}""", London.Instance);
@@ -164,6 +163,17 @@ public class TransactionForRpcDeserializationTests
             // No spec (null) → keeps defaulted EIP1559
             yield return Make(TxType.EIP1559, """{}""", null);
         }
+    }
+
+    // A field its fork lacks names a type the fork doesn't enable, even when empty or zero.
+    [TestCase("""{"accessList":[]}""", TestName = "Access list before Berlin")]
+    [TestCase("""{"gasPrice":"0x1","accessList":[]}""", TestName = "Priced access list before Berlin")]
+    [TestCase("""{"maxFeePerGas":"0x0"}""", TestName = "Dynamic fees before Berlin")]
+    public void Test_FieldChosenType_IsRejectedBeforeItsFork(string txJson)
+    {
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson)!;
+        Result<Transaction> result = transactionForRpc.ToTransaction(spec: Istanbul.Instance);
+        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxType(Istanbul.Instance.Name)));
     }
 
     [TestCase("""{"input":"0x23e52","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length input")]

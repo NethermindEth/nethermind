@@ -145,7 +145,7 @@ public partial class DebugRpcModuleTests
 
         Address freshC = Build.An.Address.TestObject;
         yield return new TestCaseData(
-            (object)new { from = $"{freshC}", to = $"{TestItem.AddressC}", maxFeePerGas = "0x1", maxPriorityFeePerGas = "0x1" },
+            (object)new { from = $"{freshC}", to = $"{TestItem.AddressC}", gasPrice = "0x1" },
             $"tracing failed: {TxErrorMessages.InsufficientFundsForGas}: address ",
             ErrorCodes.InvalidInput)
         { TestName = "InsufficientFundsForGasPriceValue" };

@@ -223,20 +223,9 @@ public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool>? validate = 
     internal static readonly ReleaseSpecTxValidator Instance = new();
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        !(validate?.Invoke(releaseSpec) ?? IsEnabled(transaction.Type, releaseSpec))
+        !(validate?.Invoke(releaseSpec) ?? releaseSpec.IsTxTypeEnabled(transaction.Type))
             ? TxErrorMessages.InvalidTxType(releaseSpec.Name)
             : ValidationResult.Success;
-
-    private static bool IsEnabled(TxType type, IReleaseSpec releaseSpec) => type switch
-    {
-        TxType.AccessList => releaseSpec.IsEip2930Enabled,
-        TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
-        TxType.Blob => releaseSpec.IsEip4844Enabled,
-        TxType.SetCode => releaseSpec.IsEip7702Enabled,
-        // Without this arm a pooled frame transaction is the one type that survives a head not enabling EIP-8141.
-        TxType.FrameTx => releaseSpec.IsEip8141Enabled,
-        _ => true,
-    };
 }
 
 public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator
