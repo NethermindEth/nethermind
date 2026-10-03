@@ -481,6 +481,15 @@ namespace Nethermind.Core.Specs
         public bool IsEip8246Enabled { get; }
 
         /// <summary>
+        /// EIP-8253: Bump nonce of zero-nonce storage accounts.
+        /// </summary>
+        /// <remarks>
+        /// Irregular state transition at the fork block: each listed account gets nonce 1 before any
+        /// pre-execution system call, so a later CREATE/CREATE2 to it fails the EIP-684 nonce check.
+        /// </remarks>
+        public bool IsEip8253Enabled { get; }
+
+        /// <summary>
         /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
         /// and cold-account costs against actual state work.
         /// </summary>
