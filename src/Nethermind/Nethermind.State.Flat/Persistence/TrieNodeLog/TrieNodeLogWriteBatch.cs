@@ -41,7 +41,10 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
     private bool _poisoned;
     private long _storedBytes;
 
-    public void Append(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete)
+    public void Append(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete) => Append(key, value, delete, version);
+
+    /// <param name="recordVersion">Version stamped on the record; a second-level copy keeps the version the record had in the first level.</param>
+    public void Append(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete, ulong recordVersion)
     {
         if (key.Length is 0 or > TrieNodeLogRecord.MaxKeyLength) throw new ArgumentOutOfRangeException(nameof(key), key.Length, "Unsupported trie node log key length");
         if (value.Length > TrieNodeLogRecord.MaxValueLength) throw new ArgumentOutOfRangeException(nameof(value), value.Length, "Unsupported trie node log value length");
@@ -91,7 +94,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
 
         if (newToGeneration) _pendingInsertsInCurrent++;
 
-        TrieNodeLogRecord header = new(delete ? TrieNodeLogRecord.Delete : TrieNodeLogRecord.Put, key.Length, value.Length, version, prev);
+        TrieNodeLogRecord header = new(delete ? TrieNodeLogRecord.Delete : TrieNodeLogRecord.Put, key.Length, value.Length, recordVersion, prev);
         long recordOffset = Reserve(header.Length);
         Span<byte> destination = _buffer.AsSpan(_buffered, header.Length);
         header.Write(destination);

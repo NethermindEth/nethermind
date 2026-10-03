@@ -20,19 +20,25 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// byte budget and shard count, sharded by the first byte of the column key.
 /// <c>FallbackNodes</c> (paths of 16+ nibbles, practically empty) goes straight to RocksDB. A batch's records are
 /// staged per shard and appended by one worker per shard, and the shards are made durable and merged in parallel.
+/// With <see cref="IFlatDbConfig.TrieNodeLogSecondLevelEnabled"/> every shard merges into a second-level shard of the
+/// same size instead of RocksDB, and only that one merges into RocksDB.
 /// </summary>
 public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 {
     private const int StagingChunkSize = 1024 * 1024;
     private const int StagingQueueDepth = 4;
     private const int StagedRecordHeaderLength = 1 + 1 + 4; // delete flag, key length, value length
+    private const string SecondLevelSuffix = "-l2";
 
     private readonly int[] _partitionOffset = new int[PartitionCount]; // index of a partition's first shard
     private readonly int[] _partitionShift = new int[PartitionCount]; // right shift of the shard byte selecting the shard
     private readonly TrieNodeLogShard[] _shards; // partition-major: state, storage
+    private readonly TrieNodeLogShard[] _secondLevelShards; // same order as _shards, empty when disabled
     private static readonly FlatDbColumns[] StateColumns = [FlatDbColumns.StateTopNodes, FlatDbColumns.StateNodes];
     private static readonly FlatDbColumns[] StorageColumns = [FlatDbColumns.StorageNodes];
     private readonly SemaphoreSlim _mergeLimiter;
+    // A first-level merge holds its limiter while it may wait for second-level merges, so they cannot share one.
+    private readonly SemaphoreSlim _secondLevelMergeLimiter;
     private readonly Lock _drainLock = new(); // drains and clears queue behind each other; sync runs bypass batches from several threads
     private readonly bool _drainOnShutdown;
     private readonly ILogger _logger;
@@ -45,6 +51,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         if (config.TrieNodeLogMergeBacklogMargin < 1)
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMergeBacklogMargin)} must be at least 1, got {config.TrieNodeLogMergeBacklogMargin}", -1);
         _mergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
+        _secondLevelMergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _drainOnShutdown = config.TrieNodeLogDrainOnShutdown;
         _logger = logManager.GetClassLogger<TrieNodeLog>();
 
@@ -56,6 +63,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             (StoragePartitionName, StorageColumns, config.TrieNodeLogStorageBytes, config.TrieNodeLogStorageShardCount, nameof(IFlatDbConfig.TrieNodeLogStorageShardCount), 32),
         ];
         List<TrieNodeLogShard> shards = [];
+        List<TrieNodeLogShard> secondLevelShards = [];
         try
         {
             for (int partition = 0; partition < PartitionCount; partition++)
@@ -69,7 +77,14 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 for (int shard = 0; shard < shardCount; shard++)
                 {
                     string name = $"{partitionName}-{shard}";
-                    shards.Add(new TrieNodeLogShard(name, columns, Path.Combine(basePath, name), db, budget / shardCount, indexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, logManager));
+                    TrieNodeLogShard? secondLevel = null;
+                    if (config.TrieNodeLogSecondLevelEnabled)
+                    {
+                        string secondLevelName = name + SecondLevelSuffix;
+                        secondLevel = new TrieNodeLogShard(secondLevelName, name, columns, Path.Combine(basePath, secondLevelName), db, budget / shardCount, indexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _secondLevelMergeLimiter, secondLevel: null, logManager);
+                        secondLevelShards.Add(secondLevel);
+                    }
+                    shards.Add(new TrieNodeLogShard(name, name, columns, Path.Combine(basePath, name), db, budget / shardCount, indexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, secondLevel, logManager));
                 }
                 foreach (FlatDbColumns column in columns) db.GetColumnDb(column).SetWriteBuffer(WriteBufferAdjuster.MaxWriteBufferSize(column));
             }
@@ -77,10 +92,11 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         catch
         {
             // A shard that failed to recover must not leave the ones already started running.
-            foreach (TrieNodeLogShard shard in shards) shard.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            foreach (TrieNodeLogShard shard in shards.Concat(secondLevelShards)) shard.DisposeAsync().AsTask().GetAwaiter().GetResult();
             throw;
         }
         _shards = shards.ToArray();
+        _secondLevelShards = secondLevelShards.ToArray();
     }
 
     internal IReadOnlyList<TrieNodeLogShard> Shards => _shards;
@@ -112,12 +128,13 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     /// shard layout wrote it, so the log can be reconfigured or disabled between runs without losing nodes.
     /// Run before the log is constructed; the configured shards then start empty.
     /// </summary>
+    /// <remarks>Second-level shards go first: they hold what their first-level shards merged before.</remarks>
     public static void MergeAllOnDisk(string basePath, IColumnsDb<FlatDbColumns> db, ILogManager logManager)
     {
         if (!Directory.Exists(basePath)) return;
         ILogger logger = logManager.GetClassLogger<TrieNodeLog>();
         using SemaphoreSlim mergeLimiter = new(1, 1);
-        foreach (string directory in Directory.GetDirectories(basePath))
+        foreach (string directory in Directory.GetDirectories(basePath).OrderBy(static directory => directory.EndsWith(SecondLevelSuffix) ? 0 : 1))
         {
             string name = Path.GetFileName(directory);
             FlatDbColumns[]? columns = name.Split('-')[0] switch
@@ -133,7 +150,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             }
 
             if (logger.IsInfo) logger.Info($"Merging trie node log shard {name} left by the previous run");
-            TrieNodeLogShard shard = new(name, columns, directory, db, generationBytes: 0, indexRatio: 1, mergeLag: 0, backlogMargin: 1, mergeLimiter, logManager);
+            string versionName = name.EndsWith(SecondLevelSuffix) ? name[..^SecondLevelSuffix.Length] : name;
+            TrieNodeLogShard shard = new(name, versionName, columns, directory, db, generationBytes: 0, indexRatio: 1, mergeLag: 0, backlogMargin: 1, mergeLimiter, secondLevel: null, logManager);
             try
             {
                 shard.Drain();
@@ -166,9 +184,11 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     public ITrieNodeLog.IView OpenView(IColumnsDb<FlatDbColumns> db, ReaderFlags flags)
     {
         // Pinned before the snapshot so a generation merged and deleted in between stays readable, bound after it
-        // so the view serves exactly the log version the snapshot's metadata confirms.
-        ArrayPoolList<TrieNodeLogView> views = new(_shards.Length);
+        // so the view serves exactly the log version the snapshot's metadata confirms. The second level is pinned after
+        // the first, so a generation the first level dropped before its pin is already published in the second level.
+        ArrayPoolList<TrieNodeLogView> views = new(_shards.Length + _secondLevelShards.Length);
         foreach (TrieNodeLogShard shard in _shards) views.Add(shard.PinLiveGenerations());
+        foreach (TrieNodeLogShard shard in _secondLevelShards) views.Add(shard.PinLiveGenerations());
         IColumnDbSnapshot<FlatDbColumns> snapshot;
         try
         {
@@ -266,8 +286,11 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 if (_logger.IsError) _logger.Error("Trie node log merge at shutdown failed; the generations are kept for the next start", e);
             }
         }
+        // First-level merges may still be copying into the second level.
         foreach (TrieNodeLogShard shard in _shards) await shard.DisposeAsync();
+        foreach (TrieNodeLogShard shard in _secondLevelShards) await shard.DisposeAsync();
         _mergeLimiter.Dispose();
+        _secondLevelMergeLimiter.Dispose();
     }
 
     private sealed class View(TrieNodeLog log, IColumnDbSnapshot<FlatDbColumns> snapshot, ArrayPoolList<TrieNodeLogView> views) : ITrieNodeLog.IView
@@ -286,10 +309,18 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         private sealed class Column(TrieNodeLog log, ArrayPoolList<TrieNodeLogView> views, byte column, IReadOnlyKeyValueStore inner) : IReadOnlyKeyValueStore
         {
             public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
-                views[log.ShardIndex(column, key)].TryGet(column, key, out byte[]? value) ? value : inner.Get(key, flags);
+                TryGet(key, out byte[]? value) ? value : inner.Get(key, flags);
 
             public bool KeyExists(ReadOnlySpan<byte> key) =>
-                views[log.ShardIndex(column, key)].TryGet(column, key, out byte[]? value) ? value is not null : inner.KeyExists(key);
+                TryGet(key, out byte[]? value) ? value is not null : inner.KeyExists(key);
+
+            /// <summary>The first level, then its second-level shard, which follows the first-level views.</summary>
+            private bool TryGet(ReadOnlySpan<byte> key, out byte[]? value)
+            {
+                int shard = log.ShardIndex(column, key);
+                return views[shard].TryGet(column, key, out value)
+                    || (log._secondLevelShards.Length != 0 && views[log._shards.Length + shard].TryGet(column, key, out value));
+            }
         }
     }
 

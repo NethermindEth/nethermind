@@ -11,6 +11,9 @@ public readonly record struct TrieNodeLogLabel(string Value) : IMetricLabels
     public static readonly TrieNodeLogLabel Hit = new("hit");
     public static readonly TrieNodeLogLabel Chain = new("chain");
     public static readonly TrieNodeLogLabel Miss = new("miss");
+    public static readonly TrieNodeLogLabel SecondLevelHit = new("second_level_hit");
+    public static readonly TrieNodeLogLabel SecondLevelChain = new("second_level_chain");
+    public static readonly TrieNodeLogLabel SecondLevelMiss = new("second_level_miss");
     public static readonly TrieNodeLogLabel Active = new("active");
     public static readonly TrieNodeLogLabel Sealed = new("sealed");
     public static readonly TrieNodeLogLabel MergedPinned = new("merged_pinned");

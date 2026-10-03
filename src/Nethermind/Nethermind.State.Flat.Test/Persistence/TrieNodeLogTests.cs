@@ -313,6 +313,116 @@ public class TrieNodeLogTests
         Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)));
     }
 
+    private async Task ReopenWithSecondLevel()
+    {
+        _config.TrieNodeLogSecondLevelEnabled = true;
+        _config.TrieNodeLogMergeLag = 0;
+        await Reopen();
+    }
+
+    private string[] ShardFiles(string shard) => Directory.GetFiles(Path.Combine(_directory.Path, shard));
+
+    [Test]
+    public async Task Second_level_takes_merged_generations_and_merges_its_own_full_ones_into_RocksDB()
+    {
+        await ReopenWithSecondLevel();
+
+        // 3000-byte values: two per 4 KiB generation, so every second batch seals one.
+        static byte[] Value(byte seed) => TrieNodeLogTests.Value(seed, 3000);
+
+        TreePath coldPath = TreePath.FromHexString("1234"); // same shard as TopPath, written once
+        using (IPersistence.IWriteBatch batch = Batch(0, 1))
+        {
+            batch.SetStateTrieNode(TopPath, Value(1));
+            batch.SetStateTrieNode(coldPath, Rlp1);
+        }
+        WriteTop(1, 2, Value(2)); // seals first-level generation 1, copied into the second level
+        Assert.That(() => ShardFiles("state-0"), Is.Empty.After(5000, 20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ShardFiles("state-0-l2"), Is.Not.Empty);
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
+            Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.Null);
+            Assert.That(ReadTop(), Is.EqualTo(Value(2)));
+        }
+
+        using IPersistence.IPersistenceReader beforeMedium = _persistence.CreateReader();
+        using (IPersistence.IWriteBatch batch = Batch(2, 3))
+        {
+            batch.SetStateTrieNode(MediumPath, Rlp2);
+            batch.SetStateTrieNode(TopPath, Value(3));
+        }
+        WriteTop(3, 4, Value(4)); // seals first-level generation 2, whose copy fills the second level's generation
+        Assert.That(() => Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)).After(5000, 20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp2));
+            Assert.That(beforeMedium.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.Null, "the second-level copy is newer than the reader's version");
+            Assert.That(beforeMedium.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(2)));
+            Assert.That(beforeMedium.TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1));
+        }
+
+        beforeMedium.Dispose();
+        Assert.That(LogFiles, Is.Empty.After(5000, 20));
+
+        // The first level is empty and only the second level holds the latest value when the drain starts.
+        WriteTop(4, 5, Value(5));
+        WriteTop(5, 6, Value(6));
+        Assert.That(() => ShardFiles("state-0"), Is.Empty.After(5000, 20));
+        _log.Drain();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(6)));
+            Assert.That(LogFiles, Is.Empty.After(5000, 20));
+        }
+    }
+
+    [Test]
+    public async Task Second_level_survives_a_restart_and_the_startup_merge_takes_it_first()
+    {
+        await ReopenWithSecondLevel();
+        byte[] large = Value(1, 3000);
+
+        using (IPersistence.IWriteBatch batch = Batch(0, 1))
+        {
+            batch.SetStateTrieNode(TopPath, large);
+            batch.SetStateTrieNode(MediumPath, Rlp1);
+        }
+        WriteTop(1, 2, large); // seals first-level generation 1, copied into the second level
+        Assert.That(() => ShardFiles("state-0"), Is.Empty.After(5000, 20));
+        WriteTop(2, 3, Rlp3);
+
+        // A torn tail plus a batch whose RocksDB write never happened: the second level is confirmed by the first
+        // level's version, so it survives the rollback that drops the last first-level batch.
+        await _log.DisposeAsync();
+        foreach (string file in LogFiles()) File.AppendAllText(file, "torn tail garbage");
+        foreach (TrieNodeLogShard shard in _log.Shards)
+        {
+            byte[] version = _db.GetColumnDb(FlatDbColumns.Metadata).Get(shard.VersionKey)!;
+            version[^1]--;
+            _db.GetColumnDb(FlatDbColumns.Metadata).Set(shard.VersionKey, version);
+        }
+        Open();
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(large));
+            Assert.That(reader.TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
+        }
+
+        WriteTop(3, 4, Rlp3);
+        await _log.DisposeAsync();
+        TrieNodeLog.MergeAllOnDisk(_directory.Path, _db, LimboLogs.Instance);
+        Open();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LogFiles(), Is.Empty);
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp3), "the first level's newer record is merged after the second level's");
+            Assert.That(Raw().TryLoadStateRlp(MediumPath, ReadFlags.None), Is.EqualTo(Rlp1));
+        }
+    }
+
     [Test]
     public void Keys_are_sharded_by_their_first_byte()
     {

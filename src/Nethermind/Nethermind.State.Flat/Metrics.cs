@@ -422,7 +422,7 @@ public static class Metrics
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedBytes { get; } = new();
 
     [CounterMetric]
-    [Description("Trie node reads answered by the trie node log: hit (served from the log), chain (served after walking to an older version), miss (fell through to RocksDB)")]
+    [Description("Trie node reads answered by the trie node log: hit (served from the log), chain (served after walking to an older version), miss (fell through to the second-level log if enabled, else RocksDB), and the same outcomes of the second-level log prefixed second_level_")]
     [KeyIsLabel("outcome")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogReads { get; } = new();
 
