@@ -719,9 +719,10 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo(new[] { AnchorSlot + 1, AnchorSlot + 2 }));
     }
 
-    /// <summary>An envelope already held for the parent is imported before any peer is asked for another copy.</summary>
-    [Test]
-    public async Task Parked_full_child_takes_its_parents_envelope_from_those_held_before_asking_a_peer()
+    /// <summary>A held parent envelope is retried without requesting another copy; a payload still waiting on data keeps its child parked.</summary>
+    [TestCase(true, TestName = "Parked_full_child_takes_its_parents_envelope_from_those_held_before_asking_a_peer")]
+    [TestCase(false, TestName = "Parent_envelope_waiting_on_its_data_is_not_requested_by_root")]
+    public async Task Held_parent_envelope_is_used_before_asking_a_peer(bool parentBecomesKnown)
     {
         Hash256 anchorRoot = AnchorRoot();
         ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(EnvelopeBlockSlot, anchorRoot));
@@ -729,8 +730,15 @@ public partial class BeaconSyncOrchestratorTests
         Harness harness = CreateHarness(peers: [peer]);
         harness.Importer.Known.Add(anchorRoot);
         harness.Importer.UnverifiedPayloads.Add(anchorRoot);
-        // The first answer stands in for an importer that did not hold the block's state yet.
-        harness.Importer.EnvelopeVerdict = _ => harness.Importer.Envelopes.Count == 1 ? ExecutionPayloadEnvelopeImportResult.UnknownBlock : ExecutionPayloadEnvelopeImportResult.Valid;
+        if (parentBecomesKnown)
+        {
+            // The first answer stands in for an importer that did not hold the block's state yet.
+            harness.Importer.EnvelopeVerdict = _ => harness.Importer.Envelopes.Count == 1 ? ExecutionPayloadEnvelopeImportResult.UnknownBlock : ExecutionPayloadEnvelopeImportResult.Valid;
+        }
+        else
+        {
+            harness.Importer.EnvelopeResult = ExecutionPayloadEnvelopeImportResult.DataUnavailable;
+        }
         await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(anchorRoot, AnchorSlot), CancellationToken.None);
 
         await harness.Orchestrator.ImportBlockAsync(child, CancellationToken.None);
@@ -738,7 +746,8 @@ public partial class BeaconSyncOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(peer.RootRequests, Is.Empty);
-            Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
+            if (parentBecomesKnown)
+                Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
         }
     }
 
@@ -762,24 +771,6 @@ public partial class BeaconSyncOrchestratorTests
             Assert.That(childResult, Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture: the child is deferred behind its parked parent");
             Assert.That(peer.RootRequests, Is.EqualTo(new[] { new[] { anchorRoot } }));
         }
-    }
-
-    /// <summary>An envelope held for a retry waits on its data or the engine, which another copy from a peer would not change.</summary>
-    [Test]
-    public async Task Parent_envelope_waiting_on_its_data_is_not_requested_by_root()
-    {
-        Hash256 anchorRoot = AnchorRoot();
-        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(EnvelopeBlockSlot, anchorRoot));
-        EnvelopeServingPeer peer = new("peer", WallSlot);
-        Harness harness = CreateHarness(peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
-        harness.Importer.UnverifiedPayloads.Add(anchorRoot);
-        harness.Importer.EnvelopeResult = ExecutionPayloadEnvelopeImportResult.DataUnavailable;
-        await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(anchorRoot, AnchorSlot), CancellationToken.None);
-
-        await harness.Orchestrator.ImportBlockAsync(child, CancellationToken.None);
-
-        Assert.That(peer.RootRequests, Is.Empty);
     }
 
     /// <summary>

@@ -539,35 +539,66 @@ public class RangeSyncGloasColumnsTests
         }
     }
 
-    [Test]
-    public async Task By_root_fetch_requests_only_the_missing_columns()
+    public enum RootColumnCoverage
+    {
+        HalfHeld,
+        BehindHead,
+        Missing,
+        AllHeld,
+        OneWithheld,
+    }
+
+    [TestCase(RootColumnCoverage.HalfHeld, 1, TestName = "By_root_fetch_requests_only_the_missing_columns")]
+    [TestCase(RootColumnCoverage.BehindHead, 1, TestName = "By_root_fetch_asks_a_peer_whose_recorded_head_is_behind_the_block")]
+    [TestCase(RootColumnCoverage.Missing, 2, TestName = "By_root_fetch_asks_every_peer_at_once_unless_every_column_is_held(False)")]
+    [TestCase(RootColumnCoverage.AllHeld, 2, TestName = "By_root_fetch_asks_every_peer_at_once_unless_every_column_is_held(True)")]
+    [TestCase(RootColumnCoverage.OneWithheld, 4, TestName = "By_root_fetch_returns_false_while_a_column_is_missing_after_three_peers")]
+    public async Task By_root_fetch_observes_the_columns_held_and_the_peer_bound(RootColumnCoverage coverage, int peerCount)
     {
         await using BeaconDiscovery discovery = CreateDiscovery();
         StraddlingChain chain = StraddlingChain.Create();
         ulong[] sampled = [.. SampledColumns(discovery)];
         DataColumnSidecarPool pool = new();
-        foreach (ulong column in sampled.Take(sampled.Length / 2))
+        IEnumerable<ulong> held = coverage switch
+        {
+            RootColumnCoverage.HalfHeld => sampled.Take(sampled.Length / 2),
+            RootColumnCoverage.AllHeld => sampled,
+            _ => [],
+        };
+        foreach (ulong column in held)
         {
             pool.AddGloas(chain.GloasSidecar(column));
         }
 
-        List<DataColumnsByRootIdentifier[]> requests = [];
-        RangeSyncTests.StubPeer peer = chain.CreateRootPeer("peer", ids =>
-        {
-            requests.Add(ids);
-            return [.. ids[0].Columns!.Select(c => chain.GloasSidecar(c))];
-        });
+        List<DataColumnsByRootIdentifier[]>[] requests = [.. Enumerable.Range(0, peerCount).Select(static _ => new List<DataColumnsByRootIdentifier[]>())];
+        RangeSyncTests.StubPeer[] peers = [.. Enumerable.Range(0, peerCount).Select(i => chain.CreateRootPeer(
+            coverage == RootColumnCoverage.BehindHead ? "behind" : coverage == RootColumnCoverage.HalfHeld ? "peer" : $"peer{i}", ids =>
+            {
+                requests[i].Add(ids);
+                return [.. ids[0].Columns!.Where(c => coverage != RootColumnCoverage.OneWithheld || c != sampled[^1]).Select(c => chain.GloasSidecar(c))];
+            }, headSlot: coverage == RootColumnCoverage.BehindHead ? FuluSlot : GloasSlot))];
 
-        bool available = await CreateSync(pool, discovery, clock: null, peer).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
+        bool available = await CreateSync(pool, discovery, clock: null, peers).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(available, Is.True);
-            Assert.That(requests, Has.Count.EqualTo(1));
-            Assert.That(requests[0], Has.Length.EqualTo(1), "one identifier for the one block");
-            Assert.That(requests[0][0].BlockRoot, Is.EqualTo(chain.GloasRoot));
-            Assert.That(requests[0][0].Columns, Is.EquivalentTo(sampled.Skip(sampled.Length / 2)), "held columns are not requested again");
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
+            Assert.That(available, Is.EqualTo(coverage != RootColumnCoverage.OneWithheld));
+            if (coverage == RootColumnCoverage.HalfHeld)
+            {
+                Assert.That(requests[0], Has.Count.EqualTo(1));
+                Assert.That(requests[0][0], Has.Length.EqualTo(1), "one identifier for the one block");
+                Assert.That(requests[0][0][0].BlockRoot, Is.EqualTo(chain.GloasRoot));
+                Assert.That(requests[0][0][0].Columns, Is.EquivalentTo(sampled.Skip(sampled.Length / 2)), "held columns are not requested again");
+            }
+            if (coverage is RootColumnCoverage.Missing or RootColumnCoverage.AllHeld)
+                Assert.That(requests.Select(static r => r.Count), Is.EqualTo(coverage == RootColumnCoverage.AllHeld ? new[] { 0, 0 } : new[] { 1, 1 }));
+            if (coverage == RootColumnCoverage.OneWithheld)
+            {
+                Assert.That(requests.Select(static r => r.Count), Is.EqualTo(new[] { 1, 1, 1, 0 }), "at most three peers are asked");
+                Assert.That(pool.TryGetGloas(chain.GloasRoot, sampled[^1], out _), Is.False);
+            }
+            if (coverage != RootColumnCoverage.AllHeld)
+                Assert.That(sampled.Where(c => coverage != RootColumnCoverage.OneWithheld || c != sampled[^1]).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
         }
     }
 
@@ -649,83 +680,6 @@ public class RangeSyncGloasColumnsTests
             Assert.That(failing.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
             Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
             Assert.That(honest.Failures, Is.Zero);
-        }
-    }
-
-    /// <summary>gloas/p2p-interface.md DataColumnSidecarsByRoot names the block by root, so a peer whose last status head is behind the block is still asked.</summary>
-    [Test]
-    public async Task By_root_fetch_asks_a_peer_whose_recorded_head_is_behind_the_block()
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        RangeSyncTests.StubPeer behind = chain.CreateRootPeer("behind", ids => [.. ids[0].Columns!.Select(c => chain.GloasSidecar(c))], headSlot: FuluSlot);
-        DataColumnSidecarPool pool = new();
-
-        bool available = await CreateSync(pool, discovery, clock: null, behind).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.True);
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-        }
-    }
-
-    /// <summary>No peer is asked while every sampled column is held; otherwise every peer of the fetch is asked at once.</summary>
-    [Test]
-    public async Task By_root_fetch_asks_every_peer_at_once_unless_every_column_is_held([Values] bool heldOnEntry)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        DataColumnSidecarPool pool = new();
-        if (heldOnEntry)
-        {
-            foreach (ulong column in sampled)
-            {
-                pool.AddGloas(chain.GloasSidecar(column));
-            }
-        }
-
-        int[] requests = new int[2];
-        RangeSyncTests.StubPeer[] peers = [.. Enumerable.Range(0, requests.Length).Select(i => chain.CreateRootPeer($"peer{i}", ids =>
-        {
-            requests[i]++;
-            return [.. ids[0].Columns!.Select(c => chain.GloasSidecar(c))];
-        }))];
-
-        bool available = await CreateSync(pool, discovery, clock: null, peers).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.True);
-            Assert.That(requests, Is.EqualTo(heldOnEntry ? new[] { 0, 0 } : new[] { 1, 1 }));
-        }
-    }
-
-    [Test]
-    public async Task By_root_fetch_returns_false_while_a_column_is_missing_after_three_peers()
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        ulong withheld = sampled[^1];
-        int[] requests = new int[4];
-        RangeSyncTests.StubPeer[] peers = [.. Enumerable.Range(0, requests.Length).Select(i => chain.CreateRootPeer($"peer{i}", ids =>
-        {
-            requests[i]++;
-            return [.. ids[0].Columns!.Where(c => c != withheld).Select(c => chain.GloasSidecar(c))];
-        }))];
-        DataColumnSidecarPool pool = new();
-
-        bool available = await CreateSync(pool, discovery, clock: null, peers).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.False);
-            Assert.That(requests, Is.EqualTo(new[] { 1, 1, 1, 0 }), "at most three peers are asked");
-            Assert.That(pool.TryGetGloas(chain.GloasRoot, withheld, out _), Is.False);
-            Assert.That(sampled.Where(c => c != withheld).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
         }
     }
 
