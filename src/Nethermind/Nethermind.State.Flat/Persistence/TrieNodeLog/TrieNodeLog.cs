@@ -105,20 +105,25 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     /// Whether the shard directories under <paramref name="basePath"/> are exactly those <paramref name="config"/>
     /// would create, so a log constructed over them recovers their generations instead of needing
     /// <see cref="MergeAllOnDisk"/> first. A partition with no directories at all is fine; one with another shard
-    /// count is not, since the shard a key maps to depends on that count.
+    /// count is not, since the shard a key maps to depends on that count. Second-level directories are held to the
+    /// same rule when the second level is enabled, and do not match when it is disabled.
     /// </summary>
     public static bool MatchesOnDiskLayout(string basePath, IFlatDbConfig config)
     {
         if (!Directory.Exists(basePath)) return true;
         HashSet<string> onDisk = Directory.GetDirectories(basePath).Select(Path.GetFileName).ToHashSet()!;
+        string[] suffixes = config.TrieNodeLogSecondLevelEnabled ? ["", SecondLevelSuffix] : [""];
         foreach ((string name, int shardCount) in new[] { (StatePartitionName, config.TrieNodeLogStateShardCount), (StoragePartitionName, config.TrieNodeLogStorageShardCount) })
         {
-            int present = 0;
-            for (int shard = 0; shard < shardCount; shard++)
+            foreach (string suffix in suffixes)
             {
-                if (onDisk.Remove($"{name}-{shard}")) present++;
+                int present = 0;
+                for (int shard = 0; shard < shardCount; shard++)
+                {
+                    if (onDisk.Remove($"{name}-{shard}{suffix}")) present++;
+                }
+                if (present != 0 && present != shardCount) return false;
             }
-            if (present != 0 && present != shardCount) return false;
         }
         return onDisk.Count == 0;
     }
