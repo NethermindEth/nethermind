@@ -320,7 +320,9 @@ public class GloasBlockImporterTests
                     CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
                     Data = new AttestationData
                     {
-                        Slot = ForkSlot, Index = 1, BeaconBlockRoot = block.Root,
+                        Slot = ForkSlot,
+                        Index = 1,
+                        BeaconBlockRoot = block.Root,
                         Source = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
                         Target = new Checkpoint { Epoch = 1, Root = block.Root },
                     },

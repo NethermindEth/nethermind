@@ -1747,7 +1747,8 @@ public class BlockImporterTests
         {
             Data = new AttestationData
             {
-                Slot = slot, BeaconBlockRoot = knownBlock ? chain.AnchorRoot : UnknownBlockRoot,
+                Slot = slot,
+                BeaconBlockRoot = knownBlock ? chain.AnchorRoot : UnknownBlockRoot,
                 Source = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
                 Target = new Checkpoint { Epoch = chain.Spec.GetEpoch(slot), Root = chain.AnchorRoot },
             },
@@ -1758,10 +1759,13 @@ public class BlockImporterTests
         Func<GossipVerdict, BeaconSyncOrchestrator.WorkItem> work;
         if (gloas)
         {
-            SignedAggregateAndProofGloas aggregate = new() { Message = new AggregateAndProofGloas
+            SignedAggregateAndProofGloas aggregate = new()
             {
-                Aggregate = new AttestationGloas { Data = vote.Data, AggregationBits = vote.AggregationBits, CommitteeBits = vote.CommitteeBits },
-            } };
+                Message = new AggregateAndProofGloas
+                {
+                    Aggregate = new AttestationGloas { Data = vote.Data, AggregationBits = vote.AggregationBits, CommitteeBits = vote.CommitteeBits },
+                }
+            };
             payload = Snappy.CompressToArray(SignedAggregateAndProofGloas.Encode(aggregate));
             work = verdict => new BeaconSyncOrchestrator.GossipGloasAggregateItem(aggregate, verdict);
         }
@@ -1882,7 +1886,9 @@ public class BlockImporterTests
             SelectionProof = Sign(new Hash256(slotRoot), DomainType.SelectionProof),
             Aggregate = new Attestation
             {
-                Data = data, AggregationBits = new BitArray(1, true), CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
+                Data = data,
+                AggregationBits = new BitArray(1, true),
+                CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
                 Signature = Sign(SszRoots.HashTreeRoot(data), DomainType.BeaconAttester),
             },
         };
@@ -1890,7 +1896,8 @@ public class BlockImporterTests
         {
             AggregateAndProofGloas converted = new()
             {
-                AggregatorIndex = member, SelectionProof = message.SelectionProof,
+                AggregatorIndex = member,
+                SelectionProof = message.SelectionProof,
                 Aggregate = new AttestationGloas { Data = data, AggregationBits = message.Aggregate.AggregationBits, CommitteeBits = message.Aggregate.CommitteeBits, Signature = message.Aggregate.Signature },
             };
             SignedAggregateAndProofGloas signed = new() { Message = converted, Signature = Sign(SszRoots.HashTreeRoot(converted), DomainType.AggregateAndProof) };
