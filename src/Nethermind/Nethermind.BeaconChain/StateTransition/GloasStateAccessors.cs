@@ -74,12 +74,8 @@ public static class GloasStateAccessors
 
     /// <summary>Spec <c>get_block_root_at_slot</c>.</summary>
     /// <exception cref="BeaconStateException">The slot is not within the last <c>SLOTS_PER_HISTORICAL_ROOT</c> slots.</exception>
-    public static Hash256 GetBlockRootAtSlot(this BeaconStateGloas state, ulong slot)
-    {
-        if (!(slot < state.Slot && state.Slot <= slot + Presets.SlotsPerHistoricalRoot))
-            throw new BeaconStateException($"Block root for slot {slot} is not available at state slot {state.Slot}");
-        return state.BlockRoots![(int)(slot % Presets.SlotsPerHistoricalRoot)];
-    }
+    public static Hash256 GetBlockRootAtSlot(this BeaconStateGloas state, ulong slot) =>
+        BeaconStateAccessors.GetBlockRootAtSlot(state.Slot, state.BlockRoots!, slot);
 
     /// <summary>
     /// Returns the root of the last block that could influence the attester shuffling for
