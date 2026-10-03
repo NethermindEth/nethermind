@@ -91,18 +91,20 @@ public class GloasBlockImporterTests
     /// payload verified. Before the envelope it must be a retriable deferral that records nothing, never Invalid,
     /// or a child racing its parent's envelope is dropped for good. An empty child never waits.
     /// </summary>
-    [Test]
-    public void Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(
-        [Values] bool full,
-        [Values(ExecutionStatus.Valid, ExecutionStatus.Optimistic)] ExecutionStatus envelopeVerdict)
+    [TestCase(false, ExecutionStatus.Valid, ForkSlot + 1, TestName = "Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(False,Valid)")]
+    [TestCase(false, ExecutionStatus.Optimistic, ForkSlot + 1, TestName = "Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(False,Optimistic)")]
+    [TestCase(true, ExecutionStatus.Valid, ForkSlot + 1, TestName = "Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(True,Valid)")]
+    [TestCase(true, ExecutionStatus.Optimistic, ForkSlot + 1, TestName = "Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(True,Optimistic)")]
+    [TestCase(true, ExecutionStatus.Valid, 3 * ForkSlot, TestName = "Full_child_past_its_parents_lookahead_is_deferred_until_the_envelope")]
+    public void Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(bool full, ExecutionStatus envelopeVerdict, ulong childSlot)
     {
         SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new() { EnvelopeVerdict = envelopeVerdict };
         BeaconChainStore store = chain.CreateStore();
         BlockImporter importer = chain.CreateImporter(engine, store: store);
         SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block child = chain.Next(first, ForkSlot + 1, full, 0xA2);
-        importer.Import(first.Forked, first.Root, verifySignatures: true);
+        SignedGloasChain.Block child = chain.Next(first, childSlot, full, 0xA2);
+        Import(importer, first);
 
         BlockImportResult beforeEnvelope = importer.Import(child.Forked, child.Root, verifySignatures: true);
         bool storedBeforeEnvelope = store.HasBlock(child.Root);
@@ -170,24 +172,27 @@ public class GloasBlockImporterTests
     /// until its payload is verified, since the execution layer has no other payload of it. A VALID envelope verifies that
     /// payload and the one it builds on (specs/bellatrix/optimistic-sync.md), so the block and its payload become VALID.
     /// </summary>
-    [Test]
-    public void Head_execution_hash_moves_to_the_bid_block_hash_once_the_envelope_verifies()
+    [TestCase(false, TestName = "Head_execution_hash_moves_to_the_bid_block_hash_once_the_envelope_verifies")]
+    [TestCase(true, TestName = "Head_hash_of_the_same_head_flips_from_empty_to_full_when_its_payload_is_verified")]
+    public void Head_execution_hash_moves_to_the_bid_block_hash_once_the_envelope_verifies(bool clockAtBlock)
     {
         SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new();
         ForkChoiceSnapshotHolder snapshots = new();
-        BlockImporter importer = chain.CreateImporter(engine, snapshots: snapshots);
+        SlotClock? clock = clockAtBlock ? new SlotClock(chain.Spec, new ManualTimestamper(SlotStart(chain, ForkSlot).AddSeconds(1))) : null;
+        BlockImporter importer = chain.CreateImporter(engine, snapshots: snapshots, clock: clock);
         SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        importer.Import(first.Forked, first.Root, verifySignatures: true);
+        Import(importer, first);
 
         HeadView beforeEnvelope = importer.ComputeHead();
-        importer.ImportEnvelope(first.Envelope);
+        Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the payload is verified");
         HeadView afterEnvelope = importer.ComputeHead();
         Hash256 anchorPayloadHash = chain.AnchorBlock.Message!.Body!.ExecutionPayload!.BlockHash!;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(beforeEnvelope.HeadRoot, Is.EqualTo(first.Root));
+            Assert.That((beforeEnvelope.HeadRoot, afterEnvelope.HeadRoot), Is.EqualTo((first.Root, first.Root)), "fixture: the head does not move");
+            Assert.That((beforeEnvelope.HeadPayloadFull, afterEnvelope.HeadPayloadFull), Is.EqualTo((false, true)), "only a verified payload makes the head FULL");
             Assert.That(beforeEnvelope.HeadExecutionHash, Is.EqualTo(first.Bid.ParentBlockHash));
             Assert.That(afterEnvelope.HeadExecutionHash, Is.EqualTo(first.Bid.BlockHash));
             Assert.That(afterEnvelope.FinalizedExecutionHash, Is.EqualTo(anchorPayloadHash), "a Fulu checkpoint keeps its own payload hash");
@@ -232,32 +237,6 @@ public class GloasBlockImporterTests
             Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the invalidated block leaves the tree");
             Assert.That(head.HeadExecutionHash, Is.EqualTo(ptcVotedTimely ? first.Bid.BlockHash : first.Bid.ParentBlockHash));
             Assert.That(head.HeadPayloadFull, Is.EqualTo(ptcVotedTimely), "the payload status the envelope server reads is the one get_head resolved");
-        }
-    }
-
-    /// <summary>
-    /// The same head root changes its forkchoiceUpdated head hash when get_head's payload status flips: EMPTY names the bid's
-    /// <c>parent_block_hash</c> until the payload is verified, FULL its <c>block_hash</c> after.
-    /// </summary>
-    [Test]
-    public void Head_hash_of_the_same_head_flips_from_empty_to_full_when_its_payload_is_verified()
-    {
-        SignedGloasChain chain = new();
-        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot).AddSeconds(1));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, first);
-
-        HeadView empty = importer.ComputeHead();
-        Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the payload is verified");
-        HeadView full = importer.ComputeHead();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((empty.HeadRoot, full.HeadRoot), Is.EqualTo((first.Root, first.Root)), "fixture: the head does not move");
-            Assert.That(empty.HeadExecutionHash, Is.EqualTo(first.Bid.ParentBlockHash));
-            Assert.That(full.HeadExecutionHash, Is.EqualTo(first.Bid.BlockHash));
-            Assert.That((empty.HeadPayloadFull, full.HeadPayloadFull), Is.EqualTo((false, true)), "only a verified payload makes the head FULL");
         }
     }
 
@@ -310,36 +289,19 @@ public class GloasBlockImporterTests
             Import(importer, sibling);
             Finalize(importer, new CheckpointRef(1, sibling.Root));
         }
-        SignedAggregateAndProofGloas aggregate = new()
+        SignedAggregateAndProofGloas aggregate = SignedAggregate(block, new AttestationData
         {
-            Message = new AggregateAndProofGloas
-            {
-                Aggregate = new AttestationGloas
-                {
-                    AggregationBits = new BitArray(1, true),
-                    CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
-                    Data = new AttestationData
-                    {
-                        Slot = ForkSlot,
-                        Index = 1,
-                        BeaconBlockRoot = block.Root,
-                        Source = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
-                        Target = new Checkpoint { Epoch = 1, Root = block.Root },
-                    },
-                },
-            },
-        };
-        int[] committee = new EpochCache().GetCommitteeCache(block.PostState, 1).GetBeaconCommittee(ForkSlot, 0).ToArray();
-        byte[] slotRoot = new byte[32];
-        BitConverter.TryWriteBytes(slotRoot, ForkSlot);
-        Hash256 selectionRoot = Domains.ComputeSigningRoot(new Hash256(slotRoot), block.PostState.GetDomain(DomainType.SelectionProof, 1));
-        int member = committee.First(index => BeaconStateAccessors.IsAggregator(committee.Length, Sign(ValidatorKey(index), selectionRoot)));
-        aggregate.Message.Aggregate!.AggregationBits = new BitArray(committee.Length) { [Array.IndexOf(committee, member)] = true };
-        aggregate.Message.AggregatorIndex = (ulong)member;
-        aggregate.Message.SelectionProof = SignVote(new Hash256(slotRoot), DomainType.SelectionProof);
-        aggregate.Message.Aggregate!.Signature = SignVote(SszRoots.HashTreeRoot(aggregate.Message.Aggregate.Data!), DomainType.BeaconAttester);
-        aggregate.Signature = Sign(ValidatorKey(validSignature ? member : (member + 1) % ValidatorCount),
-            Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(aggregate.Message), block.PostState.GetDomain(DomainType.AggregateAndProof, 1)));
+            Slot = ForkSlot,
+            Index = 1,
+            BeaconBlockRoot = block.Root,
+            Source = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
+            Target = new Checkpoint { Epoch = 1, Root = block.Root },
+        });
+        if (!validSignature)
+        {
+            aggregate.Signature = Sign(ValidatorKey((int)(aggregate.Message!.AggregatorIndex + 1) % ValidatorCount),
+                Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(aggregate.Message), block.PostState.GetDomain(DomainType.AggregateAndProof, 1)));
+        }
         ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
         runner.GetHead();
         Assert.That(() => runner.OnAggregateAndProof(aggregate),
@@ -352,9 +314,6 @@ public class GloasBlockImporterTests
         await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, ForkSlot, GossipTopics.BeaconAggregateAndProof,
             Snappy.CompressToArray(SignedAggregateAndProofGloas.Encode(aggregate)), verdict => new BeaconSyncOrchestrator.GossipGloasAggregateItem(aggregate, verdict),
             !validSignature || finalizedAncestor ? MessageValidity.Rejected : MessageValidity.Ignored, router, gloas: true);
-
-        BlsSignature SignVote(Hash256 root, ReadOnlySpan<byte> domain) =>
-            Sign(ValidatorKey(member), Domains.ComputeSigningRoot(root, block.PostState.GetDomain(domain, 1)));
     }
 
     [Test]
@@ -647,10 +606,10 @@ public class GloasBlockImporterTests
             Sign(ValidatorKey(validator), Domains.ComputeSigningRoot(root, block.PostState.GetDomain(domain, epoch)));
     }
 
-    internal static SignedAggregateAndProofGloas SignedAggregate(SignedGloasChain.Block block)
+    internal static SignedAggregateAndProofGloas SignedAggregate(SignedGloasChain.Block block, AttestationData? data = null)
     {
         CommitteeCache committees = new EpochCache().GetCommitteeCache(block.PostState, 1);
-        AttestationData data = new() { Slot = ForkSlot, BeaconBlockRoot = block.Root, Source = block.PostState.CurrentJustifiedCheckpoint, Target = new Checkpoint { Epoch = 1, Root = block.Root } };
+        data ??= new() { Slot = ForkSlot, BeaconBlockRoot = block.Root, Source = block.PostState.CurrentJustifiedCheckpoint, Target = new Checkpoint { Epoch = 1, Root = block.Root } };
         byte[] slotRoot = new byte[32];
         BitConverter.TryWriteBytes(slotRoot, ForkSlot);
         int[] committee = committees.GetBeaconCommittee(ForkSlot, 0).ToArray();
@@ -1624,31 +1583,6 @@ public class GloasBlockImporterTests
             case Forgery.ProposerPastRegistry:
                 message.ProposerIndex = ulong.MaxValue;
                 break;
-        }
-    }
-
-    /// <summary>
-    /// A valid full child past its parent's lookahead window waits for the parent's envelope like any other: refusing it
-    /// would penalize its sender and drop a block the node needs once the payload is verified.
-    /// </summary>
-    [Test]
-    public void Full_child_past_its_parents_lookahead_is_deferred_until_the_envelope()
-    {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block child = chain.Next(first, 3 * ForkSlot, full: true, 0xA2);
-        Import(importer, first);
-
-        BlockImportResult beforeEnvelope = importer.Import(child.Forked, child.Root, verifySignatures: true);
-        ExecutionPayloadEnvelopeImportResult envelope = importer.ImportEnvelope(first.Envelope);
-        BlockImportResult afterEnvelope = importer.Import(child.Forked, child.Root, verifySignatures: true);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(beforeEnvelope, Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
-            Assert.That(envelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
-            Assert.That(afterEnvelope, Is.EqualTo(BlockImportResult.Imported));
         }
     }
 
