@@ -549,6 +549,7 @@ namespace Nethermind.Trie
             return null;
         }
 
+        [MethodImpl(PrepareRlpInlining)]
         internal CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
             ICappedArrayPool? bufferPool, bool canBeParallel)
         {
@@ -873,6 +874,7 @@ namespace Nethermind.Trie
             SetItem(i, child);
         }
 
+        [MethodImpl(SetChildInlining)]
         public void SetChild(int i, TrieNode? node)
         {
             if (IsSealed)
