@@ -30,7 +30,7 @@ namespace Nethermind.Core.Collections;
 /// relies on the key hashes being mixed, as the state keys' are.
 /// </para>
 /// </remarks>
-public sealed class OptimizedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>> where TKey : IEquatable<TKey>
+public sealed class OptimizedDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>> where TKey : notnull, IEquatable<TKey>
 {
     private const long StartOfFreeList = -3;
     private const int MinCapacity = 4;
@@ -379,7 +379,14 @@ public sealed class OptimizedDictionary<TKey, TValue> : IEnumerable<KeyValuePair
 
         readonly object IEnumerator.Current => Current;
 
-        internal readonly ref Entry CurrentEntry => ref At(_dictionary._entries, _current);
+        internal readonly ref Entry CurrentEntry
+        {
+            get
+            {
+                Debug.Assert(_current >= 0, "Current read before MoveNext or after it returned false.");
+                return ref At(_dictionary._entries, _current);
+            }
+        }
 
         public bool MoveNext()
         {
@@ -465,7 +472,7 @@ public static class OptimizedDictionaryExtensions
 {
     /// <inheritdoc cref="DictionaryExtensions.ResetAndClear{TKey,TValue}(IDictionary{TKey,TValue})"/>
     public static void ResetAndClear<TKey, TValue>(this OptimizedDictionary<TKey, TValue> dictionary)
-        where TKey : IEquatable<TKey>
+        where TKey : notnull, IEquatable<TKey>
         where TValue : class, IReturnable
     {
         foreach (TValue value in dictionary.Values)

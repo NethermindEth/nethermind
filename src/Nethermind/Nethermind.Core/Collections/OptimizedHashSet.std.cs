@@ -11,7 +11,7 @@ namespace Nethermind.Core.Collections;
 /// the zkVM build provides its own implementation tuned for the guest's cost model.
 /// </summary>
 /// <remarks>Its items carry the key requirements of <see cref="OptimizedDictionary{TKey,TValue}"/>.</remarks>
-public sealed class OptimizedHashSet<T> : HashSet<T> where T : IEquatable<T>
+public sealed class OptimizedHashSet<T> : HashSet<T> where T : notnull, IEquatable<T>
 {
     public OptimizedHashSet() { }
 

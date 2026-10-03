@@ -174,7 +174,7 @@ public class OptimizedCollectionsTests
         }
     }
 
-    private static void RunHashSet<T>(Func<int, T> item, IEqualityComparer<T>? comparer, int seed) where T : IEquatable<T>
+    private static void RunHashSet<T>(Func<int, T> item, IEqualityComparer<T>? comparer, int seed) where T : notnull, IEquatable<T>
     {
         Random random = new(seed);
         HashSet<T> expected = new(comparer);

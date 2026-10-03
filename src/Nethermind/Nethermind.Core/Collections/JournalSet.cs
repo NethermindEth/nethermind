@@ -19,7 +19,7 @@ namespace Nethermind.Core.Collections
     /// Due to snapshots <see cref="Remove"/> is not supported.
     /// Items are kept in an <see cref="OptimizedHashSet{T}"/>, so the comparer must be the item's own equality.
     /// </remarks>
-    public sealed class JournalSet<T>(EqualityComparer<T> equalityComparer) : ICollection<T>, IJournal<int> where T : IEquatable<T>
+    public sealed class JournalSet<T>(EqualityComparer<T> equalityComparer) : ICollection<T>, IJournal<int> where T : notnull, IEquatable<T>
     {
         // Removing entries one by one beats zeroing every bucket only while few remain: add, restore, clear and reuse
         // cycles on Address and StorageCell journals put the crossover between about Capacity/100 and Capacity/1000.

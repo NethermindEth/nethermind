@@ -13,7 +13,7 @@ namespace Nethermind.Core.Collections;
 /// the zkVM build provides its own implementation tuned for the guest's cost model.
 /// </summary>
 /// <remarks>A key-only view of <see cref="OptimizedDictionary{TKey,TValue}"/>, whose remarks describe the layout.</remarks>
-public sealed class OptimizedHashSet<T>(int capacity, IEqualityComparer<T>? comparer) : IReadOnlyCollection<T> where T : IEquatable<T>
+public sealed class OptimizedHashSet<T>(int capacity, IEqualityComparer<T>? comparer) : IReadOnlyCollection<T> where T : notnull, IEquatable<T>
 {
     private readonly OptimizedDictionary<T, NoValue> _map = new(capacity, comparer);
 
