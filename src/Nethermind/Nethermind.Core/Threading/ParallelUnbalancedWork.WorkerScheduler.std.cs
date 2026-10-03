@@ -318,7 +318,8 @@ public partial class ParallelUnbalancedWork
                 while (true)
                 {
                     WorkQueue? queue = Volatile.Read(ref _first);
-                    if (queue is null && Linger()) continue;
+                    // A child runner lingers on its own queue while holding a thread of its parent, so only top-level runners linger.
+                    if (queue is null && Parent is null && Linger()) continue;
                     if (queue is null)
                     {
                         // Release the reservation before rechecking publication, so either this
