@@ -603,7 +603,7 @@ public class BlockImporterTests
         DataColumnSidecarPool pool = new();
         ulong missing = custody.CustodyColumns[0];
         Hold(pool, chain, custody.SampledColumns.Where(c => c != missing));
-        EngineCallSpy engine = new();
+        ValidPayloadEngine engine = new();
         BlockImporter importer = CreateImporter(chain, custody, pool, engine: engine);
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
@@ -2180,28 +2180,6 @@ public class BlockImporterTests
     }
 
     private sealed class ValidPayloadEngine : IEngineDriver
-    {
-        public SignedBeaconBlock? CurrentBlock { get; set; }
-
-        public bool HasAnsweredNewPayload { get; private set; }
-
-        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
-
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
-        {
-            HasAnsweredNewPayload = true;
-            return ExecutionStatus.Valid;
-        }
-    }
-
-    /// <summary>
-    /// Records whether <c>newPayload</c> was ever called, for the hoisted-availability-check tests.
-    /// Kept private to this file rather than shared: a hand-written <see cref="IEngineDriver"/> used
-    /// elsewhere to check envelope-support enforcement must stay the only such double, or the two
-    /// would collide.
-    /// </summary>
-    private sealed class EngineCallSpy : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
 
