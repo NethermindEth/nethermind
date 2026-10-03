@@ -508,9 +508,10 @@ public class PeerBandTests
         Assert.That(peerManager.PeerCount, Is.EqualTo(0), "a ban must hold against a peer that connects to us, not only against our own dials");
     }
 
-    [Test]
+    [TestCase(false, TestName = "A_session_the_remote_opened_whose_status_exchange_fails_is_closed_not_left_open")]
+    [TestCase(true, TestName = "A_dialed_session_whose_status_exchange_fails_is_closed_not_left_open")]
     [CancelAfter(60_000)]
-    public async Task A_session_the_remote_opened_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token)
+    public async Task Failed_status_admission_closes_the_session(bool outbound, CancellationToken token)
     {
         RefusingStatusSource refusing = new();
         Node remote = CreateNode(refusing);
@@ -519,40 +520,33 @@ public class PeerBandTests
 
         await using NodeScope nodes = new(local, remote);
         await nodes.StartAsync(token, remote, local);
-        PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
-
-        await PeerSessionNodes.DialToBeRefusedAsync(remote.P2P, local.P2P, token);
-
-        // Both status versions were refused over the open session, so the admission provably threw
-        // after the session existed: a count of zero below cannot be the pre-connect zero.
-        await PeerSessionNodes.WaitUntilAsync(() => refusing.Requests >= 2, "the status exchange never reached the remote", token);
-        await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
-        Assert.That(peerManager.PeerCount, Is.EqualTo(0));
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task A_dialed_session_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token)
-    {
-        RefusingStatusSource refusing = new();
-        Node remote = CreateNode(refusing);
-        Node local = CreateNode();
-        SetMatchingStatus(local);
-
-        await using NodeScope nodes = new(local, remote);
-        await nodes.StartAsync(token, remote, local);
-        ManualTimestamper clock = new();
+        ManualTimestamper? clock = outbound ? new() : null;
         PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: clock);
 
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
+        if (outbound)
+        {
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
+            Assert.That(refusing.Requests, Is.GreaterThanOrEqualTo(2), "the status exchange never reached the remote");
+        }
+        else
+        {
+            await PeerSessionNodes.DialToBeRefusedAsync(remote.P2P, local.P2P, token);
+            // Both status versions were refused over the open session, so the admission provably threw
+            // after the session existed: a count of zero below cannot be the pre-connect zero.
+            await PeerSessionNodes.WaitUntilAsync(() => refusing.Requests >= 2, "the status exchange never reached the remote", token);
+        }
 
-        Assert.That(refusing.Requests, Is.GreaterThanOrEqualTo(2), "the status exchange never reached the remote");
         await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
         Assert.That(peerManager.PeerCount, Is.EqualTo(0));
+        if (!outbound)
+        {
+            return;
+        }
+
         int requests = refusing.Requests;
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
         Assert.That(refusing.Requests, Is.EqualTo(requests), "a failed endpoint is not immediately dialled again");
-        clock.Add(TimeSpan.FromMinutes(15));
+        clock!.Add(TimeSpan.FromMinutes(15));
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
         Assert.That(refusing.Requests, Is.GreaterThan(requests), "an expired backoff permits another dial");
     }
