@@ -271,7 +271,7 @@ public class IndexTableHandler(
             return null;
 
         Block? histBlock = branchBlockHash is not null
-            ? (blockTree.FindBlock(branchBlockHash, BlockTreeLookupOptions.None, (ulong)blockNumber) ?? blockTree.FindBlock((ulong)blockNumber, BlockTreeLookupOptions.None))
+            ? blockTree.FindBlock(branchBlockHash, BlockTreeLookupOptions.None, (ulong)blockNumber)
             : blockTree.FindBlock((ulong)blockNumber, BlockTreeLookupOptions.None);
 
         if (histBlock is null)

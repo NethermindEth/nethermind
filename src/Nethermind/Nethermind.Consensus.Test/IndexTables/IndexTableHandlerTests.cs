@@ -168,6 +168,36 @@ public class IndexTableHandlerTests
     }
 
     [Test]
+    public void Historical_recovery_does_not_fall_back_to_canonical_block_when_branch_block_is_missing()
+    {
+        IndexTableStore store = new();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+
+        Hash256 parentHash = TestItem.KeccakA;
+        for (ulong b = 0; b < 4; b++)
+        {
+            BlockHeader branchHeader = Build.A.BlockHeader.WithNumber(b).WithHash(TestItem.Keccaks[(int)b]).WithParentHash(parentHash).TestObject;
+            blockTree.FindHeader(branchHeader.Hash!, BlockTreeLookupOptions.None).Returns(branchHeader);
+            // Only the canonical block at this height has a body; the branch block does not.
+            Block canonicalBlock = BuildBlock(b);
+            blockTree.FindBlock(b, BlockTreeLookupOptions.None).Returns(canonicalBlock);
+            receiptStorage.Get(canonicalBlock).Returns([]);
+            parentHash = branchHeader.Hash!;
+        }
+
+        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), blockTree: blockTree, receiptStorage: receiptStorage);
+
+        // Block 4 publishes the level-1 table covering blocks 0-3 of its own branch.
+        Block block4 = Build.A.Block.WithNumber(4).WithParentHash(parentHash).TestObject;
+
+        Assert.Throws<InvalidOperationException>(() =>
+            handler.CommitIndexTableRoots(block4, [], BuildSpec(), NullTxTracer.Instance));
+        processor.Received(1).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+    }
+
+    [Test]
     public void RollbackBlock_removes_uncommitted_block_entries()
     {
         IndexTableStore store = new();
@@ -259,10 +289,15 @@ public class IndexTableHandlerTests
     private static (IndexTableHandler, ITransactionProcessor) BuildHandler(IIndexTableStore store)
     {
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        return (new IndexTableHandler(processor, store, BuildSpecProvider()), processor);
+    }
+
+    private static ISpecProvider BuildSpecProvider()
+    {
         IReleaseSpec spec = BuildSpec();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
-        return (new IndexTableHandler(processor, store, specProvider), processor);
+        return specProvider;
     }
 
     private static IReleaseSpec BuildSpec()
