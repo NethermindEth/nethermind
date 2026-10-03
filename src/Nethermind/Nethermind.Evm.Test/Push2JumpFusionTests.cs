@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -67,6 +68,7 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         // without the `programCounter++` past JUMPDEST, the dispatch loop re-executes the
         // JUMPDEST opcode and charges 1 extra gas.
         AssertGas(r, 41018);
+        Assert.That(Machine.OpCodeCount, Is.EqualTo(7), "opcode count");
     }
 
     [Test]
@@ -101,6 +103,7 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput r = Execute(code);
         AssertStorage(0, (UInt256)0x42);
         AssertGas(r, 41023);
+        Assert.That(Machine.OpCodeCount, Is.EqualTo(8), "opcode count");
     }
 
     /// <remarks>
@@ -145,6 +148,7 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         // Not-taken JUMPI: JUMPDEST is never entered, so double-charge wouldn't fire here.
         // Gas still pinned to catch unrelated regressions.
         AssertGas(r, 41022);
+        Assert.That(Machine.OpCodeCount, Is.EqualTo(7), "opcode count");
     }
 
     [Test]
@@ -174,5 +178,29 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         AssertStorage(0, (UInt256)0);
         // InvalidJumpDestination consumes all remaining gas per EVM spec.
         AssertGas(r, 100000);
+        Assert.That(Machine.OpCodeCount, Is.EqualTo(2), "opcode count");
+    }
+
+    [TestCase(GasCostOf.Transaction + GasCostOf.VeryLow - 1, 1)]
+    [TestCase(GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.Jump - 1, 2)]
+    [TestCase(GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.Jump, 3)]
+    public void PUSH2_fused_gas_boundaries_preserve_opcode_count(ulong gasLimit, int expectedOpcodeCount)
+    {
+        byte[] destination = [0x00, 0x05];
+        byte[] code = Prepare.EvmCode
+            .PushData(destination)
+            .Op(Instruction.JUMP)
+            .Op(Instruction.STOP)
+            .Op(Instruction.JUMPDEST)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput r = Execute(Activation, gasLimit, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertGas(r, gasLimit);
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(expectedOpcodeCount), "opcode count");
+        }
     }
 }

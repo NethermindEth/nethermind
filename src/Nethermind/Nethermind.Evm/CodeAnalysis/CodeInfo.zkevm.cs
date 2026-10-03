@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -10,14 +11,20 @@ public sealed partial class CodeInfo
     private ReadOnlyMemory<byte> _code;
 
     /// <remarks>
-    /// Always copies, as a caller's buffer promises nothing about the bytes after the code. Padding here rather
-    /// than on first execution keeps <see cref="Code"/> a plain field read, which the guest pays for on every
-    /// code access.
+    /// Copies unless the code is an <see cref="ExecutableCodeMemory"/> buffer, as any other buffer promises nothing
+    /// about the bytes after the code. Padding here rather than on first execution keeps <see cref="Code"/> a plain
+    /// field read, which the guest pays for on every code access.
     /// </remarks>
     partial void InitializeCode(ReadOnlyMemory<byte> code) =>
-        _code = code.IsEmpty ? code : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
+        _code = code.IsEmpty ? code
+            : ExecutableCodeMemory.TryGetExecutionBuffer(code, out byte[]? buffer) ? buffer.AsMemory(0, code.Length)
+            : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
 
     public partial ReadOnlyMemory<byte> Code => _code;
+
+    public partial ReadOnlySpan<byte> CodeSpan => _code.Span;
+
+    internal partial int CodeLength => _code.Length;
 
     internal partial ReadOnlySpan<byte> ExecutionCodeSpan => _code.Span;
 
@@ -30,7 +37,7 @@ public sealed partial class CodeInfo
     /// Sized for the whole code so the shared bit test can index it, but a clear bit only means "not a
     /// destination, or not analyzed yet"; <see cref="AnalyzeJump"/> is what turns that into an answer.
     /// </remarks>
-    internal long[] IncrementalJumpBitmap => _incrementalJumpBitmap ??= JumpDestinationAnalyzer.CreateBitmap(Code.Length);
+    internal long[] IncrementalJumpBitmap => _incrementalJumpBitmap ??= JumpDestinationAnalyzer.CreateBitmap(CodeLength);
 
     /// <summary>Extends the scan far enough to decide <paramref name="destination"/>, and reports whether it is a jump destination.</summary>
     /// <param name="destination">A destination inside the code.</param>
@@ -45,4 +52,16 @@ public sealed partial class CodeInfo
     internal bool AnalyzeJump(int destination, long[] bitmap, ReadOnlySpan<byte> code) =>
         code[0] != (byte)Instruction.STOP && code[destination] == (byte)Instruction.JUMPDEST &&
         JumpDestinationAnalyzer.AnalyzeJump(destination, bitmap, code, ref _analyzedUntil);
+
+    /// <summary>Reports whether a single look-back proves <paramref name="destination"/> a jump destination.</summary>
+    /// <param name="destination">A destination inside the code.</param>
+    /// <param name="code">The first byte of this code.</param>
+    /// <remarks>
+    /// The part of <see cref="AnalyzeJump"/> that needs no call and no bounds check, so a frameless handler can take
+    /// it; the caller marks a proven destination. A false answer leaves the destination to <see cref="AnalyzeJump"/>.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool IsJumpProvenByLookBack(nint destination, ref byte code) =>
+        code != (byte)Instruction.STOP && Unsafe.Add(ref code, destination) == (byte)Instruction.JUMPDEST &&
+        JumpDestinationAnalyzer.IsProvenByLookBack(destination, ref code, _analyzedUntil);
 }

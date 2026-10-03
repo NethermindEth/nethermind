@@ -11,7 +11,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 public sealed partial class JumpDestinationAnalyzer
 {
     // Guest execution is single-threaded; no cross-thread bitmap publication is needed.
-    private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
+    private long[]? _jumpDestinationBitmap = (codeInfo.CodeLength == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     /// <summary>The scan's two comparands, in the order it reads them: <c>JUMPDEST</c> then <c>PUSH1</c>.</summary>
     /// <remarks>
@@ -161,6 +161,39 @@ public sealed partial class JumpDestinationAnalyzer
         return destination < cursor
             ? IsJumpDestination(bitmap, destination)
             : ScanFrom(cursor, destination, bitmap, code, ref analyzedUntil);
+    }
+
+    /// <summary>Reports whether the 32 bytes before <paramref name="destination"/> prove that it starts an instruction.</summary>
+    /// <param name="destination">A position in the code.</param>
+    /// <param name="code">The first byte of the code.</param>
+    /// <param name="analyzedUntil">Where the contiguous scan from the start of the code stopped.</param>
+    /// <remarks>
+    /// The first look-back of <see cref="AnalyzeJump"/> on its own, which decides most destinations without a call. A
+    /// false answer only means it could not decide: a PUSH may reach the destination, or the destination lies within a
+    /// PUSH's reach of the cursor, where <see cref="AnalyzeJump"/> scans instead.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsProvenByLookBack(nint destination, ref byte code, nint analyzedUntil) =>
+        destination > analyzedUntil + MaxImmediateLength && !MayHoldReachingPush(ref Unsafe.Add(ref code, destination - MaxImmediateLength));
+
+    /// <summary>Reports whether a byte of the 32-byte <paramref name="window"/> may be a PUSH long enough to reach the position just past it.</summary>
+    /// <remarks>
+    /// The test of <see cref="TryFindReachingPush"/> without the offset, folded a word at a time, so that a handler taking
+    /// it keeps two words live rather than eight and needs no callee-saved register.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool MayHoldReachingPush(ref byte window)
+    {
+        ref ulong biases = ref MemoryMarshal.GetArrayDataReference(_reachBiases);
+        ulong word = Unsafe.ReadUnaligned<ulong>(ref window);
+        ulong reach = (word + Unsafe.Add(ref biases, 1)) & ~word;
+        word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, sizeof(ulong)));
+        reach |= (word + Unsafe.Add(ref biases, 2)) & ~word;
+        word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, 2 * sizeof(ulong)));
+        reach |= (word + Unsafe.Add(ref biases, 3)) & ~word;
+        word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, 3 * sizeof(ulong)));
+        reach |= (word + Unsafe.Add(ref biases, 4)) & ~word;
+        return (reach & biases) != 0;
     }
 
     /// <summary>Scans from the instruction start <paramref name="start"/> through <paramref name="destination"/> and reports whether it is marked.</summary>

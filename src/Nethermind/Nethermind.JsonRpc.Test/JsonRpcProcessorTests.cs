@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
@@ -1219,6 +1220,29 @@ public class JsonRpcProcessorTests
         }
     }
 
+    [Test]
+    public async Task Whitespace_around_a_single_document_request_is_ignored(
+        [Values(RequestTransport.HttpMemory, RequestTransport.HttpPipe)] RequestTransport transport)
+    {
+        int dispatched = 0;
+        IJsonRpcService service = CreateService(request =>
+        {
+            dispatched++;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(
+            processor, Encoding.UTF8.GetBytes(" \r\n\t" + CreateRequest("1", "eth_blockNumber") + " \r\n\t"), transport);
+
+        JsonRpcResponse response = AssertSingleResponse(result).Response!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+            Assert.That(dispatched, Is.EqualTo(1));
+        }
+    }
+
     /// <remarks>
     /// The complete-body fast path reports its buffer consumed on the way out of a throwing dispatch as well: the read
     /// loop ends either way, and reporting examined-only would ask a reader with nothing left to give for another read.
@@ -1419,6 +1443,24 @@ public class JsonRpcProcessorTests
         Assert.That(report, Is.Not.Null);
         Assert.That(report!.Value.Method, Is.EqualTo(expectedReportMethod));
         Assert.That(report!.Value.Success, Is.EqualTo(expectedSuccess));
+    }
+
+    [Test]
+    public async Task Request_without_a_method_is_an_invalid_request_and_reports_safely(
+        [Values("""{"jsonrpc":"2.0","id":1}""", """{"jsonrpc":"2.0","id":1,"method":null}""", """{"jsonrpc":"2.0","id":1,"method":" \t"}""")] string request)
+    {
+        using GCKeeper gcKeeper = new(NoGCStrategy.Instance, NullLogManager.Instance);
+        JsonRpcProcessor processor = CreateProcessor(new JsonRpcService(NullModuleProvider.Instance, LimboLogs.Instance, new JsonRpcConfig(), gcKeeper));
+        JsonRpcLocalStats stats = new(Core.Timestamper.Default, new JsonRpcConfig { EnablePerMethodMetrics = true }, LimboLogs.Instance);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, CreateHttpContext());
+
+        CollectedJsonRpcResult entry = AssertOnlyResult(result);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((entry.Response as JsonRpcErrorResponse)?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+            Assert.That(() => stats.ReportCall(entry.Report!.Value), Throws.Nothing);
+        }
     }
 
     [TestCase(50, false, TestName = "Input below the 64-depth limit is accepted")]

@@ -55,6 +55,19 @@ public class VmState<TGasPolicy> : IDisposable
 
     private bool _isDisposed = true;
 
+    /// <summary>
+    /// Owned by a <see cref="VirtualMachine{TGasPolicy}"/> call-frame cache slot: disposal keeps the data stack
+    /// attached and never hands the frame to the pool.
+    /// </summary>
+    private bool _isCached;
+
+    /// <summary>
+    /// Not rented, or <see cref="Dispose"/> has run to the end: it drops the environment as its last step, after
+    /// every call that can throw. <see cref="_isDisposed"/> cannot tell this apart from a disposal that threw
+    /// midway, with memory not reset, because <see cref="Dispose"/> sets it first as its re-entrancy guard.
+    /// </summary>
+    private bool IsReleased => _env is null;
+
     private EvmPooledMemory _memory;
     private readonly EvmFrameMemory _inlineMemory = new();
     private ExecutionEnvironment? _env;
@@ -126,6 +139,94 @@ public class VmState<TGasPolicy> : IDisposable
         return state;
     }
 
+    /// <summary>
+    /// Rents a child frame from <paramref name="frameCache"/>, indexed by the call depth of <paramref name="env"/>,
+    /// falling back to the pool beyond its length. A cached frame keeps its data stack across uses.
+    /// </summary>
+    /// <remarks>
+    /// Child frames nest strictly, so the frame at a given depth has been disposed by the time its parent opens
+    /// the next one. A slot is still reused only once its frame is released (<see cref="IsReleased"/>): a frame
+    /// still in use - one staged by CALL or CREATE and then orphaned by an exception before it was entered - or one
+    /// whose disposal threw before it finished is abandoned to the GC and replaced, so a live or half-reset frame
+    /// is never handed out.
+    /// </remarks>
+    internal static VmState<TGasPolicy> RentFrame(
+        VmState<TGasPolicy>?[] frameCache,
+        TGasPolicy gas,
+        long outputDestination,
+        long outputLength,
+        ExecutionType executionType,
+        bool isStatic,
+        bool isCreateOnPreExistingAccount,
+        ExecutionEnvironment env,
+        in StackAccessTracker stateForAccessLists,
+        in Snapshot snapshot,
+        bool newAccountCharged = false,
+        bool isCreateStateGasCharged = false,
+        int frameJournalCheckpoint = 0)
+    {
+        int depth = env.CallDepth;
+        VmState<TGasPolicy> state = (uint)depth < (uint)frameCache.Length && frameCache[depth] is { IsReleased: true } cached
+            ? cached
+            : RentUncached(frameCache, depth);
+        state.Initialize(
+            gas,
+            outputDestination,
+            outputLength,
+            executionType,
+            isTopLevel: false,
+            isStatic: isStatic,
+            isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
+            isCreateStateGasCharged: isCreateStateGasCharged,
+            newAccountCharged: newAccountCharged,
+            env: env,
+            stateForAccessLists: stateForAccessLists,
+            snapshot: snapshot,
+            frameJournalCheckpoint: frameJournalCheckpoint);
+        return state;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static VmState<TGasPolicy> RentUncached(VmState<TGasPolicy>?[] frameCache, int depth)
+    {
+        if ((uint)depth >= (uint)frameCache.Length)
+        {
+            return Rent();
+        }
+
+        VmState<TGasPolicy> state = new() { _isCached = true };
+        frameCache[depth] = state;
+        return state;
+    }
+
+    /// <summary>Empties the slots of <paramref name="frameCache"/> whose frame is not released, without disposing it.</summary>
+    internal static void ForgetUnreleased(VmState<TGasPolicy>?[] frameCache)
+    {
+        for (int depth = 0; depth < frameCache.Length; depth++)
+        {
+            if (frameCache[depth] is { IsReleased: false })
+            {
+                frameCache[depth] = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Hands the data stacks of the released frames in <paramref name="frameCache"/> to the shared tier of the stack
+    /// pool. A frame that is not released keeps its stack and goes to the GC with it.
+    /// </summary>
+    internal static void ReturnCachedStacks(VmState<TGasPolicy>?[] frameCache)
+    {
+        foreach (VmState<TGasPolicy>? frame in frameCache)
+        {
+            if (frame is { IsReleased: true, DataStack: { } dataStack })
+            {
+                frame.DataStack = null;
+                StackPool.ReturnStacksShared(dataStack);
+            }
+        }
+    }
+
     private static VmState<TGasPolicy> Rent()
     {
         if (_statePool.TryDequeue(out VmState<TGasPolicy>? state)) return state;
@@ -187,9 +288,7 @@ public class VmState<TGasPolicy> : IDisposable
         }
         _isDisposed = false;
 
-#if DEBUG
-        _creationStackTrace = new StackTrace();
-#endif
+        PooledObjectLeakDetector.OnRent(this, nameof(VmState<>));
         [DoesNotReturn, StackTraceHidden]
         static void ThrowIsInUse() => throw new InvalidOperationException("Already in use");
     }
@@ -217,8 +316,9 @@ public class VmState<TGasPolicy> : IDisposable
             return;
         }
         _isDisposed = true;
+        PooledObjectLeakDetector.OnReturn(this);
 
-        if (DataStack is not null)
+        if (DataStack is not null && !_isCached)
         {
             // Only return if initialized
             StackPool.ReturnStacks(DataStack);
@@ -233,29 +333,13 @@ public class VmState<TGasPolicy> : IDisposable
         _memory.Dispose();
         _accessTracker = default;
         if (!IsTopLevel) _env?.Dispose();
-        _env = null;
         _snapshot = default;
         StateGasRefundAdvanced = 0;
+        // Last, after everything that can throw: this is what releases a cached frame for reuse (IsReleased).
+        _env = null;
 
-        _statePool.Enqueue(this);
-
-#if DEBUG
-        GC.SuppressFinalize(this);
-#endif
+        if (!_isCached) _statePool.Enqueue(this);
     }
-
-#if DEBUG
-
-    private StackTrace? _creationStackTrace;
-
-    ~VmState()
-    {
-        if (!_isDisposed)
-        {
-            Console.Error.WriteLine($"Warning: {nameof(VmState<>)} was not disposed. Created at: {_creationStackTrace}");
-        }
-    }
-#endif
 
     /// <summary>Builds the frame's EVM stack over <paramref name="codeSpan"/>, renting the data stack on first use.</summary>
     /// <param name="codeSpan">

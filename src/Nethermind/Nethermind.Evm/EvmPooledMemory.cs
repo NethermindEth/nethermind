@@ -14,7 +14,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct EvmPooledMemory
+public partial struct EvmPooledMemory
 {
     public const int WordSize = 32;
     // Matches the minimum rental tier, avoiding an earlier spill boundary for small frames.

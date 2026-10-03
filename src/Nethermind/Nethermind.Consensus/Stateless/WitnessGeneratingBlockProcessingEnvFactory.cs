@@ -9,7 +9,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
@@ -102,7 +101,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     ctx.Resolve<IBlocksConfig>(),
                     ctx.Resolve<IWithdrawalProcessorFactory>(),
                     ctx.Resolve<BalTxProcessorFactory>(),
-                    executionRequestsProcessorFactory: ctx.ResolveOptional<IExecutionRequestsProcessorFactory>(),
                     indexTableHandlerFactory: ctx.ResolveOptional<IIndexTableHandlerFactory>()));
             if (recordsTransactionDiffs)
             {
