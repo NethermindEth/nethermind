@@ -42,6 +42,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
 {
     public BeaconChainSpec Spec { get; }
     public BeaconChainStatusHolder StatusHolder { get; }
+    internal SlotClock Clock { get; }
     public IColumnsDb<BeaconChainDbColumns> Db { get; }
     public BeaconChainStore Store { get; }
     public BeaconApiHost Host { get; }
@@ -49,13 +50,14 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     /// <summary>A real but unstarted peer manager the node/peers routes read, or <c>null</c> when the host runs without one.</summary>
     public PeerManager? PeerManager { get; }
 
-    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots, IColumnsDb<BeaconChainDbColumns>? db, BeaconApiConfig? apiConfig, ILogManager? logManager, bool withPeerManager, HeadSnapshotHolder? headSnapshots, IEngineDriver? engine)
+    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots, IColumnsDb<BeaconChainDbColumns>? db, BeaconApiConfig? apiConfig, ILogManager? logManager, bool withPeerManager, HeadSnapshotHolder? headSnapshots, IEngineDriver? engine, bool forkAwareStore)
     {
         Spec = spec;
         Db = db ?? new MemColumnsDb<BeaconChainDbColumns>();
         ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime);
         StatusHolder = new BeaconChainStatusHolder(spec, timestamper);
-        Store = new BeaconChainStore(Db, spec);
+        Store = new BeaconChainStore(Db, forkAwareStore ? spec : null);
+        Clock = new SlotClock(spec, timestamper);
         BeaconChainConfig chainConfig = new();
         LocalMetadataSource metadataSource = new();
         if (withPeerManager)
@@ -68,7 +70,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         apiConfig.Enabled = true;
         apiConfig.Host = "127.0.0.1";
         apiConfig.Port = 0;
-        Host = new BeaconApiHost(apiConfig, chainConfig, spec, StatusHolder, new SlotClock(spec, timestamper), Store,
+        Host = new BeaconApiHost(apiConfig, chainConfig, spec, StatusHolder, Clock, Store,
             metadataSource, engine ?? new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots);
     }
 
@@ -79,11 +81,12 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     /// <param name="withPeerManager">Whether to give the host a <see cref="PeerManager"/>, seeded by tests through <see cref="PeerManager.ReserveDialingForTest"/>.</param>
     /// <param name="headSnapshots">The head snapshots the host serves requests from; <c>null</c> reads the status holder once per request instead.</param>
     /// <param name="engine">The execution driver used by the host.</param>
+    /// <param name="forkAwareStore">Whether the store decodes blocks using the network's fork schedule.</param>
     public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
         IColumnsDb<BeaconChainDbColumns>? db = null, BeaconApiConfig? apiConfig = null, ILogManager? logManager = null, bool withPeerManager = false, HeadSnapshotHolder? headSnapshots = null,
-        IEngineDriver? engine = null)
+        IEngineDriver? engine = null, bool forkAwareStore = true)
     {
-        BeaconApiTestHost host = new(spec, forkChoiceSnapshots, db, apiConfig, logManager, withPeerManager, headSnapshots, engine);
+        BeaconApiTestHost host = new(spec, forkChoiceSnapshots, db, apiConfig, logManager, withPeerManager, headSnapshots, engine, forkAwareStore);
         await host.Host.StartAsync(CancellationToken.None);
         host.Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{host.Host.Port}"), Timeout = TimeSpan.FromSeconds(30) };
         return host;
