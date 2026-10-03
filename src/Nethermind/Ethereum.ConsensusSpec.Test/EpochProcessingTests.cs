@@ -172,34 +172,12 @@ public class EpochProcessingTests
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
-    private static IEnumerable<TestCaseData> MainnetCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled)
-            yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet))
-            yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
-    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
-    {
-        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-        {
-            string? epochProcessingRoot = ConsensusSpecArchive.SuitePath(preset, fork, "epoch_processing");
-            if (epochProcessingRoot is null)
-                continue;
-
-            foreach (string subDir in Directory.GetDirectories(epochProcessingRoot))
-            {
-                string subName = Path.GetFileName(subDir);
-                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(subDir, "pre.ssz_snappy"))
-                {
-                    string vectorName = $"{preset}/{fork}/epoch_processing/{subName}/{Path.GetFileName(caseDir)}";
-                    EpochProcessingCase testCase = new(preset.ToString(), fork, subName, caseDir, vectorName);
-                    yield return new TestCaseData(testCase).SetName(vectorName);
-                }
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset) =>
+        FuluDriverSupport.HandlerCases(preset, ConsensusSpecArchive.StateTransitionForks, "epoch_processing", "pre.ssz_snappy",
+            static (p, fork, handler, path, name) => new EpochProcessingCase(p.ToString(), fork, handler, path, name), strictHandlerDirectory: true);
 }
 
 public readonly record struct EpochProcessingCase(string Preset, string Fork, string SubTransitionName, string CasePath, string VectorName)

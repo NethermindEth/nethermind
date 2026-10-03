@@ -88,26 +88,12 @@ public class MerkleProofTests
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
-    private static IEnumerable<TestCaseData> MainnetCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled)
-            yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet))
-            yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
-    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
-    {
-        foreach (string fork in Forks)
-        {
-            string? root = ConsensusSpecArchive.SuitePath(preset, fork, "merkle_proof");
-            foreach (string caseDir in ConsensusSpecArchive.LeafDirs(root, "proof.yaml"))
-            {
-                string vectorName = $"{preset}/{fork}/merkle_proof/{Path.GetRelativePath(root!, caseDir).Replace('\\', '/')}";
-                yield return new TestCaseData(new MerkleProofCase(preset.ToString(), fork, caseDir, vectorName)).SetName(vectorName);
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset) =>
+        FuluDriverSupport.RelativeCases(preset, Forks, "merkle_proof", "proof.yaml",
+            static (p, fork, path, name) => new MerkleProofCase(p.ToString(), fork, path, name));
 }
 
 public readonly record struct MerkleProofCase(string Preset, string Fork, string CasePath, string VectorName)
