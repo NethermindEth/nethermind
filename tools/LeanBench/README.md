@@ -64,6 +64,6 @@ Packaging changes do not change the captured source revisions or measured values
 
 ## Native prover sizing
 
-On the 32 GiB ARM development host, fresh-process Daisugi direct batches of 2/4/8 signatures used 1.28/2.07/3.92 GiB peak RSS. Four-signature leaves produced a verified 16-signature aggregate in 4.11 s with 4.52 GiB process peak, versus 15.30 s and 4.95 GiB with singleton leaves. These are observations from the captured revision, not a hard memory bound or measurements of later validation changes.
+On the 32 GiB ARM development host, fresh-process Daisugi direct batches of 2/4/8 signatures used 1.28/2.07/3.92 GiB peak RSS. Four-signature leaves produced a verified 16-signature aggregate in 4.11 s with 4.52 GiB process peak, versus 15.30 s and 4.95 GiB with singleton leaves. These separate sizing observations do not establish a hard memory bound or benchmark later managed validation changes.
 
 From `tools/lean-ffi`, run `cargo run --release --locked --example resource_probe -- 4 direct` or `cargo run --release --locked --example resource_probe -- 16`. Signature generation is outside reported proving time but included in process peak RSS.
