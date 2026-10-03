@@ -171,6 +171,8 @@ public class BranchProcessor(
                     worldStateCloser.Dispose();
                     worldStateCloser = BeginTargetScope(suggestedBlock);
                     ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
+                    // The failed attempt may have reached the end of its transactions; the retry holds the runners again when it does.
+                    workerGroup.ReleaseRunners();
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
                 }
                 finally

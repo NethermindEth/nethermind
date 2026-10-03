@@ -41,6 +41,9 @@ public partial class ParallelUnbalancedWork
 
         /// <summary>The runners the group holds, running or waiting; for tests.</summary>
         internal int ReservedRunners => _scheduler.ReservedRunners;
+
+        /// <summary>Whether a <see cref="KeepRunners"/> hold is on; for tests.</summary>
+        internal bool KeepsRunners => _scheduler.KeepsRunners;
     }
 
     public sealed partial class WorkerScope

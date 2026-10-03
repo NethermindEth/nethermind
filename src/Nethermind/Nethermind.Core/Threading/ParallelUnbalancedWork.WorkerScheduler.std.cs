@@ -42,6 +42,8 @@ public partial class ParallelUnbalancedWork
 
         internal int ReservedRunners => (int)Volatile.Read(ref _runners);
 
+        internal bool KeepsRunners => Volatile.Read(ref _keepRunnersUntil) != 0;
+
         /// <summary>While runners are kept, spins until work is ready or the hold ends; true when work is ready.</summary>
         private bool WaitForWork()
         {

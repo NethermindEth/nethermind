@@ -30,6 +30,39 @@ namespace Nethermind.Consensus.Test.Processing;
 public class BranchProcessorVerdictTests
 {
     [Test]
+    public void Runners_are_released_when_processing_throws_after_the_transactions()
+    {
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        ParallelUnbalancedWork.WorkerGroup group = new(2);
+        bool heldAfterTransactions = false;
+        IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
+        blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns<(Block, TxReceipt[])>(_ =>
+            {
+                blockProcessor.TransactionsExecuted += Raise.Event<Action>();
+                heldAfterTransactions = group.KeepsRunners;
+                throw new InvalidOperationException("processing failed after the transactions");
+            });
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(blockProcessor)
+            .AddSingleton(Substitute.For<IBlockCachePreWarmer>())
+            .Build();
+
+        using (group.Enter())
+        {
+            Assert.That(() => container.Resolve<IMainProcessingContext>().BranchProcessor.Process(null, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance),
+                Throws.InvalidOperationException);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldAfterTransactions, Is.True, "the end of the transactions holds the runners");
+            Assert.That(group.KeepsRunners, Is.False, "a failed block releases them");
+        }
+    }
+
+    [Test]
     public async Task Concurrent_processing_uses_invocation_worker_groups([Values] bool readOnly, [Values] bool ambient)
     {
         Block block = Build.A.Block.WithNumber(0).TestObject;
