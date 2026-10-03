@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core.Resolving.Pipeline;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -19,6 +23,33 @@ namespace Nethermind.BeaconChain.Test;
 /// <remarks>A new module registration that needs a host service gets its stand-in here, not in each test file. Later registrations on the returned builder override these.</remarks>
 internal static class BeaconChainTestContainer
 {
+    internal static IContainer BuildTrackingDependencies(ContainerBuilder builder,
+        List<(Type Consumer, Type Dependency, object? Instance)> resolved, params Type[] dependencies)
+    {
+        Stack<Type> activating = new();
+        builder.ComponentRegistryBuilder.Registered += (_, registered) => registered.ComponentRegistration.PipelineBuilding += (_, pipeline) =>
+            pipeline.Use(PipelinePhase.RegistrationPipelineStart, (context, next) =>
+            {
+                activating.Push(context.Registration.Activator.LimitType);
+                try
+                {
+                    next(context);
+                }
+                finally
+                {
+                    activating.Pop();
+                }
+            });
+        IContainer container = builder.Build();
+        container.ResolveOperationBeginning += (_, operation) => operation.ResolveOperation.ResolveRequestBeginning += (_, request) =>
+        {
+            Type dependency = request.RequestContext.Registration.Activator.LimitType;
+            if (dependencies.Contains(dependency) && activating.TryPeek(out Type? consumer))
+                request.RequestContext.RequestCompleting += (_, completing) => resolved.Add((consumer, dependency, completing.RequestContext.Instance));
+        };
+        return container;
+    }
+
     public static ContainerBuilder Builder(
         ulong chainId = BlockchainIds.Mainnet,
         ILogManager? logManager = null,

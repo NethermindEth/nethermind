@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
-using Autofac.Core.Resolving.Pipeline;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 using NUnit.Framework;
@@ -22,30 +21,8 @@ public class BeaconSyncClockDiTests
     public void Orchestrator_and_the_range_sync_it_drives_share_the_one_registered_clock()
     {
         List<(Type Consumer, Type Dependency, object? Instance)> resolved = [];
-        Stack<Type> activating = new();
         ContainerBuilder builder = BeaconChainTestContainer.Builder(BlockchainIds.Sepolia);
-        builder.ComponentRegistryBuilder.Registered += (_, registered) => registered.ComponentRegistration.PipelineBuilding += (_, pipeline) =>
-            pipeline.Use(PipelinePhase.RegistrationPipelineStart, (context, next) =>
-            {
-                activating.Push(context.Registration.Activator.LimitType);
-                try
-                {
-                    next(context);
-                }
-                finally
-                {
-                    activating.Pop();
-                }
-            });
-        using IContainer container = builder.Build();
-        container.ResolveOperationBeginning += (_, operation) => operation.ResolveOperation.ResolveRequestBeginning += (_, request) =>
-        {
-            Type dependency = request.RequestContext.Registration.Activator.LimitType;
-            if ((dependency == typeof(SlotClock) || dependency == typeof(RangeSync)) && activating.TryPeek(out Type? consumer))
-            {
-                request.RequestContext.RequestCompleting += (_, completing) => resolved.Add((consumer, dependency, completing.RequestContext.Instance));
-            }
-        };
+        using IContainer container = BeaconChainTestContainer.BuildTrackingDependencies(builder, resolved, typeof(SlotClock), typeof(RangeSync));
 
         container.Resolve<BeaconSyncOrchestrator>();
         SlotClock registeredClock = container.Resolve<SlotClock>();

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using Autofac.Core;
-using Autofac.Core.Resolving.Pipeline;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
@@ -30,30 +29,9 @@ public class DataAvailabilityClockDiTests
     [Test]
     public void Range_sync_the_importer_factory_and_the_p2p_host_get_the_one_registered_clock()
     {
-        List<(Type Consumer, object? Clock)> handedOut = [];
-        Stack<Type> activating = new();
+        List<(Type Consumer, Type Dependency, object? Instance)> handedOut = [];
         ContainerBuilder builder = BeaconChainTestContainer.Builder(BlockchainIds.Sepolia);
-        builder.ComponentRegistryBuilder.Registered += (_, registered) => registered.ComponentRegistration.PipelineBuilding += (_, pipeline) =>
-            pipeline.Use(PipelinePhase.RegistrationPipelineStart, (context, next) =>
-            {
-                activating.Push(context.Registration.Activator.LimitType);
-                try
-                {
-                    next(context);
-                }
-                finally
-                {
-                    activating.Pop();
-                }
-            });
-        using IContainer container = builder.Build();
-        container.ResolveOperationBeginning += (_, operation) => operation.ResolveOperation.ResolveRequestBeginning += (_, request) =>
-        {
-            if (request.RequestContext.Registration.Activator.LimitType == typeof(SlotClock) && activating.TryPeek(out Type? consumer))
-            {
-                request.RequestContext.RequestCompleting += (_, completing) => handedOut.Add((consumer, completing.RequestContext.Instance));
-            }
-        };
+        using IContainer container = BeaconChainTestContainer.BuildTrackingDependencies(builder, handedOut, typeof(SlotClock));
 
         container.Resolve<RangeSync>();
         container.Resolve<IBlockImporterFactory>();
@@ -63,7 +41,7 @@ public class DataAvailabilityClockDiTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(handedOut.Select(static h => h.Consumer), Is.SupersetOf(new[] { typeof(RangeSync), typeof(BlockImporterFactory), typeof(BeaconP2P) }));
-            Assert.That(handedOut.Select(static h => h.Clock), Is.All.SameAs(registered));
+            Assert.That(handedOut.Select(static h => h.Instance), Is.All.SameAs(registered));
         }
     }
 
