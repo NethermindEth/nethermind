@@ -120,7 +120,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         // The mark precedes the journal add so no order of operations can observe a journalled cell
         // behind a false flag, which would read the pre-write value.
         PerContractState state = GetOrCreateStorage(storageCell.Address);
-        state.MarkJournalled();
+        state.MarkJournalled(in storageCell.Index);
         base.Set(in storageCell, newValue);
         HintStorageWrite(in storageCell, currentScope, state);
     }
@@ -162,14 +162,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// The journal only ever holds cells this contract has written, so for one that has written nothing
     /// the probe cannot hit and is pure cost — and it is the more expensive of the two lookups, hashing
     /// the whole <see cref="StorageCell"/> rather than just the index. That probe is skipped only when the
-    /// last-resolved contract is this one and it has journalled nothing this round: a reference compare against the
-    /// memo, never a map probe. Every other case falls back to the probe-first path, which does not resolve
+    /// last-resolved contract is this one and its filter rules out a journalled write to this slot this round: a
+    /// reference compare against the memo, never a map probe. Every other case falls back to the probe-first path, which does not resolve
     /// the contract on a journal hit — so a read that alternates between contracts keeps its original cost
     /// rather than paying <see cref="GetOrCreateStorage"/> on every hit.
     /// </remarks>
     protected override void GetCurrentValue(in StorageCell storageCell, out UInt256 value)
     {
-        if (_lastStorageAddress == storageCell.Address && _lastStorage is { } cached && !cached.HasJournalledWritesInRound(_originalsRound))
+        if (_lastStorageAddress == storageCell.Address && _lastStorage is { } cached && !cached.MayHaveJournalled(_originalsRound, in storageCell.Index))
         {
             cached.LoadFromTree(in storageCell, out value);
             return;
@@ -1075,6 +1075,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private bool _wasWritten = false;
         // Round 0 is never issued, so it means no write journalled.
         private ulong _journalledRound;
+        // The slots journalled in _journalledRound, as a filter of SlotFilterBit.
+        private ulong _journalledSlots;
         // Whether the contract held storage before the block and whether the block cleared it: together they say if a
         // cache of pre-block slots must drop them. Captured at the first tree creation, before any flush moves the root.
         private bool _hadStorageBeforeBlock;
@@ -1249,23 +1251,41 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// <remarks>
         /// Distinct from <c>_wasWritten</c>, which is set when a change is applied at commit time and so is
         /// still false while the block executes. This one is set on the <see cref="PersistentStorageProvider.Set"/>
-        /// path before the cell is journaled, which is the only way a cell enters the journal.
+        /// path before the cell is journaled. <see cref="PersistentStorageProvider.ClearSlot"/> journals zeros without a mark:
+        /// a read that skips the probe still sees zero, because <see cref="PersistentStorageProvider.ClearStorage"/> clears the
+        /// slot map revertibly in the same journal unit.
         /// It is never cleared while the journal could still hold an entry: a revert leaves it set, costing
         /// only a probe that misses, and contracts are dropped only once the journal is empty.
         /// </remarks>
         public bool HasJournalledWrites => _journalledRound != 0;
 
-        /// <summary>Whether the write journal may hold a cell of this contract in the given originals round.</summary>
+        /// <summary>Whether the write journal may hold the cell at <paramref name="index"/> of this contract in the given originals round.</summary>
         /// <remarks>
         /// Every round ends with the journal empty, so a mark from an earlier round cannot cover a live entry.
         /// A reused round number after the counter wraps only reports a stale mark, which costs a probe that misses.
+        /// Within a round the marks are a one-word filter over the slot's low bits: a contract that writes one slot
+        /// and goes on reading others still skips the probe for them, and a colliding slot only costs a probe that misses.
         /// </remarks>
-        public bool HasJournalledWritesInRound(ulong round) => _journalledRound == round;
+        public bool MayHaveJournalled(ulong round, in UInt256 index) =>
+            _journalledRound == round && (_journalledSlots & SlotFilterBit(in index)) != 0;
 
-        /// <summary>Marks that this contract has journalled at least one write this block and this round.</summary>
+        /// <summary>Marks that this contract has journalled a write to the slot at <paramref name="index"/> this block and this round.</summary>
         /// <remarks>Also runs off the block thread: the sequential BAL apply executes as iteration 0 of the
         /// parallel executor's loop, whose join publishes the flag before the block thread reads it.</remarks>
-        public void MarkJournalled() => _journalledRound = Provider._originalsRound;
+        public void MarkJournalled(in UInt256 index)
+        {
+            ulong round = Provider._originalsRound;
+            if (_journalledRound != round)
+            {
+                _journalledRound = round;
+                _journalledSlots = 0;
+            }
+
+            _journalledSlots |= SlotFilterBit(in index);
+        }
+
+        // The shift count is taken mod 64, so this keys on the low six bits of the slot.
+        private static ulong SlotFilterBit(in UInt256 index) => 1UL << (int)index.u0;
 
         public void SaveChange(in StorageCell storageCell, in UInt256 value)
         {
