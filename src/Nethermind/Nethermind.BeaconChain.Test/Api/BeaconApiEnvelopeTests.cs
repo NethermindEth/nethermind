@@ -4,7 +4,6 @@
 using System;
 using System.Net.Http;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Api.Common;
@@ -17,9 +16,10 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using NUnit.Framework;
+
+using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
@@ -32,35 +32,19 @@ public class BeaconApiEnvelopeTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
-    private BeaconApiHost _host = null!;
-    private BeaconChainStatusHolder _statusHolder = null!;
-    private BeaconChainStore _store = null!;
-    private HttpClient _client = null!;
+    private BeaconApiTestHost _host = null!;
 
     [OneTimeSetUp]
     public async Task StartHost()
     {
-        ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
-        _statusHolder = new BeaconChainStatusHolder(Spec, timestamper);
-        SlotClock slotClock = new(Spec, timestamper);
-        _store = new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>());
-
-        BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
-        _host = new BeaconApiHost(apiConfig, new BeaconChainConfig(), Spec, _statusHolder, slotClock, _store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), new NoOpProcessExitSource(), LimboLogs.Instance);
-
-        await _host.StartAsync(CancellationToken.None);
+        _host = await BeaconApiTestHost.StartAsync(Spec, forkAwareStore: false);
         // Bounds every request in this fixture: an events-endpoint validation bug that fell through
         // to the infinite SSE loop must fail fast here, not hang the run.
-        _client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{_host.Port}"), Timeout = TimeSpan.FromSeconds(5) };
+        _host.Client.Timeout = TimeSpan.FromSeconds(5);
     }
 
     [OneTimeTearDown]
-    public async Task StopHost()
-    {
-        _client.Dispose();
-        await _host.DisposeAsync();
-    }
+    public async Task StopHost() => await _host.DisposeAsync();
 
     [Test]
     public async Task Header_reports_finalized_true_when_the_blocks_epoch_is_at_or_before_the_finalized_checkpoint()
@@ -71,9 +55,9 @@ public class BeaconApiEnvelopeTests
         const ulong slot = 13_200_000;
         SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(slot);
         Hash256 root = TestRoot(7);
-        _store.PutBlock(root, block);
-        _store.SetCanonicalRoot(slot, root);
-        _statusHolder.CurrentStatus = new StatusMessageV2
+        _host.Store.PutBlock(root, block);
+        _host.Store.SetCanonicalRoot(slot, root);
+        _host.StatusHolder.CurrentStatus = new StatusMessageV2
         {
             ForkDigest = [],
             FinalizedRoot = root,
@@ -81,7 +65,7 @@ public class BeaconApiEnvelopeTests
             FinalizedEpoch = 500_000,
         };
 
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/headers/{root}");
+        HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/headers/{root}");
         string raw = await response.Content.ReadAsStringAsync();
         JsonDocument body = JsonDocument.Parse(raw);
 
@@ -99,9 +83,9 @@ public class BeaconApiEnvelopeTests
         const ulong slot = 13_200_000;
         Hash256 root = TestRoot(9);
         Hash256 canonicalRival = TestRoot(10);
-        _store.PutBlock(root, BeaconApiTestHost.MinimalBlock(slot));
-        _store.SetCanonicalRoot(slot, canonicalRival);
-        _statusHolder.CurrentStatus = new StatusMessageV2
+        _host.Store.PutBlock(root, BeaconApiTestHost.MinimalBlock(slot));
+        _host.Store.SetCanonicalRoot(slot, canonicalRival);
+        _host.StatusHolder.CurrentStatus = new StatusMessageV2
         {
             ForkDigest = [],
             FinalizedRoot = canonicalRival,
@@ -109,7 +93,7 @@ public class BeaconApiEnvelopeTests
             FinalizedEpoch = 500_000,
         };
 
-        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/headers/{root}");
+        HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/headers/{root}");
         string raw = await response.Content.ReadAsStringAsync();
         JsonDocument body = JsonDocument.Parse(raw);
 
@@ -221,7 +205,7 @@ public class BeaconApiEnvelopeTests
     [Test]
     public async Task Events_without_a_topics_query_parameter_is_400()
     {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/events");
+        HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/events");
         string raw = await response.Content.ReadAsStringAsync();
 
         Assert.That((int)response.StatusCode, Is.EqualTo(400), $"body: {raw}");
@@ -230,19 +214,12 @@ public class BeaconApiEnvelopeTests
     [Test]
     public async Task Events_with_an_unsupported_topic_is_400_naming_the_supported_set()
     {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/events?topics=chain_reorg");
+        HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/events?topics=chain_reorg");
         string raw = await response.Content.ReadAsStringAsync();
         JsonDocument body = JsonDocument.Parse(raw);
 
         Assert.That((int)response.StatusCode, Is.EqualTo(400), $"body: {raw}");
         Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("chain_reorg"));
-    }
-
-    private static Hash256 TestRoot(byte marker)
-    {
-        byte[] bytes = new byte[32];
-        bytes[31] = marker;
-        return new Hash256(bytes);
     }
 
     /// <summary>params/index.yaml StateId accepts retained state commitments and rejects block roots.</summary>
