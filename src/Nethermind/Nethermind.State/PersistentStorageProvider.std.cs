@@ -91,7 +91,7 @@ internal sealed partial class PersistentStorageProvider
 
             using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
 
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
             {
                 UInt256 after = kvp.Value.After;
                 if (kvp.Value.Before != after || kvp.Value.IsInitialValue)

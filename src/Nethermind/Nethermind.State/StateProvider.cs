@@ -681,9 +681,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 continue;
             }
 
+            // Walking newest first meets an account's head before its older changes, which commit with the head.
+            int head = TStateTracing.IsActive ? -1 : _intraTxCache[change.Address];
+            Debug.Assert(head <= i || changes[head].Address == change.Address);
             bool alreadyCommitted = TStateTracing.IsActive
                 ? _committedThisRound.Contains(change.Address)
-                : !_committedThisRound.Add(change.Address);
+                : head > i;
             if (alreadyCommitted)
             {
                 if (TStateTracing.IsActive && change.ChangeType == ChangeType.JustCache)
@@ -702,7 +705,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 continue;
             }
 
-            int forAssertion = _intraTxCache[change.Address];
+            int forAssertion = TStateTracing.IsActive ? _intraTxCache[change.Address] : head;
             if (forAssertion != i)
             {
                 ThrowUnexpectedCommitPosition(i, forAssertion);
@@ -949,7 +952,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     private Account? GetAndAddToCache(Address address)
     {
-        if (_nullAccountReads.Contains(address)) return null;
+        // Rarely non-empty, and probing an empty set still hashes the key.
+        if (_nullAccountReads.Count != 0 && _nullAccountReads.Contains(address)) return null;
 
         Account? account = GetState(address);
         if (account is not null)
