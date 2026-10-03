@@ -58,6 +58,9 @@ public static class ExperimentKnobs
     /// <summary>Each discovery candidate warms its own new cells as soon as its run ends, not at the round's barrier.</summary>
     public static readonly bool DiscoveryWarmPerCandidate = On("NETHERMIND_EXP_DISCOVERY_WARM_PER_CANDIDATE");
 
+    /// <summary>A prewarm run that makes this many backing-store storage reads hands its transaction to storage discovery; 0 = off.</summary>
+    public static readonly int DiscoveryOnMisses = Int("NETHERMIND_EXP_DISCOVERY_ON_MISSES", 0);
+
     /// <summary>A heavy transaction is warmed once with expensive precompiles answered by placeholders and computed in parallel.</summary>
     public static readonly bool PrecompileLookahead = On("NETHERMIND_EXP_PRECOMPILE_LOOKAHEAD");
 
