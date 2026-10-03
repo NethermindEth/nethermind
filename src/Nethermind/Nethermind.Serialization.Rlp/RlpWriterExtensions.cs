@@ -319,7 +319,7 @@ public static class RlpWriterExtensions
             else
             {
                 output[0] = prefix;
-                valueSpan.Slice(leadingZeroBytes, valueLength).CopyTo(output.Slice(1));
+                Bytes.Copy(valueSpan.Slice(leadingZeroBytes, valueLength), output.Slice(1));
                 output = output.Slice(0, 1 + valueLength);
             }
 

@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 
 namespace Nethermind.State;
 
@@ -77,5 +79,44 @@ internal sealed partial class PersistentStorageProvider
             },
             (state) => ReportMetrics(state.writes, state.skips)
         );
+    }
+
+    private sealed partial class PerContractState
+    {
+        [SkipLocalsInit]
+        private partial (int writes, int skipped) WriteChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
+        {
+            int writes = 0;
+            int skipped = 0;
+
+            using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
+
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            {
+                UInt256 after = kvp.Value.After;
+                if (kvp.Value.Before != after || kvp.Value.IsInitialValue)
+                {
+                    if (after.IsZero)
+                    {
+                        deferredDeletes.Add(kvp.Key);
+                    }
+                    else
+                    {
+                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
+                        BlockChange[kvp.Key] = new(after, after);
+                        storageWriteBatch.Set(kvp.Key, in after);
+
+                        writes++;
+                    }
+                }
+                else
+                {
+                    skipped++;
+                }
+            }
+
+            writes += WriteDeletes(deferredDeletes.AsSpan(), storageWriteBatch);
+            return (writes, skipped);
+        }
     }
 }

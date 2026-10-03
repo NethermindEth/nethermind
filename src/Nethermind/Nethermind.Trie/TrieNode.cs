@@ -510,7 +510,7 @@ namespace Nethermind.Trie
             {
                 reader.DecodeByteArraySpan(ref position, out valueSpan);
                 CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
-                valueSpan.CopyTo(buffer.AsSpan());
+                Bytes.Copy(valueSpan, buffer.AsSpan());
                 Volatile.Write(ref _nodeData, new LeafData(key, buffer));
             }
             else

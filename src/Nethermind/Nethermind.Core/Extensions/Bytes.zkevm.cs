@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Extensions;
 
@@ -46,6 +50,33 @@ public static unsafe partial class Bytes
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ulong Bswap64(ulong value) => ZkEvmBitOperations.Swap(value, _m8, _m16);
     }
+
+    /// <summary>Copies <paramref name="source"/> to the start of <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// Corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
+    /// that spills every callee-saved register, ~60 steps a call whatever the length. Where
+    /// <see cref="ZiskMemmoveFlag"/> is on, this calls <c>memmove</c> directly, so overlapping spans stay safe;
+    /// elsewhere it keeps corelib's copy. See <c>Bytes.std.cs</c> for the host form.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <paramref name="source"/>.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Copy(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        if (!ZiskMemmoveFlag.IsActive)
+        {
+            source.CopyTo(destination);
+            return;
+        }
+
+        if ((uint)source.Length > (uint)destination.Length) ThrowDestinationTooShort();
+        Memmove(ref MemoryMarshal.GetReference(destination), ref MemoryMarshal.GetReference(source), (nuint)source.Length);
+    }
+
+    [DllImport("__Internal", EntryPoint = "memmove", ExactSpelling = true), SuppressGCTransition]
+    private static extern void Memmove(ref byte destination, ref byte source, nuint length);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowDestinationTooShort() => throw new ArgumentException("Destination is too short.", "destination");
 
     /// <summary>Compares the 32 bytes at <paramref name="a"/> with the 32 bytes at <paramref name="b"/>.</summary>
     /// <remarks>
