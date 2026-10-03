@@ -486,7 +486,8 @@ namespace Nethermind.Trie
         /// <summary>Whether <paramref name="data"/> is a long list whose first three items are 32-byte strings.</summary>
         /// <remarks>
         /// The shape of most branches a trie walk resolves, told from five byte loads instead of reading the list header
-        /// and three item lengths. Exact on any input: three 33-byte items from offset 3 are three items whatever follows.
+        /// and three item lengths. Gives the item count the full read does, as three 33-byte items from offset 3 are three
+        /// items whatever follows, but does not validate the list header.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool StartsWithThreeHashes(ReadOnlySpan<byte> data) =>
