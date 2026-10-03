@@ -507,9 +507,9 @@ public class GuestOpcodeHandlerTests
             // The code info's copy of the code is the one followed by the padding that dispatch may read.
             EvmStack stack = new(0, ref stackStart, codeInfo.CodeSpan, codeInfo);
             stack.HoistInputData(env.InputData.Span);
-            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm };
-            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)table[code[0]])(
-                ref stack, gas, ref state, 0, stack.Head, table, ref stack.Code, stack.CodeLength);
+            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm, Memory = ref frame.Memory };
+            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[code[0]])(
+                ref stack, gas, ref state, ref stack.Code, stack.Head, table, ref stack.Code, ref stack.Bottom);
         }
 
         ulong size = frame.Memory.Size;

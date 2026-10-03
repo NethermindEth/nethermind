@@ -25,6 +25,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         public VirtualMachine<TGasPolicy> Vm;
 
+        /// <summary>The running frame's memory, which handlers that stay in line reach without going through <see cref="Vm"/>.</summary>
+        public ref EvmPooledMemory Memory;
+
         /// <summary>Where the chain stopped. Written only as the chain leaves.</summary>
         public nint FinalProgramCounter;
 
@@ -61,7 +64,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType> AsTableEntry(
-        delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType> handler) =>
+        delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType> handler) =>
         (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)handler;
 
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
@@ -75,6 +78,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// chain to its end like any other.
     /// </remarks>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
@@ -94,12 +98,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             nint* table = (nint*)opcodeHandlers;
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
-            DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = table, Vm = this };
+            DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = table, Vm = this, Memory = ref VmState.Memory };
 
             byte opcode = Unsafe.Add(ref stack.Code, programCounter);
             EvmExceptionType exceptionType =
-                ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)table[opcode])(
-                    ref stack, TGasPolicy.GetRemainingGas(in gas), ref state, programCounter, stack.Head, table, ref stack.Code, stack.CodeLength);
+                ((delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[opcode])(
+                    ref stack, TGasPolicy.GetRemainingGas(in gas), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, table, ref stack.Code, ref stack.Bottom);
             stack.Head = state.Head;
             programCounter = state.FinalProgramCounter;
             return exceptionType;
@@ -110,8 +114,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <remarks>
     /// See the host's <c>RawCalliHelper</c> in <c>VirtualMachine.Dispatch.std.cs</c> for the name. The handlers take eight
     /// arguments, all of which RV64 passes in registers: the remaining execution gas, the stack head, the table, the
-    /// bytecode and its length ride from handler to handler, so a handler whose body stays inline neither loads nor
-    /// stores them. x64 passes only four (Windows) or six (SysV) in registers, which is why the host keeps five.
+    /// bytecode and the stack's bottom slot ride from handler to handler, so a handler whose body stays inline neither
+    /// loads nor stores them. Most handlers address a slot, while only jumps read the code length, so the bottom slot
+    /// rides in its place. x64 passes only four (Windows) or six (SysV) in registers, which is why the host keeps five.
     /// <para>
     /// A checked body pays its fixed cost from the carried gas and runs on a copy of the stack that holds the carried
     /// head and bytecode, and dispatch moves the head by the body's declared growth, so neither reaches memory on the
@@ -128,16 +133,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref EvmStack stack,
             ulong gas,
             ref DispatchState state,
-            nint pc,
+            ref byte ip,
             nint head,
             nint* handlers,
             ref byte code,
-            nint codeLength)
+            ref byte bottom)
             where TOpcode : struct, IOpcodeBody
             where TTracingInst : struct, IFlag
             where TCancelable : struct, IFlag
             where TContinuable : struct, IFlag
         {
+            // The chain carries the instruction's address; the shared bodies count in offsets.
+            nint pc = (nint)Unsafe.ByteOffset(ref code, ref ip);
             // Only a traced run reads the opcode out of the bytecode, and the tracer reads the head from memory.
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
             {
@@ -218,7 +225,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // Reloaded, not held: live across an out-of-line call they would each take a callee-saved register.
                 handlers = state.OpcodeHandlers;
                 code = ref stack.Code;
-                codeLength = stack.CodeLength;
+                bottom = ref stack.Bottom;
             }
 
             if (!TContinuable.IsActive)
@@ -229,7 +236,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             // Padded code reads STOP past its end, so wherever a successful opcode leaves the counter it resolves to a
             // handler. A failed one can leave it anywhere, so this read waits for the status.
-            nint next = handlers[Unsafe.Add(ref code, pc)];
+            ip = ref Unsafe.Add(ref code, pc);
+            nint next = handlers[ip];
 
             Debug.Assert(state.Vm.ReturnData is null,
                 "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
@@ -243,11 +251,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             IL.Emit.Ldarg(nameof(stack));
             IL.Emit.Ldarg(nameof(gas));
             IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
+            IL.Emit.Ldarg(nameof(ip));
             IL.Emit.Ldarg(nameof(head));
             IL.Emit.Ldarg(nameof(handlers));
             IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
+            IL.Emit.Ldarg(nameof(bottom));
             IL.Push(next);
             IL.Emit.Tail();
             IL.Emit.Calli(new StandAloneMethodSig(
@@ -256,11 +264,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 TypeRef.Type<EvmStack>().MakeByRefType(),
                 TypeRef.Type<ulong>(),
                 TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
+                TypeRef.Type<byte>().MakeByRefType(),
                 TypeRef.Type<nint>(),
                 TypeRef.Type<nint>().MakePointerType(),
                 TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
+                TypeRef.Type<byte>().MakeByRefType()));
             IL.Emit.Ret();
             throw IL.Unreachable();
 
@@ -284,15 +292,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref EvmStack stack,
             ulong gas,
             ref DispatchState state,
-            nint pc,
+            ref byte ip,
             nint head,
             nint* handlers,
             ref byte code,
-            nint codeLength)
+            ref byte bottom)
             where TTracingInst : struct, IFlag
             where TCancelable : struct, IFlag
         {
             VirtualMachine<TGasPolicy> vm = state.Vm;
+            nint pc = (nint)Unsafe.ByteOffset(ref code, ref ip);
 
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
             {
@@ -315,7 +324,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             pc = result.ProgramCounter;
             handlers = state.OpcodeHandlers;
             code = ref stack.Code;
-            codeLength = stack.CodeLength;
+            bottom = ref stack.Bottom;
 
             if (result.Exception != EvmExceptionType.None)
                 return ExitChain(ref state, gas, pc, head, result.Exception);
@@ -331,17 +340,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // JIT fold the two transfers back into a single indirect branch.
             if (pc != fallthroughPc)
             {
-                nint taken = handlers[Unsafe.Add(ref code, pc)];
+                ip = ref Unsafe.Add(ref code, pc);
+                nint taken = handlers[ip];
                 IL.EnsureLocal(in taken);
 
                 IL.Emit.Ldarg(nameof(stack));
                 IL.Emit.Ldarg(nameof(gas));
                 IL.Emit.Ldarg(nameof(state));
-                IL.Emit.Ldarg(nameof(pc));
+                IL.Emit.Ldarg(nameof(ip));
                 IL.Emit.Ldarg(nameof(head));
                 IL.Emit.Ldarg(nameof(handlers));
                 IL.Emit.Ldarg(nameof(code));
-                IL.Emit.Ldarg(nameof(codeLength));
+                IL.Emit.Ldarg(nameof(bottom));
                 IL.Push(taken);
                 IL.Emit.Tail();
                 IL.Emit.Calli(new StandAloneMethodSig(
@@ -350,26 +360,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     TypeRef.Type<EvmStack>().MakeByRefType(),
                     TypeRef.Type<ulong>(),
                     TypeRef.Type<DispatchState>().MakeByRefType(),
-                    TypeRef.Type<nint>(),
+                    TypeRef.Type<byte>().MakeByRefType(),
                     TypeRef.Type<nint>(),
                     TypeRef.Type<nint>().MakePointerType(),
                     TypeRef.Type<byte>().MakeByRefType(),
-                    TypeRef.Type<nint>()));
+                    TypeRef.Type<byte>().MakeByRefType()));
                 IL.Emit.Ret();
             }
             else
             {
-                nint notTaken = handlers[Unsafe.Add(ref code, fallthroughPc)];
+                ip = ref Unsafe.Add(ref code, fallthroughPc);
+                nint notTaken = handlers[ip];
                 IL.EnsureLocal(in notTaken);
 
                 IL.Emit.Ldarg(nameof(stack));
                 IL.Emit.Ldarg(nameof(gas));
                 IL.Emit.Ldarg(nameof(state));
-                IL.Emit.Ldarg(nameof(pc));
+                IL.Emit.Ldarg(nameof(ip));
                 IL.Emit.Ldarg(nameof(head));
                 IL.Emit.Ldarg(nameof(handlers));
                 IL.Emit.Ldarg(nameof(code));
-                IL.Emit.Ldarg(nameof(codeLength));
+                IL.Emit.Ldarg(nameof(bottom));
                 IL.Push(notTaken);
                 IL.Emit.Tail();
                 IL.Emit.Calli(new StandAloneMethodSig(
@@ -378,11 +389,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     TypeRef.Type<EvmStack>().MakeByRefType(),
                     TypeRef.Type<ulong>(),
                     TypeRef.Type<DispatchState>().MakeByRefType(),
-                    TypeRef.Type<nint>(),
+                    TypeRef.Type<byte>().MakeByRefType(),
                     TypeRef.Type<nint>(),
                     TypeRef.Type<nint>().MakePointerType(),
                     TypeRef.Type<byte>().MakeByRefType(),
-                    TypeRef.Type<nint>()));
+                    TypeRef.Type<byte>().MakeByRefType()));
                 IL.Emit.Ret();
             }
 
