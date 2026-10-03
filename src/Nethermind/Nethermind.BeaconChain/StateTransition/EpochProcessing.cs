@@ -72,13 +72,19 @@ public static class EpochProcessing
         if (state.GetCurrentEpoch() <= Presets.GenesisEpoch + 1)
             return result;
 
-        ulong previousEpoch = state.GetPreviousEpoch();
-        ulong currentEpoch = state.GetCurrentEpoch();
+        (ulong previousTargetBalance, ulong currentTargetBalance) = GetTargetBalances(
+            state.Validators!, state.PreviousEpochParticipation ?? [], state.CurrentEpochParticipation ?? [],
+            state.GetPreviousEpoch(), state.GetCurrentEpoch());
+        WeighJustificationAndFinalization(
+            result, state.GetTotalActiveBalance(cache), previousTargetBalance, currentTargetBalance,
+            state.Slot, state.BlockRoots!);
+        return result;
+    }
+
+    internal static (ulong Previous, ulong Current) GetTargetBalances(Validator[] validators, byte[] previousParticipation, byte[] currentParticipation, ulong previousEpoch, ulong currentEpoch)
+    {
         ulong previousTargetBalance = 0;
         ulong currentTargetBalance = 0;
-        Validator[] validators = state.Validators!;
-        byte[] previousParticipation = state.PreviousEpochParticipation ?? [];
-        byte[] currentParticipation = state.CurrentEpochParticipation ?? [];
         for (int i = 0; i < validators.Length; i++)
         {
             Validator validator = validators[i];
@@ -89,21 +95,14 @@ public static class EpochProcessing
             if (validator.IsActiveValidator(currentEpoch) && BeaconStateAccessors.HasParticipationFlag(currentParticipation[i], Presets.TimelyTargetFlagIndex))
                 currentTargetBalance += validator.EffectiveBalance;
         }
-
-        WeighJustificationAndFinalization(
-            state,
-            result,
-            state.GetTotalActiveBalance(cache),
-            Math.Max(Presets.EffectiveBalanceIncrement, previousTargetBalance),
-            Math.Max(Presets.EffectiveBalanceIncrement, currentTargetBalance));
-        return result;
+        return (Math.Max(Presets.EffectiveBalanceIncrement, previousTargetBalance), Math.Max(Presets.EffectiveBalanceIncrement, currentTargetBalance));
     }
 
     /// <summary>Phase0 <c>weigh_justification_and_finalization</c>: justification-bit shift, 2/3 supermajority justification, and the four finalization rules.</summary>
-    private static void WeighJustificationAndFinalization(BeaconStateFulu state, JustificationAndFinalizationState result, ulong totalActiveBalance, ulong previousTargetBalance, ulong currentTargetBalance)
+    internal static void WeighJustificationAndFinalization(JustificationAndFinalizationState result, ulong totalActiveBalance, ulong previousTargetBalance, ulong currentTargetBalance, ulong stateSlot, Hash256[] blockRoots)
     {
-        ulong previousEpoch = state.GetPreviousEpoch();
-        ulong currentEpoch = state.GetCurrentEpoch();
+        ulong currentEpoch = BeaconStateAccessors.ComputeEpochAtSlot(stateSlot);
+        ulong previousEpoch = currentEpoch == Presets.GenesisEpoch ? Presets.GenesisEpoch : currentEpoch - 1;
         Checkpoint oldPreviousJustifiedCheckpoint = result.PreviousJustifiedCheckpoint;
         Checkpoint oldCurrentJustifiedCheckpoint = result.CurrentJustifiedCheckpoint;
 
@@ -117,12 +116,20 @@ public static class EpochProcessing
         bits[0] = false;
         if (previousTargetBalance * 3 >= totalActiveBalance * 2)
         {
-            result.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = previousEpoch, Root = state.GetBlockRoot(previousEpoch) };
+            result.CurrentJustifiedCheckpoint = new Checkpoint
+            {
+                Epoch = previousEpoch,
+                Root = BeaconStateAccessors.GetBlockRootAtSlot(stateSlot, blockRoots, BeaconStateAccessors.ComputeStartSlotAtEpoch(previousEpoch))
+            };
             bits[1] = true;
         }
         if (currentTargetBalance * 3 >= totalActiveBalance * 2)
         {
-            result.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = currentEpoch, Root = state.GetBlockRoot(currentEpoch) };
+            result.CurrentJustifiedCheckpoint = new Checkpoint
+            {
+                Epoch = currentEpoch,
+                Root = BeaconStateAccessors.GetBlockRootAtSlot(stateSlot, blockRoots, BeaconStateAccessors.ComputeStartSlotAtEpoch(currentEpoch))
+            };
             bits[0] = true;
         }
 
