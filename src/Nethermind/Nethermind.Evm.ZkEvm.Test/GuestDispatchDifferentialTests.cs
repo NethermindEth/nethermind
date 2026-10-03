@@ -267,7 +267,7 @@ public class GuestDispatchDifferentialTests
                     byte[] code =
                     [
                         .. prefix, (byte)Instruction.PUSH32, .. size.ToBigEndian(), (byte)Instruction.PUSH32, .. source.ToBigEndian(),
-                (byte)Instruction.PUSH32, .. destination.ToBigEndian(), (byte)op, (byte)Instruction.MSIZE, (byte)Instruction.STOP
+                        (byte)Instruction.PUSH32, .. destination.ToBigEndian(), (byte)op, (byte)Instruction.MSIZE, (byte)Instruction.STOP
                     ];
                     Outcome fresh = Run(100_000, data, 0, new CodeInfo(code), Table.Traced, returnData: data);
                     ulong needed = 100_000 - fresh.GasLeft;

@@ -730,8 +730,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>ADDMOD or MULMOD, as <typeparamref name="TOperation"/> computes it, with its operands and result in their stack slots.</summary>
         /// <remarks>
-        /// The shared handler copies the three operands out and the result back. ZisK's routines take a zero modulus
-        /// themselves; elsewhere a zero modulus leaves the zero its slot holds. A short stack or gas runs the shared
+        /// The shared handler copies the three operands out and the result back. A zero modulus leaves the zero its
+        /// slot holds. A short stack or gas runs the shared
         /// handler instead, which faults on it.
         /// </remarks>
         [SkipLocalsInit]
@@ -751,22 +751,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 // The result replaces the modulus, the deepest of the three.
                 ref ulong modulus = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 3));
-                if (ZiskArith256Flag.IsActive)
+                if ((modulus | Unsafe.Add(ref modulus, 1) | Unsafe.Add(ref modulus, 2) | Unsafe.Add(ref modulus, 3)) != 0)
                 {
-                    // The stack is pinned. The result must not alias an operand.
-                    ulong* m = (ulong*)Unsafe.AsPointer(ref modulus);
-                    UInt256 result;
-                    if (typeof(TOperation) == typeof(EvmInstructions.OpAddMod))
-                        Accelerators.AddMod256(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
+                    if (ZiskArith256Flag.IsActive)
+                    {
+                        // The stack is pinned. The result must not alias an operand.
+                        ulong* m = (ulong*)Unsafe.AsPointer(ref modulus);
+                        UInt256 result;
+                        if (typeof(TOperation) == typeof(EvmInstructions.OpAddMod))
+                            Accelerators.AddMod256(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
+                        else
+                            Accelerators.MulMod256(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
+                        *(UInt256*)m = result;
+                    }
                     else
-                        Accelerators.MulMod256(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
-                    *(UInt256*)m = result;
-                }
-                else if ((modulus | Unsafe.Add(ref modulus, 1) | Unsafe.Add(ref modulus, 2) | Unsafe.Add(ref modulus, 3)) != 0)
-                {
-                    ref UInt256 m = ref Unsafe.As<ulong, UInt256>(ref modulus);
-                    TOperation.Operation(in Unsafe.Add(ref m, 2), in Unsafe.Add(ref m, 1), in m, out UInt256 result);
-                    m = result;
+                    {
+                        ref UInt256 m = ref Unsafe.As<ulong, UInt256>(ref modulus);
+                        TOperation.Operation(in Unsafe.Add(ref m, 2), in Unsafe.Add(ref m, 1), in m, out UInt256 result);
+                        m = result;
+                    }
                 }
 
                 // Reloaded rather than held across the call, where each would take a callee-saved register.
