@@ -50,7 +50,7 @@ public partial class BlockTree
             _knownInvalid.Set(hash);
             if ((block.Header.RecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxProofBytes ||
                 (block.InclusionListRecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxProofBytes ||
-                (block.InclusionListProvenDependencies?.Length ?? 0) > Eip8288Constants.MaxProofDependencies * 96)
+                (block.InclusionListProvenDependencies?.Length ?? 0) > Eip8288Constants.MaxInclusionListDependencyBytes)
             {
                 Delete(hash);
                 return;

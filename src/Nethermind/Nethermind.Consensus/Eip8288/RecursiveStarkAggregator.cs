@@ -12,10 +12,10 @@ namespace Nethermind.Consensus.Eip8288;
 /// <summary>The "verify, union and discard" logic shared by mempool re-forwarders, FOCIL creators, and block builders.</summary>
 public static class RecursiveStarkAggregator
 {
-    /// <summary>Conservative block-production budget for serialized witnesses, in bytes.</summary>
+    /// <summary>Target serialized-witness size for each direct proving batch, in bytes.</summary>
     public const long MaxProductionWitnessBytes = 4 * 1024 * 1024;
-    private const int MaxRecursiveChildren = 16;
-    private const int DirectBatchSize = 512;
+    private const int MaxRecursiveChildren = 2;
+    private const int DirectBatchSize = 4;
 
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
     public static long InputSize(AggregationInput input)
@@ -71,13 +71,27 @@ public static class RecursiveStarkAggregator
     public static byte[] Prove(AggregationInput input, ILeanProofVerifier verifier, in ValueHash256 depsHash, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (input.Deps.Count != input.Witnesses.Count) throw new ArgumentException("Witness count mismatch", nameof(input));
         foreach (RecursiveProofInput child in input.RecursiveProofs)
             if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
-        if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize)
-            return verifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, input);
+        if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize
+            && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
+            && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)
+        {
+            byte[] result = verifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, input);
+            cancellationToken.ThrowIfCancellationRequested();
+            return result;
+        }
 
         HashSet<FrameDependency> discarded = [.. input.Discards];
-        List<RecursiveProofInput> children = [.. input.RecursiveProofs];
+        List<RecursiveProofInput> children = [];
+        foreach (RecursiveProofInput child in input.RecursiveProofs)
+        {
+            bool needsPruning = false;
+            foreach (FrameDependency dependency in child.InnerDeps)
+                if (discarded.Contains(dependency)) { needsPruning = true; break; }
+            children.Add(needsPruning ? ProveChild(new() { RecursiveProofs = [child] }, child.InnerDeps) : child);
+        }
         for (int offset = 0; offset < input.Deps.Count;)
         {
             List<FrameDependency> deps = [];
@@ -95,39 +109,56 @@ public static class RecursiveStarkAggregator
             } while (offset < input.Deps.Count && deps.Count < DirectBatchSize);
             children.Add(ProveChild(new() { Deps = deps, Witnesses = witnesses }, deps));
         }
-        while (children.Count > MaxRecursiveChildren)
+        while (children.Count > MaxRecursiveChildren
+            || InputSize(new() { RecursiveProofs = children }) > Eip8288Constants.MaxAggregationInputBytes)
         {
             List<RecursiveProofInput> next = [];
-            for (int offset = 0; offset < children.Count; offset += MaxRecursiveChildren)
+            for (int offset = 0; offset < children.Count;)
             {
-                List<RecursiveProofInput> batch = children.GetRange(offset, Math.Min(MaxRecursiveChildren, children.Count - offset));
+                List<RecursiveProofInput> batch = [];
                 List<FrameDependency> deps = [];
-                foreach (RecursiveProofInput child in batch) deps.AddRange(child.InnerDeps);
-                next.Add(ProveChild(new() { RecursiveProofs = batch }, deps));
+                long bytes = 12;
+                do
+                {
+                    RecursiveProofInput child = children[offset];
+                    long entrySize = 8L + (long)child.InnerDeps.Count * Eip8288Constants.DependencyTripleLength + child.Proof.Length;
+                    if (batch.Count > 0 && bytes + entrySize > Eip8288Constants.MaxAggregationInputBytes) break;
+                    batch.Add(child);
+                    deps.AddRange(child.InnerDeps);
+                    bytes += entrySize;
+                    offset++;
+                } while (offset < children.Count && batch.Count < MaxRecursiveChildren);
+                next.Add(batch.Count == 1 ? batch[0] : ProveChild(new() { RecursiveProofs = batch }, deps));
             }
+            if (next.Count >= children.Count) throw new InvalidOperationException("Recursive inputs cannot fit the native aggregation bound.");
             children = next;
         }
         cancellationToken.ThrowIfCancellationRequested();
-        return verifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk,
-            new AggregationInput { RecursiveProofs = children, Discards = input.Discards });
+        byte[] proof = verifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk,
+            new AggregationInput { RecursiveProofs = children });
+        cancellationToken.ThrowIfCancellationRequested();
+        return proof;
 
         RecursiveProofInput ProveChild(AggregationInput childInput, IReadOnlyList<FrameDependency> dependencies)
         {
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> retained = [];
+            HashSet<FrameDependency> removed = [];
             foreach (FrameDependency dependency in dependencies)
-                if (!discarded.Contains(dependency)) retained.Add(dependency);
+                if (discarded.Contains(dependency)) removed.Add(dependency);
+                else retained.Add(dependency);
             List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(retained);
             childInput = new()
             {
                 Deps = childInput.Deps,
                 Witnesses = childInput.Witnesses,
                 RecursiveProofs = childInput.RecursiveProofs,
-                Discards = input.Discards
+                Discards = [.. removed]
             };
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(canonical);
-            byte[] proof = verifier.ProveRecursiveStark(in hash, Eip8288Constants.AggregatedVk, childInput);
-            return new(canonical, proof);
+            byte[] childProof = verifier.ProveRecursiveStark(in hash, Eip8288Constants.AggregatedVk, childInput);
+            cancellationToken.ThrowIfCancellationRequested();
+            return new(canonical, childProof);
         }
     }
 

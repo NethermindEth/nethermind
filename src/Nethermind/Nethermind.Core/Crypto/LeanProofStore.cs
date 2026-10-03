@@ -13,18 +13,29 @@ public sealed class LeanProofStore
     // Leave room for Snappy's worst-case expansion within the 16 MiB inbound frame cap.
     public const int MaxWrapperBytes = 10 * 1024 * 1024;
     public const int MaxWrapperTransactions = 4096;
+    /// <summary>Full witness bytes a sender may retain through pending transactions.</summary>
+    public const long MaxSenderPinnedBytes = 12 * 1024 * 1024;
     private const long MaxStoredBytes = 64 * 1024 * 1024;
-    private const int MaxStoredWrappers = 1024;
+    private const int MaxStoredRecords = 1024;
     private readonly object _lock = new();
     private readonly Dictionary<FrameDependency, ProofRecord> _coverage = [];
     private readonly LinkedList<ProofRecord> _records = [];
     private readonly Dictionary<ValueHash256, ProofRecord> _identities = [];
     private readonly Dictionary<ValueHash256, ProofRecord> _recursiveByDeps = [];
     private readonly LinkedList<ProofRecord> _recursiveCache = [];
-    private readonly Dictionary<(object? Owner, ValueHash256 Hash), ProofRecord[]> _pending = [];
+    private readonly Dictionary<(object? Owner, ValueHash256 Hash), PendingProof> _pending = [];
+    private readonly Dictionary<Address, SenderPins> _senders = [];
     private readonly AsyncLocal<AdmissionScope?> _admission = new();
     private long _storedBytes;
     private long _cachedBytes;
+
+    private sealed record PendingProof(Address Sender, ProofRecord[] Records, KeyValuePair<FrameDependency, ProofRecord>[] Coverage);
+
+    private sealed class SenderPins
+    {
+        public Dictionary<ProofRecord, int> Records { get; } = [];
+        public long Bytes { get; set; }
+    }
 
     private sealed class ProofRecord(FrameDependency[] dependencies, byte[][]? witnesses, byte[]? recursiveProof,
         long size, ValueHash256 identity, ValueHash256 dependencyHash, ValueHash256 proofHash)
@@ -42,18 +53,21 @@ public sealed class LeanProofStore
         public int CoveredDependencies { get; set; }
     }
 
-    private sealed class RecordLease(LeanProofStore store, ProofRecord[] records) : IDisposable
+    private sealed class RecordLease(LeanProofStore store, ProofRecord[] records, Address? sender = null) : IDisposable
     {
         private int _active = 1;
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _active, 0) == 0) return;
             lock (store._lock)
+            {
+                if (sender is not null) store.ReleaseSender(sender, records);
                 foreach (ProofRecord record in records)
                 {
                     record.Pins--;
                     if (record.Pins == 0 && record.CoveredDependencies == 0) store.Remove(record);
                 }
+            }
         }
     }
 
@@ -83,35 +97,35 @@ public sealed class LeanProofStore
         lock (_lock)
         {
             Dictionary<FrameDependency, ProofRecord> records = [];
-            ProofRecord? incoming = null;
-            foreach (FrameDependency dependency in dependencies)
+            ProofRecord? recursive = null;
+            HashSet<ProofRecord> incoming = [];
+            for (int i = 0; i < dependencies.Count; i++)
             {
+                FrameDependency dependency = dependencies[i];
+                if (records.ContainsKey(dependency)) continue;
                 if (!_coverage.TryGetValue(dependency, out ProofRecord? record))
                 {
-                    incoming ??= CreateRecord(dependencies, witnesses, recursiveProof);
-                    record = incoming;
+                    record = witnesses is null
+                        ? recursive ??= CreateRecord(dependencies, null, recursiveProof)
+                        : CreateRecord([dependency], [witnesses[i]], null);
+                    if (_identities.TryGetValue(record.Identity, out ProofRecord? existing)) record = existing;
+                    else incoming.Add(record);
                 }
                 records[dependency] = record;
             }
             HashSet<ProofRecord> selected = [.. records.Values];
             // Protect existing coverage before finding room for the missing part of this wrapper.
             foreach (ProofRecord record in selected) record.Pins++;
-            if (incoming is not null)
+            long incomingBytes = 0;
+            foreach (ProofRecord record in incoming) incomingBytes += record.Size;
+            if (incoming.Count != 0)
             {
-                if (_identities.TryGetValue(incoming.Identity, out ProofRecord? existing))
-                {
-                    selected.Remove(incoming);
-                    incoming.Pins--;
-                    if (selected.Add(existing)) existing.Pins++;
-                    foreach (FrameDependency dependency in dependencies)
-                        if (ReferenceEquals(records[dependency], incoming)) records[dependency] = existing;
-                }
-                else if (!MakeRoom(incoming.Size))
+                if (!MakeRoom(incomingBytes, incoming.Count))
                 {
                     foreach (ProofRecord record in selected) record.Pins--;
                     return false;
                 }
-                else Insert(incoming);
+                foreach (ProofRecord record in incoming) Insert(record);
             }
             AdmissionScope scope = new(this, _admission.Value, records, new RecordLease(this, [.. selected]));
             _admission.Value = scope;
@@ -121,7 +135,7 @@ public sealed class LeanProofStore
     }
 
     /// <summary>Protects witnesses throughout transaction filtering and atomic insertion.</summary>
-    public bool TryReserveTransaction(IReadOnlyList<FrameDependency> dependencies, out IDisposable? reservation)
+    public bool TryReserveTransaction(IReadOnlyList<FrameDependency> dependencies, out IDisposable? reservation, Address? sender = null)
     {
         reservation = null;
         lock (_lock)
@@ -132,41 +146,64 @@ public sealed class LeanProofStore
                 if (!TryResolve(dependency, out ProofRecord? record)) return false;
                 records.Add(record!);
             }
-            foreach (ProofRecord record in records) record.Pins++;
-            reservation = new RecordLease(this, [.. records]);
+            ProofRecord[] selected = [.. records];
+            if (sender is not null && !TryTakeSender(sender, selected)) return false;
+            foreach (ProofRecord record in selected) record.Pins++;
+            reservation = new RecordLease(this, selected, sender);
             return true;
         }
     }
 
-    /// <summary>Called under the owning pool lock when a transaction becomes pending.</summary>
-    public void PinPending(Transaction transaction, object? owner = null)
+    /// <summary>Reserves pending witnesses before insertion; publication may be deferred to the insertion event.</summary>
+    public bool PinPending(Transaction transaction, object? owner = null, bool publish = true)
     {
         List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
-        if (dependencies.Count == 0) return;
+        if (dependencies.Count == 0) return true;
+        if (transaction.Hash is null || transaction.SenderAddress is null) return false;
         lock (_lock)
         {
             (object? Owner, ValueHash256 Hash) key = (owner, transaction.Hash!.ValueHash256);
-            if (_pending.ContainsKey(key)) return;
+            if (_pending.ContainsKey(key)) return true;
             HashSet<ProofRecord> records = [];
+            Dictionary<FrameDependency, ProofRecord> coverage = [];
             foreach (FrameDependency dependency in dependencies)
             {
                 if (!TryResolve(dependency, out ProofRecord? record))
-                    throw new InvalidOperationException("Pending transaction lost reserved dependency witnesses.");
+                    return false;
                 records.Add(record!);
+                coverage.Add(dependency, record!);
             }
-            foreach (ProofRecord record in records) record.Pins++;
-            _pending.Add(key, [.. records]);
-            foreach (FrameDependency dependency in dependencies)
-                if (TryResolve(dependency, out ProofRecord? record)) Publish(dependency, record!);
+            ProofRecord[] selected = [.. records];
+            if (!TryTakeSender(transaction.SenderAddress, selected)) return false;
+            foreach (ProofRecord record in selected) record.Pins++;
+            _pending.Add(key, new(transaction.SenderAddress, selected, [.. coverage]));
+            if (publish) PublishPending(key);
+            return true;
         }
+    }
+
+    /// <summary>Publishes the already reserved dependency set when the pool makes its record visible.</summary>
+    public void PublishPending(in ValueHash256 hash, object? owner = null)
+    {
+        lock (_lock) PublishPending((owner, hash));
+    }
+
+    private void PublishPending((object? Owner, ValueHash256 Hash) key)
+    {
+        if (!_pending.TryGetValue(key, out PendingProof? pending)) return;
+        foreach ((FrameDependency dependency, ProofRecord record) in pending.Coverage)
+            Publish(dependency, record);
     }
 
     /// <summary>Called under the owning pool lock for every removal, replacement, and self-eviction.</summary>
     public void UnpinPending(in ValueHash256 hash, object? owner = null)
     {
         lock (_lock)
-            if (_pending.Remove((owner, hash), out ProofRecord[]? records))
-                foreach (ProofRecord record in records) record.Pins--;
+            if (_pending.Remove((owner, hash), out PendingProof? pending))
+            {
+                ReleaseSender(pending.Sender, pending.Records);
+                foreach (ProofRecord record in pending.Records) record.Pins--;
+            }
     }
 
     /// <summary>Releases all witnesses owned by a pool after its background workers have stopped.</summary>
@@ -179,11 +216,51 @@ public sealed class LeanProofStore
                 if (ReferenceEquals(key.Owner, owner)) owned.Add(key);
             foreach ((object? Owner, ValueHash256 Hash) key in owned)
             {
-                ProofRecord[] records = _pending[key];
+                PendingProof pending = _pending[key];
                 _pending.Remove(key);
-                foreach (ProofRecord record in records) record.Pins--;
+                ReleaseSender(pending.Sender, pending.Records);
+                foreach (ProofRecord record in pending.Records) record.Pins--;
             }
         }
+    }
+
+    private bool TryTakeSender(Address sender, ProofRecord[] records)
+    {
+        if (records.Length == 0) return true;
+        _senders.TryGetValue(sender, out SenderPins? pins);
+        long bytes = pins?.Bytes ?? 0;
+        foreach (ProofRecord record in records)
+            if (pins is null || !pins.Records.ContainsKey(record)) bytes += record.Size;
+        if (bytes > MaxSenderPinnedBytes) return false;
+        if (pins is null) _senders.Add(sender, pins = new());
+        foreach (ProofRecord record in records)
+        {
+            if (pins.Records.TryGetValue(record, out int count)) pins.Records[record] = count + 1;
+            else { pins.Records.Add(record, 1); pins.Bytes += record.Size; }
+        }
+        return true;
+    }
+
+    private void ReleaseSender(Address sender, ProofRecord[] records)
+    {
+        if (records.Length == 0) return;
+        SenderPins pins = _senders[sender];
+        foreach (ProofRecord record in records)
+        {
+            int count = pins.Records[record];
+            if (count == 1) { pins.Records.Remove(record); pins.Bytes -= record.Size; }
+            else pins.Records[record] = count - 1;
+        }
+        if (pins.Records.Count == 0) _senders.Remove(sender);
+    }
+
+    /// <summary>Publishes accepted coverage from the current validated admission snapshot.</summary>
+    public void CommitAdmission(IReadOnlyList<FrameDependency> admittedDependencies)
+    {
+        lock (_lock)
+            if (_admission.Value is { } scope)
+                foreach (FrameDependency dependency in admittedDependencies)
+                    if (scope.TryGet(dependency, out ProofRecord? record)) Publish(dependency, record!);
     }
 
     /// <summary>Stores verified coverage when capacity permits; pending witnesses are never evicted.</summary>
@@ -194,6 +271,7 @@ public sealed class LeanProofStore
         IReadOnlyList<FrameDependency> coverage = admittedDependencies ?? dependencies;
         if (coverage.Count == 0) return;
         HashSet<FrameDependency> declared = [.. dependencies];
+        HashSet<FrameDependency> admitted = [.. coverage];
         foreach (FrameDependency dependency in coverage)
             if (!declared.Contains(dependency)) throw new ArgumentException("Admitted dependencies must be covered by the proof.");
         lock (_lock)
@@ -212,14 +290,31 @@ public sealed class LeanProofStore
                     return;
                 }
             }
-            ProofRecord incoming = CreateRecord(dependencies, witnesses, recursiveProof);
-            if (!_identities.TryGetValue(incoming.Identity, out ProofRecord? stored))
+            List<ProofRecord> incoming = [];
+            Dictionary<FrameDependency, ProofRecord> requested = [];
+            ProofRecord? recursive = null;
+            for (int i = 0; i < dependencies.Count; i++)
             {
-                if (!MakeRoom(incoming.Size)) return;
-                Insert(incoming);
-                stored = incoming;
+                FrameDependency dependency = dependencies[i];
+                if (!admitted.Contains(dependency) || _coverage.ContainsKey(dependency) || requested.ContainsKey(dependency)) continue;
+                ProofRecord record = witnesses is null
+                    ? recursive ??= CreateRecord(dependencies, null, recursiveProof)
+                    : CreateRecord([dependency], [witnesses[i]], null);
+                if (_identities.TryGetValue(record.Identity, out ProofRecord? stored)) record = stored;
+                else if (!incoming.Contains(record)) incoming.Add(record);
+                requested.Add(dependency, record);
             }
-            foreach (FrameDependency dependency in coverage) Publish(dependency, stored);
+            long bytes = 0;
+            foreach (ProofRecord record in incoming) bytes += record.Size;
+            // Existing requested records must remain available while unpinned cache entries make room.
+            foreach (ProofRecord record in requested.Values) record.Pins++;
+            bool fits = incoming.Count == 0 || MakeRoom(bytes, incoming.Count);
+            if (fits)
+            {
+                foreach (ProofRecord record in incoming) Insert(record);
+                foreach ((FrameDependency dependency, ProofRecord record) in requested) Publish(dependency, record);
+            }
+            foreach (ProofRecord record in requested.Values) record.Pins--;
         }
     }
 
@@ -240,7 +335,7 @@ public sealed class LeanProofStore
             record.Node = _recursiveCache.AddLast(record);
             _recursiveByDeps.Add(hash, record);
             _cachedBytes += record.Size;
-            while (_cachedBytes > MaxStoredBytes || _recursiveCache.Count > MaxStoredWrappers)
+            while (_cachedBytes > MaxStoredBytes || _recursiveCache.Count > MaxStoredRecords)
             {
                 ProofRecord oldest = _recursiveCache.First!.Value;
                 _recursiveCache.RemoveFirst();
@@ -271,10 +366,10 @@ public sealed class LeanProofStore
         _storedBytes += record.Size;
     }
 
-    private bool MakeRoom(long size)
+    private bool MakeRoom(long size, int records = 1)
     {
         for (LinkedListNode<ProofRecord>? node = _records.First;
-            _storedBytes + size > MaxStoredBytes || _records.Count >= MaxStoredWrappers;)
+            _storedBytes + size > MaxStoredBytes || _records.Count + records > MaxStoredRecords;)
         {
             if (node is null) return false;
             LinkedListNode<ProofRecord>? next = node.Next;

@@ -120,9 +120,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         [DoesNotReturn]
         private static void ThrowIncompleteDeserializationException(IByteBuffer data, int originalReaderIndex) => throw new IncompleteDeserializationException($"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
 
-        protected internal void Send<T>(T message) where T : P2PMessage => SendWithResult(message);
-
-        protected int SendWithResult<T>(T message) where T : P2PMessage
+        protected internal void Send<T>(T message) where T : P2PMessage
         {
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
@@ -131,9 +129,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 string messageString = message.ToString();
                 int size = Session.DeliverMessage(message);
                 NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, messageString, size);
-                return size;
             }
-            return Session.DeliverMessage(message);
+            else Session.DeliverMessage(message);
         }
 
         protected async Task CheckProtocolInitTimeout()

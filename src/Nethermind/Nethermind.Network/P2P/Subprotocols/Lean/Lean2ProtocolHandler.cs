@@ -44,6 +44,7 @@ public sealed class Lean2ProtocolHandler : LeanProtocolHandler, IStaticProtocolI
             && (Session is not ILeanBulkSession bulk || !bulk.EnableLeanBulk()))
         {
             Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Lean streaming transport unavailable");
+            Dispose();
             return;
         }
         base.Init();

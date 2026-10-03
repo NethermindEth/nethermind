@@ -32,6 +32,22 @@ public class FocilInclusionListTests
     }
 
     [Test]
+    public void Shared_crypto_verdict_uses_exact_bytes_without_retaining_mutable_proofs()
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        Transaction transaction = DepTx(Eip8288Constants.LeanSphincsScheme);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
+        byte[] metadata = Eip8288Dependencies.Serialize(dependencies);
+        Assert.That(FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
+        Assert.That(FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        proof.StarkProof[0] = 2;
+        Assert.That(FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(2));
+    }
+
+    [Test]
     public void Request_memo_reuses_only_identical_proof_and_public_inputs()
     {
         FakeLeanProofVerifier backend = new(true);

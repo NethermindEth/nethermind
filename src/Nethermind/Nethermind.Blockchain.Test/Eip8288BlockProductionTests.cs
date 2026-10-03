@@ -179,6 +179,7 @@ public class Eip8288BlockProductionTests
             {
                 Type = TxType.FrameTx,
                 Hash = new Hash256(cached.DataHash),
+                SenderAddress = Address.Zero,
                 Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
                     UInt256.Zero, Eip8288Dependencies.Serialize([cached]))]
             });

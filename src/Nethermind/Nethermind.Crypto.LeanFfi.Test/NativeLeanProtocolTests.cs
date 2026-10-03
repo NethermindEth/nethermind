@@ -360,6 +360,40 @@ public class NativeLeanProtocolTests
         public void Dispose() { _release.Set(); _release.Dispose(); }
     }
 
+    [Test]
+    public async Task Receive_releases_pending_when_disposal_flag_wins_completion()
+    {
+        using BlockingVerifier verifier = new();
+        using Context context = await Create(verifier);
+        Receive(context, Status(context), new LeanStatusMessageSerializer());
+        ReceiveWrapper(context, CreateValidWrapper(context));
+        await verifier.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        ReceiveWrapper(context, CreateValidWrapper(context, nonce: 1));
+        LeanReassemblyBudget budget = context.Chain.Container.Resolve<LeanReassemblyBudget>();
+        Assert.That(budget.RetainedAssemblies, Is.EqualTo(2));
+        System.Reflection.FieldInfo disposed = typeof(LeanProtocolHandler).GetField("_disposed", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        try
+        {
+            // Pause Dispose after publishing its flag, before it acquires the receive lock.
+            disposed.SetValue(context.Handler, 1);
+            verifier.Release();
+            await context.Scheduler.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(budget.RetainedBytes, Is.Zero);
+                Assert.That(budget.RetainedAssemblies, Is.Zero);
+                Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
+            context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+        finally
+        {
+            verifier.Release();
+            disposed.SetValue(context.Handler, 0);
+            context.Handler.Dispose();
+        }
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public async Task Busy_admission_retries_the_retained_wrapper_and_releases_it_on_cancellation(bool cancel)

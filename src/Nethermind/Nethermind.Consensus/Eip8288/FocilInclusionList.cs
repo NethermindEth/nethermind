@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,6 +27,7 @@ public static class FocilInclusionListValidator
 {
     public const string DepsHashMismatch = "FOCIL recursive STARK public input must equal hash(deps)";
     public const string InvalidProof = "FOCIL recursive STARK failed verification";
+    private static readonly ConditionalWeakTable<ILeanProofVerifier, ProofVerdicts> VerifiedProofs = [];
 
     public static bool Validate(FocilInclusionList focil, ILeanProofVerifier verifier, out string? error)
         => Validate(focil.Transactions, focil.RecursiveStark, verifier, out _, out error, provenDependencies: focil.ProvenDependencies);
@@ -112,12 +114,43 @@ public static class FocilInclusionListValidator
         if (!Eip8288Dependencies.Serialize(Eip8288Dependencies.Canonicalize(parsed)).AsSpan().SequenceEqual(bytes)) return false;
         ValueHash256 depsHash = ValueKeccak.Compute(bytes);
         if (proof.BlockDepsHash.ValueHash256 != depsHash) { error = DepsHashMismatch; dependencies = []; return false; }
-        if (!verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof.StarkProof)) { dependencies = []; return false; }
+        ILeanProofVerifier backend = verifier;
+        while (backend is InclusionListProofVerifier memo) backend = memo.Backend;
+        if (!VerifiedProofs.GetValue(backend, static _ => new()).Verify(verifier, in depsHash, proof.StarkProof)) { dependencies = []; return false; }
         dependencies = parsed;
         error = null;
         return true;
     }
 
+    private sealed class ProofVerdicts
+    {
+        private const int Capacity = 64;
+        private readonly object _gate = new();
+        private readonly HashSet<(ValueHash256 Dependencies, ValueHash256 Proof)> _verified = [];
+        private readonly Queue<(ValueHash256 Dependencies, ValueHash256 Proof)> _order = new();
+
+        public bool Verify(ILeanProofVerifier verifier, in ValueHash256 dependencies, byte[] proof)
+        {
+            ValueHash256 proofHash = ValueKeccak.Compute(proof);
+            (ValueHash256, ValueHash256) key = (dependencies, proofHash);
+            lock (_gate)
+                if (_verified.Contains(key)) return true;
+            if (!verifier.VerifyRecursiveStark(in dependencies, Eip8288Constants.AggregatedVk, proof)) return false;
+            // Public callers can mutate proof arrays; never cache a verdict under stale bytes.
+            if (ValueKeccak.Compute(proof) != proofHash) return false;
+            lock (_gate)
+            {
+                if (_verified.Add(key))
+                {
+                    _order.Enqueue(key);
+                    if (_order.Count > Capacity) _verified.Remove(_order.Dequeue());
+                }
+            }
+            return true;
+        }
+    }
+
+    /// <summary>Checks the byte bound and fixed-width alignment of encoded dependency metadata.</summary>
     public static bool HasValidMetadataLength(byte[] dependencies)
         => dependencies.Length <= Eip8288Constants.MaxInclusionListDependencyBytes
             && dependencies.Length % Eip8288Constants.DependencyTripleLength == 0;

@@ -22,7 +22,7 @@ public class NativeLeanProofVerifierTests
     public void EnsureNativeLibraryLoads()
     {
         NativeLeanProofVerifier.Instance.EnsureAvailable();
-        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(3u));
+        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(4u));
         Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
     }
 
@@ -78,6 +78,19 @@ public class NativeLeanProofVerifierTests
         AggregationInput input = new() { RecursiveProofs = [default] };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([]);
         Assert.Throws<ArgumentException>(() => Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input));
+    }
+
+    [Test]
+    public void Two_maximum_child_proofs_fit_the_aggregation_input_budget()
+    {
+        RecursiveProofInput child = new([Dependency("sphincs")], new byte[Eip8288Constants.MaxProofBytes]);
+        byte[] encoded = NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [child, child] });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Length, Is.GreaterThan(2 * Eip8288Constants.MaxProofBytes));
+            Assert.That(encoded.Length, Is.LessThanOrEqualTo(Eip8288Constants.MaxAggregationInputBytes));
+        }
+        Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [child, child, child] }));
     }
 
     [Test]

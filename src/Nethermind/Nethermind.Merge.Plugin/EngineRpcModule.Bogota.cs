@@ -173,8 +173,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             // Sender recovery and state reads delay the payloadId response; accepted, as only a head newPayloadV6
             // left unanswered pays it, and publishing the answer caps it at once per head.
             evaluated = proof is null ? _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained)
-                : provenDependencies is null ? _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained, proof)
-                    : _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained, proof, provenDependencies);
+                : _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained, proof, provenDependencies);
         }
         // The head is already applied and a build may be under way, and bogota.md permits a null answer, so
         // a state read that hits a pruned or still-healing subtrie must not fail the forkchoice update.

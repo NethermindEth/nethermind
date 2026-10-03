@@ -22,10 +22,16 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
     private readonly CancellationTokenSource _cts = new();
     private const int MaxDeferredBytes = 12 * 1024 * 1024;
     private const int MaxDeferredMessages = 64;
+    private sealed class DeferredWrite
+    {
+        public IByteBuffer? Buffer;
+        public bool Ready;
+    }
     private sealed class BulkSendState
     {
         public readonly Lock Gate = new();
-        public readonly Queue<IByteBuffer> Deferred = [];
+        public readonly Lock CodecGate = new();
+        public readonly Queue<DeferredWrite> Deferred = [];
         public int DeferredBytes;
         public TaskCompletionSource WritableChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -50,12 +56,14 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
 
         IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
         int length = buffer.ReadableBytes;
+        // Running in background
         SendBuffer(buffer);
         return length;
     }
 
     private int EnqueueWithBulkTraffic<T>(T message, BulkSendState bulk) where T : P2PMessage
     {
+        DeferredWrite pending = new();
         lock (bulk.Gate)
         {
             if (_removed || !_context.Channel.Active) return 0;
@@ -63,22 +71,48 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
             // Chunk producers retry independently; reserve the deferred budget for control traffic.
             if (deferred && ((message.Protocol == "lean" && message.PacketType == 1)
                 || bulk.Deferred.Count == MaxDeferredMessages || bulk.DeferredBytes == MaxDeferredBytes)) return 0;
-
-            IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
-            int length = buffer.ReadableBytes;
-            if (deferred)
+            // Reserve FIFO position before encoding, without parking the event loop behind the codec.
+            bulk.Deferred.Enqueue(pending);
+        }
+        lock (bulk.CodecGate)
+        {
+            if (_removed || !_context.Channel.Active)
             {
-                if (length > MaxDeferredBytes - bulk.DeferredBytes)
+                lock (bulk.Gate)
+                {
+                    pending.Ready = true;
+                    DrainDeferred(bulk);
+                }
+                return 0;
+            }
+            IByteBuffer buffer;
+            try { buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator); }
+            catch
+            {
+                lock (bulk.Gate)
+                {
+                    pending.Ready = true;
+                    DrainDeferred(bulk);
+                }
+                throw;
+            }
+            lock (bulk.Gate)
+            {
+                int length = buffer.ReadableBytes;
+                pending.Ready = true;
+                bool immediate = !_removed && _context.Channel.Active && _context.Channel.IsWritable
+                    && ReferenceEquals(bulk.Deferred.Peek(), pending);
+                if (_removed || !_context.Channel.Active || !immediate && length > MaxDeferredBytes - bulk.DeferredBytes)
                 {
                     buffer.Release();
+                    DrainDeferred(bulk);
                     return 0;
                 }
-                bulk.Deferred.Enqueue(buffer);
+                pending.Buffer = buffer;
                 bulk.DeferredBytes += length;
-                if (_context.Channel.IsWritable) DrainDeferred(bulk);
+                DrainDeferred(bulk);
+                return length;
             }
-            else SendBuffer(buffer);
-            return length;
         }
     }
 
@@ -87,29 +121,43 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         BulkSendState bulk = Volatile.Read(ref _bulk) ?? throw new InvalidOperationException("Lean bulk transport is not enabled");
         if (_sendLatency != TimeSpan.Zero) await Task.Delay(_sendLatency, cancellationToken).ConfigureAwait(false);
         Task write;
-        int length;
-        while (true)
+        int length = 0;
+        IByteBuffer? buffer = null;
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            Task wait;
-            lock (bulk.Gate)
+            while (true)
             {
-                if (_removed || !_context.Channel.Active) return 0;
-                if (_context.Channel.IsWritable && bulk.Deferred.Count == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+                Task? wait = null;
+                lock (bulk.Gate)
                 {
-                    IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
-                    length = buffer.ReadableBytes;
-                    // The pipeline owns the buffer once WriteAndFlushAsync is called.
-                    write = _context.WriteAndFlushAsync(buffer);
-                    break;
+                    if (_removed || !_context.Channel.Active) return 0;
+                    if (_context.Channel.IsWritable && bulk.Deferred.Count == 0)
+                    {
+                        if (buffer is not null)
+                        {
+                            // The pipeline owns the buffer once WriteAndFlushAsync is called.
+                            IByteBuffer handedOff = buffer;
+                            buffer = null;
+                            write = _context.WriteAndFlushAsync(handedOff);
+                            break;
+                        }
+                    }
+                    else wait = bulk.WritableChanged.Task;
                 }
-                wait = bulk.WritableChanged.Task;
+                if (wait is not null) await wait.WaitAsync(cancellationToken).ConfigureAwait(false);
+                else
+                {
+                    lock (bulk.CodecGate)
+                        buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
+                    length = buffer.ReadableBytes;
+                }
             }
-            await wait.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await write.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await Task.Yield();
+            return length;
         }
-        await write.WaitAsync(cancellationToken).ConfigureAwait(false);
-        await Task.Yield();
-        return length;
+        finally { buffer?.Release(); }
     }
 
     private static void WakeBulkWriters(BulkSendState bulk)
@@ -121,10 +169,16 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
 
     private void DrainDeferred(BulkSendState bulk)
     {
-        while (!_removed && _context.Channel.Active && _context.Channel.IsWritable && bulk.Deferred.TryDequeue(out IByteBuffer? buffer))
+        while (!_removed && _context.Channel.Active && _context.Channel.IsWritable
+            && bulk.Deferred.TryPeek(out DeferredWrite? pending) && pending.Ready)
         {
-            bulk.DeferredBytes -= buffer.ReadableBytes;
-            SendBuffer(buffer);
+            bulk.Deferred.Dequeue();
+            if (pending.Buffer is { } buffer)
+            {
+                pending.Buffer = null;
+                bulk.DeferredBytes -= buffer.ReadableBytes;
+                SendBuffer(buffer);
+            }
         }
         if (bulk.Deferred.Count == 0 && _context.Channel.IsWritable) WakeBulkWriters(bulk);
     }
@@ -269,7 +323,7 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
             lock (bulk.Gate)
             {
                 WakeBulkWriters(bulk);
-                while (bulk.Deferred.TryDequeue(out IByteBuffer? buffer)) buffer.Release();
+                while (bulk.Deferred.TryDequeue(out DeferredWrite? pending)) pending.Buffer?.Release();
                 bulk.DeferredBytes = 0;
             }
         _cts.Cancel();

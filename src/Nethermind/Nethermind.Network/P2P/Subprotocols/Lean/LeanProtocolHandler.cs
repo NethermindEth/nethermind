@@ -62,6 +62,7 @@ public abstract class LeanProtocolHandler : ZeroProtocolHandlerBase
         if (!Session.HasAgreedCapability(new Capability(Code, ProtocolVersion)))
         {
             Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Lean capability was not negotiated");
+            Dispose();
             return;
         }
         if (_blockTree.Genesis?.Hash is not { } genesis)
@@ -194,6 +195,7 @@ public abstract class LeanProtocolHandler : ZeroProtocolHandlerBase
             lock (_receiveLock)
             {
                 schedule = _pending is not null && Volatile.Read(ref _disposed) == 0;
+                if (!schedule) _pending?.Dispose();
                 _active = schedule ? _pending : null;
                 _pending = null;
                 _receiving = schedule;

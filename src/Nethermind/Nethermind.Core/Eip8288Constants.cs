@@ -29,6 +29,12 @@ public static class Eip8288Constants
     /// <summary>Maximum encoded native witness or recursive proof size.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
 
+    /// <summary>Prototype acceptance bound for the serialized SPHINCS guest proof, reserved in aggregate capacity.</summary>
+    public const int MaxSphincsGuestProofBytes = 2 * 1024 * 1024;
+
+    /// <summary>Maximum native aggregation input, including two maximum-sized child proofs and metadata.</summary>
+    public const int MaxAggregationInputBytes = 18 * 1024 * 1024;
+
     /// <summary>Maximum encoded ETH header response, including room around an 8 MiB proof.</summary>
     public const int MaxHeaderResponseBytes = MaxProofBytes + 1024 * 1024;
 

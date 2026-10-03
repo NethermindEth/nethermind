@@ -17,12 +17,26 @@ internal sealed class DependencyProofTxFilter(LeanProofStore? proofStore) : IInc
             if (!FrameTxValidation.IsWellFormed(tx, state.HeadSpec, out string? error))
                 return AcceptTxResult.Invalid.WithMessage(error!);
             List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(tx);
+            state.ProofDependencies = dependencies;
             (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(dependencies);
             if (sphincs > Eip8288Constants.MaxSigsPerTx || stark > Eip8288Constants.MaxStarksPerTx)
                 return AcceptTxResult.TooManyDependencies;
             if (proofStore is null || !proofStore.TryReserveTransaction(dependencies, out state.ProofReservation))
                 return AcceptTxResult.MissingDependencyProof;
         }
+        return AcceptTxResult.Accepted;
+    }
+}
+
+/// <summary>Accounts for witnesses against the recovered sender before pool insertion.</summary>
+internal sealed class DependencyProofSenderQuotaTxFilter(LeanProofStore? proofStore) : IIncomingTxFilter
+{
+    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    {
+        if (state.ProofDependencies is { Count: > 0 } dependencies
+            && (tx.SenderAddress is null || proofStore is null
+                || !proofStore.TryReserveTransaction(dependencies, out state.SenderProofReservation, tx.SenderAddress)))
+            return AcceptTxResult.MissingDependencyProof.WithMessage("Proof witness capacity is full for this sender; retry later.");
         return AcceptTxResult.Accepted;
     }
 }

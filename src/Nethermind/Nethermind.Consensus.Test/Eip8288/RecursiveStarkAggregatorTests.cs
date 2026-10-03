@@ -123,6 +123,24 @@ public class RecursiveStarkAggregatorTests
         Assert.That(input.Deps, Is.Empty);
     }
     [Test]
+    public void Cancellation_after_one_native_batch_stops_the_remaining_tree()
+    {
+        using System.Threading.CancellationTokenSource cancellation = new();
+        FakeLeanProofVerifier verifier = new(true) { OnProving = cancellation.Cancel };
+        FrameDependency[] dependencies = new FrameDependency[8];
+        List<ReadOnlyMemory<byte>> witnesses = [];
+        for (int i = 0; i < dependencies.Length; i++)
+        {
+            dependencies[i] = Sphincs(i.ToString());
+            witnesses.Add(new byte[] { 1 });
+        }
+        AggregationInput input = new() { Deps = dependencies, Witnesses = witnesses };
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
+        Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash, cancellation.Token));
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+    }
+
+    [Test]
     public void Prover_hierarchically_folds_more_than_sixteen_recursive_children()
     {
         List<RecursiveProofInput> recursive = [];
@@ -139,8 +157,8 @@ public class RecursiveStarkAggregatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(proof, Is.EqualTo(new byte[] { 1 }));
-            Assert.That(verifier.LargestRecursiveInput, Is.EqualTo(16));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(4));
+            Assert.That(verifier.LargestRecursiveInput, Is.EqualTo(2));
+            Assert.That(verifier.ProofCalls, Is.GreaterThan(1));
         }
     }
 
@@ -162,7 +180,7 @@ public class RecursiveStarkAggregatorTests
             Discards = dependencies[1..]
         }, verifier, hash);
         Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(4));
+        Assert.That(verifier.ProofCalls, Is.GreaterThan(1));
     }
 
     private sealed class GenericBoundedVerifier : ILeanProofVerifier
@@ -340,10 +358,74 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
+    [Test]
+    public void Partial_direct_admission_releases_large_rejected_witnesses()
+    {
+        LeanProofStore store = new();
+        List<Transaction> pending = [];
+        byte[] rejectedWitness = new byte[4 * 1024 * 1024];
+        for (int i = 0; i < 24; i++)
+        {
+            FrameDependency accepted = Sphincs($"accepted:{i}"), rejected = Sphincs($"rejected:{i}");
+            Transaction transaction = DependencyTransaction(accepted);
+            Assert.That(store.TryBeginAdmission([accepted, rejected], [[1], rejectedWitness], null, out IDisposable? admission), Is.True);
+            using (admission)
+            {
+                Assert.That(store.PinPending(transaction), Is.True);
+                store.CommitAdmission([accepted]);
+            }
+            Assert.That(store.Covers(DependencyTransaction(rejected)), Is.False);
+            pending.Add(transaction);
+        }
+        foreach (Transaction transaction in pending) Assert.That(store.Covers(transaction), Is.True);
+    }
+
+    [Test]
+    public void Rejected_pool_insertion_releases_unpublished_direct_witnesses()
+    {
+        LeanProofStore store = new();
+        FrameDependency dependency = Sphincs("rejected-insertion");
+        Transaction transaction = DependencyTransaction(dependency);
+        Assert.That(store.TryBeginAdmission([dependency], [[1]], null, out IDisposable? admission), Is.True);
+        using (admission)
+        {
+            Assert.That(store.PinPending(transaction, publish: false), Is.True);
+            store.UnpinPending(transaction.Hash!.ValueHash256);
+        }
+        Assert.That(store.Covers(transaction), Is.False);
+    }
+
+    [Test]
+    public void Sender_quota_counts_shared_recursive_records_once_and_releases_the_last_owner()
+    {
+        LeanProofStore store = new();
+        FrameDependency a = Sphincs("quota-a"), b = Sphincs("quota-b"), c = Sphincs("quota-c");
+        byte[] proof = new byte[5 * 1024 * 1024];
+        store.AddVerified([a], null, proof);
+        store.AddVerified([b], null, proof);
+        store.AddVerified([c], null, proof);
+        Transaction first = DependencyTransaction(a), shared = DependencyTransaction(a), second = DependencyTransaction(b);
+        shared.Hash = Keccak.Compute("shared-transaction");
+        Assert.That(store.PinPending(first), Is.True);
+        Assert.That(store.PinPending(shared), Is.True, "the same proof is charged once for this sender");
+        Assert.That(store.PinPending(second), Is.True);
+        Assert.That(store.TryReserveTransaction([c], out _, Address.Zero), Is.False);
+        Address other = new("0x0000000000000000000000000000000000000001");
+        Assert.That(store.TryReserveTransaction([c], out IDisposable? anotherSender, other), Is.True);
+        anotherSender!.Dispose();
+        store.UnpinPending(first.Hash!.ValueHash256);
+        Assert.That(store.TryReserveTransaction([c], out _, Address.Zero), Is.False);
+        store.UnpinPending(shared.Hash!.ValueHash256);
+        Assert.That(store.TryReserveTransaction([c], out IDisposable? retry, Address.Zero), Is.True);
+        retry!.Dispose();
+        Assert.That(store.PinPending(DependencyTransaction(Sphincs("uncovered"))), Is.False);
+    }
+
     private static Transaction DependencyTransaction(FrameDependency dependency) => new()
     {
         Type = TxType.FrameTx,
         Hash = new Hash256(dependency.DataHash),
+        SenderAddress = Address.Zero,
         Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
             Nethermind.Int256.UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
     };

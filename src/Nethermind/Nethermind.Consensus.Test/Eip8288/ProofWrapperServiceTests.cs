@@ -394,6 +394,52 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
+    public async Task Pool_rejected_direct_witnesses_do_not_consume_pending_proof_capacity()
+    {
+        LeanProofStore store = new();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
+        {
+            Transaction transaction = call.Arg<Transaction>();
+            if (transaction.Nonce == 1) return AcceptTxResult.FeeTooLow;
+            Assert.That(store.PinPending(transaction), Is.True);
+            return AcceptTxResult.Accepted;
+        });
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder.Head.Returns(Build.A.Block.TestObject);
+        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
+        byte[] rejectedWitness = new byte[4 * 1024 * 1024];
+        for (int i = 0; i < 20; i++)
+        {
+            FrameDependency accepted = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"accepted:{i}"), default);
+            FrameDependency rejected = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"rejected:{i}"), default);
+            static Transaction Transaction(FrameDependency dependency, ulong nonce) => new()
+            {
+                Type = TxType.FrameTx,
+                NonceKeys = [UInt256.Zero],
+                ChainId = 1,
+                SenderAddress = Address.Zero,
+                Nonce = nonce,
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
+                    dependency.Scheme == Eip8288Constants.LeanSphincsScheme
+                        ? Eip8288Constants.LeanSphincsVerificationGas : Eip8288Constants.LeanStarkVerificationGas,
+                    UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+            };
+            Transaction first = Transaction(accepted, 0), later = Transaction(rejected, 1);
+            byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+            {
+                Transactions = [new WrapperTransaction(first), new WrapperTransaction(later)],
+                Deps = [accepted, rejected],
+                Mode = MempoolWrapper.ModeDirect,
+                Proofs = [new byte[Eip8288Constants.LeanSphincsWitnessBytes], rejectedWitness]
+            }).Bytes;
+            Assert.That((await service.AcceptDetailedAsync(encoded)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That(store.Covers(first), Is.True);
+            Assert.That(store.Covers(later), Is.False);
+        }
+    }
+
+    [Test]
     public async Task Native_admission_is_offloaded_bounded_and_owns_its_input_snapshot()
     {
         (ProofWrapperService producer, _) = Create(1, 0);

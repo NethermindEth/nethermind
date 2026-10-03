@@ -29,22 +29,35 @@ The main solution compiles the test project without requiring Rust. Without the 
 the native suite is explicitly skipped. With it, the backend and fixtures are required and
 missing libraries fail the run.
 
-The C ABI is version 3, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
-`nlean_limits` writes seven u32 values (bytes, dependencies, recursive children,
-SPHINCS witness bytes, generic STARK count, instructions, operand offset); startup
+The C ABI is version 4, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
+`nlean_limits` writes nine u32 values (proof bytes, dependencies, recursive children,
+SPHINCS witness bytes, generic STARK count, instructions, operand offset, aggregation input bytes,
+SPHINCS guest proof bytes); startup
 checks these against the managed protocol bounds before accepting work.
 Verification/proving return 1 on success and 0 on failure. Callers initialize proof output
 pointers to null; successful proof allocations must be released once with `nlean_free`
 using the returned pointer and length. Verification contains upstream panics and never
-accepts malformed inputs. ABI-thread panic diagnostics are suppressed while failures
-return 0; the previous Rust panic hook remains active outside ABI calls.
+accepts malformed inputs. Panic diagnostics on ABI callers and the pinned parallel worker
+pool are suppressed while native calls are active; the previous hook remains active for
+unrelated threads and outside native calls. The upstream pool resumes worker panics on the
+dispatcher, where the ABI catches them.
 
 ## Prototype wire format
 
-All framing integers are unsigned 32-bit little-endian. Proofs and aggregation inputs are
-bounded to 8 MiB; dependency lists to 4096; recursive children and carried generic
+All framing integers are unsigned 32-bit little-endian. Proofs and individual witnesses
+are bounded to 8 MiB; aggregation input to 18 MiB so two maximum-sized child proofs and
+their dependency/discard metadata fit a recursive step. This is an input-buffer limit,
+not a process memory bound. Dependency lists are bounded to 4096; recursive children and carried generic
 STARKs to 16 each. This format and the
 pinned key are prototype protocol choices, pending finalized EIP-8288 encodings.
+
+The serialized SPHINCS guest proof has an explicit 2 MiB acceptance bound. Every accepted
+aggregate reserves `16 + 96*dependencies + 100*generic_claims + generic_witness_bytes`
+plus 2 MiB when SPHINCS claims are present, and this total must fit 8 MiB. Verification
+and proving enforce the same rule; a standalone generic witness must fit its 212-byte
+single-claim envelope overhead. The 2 MiB cap is a prototype consensus choice, not a
+proven maximum of upstream proof sizes or a memory guarantee. Larger upstream proofs
+fall outside this profile and fail closed.
 
 The [EIP](https://eips.ethereum.org/EIPS/eip-8288#recursive-stark-header-entry) requires the proof in the block header, so the header database and caches retain it.
 Generic STARK witnesses can make each header approach 8 MiB. On proof-bearing chains,
@@ -75,7 +88,7 @@ proofs and inclusion-list proof/dependency buffers and returning owned copies.
   child count then `(dependency count/triples, proof blob)` pairs; discard count/triples.
 * **aggregate:** `NLR2`, canonical dependency count/triples, upstream EthereumProof blob
   (empty when there are no SPHINCS claims), generic-STARK count then `(dependency, witness blob)`
-  pairs. A blob is its length followed by bytes.
+  pairs in canonical dependency order. A blob is its length followed by bytes.
 
 The recursive key is the actual upstream guest's Fiat-Shamir seed, pinned in
 `Eip8288Constants.AggregatedVk`. Root verification compares full dependency triples against
@@ -170,17 +183,28 @@ The `eth` JSON-RPC module provides:
   through the Engine payload attributes, rather than being created by this RPC call.
 
 A raw dependency transaction without retained valid witnesses is rejected. Builders snapshot
-selected witnesses, recursively fold batches of at most sixteen children, discard dependencies
-outside the selected transaction set, and verify the produced header proof. Selection reserves
-recursive-proof gas from both execution and state gas budgets. Required witness storage is
-bounded to 64 MiB / 1024 records. Admission reserves capacity before pool insertion;
-pending transactions pin their required records until removal, replacement or shutdown.
-Full protected capacity defers new admission rather than evicting those witnesses.
-Generated aggregates use a separate 64 MiB / 1024-record LRU that cannot replace required
-coverage. Production reserves at most 4 MiB of serialized witnesses per block to stay within the
-native 8 MiB input and proof bounds and the 4096-dependency envelope limit. Production also
-bounds witness coverage, including dependencies it discards, to 4096. Transactions beyond the current witness budget remain
-pending for another block.
+selected witnesses, discard dependencies outside the selected transaction set, and verify the
+produced header proof. Selection reserves proof gas from both execution and state gas budgets.
+Managed proving folds at most four direct witnesses or two recursive children per native call;
+4 MiB is the direct-leaf batching target, not a block-wide witness limit. Native inputs are bounded
+to 18 MiB, output proofs to 8 MiB, and selected plus discarded coverage to 4096 dependencies.
+
+Required witness storage is bounded to 64 MiB / 1024 records. Each direct dependency has its own
+record, so rejected entries release their reserved witnesses. Recursive proofs are indivisible:
+the complete proof and declared dependency metadata count toward both the global bound and a
+12 MiB pinned-byte quota per sender. Shared records count once per sender. Admission reserves
+capacity and sender quota before insertion; pending transactions pin witnesses until removal,
+replacement or shutdown. Full protected capacity defers new admission. Multiple funded senders
+can still fill this finite pending-witness budget. Dependency-bearing blob transactions are
+removed on restart unless their witnesses are independently available. Generated aggregates use
+a separate 64 MiB / 1024-record LRU that cannot replace required coverage.
+
+RPC and peer ingress share one bounded native-verification gate to bound verification CPU and decoding work;
+peer ingress retries temporary contention for a bounded interval. Inclusion-list package
+submission through RPC validates a complete pool-admission package. Consensus eligibility instead filters
+entries individually, preserving ordinary and zero-dependency entries when proof coverage fails.
+The Network project references the shared Consensus admission service so RPC and negotiated
+proof gossip use the same verification, pool insertion and witness-retention rules.
 
 ## Negotiated proof gossip
 
@@ -200,8 +224,8 @@ transactions.
 `lean/2` streams independent chunks: a 48-byte header holds the whole-wrapper
 Keccak commitment and big-endian total length, index, count and chunk size, followed
 by chunk bytes. The default chunk is 64 KiB, with 16/32/64/128 KiB supported and
-128 KiB as the maximum. Geometry is checked before allocation. The commitment is
-unauthenticated transport integrity; the complete wrapper's proof and transactions
+128 KiB as the maximum. Geometry is checked before allocation. The peer supplies an
+unauthenticated commitment: matching it checks received bytes, not proof validity. The complete wrapper's proof and transactions
 still pass shared admission before gaining proof-backed pool coverage. This is an
 [EIP-8411](https://eips.ethereum.org/EIPS/eip-8411)-inspired bounded transfer, without
 signed bids or Merkle authentication of individual chunks.
@@ -220,7 +244,7 @@ order; unknown continuation chunks are ignored, and gaps within an accepted stre
 malformed. This prevents dropped starts from creating assemblies that can never complete.
 Incomplete objects expire after 30 seconds without progress or five minutes absolutely.
 Duplicates do not extend their lifetime, timer expiry needs no inbound traffic, and repeated
-abandonment within five minutes disconnects the peer. Shutdown and cancelled admission release leases; a completed
+abandonment disconnects the peer, including streams abandoned more than five minutes apart. Shutdown and cancelled admission release leases; a completed
 commitment is suppressed only while its admission buffer remains retained, so cancellation
 can retry. Per-peer wire bytes and message counts are bounded before copying, allowing two
 maximum wrappers per second including every chunk header. Each verification returns pending
@@ -239,8 +263,9 @@ with per-peer jitter, recovering dropped queued work without admission acknowled
 Generic STARK witnesses remain carried and verified. Each peer remembers at most 64
 recent delivered hashes. Only admitted transactions retain witness coverage.
 `eth_getProofWrapper` returns a copy of the background-produced wrapper without invoking
-the prover. Cancellation is checked between native calls; shutdown cancels peer work
-and joins the worker.
+the prover. Managed aggregation folds at most four direct witnesses or two children
+per call and checks cancellation before and after each call. An individual native call
+remains uninterruptible; shutdown cancels peer work and joins the worker.
 
 During channel backpressure, the shared sender retains up to 64 non-bulk messages
 within 12 MiB and drains them before bulk writes. Control responses wait for the current
@@ -266,6 +291,10 @@ snapshots are taken once to prevent caller mutation; later improvements reuse de
 and production order. `getPayload` echoes neither proof nor metadata; the consensus client
 supplies its own sidecar to `newPayload`. The CL can construct it through native aggregation
 or the proof-wrapper path.
+Legacy inclusion sources and producers without an inclusion source use mutually exclusive
+decoding fallbacks; the proof-aware source overrides that path with its prepared snapshot.
+Repeated package checks reuse a 64-entry positive-verdict cache per backend, keyed by the
+dependency commitment and proof hash, without retaining proof buffers.
 `engine_getInclusionListV1` retains its existing non-frame candidate sampling; externally
 formed proof-bearing frame inclusion lists are validated and enforced.
 

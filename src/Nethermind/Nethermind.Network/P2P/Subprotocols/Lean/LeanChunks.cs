@@ -42,14 +42,18 @@ public sealed class LeanProofChunkMessageSerializer : IZeroMessageSerializer<Lea
     {
         if (!LeanProofChunkMessage.IsValidGeometry(message.TotalBytes, message.Index, message.Count,
                 message.ChunkSize, message.Data.Length)) throw new ArgumentException("Invalid lean chunk geometry");
-        byte[] bytes = new byte[LeanProofChunkMessage.HeaderSize + message.Data.Length];
-        message.WrapperHash.Bytes.CopyTo(bytes);
-        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(32), message.TotalBytes);
-        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(36), message.Index);
-        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(40), message.Count);
-        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(44), message.ChunkSize);
-        message.Data.Span.CopyTo(bytes.AsSpan(LeanProofChunkMessage.HeaderSize));
-        buffer.WriteBytes(bytes);
+        buffer.EnsureWritable(LeanProofChunkMessage.HeaderSize + message.Data.Length);
+        buffer.WriteBytes(message.WrapperHash.Bytes);
+        buffer.WriteInt(message.TotalBytes);
+        buffer.WriteInt(message.Index);
+        buffer.WriteInt(message.Count);
+        buffer.WriteInt(message.ChunkSize);
+        if (buffer.HasArray)
+        {
+            message.Data.Span.CopyTo(buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, message.Data.Length));
+            buffer.SetWriterIndex(buffer.WriterIndex + message.Data.Length);
+        }
+        else buffer.WriteBytes(message.Data.Span);
     }
 
     public LeanProofChunkMessage Deserialize(IByteBuffer buffer)
@@ -145,7 +149,7 @@ public sealed class LeanReassemblyBudget
     }
 }
 
-/// <summary>Consumes ordered TCP streams without trusting their wrapper commitment.</summary>
+/// <summary>Checks ordered-stream integrity; the peer's wrapper commitment does not authenticate its proof.</summary>
 public sealed class LeanChunkReassembler : IDisposable
 {
     public const int MaxPeerAssemblies = 2;
@@ -163,7 +167,6 @@ public sealed class LeanChunkReassembler : IDisposable
     private int _retained;
     private int _retainedBytes;
     private int _expiredStreams;
-    private long _lastExpired;
     private bool _disposed;
     private sealed class Assembly(LeanProofChunkMessage chunk, LeanReassemblyBudget.Lease lease, long timestamp)
     {
@@ -335,12 +338,7 @@ public sealed class LeanChunkReassembler : IDisposable
             if (_clock.GetElapsedTime(assembly.Updated, now) >= InactivityTimeout
                 || _clock.GetElapsedTime(assembly.Created, now) >= MaxAssemblyLifetime) expired[count++] = hash;
         for (int i = 0; i < count; i++) Drop(expired[i], _assemblies[expired[i]]);
-        if (count > 0)
-        {
-            if (_clock.GetElapsedTime(_lastExpired, now) > MaxAssemblyLifetime) _expiredStreams = 0;
-            _lastExpired = now;
-            _expiredStreams += count;
-        }
+        _expiredStreams += count;
         // One stalled transfer can be an ordinary link failure. Repeated abandonment is abuse.
         return count > 0 && _expiredStreams >= 2;
     }

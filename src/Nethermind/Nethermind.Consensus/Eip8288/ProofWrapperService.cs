@@ -104,8 +104,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 }
                 finally
                 {
-                    leanProofStore.AddVerified(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof,
-                        Eip8288Dependencies.Canonicalize(admittedDependencies));
+                    leanProofStore.CommitAdmission(admittedDependencies);
                 }
             }
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
@@ -172,8 +171,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 }
                 finally
                 {
-                    leanProofStore.AddVerified(canonical, null, decoded.RecursiveStark.StarkProof,
-                        Eip8288Dependencies.Canonicalize(admittedDependencies));
+                    leanProofStore.CommitAdmission(admittedDependencies);
                 }
             }
             return admission;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -28,6 +29,8 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     public bool PaymasterReserved;
 
     internal IDisposable? ProofReservation;
+    internal IDisposable? SenderProofReservation;
+    internal List<FrameDependency>? ProofDependencies;
 
     /// <summary>
     /// The chain head specification the whole submission is judged against.

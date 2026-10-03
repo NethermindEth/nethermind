@@ -16,7 +16,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 3;
+    private const uint ExpectedAbiVersion = 4;
     private const int MaxRecursiveInputs = 16;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
@@ -31,10 +31,10 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         {
             if (!AggregatedVerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
-            Span<uint> limits = stackalloc uint[7];
+            Span<uint> limits = stackalloc uint[9];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
                 MaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes,
-                Eip8288Constants.MaxGenericStarkProofs, 16384, 65535];
+                Eip8288Constants.MaxGenericStarkProofs, 16384, 65535, Eip8288Constants.MaxAggregationInputBytes, Eip8288Constants.MaxSphincsGuestProofBytes];
             fixed (uint* p = limits)
                 if (nlean_limits(p, (nuint)limits.Length) != 1 ||
                     !limits.SequenceEqual(expectedLimits))
@@ -81,7 +81,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     /// <inheritdoc/>
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
     {
-        if (witness.IsEmpty || witness.Length > MaxProofBytes) return false;
+        if (witness.IsEmpty || witness.Length > MaxProofBytes - 212) return false;
         try
         {
             fixed (byte* d = dataHash.Bytes)
@@ -139,7 +139,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         }
     }
 
-    private static byte[] SerializeInput(AggregationInput input)
+    internal static byte[] SerializeInput(AggregationInput input)
     {
         if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > MaxRecursiveInputs || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
             throw new ArgumentException("Invalid Lean aggregation input", nameof(input));
@@ -162,13 +162,13 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         }
         writer.Write(input.Discards.Count);
         foreach (FrameDependency dep in input.Discards) WriteDependency(writer, dep);
-        if (stream.Length > MaxProofBytes) throw new ArgumentException("Lean aggregation input too large", nameof(input));
+        if (stream.Length > Eip8288Constants.MaxAggregationInputBytes) throw new ArgumentException("Lean aggregation input too large", nameof(input));
         return stream.ToArray();
     }
 
     private static void WriteDependency(BinaryWriter writer, FrameDependency dep)
     {
-        if (writer.BaseStream.Length + 96 > MaxProofBytes) throw new ArgumentException("Lean aggregation input too large");
+        if (writer.BaseStream.Length + Eip8288Constants.DependencyTripleLength > Eip8288Constants.MaxAggregationInputBytes) throw new ArgumentException("Lean aggregation input too large");
         Span<byte> bytes = stackalloc byte[96];
         dep.WriteTo(bytes);
         writer.Write(bytes);
@@ -182,7 +182,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 
     private static void WriteBlob(BinaryWriter writer, ReadOnlySpan<byte> bytes)
     {
-        if (writer.BaseStream.Length + 4 + bytes.Length > MaxProofBytes) throw new ArgumentException("Lean aggregation input too large");
+        if (bytes.Length > MaxProofBytes || writer.BaseStream.Length + 4 + bytes.Length > Eip8288Constants.MaxAggregationInputBytes) throw new ArgumentException("Lean aggregation input too large");
         writer.Write(bytes.Length);
         writer.Write(bytes);
     }

@@ -372,6 +372,46 @@ public class LeanTransportTests
     }
 
     [Test]
+    public void Slow_streams_cannot_reset_abandonment_strikes_between_absolute_expiries()
+    {
+        ManualTimeProvider clock = new();
+        int penalties = 0;
+        LeanReassemblyBudget budget = new();
+        using LeanChunkReassembler peer = new(budget, clock, () => penalties++);
+        byte[] fragment = new byte[LeanProofChunkMessage.DefaultChunkSize];
+        int total = LeanProofStore.MaxWrapperBytes;
+        for (int stream = 0; stream < 2; stream++)
+        {
+            for (int index = 0; index < 15; index++)
+            {
+                peer.Add(new(default, total, index, total / fragment.Length, fragment.Length, fragment));
+                clock.Advance(TimeSpan.FromSeconds(20));
+            }
+            clock.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+            Assert.That(budget.RetainedBytes, Is.Zero);
+            Assert.That(penalties, Is.EqualTo(stream));
+        }
+    }
+
+    [Test]
+    public void Chunk_serialization_does_not_allocate_a_temporary_large_object()
+    {
+        byte[] payload = new byte[LeanProofChunkMessage.MaxChunkSize];
+        LeanProofChunkMessage message = Chunk(payload, 0, payload.Length);
+        LeanProofChunkMessageSerializer serializer = new();
+        using DisposableByteBuffer buffer = Unpooled.Buffer(payload.Length + LeanProofChunkMessage.HeaderSize).AsDisposable();
+        serializer.Serialize(buffer, message);
+        buffer.Clear();
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 10; i++)
+        {
+            serializer.Serialize(buffer, message);
+            buffer.Clear();
+        }
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.LessThan(8 * 1024));
+    }
+
+    [Test]
     public void Admission_cancellation_can_retry_the_same_completed_commitment()
     {
         LeanReassemblyBudget budget = new();

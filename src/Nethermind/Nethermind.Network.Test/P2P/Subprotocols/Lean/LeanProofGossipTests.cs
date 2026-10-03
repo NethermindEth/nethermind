@@ -64,6 +64,7 @@ public class LeanProofGossipTests
         ProofWrapperService service = CreateService(transactions, store, verifier);
         HashSet<ValueHash256> uniqueWrappers = [];
         HashSet<FrameDependency> propagated = [];
+        int proofCallsAfterBothGroups = 0;
         for (int cadence = 0; cadence < 3 * transactions.Length; cadence++)
         {
             Result<byte[]> result = service.BuildWrapper();
@@ -73,13 +74,16 @@ public class LeanProofGossipTests
             MempoolWrapper wrapper = MempoolWrapperDecoder.Instance.Decode(ref reader);
             Assert.That(wrapper.Deps.Count, Is.EqualTo(cadence % 2 == 0 ? Eip8288Constants.MaxLeanSigDepsPerWrapper : 1));
             propagated.UnionWith(wrapper.Deps);
+            if (cadence == 1) proofCallsAfterBothGroups = verifier.ProofCalls;
+            else if (cadence > 1)
+                Assert.That(verifier.ProofCalls, Is.EqualTo(proofCallsAfterBothGroups), $"rotation {cadence} reuses already proven groups");
         }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(propagated, Has.Count.EqualTo(17));
             Assert.That(uniqueWrappers, Has.Count.EqualTo(2));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(2), "the same two disjoint groups reuse their proofs across rotations");
+            Assert.That(proofCallsAfterBothGroups, Is.Positive, "both groups were actually proven before checking reuse");
         }
     }
 
