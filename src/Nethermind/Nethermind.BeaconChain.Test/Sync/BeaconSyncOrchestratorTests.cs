@@ -383,10 +383,10 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Engine.FcuCalls.Select(static call => call.Head), Is.EqualTo(new[] { TestItem.KeccakB, TestItem.KeccakD, TestItem.KeccakB }));
     }
 
-    /// <summary>A run stopped before the anchor kick sends the execution layer nothing and skips the work that follows the kick, the public-key cache build.</summary>
+    /// <summary>Stopping before or during the anchor kick skips the public-key cache build that follows it.</summary>
     [Test]
     [CancelAfter(30_000)]
-    public async Task A_run_cancelled_before_the_engine_kick_sends_no_forkchoice_update_and_builds_no_cache(CancellationToken testToken)
+    public async Task A_run_cancelled_before_or_during_the_engine_kick_builds_no_cache([Values] bool duringKick, CancellationToken testToken)
     {
         await using BeaconDiscovery discovery = CreateDiscovery();
         PeerBandTests.Node node = PeerBandTests.CreateNode();
@@ -395,37 +395,15 @@ public partial class BeaconSyncOrchestratorTests
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(AnchorSlot);
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(testToken);
         int cacheBuilds = 0;
-        cts.Cancel();
+        if (duringKick) harness.Engine.OnCall = cts.Cancel;
+        else cts.Cancel();
 
         Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token, () => cacheBuilds++));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(harness.Engine.FcuCalls, Is.Empty);
+            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(duringKick ? 1 : 0));
             Assert.That(cacheBuilds, Is.Zero);
-        }
-    }
-
-    /// <summary>A run stopped while the anchor kick is answered must not start the work that follows it, whether or not that work checks the token itself.</summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_run_cancelled_during_the_engine_kick_skips_the_work_that_follows_it(CancellationToken testToken)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        PeerBandTests.Node node = PeerBandTests.CreateNode();
-        await using BeaconP2P p2p = node.P2P;
-        Harness harness = CreateHarness(discovery: discovery, p2p: p2p, peerManager: new PeerManager(p2p, node.Config, node.StatusHolder, LimboLogs.Instance));
-        (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(AnchorSlot);
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(testToken);
-        int afterKick = 0;
-        harness.Engine.OnCall = cts.Cancel;
-
-        Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token, () => afterKick++));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "the kick was sent");
-            Assert.That(afterKick, Is.Zero);
         }
     }
 
@@ -677,13 +655,13 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     /// <summary>
-    /// A gossip block whose columns trail it must not be dropped for good: it is retried directly
+    /// A gossip block whose columns trail it is retried while ahead of finality, and pruned once finality passes it. Retries run directly
     /// through <see cref="BeaconSyncOrchestrator.ImportBlockAsync"/> on a later slot tick, not through
     /// <see cref="BeaconSyncOrchestrator.ProcessGossipBlockAsync"/> (whose seen-proposal gate would
     /// otherwise drop the retry as a repeat).
     /// </summary>
     [Test]
-    public async Task Gossip_block_with_unavailable_data_is_retried_and_imported_once_columns_arrive()
+    public async Task Gossip_block_with_unavailable_data_retries_only_while_ahead_of_finality([Values] bool finalityPassesBlock)
     {
         Harness harness = CreateHarness();
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
@@ -701,12 +679,20 @@ public partial class BeaconSyncOrchestratorTests
 
         Assert.That(harness.Importer.Known, Does.Not.Contain(blockRoot), "nothing may be recorded while the block's data is unavailable");
 
-        // The missing columns arrive; the next slot tick must retry and import the block without
-        // gossip seeing it again.
+        if (finalityPassesBlock)
+        {
+            // Epoch 6 starts at slot 192, beyond the waiting block's slot 150.
+            harness.Importer.Head = harness.Importer.Head with { Finalized = new CheckpointRef(6, TestItem.KeccakB) };
+        }
         harness.Importer.Unavailable.Remove(blockRoot);
-        await orchestrator.ProcessSlotAsync(151, CancellationToken.None);
+        await orchestrator.ProcessSlotAsync(finalityPassesBlock ? 200UL : 151UL, CancellationToken.None);
 
-        Assert.That(harness.Importer.Known, Does.Contain(blockRoot), "the retry must import the block once its data becomes available");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.Known.Contains(blockRoot), Is.EqualTo(!finalityPassesBlock), "only a block ahead of finality imports once its data arrives");
+            if (finalityPassesBlock)
+                Assert.That(harness.Importer.Imports.Count(i => i.Root == blockRoot), Is.EqualTo(1), "the pruned entry must not be retried again on a later tick");
+        }
     }
 
     public enum BlockSource
@@ -726,15 +712,12 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Deferred_block_is_retried_as_requested_only_when_this_node_fetched_it([Values] BlockSource source)
     {
         const ulong NearWallSlot = WallSlot - 5;
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        (Harness harness, IBeaconSyncPeer peer, SignedBeaconBlock[] chain) = CreateBackfillChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
         ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
         Hash256 blockRoot = block.ComputeMessageRoot();
         Hash256 childRoot = child.ComputeMessageRoot();
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
         peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([block]));
-        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
         harness.Importer.Unavailable.Add(blockRoot);
 
         switch (source)
@@ -783,12 +766,9 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Peer_serving_an_invalid_block_by_root_is_blamed([Values] bool onRetry)
     {
         const ulong NearWallSlot = WallSlot - 5;
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        (Harness harness, IBeaconSyncPeer peer, SignedBeaconBlock[] chain) = CreateBackfillChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
         ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
         peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent]));
-        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
         harness.Importer.Forged.Add(parent.ComputeMessageRoot());
         if (onRetry)
         {
@@ -814,7 +794,7 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Forged_copy_drained_before_the_genuine_block_keeps_its_children()
     {
         const ulong NearWallSlot = WallSlot - 5;
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2, NearWallSlot + 3);
+        (Harness harness, IBeaconSyncPeer peer, SignedBeaconBlock[] chain) = CreateBackfillChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2, NearWallSlot + 3);
         ForkedSignedBeaconBlock ancestor = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
         ForkedSignedBeaconBlock genuine = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
         ForkedSignedBeaconBlock grandchild = new ForkedSignedBeaconBlock.OfFulu(chain[2]);
@@ -822,11 +802,8 @@ public partial class BeaconSyncOrchestratorTests
         Hash256 genuineRoot = genuine.ComputeMessageRoot();
         BlsSignature forgedSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
         ForkedSignedBeaconBlock forged = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[1].Message, Signature = forgedSignature });
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
         peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == ancestorRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([ancestor]));
         peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == genuineRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([genuine]));
-        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
         harness.Importer.RegenerationRefused.Add(ancestorRoot);
         harness.Importer.ForgedSignatures.Add(forgedSignature);
 
@@ -854,11 +831,8 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Peer_serving_a_block_by_root_is_blamed_only_when_its_data_is_invalid([Values] bool localAdmission)
     {
         const ulong NearWallSlot = WallSlot - 5;
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1);
+        (Harness harness, IBeaconSyncPeer peer, SignedBeaconBlock[] chain) = CreateBackfillChain(NearWallSlot, NearWallSlot + 1);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
-        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
         (localAdmission ? harness.Importer.AdmissionRefused : harness.Importer.Forged).Add(block.ComputeMessageRoot());
 
         BlockImportResult result = await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None, fetchedByRoot: true, servedBy: peer);
@@ -880,13 +854,10 @@ public partial class BeaconSyncOrchestratorTests
     {
         const ulong AnchorNearWall = WallSlot - 31;
         ulong[] slots = [.. Enumerable.Range(1, 31).Select(static i => AnchorNearWall + (ulong)i)];
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorNearWall, slots);
+        (Harness harness, IBeaconSyncPeer peer, SignedBeaconBlock[] chain) = CreateBackfillChain(AnchorNearWall, slots);
         Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = chain.Select(static b => (ForkedSignedBeaconBlock)new ForkedSignedBeaconBlock.OfFulu(b)).ToDictionary(static b => b.ComputeMessageRoot());
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
         peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>())
             .Returns(call => Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([byRoot[((Hash256[])call[0])[0]]]));
-        Harness harness = CreateHarness(anchorSlot: AnchorNearWall, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
         Hash256 oldestRoot = SszRoots.HashTreeRoot(chain[0].Message!);
         (budgetRefusal ? harness.Importer.RegenerationRefused : harness.Importer.RegenerationImpossible).Add(oldestRoot);
         int pendingBefore = harness.Orchestrator.PendingGossipBlockCount;
@@ -911,14 +882,11 @@ public partial class BeaconSyncOrchestratorTests
         const int Descendants = 20;
         const ulong AnchorNearWall = WallSlot - Descendants - 1;
         ulong[] slots = [.. Enumerable.Range(1, Descendants + 1).Select(static i => AnchorNearWall + (ulong)i)];
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorNearWall, slots);
+        (Harness harness, IBeaconSyncPeer peer, SignedBeaconBlock[] chain) = CreateBackfillChain(AnchorNearWall, slots);
         ForkedSignedBeaconBlock[] blocks = [.. chain.Select(static b => (ForkedSignedBeaconBlock)new ForkedSignedBeaconBlock.OfFulu(b))];
         Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = blocks.ToDictionary(static b => b.ComputeMessageRoot());
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
         peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>())
             .Returns(call => Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([byRoot[((Hash256[])call[0])[0]]]));
-        Harness harness = CreateHarness(anchorSlot: AnchorNearWall, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
         Hash256 deferredRoot = blocks[0].ComputeMessageRoot();
         harness.Importer.RegenerationRefused.Add(deferredRoot);
 
@@ -944,13 +912,10 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Forged_gossip_copy_of_a_block_fetched_by_root_does_not_blame_its_supplier()
     {
         const ulong NearWallSlot = WallSlot - 5;
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        (Harness harness, IBeaconSyncPeer peer, SignedBeaconBlock[] chain) = CreateBackfillChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
         ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
         Hash256 parentRoot = parent.ComputeMessageRoot();
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
         peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent]));
-        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
         harness.Importer.Unavailable.Add(parentRoot);
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(new ForkedSignedBeaconBlock.OfFulu(chain[1]), CancellationToken.None);
         harness.Importer.Unavailable.Remove(parentRoot);
@@ -976,16 +941,13 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Fetched_block_held_behind_a_deferred_fetched_ancestor_blames_its_supplier_when_invalid()
     {
         const ulong NearWallSlot = WallSlot - 5;
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2, NearWallSlot + 3);
+        (Harness harness, IBeaconSyncPeer peer, SignedBeaconBlock[] chain) = CreateBackfillChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2, NearWallSlot + 3);
         ForkedSignedBeaconBlock ancestor = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
         ForkedSignedBeaconBlock middle = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
         Hash256 ancestorRoot = ancestor.ComputeMessageRoot();
         Hash256 middleRoot = middle.ComputeMessageRoot();
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
         peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == ancestorRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([ancestor]));
         peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == middleRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([middle]));
-        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
         harness.Importer.RegenerationRefused.Add(ancestorRoot);
         harness.Importer.Forged.Add(middleRoot);
 
@@ -1011,14 +973,11 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Invalid_copy_of_a_waiting_fetched_block_keeps_its_held_child()
     {
         const ulong NearWallSlot = WallSlot - 5;
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        (Harness harness, IBeaconSyncPeer peer, SignedBeaconBlock[] chain) = CreateBackfillChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
         ForkedSignedBeaconBlock ancestor = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
         Hash256 ancestorRoot = ancestor.ComputeMessageRoot();
         ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
         peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([ancestor]));
-        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
         harness.Importer.RegenerationRefused.Add(ancestorRoot);
         BlsSignature forgedSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
         harness.Importer.ForgedSignatures.Add(forgedSignature);
@@ -1046,16 +1005,13 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Fetched_copy_does_not_lend_its_supplier_to_a_queued_forgery([Values] CopyArrival arrival)
     {
         const ulong NearWallSlot = WallSlot - 5;
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
+        (Harness harness, IBeaconSyncPeer peer, SignedBeaconBlock[] chain) = CreateBackfillChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2);
         ForkedSignedBeaconBlock genuine = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
         Hash256 root = genuine.ComputeMessageRoot();
         BlsSignature forgedSignature = new(Enumerable.Repeat((byte)0x11, 96).ToArray());
         ForkedSignedBeaconBlock forgery = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain[0].Message, Signature = forgedSignature });
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
         peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([]));
         ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
-        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
         harness.Importer.Unavailable.Add(root);
         harness.Importer.ForgedSignatures.Add(forgedSignature);
 
@@ -1361,35 +1317,6 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ImportBlockAsync(last, CancellationToken.None);
 
         Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity));
-    }
-
-    /// <summary>The retry list is bounded by finality, not just by size: a block finality has passed stops being retried even after its data becomes available.</summary>
-    [Test]
-    public async Task Gossip_block_with_unavailable_data_stops_being_retried_once_finality_passes_its_slot()
-    {
-        Harness harness = CreateHarness();
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
-        harness.Importer.Known.Add(anchorRoot);
-        BeaconSyncOrchestrator orchestrator = harness.Orchestrator;
-
-        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 4); // finalized start slot 128
-        await orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        SignedBeaconBlock block = chain[0]; // slot 150, still ahead of finality
-        Hash256 blockRoot = SszRoots.HashTreeRoot(block.Message!);
-        harness.Importer.Unavailable.Add(blockRoot);
-        await orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(block), CancellationToken.None);
-
-        // Finality advances past slot 150 (epoch 6 starts at slot 192) before the block is retried.
-        harness.Importer.Head = harness.Importer.Head with { Finalized = new CheckpointRef(6, TestItem.KeccakB) };
-        harness.Importer.Unavailable.Remove(blockRoot);
-        await orchestrator.ProcessSlotAsync(200, CancellationToken.None);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(harness.Importer.Known, Does.Not.Contain(blockRoot), "a block pruned behind finality must not be retried even once its data arrives");
-            Assert.That(harness.Importer.Imports.Count(i => i.Root == blockRoot), Is.EqualTo(1), "the pruned entry must not be retried again on a later tick");
-        });
     }
 
     /// <summary>
@@ -1806,6 +1733,15 @@ public partial class BeaconSyncOrchestratorTests
     {
         await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5), token));
         return task.IsCompletedSuccessfully || task.IsCanceled;
+    }
+
+    private static (Harness Harness, IBeaconSyncPeer Peer, SignedBeaconBlock[] Chain) CreateBackfillChain(ulong anchorSlot, params ulong[] slots)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(anchorSlot, slots);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        Harness harness = CreateHarness(anchorSlot: anchorSlot, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        return (harness, peer, chain);
     }
 
     private static Harness CreateHarness(
