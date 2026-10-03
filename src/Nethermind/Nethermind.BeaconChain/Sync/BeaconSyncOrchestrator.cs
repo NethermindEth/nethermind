@@ -1444,12 +1444,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Keeps <paramref name="copy"/>, another signed copy of the queued block <paramref name="root"/>, unless the retry set is full; a copy kept already takes its provenance as the queued block would.</summary>
     private void QueueRetryCopy(Hash256 root, PendingRetry copy)
     {
-        if (!_pendingRetryCopies.TryGetValue(root, out List<PendingRetry>? copies))
-        {
-            copies = [];
-        }
+        _pendingRetryCopies.TryGetValue(root, out List<PendingRetry>? copies);
 
-        for (int i = 0; i < copies.Count; i++)
+        for (int i = 0; copies is not null && i < copies.Count; i++)
         {
             PendingRetry kept = copies[i];
             if (IsSameSignedBlock(kept.Block, copy.Block))
@@ -1464,7 +1461,7 @@ public sealed class BeaconSyncOrchestrator(
             return;
         }
 
-        copies.Add(copy);
+        (copies ??= []).Add(copy);
         _pendingRetryCopies[root] = copies;
         _pendingRetryCopyCount++;
     }
