@@ -65,27 +65,14 @@ public class BlockSequenceTests
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
-    private static IEnumerable<TestCaseData> MainnetCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled)
-            yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet))
-            yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
     {
         foreach ((string suite, string handler) in HandlerBySuite)
-        {
-            foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-            {
-                string? suiteRoot = ConsensusSpecArchive.SuitePath(preset, fork, suite);
-                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(suiteRoot is null ? null : Path.Combine(suiteRoot, handler), "meta.yaml"))
-                {
-                    string vectorName = $"{preset}/{fork}/{suite}/{handler}/{Path.GetFileName(caseDir)}";
-                    yield return new TestCaseData(new SanityCase(preset.ToString(), fork, caseDir, vectorName)).SetName(vectorName);
-                }
-            }
-        }
+            foreach (TestCaseData data in FuluDriverSupport.HandlerCases(preset, ConsensusSpecArchive.StateTransitionForks, suite, "meta.yaml",
+                static (p, fork, _, path, name) => new SanityCase(p.ToString(), fork, path, name), [handler]))
+                yield return data;
     }
 }

@@ -30,6 +30,43 @@ namespace Ethereum.ConsensusSpec.Test;
 /// </summary>
 public static class FuluDriverSupport
 {
+    /// <summary>Named vectors whose suite-relative directory path is part of their test name.</summary>
+    internal static IEnumerable<TestCaseData> RelativeCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
+        Func<ConsensusPreset, string, string, string, T> createCase)
+    {
+        foreach (string fork in forks)
+        {
+            string? root = ConsensusSpecArchive.SuitePath(preset, fork, suite);
+            foreach (string caseDir in ConsensusSpecArchive.LeafDirs(root, marker))
+            {
+                string name = $"{preset}/{fork}/{suite}/{Path.GetRelativePath(root!, caseDir).Replace('\\', '/')}";
+                yield return new TestCaseData(createCase(preset, fork, caseDir, name)).SetName(name);
+            }
+        }
+    }
+
+    /// <summary>Named vectors grouped by an immediate handler directory and their leaf directory name.</summary>
+    internal static IEnumerable<TestCaseData> HandlerCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
+        Func<ConsensusPreset, string, string, string, string, T> createCase, IEnumerable<string>? handlers = null, bool strictHandlerDirectory = false)
+    {
+        foreach (string fork in forks)
+        {
+            string? root = ConsensusSpecArchive.SuitePath(preset, fork, suite);
+            if (root is null)
+                continue;
+            IEnumerable<string> handlerDirs = handlers is null ? (strictHandlerDirectory ? Directory.GetDirectories(root) : ConsensusSpecArchive.SubDirs(root)) : handlers.Select(handler => Path.Combine(root, handler));
+            foreach (string handlerDir in handlerDirs)
+            {
+                string handler = Path.GetFileName(handlerDir);
+                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(handlerDir, marker))
+                {
+                    string name = $"{preset}/{fork}/{suite}/{handler}/{Path.GetFileName(caseDir)}";
+                    yield return new TestCaseData(createCase(preset, fork, handler, caseDir, name)).SetName(name);
+                }
+            }
+        }
+    }
+
     public static BeaconStateFulu DecodeState(string path)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(path);

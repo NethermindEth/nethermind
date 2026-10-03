@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using NUnit.Framework;
 
@@ -45,21 +44,10 @@ public class SyncTests
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
-    private static IEnumerable<TestCaseData> MainnetCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled)
-            yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet))
-            yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
-    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
-    {
-        string? syncRoot = ConsensusSpecArchive.SuitePath(preset, "fulu", "sync");
-        foreach (string caseDir in ConsensusSpecArchive.LeafDirs(syncRoot, "steps.yaml"))
-        {
-            string vectorName = $"{preset}/fulu/sync/{Path.GetRelativePath(syncRoot!, caseDir).Replace('\\', '/')}";
-            yield return new TestCaseData(new ForkChoiceCase(preset.ToString(), caseDir, vectorName)).SetName(vectorName);
-        }
-    }
+    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset) =>
+        FuluDriverSupport.RelativeCases(preset, ["fulu"], "sync", "steps.yaml",
+            static (p, fork, path, name) => new ForkChoiceCase(p.ToString(), path, name));
 }
