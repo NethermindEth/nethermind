@@ -271,6 +271,39 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         };
     }
 
+    /// <summary>Creates a sparse Fulu state with zero headers, retaining the supplied fork and registry arrays.</summary>
+    public static BeaconStateFulu MinimalState(BeaconChainSpec spec, ulong slot, Fork fork, Validator[] validators, ulong[] balances, Hash256[] randaoMixes) => new()
+    {
+        GenesisTime = spec.GenesisTime,
+        GenesisValidatorsRoot = spec.GenesisValidatorsRoot,
+        Slot = slot,
+        Fork = fork,
+        LatestBlockHeader = new BeaconBlockHeader { Slot = slot - 1, ProposerIndex = 0, ParentRoot = Hash256.Zero, StateRoot = Hash256.Zero, BodyRoot = Hash256.Zero },
+        Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
+        Validators = validators,
+        Balances = balances,
+        RandaoMixes = randaoMixes,
+        Slashings = new ulong[(int)Presets.EpochsPerSlashingsVector],
+        JustificationBits = new BitArray(4),
+        PreviousJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
+        CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
+        FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
+        ProposerLookahead = new ulong[(int)Presets.ProposerLookaheadSlots],
+        LatestExecutionPayloadHeader = new ExecutionPayloadHeader
+        {
+            ParentHash = Hash256.Zero,
+            FeeRecipient = Address.Zero,
+            StateRoot = Hash256.Zero,
+            ReceiptsRoot = Hash256.Zero,
+            LogsBloom = Bloom.Empty,
+            PrevRandao = Hash256.Zero,
+            ExtraData = [],
+            BlockHash = Hash256.Zero,
+            TransactionsRoot = Hash256.Zero,
+            WithdrawalsRoot = Hash256.Zero,
+        },
+    };
+
     /// <summary>A Fulu state with a few validators and every list non-empty, so each list field is exercised with real elements.</summary>
     public static BeaconStateFulu RichState(BeaconChainSpec spec, ulong slot)
     {
