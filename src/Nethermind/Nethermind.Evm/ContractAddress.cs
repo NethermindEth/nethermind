@@ -28,12 +28,19 @@ namespace Nethermind.Evm
             return new(in contractAddressKeccak);
         }
 
-        [SkipLocalsInit]
         public static Address From(Address deployingAddress, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> initCode)
+            => FromSalted(0xff, deployingAddress, salt, initCode);
+
+        /// <summary>Computes the EIP-8360 <c>TCREATE</c> address: <c>keccak256(0xfe ++ deployer ++ salt ++ keccak256(init_code))[12:]</c>.</summary>
+        public static Address FromTransientCreate(Address deployingAddress, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> initCode)
+            => FromSalted(0xfe, deployingAddress, salt, initCode);
+
+        [SkipLocalsInit]
+        private static Address FromSalted(byte prefix, Address deployingAddress, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> initCode)
         {
-            // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code) ++ sha3(aux_data))
+            // sha3(prefix ++ msg.sender ++ salt ++ sha3(init_code))
             Span<byte> bytes = stackalloc byte[1 + Address.Size + Keccak.Size + salt.Length];
-            bytes[0] = 0xff;
+            bytes[0] = prefix;
             deployingAddress.Bytes.CopyTo(bytes.Slice(1, Address.Size));
             salt.CopyTo(bytes.Slice(1 + Address.Size, salt.Length));
             ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(1 + Address.Size + salt.Length, Keccak.Size));
