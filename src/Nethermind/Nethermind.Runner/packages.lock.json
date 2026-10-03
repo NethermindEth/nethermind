@@ -988,7 +988,6 @@
           "Crc32.NET": "[1.2.0, )",
           "Nethermind.Blockchain": "[2.2.0-preview, )",
           "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
           "Nethermind.Core": "[2.2.0-preview, )",
           "Nethermind.Crypto": "[2.2.0-preview, )",
           "Nethermind.DotNetty.Handlers": "[0.8.0.11, )",
