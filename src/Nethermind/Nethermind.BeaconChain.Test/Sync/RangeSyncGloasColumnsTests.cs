@@ -224,18 +224,12 @@ public class RangeSyncGloasColumnsTests
         }
 
         ulong[] unsampled = [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c).Except(sampled)];
-        Dictionary<string, List<ulong>> asked = [];
-        RangeSyncTests.StubPeer Custodian(string id, PeerColumnCustody custody) => chain.CreatePeer((_, _, columns) =>
-        {
-            asked[id] = [.. columns];
-            return [.. columns.Select(c => chain.GloasSidecar(c))];
-        }, id: id, custody: custody);
         RangeSyncTests.StubPeer[] peers =
         [
-            Custodian("a", new PeerColumnCustody(sampled.Where(static (_, i) => i % 2 == 0), isAdvertised: true)),
-            Custodian("b", new PeerColumnCustody(sampled.Where(static (_, i) => i % 2 == 1), isAdvertised: true)),
-            Custodian("unsampled", new PeerColumnCustody(unsampled[..4], isAdvertised: true)),
-            Custodian("unknown", PeerColumnCustody.None),
+            chain.HonestPeer("a", new PeerColumnCustody(sampled.Where(static (_, i) => i % 2 == 0), isAdvertised: true)),
+            chain.HonestPeer("b", new PeerColumnCustody(sampled.Where(static (_, i) => i % 2 == 1), isAdvertised: true)),
+            chain.HonestPeer("unsampled", new PeerColumnCustody(unsampled[..4], isAdvertised: true)),
+            chain.HonestPeer("unknown", PeerColumnCustody.None),
         ];
 
         List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, GloasSlot, token, peers);
@@ -243,13 +237,13 @@ public class RangeSyncGloasColumnsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(yielded, Has.Count.EqualTo(2));
-            Assert.That(asked.Keys, Is.SubsetOf(new[] { "a", "b" }), "a peer custodying no missing column gets no request");
-            foreach ((string id, List<ulong> columns) in asked)
+            Assert.That(peers.Where(static p => p.RequestedGloasColumns.Count > 0).Select(static p => p.Id), Is.SubsetOf(new[] { "a", "b" }), "a peer custodying no missing column gets no request");
+            foreach (RangeSyncTests.StubPeer peer in peers)
             {
-                Assert.That(columns, Is.All.Matches<ulong>(peers.Single(p => p.Id == id).Custody.Custodies), $"{id} is asked only for columns it custodies");
+                Assert.That(peer.RequestedGloasColumns.SelectMany(static c => c), Is.All.Matches<ulong>(peer.Custody.Custodies), $"{peer.Id} is asked only for columns it custodies");
             }
 
-            Assert.That(asked.Values.SelectMany(static c => c), Is.EquivalentTo(sampled.Except(held)), "every missing column is asked of exactly one custodian and held ones are not asked");
+            Assert.That(peers.SelectMany(static p => p.RequestedGloasColumns).SelectMany(static c => c), Is.EquivalentTo(sampled.Except(held)), "every missing column is asked of exactly one custodian and held ones are not asked");
             Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
             Assert.That(peers.Sum(static p => p.Failures), Is.Zero);
         }
@@ -383,16 +377,10 @@ public class RangeSyncGloasColumnsTests
         await using BeaconDiscovery discovery = CreateDiscovery();
         StraddlingChain chain = StraddlingChain.Create();
         ulong[] sampled = [.. SampledColumns(discovery)];
-        Dictionary<string, List<ulong>> asked = [];
-        RangeSyncTests.StubPeer Custodian(string id, PeerColumnCustody custody) => chain.CreatePeer((_, _, columns) =>
-        {
-            asked[id] = [.. columns];
-            return [.. columns.Select(c => chain.GloasSidecar(c))];
-        }, id: id, custody: custody);
         RangeSyncTests.StubPeer[] peers =
         [
-            Custodian("supernode", RangeSyncTests.StubPeer.AllColumns),
-            .. Enumerable.Range(0, 3).Select(i => Custodian($"floor-{i}", new PeerColumnCustody([.. sampled.Where((_, c) => c % 3 == i)], isAdvertised: false))),
+            chain.HonestPeer("supernode", RangeSyncTests.StubPeer.AllColumns),
+            .. Enumerable.Range(0, 3).Select(i => chain.HonestPeer($"floor-{i}", new PeerColumnCustody([.. sampled.Where((_, c) => c % 3 == i)], isAdvertised: false))),
         ];
         DataColumnSidecarPool pool = new();
 
@@ -402,8 +390,9 @@ public class RangeSyncGloasColumnsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(yielded, Has.Count.EqualTo(2));
-            Assert.That(asked["supernode"], Has.Count.LessThanOrEqualTo(share), "one supernode does not take the batch");
-            Assert.That(asked.Keys.Count(static id => id.StartsWith("floor-", StringComparison.Ordinal)), Is.GreaterThan(0), "the other custodians are used");
+            Assert.That(peers[0].RequestedGloasColumns, Is.Not.Empty, "the advertised supernode is used");
+            Assert.That(peers[0].RequestedGloasColumns.SelectMany(static c => c).Count(), Is.LessThanOrEqualTo(share), "one supernode does not take the batch");
+            Assert.That(peers.Skip(1).Sum(static p => p.RequestedGloasColumns.Count), Is.GreaterThan(0), "the other custodians are used");
             Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
         }
     }
@@ -416,18 +405,8 @@ public class RangeSyncGloasColumnsTests
         await using BeaconDiscovery discovery = CreateDiscovery();
         StraddlingChain chain = StraddlingChain.Create();
         ulong[] sampled = [.. SampledColumns(discovery)];
-        int failingRequests = 0;
-        List<ulong[]> goodRequests = [];
-        RangeSyncTests.StubPeer failing = chain.CreatePeer((_, _, _) =>
-        {
-            failingRequests++;
-            throw new IOException("connection reset");
-        }, id: "failing");
-        RangeSyncTests.StubPeer good = chain.CreatePeer((_, _, columns) =>
-        {
-            goodRequests.Add(columns);
-            return [.. columns.Select(c => chain.GloasSidecar(c))];
-        }, id: "good");
+        RangeSyncTests.StubPeer failing = chain.CreatePeer(static (_, _, _) => throw new IOException("connection reset"), id: "failing");
+        RangeSyncTests.StubPeer good = chain.HonestPeer("good");
         DataColumnSidecarPool pool = new();
 
         List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, GloasSlot, token, failing, good);
@@ -435,10 +414,10 @@ public class RangeSyncGloasColumnsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(yielded, Has.Count.EqualTo(2));
-            Assert.That(failingRequests, Is.EqualTo(1), "a custodian that failed this batch is not picked again in it");
+            Assert.That(failing.RequestedGloasColumns, Has.Count.EqualTo(1), "a custodian that failed this batch is not picked again in it");
             Assert.That(failing.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
-            Assert.That(goodRequests, Has.Count.EqualTo(2), "a second round asks for what the failed request left missing");
-            Assert.That(goodRequests.SelectMany(static c => c), Is.EquivalentTo(sampled).And.Unique);
+            Assert.That(good.RequestedGloasColumns, Has.Count.EqualTo(2), "a second round asks for what the failed request left missing");
+            Assert.That(good.RequestedGloasColumns.SelectMany(static c => c), Is.EquivalentTo(sampled).And.Unique);
             Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
         }
     }
@@ -451,26 +430,16 @@ public class RangeSyncGloasColumnsTests
         await using BeaconDiscovery discovery = CreateDiscovery();
         StraddlingChain chain = StraddlingChain.Create();
         ulong[] sampled = [.. SampledColumns(discovery)];
-        List<ulong[]> shortRequests = [];
-        List<ulong[]> goodRequests = [];
-        RangeSyncTests.StubPeer shortPeer = chain.CreatePeer((_, _, columns) =>
-        {
-            shortRequests.Add(columns);
-            return [.. columns[1..].Select(c => chain.GloasSidecar(c))];
-        }, id: "short");
-        RangeSyncTests.StubPeer good = chain.CreatePeer((_, _, columns) =>
-        {
-            goodRequests.Add(columns);
-            return [.. columns.Select(c => chain.GloasSidecar(c))];
-        }, id: "good");
+        RangeSyncTests.StubPeer shortPeer = chain.CreatePeer((_, _, columns) => [.. columns[1..].Select(c => chain.GloasSidecar(c))], id: "short");
+        RangeSyncTests.StubPeer good = chain.HonestPeer("good");
         DataColumnSidecarPool pool = new();
 
         await RunAsync(pool, discovery, clock: null, chain, GloasSlot, token, shortPeer, good);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(shortRequests, Has.Count.EqualTo(1), "a peer that left a column unserved is not asked again");
-            Assert.That(goodRequests.SelectMany(static c => c), Is.EquivalentTo(sampled.Except(shortRequests[0][1..])), "only what the short reply did not deliver is asked of the other peer");
+            Assert.That(shortPeer.RequestedGloasColumns, Has.Count.EqualTo(1), "a peer that left a column unserved is not asked again");
+            Assert.That(good.RequestedGloasColumns.SelectMany(static c => c), Is.EquivalentTo(sampled.Except(shortPeer.RequestedGloasColumns[0][1..])), "only what the short reply did not deliver is asked of the other peer");
             Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
             Assert.That(shortPeer.Failures + good.Failures, Is.Zero);
         }
@@ -952,6 +921,9 @@ public class RangeSyncGloasColumnsTests
         public DataColumnSidecarGloas GloasSidecar(ulong column) => DataColumnSidecarGloasTestFixture.BuildSidecar(column, GloasSlot, GloasRoot);
 
         public DataColumnSidecarGloas SecondGloasSidecar(ulong column) => DataColumnSidecarGloasTestFixture.BuildSidecar(column, SecondGloasSlot, SecondGloasRoot!);
+
+        public RangeSyncTests.StubPeer HonestPeer(string id, PeerColumnCustody? custody = null) =>
+            CreatePeer((_, _, columns) => [.. columns.Select(GloasSidecar)], id: id, custody: custody);
 
         /// <summary>Serves <see cref="Blocks"/> by range and no Fulu sidecars, recording each Fulu column window.</summary>
         public RangeSyncTests.StubPeer CreatePeer(Func<ulong, ulong, ulong[], DataColumnSidecarGloas[]> gloasColumnHandler, List<(ulong StartSlot, ulong Count)>? fuluWindows = null, string id = "peer", PeerColumnCustody? custody = null, ulong earliestAvailableSlot = 0, ulong headSlot = GloasSlot) => new(
