@@ -143,6 +143,28 @@ public class JwtTest
         Assert.That(await auth.Authenticate(token2), Is.True);
     }
 
+    [Test]
+    public async Task Cached_token_respects_expiration(
+        [Values(false, true)] bool useLibraryFallback,
+        [Values(2, 3)] int secondsAfterIssue)
+    {
+        ManualTimestamper ts = new() { UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat).UtcDateTime };
+        IRpcAuthentication auth = JwtAuthentication.FromSecret(HexSecret, ts, LimboTraceLogger.Instance);
+        string header = useLibraryFallback
+            ? "{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"1\"}"
+            : "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
+        string token = CreateJwt(header, $"{{\"iat\":{TestIat},\"exp\":{TestIat + 2}}}");
+
+        Assert.That(await auth.Authenticate(token), Is.True);
+        ts.UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat + 1).UtcDateTime;
+        Assert.That(await auth.Authenticate(token), Is.True);
+
+        ts.UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat + secondsAfterIssue).UtcDateTime;
+        IRpcAuthentication uncached = JwtAuthentication.FromSecret(HexSecret, ts, LimboTraceLogger.Instance);
+        Assert.That(await uncached.Authenticate(token), Is.False, "Uncached validation must reject an expired token");
+        Assert.That(await auth.Authenticate(token), Is.False, "Cached validation must reject the same expired token");
+    }
+
     // --- Helpers ---
 
     private static IRpcAuthentication CreateAuth(long nowUnixSeconds = TestIat)
