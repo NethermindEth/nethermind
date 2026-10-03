@@ -184,8 +184,9 @@ Managed proving folds at most four direct witnesses or two recursive children pe
 to 18 MiB, output proofs to 8 MiB, and selected plus discarded coverage to 4096 dependencies.
 Shortest generic-witness normalization verifies and prunes each parent carrying a
 nonselected duplicate, including equal-length ties, before folding. This adds one native
-proving call per such parent; fresh-claim
-throughput curves do not measure that cost. Targeted measurements belong in the stacked
+proving call per such parent. Equal-length direct duplicates defer to a recursive
+source and are verified without reproving; shorter direct witnesses still win. Fresh-claim
+throughput curves do not measure pruning cost. Targeted measurements belong in the stacked
 [benchmark PR](https://github.com/NethermindEth/nethermind/pull/14220).
 
 Required witness storage is bounded to 64 MiB / 32768 records. The record ceiling does not
