@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
@@ -48,12 +49,15 @@ internal sealed class MixedTrafficTransport : IAsyncDisposable
     private readonly LeanProofWrapperMessageSerializer _whole = new();
     private readonly LeanProofChunkMessageSerializer _chunks = new();
     private readonly ConcurrentDictionary<ulong, long> _headerStarts = [];
-    private readonly ConcurrentQueue<long> _pingStarts = [];
+    private readonly Lock _pingLock = new();
+    private readonly LinkedList<long> _pingStarts = [];
     private readonly ConcurrentQueue<ControlSample> _controls = [];
     private readonly int _chunkSize;
     private TaskCompletionSource<byte[]>? _delivered;
     private LeanChunkReassembler? _reassembler;
     private ValueHash256 _objectHash;
+    private Exception? _receiveFailure;
+    private int _disposed;
     public long WireBytes => _writer.WireBytes;
     public int WriteDrops => _writer.Drops;
     public ControlSample[] Controls => _controls.ToArray();
@@ -87,7 +91,7 @@ internal sealed class MixedTrafficTransport : IAsyncDisposable
         ISession session = Substitute.For<ISession>();
         session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call => Receive(call.Arg<ZeroPacket>()));
         session.When(s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>())).Do(call =>
-            _delivered?.TrySetException(new InvalidOperationException(call.ArgAt<string>(1))));
+            FailReceive(new InvalidOperationException(call.ArgAt<string>(1))));
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         _inbound = new(new ZeroFrameDecoder(new FrameCipher(aes), _inboundMac), new ZeroFrameMerger(LimboLogs.Instance), handler);
@@ -96,52 +100,80 @@ internal sealed class MixedTrafficTransport : IAsyncDisposable
 
     public async Task<byte[]> TransferAsync(byte[] payload, CancellationToken token)
     {
-        _delivered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        _objectHash = ValueKeccak.Compute(payload);
-        _reassembler?.Dispose();
-        _reassembler = _chunkSize == 0 ? null : new(new LeanReassemblyBudget());
-        if (_chunkSize == 0)
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (Volatile.Read(ref _receiveFailure) is { } previous) ExceptionDispatchInfo.Throw(previous);
+        try
         {
-            LeanProofWrapperMessage message = new(payload) { AdaptivePacketType = BulkCode };
-            if (await _packets.EnqueueAsync(message, token) == 0) throw new IOException("Whole-wrapper write declined");
-        }
-        else
-        {
-            int count = (payload.Length + _chunkSize - 1) / _chunkSize;
-            for (int index = 0; index < count; index++)
+            _delivered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _objectHash = ValueKeccak.Compute(payload);
+            _reassembler?.Dispose();
+            _reassembler = _chunkSize == 0 ? null : new(new LeanReassemblyBudget());
+            if (_chunkSize == 0)
             {
-                int offset = index * _chunkSize;
-                LeanProofChunkMessage message = new(_objectHash, payload.Length, index, count, _chunkSize,
-                    payload.AsMemory(offset, Math.Min(_chunkSize, payload.Length - offset)))
-                { AdaptivePacketType = BulkCode };
-                if (await _packets.EnqueueAsync(message, token) == 0) throw new IOException("Chunk write declined");
+                LeanProofWrapperMessage message = new(payload) { AdaptivePacketType = BulkCode };
+                if (await _packets.EnqueueAsync(message, token) == 0) throw new IOException("Whole-wrapper write declined");
             }
+            else
+            {
+                int count = (payload.Length + _chunkSize - 1) / _chunkSize;
+                for (int index = 0; index < count; index++)
+                {
+                    int offset = index * _chunkSize;
+                    LeanProofChunkMessage message = new(_objectHash, payload.Length, index, count, _chunkSize,
+                        payload.AsMemory(offset, Math.Min(_chunkSize, payload.Length - offset)))
+                    { AdaptivePacketType = BulkCode };
+                    if (await _packets.EnqueueAsync(message, token) == 0) throw new IOException("Chunk write declined");
+                }
+            }
+            byte[] delivered = await _delivered.Task.WaitAsync(token);
+            if (!delivered.AsSpan().SequenceEqual(payload)) throw new InvalidDataException("Object changed in transport");
+            return delivered;
         }
-        byte[] delivered = await _delivered.Task.WaitAsync(token);
-        if (!delivered.AsSpan().SequenceEqual(payload)) throw new InvalidDataException("Object changed in transport");
-        return delivered;
+        catch
+        {
+            if (Volatile.Read(ref _receiveFailure) is { } failure) ExceptionDispatchInfo.Throw(failure);
+            throw;
+        }
     }
 
     public bool Probe(ulong sequence, long scheduled, int kind)
     {
         if (kind == 0)
         {
-            _pingStarts.Enqueue(scheduled);
-            PingMessage.Instance.AdaptivePacketType = PingCode;
-            return _packets.Enqueue(PingMessage.Instance) != 0;
+            lock (_pingLock)
+            {
+                LinkedListNode<long> start = _pingStarts.AddLast(scheduled);
+                bool accepted = false;
+                try
+                {
+                    PingMessage.Instance.AdaptivePacketType = PingCode;
+                    accepted = _packets.Enqueue(PingMessage.Instance) != 0;
+                    return accepted;
+                }
+                finally { if (!accepted) _pingStarts.Remove(start); }
+            }
         }
         _headerStarts[sequence] = scheduled;
-        if (kind == 1)
+        bool headerAccepted = false;
+        try
         {
-            GetBlockHeadersMessage message = new() { AdaptivePacketType = HeaderCode, StartBlockNumber = sequence, MaxHeaders = 1 };
-            return _packets.Enqueue(message) != 0;
+            if (kind == 1)
+            {
+                GetBlockHeadersMessage message = new() { AdaptivePacketType = HeaderCode, StartBlockNumber = sequence, MaxHeaders = 1 };
+                headerAccepted = _packets.Enqueue(message) != 0;
+            }
+            else
+            {
+                using BlockHeadersMessage response = new(new ArrayPoolList<BlockHeader>(1, 1)
+                {
+                    [0] = Build.A.BlockHeader.WithNumber(sequence).TestObject
+                })
+                { AdaptivePacketType = HeaderResponseCode };
+                headerAccepted = _packets.Enqueue(response) != 0;
+            }
+            return headerAccepted;
         }
-        using BlockHeadersMessage response = new(new ArrayPoolList<BlockHeader>(1, 1)
-        {
-            [0] = Build.A.BlockHeader.WithNumber(sequence).TestObject
-        })
-        { AdaptivePacketType = HeaderResponseCode };
-        return _packets.Enqueue(response) != 0;
+        finally { if (!headerAccepted) _headerStarts.TryRemove(sequence, out _); }
     }
 
     private void Receive(ZeroPacket packet)
@@ -161,8 +193,13 @@ internal sealed class MixedTrafficTransport : IAsyncDisposable
         }
         else if (packet.PacketType == PingCode)
         {
-            if (!_pingStarts.TryDequeue(out long scheduled)) throw new InvalidDataException("Unexpected ping probe");
-            _controls.Enqueue(new("p2p-ping", scheduled, Stopwatch.GetElapsedTime(scheduled).TotalMilliseconds));
+            lock (_pingLock)
+            {
+                if (_pingStarts.First is not { } first) throw new InvalidDataException("Unexpected ping probe");
+                long scheduled = first.Value;
+                _pingStarts.RemoveFirst();
+                _controls.Enqueue(new("p2p-ping", scheduled, Stopwatch.GetElapsedTime(scheduled).TotalMilliseconds));
+            }
         }
         else if (packet.PacketType == BulkCode && _chunkSize == 0) _delivered!.TrySetResult(_whole.Deserialize(packet.Content).Wrapper);
         else if (packet.PacketType == BulkCode)
@@ -187,29 +224,57 @@ internal sealed class MixedTrafficTransport : IAsyncDisposable
                     int read = await _receiver.ReceiveAsync(buffer.Array.AsMemory(buffer.ArrayOffset, buffer.Capacity), SocketFlags.None, _stop.Token);
                     if (read == 0) throw new EndOfStreamException();
                     buffer.SetWriterIndex(read);
-                    _inbound.WriteInbound(buffer);
+                    IByteBuffer received = buffer;
                     buffer = null;
+                    _inbound.WriteInbound(received);
                 }
                 finally { buffer?.Release(); }
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
-        catch (Exception exception) { _delivered?.TrySetException(exception); throw; }
+        catch (Exception exception)
+        {
+            FailReceive(exception);
+            throw;
+        }
+    }
+
+    private void FailReceive(Exception exception)
+    {
+        Volatile.Write(ref _receiveFailure, exception);
+        _delivered?.TrySetException(exception);
+        _stop.Cancel();
     }
 
     public async ValueTask DisposeAsync()
     {
-        _stop.Cancel();
-        await _reading;
-        await _writer.Completion;
-        _reassembler?.Dispose();
-        _outbound.FinishAndReleaseAll();
-        _inbound.FinishAndReleaseAll();
-        _outboundMac.Dispose();
-        _inboundMac.Dispose();
-        _sender.Dispose();
-        _receiver.Dispose();
-        _stop.Dispose();
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        List<Exception> failures = [];
+        try
+        {
+            _stop.Cancel();
+            await Task.WhenAll(_reading, _writer.Completion);
+        }
+        catch (Exception exception) { failures.Add(exception); }
+        finally
+        {
+            Cleanup(() => _reassembler?.Dispose());
+            Cleanup(() => _outbound.FinishAndReleaseAll());
+            Cleanup(() => _inbound.FinishAndReleaseAll());
+            Cleanup(_outboundMac.Dispose);
+            Cleanup(_inboundMac.Dispose);
+            Cleanup(_sender.Dispose);
+            Cleanup(_receiver.Dispose);
+            Cleanup(_stop.Dispose);
+        }
+        if (failures.Count == 1) ExceptionDispatchInfo.Throw(failures[0]);
+        if (failures.Count > 1) throw new AggregateException(failures);
+
+        void Cleanup(Action release)
+        {
+            try { release(); }
+            catch (Exception exception) { failures.Add(exception); }
+        }
     }
 
     private sealed class PacedSocketWriter : ChannelHandlerAdapter

@@ -14,11 +14,15 @@ fn blob(out: &mut Vec<u8>, value: &[u8]) {
 fn main() {
     let args: Vec<_> = std::env::args().collect();
     let count: usize = args.get(1).expect("claim count").parse().unwrap();
-    let children = args.get(2).is_some_and(|mode| mode == "children");
-    let direct = args.get(2).is_some_and(|mode| mode == "direct");
+    let mode = args.get(2).map(String::as_str).unwrap_or("raw-binary-tree");
+    assert!(matches!(mode, "raw-binary-tree" | "direct" | "children"));
+    let children = mode == "children";
+    let direct = mode == "direct";
     assert!((1..=128).contains(&count));
     assert!(!direct || count <= 8);
     assert!(!children || count <= 16);
+    let total_started = Instant::now();
+    let fixture_started = Instant::now();
     let key = aggregated_vk();
     let mut deps = Vec::new();
     let mut witnesses = Vec::new();
@@ -37,6 +41,8 @@ fn main() {
         witnesses.push([pk.flatten().as_slice(), signature.to_bytes().as_slice()].concat());
         signatures.push((pk, message, signature));
     }
+    let fixture_generation = fixture_started.elapsed();
+    let preparation_started = Instant::now();
     let mut prepared = Vec::new();
     if children {
         for (dep, witness) in deps.iter().zip(&witnesses) {
@@ -49,6 +55,7 @@ fn main() {
             prepared.push(prove_aggregate(&keccak(dep), &input).unwrap());
         }
     }
+    let child_preparation = preparation_started.elapsed();
     let mut input = Vec::new();
     if children {
         number(&mut input, 0);
@@ -96,18 +103,18 @@ fn main() {
         )
     };
     assert_eq!(valid, 1);
-    println!("mode,claims,proof_bytes,proving_ms,verification_ms");
+    let verification = started.elapsed();
+    let total = total_started.elapsed();
     println!(
-        "{},{count},{},{:.3},{:.3}",
-        if direct {
-            "direct"
-        } else if children {
-            "children"
-        } else {
-            "raw-binary-tree"
-        },
+        "mode,claims,proof_bytes,proving_ms,verification_ms,fixture_generation_ms,child_preparation_ms,total_ms"
+    );
+    println!(
+        "{mode},{count},{},{:.3},{:.3},{:.3},{:.3},{:.3}",
         proof.len(),
         proving.as_secs_f64() * 1000.0,
-        started.elapsed().as_secs_f64() * 1000.0
+        verification.as_secs_f64() * 1000.0,
+        fixture_generation.as_secs_f64() * 1000.0,
+        child_preparation.as_secs_f64() * 1000.0,
+        total.as_secs_f64() * 1000.0
     );
 }

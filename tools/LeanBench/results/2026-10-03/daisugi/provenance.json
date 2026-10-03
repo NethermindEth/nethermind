@@ -20,5 +20,19 @@
     "python": "/private/tmp/eip8288-plot-venv/bin/python",
     "matplotlib": "3.9.4",
     "captureTimingsUnmodified": true
+  },
+  "plotSourceScope": "Recorded historical plotting script hash; it identifies the capture-era plotting script, not the current gzip-aware reproducer. Raw capture metadata and binary hashes remain unchanged.",
+  "historicalPaths": "Absolute fixture, executable and Python paths record the original host invocation. They are historical metadata, not prerequisites for rerunning or plotting on another checkout.",
+  "plotReproduction": {
+    "script": "tools/LeanBench/plot.py",
+    "scriptSha256": "f1b470bf3ad7487670ba320345d5214214c579a5abf512a77f611e21685ec1d1",
+    "matplotlib": "3.9.4",
+    "scope": "Packaging-era gzip-aware reproducer; regenerates the archived full and mixed PNGs byte-for-byte with Matplotlib 3.9.4. This does not relabel the captured source revision or native ABI.",
+    "commands": [
+      "python3 -m venv /tmp/lean-plot-venv",
+      "/tmp/lean-plot-venv/bin/pip install matplotlib==3.9.4",
+      "/tmp/lean-plot-venv/bin/python tools/LeanBench/plot.py tools/LeanBench/results/2026-10-03/daisugi/full/results.json.gz --output=/tmp/lean-daisugi-full-plots",
+      "/tmp/lean-plot-venv/bin/python tools/LeanBench/plot.py tools/LeanBench/results/2026-10-03/daisugi/mixed/results.json.gz --output=/tmp/lean-daisugi-mixed-plots"
+    ]
   }
 }

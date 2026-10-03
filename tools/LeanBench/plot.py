@@ -269,7 +269,14 @@ def main():
             ax.legend(fontsize=9)
             save(fig, "chunk-object-goodput", "Production PacketSender/codecs and reassembly over real localhost TCP; no crypto or admission inside timing.")
 
-    meta = html.escape(json.dumps(data.get("metadata", {}), indent=2))
+    metadata = data.get("metadata", {})
+    caveats = []
+    if any(row["kind"] == "protocol-preproved" for row in rows) and "protocolScheduler" not in metadata:
+        caveats.append("Archived protocol rows used a Task.Run scheduler stand-in; production scheduler limits, deadlines and block-processing pauses were not measured.")
+    if "percentileMethod" not in metadata and any(row["kind"] != "mixed-traffic" for row in rows):
+        caveats.append("Archived full/load/protocol percentiles use sorted[ceil((count - 1) * p)]; graphs retain stored values. Current runs use nearest-rank.")
+    notes = "".join(f"<p>{html.escape(note)}</p>" for note in caveats)
+    meta = html.escape(json.dumps(metadata, indent=2))
     sections = "".join(f'<section><h2>{html.escape(caption)}</h2><img src="{name}.png" alt="{html.escape(caption)}">'
                        + (f'<p><a href="{name}.svg">SVG</a></p>' if args.svg else '') + '</section>'
                        for name, caption in charts)
@@ -282,7 +289,7 @@ def main():
         'Load durations include drain time; consult raw rejection reasons and samples.</p>'
         f'<p><a href="../{html.escape(args.results.name)}">Raw JSON and samples</a> · '
         '<a href="../results.csv">Row CSV</a> · ' + sample_link + '</p>'
-        + sections + '<h2>Measurement metadata</h2><pre>' + meta + '</pre>')
+        + notes + sections + '<h2>Measurement metadata</h2><pre>' + meta + '</pre>')
     print(json.dumps({"output": str(args.output), "charts": [name for name, _ in charts]}))
 
 

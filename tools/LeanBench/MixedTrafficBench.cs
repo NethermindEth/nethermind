@@ -29,8 +29,8 @@ public static partial class Program
         string Value(string name, string fallback) => args.FirstOrDefault(a => a.StartsWith("--" + name + "=", StringComparison.Ordinal))?.Split('=', 2)[1] ?? fallback;
         string output = Path.GetFullPath(Value("out", "lean-mixed-results"));
         int repetitions = int.Parse(Value("repetitions", "3"), CultureInfo.InvariantCulture);
-        int[] chunks = Value("chunks", "0,32768,65536,131072").Split(',').Select(int.Parse).ToArray();
-        int[] sizes = Value("object-sizes", "1048576,10485760").Split(',').Where(s => s.Length != 0).Select(int.Parse).ToArray();
+        int[] chunks = Value("chunks", "0,32768,65536,131072").Split(',').Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray();
+        int[] sizes = Value("object-sizes", "1048576,10485760").Split(',').Where(s => s.Length != 0).Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         double wireMbps = double.Parse(Value("wire-mbps", "32"), CultureInfo.InvariantCulture);
         double probeMs = double.Parse(Value("probe-ms", "20"), CultureInfo.InvariantCulture);
         if (repetitions < 1 || repetitions > 100 || !double.IsFinite(wireMbps) || wireMbps <= 0
@@ -87,7 +87,12 @@ public static partial class Program
         foreach (MixedPayload payload in payloads)
             foreach (int chunk in chunks)
             {
-                using CancellationTokenSource timeout = new(TimeSpan.FromMinutes(5));
+                double estimatedTransferSeconds = payload.Bytes.Length * (double)repetitions * 8 / (wireMbps * 1_000_000);
+                double timeoutSeconds = double.Parse(Value("row-timeout-seconds",
+                    Math.Max(300, estimatedTransferSeconds * 3 + 180).ToString(CultureInfo.InvariantCulture)), CultureInfo.InvariantCulture);
+                if (!double.IsFinite(timeoutSeconds) || timeoutSeconds <= 0 || timeoutSeconds > 86400)
+                    throw new ArgumentException("Mixed row timeout must be within one day; increase bandwidth or reduce repetitions");
+                using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(timeoutSeconds));
                 await using MixedTrafficTransport transport = new(chunk, wireMbps);
                 int offered = 0, controlDrops = 0;
                 bool finished = false;
@@ -154,6 +159,8 @@ public static partial class Program
                     .ToDictionary(p => Path.GetFileName(p)!, p => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(p)))),
                 transport = "Real localhost TCP, production PacketSender/Snappy/AES/MAC RLPx; preset session secrets; no handshake timing",
                 pacing = "Application wire-byte cap at terminal socket writer, 4KiB send quanta; not kernel network shaping; no simulated loss or WAN RTT",
+                percentileMethod = "Nearest rank: sorted[ceil(p * count) - 1]",
+                rowTimeoutPolicy = "At least 300 s or three times uncompressed payload wire time plus 180 s; --row-timeout-seconds overrides; maximum one day",
                 methodology = "Same payload repeated per row; fresh TCP codec state per row and production reassembly state per repetition to measure transfer rather than duplicate suppression. Controls cycle real serialized eth GetBlockHeaders, one-header BlockHeaders responses and p2p Ping. Latency is scheduled request-to-receiver delivery, not response RTT. Whole wrapper awaits one actual write; chunks await each actual write and yield. Wire bytes include controls and encrypted RLPx, excluding TCP/IP. Synthetic objects are incompressible. Real objects are natively proved and verified before timing; block-stark16 is a raw block proof envelope, not a mempool-valid wrapper (wrapper limit is one generic dependency); repeated delivery measures transport only, not admission or crypto throughput. Object goodput uses transfer interval; CPU uses whole row. Preparation cost is one observation per proof case, not a warmed crypto benchmark."
             };
             File.WriteAllText(Path.Combine(output, "results.json"), JsonSerializer.Serialize(new { metadata, results = rows, samples },

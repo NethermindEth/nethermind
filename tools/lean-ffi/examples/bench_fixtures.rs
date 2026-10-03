@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+use bincode::Options;
 use nethermind_lean::{keccak, prove_stark};
+use primitives::field::F192;
 use std::io::{BufWriter, Write};
 use std::time::Instant;
 
@@ -24,6 +26,47 @@ fn main() {
             sphincs::key_gen_from_seed(seed)
         })
         .collect();
+    if args.iter().any(|arg| arg == "--duplicate-generic") {
+        let source = "from snark_lib import *\ndef main():\n    p = GEN ** 0\n    p[1] = 7\n    p[GEN] = 9\n    return\n";
+        let mut message = [0; 32];
+        message[0] = 7;
+        message[16] = 9;
+        let (first, key) = prove_stark(source, &message).unwrap();
+        let program = lean_compiler::compile(&lean_compiler::parse(source).unwrap());
+        let (proof, _) =
+            lean_vm::cpu::prove(&program, [F192::new(7, 0, 0), F192::new(9, 0, 0)], 2).unwrap();
+        let code_length = u32::from_le_bytes(first[..4].try_into().unwrap()) as usize;
+        let mut second = first[..4 + code_length].to_vec();
+        second.extend(
+            bincode::DefaultOptions::new()
+                .with_fixint_encoding()
+                .serialize(&proof)
+                .unwrap(),
+        );
+        assert_ne!(first.len(), second.len());
+        let (shorter, longer) = if first.len() < second.len() {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        save("generic-duplicate-short.bin", &shorter);
+        save("generic-duplicate-long.bin", &longer);
+        let mut dependencies = [vec![0; 31], vec![0x11], message.to_vec(), key.to_vec()].concat();
+        let unique_source = source.replace("= 7", "= 8");
+        message[0] = 8;
+        let (unique, unique_key) = prove_stark(&unique_source, &message).unwrap();
+        dependencies.extend(
+            [
+                vec![0; 31],
+                vec![0x11],
+                message.to_vec(),
+                unique_key.to_vec(),
+            ]
+            .concat(),
+        );
+        save("generic-duplicate-unique.bin", &unique);
+        save("generic-duplicate-deps.bin", &dependencies);
+    }
     let mut timings = String::from("scheme,index,generation_wall_ms,proof_bytes\n");
     let mut signatures =
         BufWriter::new(std::fs::File::create(format!("{directory}/sphincs.bin")).unwrap());

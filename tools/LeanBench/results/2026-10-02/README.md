@@ -4,6 +4,8 @@ Measured on an Apple M2 Max, 32 GiB RAM, macOS 15.7.4, .NET 10.0.9. Source revis
 `0be54dfd4cab51628ce8e4067a74aa14c1d02c9b`. These measurements precede the expanded
 EIP-8250/8272/7906 prototype composition and ABI-3 resource hardening; they do not
 measure later changes.
+Archived protocol rows used a `Task.Run` scheduler stand-in, omitting production scheduler capacity, deadlines and block-processing cancellation. Full/load/protocol percentiles used `sorted[ceil((count - 1) * p)]`; current runs use nearest-rank. Captured values remain unchanged.
+
 Each summary records the exact command, native/backend revision and compiled binary
 SHA-256 hashes. Original results-file hashes identify the complete sample datasets.
 

@@ -19,11 +19,11 @@ Three measured crypto batches per size follow one warmup. Claims are distinct, w
 
 Four-signature batches had the best fresh proving-to-pool goodput among measured sizes: **12.7 tx/s**, versus **4.1 tx/s** for sixteen-signature batches under a target of 100 tx/s. Larger aggregates keep verification and proof size small while adding recursive proving work. These results describe this bounded implementation, not an intrinsic scaling limit of leanVM.
 
-Load rows schedule arrivals for **three seconds**, with a FIFO capacity of two batches and one untimed warmup. Excess arrivals drop entire batches. Goodput uses elapsed time including drain; p95 includes queueing. These are short-window observations, not long-run capacity estimates. Pool entries are removed after admission without execution so funding and nonce state stay fixed.
+Load rows schedule arrivals for **three seconds**, with a FIFO capacity of two batches and one untimed warmup. Excess arrivals drop entire batches. Goodput uses elapsed time including drain; p95 includes queueing. Archived full/load/protocol percentiles use `sorted[ceil((count - 1) * p)]`, which can select the maximum for small samples; current harness runs use nearest-rank. The captured values remain unchanged. These are short-window observations, not long-run capacity estimates. Pool entries are removed after admission without execution so funding and nonce state stay fixed.
 
 ## Preproved lean/2 transport
 
-Distinct native proofs are prepared before timing and sent over encrypted localhost TCP through the real lean/2 chunk reassembly, background scheduler and pool admission. This path uses production codecs but excludes PacketSender; the mixed-traffic experiment below includes PacketSender. Each row has a three-second offered window, one warmup and measured drain.
+Distinct native proofs are prepared before timing and sent over encrypted localhost TCP through the real lean/2 chunk reassembly and pool admission, with a `Task.Run` scheduler stand-in. This path uses production codecs but excludes PacketSender; the mixed-traffic experiment below includes PacketSender. Each row has a three-second offered window, one warmup and measured drain. The scheduler stand-in did not implement production scheduler capacity, deadlines or block-processing pauses; these archived rows do not measure those policies.
 
 | Claims per wrapper | Target tx/s | Actual offered tx/s | Accepted tx/s including drain | Ingress-dropped transactions |
 | --- | ---: | ---: | ---: | ---: |

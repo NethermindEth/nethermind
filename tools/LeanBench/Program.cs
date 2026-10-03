@@ -28,6 +28,8 @@ namespace Nethermind.Tools.LeanBench;
 
 public static partial class Program
 {
+    private const long MaxProtocolPreparedBytes = 512L * 1024 * 1024;
+    private const int MaxProtocolPreparedObjects = 4096;
     private const string BackendCommit = "f33f31bf7c1191667e29a68a3acae63b9164c1c6";
     private static readonly List<BenchmarkRow> Rows = [];
     private static readonly List<BatchSample> Samples = [];
@@ -39,6 +41,16 @@ public static partial class Program
     public static async Task Main(string[] args)
     {
         string Value(string name, string fallback) => args.FirstOrDefault(a => a.StartsWith("--" + name + "=", StringComparison.Ordinal))?.Split('=', 2)[1] ?? fallback;
+        if (Value("transport-checks", "false") == "true")
+        {
+            await TransportChecks.RunAsync();
+            return;
+        }
+        if (Value("duplicate-normalization", "false") == "true")
+        {
+            RunDuplicateNormalization(args);
+            return;
+        }
         if (Value("mixed-traffic", "false") == "true")
         {
             await RunMixedTraffic(args);
@@ -54,8 +66,9 @@ public static partial class Program
         double[] objectRates = Value("object-rates", "1,10,25,50").Split(',').Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         double[] protocolRates = Value("protocol-rates", "25,100").Split(',').Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         int[] sizes = Value("object-sizes", "1024,1048576,10485760").Split(',').Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray();
+        int[] blockCounts = Value("block-counts", "64,128").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         HashSet<string> selected = Value("cases", string.Join(',', Cases.Select(c => c.Name))).Split(',').ToHashSet(StringComparer.Ordinal);
-        if (!double.IsFinite(seconds) || seconds <= 0 || queueCapacity < 1 || warmups < 0 || repetitions < 1 || sizes.Any(s => s < 1 || s > LeanProofStore.MaxWrapperBytes) || rates.Any(r => !double.IsFinite(r) || r <= 0) || objectRates.Any(r => !double.IsFinite(r) || r <= 0) || protocolRates.Any(r => !double.IsFinite(r) || r <= 0)) throw new ArgumentException("Positive duration, queue and rates required");
+        if (!double.IsFinite(seconds) || seconds <= 0 || queueCapacity < 1 || warmups < 0 || repetitions < 1 || blockCounts.Any(c => c < 1 || c > Eip8288Constants.MaxProofDependencies) || sizes.Any(s => s < 1 || s > LeanProofStore.MaxWrapperBytes) || rates.Any(r => !double.IsFinite(r) || r <= 0) || objectRates.Any(r => !double.IsFinite(r) || r <= 0) || protocolRates.Any(r => !double.IsFinite(r) || r <= 0)) throw new ArgumentException("Positive duration, queue and rates required");
         Directory.CreateDirectory(output);
         Fixtures fixtures = new(fixtureDirectory);
         NativeLeanProofVerifier.Instance.EnsureAvailable();
@@ -75,6 +88,11 @@ public static partial class Program
             sphincsWitnessBytes = Eip8288Constants.LeanSphincsWitnessBytes,
             transport = "localhost TCP; production Snappy/AES/MAC RLPx codecs; preset session secrets; shared production wrapper admission; no WAN or capability-handshake timing",
             protocolPreprovedTransport = "lean/1; 64KiB chunks; production reassembly and admission; codec/TCP transport excludes PacketSender",
+            protocolSchedulerBackend = typeof(Nethermind.Consensus.Scheduler.BackgroundTaskScheduler).FullName,
+            protocolScheduler = "Production BackgroundTaskScheduler from node DI; drain tracking preserves capacity, timeouts and block-processing cancellation; fixed idle chain",
+            protocolPreparationByteLimit = MaxProtocolPreparedBytes,
+            protocolPreparationObjectLimit = MaxProtocolPreparedObjects,
+            percentileMethod = "Nearest rank: sorted[ceil(p * count) - 1]",
             warmupBatches = warmups,
             cryptoRepetitions = repetitions,
             durationSeconds = seconds,
@@ -98,12 +116,11 @@ public static partial class Program
             MeasureCrypto(fixtures, scenario, warmups, repetitions);
             Save();
         }
-        if (Value("block-counts", "64,128") is { Length: > 0 } blockCounts)
-            foreach (int count in blockCounts.Split(',').Select(s => int.Parse(s, CultureInfo.InvariantCulture)))
-            {
-                MeasureCrypto(fixtures, new("block-sphincs" + count, count, 0), warmups, repetitions);
-                Save();
-            }
+        foreach (int count in blockCounts)
+        {
+            MeasureCrypto(fixtures, new("block-sphincs" + count, count, 0), warmups, repetitions);
+            Save();
+        }
         foreach (BenchCase scenario in Cases.Where(c => selected.Contains(c.Name)))
             foreach (double rate in rates)
             {
@@ -302,13 +319,19 @@ public static partial class Program
         MeasuredVerifier verifier = new();
         using ProtocolReceiver receiver = await ProtocolReceiver.Create(verifier);
         using TcpRlpxLoopback transport = new(receiver.Receive);
-        int count = (int)Math.Ceiling(seconds * rate / scenario.TransactionsPerBatch);
+        double requestedBatches = Math.Ceiling(seconds * rate / scenario.TransactionsPerBatch);
+        if (!double.IsFinite(requestedBatches) || requestedBatches > MaxProtocolPreparedObjects - warmups)
+            throw new ArgumentException("Protocol preparation exceeds the 4096-object bound; reduce duration, rate or warmups");
+        int count = (int)requestedBatches;
+        long preparedBytes = 0;
         ConcurrentDictionary<Hash256, (BatchSample Sample, int Bytes, long Scheduled)> transactions = new();
         Dictionary<ValueHash256, BatchSample> byCommitment = [];
         List<(BatchSample Sample, byte[] Wrapper, Hash256[] Hashes)> prepared = [];
         long preparationStarted = Stopwatch.GetTimestamp();
         for (int index = 0; index < count + warmups; index++)
         {
+            if (preparedBytes > MaxProtocolPreparedBytes - LeanProofStore.MaxWrapperBytes)
+                throw new ArgumentException("Protocol preparation exceeds 512 MiB; reduce duration or rate");
             AggregationInput input = fixtures.Input(scenario, index);
             ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(input.Deps);
             List<Transaction> txs = [];
@@ -334,6 +357,7 @@ public static partial class Program
                 ProofBytes = proof.Length,
                 WrapperBytes = wrapper.Length
             };
+            preparedBytes += wrapper.Length;
             byCommitment.Add(commitment, sample);
             foreach (Transaction tx in txs) transactions.TryAdd(tx.Hash!, (sample, Rlp.Encode(tx).Bytes.Length, 0));
             prepared.Add((sample, wrapper, txs.Select(tx => tx.Hash!).ToArray()));
@@ -458,7 +482,7 @@ public static partial class Program
         double offeredDuration, double duration, long offeredTransactions, long offeredObjects, long droppedTransactions, long droppedObjects, double cpu, double preparationSeconds = 0, double actualSendDuration = 0)
     {
         double[] latency = samples.Where(s => kind != "protocol-preproved" || s.AcceptedUniqueTransactions > 0).Select(s => s.LatencyMs).Order().ToArray();
-        double Percentile(double percentile) => latency.Length == 0 ? 0 : latency[(int)Math.Ceiling((latency.Length - 1) * percentile)];
+        double Percentile(double percentile) => latency.Length == 0 ? 0 : latency[(int)Math.Ceiling(latency.Length * percentile) - 1];
         return new()
         {
             Kind = kind,
