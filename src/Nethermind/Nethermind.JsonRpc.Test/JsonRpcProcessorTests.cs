@@ -247,6 +247,25 @@ public class JsonRpcProcessorTests
         }
     }
 
+    [TestCase("\"eth_call\"", "eth_call", true)]
+    [TestCase("\"engine_newPayloadV4\"", "engine_newPayloadV4", true)]
+    [TestCase("\"eth_\\u0063all\"", "eth_call", false)]
+    [TestCase("\"eth_unknown\"", "eth_unknown", false)]
+    [TestCase("\"eth_callx\"", "eth_callx", false)]
+    [TestCase("\"\"", "", false)]
+    public void KnownRpcMethodNames_interns_json_element(string json, string expected, bool expectedCached)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+
+        string? methodName = KnownRpcMethodNames.Intern(document.RootElement);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(methodName, Is.EqualTo(expected));
+            Assert.That(ReferenceEquals(methodName, TryGetKnownMethodName(expected)), Is.EqualTo(expectedCached));
+        }
+    }
+
     [Test]
     public void Generated_known_method_names_cover_rpc_module_interfaces()
     {
