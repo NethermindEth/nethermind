@@ -52,11 +52,14 @@ public class DataColumnReconstructionTests
     private static byte[] Flatten(DataColumnSidecar[] matrix, System.Func<DataColumnSidecar, SszBlobCell[]> selector) =>
         [.. matrix.SelectMany(s => selector(s).SelectMany(c => c.AsSpan().ToArray()))];
 
-    [Test]
-    public void Reconstruction_from_exactly_the_threshold_succeeds_and_round_trips_to_the_original_data()
+    [TestCase(false, TestName = "Reconstruction_from_exactly_the_threshold_succeeds_and_round_trips_to_the_original_data")]
+    [TestCase(true, TestName = "Reconstruction_works_from_an_arbitrary_non_prefix_subset_of_columns")]
+    public void Reconstruction_round_trips_to_the_original_data(bool nonPrefix)
     {
         (DataColumnSidecar[] fullMatrix, _) = BuildFullMatrix();
-        DataColumnSidecar[] held = [.. fullMatrix.Take(Eip7594DasConstants.RequiredColumnsForReconstruction)];
+        DataColumnSidecar[] held = nonPrefix
+            ? [.. fullMatrix.Where((_, i) => i % 2 == 0)] // every even column: exactly 64
+            : [.. fullMatrix.Take(Eip7594DasConstants.RequiredColumnsForReconstruction)];
 
         bool ok = DataColumnReconstruction.TryReconstruct(held, out DataColumnSidecar[] recoveredMatrix);
 
@@ -118,21 +121,6 @@ public class DataColumnReconstructionTests
         bool ok = DataColumnReconstruction.TryReconstruct(held, out _);
 
         Assert.That(ok, Is.False);
-    }
-
-    [Test]
-    public void Reconstruction_works_from_an_arbitrary_non_prefix_subset_of_columns()
-    {
-        (DataColumnSidecar[] fullMatrix, _) = BuildFullMatrix();
-        DataColumnSidecar[] held = [.. fullMatrix.Where((_, i) => i % 2 == 0)]; // every even column: exactly 64
-
-        bool ok = DataColumnReconstruction.TryReconstruct(held, out DataColumnSidecar[] recoveredMatrix);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(ok, Is.True);
-            Assert.That(Flatten(recoveredMatrix, s => s.Column!), Is.EqualTo(Flatten(fullMatrix, s => s.Column!)));
-        });
     }
 
     [Test]
