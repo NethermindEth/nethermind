@@ -779,9 +779,10 @@ dotnet run --project src/Nethermind/Nethermind.Runner -c release -- --config ./x
   never proposes or votes. The signing key is `KeyStore.BlockAuthorAccount` from the keystore, falling back to
   the node key, which `KeyStore.TestNodeKey` overrides with a plaintext key (dev only; it doubles as the
   node's enode key). Its address has to be in the committee for the node's blocks and votes to count.
-- Per node: `Network.Bootnodes` (running a dedicated bootnode and leaving the chainspec's `nodes` array empty
+- Per node: `Discovery.Bootnodes` (running a dedicated bootnode and leaving the chainspec's `nodes` array empty
   keeps the chain description free of deployment detail — `Network.StaticPeers` works instead when there is no
-  bootnode), `Network.P2PPort` and `Network.DiscoveryPort` (keep the two equal), `Network.ExternalIp` set to
+  bootnode; the deprecated `Network.Bootnodes` setting remains supported), `Network.P2PPort` and
+  `Network.DiscoveryPort` (keep the two equal), `Network.ExternalIp` set to
   the address peers should dial, `KeyStore.TestNodeKey`, `--data-dir`, and the `JsonRpc` settings.
   `JsonRpc.EnabledModules` replaces the default list rather than adding to it, so name `Xdc` for the
   `XDPoS_*` methods *and* everything else the node should still serve — `Net` for `net_peerCount`, for
