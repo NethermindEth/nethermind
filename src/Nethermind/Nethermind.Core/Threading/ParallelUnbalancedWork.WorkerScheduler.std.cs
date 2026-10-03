@@ -26,6 +26,8 @@ public partial class ParallelUnbalancedWork
         private int _pending;
         // Low bits count reserved runners; high bits count those that have not started.
         private long _runners;
+        // A Stopwatch timestamp until which a runner that finds no work waits for more; 0 when runners leave at once.
+        private long _keepRunnersUntil;
 
         internal WorkerScheduler(int concurrency, Action<IThreadPoolWorkItem>? schedule = null,
             WorkerGroup? group = null, WorkerScheduler? parent = null)
@@ -34,6 +36,29 @@ public partial class ParallelUnbalancedWork
             Parent = parent;
             Group = group ?? parent?.Group;
             _schedule = parent is null ? schedule ?? QueueToThreadPool : parent.ScheduleChildRunner;
+        }
+
+        internal void KeepRunnersUntil(long timestamp) => Volatile.Write(ref _keepRunnersUntil, timestamp);
+
+        internal int ReservedRunners => (int)Volatile.Read(ref _runners);
+
+        internal bool KeepsRunners => Volatile.Read(ref _keepRunnersUntil) != 0;
+
+        /// <summary>While runners are kept, spins until work is ready or the hold ends; true when work is ready.</summary>
+        private bool WaitForWork()
+        {
+            long until = Volatile.Read(ref _keepRunnersUntil);
+            if (until == 0 || Stopwatch.GetTimestamp() >= until) return false;
+
+            SpinWait spinner = default;
+            while (Volatile.Read(ref _first) is null)
+            {
+                until = Volatile.Read(ref _keepRunnersUntil);
+                if (until == 0 || Stopwatch.GetTimestamp() >= until) return false;
+                spinner.SpinOnce(sleep1Threshold: -1);
+            }
+
+            return true;
         }
 
         internal WorkerScope? EnterForJoin()
@@ -289,6 +314,7 @@ public partial class ParallelUnbalancedWork
                 while (true)
                 {
                     WorkQueue? queue = Volatile.Read(ref _first);
+                    if (queue is null && WaitForWork()) continue;
                     if (queue is null)
                     {
                         // Release the reservation before rechecking publication, so either this
