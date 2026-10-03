@@ -202,6 +202,7 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? Eip8272TransitionTimestamp { get; set; }
     public ulong? Eip7906TransitionTimestamp { get; set; }
+    public ulong? Eip7979TransitionTimestamp { get; set; }
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
     public ulong? Eip2780TransitionTimestamp { get; set; }

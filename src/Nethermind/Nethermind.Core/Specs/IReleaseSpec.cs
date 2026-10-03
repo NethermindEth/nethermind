@@ -342,6 +342,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7906Enabled { get; }
 
         /// <summary>
+        /// EIP-7979: call and return opcodes (<c>CALLSUB</c>, <c>CALLDEST</c>, <c>RETURNSUB</c>) with a per-frame return stack.
+        /// </summary>
+        bool IsEip7979Enabled { get; }
+
+        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }
