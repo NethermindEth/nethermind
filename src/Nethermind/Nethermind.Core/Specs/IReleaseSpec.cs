@@ -326,6 +326,9 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip8141Enabled { get; }
 
+        /// <summary>EIP-8288: dependency frames and recursive proof aggregation.</summary>
+        bool IsEip8288Enabled { get; }
+
         /// <summary>
         /// EIP-8250: keyed nonces for frame transactions.
         /// </summary>

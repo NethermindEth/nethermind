@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
 using Nethermind.Stateless.Execution;
 using Nethermind.Zkvm.Abstractions;
 
@@ -21,10 +22,11 @@ namespace Nethermind.Stateless.Guest;
 /// </remarks>
 partial class Program
 {
+    private static readonly ILeanProofVerifier _leanProofVerifier = new UnsupportedLeanProofVerifier();
     static int Main()
     {
         ReadOnlySpan<byte> input = IO.ReadInput();
-        ReadOnlySpan<byte> output = StatelessExecutor.Execute(input);
+        ReadOnlySpan<byte> output = StatelessExecutor.Execute(input, _leanProofVerifier);
 
         WriteOutput(output);
 
@@ -71,4 +73,15 @@ partial class Program
 
         Environment.Exit(0);
     }
+}
+
+/// <summary>The guest input format has no EIP-8288 proof profile.</summary>
+internal sealed class UnsupportedLeanProofVerifier : ILeanProofVerifier
+{
+    private static NotSupportedException Unsupported() => new("EIP-8288 proofs are unsupported in the stateless guest");
+    public void EnsureAvailable() => throw Unsupported();
+    public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 key, ReadOnlySpan<byte> witness) => throw Unsupported();
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 key, ReadOnlySpan<byte> witness) => throw Unsupported();
+    public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof) => throw Unsupported();
+    public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input) => throw Unsupported();
 }

@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -55,6 +56,7 @@ namespace Nethermind.Synchronization
         private readonly IHistoryPruner _historyPruner;
         private readonly ISyncPointers? _syncPointers;
         private readonly ISyncConfig _syncConfig;
+        private readonly IHeaderDecoder _headerDecoder;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -84,11 +86,13 @@ namespace Nethermind.Synchronization
             IHistoryPruner historyPruner,
             ISpecProvider specProvider,
             ILogManager logManager,
+            IHeaderDecoder headerDecoder,
             ISyncPointers? syncPointers = null)
         {
             _syncPointers = syncPointers;
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncConfig = config;
+            _headerDecoder = headerDecoder;
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -418,7 +422,89 @@ namespace Nethermind.Synchronization
                 : _blockAccessListStore.GetRlp(header.Number, blockHash);
         }
 
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(numberOfBlocks);
+            if (numberOfBlocks == 0 || skip < 0) return ArrayPoolList<BlockHeader>.Empty();
+            numberOfBlocks = Math.Min(numberOfBlocks, 1024);
+            const BlockTreeLookupOptions options = BlockTreeLookupOptions.TotalDifficultyNotNeeded;
+            BlockHeader? first = _blockTree.FindHeader(hash, options);
+            if (first is null) return BoundLegacyHeaders(_blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse));
+
+            if (first.RecursiveStark is null && !_specProvider.GetSpec(first).IsEip8288Enabled)
+            {
+                if (reverse) return BoundLegacyHeaders(_blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse));
+                if (TryGetHeaderNumber(first.Number, numberOfBlocks - 1, skip, reverse, out ulong lastNumber))
+                {
+                    lastNumber = ulong.Min(lastNumber, _blockTree.BestKnownNumber);
+                    if (lastNumber >= first.Number
+                        && _blockTree.FindHeader(lastNumber, options) is { RecursiveStark: null } last
+                        && !_specProvider.GetSpec(last).IsEip8288Enabled)
+                        return BoundLegacyHeaders(_blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse));
+                }
+            }
+
+            ArrayPoolList<BlockHeader> headers = new(Math.Min(numberOfBlocks, 64));
+            try
+            {
+                int contentLength = 0;
+                BlockHeader? current = first;
+                while (current is not null && headers.Count < numberOfBlocks)
+                {
+                    int headerLength = _headerDecoder.GetLength(current, RlpBehaviors.None);
+                    // Reserve the ETH/66 request ID and enclosing list before allocating the response.
+                    const int envelopeBytes = 64;
+                    if (headerLength > Eip8288Constants.MaxHeaderResponseBytes - envelopeBytes - contentLength
+                        || Rlp.LengthOfSequence(contentLength + headerLength) > Eip8288Constants.MaxHeaderResponseBytes - envelopeBytes) break;
+                    headers.Add(current);
+                    contentLength += headerLength;
+                    if (headers.Count == numberOfBlocks) break;
+
+                    if (reverse && skip == 0)
+                        current = current.Number == 0 ? null : _blockTree.FindParentHeader(current, options);
+                    else
+                        current = TryGetHeaderNumber(first.Number, headers.Count, skip, reverse, out ulong nextNumber)
+                            ? _blockTree.FindHeader(nextNumber, options) : null;
+                }
+                return headers;
+            }
+            catch
+            {
+                headers.Dispose();
+                throw;
+            }
+        }
+
+        private IOwnedReadOnlyList<BlockHeader> BoundLegacyHeaders(IOwnedReadOnlyList<BlockHeader> headers)
+        {
+            int contentLength = 0;
+            for (int i = 0; i < headers.Count; i++)
+            {
+                int length = headers[i] is { } header ? _headerDecoder.GetLength(header, RlpBehaviors.None) : 1;
+                if (length > Eip8288Constants.MaxHeaderResponseBytes - 64 - contentLength
+                    || Rlp.LengthOfSequence(contentLength + length) > Eip8288Constants.MaxHeaderResponseBytes - 64)
+                {
+                    ArrayPoolList<BlockHeader> bounded = new(i);
+                    for (int j = 0; j < i; j++) bounded.Add(headers[j]);
+                    headers.Dispose();
+                    return bounded;
+                }
+                contentLength += length;
+            }
+            return headers;
+        }
+
+        private static bool TryGetHeaderNumber(ulong start, int index, int skip, bool reverse, out ulong number)
+        {
+            ulong offset = (ulong)index * ((ulong)skip + 1);
+            if (reverse ? start < offset : ulong.MaxValue - start < offset)
+            {
+                number = 0;
+                return false;
+            }
+            number = reverse ? start - offset : start + offset;
+            return true;
+        }
 
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {

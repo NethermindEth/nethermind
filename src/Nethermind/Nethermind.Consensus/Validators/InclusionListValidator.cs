@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -20,18 +21,20 @@ public static class InclusionListValidator
 {
     private const int StackAllocEntries = 256;
 
-    public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
-        => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator);
-
-    public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
+    public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
+        RecursiveStark? proof, ILeanProofVerifier verifier, Func<Transaction, bool>? frameCanInclude = null)
     {
         if (!spec.InclusionListsEnabled) return true;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
         if (il is null) return true;
-
         // No room for even the cheapest possible tx → nothing is appendable.
-        ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
-        if (block.GasUsed + minIntrinsicGas > block.GasLimit) return true;
+        if (IsBlockFull(block, spec)) return true;
+
+        if (spec.IsEip8288Enabled)
+        {
+            il = InclusionListProofValidator.SelectEligible(il, proof, block.InclusionListProvenDependencies,
+                verifier, spec, out _, out _);
+        }
 
         // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.
         bool[]? rented = il.Length > StackAllocEntries
@@ -41,7 +44,7 @@ public static class InclusionListValidator
         {
             Span<bool> included = rented is null ? stackalloc bool[il.Length] : rented.AsSpan(0, il.Length);
             included.Clear();
-            return IsSatisfied(block, il, included, state, spec, txValidator);
+            return IsSatisfied(block, il, included, state, spec, txValidator, proof, frameCanInclude);
         }
         finally
         {
@@ -49,7 +52,13 @@ public static class InclusionListValidator
         }
     }
 
-    private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
+    public static bool IsBlockFull(Block block, IReleaseSpec spec)
+    {
+        ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        return block.GasUsed > block.GasLimit || minIntrinsicGas > block.GasLimit - block.GasUsed;
+    }
+
+    private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, RecursiveStark? proof, Func<Transaction, bool>? frameCanInclude)
     {
         // Duplicate IL entries stay unmarked but fail the appendability check (nonce advanced).
         Dictionary<Hash256, int> ilByHash = new(il.Length);
@@ -65,17 +74,50 @@ public static class InclusionListValidator
                 included[idx] = true;
         }
 
+        HashSet<FrameDependency> dependencies = spec.IsEip8288Enabled ? [.. Eip8288Dependencies.ForBlock(block)] : [];
+        int genericProofs = 0;
+        foreach (FrameDependency dependency in dependencies)
+            if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) genericProofs++;
+        Dictionary<FrameDependency, int> genericLengths = [];
+        bool publicSizesValid = genericProofs == 0 || block.Header.RecursiveStark?.StarkProof is { } blockProof
+            && LeanProofCapacity.TryReadGenericWitnessLengths(blockProof, genericLengths);
+        if (spec.IsEip8288Enabled && HasGenericDependencies(il))
+            publicSizesValid &= proof?.StarkProof is { } inclusionProof
+                && LeanProofCapacity.TryReadGenericWitnessLengths(inclusionProof, genericLengths);
+        LeanProofCapacity.AppendBudget capacity = LeanProofCapacity.CreateAppendBudget(dependencies, genericLengths);
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
-            if (included[i]) continue;
-            // The rules below judge appendability on the account nonce, which a frame transaction does not
-            // use (EIP-8369 Profile 2), so reading one through them reports an honest payload as censoring.
-            if (il[i].SupportsFrames) continue;
+            if (included[i] || il[i].SupportsFrames && il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
+            if (il[i].SupportsFrames)
+            {
+                if (!spec.IsEip8288Enabled || !CouldIncludeFrameTx(il[i], block, spec, txValidator)) continue;
+                List<FrameDependency> appended = Eip8288Dependencies.ForTransaction(il[i]);
+                if ((appended.Count == 0 || publicSizesValid) && capacity.CapacityError(appended) is null
+                    && (frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
+                continue;
+            }
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
         }
         return true;
     }
+
+    private static bool HasGenericDependencies(Transaction[] transactions)
+    {
+        foreach (Transaction transaction in transactions)
+            foreach (TxFrame frame in transaction.Frames ?? [])
+                if (Eip8288Dependencies.IsDependencyFrame(frame))
+                    for (int offset = 31; offset < frame.Data.Length; offset += Eip8288Constants.DependencyTripleLength)
+                        if (frame.Data.Span[offset] == Eip8288Constants.LeanStarkScheme) return true;
+        return false;
+    }
+
+    private static bool CouldIncludeFrameTx(Transaction tx, Block block, IReleaseSpec spec, ITxValidator validator)
+        => tx.SenderAddress is not null && FitsRemainingBlockGas(tx, block, spec, Eip8288Dependencies.RecursiveStarkGas(tx))
+            && validator.IsWellFormed(tx, spec, block.GasLimit) && tx.MaxFeePerGas >= block.BaseFeePerGas
+            && (!tx.CarriesBlobs || BlobGasCalculator.CalculateBlobGas(tx) <= spec.GasCosts.MaxBlobGasPerBlock - (block.Header.BlobGasUsed ?? 0)
+                && BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobFee)
+                && (tx.MaxFeePerBlobGas ?? UInt256.Zero) >= blobFee);
 
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
@@ -117,16 +159,25 @@ public static class InclusionListValidator
     /// matching dimension, so measuring it against the header's max(execution, state) rejects transactions the
     /// spec judges includable. Callers whose block carries no dimensions must not put an EIP-8037 block to this
     /// check — the max alone under-reports censorship — which is why the engine API declines to answer instead.</remarks>
-    private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec)
+    private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec, ulong additionalGas = 0)
     {
         // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the
         // way GasLimit - tx.GasLimit would for an oversized tx.
-        if (!spec.IsEip8037Enabled) return tx.GasLimit <= block.GasLimit - block.GasUsed;
+        if (!spec.IsEip8037Enabled) return tx.GasLimit <= block.GasLimit - block.GasUsed
+            && additionalGas <= block.GasLimit - block.GasUsed - tx.GasLimit;
 
         (ulong execution, ulong state) = block.Header.GasUsedPerDimension ?? (block.GasUsed, block.GasUsed);
+        if (spec.IsEip8288Enabled && block.Header.GasUsedPerDimension is not null)
+        {
+            ulong proofGas = (ulong)Eip8288Dependencies.DependencyDeclarationCount(block) * Eip8288Constants.LeanStarkVerificationGas;
+            execution += proofGas;
+            state += proofGas;
+        }
         return Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation)
             && Eip8037BlockGasInclusionCheck.Validate(block.GasLimit, execution, state, executionReservation, stateReservation)
-                == Eip8037BlockGasInclusionCheck.Outcome.Ok;
+                == Eip8037BlockGasInclusionCheck.Outcome.Ok
+            && additionalGas <= block.GasLimit - execution - executionReservation
+            && additionalGas <= block.GasLimit - state - stateReservation;
     }
 
     /// <summary>Balance the sender would have had when an appended transaction executed.</summary>

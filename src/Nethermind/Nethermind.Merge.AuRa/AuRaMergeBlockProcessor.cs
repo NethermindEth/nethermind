@@ -20,6 +20,8 @@ using Nethermind.Evm.State;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.AuRa.Config;
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Merge.AuRa;
 
 public class AuRaMergeBlockProcessor(
@@ -37,6 +39,7 @@ public class AuRaMergeBlockProcessor(
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
     IAuRaValidator? validator,
+    ILeanProofVerifier leanProofVerifier,
     ITxFilter? txFilter = null,
     AuRaContractGasLimitOverride? gasLimitOverride = null,
     ContractRewriter? contractRewriter = null)
@@ -54,6 +57,7 @@ public class AuRaMergeBlockProcessor(
         executionRequestsProcessor,
         balManager,
         validator,
+        leanProofVerifier,
         txFilter,
         gasLimitOverride,
         contractRewriter)

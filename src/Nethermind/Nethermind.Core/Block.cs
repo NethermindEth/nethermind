@@ -48,11 +48,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark, InclusionListProvenDependencies = InclusionListProvenDependencies };
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList);
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark, InclusionListProvenDependencies = InclusionListProvenDependencies };
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList);
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark, InclusionListProvenDependencies = InclusionListProvenDependencies };
 
     public BlockHeader Header { get; }
 
@@ -138,6 +138,12 @@ public class Block
 
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
+
+    [JsonIgnore]
+    public RecursiveStark? InclusionListRecursiveStark { get; set; }
+
+    [JsonIgnore]
+    public byte[]? InclusionListProvenDependencies { get; set; }
 
     // Set after the post-execution check: false means the block is valid and executable but did not
     // honour its inclusion list (EIP-7805).

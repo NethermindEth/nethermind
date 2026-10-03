@@ -263,7 +263,7 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        if (!FrameTxValidation.IsWellFormed(transaction, releaseSpec.IsEip7906Enabled, out string? error))
+        if (!FrameTxValidation.IsWellFormed(transaction, releaseSpec, out string? error))
         {
             return error!;
         }

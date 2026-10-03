@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -230,6 +231,30 @@ public class GetPayloadDirectResponseTests
 
         Assert.That(() => { ExecutionPayloadBodyV1Result? _ = direct[-1]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
         Assert.That(() => { ExecutionPayloadBodyV1Result? _ = direct[direct.Count]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
+    }
+
+    // The hand-rolled writer is the path a CL actually receives, and recursive_stark is the one field the
+    // parity matrix does not vary: an empty proof and one past the hex chunking threshold both risk drift.
+    [TestCase(0, false)]
+    [TestCase(0, true)]
+    [TestCase(3, false)]
+    [TestCase(3, true)]
+    [TestCase(PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1, false)]
+    [TestCase(PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1, true)]
+    public async Task Direct_response_json_matches_dto_json_with_recursive_stark(int proofLength, bool inclusionProof)
+    {
+        (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
+        block.Header.RecursiveStark = new RecursiveStark(new byte[proofLength], Keccak.Compute("deps"));
+        if (inclusionProof) block.InclusionListRecursiveStark = new RecursiveStark(new byte[proofLength], Keccak.Compute("il-deps"));
+
+        object plain = CreatePlainResult(6, block, blobsBundle, executionRequests);
+        IStreamableResult direct = CreateDirectResult(6, block, blobsBundle, executionRequests);
+
+        byte[] expected = JsonSerializer.SerializeToUtf8Bytes(plain, plain.GetType(), EthereumJsonSerializer.JsonOptions);
+        byte[] actual = await WriteStreamableAsync(direct);
+
+        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
+        Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["inclusionListRecursiveStark"], Is.Null);
     }
 
     [Test]

@@ -71,6 +71,8 @@ public class GethGenesisConfigJson : IHasNamedForks
     /// already canonical.
     /// </remarks>
     public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>EIP-8288 prototype activation in Unix timestamp seconds; null leaves it unscheduled.</summary>
+    public ulong? Eip8288PrototypeTime { get => GetTime(); set => SetTime(value); }
 
     // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
     public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }

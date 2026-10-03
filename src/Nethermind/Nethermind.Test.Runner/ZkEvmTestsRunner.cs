@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using Ethereum.Test.Base;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Stateless.Execution;
 
 namespace Nethermind.Test.Runner;
@@ -20,6 +22,8 @@ namespace Nethermind.Test.Runner;
 /// </remarks>
 public static class ZkEvmTestsRunner
 {
+    private static readonly ILeanProofVerifier _leanProofVerifier = new NativeLeanProofVerifier();
+
     public static List<EthereumTestResult> RunTest(BlockchainTest test)
     {
         List<EthereumTestResult> results = [];
@@ -70,7 +74,7 @@ public static class ZkEvmTestsRunner
 
         try
         {
-            byte[] actualOutput = StatelessExecutor.Execute(Convert.FromHexString(inputBytes.AsSpan(2)));
+            byte[] actualOutput = StatelessExecutor.Execute(Convert.FromHexString(inputBytes.AsSpan(2)), _leanProofVerifier);
             byte[] expectedOutput = Convert.FromHexString(expectedOutputBytes.AsSpan(2));
 
             return Bytes.AreEqual(actualOutput, expectedOutput)

@@ -11,6 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockHeadersMessageSerializer(IHeaderDecoder headerDecoder = null) : IZeroInnerMessageSerializer<BlockHeadersMessage>
     {
+        internal const int MaxResponseBytes = Eip8288Constants.MaxHeaderResponseBytes;
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockHeadersMessage>(NethermindSyncLimits.MaxHeaderFetch, nameof(BlockHeadersMessage.BlockHeaders));
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
 
@@ -37,14 +38,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
             for (int i = 0; i < blockHeaders.Length; i++)
             {
-                contentLength += _headerDecoder.GetLength(blockHeaders[i], RlpBehaviors.None);
+                int headerLength = _headerDecoder.GetLength(blockHeaders[i], RlpBehaviors.None);
+                if (headerLength > MaxResponseBytes - contentLength)
+                    throw new RlpException("Block headers response exceeds the byte limit");
+                contentLength += headerLength;
             }
 
-            return Rlp.LengthOfSequence(contentLength);
+            int length = Rlp.LengthOfSequence(contentLength);
+            if (length > MaxResponseBytes)
+                throw new RlpException("Block headers response exceeds the byte limit");
+            return length;
         }
 
         public BlockHeadersMessage Deserialize(ref RlpReader ctx)
         {
+            if (ctx.PeekNextRlpLength() > MaxResponseBytes)
+                throw new RlpException("Block headers response exceeds the byte limit");
             BlockHeadersMessage message = new();
             message.BlockHeaders = Rlp.DecodeArrayPool(ref ctx, _headerDecoder, limit: RlpLimit);
             return message;

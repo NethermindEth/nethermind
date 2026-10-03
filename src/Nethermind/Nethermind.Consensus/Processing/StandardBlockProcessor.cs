@@ -9,6 +9,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 
@@ -19,6 +20,7 @@ public sealed class StandardBlockProcessor(
     ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator,
     IBlockProcessor.IBlockTransactionsExecutor executor, IWorldState state, IReceiptStorage receipts,
     IBeaconBlockRootHandler beaconRoot, IBlockhashStore blockHashes, ILogManager logManager,
-    IWithdrawalProcessor withdrawals, IExecutionRequestsProcessor requests, IBlockAccessListManager balManager)
+    IWithdrawalProcessor withdrawals, IExecutionRequestsProcessor requests, IBlockAccessListManager balManager,
+    ILeanProofVerifier leanProofVerifier)
     : BlockProcessor(specProvider, blockValidator, rewardCalculator, executor, state, receipts,
-        beaconRoot, blockHashes, logManager, withdrawals, requests, balManager);
+        beaconRoot, blockHashes, logManager, withdrawals, requests, balManager, leanProofVerifier);

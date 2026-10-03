@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -22,7 +24,8 @@ namespace Nethermind.Consensus.Processing
         public class BlockProductionTransactionPicker(
             ISpecProvider specProvider,
             long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes,
-            bool ignoreEip3607 = false)
+            bool ignoreEip3607 = false,
+            LeanProofStore? leanProofStore = null)
             : IBlockProductionTransactionPicker
         {
             private readonly long _maxTxLengthBytes = maxTxLengthKilobytes.KiB;
@@ -43,7 +46,8 @@ namespace Nethermind.Consensus.Processing
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
-                ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
+                ulong reservedStarkGas = (block as BlockToProduce)?.RecursiveStarkGas ?? 0;
+                ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas).SaturatingSub(reservedStarkGas);
 
                 // No more gas available in block for any transactions, the only case we have to really stop. An
                 // EIP-8141 frame transaction reserves from its own lower intrinsic cost, so the legacy floor gates the spec read.
@@ -67,13 +71,18 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+                ulong txStarkGas = spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(currentTx) : 0;
+                gasRemaining = gasRemaining.SaturatingSub(txStarkGas);
 
                 if (transactionsInBlock.Contains(currentTx))
                 {
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
-                ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas);
+                ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas).SaturatingSub(reservedStarkGas);
+                if (txStarkGas > stateGasRemaining)
+                    return args.Set(TxAction.Skip, "Not enough state gas for dependency proof");
+                stateGasRemaining -= txStarkGas;
                 if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
                 {
                     return args.Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
@@ -129,6 +138,22 @@ namespace Nethermind.Consensus.Processing
                     {
                         return args;
                     }
+                }
+
+                if (txStarkGas != 0)
+                {
+                    List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx);
+                    BlockToProduce? producing = block as BlockToProduce;
+                    LeanProofBudget budget = producing?.LeanProofBudget ?? new();
+                    List<FrameDependency> missing = budget.Missing(required);
+                    AggregationInput candidateInput = new();
+                    if (!budget.TryUseInclusionList(producing?.InclusionListProofInput, required, out candidateInput) && missing.Count != 0
+                        && (leanProofStore is null || !leanProofStore.TryGetInput(missing, out candidateInput)))
+                        return args.Set(TxAction.Skip, "Missing verified dependency witnesses");
+                    if (!budget.TryPrepare(candidateInput, required, out AggregationInput contribution, out string? proofError))
+                        return args.Set(TxAction.Skip, proofError!);
+                    args.LeanProofInput = contribution;
+                    args.LeanDependencies = required;
                 }
 
                 OnAddingTransaction(args);

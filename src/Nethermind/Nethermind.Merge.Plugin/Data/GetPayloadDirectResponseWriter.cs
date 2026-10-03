@@ -136,6 +136,15 @@ internal static class GetPayloadDirectResponseWriter
             WriteNullableUlongHexString(writer, block.SlotNumber);
         }
 
+        // Proof fields are present only on EIP-8288 payloads.
+        if (block.Header.RecursiveStark is { } recursiveStark)
+        {
+            writer.Write(",\"recursiveStarkProof\":"u8);
+            WriteHexString(writer, recursiveStark.StarkProof, chunked: recursiveStark.StarkProof.Length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
+            writer.Write(",\"recursiveStarkBlockDepsHash\":"u8);
+            WriteHexString(writer, recursiveStark.BlockDepsHash.Bytes, chunked: false);
+        }
+
         writer.Write("}"u8);
         return false;
     }

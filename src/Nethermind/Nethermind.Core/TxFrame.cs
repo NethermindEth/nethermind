@@ -35,6 +35,9 @@ public enum FrameMode : byte
     /// <summary>EIP-7906: a read-only trailing frame, called by <c>ENTRY_POINT</c>, that asserts the
     /// transaction's outcome.</summary>
     PostTx = 3,
+
+    /// <summary>EIP-8288 dependency declaration, proven by the block recursive STARK.</summary>
+    DepVerify = Eip8288Constants.DepVerifyFrameMode,
 }
 
 /// <summary>The approval scope an EIP-8141 frame may grant, plus its atomic-batch membership.</summary>

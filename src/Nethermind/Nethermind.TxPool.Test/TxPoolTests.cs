@@ -28,6 +28,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -117,6 +118,22 @@ namespace Nethermind.TxPool.Test
             {
                 await _txPool.DisposeAsync();
             }
+        }
+
+        [Test, NonParallelizable]
+        public async Task Disposed_pool_returns_only_exclusively_owned_blob_buffers([Values] bool ownsTransaction)
+        {
+            _txPool = CreatePool();
+            await _txPool.DisposeAsync();
+            Transaction tx = DecodeReceivedBlob(0x11, pooled: true);
+            object wrapper = tx.NetworkWrapper;
+            bool canRecycle = false;
+            AcceptTxResult result = ownsTransaction
+                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out canRecycle)
+                : _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            Assert.That(canRecycle, Is.EqualTo(ownsTransaction));
+            Assert.That(tx.NetworkWrapper, ownsTransaction ? Is.Null : Is.SameAs(wrapper));
         }
 
         [Test, NonParallelizable]
@@ -3612,6 +3629,40 @@ namespace Nethermind.TxPool.Test
             return frameTx;
         }
 
+        private void CommitRecentRoots(RecentRootReference[] references)
+        {
+            foreach (RecentRootReference reference in references)
+                _stateProvider.Set(RecentRootStore.ReferenceCell(reference.SourceId, reference.Slot),
+                    RecentRootStore.EntryHash(reference.SourceId, reference.Slot, reference.Root).ToUInt256());
+        }
+
+        [Test]
+        public async Task Recent_roots_are_revalidated_for_commitment_and_slot_changes([Values] bool commitmentChanged)
+        {
+            _blockTree.Head.Header.SlotNumber = commitmentChanged ? 0UL : 8190UL;
+            OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(spec));
+            RecentRootReference[] references = [new(TestItem.KeccakA, 0, TestItem.KeccakB)];
+            CommitRecentRoots(references);
+            Transaction transaction = SignedFrameTx([SelfVerifyPrefixFrame()], references);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            BlockHeader header = Build.A.BlockHeader.WithParent(_blockTree.Head.Header).WithNumber(_blockTree.Head.Number + 1)
+                .WithTimestamp(_blockTree.Head.Timestamp + 1).WithGasLimit(FixtureHeadGasLimit)
+                .WithSlotNumber(commitmentChanged ? 1UL : 8191UL).TestObject;
+            Block block = new(header, [], []);
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1);
+            if (commitmentChanged)
+            {
+                _stateProvider.Set(RecentRootStore.ReferenceCell(TestItem.KeccakA.ValueHash256, 0), UInt256.Zero);
+                block.AccountChanges.Add(Eip8272Constants.RecentRootAddress);
+            }
+            await RaiseBlockAddedToMainAndWaitForNewHead(block, _blockTree.Head);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+
         /// <summary>The frame-transaction properties a change of head specification can turn from valid to invalid.</summary>
         public enum FrameForkGate { PostTx, RecentRoots, ExecutionGasCap }
 
@@ -3627,6 +3678,11 @@ namespace Nethermind.TxPool.Test
         public async Task Frame_transaction_invalidated_by_the_new_head_is_evicted(FrameForkGate gate, bool revokedAtFork)
         {
             Block head = _blockTree.Head;
+            if (gate == FrameForkGate.RecentRoots)
+            {
+                head.Header.SlotNumber = 1;
+                CommitRecentRoots([new RecentRootReference(TestItem.KeccakA, 1, TestItem.KeccakB)]);
+            }
             _blockTree.BestSuggestedHeader = head.Header;
 
             OverridableReleaseSpec preForkSpec = new(Eip8141Prototype.Instance)
@@ -3705,6 +3761,7 @@ namespace Nethermind.TxPool.Test
         public void SubmitTx_LocallyBuiltFrameTx_IsPricedOnMeasuredReferenceCalldata(bool overCapOnceMeasured)
         {
             OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
+            _blockTree.Head.Header.SlotNumber = Eip8272Constants.MaxRecentRootReferences;
             _txPool = CreatePool(new TxPoolConfig { GasLimit = long.MaxValue, FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(spec));
             _headInfo.BlockGasLimit = long.MaxValue;
 
@@ -3714,6 +3771,7 @@ namespace Nethermind.TxPool.Test
                 references[i] = new RecentRootReference(TestItem.KeccakA, (ulong)i + 1, TestItem.KeccakB);
             }
 
+            CommitRecentRoots(references);
             Transaction probe = ReferenceFrameTx(0);
             probe.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(references);
             Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(probe, spec, out ulong measured, out _), Is.True);
@@ -6620,6 +6678,79 @@ namespace Nethermind.TxPool.Test
         private static void SimulatesAs(IFrameTxPrefixSimulator simulator, FrameTxSimulationResult result) =>
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>()).Returns(result);
 
+        [Test]
+        public async Task Persistent_dependency_blob_pins_full_body_witnesses_and_releases_them_on_shutdown()
+        {
+            LeanProofStore store = new();
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("blob-pending"), default);
+            Transaction transaction = DependencyBlobTransaction(dependency);
+            store.AddVerified([dependency], [[1]], null);
+            _txPool = CreateDependencyBlobPool(store, new BlobTxStorage());
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+            FloodUnpinnedProofs(store);
+            Assert.That(store.Covers(transaction), Is.True, "the persistent pool inserts a light record without dependency frames");
+
+            await _txPool.DisposeAsync();
+            FloodUnpinnedProofs(store);
+            Assert.That(store.Covers(transaction), Is.False, "shutdown releases this pool's witness ownership");
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Invalid));
+        }
+
+        [Test]
+        public async Task Persistent_dependency_blobs_require_available_witnesses_after_restart([Values] bool witnessesAvailable)
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("blob-restart"), default);
+            Transaction transaction = DependencyBlobTransaction(dependency);
+            LeanProofStore initialStore = new();
+            initialStore.AddVerified([dependency], [[1]], null);
+            BlobTxStorage storage = new();
+            _txPool = CreateDependencyBlobPool(initialStore, storage);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            await _txPool.DisposeAsync();
+
+            LeanProofStore restartedStore = new();
+            if (witnessesAvailable) restartedStore.AddVerified([dependency], [[1]], null);
+            _txPool = CreateDependencyBlobPool(restartedStore, storage);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(witnessesAvailable ? 1 : 0));
+            FloodUnpinnedProofs(restartedStore);
+            Assert.That(restartedStore.Covers(transaction), Is.EqualTo(witnessesAvailable));
+        }
+
+        private Transaction DependencyBlobTransaction(FrameDependency dependency)
+        {
+            Transaction transaction = BuildBlobFrameTx(0, 1, withSidecar: true, nonceKeys: [UInt256.Zero]);
+            transaction.Frames = [.. transaction.Frames, new(FrameMode.DepVerify, FrameFlags.None, null,
+                Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+            transaction.FrameSignatures = [FrameSignature(transaction, FrameSignatureDefect.None)];
+            transaction.Hash = transaction.CalculateHash();
+            EnsureSenderBalance(transaction.SenderAddress, UInt256.MaxValue);
+            return transaction;
+        }
+
+        private TxPool CreateDependencyBlobPool(LeanProofStore store, BlobTxStorage storage)
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
+            return CreatePool(new TxPoolConfig
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 10,
+                FrameTxMaxVerifyGas = 0,
+            }, new TestSpecProvider(Eip8288Prototype.Instance), txStorage: storage,
+                frameTxPrefixSimulator: simulator, leanProofStore: store);
+        }
+
+        private static void FloodUnpinnedProofs(LeanProofStore store)
+        {
+            byte[] witness = new byte[64 * 1024];
+            for (int i = 0; i < 1100; i++)
+            {
+                FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"blob-flood:{i}"), default);
+                store.AddVerified([dependency], [witness], null);
+            }
+        }
+
         private TxPool CreatePool(
             ITxPoolConfig config = null,
             ISpecProvider specProvider = null,
@@ -6629,7 +6760,8 @@ namespace Nethermind.TxPool.Test
             bool thereIsPriorityContract = false,
             IEthereumEcdsa ethereumEcdsa = null,
             ITxValidator specChangeTxValidator = null,
-            IFrameTxPrefixSimulator frameTxPrefixSimulator = null)
+            IFrameTxPrefixSimulator frameTxPrefixSimulator = null,
+            LeanProofStore leanProofStore = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -6654,7 +6786,8 @@ namespace Nethermind.TxPool.Test
                 ShouldGossip.Instance,
                 incomingTxFilter is null ? null : [incomingTxFilter],
                 thereIsPriorityContract,
-                frameTxPrefixSimulator);
+                frameTxPrefixSimulator,
+                leanProofStore);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)

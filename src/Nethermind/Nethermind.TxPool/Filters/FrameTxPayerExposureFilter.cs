@@ -130,7 +130,7 @@ internal sealed class FrameTxPayerExposureFilter(
         TxFrame[] frames = tx.Frames!;
         for (int i = FrameTxValidation.ApprovalSearchStart(frames); i < frames.Length; i++)
         {
-            if (frames[i].Mode is FrameMode.Verify or FrameMode.PostTx) continue;
+            if (frames[i].Mode is FrameMode.Verify or FrameMode.PostTx or FrameMode.DepVerify) continue;
             return frames[i].Mode == FrameMode.Sender ? frames[i].Value : UInt256.Zero;
         }
 

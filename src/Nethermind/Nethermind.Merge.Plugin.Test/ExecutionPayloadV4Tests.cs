@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp.Eip7928;
@@ -130,6 +131,135 @@ public class ExecutionPayloadV4Tests
         ExecutionPayload payload = (ExecutionPayload)json.Deserialize(payloadType, EthereumJsonSerializer.JsonOptions)!;
 
         Assert.That(payload.HasUnboundField ? payload.UnboundFieldName : null, Is.EqualTo(expectedUnboundField));
+    }
+
+    [Test]
+    public void Recursive_stark_round_trips_through_payload_and_block()
+    {
+        byte[] proof = [1, 2, 3];
+        Hash256 depsHash = Keccak.Compute("deps");
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+            SlotNumber = 0,
+            RecursiveStarkProof = proof,
+            RecursiveStarkBlockDepsHash = depsHash.Bytes.ToArray(),
+        };
+
+        Block block = payload.TryGetBlock().Data!;
+        Assert.That(block.Header.RecursiveStark, Is.Not.Null);
+        Assert.That(block.Header.RecursiveStark!.StarkProof, Is.EqualTo(proof));
+        Assert.That(block.Header.RecursiveStark.BlockDepsHash, Is.EqualTo(depsHash));
+
+        // Re-create a payload from the reconstructed block and round-trip again: recursive_stark
+        // survives the payload boundary, so the block hash reconciles (it would not if the field
+        // were dropped, since it is part of the header hash).
+        Block reRoundTripped = ExecutionPayloadV4.Create(block).TryGetBlock().Data!;
+        Assert.That(reRoundTripped.Header.CalculateHash(), Is.EqualTo(block.Header.CalculateHash()));
+    }
+
+    // A CL payload is untrusted input, so a proof with a missing or wrong-sized deps hash must fail
+    // the Result rather than throw out of the decode boundary.
+    [TestCase(false, TestName = "Recursive_stark_proof_without_deps_hash_fails_the_result")]
+    [TestCase(true, TestName = "Recursive_stark_deps_hash_of_wrong_length_fails_the_result")]
+    public void Recursive_stark_malformed_deps_hash_fails_the_result(bool wrongLength)
+    {
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+            SlotNumber = 0,
+            RecursiveStarkProof = [1, 2, 3],
+            RecursiveStarkBlockDepsHash = wrongLength ? new byte[31] : null,
+        };
+
+        Result<Block> result = payload.TryGetBlock();
+
+        Assert.That(result.IsError, Is.True);
+        Assert.That(result.Error, Does.Contain(nameof(ExecutionPayloadV3.RecursiveStarkBlockDepsHash)));
+    }
+
+    [Test]
+    public void Recursive_stark_oversized_proof_fails_the_result()
+    {
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            RecursiveStarkProof = new byte[Eip8288Constants.MaxProofBytes + 1],
+            RecursiveStarkBlockDepsHash = new byte[Hash256.Size],
+        };
+
+        Result<Block> result = payload.TryGetBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.Error, Does.Contain(nameof(ExecutionPayloadV3.RecursiveStarkProof)));
+        }
+    }
+
+    [Test]
+    public void Recursive_stark_hash_without_proof_fails_the_result()
+    {
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            RecursiveStarkBlockDepsHash = new byte[Hash256.Size],
+        };
+
+        Result<Block> result = payload.TryGetBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.Error, Does.Contain(nameof(ExecutionPayloadV3.RecursiveStarkProof)));
+        }
+    }
+
+    [Test]
+    public void Recursive_stark_survives_json_round_trip()
+    {
+        byte[] proof = [1, 2, 3];
+        Hash256 depsHash = Keccak.Compute("deps");
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        block.Header.BlobGasUsed = 0;
+        block.Header.ExcessBlobGas = 0;
+        block.Header.SlotNumber = 0;
+        block.Header.RecursiveStark = new RecursiveStark(proof, depsHash);
+        block.Header.Hash = block.Header.CalculateHash();
+        ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
+
+        EthereumJsonSerializer serializer = new();
+        ExecutionPayloadV4 deserialized = serializer.Deserialize<ExecutionPayloadV4>(serializer.Serialize(payload))!;
+
+        Assert.That(deserialized.RecursiveStarkProof, Is.EqualTo(proof));
+        Assert.That(deserialized.RecursiveStarkBlockDepsHash, Is.EqualTo(depsHash.Bytes.ToArray()));
+    }
+
+    [Test]
+    public void Recursive_stark_absent_when_block_has_none()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
+
+        Assert.That(payload.RecursiveStarkProof, Is.Null);
+        Assert.That(payload.TryGetBlock().Data!.Header.RecursiveStark, Is.Null);
     }
 
     private static IEnumerable<TestCaseData> MalformedBlockAccessLists()

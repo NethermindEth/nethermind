@@ -4,9 +4,11 @@
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -32,6 +34,12 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.BlobGasUsed = block.BlobGasUsed;
         executionPayload.ExcessBlobGas = block.ExcessBlobGas;
         executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
+        if (block.Header.RecursiveStark is { } recursiveStark)
+        {
+            executionPayload.RecursiveStarkProof = recursiveStark.StarkProof;
+            executionPayload.RecursiveStarkBlockDepsHash = recursiveStark.BlockDepsHash.Bytes.ToArray();
+        }
+
         return executionPayload;
     }
 
@@ -39,6 +47,18 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
     public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
+        if (InclusionListRecursiveStark is { } inclusionProof
+            && (InclusionListTransactions is null || inclusionProof.BlockDepsHash is null
+                || inclusionProof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes }))
+        {
+            return Result<Block>.Fail("Invalid inclusion-list recursive STARK");
+        }
+
+        if (InclusionListProvenDependencies is { } dependencies
+            && (InclusionListRecursiveStark is null || InclusionListTransactions is null
+                || !Nethermind.Consensus.ProofAggregation.InclusionListProofValidator.HasValidMetadataLength(dependencies)))
+            return Result<Block>.Fail("Invalid inclusion-list proven dependencies");
+
         Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
         if (baseResult.IsError)
         {
@@ -51,6 +71,28 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
         block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
+        block.InclusionListRecursiveStark = InclusionListRecursiveStark;
+        block.InclusionListProvenDependencies = InclusionListProvenDependencies;
+        if (RecursiveStarkProof is null && RecursiveStarkBlockDepsHash is not null)
+        {
+            return Result<Block>.Fail($"Missing {nameof(RecursiveStarkProof)}");
+        }
+
+        if (RecursiveStarkProof is not null)
+        {
+            if (RecursiveStarkProof.Length > NativeLeanProofVerifier.MaxProofBytes)
+            {
+                return Result<Block>.Fail($"{nameof(RecursiveStarkProof)} exceeds the proof size limit");
+            }
+
+            if (RecursiveStarkBlockDepsHash is not { Length: Hash256.Size })
+            {
+                return Result<Block>.Fail($"Invalid {nameof(RecursiveStarkBlockDepsHash)}: expected {Hash256.Size} bytes, got {RecursiveStarkBlockDepsHash?.Length.ToString() ?? "none"}");
+            }
+
+            block.Header.RecursiveStark = new RecursiveStark(RecursiveStarkProof, new Hash256(RecursiveStarkBlockDepsHash));
+        }
+
         return baseResult;
     }
 
@@ -74,4 +116,14 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
     public sealed override ulong? ExcessBlobGas { get; set => field = Bind(value, PayloadFields.ExcessBlobGas); }
+
+    /// <summary>
+    /// EIP-8288 <c>recursive_stark</c> proof and its <c>block_deps_hash</c>, present on every block once
+    /// the fork is active, so payloads for forks without EIP-8288 are byte-identical.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? RecursiveStarkProof { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? RecursiveStarkBlockDepsHash { get; set; }
 }

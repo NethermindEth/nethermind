@@ -52,14 +52,14 @@ public static class RecentRootStore
         return ValueKeccak.Compute(input);
     }
 
-    public static bool IsReferenceValid(IWorldState state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot) =>
+    public static bool IsReferenceValid(IReadOnlyStateProvider state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot) =>
         IsReferenceValid(state, ReferenceCell(sourceId, slot), sourceId, slot, root, currentSlot);
 
     /// <summary>Checks a reference against the commitment in <paramref name="cell"/>, which the caller has already
     /// derived — the ring-buffer key costs a Keccak the gas schedule pays for once per reference.</summary>
-    public static bool IsReferenceValid(IWorldState state, in StorageCell cell, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
+    public static bool IsReferenceValid(IReadOnlyStateProvider state, in StorageCell cell, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
     {
-        ulong age = currentSlot - slot; // unsigned: a future or same slot underflows and is rejected below
+        ulong age = unchecked(currentSlot - slot); // A future slot wraps and is rejected below.
         if (age is 0 || age > Eip8272Constants.RecentRootUsableWindow)
         {
             return false;

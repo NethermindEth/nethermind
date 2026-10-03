@@ -20,6 +20,7 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
 
@@ -32,7 +33,13 @@ namespace Nethermind.Network.P2P
         void OnSessionDisconnected(Session session, DisconnectEventArgs args);
     }
 
-    public class Session : ISession
+    internal interface ILeanBulkSession
+    {
+        bool EnableLeanBulk();
+        ValueTask<int> DeliverLeanChunkAsync<T>(T message, CancellationToken cancellationToken) where T : P2PMessage;
+    }
+
+    public class Session : ISession, ILeanBulkSession
     {
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
         private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new(concurrencyLevel: 1, capacity: 4);
@@ -277,6 +284,38 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this}");
+        }
+
+        bool ILeanBulkSession.EnableLeanBulk()
+        {
+            if (!HasAgreedCapability(new Capability("lean", 1)) || _packetSender is not PacketSender sender) return false;
+            sender.EnableLeanBulk();
+            return true;
+        }
+
+        async ValueTask<int> ILeanBulkSession.DeliverLeanChunkAsync<T>(T message, CancellationToken cancellationToken)
+        {
+            try
+            {
+                lock (_sessionStateLock)
+                {
+                    if (State < SessionState.Initialized) ThrowInvalidSessionState();
+                    if (IsClosed) return 0;
+                }
+                if (message is not LeanProofChunkMessage
+                    || !HasAgreedCapability(new Capability("lean", 1)) || _packetSender is not PacketSender sender) return 0;
+                message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
+                int size = await sender.EnqueueAsync(message, cancellationToken).ConfigureAwait(false);
+                if (size != 0)
+                {
+                    _activityObserver?.OnSessionActivity(this);
+                    MsgDelivered?.Invoke(this, new PeerEventArgs(_node, message.Protocol, message.PacketType, size));
+                    RecordOutgoingMessageMetric(message, size);
+                    Interlocked.Add(ref Metrics.P2PBytesSent, size);
+                }
+                return size;
+            }
+            finally { message.Dispose(); }
         }
 
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);

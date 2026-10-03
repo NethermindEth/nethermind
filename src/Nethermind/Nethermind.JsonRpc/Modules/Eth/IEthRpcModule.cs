@@ -169,6 +169,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
             )]
         Task<ResultWrapper<Hash256>> eth_sendRawTransaction([JsonRpcParameter(ExampleValue = "[\"0xf86380843b9aca0082520894b943b13292086848d8180d75c73361107920bb1a80802ea0385656b91b8f1f5139e9ba3449b946a446c9cfe7adb91b180ddc22c33b17ac4da01fe821879d386b140fd8080dcaaa98b8c709c5025c8c4dea1334609ebac41b6c\"]")] byte[] transaction);
 
+        [JsonRpcMethod(IsImplemented = true, Description = "Submit an EIP-8288 RLP proof wrapper and its transactions", IsSharable = true)]
+        Task<ResultWrapper<Hash256[]>> eth_sendProofWrapper(byte[] wrapper);
+
+        [JsonRpcMethod(IsImplemented = true, Description = "Submit an EIP-8288 proof-bearing inclusion list and its transactions", IsSharable = true)]
+        Task<ResultWrapper<Hash256[]>> eth_sendProofInclusionList(byte[] inclusionList);
+
+        [JsonRpcMethod(IsImplemented = true, Description = "Return an EIP-8288 recursive proof wrapper for pending dependency transactions", IsSharable = true)]
+        ResultWrapper<byte[]> eth_getProofWrapper();
+
         [JsonRpcMethod(IsImplemented = true,
             Description = "Signs the transaction using the unlocked sender account and returns the RLP-encoded signed transaction together with the parsed object.",
             IsSharable = true,

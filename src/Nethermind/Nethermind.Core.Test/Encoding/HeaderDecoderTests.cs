@@ -39,6 +39,71 @@ public class HeaderDecoderTests
     }
 
     [Test]
+    public void Can_encode_decode_with_recursive_stark()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithMixHash(Keccak.Compute("mix_hash"))
+            .WithNonce(1000)
+            .TestObject;
+        header.RecursiveStark = new RecursiveStark([1, 2, 3, 4], Keccak.Compute("deps"));
+
+        HeaderDecoder decoder = new();
+        Rlp rlp = decoder.Encode(header);
+        RlpReader decoderContext = new(rlp.Bytes);
+        BlockHeader decoded = decoder.Decode(ref decoderContext)!;
+
+        Assert.That(decoded.RecursiveStark, Is.Not.Null);
+        Assert.That(decoded.RecursiveStark!.StarkProof, Is.EqualTo(new byte[] { 1, 2, 3, 4 }));
+        Assert.That(decoded.RecursiveStark.BlockDepsHash, Is.EqualTo(Keccak.Compute("deps")));
+
+        decoded.Hash = decoded.CalculateHash();
+        Assert.That(decoded.Hash, Is.EqualTo(header.CalculateHash()), "hash");
+    }
+
+    // Peer-supplied recursive_stark = ["", ""]: the deps hash is non-nullable on the header, so decode
+    // must reject rather than store a null through it.
+    [Test]
+    public void Cannot_decode_recursive_stark_without_a_deps_hash()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithMixHash(Keccak.Compute("mix_hash")).WithNonce(1000).TestObject;
+        header.RecursiveStark = new RecursiveStark([], null!);
+
+        HeaderDecoder decoder = new();
+        Rlp rlp = decoder.Encode(header);
+
+        Assert.That(() =>
+        {
+            RlpReader decoderContext = new(rlp.Bytes);
+            decoder.Decode(ref decoderContext);
+        }, Throws.InstanceOf<RlpException>());
+    }
+
+    [TestCase(Eip8288Constants.MaxProofBytes, true)]
+    [TestCase(Eip8288Constants.MaxProofBytes + 1, false)]
+    public void Recursive_stark_decode_obeys_the_native_size_bound(int proofLength, bool valid)
+    {
+        BlockHeader header = Build.A.BlockHeader.WithMixHash(Keccak.Compute("mix_hash")).WithNonce(1000).TestObject;
+        header.RecursiveStark = new RecursiveStark(new byte[proofLength], Keccak.Compute("deps"));
+        HeaderDecoder decoder = new();
+        Rlp encoded = decoder.Encode(header);
+
+        if (valid)
+        {
+            RlpReader reader = new(encoded.Bytes);
+            Assert.That(decoder.Decode(ref reader)!.RecursiveStark!.StarkProof.Length, Is.EqualTo(proofLength));
+            Assert.That(reader.Position, Is.EqualTo(encoded.Bytes.Length));
+        }
+        else
+        {
+            Assert.That(() =>
+            {
+                RlpReader reader = new(encoded.Bytes);
+                decoder.Decode(ref reader);
+            }, Throws.InstanceOf<RlpException>());
+        }
+    }
+
+    [Test]
     public void Get_length_null()
     {
         HeaderDecoder decoder = new();

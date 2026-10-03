@@ -18,8 +18,9 @@ namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
-    public static byte[] Execute(ReadOnlySpan<byte> data)
+    public static byte[] Execute(ReadOnlySpan<byte> data, ILeanProofVerifier leanProofVerifier)
     {
+        ArgumentNullException.ThrowIfNull(leanProofVerifier);
         byte[] output = StatelessValidationResult.Encode(_defaultFailureResult);
         FailureOutput = output;
         StatelessPayload payload;
@@ -68,7 +69,7 @@ public static class StatelessExecutor
                     using Witness witness = payload.Witness.ToWitness();
 
                     // Reconstruction derives body roots; the hash check above binds them to the declared block hash.
-                    success = Execute(block, witness, specProvider, validateHashes: false);
+                    success = Execute(block, witness, specProvider, leanProofVerifier, validateHashes: false);
                 }
             }
         }
@@ -86,11 +87,13 @@ public static class StatelessExecutor
         return output;
     }
 
-    public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
-        => Execute(suggestedBlock, witness, specProvider, validateHashes: true);
+    public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, ILeanProofVerifier leanProofVerifier)
+        => Execute(suggestedBlock, witness, specProvider, leanProofVerifier, validateHashes: true);
 
-    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes)
+    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, ILeanProofVerifier leanProofVerifier, bool validateHashes)
     {
+        ArgumentNullException.ThrowIfNull(leanProofVerifier);
+        if (specProvider.GetSpec(suggestedBlock.Header).IsEip8288Enabled) leanProofVerifier.EnsureAvailable();
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         BlockHeader parentHeader;
 
@@ -118,7 +121,8 @@ public static class StatelessExecutor
             headerValidator,
             new UnclesValidator(blockTree, headerValidator, NullLogManager.Instance),
             specProvider,
-            NullLogManager.Instance
+            NullLogManager.Instance,
+            leanProofVerifier
         );
 
         if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error, validateHashes))
@@ -128,7 +132,7 @@ public static class StatelessExecutor
         }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
-            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
+            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree, leanProofVerifier);
 
         if (!blockProcessingEnv.WorldState.TryBeginScope(parentHeader, out IDisposable? scope))
         {
