@@ -54,6 +54,12 @@ public partial class ParallelUnbalancedWork
         return new(maxDegreeOfParallelism);
     }
 
+    /// <summary>
+    /// Experiment: until <paramref name="untilTimestamp"/> (a <see cref="System.Diagnostics.Stopwatch"/> timestamp; 0 ends it),
+    /// a runner that finds no work spins for more instead of returning its thread to the pool.
+    /// </summary>
+    public static partial void LingerRunnersUntil(long untilTimestamp);
+
     /// <summary>A worker budget of its own, outside any group or scope the calling thread is in.</summary>
     public static partial WorkerScope BeginDetachedWorkerScope(int maxDegreeOfParallelism);
 

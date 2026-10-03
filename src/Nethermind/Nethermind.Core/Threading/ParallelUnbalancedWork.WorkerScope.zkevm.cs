@@ -9,6 +9,8 @@ public partial class ParallelUnbalancedWork
 
     public static partial WorkerScope BeginDetachedWorkerScope(int maxDegreeOfParallelism) => new(1);
 
+    public static partial void LingerRunnersUntil(long untilTimestamp) { }
+
     internal static partial (int Reserved, int Unstarted, int Pending) CurrentLoad() => (0, 0, 0);
 
     internal sealed partial class WorkerGroup
