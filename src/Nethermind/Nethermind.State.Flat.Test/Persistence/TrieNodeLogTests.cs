@@ -524,6 +524,20 @@ public class TrieNodeLogTests
         Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, _config), Is.EqualTo(matches));
     }
 
+    [TestCase(true, true, true)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, true)]
+    [TestCase(false, false, true)]
+    public async Task The_on_disk_second_level_matches_the_config_only_when_enabled(bool writtenWithSecondLevel, bool secondLevelEnabled, bool matches)
+    {
+        if (writtenWithSecondLevel) await ReopenWithSecondLevel();
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+        _config.TrieNodeLogSecondLevelEnabled = secondLevelEnabled;
+
+        Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, _config), Is.EqualTo(matches));
+    }
+
     [Test]
     public async Task The_on_disk_layout_does_not_match_with_a_directory_of_another_layout()
     {
