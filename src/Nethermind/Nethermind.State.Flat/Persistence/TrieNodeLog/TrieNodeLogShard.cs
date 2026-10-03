@@ -46,6 +46,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private readonly SemaphoreSlim _mergeLimiter;
     private readonly ManualResetEventSlim _merged = new();
     private readonly TrieNodeLogLabel _label;
+    private readonly TrieNodeLogShard? _secondLevel;
 
     private readonly Lock _lock = new();
     private readonly List<TrieNodeLogGeneration> _generations = []; // oldest first; every generation still in memory
@@ -75,14 +76,20 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private int _reportedListCount;
     private long _reportedBytes;
 
+    /// <param name="versionName">
+    /// Name of the shard whose version key confirms the records: this shard's own name, or for a second-level shard the
+    /// name of the first-level shard it copies from, whose records keep their versions there.
+    /// </param>
     /// <param name="mergeLimiter">Caps concurrent merges across every shard of the log.</param>
     /// <param name="backlogMargin">Sealed generations allowed beyond <paramref name="mergeLag"/> before a roll waits for a merge.</param>
-    public TrieNodeLogShard(string name, FlatDbColumns[] columns, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int indexRatio, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, ILogManager logManager)
+    /// <param name="secondLevel">Shard a merged generation is copied into instead of RocksDB; null merges into RocksDB.</param>
+    public TrieNodeLogShard(string name, string versionName, FlatDbColumns[] columns, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int indexRatio, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, TrieNodeLogShard? secondLevel, ILogManager logManager)
     {
         Name = name;
+        IsSecondLevel = versionName != name;
         Columns = columns;
         ColumnLabel = TrieNodeLogLabel.Column(columns[0]);
-        VersionKey = Keccak.Compute($"TrieNodeLogVersion:{name}").BytesToArray();
+        VersionKey = Keccak.Compute($"TrieNodeLogVersion:{versionName}").BytesToArray();
         FlushedGenerationKey = Keccak.Compute($"TrieNodeLogFlushedGeneration:{name}").BytesToArray();
         GenerationKey = Keccak.Compute($"TrieNodeLogGeneration:{name}").BytesToArray();
         _basePath = basePath;
@@ -94,6 +101,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         _maxBacklog = mergeLag + backlogMargin;
         _mergeLimiter = mergeLimiter;
         _label = new TrieNodeLogLabel(name);
+        _secondLevel = secondLevel;
 
         Directory.CreateDirectory(basePath);
         Recover();
@@ -101,6 +109,9 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     }
 
     public string Name { get; }
+
+    /// <summary>Whether this shard holds generations copied from a first-level shard rather than persistence batches.</summary>
+    internal bool IsSecondLevel { get; }
 
     /// <summary>The trie columns this shard holds records of; a record's column follows from its key length.</summary>
     public FlatDbColumns[] Columns { get; }
@@ -135,14 +146,17 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     internal void EndOpening() => _retention.ExitReadLock();
 
-    public TrieNodeLogWriteBatch StartWriteBatch()
+    public TrieNodeLogWriteBatch StartWriteBatch() => StartWriteBatch(version: null);
+
+    /// <param name="version">Version of the batch's commit records; null takes this shard's next version.</param>
+    private TrieNodeLogWriteBatch StartWriteBatch(ulong? version)
     {
         EnterExclusive();
         try
         {
             Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending = Interlocked.Exchange(ref _pendingPool, null) ?? [];
             using Lock.Scope _ = _lock.EnterScope();
-            return new TrieNodeLogWriteBatch(this, ++_version, new ArrayPoolList<TrieNodeLogGeneration>(2), pending);
+            return new TrieNodeLogWriteBatch(this, version ?? ++_version, new ArrayPoolList<TrieNodeLogGeneration>(2), pending);
         }
         catch
         {
@@ -196,8 +210,11 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     {
         get
         {
-            using Lock.Scope _ = _lock.EnterScope();
-            return _generations.Count > 0;
+            using (_lock.EnterScope())
+            {
+                if (_generations.Count > 0) return true;
+            }
+            return _secondLevel?.HasGenerations == true;
         }
     }
 
@@ -206,6 +223,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     {
         SealActive();
         FlushSealedGenerations(mergeLag: 0);
+        _secondLevel?.Drain();
     }
 
     /// <summary>Discards every generation without merging it.</summary>
@@ -249,6 +267,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         {
             _retention.ExitWriteLock();
         }
+        _secondLevel?.Clear();
     }
 
     public async ValueTask DisposeAsync()
@@ -458,7 +477,10 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
             Span<byte> probeBuffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
 
-            using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
+            // A second-level copy keeps each record's version, so readers filter it by their snapshot's version as they
+            // do here; its commit records carry the confirmed version, which covers every record of a sealed generation.
+            using (TrieNodeLogWriteBatch? secondLevelBatch = _secondLevel?.StartWriteBatch(committedVersion))
+            using (IColumnsWriteBatch<FlatDbColumns>? batch = _secondLevel is null ? _db.StartWriteBatch() : null)
             {
                 Core.IWriteBatch?[] columnBatches = new Core.IWriteBatch?[TrieNodeLogLabel.ColumnCount];
                 Scanner scanner = new(generation.Handle, generation.Frontier);
@@ -472,10 +494,17 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                         if (!generation.IsLatest(hash, scanner.Offset)) continue;
                         if (HasCommittedNewerRecord(newer, hash, scanner.Key, probeBuffer, committedVersion)) continue;
 
-                        int columnIndex = (int)BaseTriePersistence.ColumnOfNodeKey(header.KeyLength);
-                        Core.IWriteBatch column = columnBatches[columnIndex] ??= batch.GetColumnBatch((FlatDbColumns)columnIndex);
-                        if (header.Type == TrieNodeLogRecord.Delete) column.Set(scanner.Key, null, WriteFlags.DisableWAL);
-                        else column.PutSpan(scanner.Key, scanner.Value, WriteFlags.DisableWAL);
+                        if (secondLevelBatch is not null)
+                        {
+                            secondLevelBatch.Append(scanner.Key, scanner.Value, header.Type == TrieNodeLogRecord.Delete, header.Version);
+                        }
+                        else
+                        {
+                            int columnIndex = (int)BaseTriePersistence.ColumnOfNodeKey(header.KeyLength);
+                            Core.IWriteBatch column = columnBatches[columnIndex] ??= batch!.GetColumnBatch((FlatDbColumns)columnIndex);
+                            if (header.Type == TrieNodeLogRecord.Delete) column.Set(scanner.Key, null, WriteFlags.DisableWAL);
+                            else column.PutSpan(scanner.Key, scanner.Value, WriteFlags.DisableWAL);
+                        }
                         written += header.KeyLength + header.ValueLength;
                         records++;
                     }
@@ -484,12 +513,22 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                 {
                     scanner.Dispose();
                 }
+
+                if (secondLevelBatch is not null)
+                {
+                    // Durable and visible before the marker below lets readers skip this generation.
+                    secondLevelBatch.MakeDurable();
+                    secondLevelBatch.Publish();
+                }
             }
 
             // The log file is the WAL of this merge: the data goes in without one, the column family is flushed
             // (throwing, so a failure never reaches the marker), and only then is the marker written and flushed.
             // Marker durable therefore implies data durable; a crash before that replays the file.
-            foreach (FlatDbColumns column in Columns) _db.GetColumnDb(column).FlushOrThrow();
+            if (_secondLevel is null)
+            {
+                foreach (FlatDbColumns column in Columns) _db.GetColumnDb(column).FlushOrThrow();
+            }
 
             using (IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch())
             {
@@ -498,7 +537,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                 batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(FlushedGenerationKey, marker, WriteFlags.DisableWAL);
             }
             _db.GetColumnDb(FlatDbColumns.Metadata).FlushOrThrow();
-            if (written != 0) Metrics.TrieNodeLogFlushedBytes.AddBy(ColumnLabel, written);
+            if (written != 0 && _secondLevel is null) Metrics.TrieNodeLogFlushedBytes.AddBy(ColumnLabel, written);
             Metrics.TrieNodeLogFlushedGeneration[_label] = (long)generation.Number;
         }
 

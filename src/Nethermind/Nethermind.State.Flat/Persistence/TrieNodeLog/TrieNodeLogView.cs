@@ -53,9 +53,10 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<Trie
             shard.EndOpening();
         }
         pinned.DisposeRecursive();
-        if (_hits != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Hit, _hits);
-        if (_chainHits != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Chain, _chainHits);
-        if (_misses != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Miss, _misses);
+        bool secondLevel = shard.IsSecondLevel;
+        if (_hits != 0) Metrics.TrieNodeLogReads.AddBy(secondLevel ? TrieNodeLogLabel.SecondLevelHit : TrieNodeLogLabel.Hit, _hits);
+        if (_chainHits != 0) Metrics.TrieNodeLogReads.AddBy(secondLevel ? TrieNodeLogLabel.SecondLevelChain : TrieNodeLogLabel.Chain, _chainHits);
+        if (_misses != 0) Metrics.TrieNodeLogReads.AddBy(secondLevel ? TrieNodeLogLabel.SecondLevelMiss : TrieNodeLogLabel.Miss, _misses);
     }
 
     /// <summary>Whether the shard holds the value for <paramref name="key"/> at this view's version; <paramref name="value"/> is null for a tombstone.</summary>

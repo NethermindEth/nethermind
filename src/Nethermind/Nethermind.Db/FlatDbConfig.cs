@@ -71,4 +71,5 @@ public class FlatDbConfig : IFlatDbConfig
     public bool TrieNodeLogDrainOnShutdown { get; set; } = false;
     public int TrieNodeLogMaxConcurrentMerges { get; set; } = 2;
     public int TrieNodeLogMergeBacklogMargin { get; set; } = 2;
+    public bool TrieNodeLogSecondLevelEnabled { get; set; } = false;
 }

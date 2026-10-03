@@ -198,4 +198,7 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Number of sealed trie node log generations kept unmerged behind the newest one. A generation is merged into RocksDB only once this many newer generations are sealed, and keys rewritten in those are skipped, so the effective deduplication window is (1 + this) generations at the cost of that many extra generation files and in-memory indexes.", DefaultValue = "2")]
     int TrieNodeLogMergeLag { get; set; }
+
+    [ConfigItem(Description = "Copy each trie node log generation, deduplicated, into a second-level log instead of merging it into RocksDB; the second-level log has the same size and merge settings as the first and merges its own full generations into RocksDB. The surviving nodes are less likely to be rewritten, and the log's index answers their reads faster than RocksDB. Requires TrieNodeLogEnabled.", DefaultValue = "false")]
+    bool TrieNodeLogSecondLevelEnabled { get; set; }
 }
