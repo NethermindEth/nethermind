@@ -55,6 +55,7 @@ public class ForkChoiceRunnerPtcVoteTests
         int[] seats = [.. Enumerable.Range(0, ptc.Length).Where(seat => ptc[seat] == member)];
         Assert.That(seats, Has.Length.GreaterThan(1), "fixture bug: the member must hold several seats");
 
+        harness.Runner.GetHead();
         harness.Runner.OnPayloadAttestationMessage(harness.PtcMessage(first, member, payloadPresent: true, blobDataAvailable: false, sign: true));
 
         (IReadOnlyList<bool?> timeliness, IReadOnlyList<bool?> availability) = harness.Runner.GetPtcVotes(first.Root)!.Value;
@@ -78,6 +79,25 @@ public class ForkChoiceRunnerPtcVoteTests
         harness.Runner.OnPayloadAttestationMessage(harness.PtcMessage(first, harness.Ptc(first)[0], true, true, sign: false, slot: first.Slot + 1), verifySignature: false);
 
         Assert.That(harness.Runner.GetPtcVotes(first.Root)!.Value.Timeliness, Is.All.Null);
+    }
+
+    [Test]
+    public void Payload_gossip_without_a_cached_head_is_ignored_without_applying_votes()
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = harness.First;
+        harness.TickTo(first.Slot);
+        harness.Import(first);
+        PayloadAttestationMessage message = harness.PtcMessage(first, harness.Ptc(first)[0], true, true, sign: true);
+
+        ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => harness.Runner.OnPayloadAttestationMessage(message))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.RejectGossip, Is.False, "a missing local head must not penalize the relay");
+            Assert.That(refusal.Message, Does.Contain("No cached head"));
+            Assert.That(harness.Runner.GetPtcVotes(first.Root)!.Value.Timeliness, Is.All.Null);
+        }
     }
 
     public enum RefusedVote { NotInPtc, WireVoteNotForTheCurrentSlot, BadSignature, UnknownBlock, PreGloasBlock, MissingData, MissingBlockRoot }
@@ -118,6 +138,7 @@ public class ForkChoiceRunnerPtcVoteTests
                 break;
         }
 
+        harness.Runner.GetHead();
         bool refused = !isFromBlock || refusal is RefusedVote.NotInPtc or RefusedVote.UnknownBlock or RefusedVote.PreGloasBlock or RefusedVote.MissingData or RefusedVote.MissingBlockRoot;
         Assert.That(() => harness.Runner.OnPayloadAttestationMessage(message, isFromBlock), refused ? Throws.TypeOf<ForkChoiceException>() : Throws.Nothing);
         Assert.That(harness.Runner.GetPtcVotes(first.Root)!.Value.Timeliness.Count(static v => v is not null), refused ? Is.Zero : Is.GreaterThan(0));
@@ -137,6 +158,7 @@ public class ForkChoiceRunnerPtcVoteTests
         GloasForkChoiceHarness harness = new();
         ulong member = harness.Ptc(harness.First)[0];
 
+        runner.GetHead();
         runner.OnPayloadAttestationMessage(harness.PtcMessage(harness.First, member, true, true, sign: true));
 
         Assert.That(runner.GetPtcVotes(chain.First.Root)!.Value.Timeliness, Has.Some.True);

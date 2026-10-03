@@ -96,7 +96,7 @@ public class GossipValidationTests
                 ("too many builder exit requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
                 ("too many consolidation requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
                 ("too many withdrawal requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                // REJECTs needing no state that the spec orders after store checks; gossip_validation.md lets them run in any order.
+                // Field REJECTs follow parent prerequisites proven by the published snapshot.
                 ("incorrect execution payload timestamp", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("too many blob kzg commitments", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
                 ("bid's parent does not equal block's parent", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
@@ -112,10 +112,12 @@ public class GossipValidationTests
                 ("aggregate epoch is not current or previous epoch", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
                 ("already seen aggregate for this data", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
                 ("already seen aggregate for this epoch and aggregator", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("block being voted for has not been seen", RouterVerdict.Ignored(GossipDropReason.UnknownBlock)),
+                ("block being voted for failed validation", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 // REJECTs needing no state that the spec orders after store checks; gossip_validation.md lets them run in any order.
                 ("attestation epoch does not match target epoch", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("aggregate has no participants", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                // gloas/p2p-interface.md verify_attestation_payload_status, answered from the held block's slot.
+                // gloas/p2p-interface.md verify_attestation_payload_status follows the finalized-ancestry IGNORE.
                 ("same-slot attestation must attest with index 0", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
             ],
             [GossipTopics.AttesterSlashing] =
@@ -152,7 +154,7 @@ public class GossipValidationTests
                 ("already seen payload attestation from this validator", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
                 ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
                 ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.FutureSlot)),
-                ("payload attestation's block has not been seen", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
+                ("payload attestation's block has not been seen", RouterVerdict.Ignored(GossipDropReason.UnknownBlock)),
                 ("payload attestation's block failed validation", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("payload attestation's block is not at the assigned slot", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
             ],
@@ -320,8 +322,12 @@ public class GossipValidationTests
                 HeadRoot = Hash256.Zero,
             },
         };
-        GossipRouter router = new(spec, new SlotClock(spec, timestamper), LimboLogs.Instance, SeedStore(testCase.CasePath, spec, gloas), status,
-            SeedFailedBlocks(testCase.CasePath, spec, gloas));
+        BeaconChainStore store = SeedStore(testCase.CasePath, spec, gloas);
+        SlotClock clock = new(spec, timestamper);
+        ColumnGossipRouter headers = new(spec, clock, LimboLogs.Instance, store: store, status: status,
+            forkChoice: SeedForkChoice(testCase.CasePath, meta, spec, gloas, status.CurrentStatus.FinalizedEpoch));
+        GossipRouter router = new(spec, clock, LimboLogs.Instance, store, status,
+            SeedFailedBlocks(testCase.CasePath, spec, gloas), headers);
         int raised = 0;
         Action? markVerified = null;
         router.BeaconBlockReceived += (_, _) => raised++;
@@ -464,6 +470,40 @@ public class GossipValidationTests
     private static bool IsSynchronousVerdict(string topic, string reason, RouterVerdict verdict) =>
         SynchronousVerdicts.TryGetValue(topic, out (string Reason, RouterVerdict Verdict)[]? rows) && rows.Contains((reason, verdict));
 
+    private static ForkChoiceSnapshotHolder SeedForkChoice(string casePath, VectorMeta meta, BeaconChainSpec spec, bool gloas, ulong finalizedEpoch)
+    {
+        List<ForkChoiceSnapshotNode> nodes = [];
+        foreach (VectorBlock entry in meta.Blocks)
+        {
+            if (entry.Failed || entry.Pending)
+                continue;
+
+            byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, entry.Name + ".ssz_snappy"));
+            if (gloas && SignedBeaconBlockCodec.TryReadSlot(ssz, out ulong slot) && !SignedBeaconBlockCodec.IsGloasSlot(slot, spec))
+                continue;
+
+            ForkedSignedBeaconBlock block = SignedBeaconBlockCodec.Decode(ssz, spec);
+            ExecutionStatus execution = entry.PayloadStatus switch
+            {
+                "INVALIDATED" => ExecutionStatus.Invalid,
+                "VALID" => ExecutionStatus.Valid,
+                _ => ExecutionStatus.Optimistic,
+            };
+            Hash256? executionHash = block switch
+            {
+                ForkedSignedBeaconBlock.OfGloas signed => signed.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlockHash,
+                ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message!.Body!.ExecutionPayload!.BlockHash,
+                _ => null,
+            };
+            nodes.Add(new(block.Slot, block.ComputeMessageRoot(), block.ParentRoot, 0, 0, 0, execution, executionHash,
+                PayloadValid: entry.PayloadStatus == "VALID" && (block is ForkedSignedBeaconBlock.OfFulu || entry.PayloadPresent)));
+        }
+
+        nodes.Sort(static (left, right) => left.Slot.CompareTo(right.Slot));
+        CheckpointRef finalized = new(finalizedEpoch, DataColumnSidecarNetworkingTests.ReadFinalizedRoot(casePath) ?? nodes.FirstOrDefault()?.Root ?? Hash256.Zero);
+        return new() { Current = new(finalized, finalized, Hash256.Zero, nodes) };
+    }
+
     /// <summary>The vector's own <c>config.yaml</c> when present, otherwise the mainnet config with the vector's fork live from genesis.</summary>
     /// <exception cref="NotImplementedInDriverException">The config's slot duration differs from the spec's, which <see cref="SlotClock"/> would misread.</exception>
     internal static BeaconChainSpec VectorSpec(string casePath, bool gloas)
@@ -539,7 +579,7 @@ public class GossipValidationTests
     internal sealed record VectorMessage(string Name, string Expected, string? Reason, long TimeMs, ulong? SubnetId);
 
     /// <summary>One entry of meta.yaml's <c>blocks</c>; <see cref="Failed"/> marks a block that fails validation.</summary>
-    internal sealed record VectorBlock(string Name, bool Failed);
+    internal sealed record VectorBlock(string Name, bool Failed, bool Pending = false, string? PayloadStatus = null, bool PayloadPresent = false);
 
     /// <summary>The meta.yaml fields the synchronous checks read.</summary>
     internal sealed record VectorMeta(string Topic, ulong? FinalizedEpoch, List<VectorMessage> Messages, List<VectorBlock> Blocks)
@@ -577,7 +617,8 @@ public class GossipValidationTests
             if (root.Children.TryGetValue(new YamlScalarNode("blocks"), out YamlNode? blockList))
             {
                 foreach (YamlMappingNode block in ((YamlSequenceNode)blockList).Children.Cast<YamlMappingNode>())
-                    blocks.Add(new VectorBlock(Scalar(block, "block")!, Scalar(block, "failed") == "true"));
+                    blocks.Add(new VectorBlock(Scalar(block, "block")!, Scalar(block, "failed") == "true",
+                        Scalar(block, "pending") == "true", Scalar(block, "payload_status"), Scalar(block, "payload") is not null));
             }
 
             return new VectorMeta(Scalar(root, "topic")!, finalizedEpoch, messages, blocks);

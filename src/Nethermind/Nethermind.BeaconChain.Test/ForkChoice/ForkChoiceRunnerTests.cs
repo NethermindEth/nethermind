@@ -581,6 +581,96 @@ public class ForkChoiceRunnerTests
         }
     }
 
+    [Test]
+    public void Nonzero_committee_gossip_without_a_held_head_is_ignored_without_loading_states([Values] bool headComputed)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        GossipStates states = new(chain.Anchor.AnchorState);
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, states, chain.Anchor.Pubkeys);
+        if (headComputed) runner.GetHead();
+        int loadsBefore = states.Loads;
+        SignedAggregateAndProof aggregate = GossipAggregate(chain, 0, chain.AnchorRoot, 0, 0, signingState: null);
+        aggregate.Message!.Aggregate!.CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [1] = true };
+
+        ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnAggregateAndProof(aggregate))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.RejectGossip, Is.False, "missing local head data cannot convict the relay");
+            Assert.That(refusal.Message, Does.Contain(headComputed ? "No held state" : "No cached head"));
+            Assert.That(states.Loads, Is.EqualTo(loadsBefore), "gossip must not call a state accessor that can replay blocks");
+        }
+    }
+
+    [Test]
+    public void Payload_gossip_for_an_unheld_fulu_block_does_not_load_states()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        GossipStates states = new(chain.Anchor.AnchorState);
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, states, chain.Anchor.Pubkeys);
+        int loadsBefore = states.Loads;
+        PayloadAttestationMessage message = new() { Data = new PayloadAttestationData { BeaconBlockRoot = chain.AnchorRoot, Slot = 0 } };
+
+        ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnPayloadAttestationMessage(message))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.RejectGossip, Is.False);
+            Assert.That(states.Loads, Is.EqualTo(loadsBefore), "a payload vote must not replay a Fulu block before checking its fork");
+        }
+    }
+
+    [Test]
+    public void Nonzero_committee_gossip_reuses_cached_count_without_reading_validators()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BeaconStateFulu headState = chain.Anchor.AnchorState.Clone();
+        GossipStates states = new(headState) { Held = true };
+        ForkChoiceRunner runner = new(chain.Spec, headState, chain.Anchor.AnchorBlock.Message!, states, chain.Anchor.Pubkeys);
+        runner.GetHead();
+        SignedAggregateAndProof aggregate = GossipAggregate(chain, 0, chain.AnchorRoot, 0, 0, signingState: null);
+        aggregate.Message!.Aggregate!.CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [1] = true };
+        Assert.That(() => runner.OnAggregateAndProof(aggregate), Throws.TypeOf<ForkChoiceException>().With.Message.Contains("out of range"));
+        headState.Validators = null;
+        int loadsBefore = states.Loads;
+
+        ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnAggregateAndProof(aggregate))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.RejectGossip, Is.True, "the cached committee count still proves the index is invalid");
+            Assert.That(refusal.Message, Does.Contain("out of range"));
+            Assert.That(states.Loads, Is.EqualTo(loadsBefore), "a cached range check must not reload the head");
+        }
+    }
+
+    [Test]
+    public void Gossip_committee_range_does_not_require_a_shuffling_decision_root([Values(5UL, ulong.MaxValue)] ulong targetEpoch, [Values] bool largeRegistry)
+    {
+        const ulong slot = 96;
+        UnsignedChain chain = UnsignedChain.Create();
+        InMemoryStates states = new();
+        states.States[chain.AnchorRoot] = chain.Anchor.AnchorState;
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, states, chain.Anchor.Pubkeys);
+        TickToSlot(runner, slot);
+        UnsignedChain.ChainBlock head = chain.Extend(chain.AnchorRoot, slot, payloadHashByte: 0xA1);
+        states.States[head.Root] = head.PostState;
+        ImportWithBodyReplay(runner, head);
+        Assert.That(runner.GetHead(), Is.EqualTo(head.Root));
+        if (largeRegistry)
+            head.PostState.Validators = Enumerable.Repeat(head.PostState.Validators![0], 2 * (int)Presets.SlotsPerEpoch * Presets.TargetCommitteeSize).ToArray();
+        SignedAggregateAndProof aggregate = GossipAggregate(chain, slot, head.Root, targetEpoch, 0, signingState: null);
+        aggregate.Message!.Aggregate!.CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [1] = true };
+
+        ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnAggregateAndProof(aggregate))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.RejectGossip, Is.True, "an unavailable decision root cannot hide a provable gossip violation");
+            Assert.That(refusal.Message, Does.Contain(largeRegistry && targetEpoch != ulong.MaxValue ? "does not match its slot" : "out of range"), "committee range precedes the target-epoch check");
+        }
+    }
+
     /// <summary>
     /// A gossip aggregate names its target, and the target state is needed before any signature can be checked. Each unsigned
     /// aggregate naming another known block before the epoch start used to build and keep a whole checkpoint state on the import
@@ -598,6 +688,7 @@ public class ForkChoiceRunnerTests
         TickToSlot(runner, epochStart + 6);
         // All past the decision slot 31, so the anchor fixes the epoch-2 shuffling of every one of them.
         List<UnsignedChain.ChainBlock> targets = ImportLine(chain, runner, chain.AnchorRoot, 33, 41, 50, 60, 63);
+        runner.GetHead();
         (BeaconStateFulu signingState, ulong voteSlot, int member) = FirstCommitteeMember(targets[^1], targetEpoch);
 
         int refused = 0;
@@ -716,12 +807,15 @@ public class ForkChoiceRunnerTests
     /// decision blocks but the same committees. An aggregate the head's committee signed for the other branch is valid gossip
     /// and valid for on_attestation with its own target state, so it must count, at the cost of building that state.
     /// </summary>
-    [Test]
-    public void Signed_gossip_aggregate_for_an_equivocated_sibling_with_the_same_committees_counts()
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    public void Signed_gossip_aggregate_for_an_equivocated_sibling_with_the_same_committees_counts(bool sourceHeld, bool headSource)
     {
         const ulong targetEpoch = 2;
         UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        EvictableGossipStates states = new(chain);
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, states, chain.Anchor.Pubkeys);
         BuildCounter builds = new(runner);
         TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
         UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
@@ -734,13 +828,24 @@ public class ForkChoiceRunnerTests
         (BeaconStateFulu signingState, ulong voteSlot, int member) = FirstCommitteeMember(headTip, targetEpoch);
         ulong weightBefore = Weight(runner, other.Root);
 
-        runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, other.Root, targetEpoch, member, signingState));
+        if (!sourceHeld) states.Evicted = headSource ? head : other.Root;
+        SignedAggregateAndProof aggregate = GossipAggregate(chain, voteSlot, other.Root, targetEpoch, member, signingState);
+        if (sourceHeld)
+        {
+            runner.OnAggregateAndProof(aggregate);
+        }
+        else
+        {
+            ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnAggregateAndProof(aggregate))!;
+            Assert.That(refusal.RejectGossip, Is.False, "a valid vote with an evicted source cannot convict its relay");
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(FirstCommitteeMember(other, targetEpoch).Member, Is.EqualTo(member), "fixture bug: the siblings must share committees");
-            Assert.That(Weight(runner, other.Root) - weightBefore, Is.EqualTo(EffectiveBalance), "the vote counts on the sibling");
-            Assert.That(builds.Count, Is.EqualTo(2), "the head's target state and the sibling's own");
+            Assert.That(Weight(runner, other.Root) - weightBefore, Is.EqualTo(sourceHeld ? EffectiveBalance : 0UL), "only a vote whose target state can be checked counts");
+            Assert.That(states.Replays, Is.Zero, "gossip must not regenerate an evicted head or target source");
+            if (sourceHeld) Assert.That(builds.Count, Is.EqualTo(2), "the head's target state and the sibling's own");
         }
     }
 
@@ -904,6 +1009,7 @@ public class ForkChoiceRunnerTests
             runner.OnInvalidExecutionPayload(a.Root);
         else
             runner.OnAttesterSlashing(chain.DoubleVote(aVoters, slot: 1, a.Root, b.Root), verifySignatures: false);
+        runner.GetHead();
         (_, ulong voteSlot, int member) = FirstCommitteeMember(b, targetEpoch);
         int buildsBefore = builds.Count;
 
@@ -1028,6 +1134,7 @@ public class ForkChoiceRunnerTests
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         ForkChoiceRunner runner = FinalizedOnFirstGloasBlock(chain);
+        runner.GetHead();
         const ulong voteEpoch = 2;
         AttestationData data = new()
         {
@@ -2074,6 +2181,38 @@ public class ForkChoiceRunnerTests
             Asked.Add((block, blockRoot));
             return verdict;
         }
+    }
+
+    private sealed class EvictableGossipStates(UnsignedChain chain) : IForkChoiceStateProvider
+    {
+        public Hash256? Evicted { get; set; }
+        public int Replays { get; private set; }
+
+        public BeaconStateFulu? GetBlockState(Hash256 blockRoot)
+        {
+            if (blockRoot == Evicted) Replays++;
+            return chain.GetBlockState(blockRoot);
+        }
+
+        public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
+
+        BeaconStateFulu? IForkChoiceStateProvider.GetHeldBlockState(Hash256 blockRoot) => blockRoot == Evicted ? null : chain.GetBlockState(blockRoot);
+    }
+
+    private sealed class GossipStates(BeaconStateFulu state) : IForkChoiceStateProvider
+    {
+        public bool Held { get; init; }
+        public int Loads { get; private set; }
+
+        public BeaconStateFulu? GetBlockState(Hash256 blockRoot)
+        {
+            Loads++;
+            return state;
+        }
+
+        public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
+
+        BeaconStateFulu? IForkChoiceStateProvider.GetHeldBlockState(Hash256 blockRoot) => Held ? state : null;
     }
 
     private sealed class InMemoryStates : IForkChoiceStateProvider

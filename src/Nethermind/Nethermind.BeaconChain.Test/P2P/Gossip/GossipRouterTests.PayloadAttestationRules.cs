@@ -47,7 +47,7 @@ public partial class GossipRouterTests
             router.MarkPayloadAttestationVerified(vote);
         }
 
-        MessageValidity expected = held && !verified && slotOffset == 0 ? MessageValidity.Rejected : MessageValidity.Ignored;
+        MessageValidity expected = !verified && slotOffset == 0 ? MessageValidity.Rejected : MessageValidity.Ignored;
         byte[] payload = Snappy.CompressToArray(PayloadAttestationMessage.Encode(vote));
         await AssertDeferredPeerPenaltyAsync(GossipTopics.PayloadAttestationMessage, payload, verdict =>
         {
@@ -55,7 +55,15 @@ public partial class GossipRouterTests
             return Task.CompletedTask;
         }, expected);
 
-        Assert.That(received, Is.Zero);
+        GossipDropReason reason = verified ? GossipDropReason.Duplicate
+            : slotOffset < 0 ? GossipDropReason.StaleSlot
+            : slotOffset > 0 ? GossipDropReason.FutureSlot
+            : GossipDropReason.InvalidField;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Is.Zero, "failed blocks are refused before a vote can reach signature validation");
+            Assert.That(router.GetDropCount(reason), Is.EqualTo(1), "a failed root proves the block was seen even when it was never stored");
+        }
     }
 
     public enum PtcCase
@@ -77,7 +85,7 @@ public partial class GossipRouterTests
     [TestCase(PtcCase.SeenForAnotherValidator, null, false)]
     [TestCase(PtcCase.PreviousSlot, GossipDropReason.StaleSlot, false)]
     [TestCase(PtcCase.NextSlot, GossipDropReason.FutureSlot, false)]
-    [TestCase(PtcCase.BlockNotHeld, GossipDropReason.InvalidField, false)]
+    [TestCase(PtcCase.BlockNotHeld, GossipDropReason.UnknownBlock, false)]
     [TestCase(PtcCase.BlockAtAnotherSlot, GossipDropReason.InvalidField, false)]
     [TestCase(PtcCase.Oversized, GossipDropReason.Oversized, true)]
     public void Payload_attestation_message_rules_needing_no_state(PtcCase testCase, GossipDropReason? reason, bool rejected)

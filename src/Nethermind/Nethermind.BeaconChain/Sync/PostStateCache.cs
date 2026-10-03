@@ -119,6 +119,8 @@ internal sealed class PostStateCache(
     /// <inheritdoc/>
     public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => GetHeldBlockState(blockRoot) ?? Regenerate(blockRoot, hold: true);
 
+    BeaconStateFulu? IForkChoiceStateProvider.GetHeldBlockState(Hash256 blockRoot) => GetHeldBlockState(blockRoot);
+
     /// <summary>The post-state of <paramref name="blockRoot"/> if it is held, without regenerating it from stored blocks.</summary>
     /// <remarks>A held copy of the lineage root comes first: a trusted import advances the lineage state to its child before fork choice replays the child's body votes.</remarks>
     internal BeaconStateFulu? GetHeldBlockState(Hash256 blockRoot)

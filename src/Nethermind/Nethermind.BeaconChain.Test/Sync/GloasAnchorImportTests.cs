@@ -549,17 +549,6 @@ public class GloasAnchorImportTests
         }
     }
 
-    /// <summary>A node anchored on a Gloas checkpoint follows no Fulu lineage, so a Fulu block's proposer is left to the transition, which refuses it.</summary>
-    [Test]
-    public void Gloas_anchor_leaves_a_fulu_block_proposer_check_to_the_transition()
-    {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
-        IBlockImporter importer = CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), chain.CreateStore());
-
-        Assert.That(importer.IsExpectedProposer(new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock)), Is.True);
-    }
-
     /// <summary>
     /// The pinned finalized state is not an entry of the epoch-boundary tier: it stays resolvable after more checkpoint
     /// retentions than that tier holds, while a checkpoint state retained as early ages out.
@@ -710,12 +699,10 @@ public class GloasAnchorImportTests
         MemDb states = (MemDb)columns.GetColumnDb(BeaconChainDbColumns.States);
         long readsBefore = states.ReadsCount;
 
-        bool expectedProposer = importer.IsExpectedProposer(child.Forked);
         BlockImportResult result = importer.Import(child.Forked, child.Root, verifySignatures: true);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(expectedProposer, Is.True, "an unretained parent defers to the transition");
             Assert.That(result, Is.EqualTo(BlockImportResult.UnknownParent));
             Assert.That(states.ReadsCount - readsBefore, Is.Zero);
         }

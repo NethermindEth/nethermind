@@ -212,6 +212,8 @@ public sealed class BlockImporter : IBlockImporter
     /// <inheritdoc/>
     public bool IsKnown(Hash256 blockRoot) => _runner.ContainsBlock(blockRoot);
 
+    bool IBlockImporter.IsHeadStale => _runner.IsHeadStale;
+
     /// <summary>The block whose post-state a Fulu child imports onto without a state copy; for tests.</summary>
     internal Hash256? LineageRoot => _states.LineageRoot;
 
@@ -233,32 +235,6 @@ public sealed class BlockImporter : IBlockImporter
     /// <remarks>A block at or below that slot is the finalized checkpoint block or off its chain, and a block fork choice pruned is off it too.</remarks>
     internal static bool IsAboveFinalized(ForkChoiceRunner runner, Hash256 blockRoot) =>
         runner.GetBlockSlot(blockRoot) is ulong slot && slot > BeaconStateAccessors.ComputeStartSlotAtEpoch(runner.FinalizedCheckpoint.Epoch);
-
-    /// <inheritdoc/>
-    public bool IsExpectedProposer(ForkedSignedBeaconBlock block)
-    {
-        if (block is ForkedSignedBeaconBlock.OfGloas)
-        {
-            // The lookahead of the parent's frozen post-state; a Fulu or unretained parent defers to the transition.
-            return _states.GetGloasBlockState(block.ParentRoot) is not { } parentState
-                || IsInLookahead(parentState.GetCurrentEpoch(), parentState.ProposerLookahead!, block.Slot, block.ProposerIndex);
-        }
-
-        // Only the parent branch can prove the expected proposer; unavailable state defers to import.
-        if (_states.GetHeldBlockState(block.ParentRoot) is not { } state)
-        {
-            return true;
-        }
-
-        ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(block.Slot);
-        ulong stateEpoch = state.GetCurrentEpoch();
-        if (epoch != stateEpoch && epoch != stateEpoch + 1)
-        {
-            return true;
-        }
-
-        return state.GetBeaconProposerIndex(block.Slot) == block.ProposerIndex;
-    }
 
     /// <summary>Whether an EIP-7917 lookahead taken at <paramref name="stateEpoch"/> names <paramref name="proposerIndex"/> for <paramref name="slot"/>; <c>true</c> outside its two-epoch window.</summary>
     private static bool IsInLookahead(ulong stateEpoch, ulong[] lookahead, ulong slot, ulong proposerIndex)
@@ -348,6 +324,7 @@ public sealed class BlockImporter : IBlockImporter
         if (block is ForkedSignedBeaconBlock.OfGloas && HasInvalidGossipFields(block))
         {
             RejectGossip = verifySignatures && CanRejectBlock(block);
+            _failedBlocks?.Add(blockRoot, block.Slot);
             return BlockImportResult.Invalid;
         }
 
@@ -1257,27 +1234,14 @@ public sealed class BlockImporter : IBlockImporter
     // p2p-interface.md attester_slashing: an intersecting index must be slashable in the head state before gossip is accepted.
     private ForkedBeaconState RequireSlashableIntersection(ulong[] first, ulong[] second)
     {
-        Hash256 head = _runner.GetHead();
-        Validator[] validators;
-        ForkedBeaconState state;
-        ulong epoch;
-        if (_states.GetGloasBlockState(head) is { } gloas)
+        ForkedBeaconState state = _runner.GetHeldHeadState();
+        Validator[] validators = state switch
         {
-            state = new ForkedBeaconState.OfGloas(gloas);
-            validators = gloas.Validators!;
-            epoch = gloas.GetCurrentEpoch();
-        }
-        // Gossip validation must not replay stored blocks for a peer-sent message; only a held head state counts.
-        else if (_states.GetHeldBlockState(head) is { } fulu)
-        {
-            state = new ForkedBeaconState.OfFulu(fulu);
-            validators = fulu.Validators!;
-            epoch = fulu.GetCurrentEpoch();
-        }
-        else
-        {
-            throw new ForkChoiceException($"Head state {head} is not retained for attester slashing validation");
-        }
+            ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
+            ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
+            _ => throw new NotSupportedException("Unsupported head state"),
+        };
+        ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
 
         HashSet<ulong> indices = [.. second];
         foreach (ulong index in first)
