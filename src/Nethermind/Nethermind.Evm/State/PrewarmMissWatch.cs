@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 
 namespace Nethermind.Evm.State;
 
@@ -24,9 +25,31 @@ public static class PrewarmMissWatch
 
     public static void Disarm() => t_onThreshold = null;
 
+    [ThreadStatic] private static CancellationToken t_cancel;
+    [ThreadStatic] private static bool t_cancelArmed;
+
+    /// <summary>Until <see cref="ClearCancel"/>, a backing-store read on this thread throws once the token is cancelled.</summary>
+    public static void CancelAt(CancellationToken token)
+    {
+        t_cancel = token;
+        t_cancelArmed = true;
+    }
+
+    public static void ClearCancel()
+    {
+        t_cancelArmed = false;
+        t_cancel = default;
+    }
+
+    public static void ThrowIfCancelled()
+    {
+        if (t_cancelArmed && t_cancel.IsCancellationRequested) throw new OperationCanceledException(t_cancel);
+    }
+
     /// <summary>One backing-store read by a prewarm scope on this thread.</summary>
     public static void Miss()
     {
+        ThrowIfCancelled();
         Action? callback = t_onThreshold;
         if (callback is null || ++t_count < t_threshold) return;
         t_onThreshold = null;

@@ -36,6 +36,12 @@ public partial class ParallelUnbalancedWork
             _schedule = parent is null ? schedule ?? QueueToThreadPool : parent.ScheduleChildRunner;
         }
 
+        internal (int Reserved, int Unstarted, int Pending) Load()
+        {
+            long runners = Volatile.Read(ref _runners);
+            return ((int)runners, (int)(runners >> 32), Volatile.Read(ref _pending));
+        }
+
         internal WorkerScope? EnterForJoin()
         {
             WorkerScheduler? current = Current;

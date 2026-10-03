@@ -10,7 +10,8 @@ namespace Nethermind.Core.Diagnostics;
 
 /// <summary>
 /// Timing of one parallel fan-out forked from the block-processing thread, noted on the newPayload trace as
-/// label:n{jobs}:w{threads}:q{pool queue at the fork}:s{latest job start}:e{last job end}:b{summed job time}, in µs.
+/// label:n{jobs}:w{threads}:q{pool queue at the fork}:s{latest job start}:e{last job end}:b{summed job time}, in µs, then the
+/// scheduler's load at the fork (r reserved runners, u not yet started, p pending callbacks) and a, the prewarm runs in progress.
 /// </summary>
 public sealed class FanOutTrace
 {
@@ -19,6 +20,8 @@ public sealed class FanOutTrace
     private readonly long[] _end;
     private readonly int[] _thread;
     private readonly long _queued = ThreadPool.PendingWorkItemCount;
+    private readonly (int Reserved, int Unstarted, int Pending) _load = Threading.ParallelUnbalancedWork.CurrentLoad();
+    private readonly int _warming = PrewarmActivity.Active;
 
     private FanOutTrace(int jobs)
     {
@@ -53,6 +56,6 @@ public sealed class FanOutTrace
         }
 
         static long us(long ticks) => ticks * 1_000_000 / Stopwatch.Frequency;
-        NewPayloadTrace.Note($"{label}:n{_start.Length}:w{threads.Count}:q{_queued}:s{us(latestStart)}:e{us(lastEnd)}:b{us(busy)}");
+        NewPayloadTrace.Note($"{label}:n{_start.Length}:w{threads.Count}:q{_queued}:s{us(latestStart)}:e{us(lastEnd)}:b{us(busy)}:r{_load.Reserved}:u{_load.Unstarted}:p{_load.Pending}:a{_warming}");
     }
 }
