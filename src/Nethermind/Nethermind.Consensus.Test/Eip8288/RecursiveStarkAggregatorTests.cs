@@ -207,13 +207,55 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
-    public void Invalid_longer_direct_duplicate_is_verified_before_it_is_omitted()
+    public void Recursive_generic_source_wins_direct_ties_without_extra_proving([Values(1, 2, 3)] int directWitnessBytes)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("generic-source-tie"), default);
+        byte[] parent = LeanProofTestEnvelope.Create([dependency], new Dictionary<FrameDependency, int> { [dependency] = 2 });
+        byte[] directWitness = new byte[directWitnessBytes];
+        AggregationInput input = new()
+        {
+            Deps = [dependency, dependency, dependency, dependency, dependency],
+            Witnesses = [directWitness, directWitness, directWitness, directWitness, directWitness],
+            RecursiveProofs = [new([dependency], parent)]
+        };
+        EnvelopeBoundedVerifier verifier = new();
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
+
+        byte[] result = RecursiveStarkAggregator.Prove(input, verifier, hash);
+
+        int directProves = 0;
+        int parentPrunes = 0;
+        foreach (AggregationInput provingInput in verifier.ProvingInputs)
+        {
+            if (provingInput.Deps.Count != 0) directProves++;
+            if (provingInput.Discards.Count != 0) parentPrunes++;
+        }
+        Dictionary<FrameDependency, int> lengths = [];
+        Assert.That(LeanProofCapacity.TryReadGenericWitnessLengths(result, lengths), Is.True);
+        bool shorterDirect = directWitnessBytes < 2;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lengths[dependency], Is.EqualTo(Math.Min(directWitnessBytes, 2)));
+            Assert.That(directProves, Is.EqualTo(shorterDirect ? 1 : 0));
+            Assert.That(parentPrunes, Is.EqualTo(shorterDirect ? 1 : 0));
+            Assert.That(verifier.DirectStarkVerifications, Is.EqualTo(input.Deps.Count), "omitted direct witnesses still require authentication");
+            Assert.That(verifier.VerifiedProofs, Does.Contain(ValueKeccak.Compute(parent)));
+        }
+    }
+
+    [Test]
+    public void Invalid_direct_duplicate_is_verified_before_it_is_omitted([Values] bool tiedRecursiveSource)
     {
         FrameDependency a = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("invalid-duplicate"), default);
         AggregationInput input = new()
         {
-            Deps = [a, a, Sphincs("one"), Sphincs("two"), Sphincs("three")],
-            Witnesses = [new byte[] { 9, 0 }, new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }]
+            Deps = tiedRecursiveSource ? [a, a, a, a, a] : [a, a, Sphincs("one"), Sphincs("two"), Sphincs("three")],
+            Witnesses = tiedRecursiveSource
+                ? [new byte[] { 9, 0 }, new byte[] { 1, 0 }, new byte[] { 1, 0 }, new byte[] { 1, 0 }, new byte[] { 1, 0 }]
+                : [new byte[] { 9, 0 }, new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }],
+            RecursiveProofs = tiedRecursiveSource
+                ? [new([a], LeanProofTestEnvelope.Create([a], new Dictionary<FrameDependency, int> { [a] = 2 }))]
+                : []
         };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(input.Deps);
         Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, new EnvelopeBoundedVerifier(), hash));
@@ -222,9 +264,15 @@ public class RecursiveStarkAggregatorTests
     private sealed class EnvelopeBoundedVerifier : ILeanProofVerifier
     {
         public HashSet<ValueHash256> VerifiedProofs { get; } = [];
+        public List<AggregationInput> ProvingInputs { get; } = [];
+        public int DirectStarkVerifications { get; private set; }
         public void EnsureAvailable() { }
         public bool VerifyLeanSphincs(in ValueHash256 hash, in ValueHash256 key, ReadOnlySpan<byte> witness) => true;
-        public bool VerifyLeanStark(in ValueHash256 hash, in ValueHash256 key, ReadOnlySpan<byte> witness) => witness.Length > 0 && witness[0] != 9;
+        public bool VerifyLeanStark(in ValueHash256 hash, in ValueHash256 key, ReadOnlySpan<byte> witness)
+        {
+            DirectStarkVerifications++;
+            return witness.Length > 0 && witness[0] != 9;
+        }
         public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof)
         {
             VerifiedProofs.Add(ValueKeccak.Compute(proof));
@@ -234,6 +282,7 @@ public class RecursiveStarkAggregatorTests
         }
         public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
         {
+            ProvingInputs.Add(input);
             Assert.That(RecursiveStarkAggregator.TryAggregate(input, this, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
             Assert.That(actual, Is.EqualTo(hash));
             Dictionary<FrameDependency, int> lengths = [];
