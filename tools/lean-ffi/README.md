@@ -112,17 +112,11 @@ This Keccak profile has a much larger raw proving witness than the former BLAKE2
 profile. The adapter verifies every input, proves at most four unique selected signatures
 per leaf, and combines at most two children at each recursive node. Discards are applied
 to declared claims at every level. Larger signature sets use genuine recursive proofs
-rather than one large raw witness. Upstream's direct 100-signature memory estimate is
-about 57 GiB; historical BLAKE2s benchmark results do not describe this profile.
-
-On the 32 GiB ARM development host, fresh-process direct batches of 2/4/8 signatures
-used 1.28/2.07/3.92 GiB peak RSS. Four-signature leaves produced a verified 16-signature
-aggregate in 4.11 s with 4.52 GiB process peak, versus 15.30 s and 4.95 GiB with singleton
-leaves. Four is the conservative default for smaller CI hosts; these observations are
-not a hard memory bound. Proving is serialized within each aggregation request.
-Reproduce sizing with `cargo run --release --example resource_probe -- 4 direct` or
-`cargo run --release --example resource_probe -- 16` from this directory; signature
-generation is outside the reported proving time but included in process peak RSS.
+rather than one large raw witness. Small steps bound witness growth without guaranteeing
+process memory usage; proving calls are serialized within the native backend. The pinned
+Rust toolchain is selected from this directory, including MSBuild's Cargo invocations.
+CI compiles for its host CPU and restores compiled artifacts only when CPU features,
+architecture, toolchain and locked dependencies match.
 
 ## Recursive compression limit
 
@@ -189,10 +183,11 @@ Managed proving folds at most four direct witnesses or two recursive children pe
 4 MiB is the direct-leaf batching target, not a block-wide witness limit. Native inputs are bounded
 to 18 MiB, output proofs to 8 MiB, and selected plus discarded coverage to 4096 dependencies.
 
-Required witness storage is bounded to 64 MiB / 1024 records. Each direct dependency has its own
+Required witness storage is bounded to 64 MiB / 32768 records, allowing record slots for the
+default 2048-transaction pool with 16 independent signatures each. Each direct dependency has its own
 record, so rejected entries release their reserved witnesses. Recursive proofs are indivisible:
 the complete proof and declared dependency metadata count toward both the global bound and a
-12 MiB pinned-byte quota per sender. Shared records count once per sender. Admission reserves
+12 MiB / 256-record pinned quota per sender. Shared records count once per sender. Admission reserves
 capacity and sender quota before insertion; pending transactions pin witnesses until removal,
 replacement or shutdown. Full protected capacity defers new admission. Multiple funded senders
 can still fill this finite pending-witness budget. Dependency-bearing blob transactions are
@@ -208,9 +203,9 @@ proof gossip use the same verification, pool insertion and witness-retention rul
 
 ## Negotiated proof gossip
 
-When the prototype fork is active at the node's head, it advertises only `lean/2`
-alongside normal Ethereum capabilities. The obsolete whole-object `lean/1` fallback
-is disabled so proof gossip cannot stall ETH traffic behind a large single write. The existing protocol registry
+When the prototype fork is active at the node's head, it advertises only `lean/1`
+alongside normal Ethereum capabilities. This unpublished prototype uses application chunks
+as its initial wire format; no whole-object fallback is registered. The existing protocol registry
 shares negotiation and shutdown with Ethereum handlers, using the Consensus proof
 admission service and background scheduler.
 
@@ -221,7 +216,7 @@ The RLP mempool wrapper includes full transactions and is bounded by 10 MiB and
 4096 transactions. Outgoing selection reserves 8 MiB for the proof before encoding
 transactions.
 
-`lean/2` streams independent chunks: a 48-byte header holds the whole-wrapper
+`lean/1` streams independent chunks: a 48-byte header holds the whole-wrapper
 Keccak commitment and big-endian total length, index, count and chunk size, followed
 by chunk bytes. The default chunk is 64 KiB, with 16/32/64/128 KiB supported and
 128 KiB as the maximum. Geometry is checked before allocation. The peer supplies an
@@ -244,7 +239,8 @@ order; unknown continuation chunks are ignored, and gaps within an accepted stre
 malformed. This prevents dropped starts from creating assemblies that can never complete.
 Incomplete objects expire after 30 seconds without progress or five minutes absolutely.
 Duplicates do not extend their lifetime, timer expiry needs no inbound traffic, and repeated
-abandonment disconnects the peer, including streams abandoned more than five minutes apart. Shutdown and cancelled admission release leases; a completed
+abandonment within 30 minutes disconnects the peer, including streams abandoned more than five
+minutes apart. Isolated failures beyond that window do not accumulate forever. Shutdown and cancelled admission release leases; a completed
 commitment is suppressed only while its admission buffer remains retained, so cancellation
 can retry. Per-peer wire bytes and message counts are bounded before copying, allowing two
 maximum wrappers per second including every chunk header. Each verification returns pending
@@ -268,7 +264,9 @@ per call and checks cancellation before and after each call. An individual nativ
 remains uninterruptible; shutdown cancels peer work and joins the worker.
 
 During channel backpressure, the shared sender retains up to 64 non-bulk messages
-within 12 MiB and drains them before bulk writes. Control responses wait for the current
+within 12 MiB and drains them before bulk writes; exceeding the control queue closes the
+channel explicitly. Control codecs run independently of bulk serialization, preserving their
+synchronous message ownership. Control responses wait for the current
 chunk's compressed frame to drain. The RLPx merger still accepts one fragmented context
 at a time; application chunks are complete independent messages rather than interleaved
 fragments of one RLPx object.

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Eip8288;
@@ -170,7 +171,7 @@ public class RecursiveStarkAggregatorTests
         for (int i = 0; i < children.Length; i++)
         {
             dependencies[i] = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(i.ToString()), default);
-            children[i] = new([dependencies[i]], [1]);
+            children[i] = new([dependencies[i]], LeanProofTestEnvelope.Create([dependencies[i]]));
         }
         GenericBoundedVerifier verifier = new();
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependencies[0]]);
@@ -181,6 +182,69 @@ public class RecursiveStarkAggregatorTests
         }, verifier, hash);
         Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
         Assert.That(verifier.ProofCalls, Is.GreaterThan(1));
+    }
+
+    [Test]
+    public void Longer_duplicate_is_pruned_before_an_intermediate_union_exceeds_output_capacity()
+    {
+        FrameDependency a = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("shortest-a"), default);
+        FrameDependency b = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("large-b"), default);
+        byte[] longProof = LeanProofTestEnvelope.Create([a], new Dictionary<FrameDependency, int> { [a] = 4 * 1024 * 1024 });
+        byte[] otherProof = LeanProofTestEnvelope.Create([b], new Dictionary<FrameDependency, int> { [b] = 5 * 1024 * 1024 });
+        byte[] shortProof = LeanProofTestEnvelope.Create([a]);
+        EnvelopeBoundedVerifier verifier = new();
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([a, b]);
+        byte[] result = RecursiveStarkAggregator.Prove(new()
+        {
+            RecursiveProofs = [new([a], longProof), new([b], otherProof), new([a], shortProof)]
+        }, verifier, hash);
+        Dictionary<FrameDependency, int> lengths = [];
+        Assert.That(LeanProofCapacity.TryReadGenericWitnessLengths(result, lengths), Is.True);
+        Assert.That(lengths[a], Is.EqualTo(1));
+        Assert.That(lengths[b], Is.EqualTo(5 * 1024 * 1024));
+        Assert.That(verifier.VerifiedProofs, Does.Contain(ValueKeccak.Compute(longProof)), "pruning still authenticates the original parent");
+        Assert.That(verifier.VerifiedProofs, Does.Contain(ValueKeccak.Compute(shortProof)), "the selected shortest parent remains in the final statement");
+    }
+
+    [Test]
+    public void Invalid_longer_direct_duplicate_is_verified_before_it_is_omitted()
+    {
+        FrameDependency a = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("invalid-duplicate"), default);
+        AggregationInput input = new()
+        {
+            Deps = [a, a, Sphincs("one"), Sphincs("two"), Sphincs("three")],
+            Witnesses = [new byte[] { 9, 0 }, new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }]
+        };
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(input.Deps);
+        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, new EnvelopeBoundedVerifier(), hash));
+    }
+
+    private sealed class EnvelopeBoundedVerifier : ILeanProofVerifier
+    {
+        public HashSet<ValueHash256> VerifiedProofs { get; } = [];
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 hash, in ValueHash256 key, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyLeanStark(in ValueHash256 hash, in ValueHash256 key, ReadOnlySpan<byte> witness) => witness.Length > 0 && witness[0] != 9;
+        public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof)
+        {
+            VerifiedProofs.Add(ValueKeccak.Compute(proof));
+            if (!LeanProofCapacity.TryReadGenericWitnessLengths(proof, new Dictionary<FrameDependency, int>())) return false;
+            int count = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(proof[4..]);
+            return ValueKeccak.Compute(proof.Slice(8, count * Eip8288Constants.DependencyTripleLength)) == hash;
+        }
+        public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
+        {
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, this, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
+            Assert.That(actual, Is.EqualTo(hash));
+            Dictionary<FrameDependency, int> lengths = [];
+            foreach (RecursiveProofInput child in input.RecursiveProofs)
+                Assert.That(LeanProofCapacity.TryReadGenericWitnessLengths(child.Proof.Span, lengths), Is.True);
+            for (int i = 0; i < input.Deps.Count; i++)
+                if (input.Deps[i].Scheme == Eip8288Constants.LeanStarkScheme)
+                    LeanProofCapacity.AddWitnessLength(lengths, input.Deps[i], input.Witnesses[i].Length);
+            Assert.That(LeanProofCapacity.CapacityError(new HashSet<FrameDependency>(dependencies), lengths), Is.Null);
+            return LeanProofTestEnvelope.Create(dependencies, lengths);
+        }
     }
 
     private sealed class GenericBoundedVerifier : ILeanProofVerifier
@@ -205,7 +269,8 @@ public class RecursiveStarkAggregatorTests
     {
         LeanProofStore store = new();
         FrameDependency first = Sphincs("0");
-        for (int i = 0; i < 1025; i++) store.AddVerified([sameDependency ? first : Sphincs(i.ToString())], [[1]], null);
+        byte[] witness = new byte[64 * 1024 - Eip8288Constants.DependencyTripleLength];
+        for (int i = 0; i < 1025; i++) store.AddVerified([sameDependency ? first : Sphincs(i.ToString())], [witness], null);
         Assert.That(store.TryGetInput([first], out _), Is.EqualTo(sameDependency));
     }
 
@@ -301,12 +366,14 @@ public class RecursiveStarkAggregatorTests
     {
         LeanProofStore store = new();
         List<Transaction> pending = [];
+        byte[] witness = new byte[64 * 1024 - Eip8288Constants.DependencyTripleLength];
         for (int i = 0; i < 1024; i++)
         {
             FrameDependency dependency = Sphincs($"pending:{i}");
             Transaction transaction = DependencyTransaction(dependency);
-            Assert.That(store.TryBeginAdmission([dependency], [[1]], null, out IDisposable? admission), Is.True);
-            using (admission) store.PinPending(transaction);
+            transaction.SenderAddress = new Address(dependency.DataHash.Bytes[..20]);
+            Assert.That(store.TryBeginAdmission([dependency], [witness], null, out IDisposable? admission), Is.True);
+            using (admission) Assert.That(store.PinPending(transaction), Is.True);
             pending.Add(transaction);
         }
         FrameDependency newcomer = Sphincs("newcomer");
@@ -335,9 +402,10 @@ public class RecursiveStarkAggregatorTests
             store.AddVerified([a, b], null, [2], admittedDependencies: [b]);
         }
         store.UnpinPending(later.Hash!.ValueHash256);
+        byte[] witness = new byte[64 * 1024];
         for (int i = 0; i < 1100; i++)
         {
-            store.AddVerified([Sphincs($"coverage:{i}")], [[1]], null);
+            store.AddVerified([Sphincs($"coverage:{i}")], [witness], null);
             store.AddCachedRecursive([Sphincs($"cache:{i}")], [3]);
         }
         Assert.That(store.TryGetInput([a], out AggregationInput input), Is.True);

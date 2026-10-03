@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -197,6 +198,109 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
+        public async Task Inline_control_can_serialize_while_a_bulk_codec_is_busy()
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage _) = SetupChannel(true);
+            TestMessage chunk = new("lean", 1), control = new("p2p");
+            using ManualResetEventSlim started = new(), release = new();
+            using DisposableByteBuffer chunkBuffer = Unpooled.Buffer(4).WriteZero(4).AsDisposable();
+            using DisposableByteBuffer controlBuffer = Unpooled.Buffer(4).WriteZero(4).AsDisposable();
+            serializer.ZeroSerialize(chunk, Arg.Any<IByteBufferAllocator>()).Returns(_ =>
+            {
+                started.Set();
+                Assert.That(release.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                return chunkBuffer;
+            });
+            serializer.ZeroSerialize(control, Arg.Any<IByteBufferAllocator>()).Returns(controlBuffer);
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            sender.EnableLeanBulk();
+            Task<int> bulk = Task.Run(async () => await sender.EnqueueAsync(chunk, CancellationToken.None));
+            try
+            {
+                Assert.That(started.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(sender.Enqueue(control), Is.EqualTo(4));
+                _ = context.Received(1).WriteAndFlushAsync(controlBuffer);
+                release.Set();
+                await bulk.WaitAsync(TimeSpan.FromSeconds(5));
+                Received.InOrder(() => { context.WriteAndFlushAsync(controlBuffer); context.WriteAndFlushAsync(chunkBuffer); });
+            }
+            finally { release.Set(); await bulk.WaitAsync(TimeSpan.FromSeconds(5)); sender.HandlerRemoved(context); }
+        }
+
+        [Test]
+        public async Task Writable_channel_preserves_sixty_four_concurrent_controls_without_silent_drops()
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage _) = SetupChannel(true);
+            TestMessage first = new("eth");
+            using ManualResetEventSlim started = new(), release = new();
+            ConcurrentBag<IByteBuffer> buffers = [];
+            serializer.ZeroSerialize(Arg.Any<TestMessage>(), Arg.Any<IByteBufferAllocator>()).Returns(call =>
+            {
+                IByteBuffer buffer = Unpooled.Buffer(4).WriteZero(4);
+                buffers.Add(buffer);
+                if (ReferenceEquals(call.Arg<TestMessage>(), first))
+                {
+                    started.Set();
+                    Assert.That(release.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                }
+                return buffer;
+            });
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            sender.EnableLeanBulk();
+            Task<int> firstSend = Task.Run(() => sender.Enqueue(first));
+            try
+            {
+                Assert.That(started.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                Task<int>[] controls = new Task<int>[63];
+                for (int index = 0; index < controls.Length; index++)
+                    controls[index] = Task.Run(() => sender.Enqueue(new TestMessage("eth")));
+                int[] lengths = await Task.WhenAll(controls).WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(lengths, Is.All.EqualTo(4));
+                _ = context.DidNotReceive().CloseAsync();
+                _ = context.DidNotReceive().WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+                release.Set();
+                Assert.That(await firstSend.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(4));
+                _ = context.Received(64).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+            }
+            finally
+            {
+                release.Set();
+                await firstSend.WaitAsync(TimeSpan.FromSeconds(5));
+                sender.HandlerRemoved(context);
+                foreach (IByteBuffer buffer in buffers) if (buffer.ReferenceCount > 0) buffer.SafeRelease();
+            }
+        }
+
+        [Test]
+        public void Control_queue_overflow_closes_explicitly_and_releases_queued_buffers()
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage message) = SetupChannel(true);
+            context.Channel.IsWritable.Returns(false);
+            IByteBuffer[] buffers = new IByteBuffer[64];
+            int encoded = 0;
+            serializer.ZeroSerialize(message, Arg.Any<IByteBufferAllocator>()).Returns(_ =>
+            {
+                IByteBuffer buffer = Unpooled.Buffer(4).WriteZero(4);
+                buffers[encoded++] = buffer;
+                return buffer;
+            });
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            sender.EnableLeanBulk();
+            try
+            {
+                for (int index = 0; index < 64; index++) Assert.That(sender.Enqueue(message), Is.EqualTo(4));
+                Assert.That(sender.Enqueue(message), Is.Zero);
+                Assert.That(encoded, Is.EqualTo(64));
+                _ = context.Received(1).CloseAsync();
+                foreach (IByteBuffer buffer in buffers) Assert.That(buffer.ReferenceCount, Is.Zero);
+            }
+            finally { sender.HandlerRemoved(context); }
+        }
+
+        [Test]
         public async Task Queued_controls_keep_fifo_priority_when_the_codec_is_busy()
         {
             (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage _) = SetupChannel(true);
@@ -228,8 +332,9 @@ namespace Nethermind.Network.Test.P2P
                 context.Channel.IsWritable.Returns(_ => { secondReserved.Set(); return true; });
                 secondSend = Task.Run(() => sender.Enqueue(second));
                 Assert.That(secondReserved.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                Assert.That(await secondSend.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(4));
                 Task<int> bulkSend = sender.EnqueueAsync(chunk, CancellationToken.None).AsTask();
-                serializer.DidNotReceive().ZeroSerialize(second, Arg.Any<IByteBufferAllocator>());
+                serializer.Received(1).ZeroSerialize(second, Arg.Any<IByteBufferAllocator>());
                 serializer.DidNotReceive().ZeroSerialize(chunk, Arg.Any<IByteBufferAllocator>());
                 _ = context.DidNotReceive().WriteAndFlushAsync(Arg.Any<IByteBuffer>());
                 release.Set();

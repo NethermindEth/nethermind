@@ -12,7 +12,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
-/// <summary>A bounded fragment of a whole-wrapper commitment on lean/2.</summary>
+/// <summary>A bounded fragment of a whole-wrapper commitment on lean/1.</summary>
 public sealed class LeanProofChunkMessage(ValueHash256 wrapperHash, int totalBytes, int index, int count,
     int chunkSize, ReadOnlyMemory<byte> data) : P2PMessage
 {
@@ -157,6 +157,7 @@ public sealed class LeanChunkReassembler : IDisposable
     public const int MaxPeerCompletionBytes = MaxPeerBytes + LeanProofStore.MaxWrapperBytes;
     public static readonly TimeSpan InactivityTimeout = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan MaxAssemblyLifetime = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan AbandonmentWindow = TimeSpan.FromMinutes(30);
     private readonly LeanReassemblyBudget _budget;
     private readonly TimeProvider _clock;
     private readonly Action? _onIncompleteAbuse;
@@ -167,6 +168,7 @@ public sealed class LeanChunkReassembler : IDisposable
     private int _retained;
     private int _retainedBytes;
     private int _expiredStreams;
+    private long _lastAbandonment;
     private bool _disposed;
     private sealed class Assembly(LeanProofChunkMessage chunk, LeanReassemblyBudget.Lease lease, long timestamp)
     {
@@ -338,7 +340,13 @@ public sealed class LeanChunkReassembler : IDisposable
             if (_clock.GetElapsedTime(assembly.Updated, now) >= InactivityTimeout
                 || _clock.GetElapsedTime(assembly.Created, now) >= MaxAssemblyLifetime) expired[count++] = hash;
         for (int i = 0; i < count; i++) Drop(expired[i], _assemblies[expired[i]]);
-        _expiredStreams += count;
+        if (count > 0)
+        {
+            if (_expiredStreams != 0 && _clock.GetElapsedTime(_lastAbandonment, now) >= AbandonmentWindow)
+                _expiredStreams = 0;
+            _lastAbandonment = now;
+            _expiredStreams += count;
+        }
         // One stalled transfer can be an ordinary link failure. Repeated abandonment is abuse.
         return count > 0 && _expiredStreams >= 2;
     }

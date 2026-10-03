@@ -68,52 +68,59 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         {
             if (_removed || !_context.Channel.Active) return 0;
             bool deferred = !_context.Channel.IsWritable || bulk.Deferred.Count != 0;
-            // Chunk producers retry independently; reserve the deferred budget for control traffic.
-            if (deferred && ((message.Protocol == "lean" && message.PacketType == 1)
-                || bulk.Deferred.Count == MaxDeferredMessages || bulk.DeferredBytes == MaxDeferredBytes)) return 0;
-            // Reserve FIFO position before encoding, without parking the event loop behind the codec.
-            bulk.Deferred.Enqueue(pending);
-        }
-        lock (bulk.CodecGate)
-        {
-            if (_removed || !_context.Channel.Active)
+            if (deferred && message.Protocol == "lean" && message.PacketType == 1) return 0;
+            if (deferred && (bulk.Deferred.Count == MaxDeferredMessages || bulk.DeferredBytes == MaxDeferredBytes))
             {
-                lock (bulk.Gate)
-                {
-                    pending.Ready = true;
-                    DrainDeferred(bulk);
-                }
+                CloseForBulkOverflow(bulk);
                 return 0;
             }
-            IByteBuffer buffer;
-            try { buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator); }
-            catch
-            {
-                lock (bulk.Gate)
-                {
-                    pending.Ready = true;
-                    DrainDeferred(bulk);
-                }
-                throw;
-            }
+            bulk.Deferred.Enqueue(pending);
+        }
+        // Control codecs already serialize concurrently on ordinary sessions. Keep that contract:
+        // an event-loop Pong must not wait for a bulk codec, nor outlive its message's ownership.
+        IByteBuffer buffer;
+        try { buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator); }
+        catch
+        {
             lock (bulk.Gate)
             {
-                int length = buffer.ReadableBytes;
                 pending.Ready = true;
-                bool immediate = !_removed && _context.Channel.Active && _context.Channel.IsWritable
-                    && ReferenceEquals(bulk.Deferred.Peek(), pending);
-                if (_removed || !_context.Channel.Active || !immediate && length > MaxDeferredBytes - bulk.DeferredBytes)
-                {
-                    buffer.Release();
-                    DrainDeferred(bulk);
-                    return 0;
-                }
-                pending.Buffer = buffer;
-                bulk.DeferredBytes += length;
                 DrainDeferred(bulk);
-                return length;
             }
+            throw;
         }
+        lock (bulk.Gate)
+        {
+            int length = buffer.ReadableBytes;
+            pending.Ready = true;
+            bool immediate = !_removed && _context.Channel.Active && _context.Channel.IsWritable
+                && ReferenceEquals(bulk.Deferred.Peek(), pending);
+            if (_removed || !_context.Channel.Active)
+            {
+                buffer.Release();
+                return 0;
+            }
+            if (!immediate && length > MaxDeferredBytes - bulk.DeferredBytes)
+            {
+                buffer.Release();
+                CloseForBulkOverflow(bulk);
+                return 0;
+            }
+            pending.Buffer = buffer;
+            bulk.DeferredBytes += length;
+            DrainDeferred(bulk);
+            return length;
+        }
+    }
+
+    private void CloseForBulkOverflow(BulkSendState bulk)
+    {
+        if (_logger.IsWarn) _logger.Warn("Closing channel: deferred control-message capacity exceeded");
+        _removed = true;
+        while (bulk.Deferred.TryDequeue(out DeferredWrite? pending)) pending.Buffer?.Release();
+        bulk.DeferredBytes = 0;
+        WakeBulkWriters(bulk);
+        _ = _context.CloseAsync();
     }
 
     internal async ValueTask<int> EnqueueAsync<T>(T message, CancellationToken cancellationToken) where T : P2PMessage

@@ -39,17 +39,20 @@ public static class FocilInclusionListValidator
         deps = [];
         error = null;
         bool requiresProof = false;
+        List<List<FrameDependency>> required = [];
         foreach (Transaction tx in transactions)
         {
             if (tx is null) { error = InvalidProof; return false; }
             if (!IsFrameWellFormed(tx, spec, out error)) return false;
-            if (Eip8288Dependencies.ForTransaction(tx).Count > 0) requiresProof = true;
+            List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(tx);
+            required.Add(dependencies);
+            requiresProof |= dependencies.Count > 0;
         }
         if (!requiresProof && proof is null && provenDependencies is null) return true;
         if (!ValidateProof(proof, provenDependencies, verifier, out deps, out error)) return false;
         HashSet<FrameDependency> covered = [.. deps];
-        foreach (Transaction tx in transactions)
-            foreach (FrameDependency dependency in Eip8288Dependencies.ForTransaction(tx))
+        foreach (List<FrameDependency> dependencies in required)
+            foreach (FrameDependency dependency in dependencies)
                 if (!covered.Contains(dependency)) { error = DepsHashMismatch; return false; }
         return true;
     }
@@ -114,9 +117,15 @@ public static class FocilInclusionListValidator
         if (!Eip8288Dependencies.Serialize(Eip8288Dependencies.Canonicalize(parsed)).AsSpan().SequenceEqual(bytes)) return false;
         ValueHash256 depsHash = ValueKeccak.Compute(bytes);
         if (proof.BlockDepsHash.ValueHash256 != depsHash) { error = DepsHashMismatch; dependencies = []; return false; }
-        ILeanProofVerifier backend = verifier;
-        while (backend is InclusionListProofVerifier memo) backend = memo.Backend;
-        if (!VerifiedProofs.GetValue(backend, static _ => new()).Verify(verifier, in depsHash, proof.StarkProof)) { dependencies = []; return false; }
+        InclusionListProofVerifier? request = verifier as InclusionListProofVerifier;
+        if (request is null || !request.TryGetVerdict(in depsHash, Eip8288Constants.AggregatedVk, proof.StarkProof, out bool valid))
+        {
+            ILeanProofVerifier backend = verifier;
+            while (backend is InclusionListProofVerifier memo) backend = memo.Backend;
+            valid = VerifiedProofs.GetValue(backend, static _ => new()).Verify(backend, in depsHash, proof.StarkProof);
+            request?.RememberVerdict(in depsHash, Eip8288Constants.AggregatedVk, proof.StarkProof, valid);
+        }
+        if (!valid) { dependencies = []; return false; }
         dependencies = parsed;
         error = null;
         return true;

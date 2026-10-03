@@ -18,12 +18,24 @@ public sealed class InclusionListProofVerifier(ILeanProofVerifier verifier) : IL
 
     public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
-        if (_proof is not null && depsHash == _depsHash && aggregatedVk.SequenceEqual(_verificationKey) && proof.SequenceEqual(_proof)) return _valid;
-        _valid = verifier.VerifyRecursiveStark(in depsHash, aggregatedVk, proof);
+        if (TryGetVerdict(in depsHash, aggregatedVk, proof, out bool valid)) return valid;
+        valid = verifier.VerifyRecursiveStark(in depsHash, aggregatedVk, proof);
+        RememberVerdict(in depsHash, aggregatedVk, proof, valid);
+        return valid;
+    }
+
+    internal bool TryGetVerdict(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof, out bool valid)
+    {
+        valid = _valid;
+        return _proof is not null && depsHash == _depsHash && aggregatedVk.SequenceEqual(_verificationKey) && proof.SequenceEqual(_proof);
+    }
+
+    internal void RememberVerdict(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof, bool valid)
+    {
+        _valid = valid;
         _depsHash = depsHash;
         _verificationKey = aggregatedVk.ToArray();
         _proof = proof.ToArray();
-        return _valid;
     }
 
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)

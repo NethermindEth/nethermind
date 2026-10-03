@@ -18,6 +18,7 @@ public interface ILeanProofVerifier
     bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness);
 
     /// <summary>Verifies a recursive STARK for dependency commitment <paramref name="depsHash"/> under the aggregated verification key.</summary>
+    /// <remarks>The prototype native backend accepts only its pinned guest key; it does not verify arbitrary recursive programs.</remarks>
     bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof);
 
     /// <summary>Produces the recursive STARK a builder attaches to its block.</summary>

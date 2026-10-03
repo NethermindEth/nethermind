@@ -84,17 +84,16 @@ public static class InclusionListValidator
         if (spec.IsEip8288Enabled && HasGenericDependencies(il))
             publicSizesValid &= proof?.StarkProof is { } inclusionProof
                 && LeanProofCapacity.TryReadGenericWitnessLengths(inclusionProof, genericLengths);
+        LeanProofCapacity.AppendBudget capacity = LeanProofCapacity.CreateAppendBudget(dependencies, genericLengths);
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i] || il[i].SupportsFrames && il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
             if (il[i].SupportsFrames)
             {
+                if (!spec.IsEip8288Enabled || !CouldIncludeFrameTx(il[i], block, spec, txValidator)) continue;
                 List<FrameDependency> appended = Eip8288Dependencies.ForTransaction(il[i]);
-                HashSet<FrameDependency> union = [.. dependencies, .. appended];
-                if (spec.IsEip8288Enabled && (appended.Count == 0 || publicSizesValid)
-                    && LeanProofBudget.CapacityError(dependencies, genericProofs, appended) is null
-                    && LeanProofCapacity.CapacityError(union, genericLengths) is null && CouldIncludeFrameTx(il[i], block, spec, txValidator)
+                if ((appended.Count == 0 || publicSizesValid) && capacity.CapacityError(appended) is null
                     && (frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
                 continue;
             }

@@ -127,8 +127,9 @@ public class Eip8288BlockProductionTests
 
         void Flood()
         {
+            byte[] witness = new byte[64 * 1024];
             for (int i = 0; i < 1100; i++)
-                proofs.AddVerified([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"flood:{i}"), default)], [[1]], null);
+                proofs.AddVerified([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"flood:{i}"), default)], [witness], null);
         }
     }
 
@@ -171,18 +172,19 @@ public class Eip8288BlockProductionTests
         CountingVerifier verifier = new();
         LeanProofStore proofs = new();
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        byte[] witness = new byte[64 * 1024 - Eip8288Constants.DependencyTripleLength];
         for (int i = 0; i < 1024; i++)
         {
             FrameDependency cached = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"cached:{i}"), default);
-            proofs.AddVerified([cached], [[1]], null);
-            proofs.PinPending(new Transaction
+            proofs.AddVerified([cached], [witness], null);
+            Assert.That(proofs.PinPending(new Transaction
             {
                 Type = TxType.FrameTx,
                 Hash = new Hash256(cached.DataHash),
-                SenderAddress = Address.Zero,
+                SenderAddress = new Address(cached.DataHash.Bytes[..20]),
                 Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
                     UInt256.Zero, Eip8288Dependencies.Serialize([cached]))]
-            });
+            }), Is.True);
         }
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("inclusion-list"), default);
         proofs.AddVerified([dependency], null, [1]);

@@ -550,7 +550,7 @@ public class SessionTests
     }
 
     [Test]
-    public async Task Bulk_transport_requires_negotiated_lean2([Values] bool negotiated)
+    public async Task Bulk_transport_requires_negotiated_lean1([Values] bool negotiated)
     {
         _channel.Active.Returns(true);
         _channel.IsWritable.Returns(false);
@@ -565,9 +565,9 @@ public class SessionTests
         p2p.ProtocolCode.Returns("p2p");
         p2p.Name.Returns("p2p");
         p2p.MessageIdSpaceSize.Returns(16);
-        p2p.HasAgreedCapability(new Capability("lean", 2)).Returns(negotiated);
+        p2p.HasAgreedCapability(new Capability("lean", 1)).Returns(negotiated);
         session.AddProtocolHandler(p2p);
-        session.AddProtocolHandler(BuildHandler("lean", 2));
+        session.AddProtocolHandler(BuildHandler("lean", 1));
         using DisposableByteBuffer small = Unpooled.Buffer(4).WriteZero(4).AsDisposable();
         TestMessage control = new();
         serializer.ZeroSerialize(control, Arg.Any<IByteBufferAllocator>()).Returns(small);
