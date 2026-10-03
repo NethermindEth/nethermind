@@ -342,6 +342,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7906Enabled { get; }
 
         /// <summary>
+        /// EIP-8151: ecRecover returns the recovered address only when its raw code is empty or an EIP-7702 delegation.
+        /// </summary>
+        bool IsEip8151Enabled { get; }
+
+        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }
