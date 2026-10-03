@@ -9,11 +9,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.ZkEvm.Test;
@@ -158,6 +160,125 @@ public class GuestDispatchDifferentialTests
             if (!Matches(untraced, traced))
                 mismatches.Add($"code {Convert.ToHexString(program)}\n untraced {untraced}\n traced   {traced}");
         }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
+    /// The second load of a key finds it warm, and every amount of gas up to the program's need puts the end of the
+    /// gas inside each cold and warm charge.
+    /// </remarks>
+    [Test]
+    public void Storage_loads_match_the_shared_handlers([Values] bool fromEmptyStack)
+    {
+        byte[] code = fromEmptyStack
+            ? [(byte)Instruction.SLOAD]
+            :
+            [
+                (byte)Instruction.PUSH1, 5, (byte)Instruction.SLOAD, (byte)Instruction.PUSH1, 6, (byte)Instruction.SLOAD,
+                (byte)Instruction.PUSH1, 5, (byte)Instruction.SLOAD, (byte)Instruction.ADD, (byte)Instruction.ADD,
+                (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP
+            ];
+        const ulong needed = 3 + 2100 + 3 + 2100 + 3 + 100 + 3 + 3 + 3 + 3 + 3;
+        UInt256 expected = StorageValueAt(5) * 2 + StorageValueAt(6);
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, loadsStorage: true);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Outcome complete = Run(needed, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            if (fromEmptyStack)
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.StackUnderflow));
+            }
+            else
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.Stop));
+                Assert.That(complete.GasLeft, Is.Zero);
+                Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(expected.ToBigEndian())));
+            }
+        }
+    }
+
+    /// <remarks>Every amount of gas up to the program's need puts the end of the gas inside each charge.</remarks>
+    [Test]
+    public void Transient_storage_matches_the_shared_handlers()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH1, 9, (byte)Instruction.PUSH1, 4, (byte)Instruction.TSTORE,
+            (byte)Instruction.PUSH1, 4, (byte)Instruction.TLOAD, (byte)Instruction.PUSH1, 5, (byte)Instruction.TLOAD, (byte)Instruction.ADD,
+            (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP
+        ];
+        const ulong needed = 3 + 3 + 100 + 3 + 100 + 3 + 100 + 3 + 3 + 3 + 3;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, loadsStorage: true);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Outcome complete = Run(needed, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.Stop));
+            Assert.That(complete.GasLeft, Is.Zero);
+            Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(((UInt256)9).ToBigEndian())));
+        }
+    }
+
+    /// <remarks>
+    /// Memory starts empty, holds one word at 0, or holds words up to 0x120, so a copy lands inside the initialized
+    /// memory, past it with a gap, or at the end of the inline backing. Each copy also runs one and three gas short of
+    /// its need, which puts the end of the gas inside its word and expansion charges.
+    /// </remarks>
+    [Test]
+    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2)] int memory)
+    {
+        byte[] data = new byte[40];
+        for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
+        byte[] prefix = memory switch
+        {
+            0 => [],
+            1 => [(byte)Instruction.PUSH1, 0xaa, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE],
+            _ => [(byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MSTORE],
+        };
+        UInt256[] destinations = [0, 7, 0x20, 0x40, 0x61, 0x120, 0x3f0, 0x400, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] sources = [0, 5, 39, 40, 41, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] sizes = [0, 1, 31, 32, 33, 64, 200, UInt256.One << 32];
+
+        List<string> mismatches = [];
+        foreach (UInt256 destination in destinations)
+            foreach (UInt256 source in sources)
+                foreach (UInt256 size in sizes)
+                {
+                    byte[] code =
+                    [
+                        .. prefix, (byte)Instruction.PUSH32, .. size.ToBigEndian(), (byte)Instruction.PUSH32, .. source.ToBigEndian(),
+                (byte)Instruction.PUSH32, .. destination.ToBigEndian(), (byte)op, (byte)Instruction.MSIZE, (byte)Instruction.STOP
+                    ];
+                    Outcome fresh = Run(100_000, data, 0, new CodeInfo(code), Table.Traced, returnData: data);
+                    ulong needed = 100_000 - fresh.GasLeft;
+                    foreach (ulong gas in (ulong[])[100_000, needed, needed - 1, needed - 3])
+                    {
+                        Outcome untraced = Run(gas, data, 0, new CodeInfo(code), Table.Untraced, returnData: data);
+                        Outcome traced = Run(gas, data, 0, new CodeInfo(code), Table.Traced, returnData: data);
+                        if (!Matches(untraced, traced) && mismatches.Count < 5)
+                            mismatches.Add($"gas {gas} code {Convert.ToHexString(code)}\n untraced {untraced}\n traced   {traced}");
+                    }
+                }
 
         Assert.That(mismatches, Is.Empty);
     }
@@ -313,9 +434,11 @@ public class GuestDispatchDifferentialTests
         _ => (byte)random.Next(256),
     };
 
-    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null)
+    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
+        bool loadsStorage = false, byte[]? returnData = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
+        if (returnData is not null) vm.ReturnDataBuffer = returnData;
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
         using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default);
@@ -352,7 +475,9 @@ public class GuestDispatchDifferentialTests
             new ReadOnlySpan<nint>(source, handlers.Length).CopyTo(handlers);
         for (int opcode = 0; opcode < handlers.Length; opcode++)
         {
-            if (NeedsWorldStateOrHash((Instruction)opcode))
+            if (NeedsWorldStateOrHash((Instruction)opcode) &&
+                !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.TLOAD or Instruction.TSTORE) &&
+                !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY))
                 handlers[opcode] = handlers[(int)Instruction.INVALID];
         }
 
@@ -384,6 +509,9 @@ public class GuestDispatchDifferentialTests
         return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size);
     }
 
+    /// <summary>The value every test world state holds at <paramref name="key"/>.</summary>
+    private static UInt256 StorageValueAt(UInt256 key) => key * 7 + 3;
+
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
         opcode is Instruction.KECCAK256 or Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE ||
         (opcode is >= Instruction.ADDRESS and <= (Instruction)0x4f &&
@@ -399,6 +527,14 @@ public class GuestDispatchDifferentialTests
         {
             SetBlockExecutionContext(new BlockExecutionContext(Header, spec));
             _txTracer = new SilentTracer();
+            _worldState = Substitute.For<IWorldState>();
+            _worldState.When(static state => state.Get(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
+                .Do(static call => call[1] = StorageValueAt(((StorageCell)call[0]).Index));
+            Dictionary<StorageCell, UInt256> transient = [];
+            _worldState.When(static state => state.SetTransientState(Arg.Any<StorageCell>(), Arg.Any<UInt256>()))
+                .Do(call => transient[(StorageCell)call[0]] = (UInt256)call[1]);
+            _worldState.When(static state => state.GetTransientState(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
+                .Do(call => call[1] = transient.GetValueOrDefault((StorageCell)call[0]));
         }
 
         /// <summary>The tracer the traced table reports to, which records nothing.</summary>

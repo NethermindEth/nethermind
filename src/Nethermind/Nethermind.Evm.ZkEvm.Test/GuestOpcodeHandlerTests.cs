@@ -50,6 +50,9 @@ public class GuestOpcodeHandlerTests
     private const byte NOT = (byte)Instruction.NOT;
     private const byte ADDMOD = (byte)Instruction.ADDMOD;
     private const byte MULMOD = (byte)Instruction.MULMOD;
+    private const byte MSTORE8 = (byte)Instruction.MSTORE8;
+    private const byte GAS = (byte)Instruction.GAS;
+    private const byte RETURNDATASIZE = (byte)Instruction.RETURNDATASIZE;
     private const byte ISZERO = (byte)Instruction.ISZERO;
     private const byte MLOAD = (byte)Instruction.MLOAD;
     private const byte MSTORE = (byte)Instruction.MSTORE;
@@ -356,6 +359,9 @@ public class GuestOpcodeHandlerTests
         }
 
         yield return Succeeds("CALLDATASIZE", Code(CALLDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), Word(input.Length), input);
+        yield return Succeeds("RETURNDATASIZE before any call", Code(RETURNDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), new byte[32]);
+        // Run on exactly its gas, GAS leaves what the opcodes after it charge.
+        yield return Succeeds("GAS", Code(GAS, PUSH1, 0, MSTORE, JUMPDEST, STOP), 2 + 3 + (3 + 3) + 1, Word(3 + (3 + 3) + 1));
         yield return Succeeds("CALLDATASIZE of no input", Code(CALLDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), new byte[32]);
         yield return Succeeds("CALLDATALOAD at 2^32", Code(PUSH5, 1, 0, 0, 0, 0, CALLDATALOAD, PUSH1, 0, MSTORE, STOP), 3 + 3 + (3 + 3 + 3), new byte[32], input);
         yield return Succeeds("CALLDATALOAD of no input", Code(PUSH1, 0, CALLDATALOAD, PUSH1, 0, MSTORE, STOP), 3 + 3 + (3 + 3 + 3), new byte[32]);
@@ -404,6 +410,15 @@ public class GuestOpcodeHandlerTests
             }
         }
 
+        byte[] storedByte = new byte[32];
+        storedByte[31] = 0xab;
+        storedByte[5] = 0x34;
+        yield return Succeeds("MSTORE8 inside active memory",
+            Code(PUSH1, 0xab, PUSH1, 0, MSTORE, PUSH2, 0x12, 0x34, PUSH1, 5, MSTORE8, STOP), 3 + 3 + (3 + 3) + 3 + 3 + 3, storedByte);
+        byte[] grownByte = new byte[64];
+        grownByte[40] = 0x34;
+        yield return Succeeds("MSTORE8 growing memory", Code(PUSH2, 0x12, 0x34, PUSH1, 40, MSTORE8, STOP), 3 + 3 + 3 + MemoryCost(2), grownByte);
+
         yield return Succeeds("NOT", Code([PUSH32, .. WordA, NOT, PUSH1, 0, MSTORE, STOP]), 3 + 3 + (3 + 3 + 3),
             Word(~new BigInteger(WordA, isUnsigned: true, isBigEndian: true)));
 
@@ -441,6 +456,8 @@ public class GuestOpcodeHandlerTests
         yield return Fails("PUSH2 JUMPI onto a non-JUMPDEST byte", Code(PUSH1, 1, PUSH2, 0, 6, JUMPI, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("PUSH2 JUMPI on an empty stack", Code(PUSH2, 0, 4, JUMPI, JUMPDEST), EvmExceptionType.StackUnderflow);
         yield return Fails("PUSH0 onto a full stack", Filled(1025, PUSH0), EvmExceptionType.StackOverflow);
+        yield return Fails("GAS onto a full stack", Code([.. Filled(1024, PUSH0), GAS]), EvmExceptionType.StackOverflow);
+        yield return Fails("RETURNDATASIZE onto a full stack", Code([.. Filled(1024, PUSH0), RETURNDATASIZE]), EvmExceptionType.StackOverflow);
         yield return Fails("CALLDATASIZE onto a full stack", Code([.. Filled(1024, PUSH0), CALLDATASIZE]), EvmExceptionType.StackOverflow);
         yield return Fails("PUSH1 onto a full stack", Code([.. Filled(1024, PUSH0), PUSH1, 0, STOP]), EvmExceptionType.StackOverflow);
         // The branch's PUSH2 overflows the stack an ISZERO leaves full, so the comparison runs unfused before it faults.
@@ -500,6 +517,8 @@ public class GuestOpcodeHandlerTests
         }
 
         yield return Fails("NOT on an empty stack", Code(NOT), EvmExceptionType.StackUnderflow);
+        yield return Fails("MSTORE8 with one operand", Code(PUSH1, 0, MSTORE8), EvmExceptionType.StackUnderflow);
+        yield return Fails("MSTORE8 at 2^32", Code(PUSH1, 1, PUSH5, 1, 0, 0, 0, 0, MSTORE8), EvmExceptionType.OutOfGas);
         foreach (byte op in (byte[])[ADDMOD, MULMOD])
         {
             yield return Fails($"{(Instruction)op} with two operands", Code(PUSH1, 1, PUSH1, 1, op), EvmExceptionType.StackUnderflow);

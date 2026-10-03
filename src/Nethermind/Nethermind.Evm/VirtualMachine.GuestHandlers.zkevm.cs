@@ -92,8 +92,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.JUMPI] = AsTableEntry(&RawCalliHelper.ExecuteJumpIfToAnalyzedDestination);
         lookup[(int)Instruction.MLOAD] = AsTableEntry(&RawCalliHelper.ExecuteMLoadFromActiveMemory);
         lookup[(int)Instruction.MSTORE] = AsTableEntry(&RawCalliHelper.ExecuteMStoreInsideBacking);
+        lookup[(int)Instruction.MSTORE8] = AsTableEntry(&RawCalliHelper.ExecuteMStore8InsideActiveMemory);
+        lookup[(int)Instruction.CALLDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CallDataSource>);
+        if (SpecFlags.Eip2929(spec) && !SpecFlags.Eip8038(spec))
+            lookup[(int)Instruction.SLOAD] = AsTableEntry(&RawCalliHelper.ExecuteSLoad);
+        if (spec.TransientStorageEnabled)
+        {
+            lookup[(int)Instruction.TLOAD] = AsTableEntry(&RawCalliHelper.ExecuteTLoad);
+            lookup[(int)Instruction.TSTORE] = AsTableEntry(&RawCalliHelper.ExecuteTStore);
+        }
         lookup[(int)Instruction.CALLDATALOAD] = AsTableEntry(&RawCalliHelper.ExecuteCallDataLoadOfWholeWord);
         lookup[(int)Instruction.CALLDATASIZE] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.CallDataSizeValue>);
+        lookup[(int)Instruction.GAS] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.GasValue>);
+        lookup[(int)Instruction.JUMPDEST] = AsTableEntry(&RawCalliHelper.ExecuteJumpDest);
+        if (spec.ReturnDataOpcodesEnabled)
+        {
+            lookup[(int)Instruction.RETURNDATASIZE] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.ReturnDataSizeValue>);
+            lookup[(int)Instruction.RETURNDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.ReturnDataSource>);
+        }
         if (spec.IncludePush0Instruction)
             lookup[(int)Instruction.PUSH0] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.ZeroValue>);
         lookup[(int)Instruction.KECCAK256] = AsTableEntry(&RawCalliHelper.ExecuteKeccak256OfActiveMemory);
@@ -1004,6 +1020,32 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
+        /// <summary>JUMPDEST, which only charges its gas.</summary>
+        /// <remarks>A short gas runs the shared JUMPDEST handler instead, which faults on it.</remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteJumpDest(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            if (TryCharge(ref gas, JumpDestGasCost.GasCost))
+            {
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = handlers[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<JumpDestOpcode, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
         /// <summary>An opcode that pushes a value below 2^64 it reads without a call, as <typeparamref name="TValue"/> reads it.</summary>
         /// <remarks>A short gas or a full stack runs the shared handler of the opcode instead.</remarks>
         [SkipLocalsInit]
@@ -1021,7 +1063,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, BaseGasCost.GasCost))
             {
-                SetWord(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), TValue.Read(ref stack));
+                SetWord(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), TValue.Read(ref stack, ref state, gas));
                 head++;
                 ip = ref Unsafe.Add(ref ip, 1);
                 nint next = handlers[ip];
@@ -1038,8 +1080,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             /// <summary>The shared handler of the opcode, which handles every case that faults.</summary>
             static abstract nint SharedHandler { get; }
 
-            /// <summary>Reads the value out of <paramref name="stack"/>.</summary>
-            static abstract ulong Read(ref EvmStack stack);
+            /// <summary>Reads the value out of <paramref name="stack"/> or <paramref name="state"/>.</summary>
+            /// <param name="stack">The running frame's stack.</param>
+            /// <param name="state">The chain's state.</param>
+            /// <param name="gas">The remaining gas, the opcode's charge paid.</param>
+            static abstract ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas);
         }
 
         /// <summary>PUSH0: zero.</summary>
@@ -1050,7 +1095,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 &ExecuteOpcode<Push0Opcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static ulong Read(ref EvmStack stack) => 0;
+            public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => 0;
         }
 
         /// <summary>CALLDATASIZE: the length of the input data the stack holds.</summary>
@@ -1061,7 +1106,29 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 &ExecuteOpcode<EnvUInt32Opcode<EvmInstructions.OpCallDataSize<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static ulong Read(ref EvmStack stack) => (ulong)stack.InputDataLength;
+            public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => (ulong)stack.InputDataLength;
+        }
+
+        /// <summary>GAS: the gas left once its own charge is paid.</summary>
+        internal readonly struct GasValue : IStackValue
+        {
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<GasOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => gas;
+        }
+
+        /// <summary>RETURNDATASIZE: the length of the last call's return data.</summary>
+        internal readonly struct ReturnDataSizeValue : IStackValue
+        {
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<ReturnDataSizeOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => (uint)state.Vm.ReturnDataBuffer.Length;
         }
 
         /// <summary>PUSHn for n from 3 to 32, with the immediates read a limb at a time off the instruction's address.</summary>
@@ -1253,6 +1320,293 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                 &ExecuteOpcode<MStoreOpcode<OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>SLOAD under EIP-2929 without EIP-8038, with the key read from and the value written to its stack slot.</summary>
+        /// <remarks>
+        /// The shared handler builds the storage cell twice and saves every callee-saved register around it. Running out
+        /// of gas leaves the chain here, since the cell is warm by then and the shared handler would charge it as warm.
+        /// An empty stack runs the shared SLOAD handler instead, which faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteSLoad(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            if (head > 0)
+            {
+                VirtualMachine<TGasPolicy> vm = state.Vm;
+                vm.MetricsCounters.IncrementSLoad();
+                VmState<TGasPolicy> frame = vm.VmState;
+                ref UInt256 slot = ref Unsafe.As<byte, UInt256>(ref SlotAt(ref bottom, head - 1));
+                StorageCell storageCell = new(frame.Env.ExecutingAccount, in slot);
+                // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
+                ulong cost = frame.AccessTracker.WarmUp(in storageCell) ? GasCostOf.ColdSLoad : GasCostOf.WarmStateRead;
+                if (gas < cost)
+                    return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 1, EvmExceptionType.OutOfGas);
+
+                gas -= cost;
+                vm.WorldState.Get(in storageCell, out slot);
+                // Reloaded rather than held across the calls, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                bottom = ref stack.Bottom;
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = handlers[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag>, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>TLOAD, with the key read from and the value written to its stack slot.</summary>
+        /// <remarks>
+        /// The shared handler builds the storage cell twice and saves every callee-saved register around the world-state
+        /// call. A short stack or gas runs the shared TLOAD handler instead, which faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteTLoad(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            if (head > 0 && TryCharge(ref gas, TLoadGasCost.GasCost))
+            {
+                VirtualMachine<TGasPolicy> vm = state.Vm;
+                ref UInt256 slot = ref Unsafe.As<byte, UInt256>(ref SlotAt(ref bottom, head - 1));
+                StorageCell storageCell = new(vm.VmState.Env.ExecutingAccount, in slot);
+                vm.WorldState.GetTransientState(in storageCell, out slot);
+                // Reloaded rather than held across the call, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                bottom = ref stack.Bottom;
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = handlers[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<TLoadOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>TSTORE outside a static call, with the key and the value read from their stack slots.</summary>
+        /// <remarks>
+        /// The shared handler copies both words out and saves every callee-saved register around the world-state call. A
+        /// static call or a short stack or gas runs the shared TSTORE handler instead, which faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteTStore(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            VirtualMachine<TGasPolicy> vm = state.Vm;
+            VmState<TGasPolicy> frame = vm.VmState;
+            if (head > 1 && !frame.IsStatic && TryCharge(ref gas, TStoreGasCost.GasCost))
+            {
+                ref UInt256 key = ref Unsafe.As<byte, UInt256>(ref SlotAt(ref bottom, head - 1));
+                StorageCell storageCell = new(frame.Env.ExecutingAccount, in key);
+                vm.WorldState.SetTransientState(in storageCell, in Unsafe.Subtract(ref key, 1));
+                // Reloaded rather than held across the call, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                bottom = ref stack.Bottom;
+                head -= 2;
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = handlers[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<TStoreOpcode, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>
+        /// CALLDATACOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, into a range that needs no new
+        /// backing and leaves a gap of at most two words below it.
+        /// </summary>
+        /// <remarks>
+        /// The shared handlers copy the three operands out of the stack and charge through 256-bit helpers. Every other
+        /// case - short gas or stack, a length or destination of 2^32 or more, a range the backing cannot hold, or a
+        /// return-data read past its end - runs the shared handler instead, which charges and faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteDataCopy<TSource>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+            where TSource : struct, ICopySource
+        {
+            if (head > 2)
+            {
+                // The destination is the top word, the source offset the one below it and the length the third.
+                ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
+                ref ulong offset = ref Unsafe.Subtract(ref destination, LimbsPerWord);
+                ref ulong length = ref Unsafe.Subtract(ref destination, 2 * LimbsPerWord);
+                ulong size = length;
+                ulong cost = VeryLowGasCost.GasCost + GasCostOf.Memory * ((size + (EvmStack.WordSize - 1)) >> 5);
+                if ((Unsafe.Add(ref length, 1) | Unsafe.Add(ref length, 2) | Unsafe.Add(ref length, 3) | (size >> 32)) == 0 && gas >= cost)
+                {
+                    ReadOnlySpan<byte> source = TSource.Read(ref stack, ref state);
+                    ulong from = offset;
+                    // From 2^32 the offset lies past any source, which only a zero-extending one reads.
+                    bool offsetFits = (Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (from >> 32)) == 0;
+                    bool inSource = offsetFits && from < (ulong)source.Length;
+                    if (TSource.ZeroExtends || (offsetFits && from + size <= (ulong)source.Length))
+                    {
+                        if (size == 0)
+                        {
+                            gas -= cost;
+                            goto Dispatch;
+                        }
+
+                        ulong target = destination;
+                        if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3) | (target >> 32)) == 0)
+                        {
+                            gas -= cost;
+                            ref byte range = ref state.Memory.TryPrepareRangeOverwrite(target, size, ref gas);
+                            if (!Unsafe.IsNullRef(ref range))
+                            {
+                                uint copied = 0;
+                                if (inSource)
+                                {
+                                    copied = (uint)Math.Min(size, (ulong)source.Length - from);
+                                    Unsafe.CopyBlockUnaligned(ref range, ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from), copied);
+                                }
+
+                                Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, (uint)size - copied);
+                                // Reloaded rather than held across the calls, where each would take a callee-saved register.
+                                handlers = state.OpcodeHandlers;
+                                code = ref stack.Code;
+                                bottom = ref stack.Bottom;
+                                goto Dispatch;
+                            }
+
+                            gas += cost;
+                        }
+                    }
+                }
+            }
+
+            nint shared = TSource.SharedHandler;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+
+        Dispatch:
+            head -= 3;
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = handlers[ip];
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+        }
+
+        /// <summary>The bytes a copy to memory reads, as <see cref="ExecuteDataCopy{TSource}"/> runs it.</summary>
+        internal interface ICopySource
+        {
+            /// <summary>The shared handler of the opcode, which handles every case that faults.</summary>
+            static abstract nint SharedHandler { get; }
+
+            /// <summary>Whether a read past the end of the source reads zeros rather than faulting.</summary>
+            static abstract bool ZeroExtends { get; }
+
+            /// <summary>The source's bytes.</summary>
+            static abstract ReadOnlySpan<byte> Read(ref EvmStack stack, ref DispatchState state);
+        }
+
+        /// <summary>CALLDATACOPY: the input data, zero-extended.</summary>
+        internal readonly struct CallDataSource : ICopySource
+        {
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<CallDataCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            public static bool ZeroExtends => true;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static ReadOnlySpan<byte> Read(ref EvmStack stack, ref DispatchState state) =>
+                MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength);
+        }
+
+        /// <summary>RETURNDATACOPY: the last call's return data, which a read past its end faults on (EIP-211).</summary>
+        internal readonly struct ReturnDataSource : ICopySource
+        {
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<ReturnDataCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            public static bool ZeroExtends => false;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static ReadOnlySpan<byte> Read(ref EvmStack stack, ref DispatchState state) => state.Vm.ReturnDataBuffer.Span;
+        }
+
+        /// <summary>MSTORE8 of a byte inside the active, initialized memory.</summary>
+        /// <remarks>
+        /// Every other case - short gas or stack, a byte that grows memory or lies past the initialized memory, an offset
+        /// of 2^32 or more - runs the shared MSTORE8 handler instead.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteMStore8InsideActiveMemory(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            if (head > 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            {
+                ref ulong offset = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
+                if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
+                {
+                    ref byte destination = ref state.Memory.GetActiveInitializedRange(offset, 1);
+                    if (!Unsafe.IsNullRef(ref destination))
+                    {
+                        // The value is the word below the offset, whose low byte comes first in limb layout.
+                        destination = (byte)Unsafe.Add(ref offset, -LimbsPerWord);
+                        head -= 2;
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint next = handlers[ip];
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+                    }
+                }
+
+                gas += VeryLowGasCost.GasCost;
+            }
+
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<MStore8Opcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
