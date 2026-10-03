@@ -11,6 +11,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Serialization.Ssz;
 using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
@@ -34,47 +35,19 @@ public class OperationsTests
     private static readonly Dictionary<string, (string? File, Action<OpContext<BeaconStateFulu>, byte[]> Apply)> Handlers = new(StringComparer.Ordinal)
     {
         ["attestation"] = ("attestation.ssz_snappy", (ctx, ssz) =>
-        {
-            Attestation.Decode(ssz, out Attestation value);
-            BlockProcessing.ProcessAttestation(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }
-        ),
+            BlockProcessing.ProcessAttestation(ctx.State, Decode<Attestation>(ssz), ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures)),
         ["attester_slashing"] = ("attester_slashing.ssz_snappy", (ctx, ssz) =>
-        {
-            AttesterSlashing.Decode(ssz, out AttesterSlashing value);
-            BlockProcessing.ProcessAttesterSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }
-        ),
+            BlockProcessing.ProcessAttesterSlashing(ctx.State, Decode<AttesterSlashing>(ssz), ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures)),
         ["block_header"] = ("block.ssz_snappy", (ctx, ssz) =>
-        {
-            BeaconBlock.Decode(ssz, out BeaconBlock value);
-            BlockProcessing.ProcessBlockHeader(ctx.State, value);
-        }
-        ),
+            BlockProcessing.ProcessBlockHeader(ctx.State, Decode<BeaconBlock>(ssz))),
         ["bls_to_execution_change"] = ("address_change.ssz_snappy", (ctx, ssz) =>
-        {
-            SignedBlsToExecutionChange.Decode(ssz, out SignedBlsToExecutionChange value);
-            BlockProcessing.ProcessBlsToExecutionChange(ctx.State, value, ctx.VerifySignatures);
-        }
-        ),
+            BlockProcessing.ProcessBlsToExecutionChange(ctx.State, Decode<SignedBlsToExecutionChange>(ssz), ctx.VerifySignatures)),
         ["consolidation_request"] = ("consolidation_request.ssz_snappy", (ctx, ssz) =>
-        {
-            ConsolidationRequest.Decode(ssz, out ConsolidationRequest value);
-            BlockProcessing.ProcessConsolidationRequest(ctx.State, value, ctx.Cache);
-        }
-        ),
+            BlockProcessing.ProcessConsolidationRequest(ctx.State, Decode<ConsolidationRequest>(ssz), ctx.Cache)),
         ["deposit"] = ("deposit.ssz_snappy", (ctx, ssz) =>
-        {
-            Deposit.Decode(ssz, out Deposit value);
-            BlockProcessing.ProcessDeposit(ctx.State, value);
-        }
-        ),
+            BlockProcessing.ProcessDeposit(ctx.State, Decode<Deposit>(ssz))),
         ["deposit_request"] = ("deposit_request.ssz_snappy", (ctx, ssz) =>
-        {
-            DepositRequest.Decode(ssz, out DepositRequest value);
-            BlockProcessing.ProcessDepositRequest(ctx.State, value);
-        }
-        ),
+            BlockProcessing.ProcessDepositRequest(ctx.State, Decode<DepositRequest>(ssz))),
         ["execution_payload"] = ("body.ssz_snappy", (ctx, ssz) =>
         {
             BeaconBlockBody.Decode(ssz, out BeaconBlockBody value);
@@ -83,35 +56,15 @@ public class OperationsTests
         }
         ),
         ["proposer_slashing"] = ("proposer_slashing.ssz_snappy", (ctx, ssz) =>
-        {
-            ProposerSlashing.Decode(ssz, out ProposerSlashing value);
-            BlockProcessing.ProcessProposerSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }
-        ),
+            BlockProcessing.ProcessProposerSlashing(ctx.State, Decode<ProposerSlashing>(ssz), ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures)),
         ["sync_aggregate"] = ("sync_aggregate.ssz_snappy", (ctx, ssz) =>
-        {
-            SyncAggregate.Decode(ssz, out SyncAggregate value);
-            BlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }
-        ),
+            BlockProcessing.ProcessSyncAggregate(ctx.State, Decode<SyncAggregate>(ssz), ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures)),
         ["voluntary_exit"] = ("voluntary_exit.ssz_snappy", (ctx, ssz) =>
-        {
-            SignedVoluntaryExit.Decode(ssz, out SignedVoluntaryExit value);
-            BlockProcessing.ProcessVoluntaryExit(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }
-        ),
+            BlockProcessing.ProcessVoluntaryExit(ctx.State, Decode<SignedVoluntaryExit>(ssz), ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures)),
         ["withdrawal_request"] = ("withdrawal_request.ssz_snappy", (ctx, ssz) =>
-        {
-            WithdrawalRequest.Decode(ssz, out WithdrawalRequest value);
-            BlockProcessing.ProcessWithdrawalRequest(ctx.State, value, ctx.Cache);
-        }
-        ),
+            BlockProcessing.ProcessWithdrawalRequest(ctx.State, Decode<WithdrawalRequest>(ssz), ctx.Cache)),
         ["withdrawals"] = ("execution_payload.ssz_snappy", (ctx, ssz) =>
-        {
-            ExecutionPayload.Decode(ssz, out ExecutionPayload value);
-            BlockProcessing.ProcessWithdrawals(ctx.State, value);
-        }
-        ),
+            BlockProcessing.ProcessWithdrawals(ctx.State, Decode<ExecutionPayload>(ssz))),
     };
 
     /// <summary>
@@ -128,88 +81,42 @@ public class OperationsTests
         }
         ),
         ["attester_slashing"] = ("attester_slashing.ssz_snappy", (ctx, ssz) =>
-        {
-            AttesterSlashingGloas.Decode(ssz, out AttesterSlashingGloas value);
-            GloasBlockProcessing.ProcessAttesterSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }
-        ),
+            GloasBlockProcessing.ProcessAttesterSlashing(ctx.State, Decode<AttesterSlashingGloas>(ssz), ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures)),
         ["block_header"] = ("block.ssz_snappy", (ctx, ssz) =>
-        {
-            BeaconBlockGloas.Decode(ssz, out BeaconBlockGloas value);
-            GloasBlockProcessing.ProcessBlockHeader(ctx.State, value);
-        }
-        ),
+            GloasBlockProcessing.ProcessBlockHeader(ctx.State, Decode<BeaconBlockGloas>(ssz))),
         ["bls_to_execution_change"] = ("address_change.ssz_snappy", (ctx, ssz) =>
-        {
-            SignedBlsToExecutionChange.Decode(ssz, out SignedBlsToExecutionChange value);
-            GloasBlockProcessing.ProcessBlsToExecutionChange(ctx.State, value, ctx.VerifySignatures);
-        }
-        ),
+            GloasBlockProcessing.ProcessBlsToExecutionChange(ctx.State, Decode<SignedBlsToExecutionChange>(ssz), ctx.VerifySignatures)),
         ["builder_deposit_request"] = ("builder_deposit_request.ssz_snappy", (ctx, ssz) =>
-        {
-            BuilderDepositRequest.Decode(ssz, out BuilderDepositRequest value);
-            GloasBlockProcessing.ProcessBuilderDepositRequest(ctx.State, value);
-        }
-        ),
+            GloasBlockProcessing.ProcessBuilderDepositRequest(ctx.State, Decode<BuilderDepositRequest>(ssz))),
         ["builder_exit_request"] = ("builder_exit_request.ssz_snappy", (ctx, ssz) =>
-        {
-            BuilderExitRequest.Decode(ssz, out BuilderExitRequest value);
-            GloasBlockProcessing.ProcessBuilderExitRequest(ctx.State, value);
-        }
-        ),
+            GloasBlockProcessing.ProcessBuilderExitRequest(ctx.State, Decode<BuilderExitRequest>(ssz))),
         ["consolidation_request"] = ("consolidation_request.ssz_snappy", (ctx, ssz) =>
-        {
-            ConsolidationRequest.Decode(ssz, out ConsolidationRequest value);
-            GloasBlockProcessing.ProcessConsolidationRequest(ctx.State, value, ctx.Cache);
-        }
-        ),
+            GloasBlockProcessing.ProcessConsolidationRequest(ctx.State, Decode<ConsolidationRequest>(ssz), ctx.Cache)),
         ["deposit_request"] = ("deposit_request.ssz_snappy", (ctx, ssz) =>
-        {
-            DepositRequest.Decode(ssz, out DepositRequest value);
-            GloasBlockProcessing.ProcessDepositRequest(ctx.State, value);
-        }
-        ),
+            GloasBlockProcessing.ProcessDepositRequest(ctx.State, Decode<DepositRequest>(ssz))),
         ["execution_payload_bid"] = ("execution_payload_bid.ssz_snappy", (ctx, ssz) =>
-        {
-            SignedExecutionPayloadBid.Decode(ssz, out SignedExecutionPayloadBid value);
-            GloasBlockProcessing.ProcessExecutionPayloadBid(ctx.State, value, ctx.Spec, ctx.Pubkeys, ctx.VerifySignatures);
-        }
-        ),
+            GloasBlockProcessing.ProcessExecutionPayloadBid(ctx.State, Decode<SignedExecutionPayloadBid>(ssz), ctx.Spec, ctx.Pubkeys, ctx.VerifySignatures)),
         ["parent_execution_payload"] = ("block.ssz_snappy", (ctx, ssz) =>
-        {
-            BeaconBlockGloas.Decode(ssz, out BeaconBlockGloas value);
-            GloasBlockProcessing.ProcessParentExecutionPayload(ctx.State, value, ctx.Cache);
-        }
-        ),
+            GloasBlockProcessing.ProcessParentExecutionPayload(ctx.State, Decode<BeaconBlockGloas>(ssz), ctx.Cache)),
         ["payload_attestation"] = ("payload_attestation.ssz_snappy", (ctx, ssz) =>
-        {
-            PayloadAttestation.Decode(ssz, out PayloadAttestation value);
-            GloasBlockProcessing.ProcessPayloadAttestation(ctx.State, value, ctx.Spec, ctx.Pubkeys, ctx.VerifySignatures);
-        }
-        ),
+            GloasBlockProcessing.ProcessPayloadAttestation(ctx.State, Decode<PayloadAttestation>(ssz), ctx.Spec, ctx.Pubkeys, ctx.VerifySignatures)),
         ["proposer_slashing"] = ("proposer_slashing.ssz_snappy", (ctx, ssz) =>
-        {
-            ProposerSlashing.Decode(ssz, out ProposerSlashing value);
-            GloasBlockProcessing.ProcessProposerSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }
-        ),
+            GloasBlockProcessing.ProcessProposerSlashing(ctx.State, Decode<ProposerSlashing>(ssz), ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures)),
         ["sync_aggregate"] = ("sync_aggregate.ssz_snappy", (ctx, ssz) =>
-        {
-            SyncAggregate.Decode(ssz, out SyncAggregate value);
-            GloasBlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }
-        ),
+            GloasBlockProcessing.ProcessSyncAggregate(ctx.State, Decode<SyncAggregate>(ssz), ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures)),
         ["voluntary_exit"] = ("voluntary_exit.ssz_snappy", ApplyGloasVoluntaryExit),
         // The churn-boundary cases of process_voluntary_exit, generated under their own handler name.
         ["voluntary_exit_churn"] = ("voluntary_exit.ssz_snappy", ApplyGloasVoluntaryExit),
         ["withdrawal_request"] = ("withdrawal_request.ssz_snappy", (ctx, ssz) =>
-        {
-            WithdrawalRequest.Decode(ssz, out WithdrawalRequest value);
-            GloasBlockProcessing.ProcessWithdrawalRequest(ctx.State, value, ctx.Cache);
-        }
-        ),
+            GloasBlockProcessing.ProcessWithdrawalRequest(ctx.State, Decode<WithdrawalRequest>(ssz), ctx.Cache)),
         ["withdrawals"] = (null, (ctx, _) => GloasBlockProcessing.ProcessWithdrawals(ctx.State)),
     };
+
+    private static T Decode<T>(byte[] ssz) where T : ISszCodec<T>
+    {
+        T.Decode(ssz, out T value);
+        return value;
+    }
 
     private static void ApplyGloasVoluntaryExit(OpContext<BeaconStateGloas> ctx, byte[] ssz)
     {
