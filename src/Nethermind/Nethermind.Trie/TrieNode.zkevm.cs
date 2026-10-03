@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
@@ -188,6 +190,50 @@ namespace Nethermind.Trie
         /// <remarks>Entered once per node a root computation encodes, from the key resolution of its parent's encoder,
         /// where an out-of-line call spills seven registers to test a flag and pick an encoder.</remarks>
         private const MethodImplOptions PrepareRlpInlining = MethodImplOptions.AggressiveInlining;
+
+        /// <summary>Drops a leaf's RLP once its key has been replaced, so the RLP left on a leaf always carries the leaf's key.</summary>
+        /// <remarks>
+        /// What <see cref="TryEncodeLeafWithStoredKey"/> relies on. A leaf holds its value in its data, so nothing else reads
+        /// its RLP; an extension keeps it, as its child may still have to be resolved from it.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void OnKeyChanged()
+        {
+            if (_nodeData is LeafData) _rlpArray = null;
+        }
+
+        /// <summary>Encodes <paramref name="node"/>, a leaf, by reusing the key item of its previous RLP.</summary>
+        /// <remarks>
+        /// A leaf re-encoded in a commit has nearly always kept its key and changed only its value, and packing the key's
+        /// nibbles back into its hex prefix is most of what encoding it costs. <see cref="OnKeyChanged"/> drops the RLP
+        /// of a leaf whose key changes, so any RLP still present carries the current key.
+        /// </remarks>
+        /// <returns>Whether the leaf had an RLP to reuse; when not, <paramref name="rlp"/> is not set.</returns>
+        private static bool TryEncodeLeafWithStoredKey(TrieNode node, ICappedArrayPool? pool, out CappedArray<byte> rlp)
+        {
+            CappedArray<byte> previous = node.ReadRlp();
+            ReadOnlySpan<byte> previousRlp = previous.AsSpan();
+            if (previousRlp.IsEmpty)
+            {
+                rlp = default;
+                return false;
+            }
+
+            int keyStart = previousRlp[0] < 0xf8 ? 1 : 1 + previousRlp[0] - 0xf7;
+            // A hex-prefix key is one to thirty-three bytes: a single byte below 0x80, or a short string.
+            int keyPrefix = previousRlp[keyStart];
+            int keyItemLength = keyPrefix < 0x80 ? 1 : 1 + keyPrefix - 0x80;
+            ReadOnlySpan<byte> keyItem = previousRlp.Slice(keyStart, keyItemLength);
+            ReadOnlySpan<byte> value = node.Value.AsSpan();
+
+            int contentLength = keyItemLength + Rlp.LengthOf(value);
+            rlp = pool.SafeRent(Rlp.LengthOfSequence(contentLength));
+            Span<byte> destination = rlp.AsSpan();
+            int position = Rlp.StartSequence(destination, 0, contentLength);
+            keyItem.CopyTo(destination[position..]);
+            Rlp.Encode(destination, position + keyItemLength, value);
+            return true;
+        }
 
         /// <summary>Deepens <paramref name="path"/> by one level for a child of the node being encoded, leaving its nibbles alone.</summary>
         /// <remarks>
