@@ -483,21 +483,7 @@ public class GloasForkTransitionTests
             Assert.That(bits[i], Is.True, $"bit {i} must be set: every historical slot starts marked payload-delivered");
     }
 
-    private static BeaconChainSpec SyntheticSpec() => new()
-    {
-        SecondsPerSlot = 12,
-        SlotsPerEpoch = 32,
-        GenesisTime = 1_606_824_023,
-        GenesisValidatorsRoot = Hash256.Zero,
-        Forks = [new(Bytes.FromHexString("0x06000000"), 0)],
-        BlobSchedule = [],
-        ElectraForkEpoch = 0,
-        FuluForkEpoch = 0,
-        MaxBlobsPerBlockElectra = 9,
-        GloasForkEpoch = 0,
-        GloasForkVersion = GloasVersion,
-        Bootnodes = [],
-    };
+    private static BeaconChainSpec SyntheticSpec() => GloasTestFixtures.SyntheticSpec(0, GloasVersion);
 
     private static BeaconStateFulu CreateState(int validatorCount)
     {

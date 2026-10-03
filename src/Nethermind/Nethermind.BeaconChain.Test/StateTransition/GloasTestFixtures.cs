@@ -57,7 +57,7 @@ internal static class GloasTestFixtures
     /// <summary>The spec whose <c>GLOAS_FORK_EPOCH</c> is the epoch <see cref="CreateGloasState"/> upgrades at.</summary>
     public static BeaconChainSpec UpgradeEpochSpec() => SyntheticSpec(BoundarySlot / Presets.SlotsPerEpoch);
 
-    public static BeaconChainSpec SyntheticSpec(ulong gloasForkEpoch = 0) => new()
+    public static BeaconChainSpec SyntheticSpec(ulong gloasForkEpoch = 0, byte[]? gloasForkVersion = null) => new()
     {
         SecondsPerSlot = 12,
         SlotsPerEpoch = 32,
@@ -69,7 +69,7 @@ internal static class GloasTestFixtures
         FuluForkEpoch = 0,
         MaxBlobsPerBlockElectra = 9,
         GloasForkEpoch = gloasForkEpoch,
-        GloasForkVersion = GloasVersion,
+        GloasForkVersion = gloasForkVersion ?? GloasVersion,
         Bootnodes = [],
     };
 
