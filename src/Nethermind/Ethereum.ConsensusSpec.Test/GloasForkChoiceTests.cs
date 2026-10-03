@@ -179,16 +179,7 @@ public class GloasForkChoiceTests
     private static IEnumerable<TestCaseData> MainnetCases() =>
         ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
-    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
-    {
-        string? root = ConsensusSpecArchive.SuitePath(preset, "gloas", "fork_choice");
-        if (root is null)
-            yield break;
-
-        foreach (string caseDir in ConsensusSpecArchive.LeafDirs(root, "manifest.yaml"))
-        {
-            string vectorName = $"{preset}/gloas/fork_choice/{Path.GetRelativePath(root, caseDir).Replace('\\', '/')}";
-            yield return new TestCaseData(new ForkChoiceCase(preset.ToString(), caseDir, vectorName)).SetName(vectorName);
-        }
-    }
+    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset) =>
+        FuluDriverSupport.RelativeCases(preset, ["gloas"], "fork_choice", "manifest.yaml",
+            static (p, fork, path, name) => new ForkChoiceCase(p.ToString(), path, name));
 }

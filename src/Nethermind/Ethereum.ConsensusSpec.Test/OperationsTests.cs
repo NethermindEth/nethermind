@@ -334,34 +334,12 @@ public class OperationsTests
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
-    private static IEnumerable<TestCaseData> MainnetCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled)
-            yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet))
-            yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
-    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
-    {
-        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-        {
-            string? operationsRoot = ConsensusSpecArchive.SuitePath(preset, fork, "operations");
-            if (operationsRoot is null)
-                continue;
-
-            foreach (string opDir in Directory.GetDirectories(operationsRoot))
-            {
-                string opName = Path.GetFileName(opDir);
-                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(opDir, "pre.ssz_snappy"))
-                {
-                    string vectorName = $"{preset}/{fork}/operations/{opName}/{Path.GetFileName(caseDir)}";
-                    OperationCase testCase = new(preset.ToString(), fork, opName, caseDir, vectorName);
-                    yield return new TestCaseData(testCase).SetName(vectorName);
-                }
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset) =>
+        FuluDriverSupport.HandlerCases(preset, ConsensusSpecArchive.StateTransitionForks, "operations", "pre.ssz_snappy",
+            static (p, fork, handler, path, name) => new OperationCase(p.ToString(), fork, handler, path, name), strictHandlerDirectory: true);
 }
 
 public readonly record struct OperationCase(string Preset, string Fork, string OperationName, string CasePath, string VectorName)

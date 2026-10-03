@@ -74,23 +74,12 @@ public class ShufflingTests
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
-    private static IEnumerable<TestCaseData> MainnetCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled)
-            yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet))
-            yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
-    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
-    {
-        string? root = ConsensusSpecArchive.SuitePath(preset, "phase0", "shuffling");
-        foreach (string caseDir in ConsensusSpecArchive.LeafDirs(root, "mapping.yaml"))
-        {
-            string vectorName = $"{preset}/phase0/shuffling/{Path.GetRelativePath(root!, caseDir).Replace('\\', '/')}";
-            yield return new TestCaseData(new ShufflingCase(preset, caseDir, vectorName)).SetName(vectorName);
-        }
-    }
+    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset) =>
+        FuluDriverSupport.RelativeCases(preset, ["phase0"], "shuffling", "mapping.yaml",
+            static (p, fork, path, name) => new ShufflingCase(p, path, name));
 }
 
 public readonly record struct ShufflingCase(ConsensusPreset Preset, string CasePath, string VectorName)
