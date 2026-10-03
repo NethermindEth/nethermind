@@ -1204,8 +1204,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// Words are deduplicated as they are: an ABI address word is the address left-padded to 32 bytes, the
     /// <see cref="ValueHash256"/> that <see cref="Address.ToHash"/> builds, so a repeated word allocates nothing.
     /// Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.
+    /// Once <paramref name="cancellationToken"/> is cancelled, the scan stops and returns what it has collected.
     /// </remarks>
-    internal static ArrayPoolList<Address>? CollectCalldataAddresses(Block block)
+    internal static ArrayPoolList<Address>? CollectCalldataAddresses(Block block, CancellationToken cancellationToken = default)
     {
         PooledSet<ValueHash256>? seen = null;
         ArrayPoolList<Address>? addresses = null;
@@ -1214,10 +1215,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
             for (int i = 0; i < count; i++)
             {
+                if (cancellationToken.IsCancellationRequested) return addresses;
                 ReadOnlySpan<byte> data = AddressWarmer.TransactionAt(block, i).Data.Span;
                 if (data.Length < 4 + MinCalldataWordsForAddressWarm * 32) continue;
                 for (int offset = 4; offset + 32 <= data.Length; offset += 32)
                 {
+                    if (cancellationToken.IsCancellationRequested) return addresses;
                     ReadOnlySpan<byte> word = data.Slice(offset, 32);
                     if (!IsAddressWord(word) || !(seen ??= new PooledSet<ValueHash256>(64)).Add(new ValueHash256(word))) continue;
                     (addresses ??= new ArrayPoolList<Address>(64)).Add(new Address(word[12..]));
@@ -1230,6 +1233,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         finally
         {
             seen?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Reads the accounts in <paramref name="addresses"/> from <paramref name="start"/> up to <paramref name="end"/>, stopping
+    /// once <paramref name="cancellationToken"/> is cancelled: the prewarming session drains this work before it ends.
+    /// </summary>
+    internal static void WarmCalldataRange(ArrayPoolList<Address> addresses, int start, int end, IWorldState worldState, CancellationToken cancellationToken)
+    {
+        for (int i = start; i < end; i++)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            AddressWarmer.WarmupSender(addresses[i], null, worldState);
         }
     }
 
@@ -1421,11 +1437,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// </remarks>
         private static void WarmCalldataAddresses(ParallelOptions parallelOptions, Block block, ObjectPool<IPrewarmerEnv> envPool)
         {
-            using ArrayPoolList<Address>? addresses = CollectCalldataAddresses(block);
-            if (addresses is null || parallelOptions.CancellationToken.IsCancellationRequested) return;
+            CancellationToken token = parallelOptions.CancellationToken;
+            if (token.IsCancellationRequested) return;
+            using ArrayPoolList<Address>? addresses = CollectCalldataAddresses(block, token);
+            if (addresses is null || token.IsCancellationRequested) return;
 
             int rangeSize = Math.Max(8, addresses.Count / (parallelOptions.MaxDegreeOfParallelism * 4));
-            WarmingState<(ArrayPoolList<Address> Addresses, int RangeSize)> baseState = new(envPool, (addresses, rangeSize), block.Header);
+            WarmingState<(ArrayPoolList<Address> Addresses, int RangeSize, CancellationToken Token)> baseState = new(envPool, (addresses, rangeSize, token), block.Header);
             ParallelUnbalancedWork.For(
                 0,
                 (addresses.Count + rangeSize - 1) / rangeSize,
@@ -1433,16 +1451,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 baseState.InitThreadState,
                 static (range, state) =>
                 {
-                    (ArrayPoolList<Address> addresses, int rangeSize) = state.Payload;
-                    IWorldState worldState = state.Scope!.WorldState;
-                    int end = Math.Min((range + 1) * rangeSize, addresses.Count);
-                    for (int i = range * rangeSize; i < end; i++) WarmupSender(addresses[i], null, worldState);
+                    (ArrayPoolList<Address> addresses, int rangeSize, CancellationToken token) = state.Payload;
+                    WarmCalldataRange(addresses, range * rangeSize, Math.Min((range + 1) * rangeSize, addresses.Count), state.Scope!.WorldState, token);
                     return state;
                 },
-                WarmingState<(ArrayPoolList<Address>, int)>.FinallyAction);
+                WarmingState<(ArrayPoolList<Address>, int, CancellationToken)>.FinallyAction);
         }
 
-        private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
+        internal static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
         {
             try
             {

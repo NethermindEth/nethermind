@@ -306,6 +306,28 @@ public class BlockCachePreWarmerTests
         Assert.That(collected, Is.EqualTo(new[] { first, second, third }));
     }
 
+    [Test]
+    public void CollectCalldataAddresses_Cancelled_ScansNothing()
+    {
+        Block block = BuildCalldataAddressBlock(out _, out _, out _);
+        using ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block, new CancellationToken(canceled: true));
+        Assert.That(collected, Is.Null);
+    }
+
+    /// <summary>A range reads no further account once the session is cancelled during one of its reads.</summary>
+    [Test]
+    public void WarmCalldataRange_StopsAtTheFirstAccountAfterCancellation()
+    {
+        using CancellationTokenSource cancellation = new();
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.When(state => state.WarmUp(Arg.Any<Address>())).Do(_ => cancellation.Cancel());
+        using ArrayPoolList<Address> addresses = new(4) { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD };
+
+        BlockCachePreWarmer.WarmCalldataRange(addresses, 0, addresses.Count, worldState, cancellation.Token);
+
+        worldState.Received(1).WarmUp(Arg.Any<Address>());
+    }
+
     [TestCase("0000000000000000000000000000000000000000000000000000000000000000", false, TestName = "IsAddressWord_Zero_IsNot")]
     [TestCase("00000000000000000000000095323debf3e1084237250e6b17a40b9299d7daf0", true, TestName = "IsAddressWord_LeftPaddedAddress_Is")]
     [TestCase("00000000000000000000000000000001f3e1084237250e6b17a40b9299d7daf0", true, TestName = "IsAddressWord_OnlyTheFourthAddressByteSet_Is")]
