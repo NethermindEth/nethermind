@@ -977,6 +977,35 @@ public class TxValidatorTests
         }
     }
 
+    // EIP-8131: the gas limit must cover max(intrinsic, content floor); in each case the content floor is the larger.
+    [TestCase(TxType.Legacy, 10_000, 0, 0, 661_000UL, TestName = "IsWellFormed_Eip8131ContentFloor(calldata)")]
+    [TestCase(TxType.AccessList, 0, 50, 0, 124_680UL, TestName = "IsWellFormed_Eip8131ContentFloor(access list keys)")]
+    [TestCase(TxType.Blob, 0, 0, 6, 33_288UL, TestName = "IsWellFormed_Eip8131ContentFloor(blob hashes)")]
+    public void IsWellFormed_Eip8131ContentFloor(TxType type, int dataLength, int storageKeys, int blobHashes, ulong floor)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8131Enabled = true };
+        AccessList.Builder accessList = new();
+        accessList.AddAddress(TestItem.AddressC);
+        for (int i = 0; i < storageKeys; i++) accessList.AddStorage((UInt256)i);
+
+        ValidationResult Validate(ulong gasLimit) => IntrinsicGasTxValidator.Instance.IsWellFormed(Build.A.Transaction
+            .WithType(type)
+            .WithTo(TestItem.AddressB)
+            .WithValue(1)
+            .WithData(new byte[dataLength])
+            .WithAccessList(storageKeys > 0 ? accessList.Build() : null)
+            .WithBlobVersionedHashes(blobHashes > 0 ? blobHashes : null)
+            .WithMaxFeePerBlobGas(blobHashes > 0 ? UInt256.One : null)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved().TestObject, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(floor - 1).Error, Is.EqualTo(TxErrorMessages.IntrinsicGasTooLow));
+            Assert.That(Validate(floor).AsBool, Is.True);
+        }
+    }
+
     [Test]
     public void IsWellFormed_Nonce_Under_Limit([Values(TxType.AccessList, TxType.Legacy)] TxType txType)
     {
