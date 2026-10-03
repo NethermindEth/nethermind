@@ -79,22 +79,6 @@ public class GossipDigestWindowTests
         }
     }
 
-    internal static BeaconChainSpec WithBlobEntry(BeaconChainSpec spec, BlobScheduleEntry entry) => new()
-    {
-        SecondsPerSlot = spec.SecondsPerSlot,
-        SlotsPerEpoch = spec.SlotsPerEpoch,
-        GenesisTime = spec.GenesisTime,
-        GenesisValidatorsRoot = spec.GenesisValidatorsRoot,
-        Forks = spec.Forks,
-        BlobSchedule = [.. spec.BlobSchedule, entry],
-        ElectraForkEpoch = spec.ElectraForkEpoch,
-        FuluForkEpoch = spec.FuluForkEpoch,
-        MaxBlobsPerBlockElectra = spec.MaxBlobsPerBlockElectra,
-        GloasForkEpoch = spec.GloasForkEpoch,
-        GloasForkVersion = spec.GloasForkVersion,
-        Bootnodes = spec.Bootnodes,
-    };
-
     internal static DateTime EpochStart(BeaconChainSpec spec, ulong epoch) =>
         DateTime.UnixEpoch.AddSeconds(spec.GenesisTime + epoch * spec.SlotsPerEpoch * spec.SecondsPerSlot);
 
