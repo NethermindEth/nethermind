@@ -64,4 +64,5 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong PersistedSnapshotMaxCompactSize { get; set; } = 1024 * 1024;
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
+    public double InMemorySnapshotBloomBitsPerKey { get; set; } = 14.0;
 }
