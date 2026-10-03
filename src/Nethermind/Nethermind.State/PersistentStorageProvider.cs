@@ -1340,7 +1340,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _backend.Get(storageCell.Index, out value);
         }
 
-        [SkipLocalsInit]
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
             // Rewrites BlockChange below, and the commit that normally bumps the round first returns
@@ -1361,7 +1360,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             // resolving the surviving sibling node. Applying deletes last keeps the trie traversal aligned with
             // stateless verifiers that insert before deleting (see EELS client), which may avoid unnecessary branch
             // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
-            // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
             return WriteChanges(storageWriteBatch);
         }
 
@@ -1477,6 +1475,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public UInt256 After { readonly get; private set; }
         private ulong _metadata;
         public readonly bool IsInitialValue => (_metadata & 1) != 0;
+        public readonly bool IsPendingWrite => Before != After || IsInitialValue;
         public readonly ulong CapturedRound => _metadata & ~1UL;
     }
 }
