@@ -58,6 +58,9 @@ public static class ExperimentKnobs
     /// <summary>Each discovery candidate warms its own new cells as soon as its run ends, not at the round's barrier.</summary>
     public static readonly bool DiscoveryWarmPerCandidate = On("NETHERMIND_EXP_DISCOVERY_WARM_PER_CANDIDATE");
 
+    /// <summary>RocksDB's compaction pool runs at lowered CPU priority (1) and I/O priority too (2); 0 = off.</summary>
+    public static readonly int RocksDbLowPriority = Int("NETHERMIND_EXP_ROCKSDB_LOW_PRIORITY", 0);
+
     /// <summary>A prewarm run that makes this many backing-store storage reads hands its transaction to storage discovery; 0 = off.</summary>
     public static readonly int DiscoveryOnMisses = Int("NETHERMIND_EXP_DISCOVERY_ON_MISSES", 0);
 

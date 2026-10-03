@@ -571,6 +571,33 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return dbOptions;
     }
 
+    private static int s_backgroundPriorityLowered;
+
+    /// <summary>
+    /// Lowers the CPU priority (1) and also the I/O priority (2) of the default env's low-priority pool, where compactions
+    /// run, so they yield to block processing; flushes stay in the high-priority pool at normal priority.
+    /// </summary>
+    private static unsafe void LowerBackgroundPriority(int mode)
+    {
+        if (Interlocked.Exchange(ref s_backgroundPriorityLowered, 1) != 0) return;
+        try
+        {
+            if (!NativeLibrary.TryLoad("rocksdb", typeof(DbOptions).Assembly, null, out nint library)) return;
+            delegate* unmanaged<nint> createDefaultEnv = (delegate* unmanaged<nint>)NativeLibrary.GetExport(library, "rocksdb_create_default_env");
+            delegate* unmanaged<nint, void> lowerCpu = (delegate* unmanaged<nint, void>)NativeLibrary.GetExport(library, "rocksdb_env_lower_thread_pool_cpu_priority");
+            nint env = createDefaultEnv();
+            lowerCpu(env);
+            if (mode >= 2)
+            {
+                delegate* unmanaged<nint, void> lowerIo = (delegate* unmanaged<nint, void>)NativeLibrary.GetExport(library, "rocksdb_env_lower_thread_pool_io_priority");
+                lowerIo(env);
+            }
+        }
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException)
+        {
+        }
+    }
+
     protected virtual void BuildOptions<T>(IRocksDbConfig dbConfig, Options<T> options, nint? sharedCache, IMergeOperator? mergeOperator) where T : Options<T>
     {
         // This section is about the table factory and block cache, apparently.
@@ -663,6 +690,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         // This one set the threadpool env, so its actually different from the above two
         options.IncreaseParallelism(Environment.ProcessorCount);
+        if (Core.Diagnostics.ExperimentKnobs.RocksDbLowPriority > 0) LowerBackgroundPriority(Core.Diagnostics.ExperimentKnobs.RocksDbLowPriority);
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         options.SetMaxSubcompactions((uint)Environment.ProcessorCount);
