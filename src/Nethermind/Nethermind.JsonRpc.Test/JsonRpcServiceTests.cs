@@ -437,6 +437,22 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Request_method_is_canonicalized_to_the_dispatched_name([Values(" eth_chainId", "eth_chainId\t", "\neth_chainId ", "eth_chainId")] string method)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_chainId().ReturnsForAnyArgs(ResultWrapper<ulong>.Success(1ul));
+        JsonRpcRequest request = RpcTest.BuildJsonRequest(method);
+
+        JsonRpcResponse response = SendRequestWithPool(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true), request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.InstanceOf<ResultWrapper<ulong>>());
+            Assert.That(request.Method, Is.EqualTo("eth_chainId"));
+        }
+    }
+
+    [Test]
     public void No_parameter_methods_reject_non_empty_array_params_before_invocation()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();

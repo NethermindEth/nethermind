@@ -216,7 +216,7 @@ public class EthereumRunnerTests
         bool nestedWarmupRan = false;
         bool liveRpcInfoPreserved = false;
         int outerPort = 0;
-        IJsonRpcLocalStats? warmRpcStats = null;
+        SuccessCountingRpcStats? warmRpcStats = null;
         using NodeInfoScope? nodeInfo = throughStartRpc ? new NodeInfoScope() : null;
         await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication,
             configureContainer: builder =>
@@ -229,10 +229,11 @@ public class EthereumRunnerTests
                         return config;
                     });
                 }
+                builder.AddDecorator<IJsonRpcLocalStats>((_, stats) => new SuccessCountingRpcStats(stats, "eth_call"));
                 builder.RegisterBuildCallback(container =>
                 {
                     warmAuthentication = container.Resolve<IRpcAuthentication>();
-                    warmRpcStats = container.Resolve<IJsonRpcLocalStats>();
+                    warmRpcStats = (SuccessCountingRpcStats)container.Resolve<IJsonRpcLocalStats>();
                     outerPort = container.Resolve<IJsonRpcConfig>().Port;
                 });
                 if (throughStartRpc)
@@ -275,7 +276,7 @@ public class EthereumRunnerTests
         ThreadPool.GetMinThreads(out int warmedWorkerThreads, out int warmedCompletionPortThreads);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(warmRpcStats!.GetMethodStats("eth_call").Successes, Is.EqualTo(1), "warmup must execute a contract call through RPC");
+            Assert.That(warmRpcStats!.Successes, Is.EqualTo(1), "warmup must execute a contract call through RPC");
             Assert.That((warmedWorkerThreads, warmedCompletionPortThreads), Is.EqualTo((minWorkerThreads, minCompletionPortThreads)));
             AssertRpcLimit(RpcLimits.Default.AcquireQueuedSlot, RpcLimits.Default.DecrementQueuedCalls, 7);
             AssertRpcLimit(RpcLimits.Default.AcquireSharedSlot, RpcLimits.Default.DecrementSharedCalls, 11);
@@ -563,6 +564,21 @@ public class EthereumRunnerTests
             await inner.StopAllServices();
             await (Task)typeof(GCKeeper).GetMethod("StopAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(gcKeeper(), null)!;
             stopped.TrySetResult();
+        }
+    }
+
+    private sealed class SuccessCountingRpcStats(IJsonRpcLocalStats inner, string method) : IJsonRpcLocalStats
+    {
+        private int _successes;
+
+        public int Successes => Volatile.Read(ref _successes);
+
+        public bool IsEnabled => inner.IsEnabled;
+
+        public void ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
+        {
+            if (report.Success && report.Method == method) Interlocked.Increment(ref _successes);
+            inner.ReportCall(report, elapsedMicroseconds, size);
         }
     }
 
