@@ -88,6 +88,31 @@ public class TrieNodeTests
         AssertChildHashesMatchScalarKeccak(dirtyChildren);
     }
 
+    /// <summary>A long leaf whose key is a 32-byte string opens like a branch of hashed children, and must still decode as a leaf.</summary>
+    /// <remarks>63 nibbles hex-prefix encode to exactly 32 bytes, 64 to 33; the long value puts the list past 255 bytes.</remarks>
+    [Test]
+    public void Long_leaf_opening_with_a_hash_sized_key_decodes_as_a_leaf([Values(63, 64)] int keyNibbles)
+    {
+        byte[] key = new byte[keyNibbles];
+        for (int i = 0; i < key.Length; i++) key[i] = (byte)(i % 16);
+        byte[] value = new byte[300];
+        value.AsSpan().Fill(0xa0);
+
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(key, value);
+        TreePath path = TreePath.Empty;
+        CappedArray<byte> rlp = leaf.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+
+        TrieNode decoded = new(NodeType.Unknown, rlp.ToArray());
+        decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.IsLeaf, Is.True);
+            Assert.That(decoded.Key, Is.EqualTo(key));
+            Assert.That(decoded.Value.ToArray(), Is.EqualTo(value));
+        }
+    }
+
     /// <remarks>Empty slots keep the branch under 532 bytes, so its unchanged children are copied from its RLP rather than patched.</remarks>
     [Test]
     public void Reencoding_sparse_branch_matches_fresh_encoding(
