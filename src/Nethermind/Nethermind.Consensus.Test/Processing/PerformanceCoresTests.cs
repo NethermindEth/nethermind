@@ -252,6 +252,38 @@ public class PerformanceCoresTests
     }
 
     [Test]
+    public void Narrow_ProcessingThread_LeavesTheSelectionOnRelease([Values] bool processingThread)
+    {
+        if (!OperatingSystem.IsLinux()) Assert.Ignore("Thread affinity is read and set through Linux system calls.");
+        Assert.That(PerformanceCores.TryGetAffinity(0, out PerformanceCores.CpuMask before), Is.True);
+        int[] cpus = Enumerable.Range(0, PerformanceCores.MaxCpus).Where(cpu => before.Contains(cpu)).ToArray();
+        if (cpus.Length < 2) Assert.Ignore("A thread needs two CPUs to be moved between.");
+
+        PerformanceCores.CpuMask selected = default;
+        selected.Add(cpus[^1]);
+        PerformanceCores.Selection selection = new(selected, [cpus[^1]]);
+
+        // On a thread of its own, so the test runner's thread keeps its mask.
+        PerformanceCores.CpuMask during = default, after = default;
+        Thread thread = new(() =>
+        {
+            PerformanceCores.Scope scope = PerformanceCores.Narrow(selection, LimboLogs.Instance.GetClassLogger<PerformanceCoresTests>(), processingThread);
+            PerformanceCores.TryGetAffinity(0, out during);
+            scope.Dispose();
+            PerformanceCores.TryGetAffinity(0, out after);
+        });
+        thread.Start();
+        thread.Join();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(during.Overlaps(selected) && !during.Without(selected).Overlaps(before), Is.True, "narrowed to the selection");
+            Assert.That(after.Overlaps(selected), Is.EqualTo(!processingThread),
+                processingThread ? "the processing thread leaves the dedicated core on release" : "any other thread gets its whole mask back");
+        }
+    }
+
+    [Test]
     public void TryBuildUniformDedicated_TooFewCpusLeft_DoesNotNarrow() =>
         Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-3"), static cpu => $"{cpu % 2},{cpu % 2 + 2}", out _, out _), Is.False);
 

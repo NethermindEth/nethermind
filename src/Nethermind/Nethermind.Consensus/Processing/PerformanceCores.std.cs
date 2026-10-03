@@ -133,12 +133,13 @@ internal static partial class PerformanceCores
         public Scope NarrowFar(ILogger logger) => Narrow(Far, logger);
     }
 
-    private static Scope Narrow(Selection selection, ILogger logger, bool processingThread = false)
+    /// <param name="processingThread">The registered processing thread: on release it leaves the selection's processors too.</param>
+    internal static Scope Narrow(Selection selection, ILogger logger, bool processingThread = false)
     {
         // pid 0 is the calling thread.
         if (sched_getaffinity(0, CpuMaskSize, out CpuMask previous) != 0) return default;
         CpuMask mask = selection.Mask;
-        return sched_setaffinity(0, CpuMaskSize, ref mask) == 0 ? new Scope(previous, logger, processingThread) : default;
+        return sched_setaffinity(0, CpuMaskSize, ref mask) == 0 ? new Scope(previous, mask, logger, processingThread) : default;
     }
 
     public readonly struct Scope : IDisposable
@@ -146,13 +147,15 @@ internal static partial class PerformanceCores
         private readonly bool _narrowed;
         private readonly bool _registered;
         private readonly CpuMask _previous;
+        private readonly CpuMask _narrowedTo;
         private readonly ILogger _logger;
 
-        internal Scope(CpuMask previous, ILogger logger, bool processingThread)
+        internal Scope(CpuMask previous, CpuMask narrowedTo, ILogger logger, bool processingThread)
         {
             _narrowed = true;
             _registered = processingThread;
             _previous = previous;
+            _narrowedTo = narrowedTo;
             _logger = logger;
         }
 
@@ -164,9 +167,9 @@ internal static partial class PerformanceCores
 
             CpuMask restored = _previous;
             // The released thread returns to the pool: off the dedicated core now rather than at the guard's next pass.
-            if (_registered && Host.Selections[(int)ProcessingCores.Dedicated] is { } dedicated)
+            if (_registered)
             {
-                CpuMask off = restored.Without(dedicated.Mask);
+                CpuMask off = restored.Without(_narrowedTo);
                 if (!off.IsEmpty) restored = off;
             }
 
