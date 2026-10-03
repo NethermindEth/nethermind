@@ -135,6 +135,9 @@ public class FrameTxPeerFloodMeasurement
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Loopback, 30303)));
         session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().Dispose());
+        // A real session reports closing as soon as the disconnect starts, which is what stops the handler from
+        // submitting the rest of an in-flight message.
+        session.IsClosing.Returns(_ => reason is not null);
         session.When(s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>())).Do(c =>
         {
             if (reason is null)
