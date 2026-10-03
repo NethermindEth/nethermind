@@ -24,20 +24,27 @@ public static partial class Program
         ulong chainId = ulong.Parse(Value("chain-id", "10088288"), CultureInfo.InvariantCulture);
         ulong firstNonce = ulong.Parse(Value("nonce", "0"), CultureInfo.InvariantCulture);
         int rounds = int.Parse(Value("rounds", "1"), CultureInfo.InvariantCulture);
+        bool sharedDependency = Value("shared-dependency", "false") == "true";
+        int fixtureOffset = int.Parse(Value("fixture-offset", "0"), CultureInfo.InvariantCulture);
         string[] cases = Value("cases", "sphincs1,stark1,mixed4,sphincs16").Split(',');
         string[] modes = Value("wrapper-modes", "direct,recursive").Split(',');
-        if (rounds is < 1 or > 32 || cases.Length is < 1 or > 16 || modes.Length is < 1 or > 2
+        if (fixtureOffset < 0 || rounds is < 1 or > 32 || cases.Length is < 1 or > 16 || modes.Length is < 1 or > 2
             || modes.Distinct().Count() != modes.Length || modes.Any(m => m is not ("direct" or "recursive")))
             throw new ArgumentException("Invalid devnet case or wrapper bounds");
         BenchCase[] scenarios = cases.Select(ParseCase).ToArray();
         if (scenarios.Any(c => c.SharedSignature || c.SphincsCount > Eip8288Constants.MaxLeanSigDepsPerWrapper || c.StarkCount > Eip8288Constants.MaxLeanStarkDepsPerWrapper)
             || checked(rounds * scenarios.Length * modes.Length) > 128)
             throw new ArgumentException("Devnet requests exceed mempool wrapper limits");
+        if (sharedDependency && scenarios.Any(c => c.SphincsCount != 1 || c.StarkCount != 0))
+            throw new ArgumentException("Shared-dependency load requires SPHINCS1 only");
         using PrivateKey sender = new(Value("sender-key", "0x" + new string('0', 63) + "2"));
         NativeLeanProofVerifier verifier = NativeLeanProofVerifier.Instance;
         verifier.EnsureAvailable();
         Fixtures fixtures = new(fixtureDirectory);
-        int signatureOffset = 0, starkOffset = 0;
+        int signatureOffset = fixtureOffset, starkOffset = fixtureOffset;
+        if (scenarios.Any(c => c.SphincsCount != 0) && (long)fixtureOffset + (sharedDependency ? 1 : scenarios.Sum(c => c.SphincsCount) * rounds * modes.Length) > fixtures.Sphincs.Length
+            || scenarios.Any(c => c.StarkCount != 0) && (long)fixtureOffset + scenarios.Sum(c => c.StarkCount) * rounds * modes.Length > fixtures.Starks.Length)
+            throw new InvalidOperationException("Insufficient fixtures for the requested offset and rounds");
         ulong nonce = firstNonce;
         List<object> requests = [];
         Directory.CreateDirectory(output);
@@ -45,6 +52,7 @@ public static partial class Program
             foreach (BenchCase scenario in scenarios)
                 foreach (string mode in modes)
                 {
+                    if (sharedDependency) signatureOffset = fixtureOffset;
                     List<WitnessFixture> selected = [];
                     for (int i = 0; i < scenario.SphincsCount; i++)
                     {
@@ -159,6 +167,10 @@ public static partial class Program
             chainId,
             sender = sender.Address.ToString(),
             firstNonce,
+            fixtureOffset,
+            sharedDependency,
+            signatureFixturesConsumed = signatureOffset - fixtureOffset,
+            starkFixturesConsumed = starkOffset - fixtureOffset,
             nextNonce = nonce,
             genesisRequirements = new
             {

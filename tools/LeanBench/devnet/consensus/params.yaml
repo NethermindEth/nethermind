@@ -2,7 +2,7 @@ participants:
   - el_type: nethermind
     el_image: nethermind:lean8288-devnet
     el_max_cpu: 2000
-    el_max_mem: 2048
+    el_max_mem: 5120
     el_extra_params:
       - --Sync.SnapSync=false
       - --Init.MemoryHint=512000000

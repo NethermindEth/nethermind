@@ -41,6 +41,11 @@ public static partial class Program
     public static async Task Main(string[] args)
     {
         string Value(string name, string fallback) => args.FirstOrDefault(a => a.StartsWith("--" + name + "=", StringComparison.Ordinal))?.Split('=', 2)[1] ?? fallback;
+        if (Value("devnet-block", "") != "")
+        {
+            InspectDevnetBlock(args);
+            return;
+        }
         if (Value("devnet-payload", "") != "")
         {
             InspectDevnetPayload(args);
