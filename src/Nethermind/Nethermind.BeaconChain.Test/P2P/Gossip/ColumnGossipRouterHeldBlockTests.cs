@@ -13,7 +13,6 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -40,7 +39,7 @@ public class ColumnGossipRouterHeldBlockTests
         DataColumnSidecarPool pool = new();
         ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + BlockSlot * Sepolia.SecondsPerSlot + 6));
         ColumnGossipRouter router = new(Sepolia, new SlotClock(Sepolia, clock), LimboLogs.Instance, pool, store);
-        router.Start(static _ => new NullTopic(), ForkDigest.Compute(Sepolia, Sepolia.GetEpoch(BlockSlot)), [Column]);
+        router.Start(static _ => new GossipDigestWindowTests.SilentTopic(), ForkDigest.Compute(Sepolia, Sepolia.GetEpoch(BlockSlot)), [Column]);
 
         ulong outOfRangeIndex = Column + Eip7594DasConstants.DataColumnSidecarSubnetCount;
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(Column, BlockSlot + slotsAhead, root);
@@ -54,20 +53,5 @@ public class ColumnGossipRouterHeldBlockTests
             Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedStructure), Is.EqualTo(1));
             Assert.That(pool.GetPendingGloas(root, outOfRangeIndex), Is.Empty, "a malformed sidecar is never parked");
         }
-    }
-
-    private sealed class NullTopic : ITopic
-    {
-        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
-        public bool IsSubscribed => true;
-
-        public void Subscribe() { }
-
-        public void Unsubscribe() { }
-
-        public void Publish(byte[] value) { }
-
-        public void Publish(Google.Protobuf.IMessage value) { }
     }
 }

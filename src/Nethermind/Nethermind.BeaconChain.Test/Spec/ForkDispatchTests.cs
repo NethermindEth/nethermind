@@ -17,13 +17,13 @@ using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
-using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Api;
+using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Test.Fuzz;
 using Nethermind.BeaconChain.Test.StateTransition;
@@ -310,7 +310,7 @@ public class ForkDispatchTests
         Assert.That(spec.ForkAtEpoch(spec.GetEpoch(block.Slot)), Is.EqualTo(fork), "the block targets the fork under test");
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            ForkedStateTransition.Apply(state, block, new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec, validateResult: false, verifySignatures: false))!;
+            ForkedStateTransition.Apply(state, block, new EpochCache(), new PubkeyCache(), new TestEngineDriver.BodyOnlyNotifier(), spec, validateResult: false, verifySignatures: false))!;
 
         Assert.That(ex.Message, Does.Contain(message));
     }
@@ -436,10 +436,5 @@ public class ForkDispatchTests
         });
         await app.StartAsync();
         return app;
-    }
-
-    private sealed class AcceptingNotifier : INewPayloadNotifier
-    {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 }

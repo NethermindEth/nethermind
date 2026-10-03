@@ -360,8 +360,8 @@ public class EngineTests
         EngineDriver driver = TestEngineDriver.Create(CreateDetector(Substitute.For<IEngineRpcModule>(), out _));
 
         Assert.That(() => INewPayloadNotifier.RequireEnvelopeSupport(driver), Throws.Nothing);
-        Assert.That(() => INewPayloadNotifier.RequireEnvelopeSupport(new BodyOnlyNotifier()),
-            Throws.TypeOf<InvalidOperationException>().With.Message.Contains(nameof(BodyOnlyNotifier)).And.Message.Contains("Gloas execution payload envelopes"));
+        Assert.That(() => INewPayloadNotifier.RequireEnvelopeSupport(new TestEngineDriver.BodyOnlyNotifier()),
+            Throws.TypeOf<InvalidOperationException>().With.Message.Contains(nameof(TestEngineDriver.BodyOnlyNotifier)).And.Message.Contains("Gloas execution payload envelopes"));
     }
 
     [Test]
@@ -528,11 +528,6 @@ public class EngineTests
         BlockAccessList = [0xc0, 0xff, 0xee],
         SlotNumber = slotNumber,
     };
-
-    private sealed class BodyOnlyNotifier : INewPayloadNotifier
-    {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
-    }
 
     internal static ExternalClDetector CreateDetector(IEngineRpcModule inner, out ExternalClInterceptingEngineRpcModule decorator)
     {

@@ -12,6 +12,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
+using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -139,7 +140,7 @@ public class GloasCachedHasherTests
     public void Slot_processing_hashes_through_the_caches_hasher()
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
-        CountingHasher hasher = new();
+        GloasLineageHasherTests.CountingStateHasher hasher = new(new FullBeaconStateHasher());
 
         GloasSlotProcessing.ProcessSlots(state, state.Slot + 3, new EpochCache { Hasher = hasher });
 
@@ -157,7 +158,7 @@ public class GloasCachedHasherTests
         SignedBeaconBlockGloas block = MinimalBlock(post, SelfBuildBid(post, post.LatestBlockHash!, Hash(0x9A)));
         ApplyBlock(post, block, new EpochCache());
         block.Message!.StateRoot = SszRoots.HashTreeRoot(post);
-        CountingHasher hasher = new();
+        GloasLineageHasherTests.CountingStateHasher hasher = new(new FullBeaconStateHasher());
 
         ForkedStateTransition.Apply(
             new ForkedBeaconState.OfGloas(state), new ForkedSignedBeaconBlock.OfGloas(block), new EpochCache { Hasher = hasher }, new PubkeyCache(), new AcceptingNotifier(),
@@ -441,17 +442,4 @@ public class GloasCachedHasherTests
         DepositEpoch = template.DepositEpoch,
         WithdrawableEpoch = template.WithdrawableEpoch,
     };
-
-    private sealed class CountingHasher : IBeaconStateHasher
-    {
-        public int GloasCalls { get; private set; }
-
-        public Hash256 HashTreeRoot(BeaconStateFulu state) => SszRoots.HashTreeRoot(state);
-
-        public Hash256 HashTreeRoot(BeaconStateGloas state)
-        {
-            GloasCalls++;
-            return SszRoots.HashTreeRoot(state);
-        }
-    }
 }

@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Google.Protobuf;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -16,7 +15,6 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -161,7 +159,7 @@ public class ColumnGossipRouterReconstructionTests
         DataColumnSidecarPool pool = new();
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot + 6);
         ColumnGossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance, pool) { Reconstruct = reconstruct };
-        router.Start(_ => new StubTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static i => (ulong)i)]);
+        router.Start(_ => new GossipDigestWindowTests.SilentTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static i => (ulong)i)]);
         ConcurrentBag<DataColumnSidecar> received = [];
         router.DataColumnSidecarReceived += received.Add;
         return (router, pool, received);
@@ -212,20 +210,5 @@ public class ColumnGossipRouterReconstructionTests
 
             return DataColumnReconstruction.TryReconstruct(held, out fullMatrix);
         }
-    }
-
-    private sealed class StubTopic : ITopic
-    {
-        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
-        public bool IsSubscribed => true;
-
-        public void Subscribe() { }
-
-        public void Unsubscribe() { }
-
-        public void Publish(byte[] value) { }
-
-        public void Publish(IMessage value) { }
     }
 }

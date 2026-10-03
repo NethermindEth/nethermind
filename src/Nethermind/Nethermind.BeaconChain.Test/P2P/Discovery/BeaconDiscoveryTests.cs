@@ -103,7 +103,7 @@ public class BeaconDiscoveryTests
         BeaconChainStore store = new(columns);
         ulong beforeBpo1 = BeaconChainSpec.Mainnet.GenesisTime + 412_671UL * BeaconChainSpec.Mainnet.SlotsPerEpoch * BeaconChainSpec.Mainnet.SecondsPerSlot + 1;
         ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(beforeBpo1));
-        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store, new FixedIPResolver(PublicIp), clock, LimboLogs.Instance);
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store, new RangeSyncTests.FixedIPResolver(PublicIp), clock, LimboLogs.Instance);
         discovery.CreateDiscv5Services(PublicIp);
         clock.Add(TimeSpan.FromSeconds(BeaconChainSpec.Mainnet.SlotsPerEpoch * BeaconChainSpec.Mainnet.SecondsPerSlot));
         Volatile.Write(ref hold, true);
@@ -211,7 +211,7 @@ public class BeaconDiscoveryTests
         Assert.That(address, Is.EqualTo(advertised is null ? null : IPAddress.Parse(advertised)));
 
         await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
-            new FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
+            new RangeSyncTests.FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
         discovery.CreateDiscv5Services(address);
         using (Assert.EnterMultipleScope())
         {
@@ -246,7 +246,7 @@ public class BeaconDiscoveryTests
         Assert.That(restarted.LocalNodeRecord.EnrSequence, Is.GreaterThan(updated), "EIP-778: a restart must not publish a sequence peers already hold");
 
         static BeaconDiscovery CreateDiscovery(BeaconChainStore store, ITimestamper clock) =>
-            new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store, new FixedIPResolver(PublicIp), clock, LimboLogs.Instance);
+            new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store, new RangeSyncTests.FixedIPResolver(PublicIp), clock, LimboLogs.Instance);
     }
 
     [Test]
@@ -415,7 +415,7 @@ public class BeaconDiscoveryTests
     {
         BeaconChainConfig config = new() { Discv5Port = 0 };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        await using BeaconDiscovery discovery = new(config, BeaconChainSpec.Mainnet, store, new FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
+        await using BeaconDiscovery discovery = new(config, BeaconChainSpec.Mainnet, store, new RangeSyncTests.FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
 
         // Resolving the private container is what regressed; Start would mask it behind a bind and live traffic.
         NettyDiscoveryV5Handler handler = discovery.CreateDiscv5Services(PublicIp);
@@ -435,7 +435,7 @@ public class BeaconDiscoveryTests
         const int targetCandidates = 15;
         BeaconChainConfig config = new() { Discv5Port = 0 }; // ephemeral UDP port
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        await using BeaconDiscovery discovery = new(config, BeaconChainSpec.Mainnet, store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
+        await using BeaconDiscovery discovery = new(config, BeaconChainSpec.Mainnet, store, new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         cts.CancelAfter(TimeSpan.FromSeconds(120));
@@ -494,11 +494,5 @@ public class BeaconDiscoveryTests
         new NodeRecordSigner(new Ecdsa(), key).Sign(record);
         // Parse back from the string form so entries take the same unknown-entry path as wire records.
         return NodeRecord.FromEnrString(record.ToString());
-    }
-
-    private sealed class FixedIPResolver(IPAddress ip) : IIPResolver
-    {
-        public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default)
-            => new(new IIPResolver.NethermindIp(ip, ip));
     }
 }

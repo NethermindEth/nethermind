@@ -11,6 +11,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Api;
+using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
@@ -39,7 +40,7 @@ public class CustodySamplingAvailabilityTests
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
         RecordingColumnSource columns = new(chain, []);
-        CustodySamplingAvailability rule = new(new FixedCustodySource(null), columns, chain.ClockAtEpoch(0));
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(null), columns, chain.ClockAtEpoch(0));
 
         bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
 
@@ -54,7 +55,7 @@ public class CustodySamplingAvailabilityTests
     public void Fails_closed_while_the_node_identity_is_unknown()
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
-        CustodySamplingAvailability rule = new(new FixedCustodySource(null), new RecordingColumnSource(chain, All()), chain.ClockAtEpoch(0));
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(null), new RecordingColumnSource(chain, All()), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False);
     }
@@ -65,7 +66,7 @@ public class CustodySamplingAvailabilityTests
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
         RecordingColumnSource columns = new(chain, custody.SampledColumns);
-        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), columns, chain.ClockAtEpoch(0));
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), columns, chain.ClockAtEpoch(0));
 
         bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
 
@@ -84,7 +85,7 @@ public class CustodySamplingAvailabilityTests
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
-        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != custody.CustodyColumns[^1])), chain.ClockAtEpoch(0));
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != custody.CustodyColumns[^1])), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False);
     }
@@ -95,7 +96,7 @@ public class CustodySamplingAvailabilityTests
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
         ulong sampledOnly = custody.SampledColumns.First(c => !custody.CustodyColumns.Contains(c));
-        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != sampledOnly)), chain.ClockAtEpoch(0));
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != sampledOnly)), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False, "das-core: sampling succeeds only if every selected column is retrieved");
     }
@@ -109,7 +110,7 @@ public class CustodySamplingAvailabilityTests
         byte[] cell = tampered.Column![0].AsSpan().ToArray();
         cell[^1] ^= 0x01;
         tampered.Column[0] = SszBlobCell.FromSpan(cell);
-        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns), chain.ClockAtEpoch(0));
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False, "the source only says it holds a column; the rule must still prove it");
     }
@@ -123,7 +124,7 @@ public class CustodySamplingAvailabilityTests
         // still verify against its own header, so only the per-index cross-check can reject it.
         SszKzgCommitment[] blockCommitments = chain.Block.Message!.Body!.BlobKzgCommitments!;
         chain.Block.Message.Body.BlobKzgCommitments = [blockCommitments[1], blockCommitments[0]];
-        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns), chain.ClockAtEpoch(0));
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False);
     }
@@ -133,7 +134,7 @@ public class CustodySamplingAvailabilityTests
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         RecordingColumnSource columns = new(chain, []);
-        CustodySamplingAvailability rule = new(new FixedCustodySource(null), columns, chain.ClockAtEpoch(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 1));
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(null), columns, chain.ClockAtEpoch(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 1));
 
         bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
 
@@ -154,7 +155,7 @@ public class CustodySamplingAvailabilityTests
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)chain.Spec.GenesisTime).UtcDateTime);
-        CustodySamplingAvailability rule = new(new FixedCustodySource(null), new RecordingColumnSource(chain, []), new SlotClock(chain.Spec, timestamper));
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(null), new RecordingColumnSource(chain, []), new SlotClock(chain.Spec, timestamper));
         TimeSpan epoch = TimeSpan.FromSeconds(chain.Spec.SlotsPerEpoch * chain.Spec.SecondsPerSlot);
 
         bool atGenesis = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
@@ -188,7 +189,7 @@ public class CustodySamplingAvailabilityTests
         RecordingColumnSource columns = new(chain, All());
         ulong currentEpoch = blockEpoch + epochsSinceBlock;
         SlotClock clock = new(spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(spec.GenesisTime + currentEpoch * spec.SlotsPerEpoch * spec.SecondsPerSlot)).UtcDateTime));
-        CustodySamplingAvailability rule = new(new FixedCustodySource(BaseCustody()), columns, clock);
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(BaseCustody()), columns, clock);
 
         bool available = rule.IsDataAvailable(electraBlock, SszRoots.HashTreeRoot(electraBlock), spec);
 
@@ -235,11 +236,6 @@ public class CustodySamplingAvailabilityTests
             Asked++;
             return false;
         }
-    }
-
-    private sealed class FixedCustodySource(NodeColumnCustody? custody) : INodeColumnCustodySource
-    {
-        public NodeColumnCustody? Current => custody;
     }
 
     /// <summary>Holds the given columns of the fixture block and records every lookup made against it.</summary>

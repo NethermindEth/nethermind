@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.Crypto;
-using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -35,7 +35,7 @@ public class ForkedStateTransitionTests
         BeaconChainSpec spec = SyntheticSpec(gloasForkEpoch: 1_000_000);
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec, validateResult: false, verifySignatures: false))!;
+            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new TestEngineDriver.BodyOnlyNotifier(), spec, validateResult: false, verifySignatures: false))!;
 
         Assert.That(ex.Message, Does.Contain("parent root"));
     }
@@ -73,7 +73,7 @@ public class ForkedStateTransitionTests
         ForkedBeaconState state = new ForkedBeaconState.OfFulu(fuluState);
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfGloas(block), new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec, validateResult: false, verifySignatures: false))!;
+            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfGloas(block), new EpochCache(), new PubkeyCache(), new TestEngineDriver.BodyOnlyNotifier(), spec, validateResult: false, verifySignatures: false))!;
 
         Assert.That(ex.Message, Does.Contain("does not match latest header root"));
     }
@@ -96,7 +96,7 @@ public class ForkedStateTransitionTests
         SignedBeaconBlockGloas block = new() { Message = new BeaconBlockGloas { Slot = boundarySlot }, Signature = default };
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfGloas(block), new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), SyntheticSpec(gloasForkEpoch: 1), validateResult: false, verifySignatures: false))!;
+            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfGloas(block), new EpochCache(), new PubkeyCache(), new TestEngineDriver.BodyOnlyNotifier(), SyntheticSpec(gloasForkEpoch: 1), validateResult: false, verifySignatures: false))!;
 
         Assert.That(ex.Message, Does.Contain("non-future slot"));
     }
@@ -112,7 +112,7 @@ public class ForkedStateTransitionTests
         SignedBeaconBlock block = new() { Message = new BeaconBlock { Slot = 150 }, Signature = default };
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec))!;
+            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new TestEngineDriver.BodyOnlyNotifier(), spec))!;
         Assert.That(ex.Message, Does.Contain("targets the Gloas fork but was constructed as"));
     }
 
@@ -127,7 +127,7 @@ public class ForkedStateTransitionTests
         SignedBeaconBlock block = new() { Message = new BeaconBlock { Slot = 101 }, Signature = default };
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec))!;
+            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new TestEngineDriver.BodyOnlyNotifier(), spec))!;
         Assert.That(ex.Message, Does.Contain("already crossed into Gloas"));
     }
 
@@ -167,10 +167,5 @@ public class ForkedStateTransitionTests
         payload.BlockNumber = state.Slot;
         payload.ExtraData = [];
         return block;
-    }
-
-    private sealed class AcceptingNotifier : INewPayloadNotifier
-    {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 }

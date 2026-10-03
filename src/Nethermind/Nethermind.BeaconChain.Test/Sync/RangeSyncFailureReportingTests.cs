@@ -57,7 +57,7 @@ public class RangeSyncFailureReportingTests
             _ => [TestChain.CreateBlock(startSlot, parentRoot: Hash256.Zero), .. chain.Skip(1)],
         });
         StubPeer goodPeer = new("good", headSlot: TargetSlot, (startSlot, count) => [.. chain.Where(b => b.Message!.Slot >= startSlot && b.Message.Slot < startSlot + count)]);
-        RangeSync sync = new(new StubPool(badPeer, goodPeer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, RangeSyncTests.ClockAtGenesis(BeaconChainSpec.Mainnet));
+        RangeSync sync = new(new RangeSyncTests.StubPool(badPeer, goodPeer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, RangeSyncTests.ClockAtGenesis(BeaconChainSpec.Mainnet));
 
         List<ForkedSignedBeaconBlock> imported = [];
         await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
@@ -86,7 +86,7 @@ public class RangeSyncFailureReportingTests
             SignedBeaconBlock[] served = [.. chain.Where(b => b.Message!.Slot >= startSlot && b.Message.Slot < startSlot + count)];
             return requests.Count > 1 ? served : throw new PartialBlocksException(new TimeoutException("request timed out"), [new ForkedSignedBeaconBlock.OfFulu(served[0])]);
         });
-        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, RangeSyncTests.ClockAtGenesis(BeaconChainSpec.Mainnet));
+        RangeSync sync = new(new RangeSyncTests.StubPool(peer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, RangeSyncTests.ClockAtGenesis(BeaconChainSpec.Mainnet));
 
         List<ForkedSignedBeaconBlock> imported = [];
         await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
@@ -137,10 +137,5 @@ public class RangeSyncFailureReportingTests
             throw new NotSupportedException();
 
         public void ReportFailure(PeerFailureReason reason, string? detail = null) => TypedReports.Add(reason);
-    }
-
-    private sealed class StubPool(params IBeaconSyncPeer[] peers) : IBeaconSyncPeerPool
-    {
-        public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => [.. peers.Where(p => p.HeadSlot >= minHeadSlot)];
     }
 }

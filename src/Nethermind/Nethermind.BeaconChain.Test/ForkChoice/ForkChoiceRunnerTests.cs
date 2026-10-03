@@ -12,6 +12,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
+using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
@@ -2106,7 +2107,7 @@ public class ForkChoiceRunnerTests
         runner.OnTick(runner.GenesisTime + chain.Block.Message!.Slot * chain.Spec.SecondsPerSlot);
 
         BeaconStateFulu postState = chain.AnchorState.Clone();
-        FuluStateTransition.Apply(postState, chain.Block, new EpochCache(), chain.Pubkeys, new AcceptingNotifier(), chain.Spec);
+        FuluStateTransition.Apply(postState, chain.Block, new EpochCache(), chain.Pubkeys, new TestEngineDriver.BodyOnlyNotifier(), chain.Spec);
         return (runner, postState);
     }
 
@@ -2168,11 +2169,6 @@ public class ForkChoiceRunnerTests
         public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => chain.GetBlockState(blockRoot);
 
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => null;
-    }
-
-    private sealed class AcceptingNotifier : INewPayloadNotifier
-    {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 
     /// <summary>Imports a line of blocks at <paramref name="slots"/>, each on the previous one and the first on <paramref name="parent"/>.</summary>

@@ -12,7 +12,6 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -102,7 +101,7 @@ public class ColumnGossipRouterParentSlotTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
         ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot + 6));
         ColumnGossipRouter router = new(Spec, new SlotClock(Spec, clock), LimboLogs.Instance, store: store);
-        router.Start(_ => new NullTopic(), ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), [Subnet]);
+        router.Start(_ => new GossipDigestWindowTests.SilentTopic(), ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), [Subnet]);
         return (router, store, clock);
     }
 
@@ -121,20 +120,5 @@ public class ColumnGossipRouterParentSlotTests
         sidecar.SignedBlockHeader!.Message!.ParentRoot = parent;
         sidecar.SignedBlockHeader.Message.ProposerIndex = proposer;
         return Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar));
-    }
-
-    private sealed class NullTopic : ITopic
-    {
-        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
-        public bool IsSubscribed => true;
-
-        public void Subscribe() { }
-
-        public void Unsubscribe() { }
-
-        public void Publish(byte[] value) { }
-
-        public void Publish(Google.Protobuf.IMessage value) { }
     }
 }
