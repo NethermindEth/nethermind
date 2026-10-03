@@ -1824,6 +1824,9 @@ public class DeferredBlockColumnFetchTests
         private ManualTimestamper _time = null!;
         private MutablePool _pool = null!;
 
+        public BeaconChainStore Store => _store;
+        public BeaconDiscovery Discovery => _discovery;
+
         public ImportableBlobBlock Chain { get; } = ImportableBlobBlock.Create();
         public DataColumnSidecarPool SidecarPool { get; } = new();
 
@@ -1835,7 +1838,7 @@ public class DeferredBlockColumnFetchTests
         /// <summary>The connected peers, which a test changes between imports.</summary>
         public List<IBeaconSyncPeer> Peers { get; } = [];
 
-        /// <summary>This node's sampled columns, which depend on its randomly generated identity.</summary>
+        /// <summary>This node's sampled columns, which depend on its identity.</summary>
         public ulong[] Sampled { get; private set; } = [];
 
         public ulong[] Unsampled => [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c).Except(Sampled)];
@@ -1844,9 +1847,14 @@ public class DeferredBlockColumnFetchTests
         public IEngineDriver Engine { get; private set; } = null!;
 
         /// <param name="engine">The engine to call; one that reports everything valid when omitted.</param>
-        public static Fixture Create(IEngineDriver? engine = null)
+        /// <param name="identity">The discovery identity to seed; one is generated when omitted.</param>
+        public static Fixture Create(IEngineDriver? engine = null, byte[]? identity = null)
         {
             Fixture fixture = new() { Engine = engine ?? new NoOpEngineDriver() };
+            if (identity is not null)
+            {
+                fixture._store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, identity);
+            }
             fixture._discovery = new BeaconDiscovery(new BeaconChainConfig { Discv5Port = 0 }, fixture.Chain.Spec, fixture._store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
             // Resolves the identity and local custody exactly as Start does, without binding a socket.
             fixture._discovery.CreateDiscv5Services(IPAddress.Loopback);
