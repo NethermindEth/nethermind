@@ -193,6 +193,31 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(afterCommit, Is.EqualTo((UInt256)3), "after commit");
     }
 
+    /// <summary>A write must stay visible while the contract goes on reading its other slots.</summary>
+    /// <remarks>The journal gate filters on the slot: 65 shares slot 1's filter bit, 2 does not.</remarks>
+    [Test]
+    public void Write_is_visible_between_reads_of_other_slots_of_the_contract([Values(2, 65)] int otherSlot)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        StorageCell written = new(ctx.Address1, (UInt256)1);
+        StorageCell other = new(ctx.Address1, (UInt256)otherSlot);
+
+        provider.Set(in written, (UInt256)1);
+        provider.Set(in other, (UInt256)4);
+        provider.Commit(Frontier.Instance);
+
+        provider.Set(in written, (UInt256)3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSlot(provider, other), Is.EqualTo((UInt256)4), "other slot before");
+            Assert.That(ReadSlot(provider, written), Is.EqualTo((UInt256)3), "written slot");
+            Assert.That(ReadSlot(provider, other), Is.EqualTo((UInt256)4), "other slot after");
+        }
+    }
+
     /// <summary>A contract that never wrote in this block must read its committed values even while another
     /// contract's writes sit in the journal.</summary>
     /// <remarks>This is the branch the journal gate adds: the read-only contract is seeded in a completed
