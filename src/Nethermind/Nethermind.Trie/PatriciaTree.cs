@@ -615,12 +615,9 @@ namespace Nethermind.Trie
                             traverseStack.Clear();
                             return originalNode;
                         }
-                        else if (node.IsSealed)
-                        {
-                            node = node.CloneWithChangedValue(value);
-                        }
                         else
                         {
+                            if (node.IsSealed) node = node.Unseal();
                             node.Value = value;
                             node.Keccak = null; // For parent node usually done in SetChild.
                         }

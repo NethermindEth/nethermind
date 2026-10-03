@@ -918,13 +918,6 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedValue(CappedArray<byte> changedValue)
-        {
-            TrieNode trieNode = Clone();
-            trieNode.Value = changedValue;
-            return trieNode;
-        }
-
         public TrieNode CloneWithChangedKeyAndValue(byte[] key, CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();

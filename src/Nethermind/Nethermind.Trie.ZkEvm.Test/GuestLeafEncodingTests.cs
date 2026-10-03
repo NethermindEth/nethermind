@@ -20,7 +20,8 @@ public class GuestLeafEncodingTests
     public void Value_change_keeps_the_key([Values(0, 1, 2, 31, 64)] int keyLength, [Values(1, 33, 56, 120)] int valueLength)
     {
         byte[] key = Nibbles(keyLength);
-        TrieNode changed = DecodedLeaf(key, Bytes(40, 0x11)).CloneWithChangedValue(new CappedArray<byte>(Bytes(valueLength, 0x22)));
+        TrieNode changed = DecodedLeaf(key, Bytes(40, 0x11)).Unseal();
+        changed.Value = new CappedArray<byte>(Bytes(valueLength, 0x22));
 
         Assert.That(Encode(changed), Is.EqualTo(Encode(TrieNodeFactory.CreateLeaf(key, new CappedArray<byte>(Bytes(valueLength, 0x22))))));
     }
@@ -33,7 +34,7 @@ public class GuestLeafEncodingTests
         TrieNode leaf = DecodedLeaf(Nibbles(keyLength), value);
         if (inPlace)
         {
-            leaf = leaf.CloneWithChangedValue(new CappedArray<byte>(value));
+            leaf = leaf.Unseal();
             leaf.Key = newKey;
         }
         else
