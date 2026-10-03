@@ -23,7 +23,7 @@ namespace Nethermind.Core.Collections
         private const int SparseClearCapacityDivisor = 256;
 
         private readonly List<T> _items = [];
-        private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
+        private readonly OptimizedHashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
 
         public int TakeSnapshot() => Position;
 
@@ -50,7 +50,7 @@ namespace Nethermind.Core.Collections
         private void ThrowInvalidRestore(int snapshot)
             => throw new InvalidOperationException($"{nameof(JournalSet<>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 
-        public bool Add(T item)
+        public bool Add(in T item)
         {
             if (_set.Add(item))
             {
@@ -86,8 +86,9 @@ namespace Nethermind.Core.Collections
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
         public int Count => _set.Count;
         public bool IsReadOnly => false;
-        void ICollection<T>.Add(T item) => Add(item);
-        public bool Contains(T item) => _set.Contains(item);
+        void ICollection<T>.Add(T item) => Add(in item);
+        public bool Contains(in T item) => _set.Contains(item);
+        bool ICollection<T>.Contains(T item) => Contains(in item);
         public void CopyTo(T[] array, int arrayIndex) => _items.CopyTo(array, arrayIndex);
     }
 }
