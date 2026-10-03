@@ -49,7 +49,7 @@
              self.log.info(
 --- /dev/null
 +++ b/src/expb/payloads/executor/client_identity.py
-@@ -0,0 +1,216 @@
+@@ -0,0 +1,223 @@
 +# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 +# SPDX-License-Identifier: LGPL-3.0-only
 +"""Read-only identity and counter boundaries for the pinned c88 diagnostic image."""
@@ -220,10 +220,17 @@
 +        cgroup, location = self._cgroup()
 +        if cgroup != self.identity["cgroup"] or int(fields[19]) != identity["start_ticks"]:
 +            raise CaptureError("client counter identity changed")
++        cpu_raw = bounded_read(location / "cpu.stat", 65536)
++        boundary = "before" if self.before is None else "after"
++        with (self.directory / f"cpu-stat-{boundary}.raw").open("xb") as output:
++            output.write(cpu_raw)
 +        cpu = {}
-+        for line in bounded_read(location / "cpu.stat", 65536).decode().splitlines():
-+            key, value = line.split()
-+            if not re.fullmatch("[a-z_]+", key) or not value.isdecimal() or key in cpu:
++        for line in cpu_raw.decode("ascii").splitlines():
++            parts = line.split()
++            if len(parts) != 2:
++                raise CaptureError("unexpected cpu.stat field")
++            key, value = parts
++            if not re.fullmatch(r"[a-z_]+|core_sched\.force_idle_usec", key) or not value.isdecimal() or key in cpu:
 +                raise CaptureError("unexpected cpu.stat field")
 +            cpu[key] = int(value)
 +        if not {"usage_usec", "user_usec", "system_usec"} <= cpu.keys():
