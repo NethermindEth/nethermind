@@ -68,6 +68,7 @@ public enum Instruction : byte
     BLOBHASH = 0x49,
     BLOBBASEFEE = 0x4a,
     SLOTNUM = 0x4b,
+    SETCODEFROM = 0x4c, // EIP-8298 (opcode provisional; TBD in spec)
 
     POP = 0x50,
     MLOAD = 0x51,

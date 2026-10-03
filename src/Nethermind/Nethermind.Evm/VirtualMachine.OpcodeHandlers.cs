@@ -532,6 +532,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.SSTORE] = SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929>(spec);
         lookup[(int)Instruction.SELFDESTRUCT] =
             GetSelfDestructHandler<TTracingInst, TCancelable, EvmInstructions.AccessSpec<Eip2929, Eip8038>, Eip8038>(spec);
+        if (spec.IsEip8298Enabled)
+            lookup[(int)Instruction.SETCODEFROM] = OpcodeHandler<SetCodeFromOpcode<TTracingInst, EvmInstructions.AccessSpec<Eip2929, Eip8038>>, TTracingInst, TCancelable>();
     }
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
@@ -1079,6 +1081,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionExtCodeHash<TGasPolicy, TTracingInst, TSpec>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct SetCodeFromOpcode<TTracingInst, TSpec> : IOpcodeBody where TTracingInst : struct, IFlag
+        where TSpec : struct, EvmInstructions.IAccessSpec
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionSetCodeFrom<TGasPolicy, TTracingInst, TSpec>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
