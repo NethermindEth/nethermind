@@ -95,6 +95,18 @@ def main():
         axes[1].legend(fontsize=8)
         save(fig, prefix + "-goodput", "Unique admission and transaction-byte goodput under offered load.")
 
+        fig, ax = plt.subplots(figsize=(7, 5))
+        for label, group in sorted(loads.items()):
+            if not label.startswith("sphincs"):
+                continue
+            ax.plot([row["offeredTxPerSecond"] for row in group],
+                    [row["acceptedTxPerSecond"] for row in group], "o-", label=case_label(label))
+        ax.set(xlabel="Offered transactions / second", ylabel="Accepted transactions / second",
+               title="Fresh SPHINCS proving → pool" if kind == "load" else f"Preproved SPHINCS {protocol} → pool")
+        ax.set_ylim(bottom=0)
+        ax.legend(fontsize=10)
+        save(fig, prefix + "-sphincs-admission", "Short arrival windows; measured goodput includes drain.")
+
         fig, axes = plt.subplots(1, 3, figsize=(15, 5.0))
         fig.suptitle(scope)
         for label, group in sorted(loads.items()):
@@ -139,8 +151,17 @@ def main():
                               for row, n in zip(crypto, batches)], "o-", label="Verify / signature")
         axes[2].plot(counts, [row["proofBytesMean"] / row["sphincsCount"] for row in crypto], "o-",
                      label="Aggregate proof / signature")
-        witness_bytes = data.get("metadata", {}).get("sphincsWitnessBytes", 4956)
-        axes[2].axhline(witness_bytes, linestyle="--", color="#9ba3b1", label="Direct SPHINCS witness")
+        metadata = data.get("metadata", {})
+        witness_bytes = metadata.get("sphincsWitnessBytes")
+        if witness_bytes is None:
+            backend = metadata.get("backendCommit", "")
+            # Legacy captures predate size metadata and used the BLAKE2s profile.
+            if not backend or backend.startswith("b977f5f"):
+                witness_bytes = 4956
+            elif backend.startswith("f33f31bf"):
+                witness_bytes = 6208
+        if witness_bytes is not None:
+            axes[2].axhline(witness_bytes, linestyle="--", color="#9ba3b1", label="Direct SPHINCS witness")
         axes[0].set(ylabel="Wall time / batch (ms)", title="Real native proving and verification")
         axes[1].set(ylabel="Wall time / signature (ms)", title="Amortized crypto cost")
         axes[2].set(ylabel="Serialized bytes / signature", title="Proof size versus direct witness")
@@ -151,6 +172,17 @@ def main():
             ax.set_xlabel("Distinct signatures in aggregate")
             ax.legend(fontsize=8)
         save(fig, "aggregation-cost", "Fresh distinct signature claims; witness reference includes public key and signature.")
+
+        fig, ax = plt.subplots(figsize=(7, 5))
+        ax.plot(counts, [row["proveWallMs"] / n / 1000 for row, n in zip(crypto, batches)],
+                "o-", label="Fresh prove")
+        ax.plot(counts, [row["verifyWallMs"] / n / 1000 for row, n in zip(crypto, batches)],
+                "o-", label="Verify")
+        ax.set(xlabel="Distinct signature claims", ylabel="Mean wall time / batch (seconds)",
+               title="Native SPHINCS proving and verification", yscale="log", xscale="log")
+        ax.set_xticks(counts, labels=[str(n) for n in counts])
+        ax.legend(fontsize=10)
+        save(fig, "sphincs-batch-cost", "Fresh distinct claims; metadata identifies the captured backend and strategy.")
 
     generic = [row for row in rows if row["kind"] == "crypto" and row["starkCount"] > 0]
     if generic:
