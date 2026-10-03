@@ -317,8 +317,8 @@ public class JsonRpcProcessorTests
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null, bool returnErrors = false) =>
         ProcessAsync(CreateFixtureProcessor(config, returnErrors), CreateReader(request), context ?? CreateHttpContext());
 
-    private static ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, string request, JsonRpcContext context, CollectingJsonRpcResponseSink? sink = null) =>
-        ProcessAsync(processor, CreateReader(request), context, sink);
+    private static ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, string request, JsonRpcContext context, CollectingJsonRpcResponseSink? sink = null, CancellationToken cancellationToken = default) =>
+        ProcessAsync(processor, CreateReader(request), context, sink, cancellationToken);
 
     private static PipeReader CreateReader(string request, bool segmentedInput) =>
         segmentedInput
@@ -329,15 +329,47 @@ public class JsonRpcProcessorTests
         JsonRpcProcessor processor,
         PipeReader reader,
         JsonRpcContext context,
-        CollectingJsonRpcResponseSink? sink = null)
+        CollectingJsonRpcResponseSink? sink = null,
+        CancellationToken cancellationToken = default)
     {
         sink ??= new CollectingJsonRpcResponseSink();
         JsonRpcInputMode inputMode = context.RpcEndpoint == RpcEndpoint.Http
             ? JsonRpcInputMode.SingleDocument
             : JsonRpcInputMode.MultipleDocuments;
 
-        await processor.ProcessAsync(reader, context, sink, new JsonRpcProcessingOptions(inputMode));
+        await processor.ProcessAsync(reader, context, sink, new JsonRpcProcessingOptions(inputMode), cancellationToken);
         return sink.Responses;
+    }
+
+    [Test]
+    public async Task Request_carries_what_evm_admission_needs([Values(RpcEndpoint.Http, RpcEndpoint.Ws)] RpcEndpoint endpoint, [Values] bool inBatch)
+    {
+        const string paramsJson = "[{\"parentHash\":\"0x0\"},[],null,null]";
+        TimeSpan itemWait = TimeSpan.FromMilliseconds(7);
+        using CancellationTokenSource cancellation = new();
+        List<(int ParamsUtf8Length, StrongBox<TimeSpan>? BatchQueueWait, TimeSpan? WaitedBefore, CancellationToken CancellationToken)> seen = [];
+        IJsonRpcService service = CreateService(request =>
+        {
+            seen.Add((request.ParamsUtf8Length, request.BatchQueueWait, request.BatchQueueWait?.Value, request.CancellationToken));
+            // As the service does when an item waited for a slot.
+            if (request.BatchQueueWait is { } waited) waited.Value += itemWait;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        string request = CreateRequest("1", "eth_call", paramsJson);
+        using JsonRpcContext context = new(endpoint);
+
+        using CollectedJsonRpcResponses _ = await ProcessAsync(
+            CreateProcessor(service),
+            inBatch ? CreateBatchRequest(request, CreateRequest("2", "eth_call", paramsJson)) : request,
+            context,
+            cancellationToken: cancellation.Token);
+
+        int paramsLength = Encoding.UTF8.GetByteCount(paramsJson);
+        StrongBox<TimeSpan>? batchQueueWait = inBatch ? seen[0].BatchQueueWait : null;
+        // The items of a batch share one wait, which starts at zero and carries what the earlier items waited.
+        Assert.That(seen, Is.EqualTo(inBatch
+            ? new[] { (paramsLength, batchQueueWait, (TimeSpan?)TimeSpan.Zero, cancellation.Token), (paramsLength, batchQueueWait, itemWait, cancellation.Token) }
+            : new[] { (paramsLength, (StrongBox<TimeSpan>?)null, (TimeSpan?)null, cancellation.Token) }));
     }
 
     [Test]

@@ -38,6 +38,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
+    // Tests set a gate on a manual clock, which the batch charge then follows too.
+    internal EvmAdmissionGate EvmGate { get; init; } = new(jsonRpcConfig);
+
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
         if (context.IsAuthenticated && rpcRequest?.Method?.StartsWith("engine_newPayload", StringComparison.Ordinal) == true)
@@ -58,7 +61,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution
+                ? ExecuteGatedAsync(rpcRequest, methodName, method, context)
+                : ExecuteAsync(rpcRequest, methodName, method, context);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
                 : AwaitRequestAsync(responseTask, rpcRequest);
@@ -73,6 +78,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             try
             {
                 return await responseTask;
+            }
+            catch (OperationCanceledException) when (rpcRequest.CancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -108,6 +117,47 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ex is OutOfMemoryException or { InnerException: OutOfMemoryException }
             ? $"Id:{request.Id}, {request.Method}(params omitted)"
             : request.ToString();
+
+    private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
+    {
+        // Admitted before binding, so a rejected request never pays for deserializing its parameters.
+        using EvmAdmissionGate.Lease lease = await AdmitAsync(request, context);
+        request.CancellationToken.ThrowIfCancellationRequested();
+        return await ExecuteAsync(request, methodName, method, context);
+    }
+
+    // Authenticated and IPC callers are the operator's own, so they go ahead of every other waiter and may take one slot
+    // above the others, so public calls holding every slot do not hold them up. The override and simulate env pools hold
+    // that slot too.
+    private ValueTask<EvmAdmissionGate.Lease> AdmitAsync(JsonRpcRequest request, JsonRpcContext context) =>
+        request.BatchQueueWait is null
+            ? EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget, context.IsAuthenticated, request.CancellationToken)
+            : AdmitBatchItemAsync(request, request.BatchQueueWait, context.IsAuthenticated);
+
+    // Items of one batch run one after another, so they share one budget: each may wait only what the earlier ones did not.
+    // That holds for trusted batches too, which otherwise could hold up a single-worker IPC connection for their size times
+    // the budget.
+    private async ValueTask<EvmAdmissionGate.Lease> AdmitBatchItemAsync(JsonRpcRequest request, StrongBox<TimeSpan> batchQueueWait, bool priority)
+    {
+        // The wait is charged on the clock that times it out, so what an item may wait and what it is charged agree.
+        TimeProvider clock = EvmGate.TimeProvider;
+        long queuedAt = clock.GetTimestamp();
+        bool timedOut = false;
+        try
+        {
+            return await EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget - batchQueueWait.Value, priority, request.CancellationToken);
+        }
+        catch (EvmAdmissionGate.WaitTimeoutException)
+        {
+            timedOut = true;
+            throw;
+        }
+        finally
+        {
+            // A wait timer may fire a little early, but an item whose wait timed out has spent what was left all the same.
+            batchQueueWait.Value = timedOut ? EvmGate.Budget : batchQueueWait.Value + clock.GetElapsedTime(queuedAt);
+        }
+    }
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
