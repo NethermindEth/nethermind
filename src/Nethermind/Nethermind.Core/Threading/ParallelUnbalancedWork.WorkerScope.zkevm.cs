@@ -12,8 +12,6 @@ public partial class ParallelUnbalancedWork
         private partial void Initialize() { }
         internal partial WorkerScope Enter() => new(1);
         internal partial void Queue(System.Threading.IThreadPoolWorkItem work) => work.Execute();
-        internal partial void KeepRunners(System.TimeSpan hold) { }
-        internal partial void ReleaseRunners() { }
     }
 
     public sealed partial class WorkerScope

@@ -33,17 +33,6 @@ public partial class ParallelUnbalancedWork
             if (Concurrency == 1) work.Execute();
             else _scheduler.Enqueue(new(), work);
         }
-
-        internal partial void KeepRunners(TimeSpan hold) =>
-            _scheduler.KeepRunnersUntil(Stopwatch.GetTimestamp() + (long)(hold.TotalSeconds * Stopwatch.Frequency));
-
-        internal partial void ReleaseRunners() => _scheduler.KeepRunnersUntil(0);
-
-        /// <summary>The runners the group holds, running or waiting; for tests.</summary>
-        internal int ReservedRunners => _scheduler.ReservedRunners;
-
-        /// <summary>Whether a <see cref="KeepRunners"/> hold was set and not yet released, expired or not; for tests.</summary>
-        internal bool KeepsRunners => _scheduler.KeepsRunners;
     }
 
     public sealed partial class WorkerScope

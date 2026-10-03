@@ -33,12 +33,6 @@ public class BranchProcessor(
 
     private const int MaxUncommittedBlocks = 64;
 
-    /// <summary>
-    /// How long, at most, the worker group keeps its runners once a block's transactions are done: enough for the blooms,
-    /// receipts root and state root of a large block. The hold ends earlier, when the block's processing returns.
-    /// </summary>
-    private static readonly TimeSpan PostTransactionRunnerHold = TimeSpan.FromMilliseconds(5);
-
     public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
@@ -99,12 +93,7 @@ public class BranchProcessor(
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
         // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        // That work forks one parallel step after another, so the group keeps its runners between the steps.
-        void CancelBackgroundWork()
-        {
-            backgroundCancellation?.Cancel();
-            workerGroup.KeepRunners(PostTransactionRunnerHold);
-        }
+        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
         try
@@ -171,13 +160,7 @@ public class BranchProcessor(
                     worldStateCloser.Dispose();
                     worldStateCloser = BeginTargetScope(suggestedBlock);
                     ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
-                    // The failed attempt may have reached the end of its transactions; the retry holds the runners again when it does.
-                    workerGroup.ReleaseRunners();
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
-                }
-                finally
-                {
-                    workerGroup.ReleaseRunners();
                 }
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
