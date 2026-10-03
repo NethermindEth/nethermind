@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -51,6 +52,12 @@ public class StatelessBlockProcessingEnv(
     // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
     private const int CodeCacheCapacity = 512;
 
+    /// <summary>Optional index table store for historical or shared index tables across stateless executions.</summary>
+    public IIndexTableStore? IndexTableStore { get; init; }
+
+    /// <summary>Optional receipt storage for recovering historical entries during index table merges.</summary>
+    public IReceiptStorage? ReceiptStorage { get; init; }
+
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
     public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
@@ -68,6 +75,12 @@ public class StatelessBlockProcessingEnv(
         StatelessBlockTree statelessBlockTree = _blockTree ?? new(readOnlyCollection!);
         BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
         EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
+
+        IIndexTableStore indexTableStore = IndexTableStore ?? new IndexTableStore();
+        IReceiptStorage receiptStorage = ReceiptStorage ?? NullReceiptStorage.Instance;
+        IIndexTableHandlerFactory indexTableHandlerFactory =
+            new IndexTableHandlerFactory(indexTableStore, specProvider, statelessBlockTree, receiptStorage, logManager);
+
         BlockAccessListManager blockAccessListManager = new(
             WorldState,
             logManager,
@@ -78,7 +91,8 @@ public class StatelessBlockProcessingEnv(
             },
             new WithdrawalProcessorFactory(logManager),
             new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
-                codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache))
+                codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
+            indexTableHandlerFactory: indexTableHandlerFactory
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -106,13 +120,14 @@ public class StatelessBlockProcessingEnv(
             NoBlockRewards.Instance,
             txExecutor,
             WorldState,
-            NullReceiptStorage.Instance,
+            receiptStorage,
             new BeaconBlockRootHandler(txProcessor, WorldState),
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor),
-            blockAccessListManager
+            blockAccessListManager,
+            indexTableHandlerFactory.Create(txProcessor, WorldState)
         );
     }
 

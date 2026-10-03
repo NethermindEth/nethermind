@@ -7,11 +7,15 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Init.Steps
@@ -24,17 +28,62 @@ namespace Nethermind.Init.Steps
         IBlockProcessingQueue blockProcessingQueue,
         IBlockTree blockTree,
         IBlockTreeHealer blockTreeHealer,
-        ILogManager logManager
+        ILogManager logManager,
+        ChainSpec? chainSpec = null,
+        IReceiptStorage? receiptStorage = null,
+        IReceiptConfig? receiptConfig = null
     ) : IStep
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
 
         public Task Execute(CancellationToken cancellationToken)
         {
+            ValidateEip8304History();
             HealCanonicalChainIfEnabled();
             return initConfig.ProcessingEnabled
                 ? RunBlockTreeInitTasks(cancellationToken)
                 : Task.CompletedTask;
+        }
+
+        private void ValidateEip8304History()
+        {
+            if (chainSpec?.Parameters.Eip8304TransitionTimestamp is null)
+                return;
+
+            if (receiptConfig is not null && !receiptConfig.StoreReceipts)
+            {
+                throw new InvalidConfigurationException(
+                    $"EIP-8304 is configured (eip8304TransitionTimestamp={chainSpec.Parameters.Eip8304TransitionTimestamp}) but " +
+                    $"Receipt.{nameof(IReceiptConfig.StoreReceipts)} is disabled. Historical receipts must be stored to compute index tables.", -1);
+            }
+
+            if (blockTree.Head is null)
+                return;
+
+            long headNumber = (long)blockTree.Head.Number;
+            int requiredBlocks = Math.Min((int)headNumber, Eip8304Constants.SyncRecoveryBlocks);
+            if (requiredBlocks <= 0)
+                return;
+
+            long startBlock = headNumber - requiredBlocks + 1;
+            for (long n = startBlock; n <= headNumber; n++)
+            {
+                Block block = blockTree.FindBlock((ulong)n, BlockTreeLookupOptions.None)
+                    ?? throw new InvalidOperationException(
+                        $"Cannot initialize EIP-8304: block body {n} is missing from the block tree. " +
+                        $"At least {Eip8304Constants.SyncRecoveryBlocks} blocks of bodies and receipts must be available before head block {headNumber}.");
+
+                if (receiptStorage is not null && block.Transactions.Length > 0)
+                {
+                    TxReceipt[]? receipts = receiptStorage.Get(block);
+                    if (receipts is null || receipts.Length != block.Transactions.Length)
+                    {
+                        throw new InvalidOperationException(
+                            $"Cannot initialize EIP-8304: receipts for block {n} ({block.Hash}) are missing from receipt storage. " +
+                            $"At least {Eip8304Constants.SyncRecoveryBlocks} blocks of bodies and receipts must be available before head block {headNumber}.");
+                    }
+                }
+            }
         }
 
         private void HealCanonicalChainIfEnabled()
