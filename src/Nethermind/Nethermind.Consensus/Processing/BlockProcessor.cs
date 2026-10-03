@@ -321,7 +321,10 @@ public partial class BlockProcessor(
     {
         long started = ExecutionMetricsFlag.IsActive ? Stopwatch.GetTimestamp() : 0;
         ParallelOptions options = receipts.Length <= Environment.ProcessorCount
-            ? SmallBloomOptions : ParallelUnbalancedWork.DefaultOptions;
+            ? SmallBloomOptions
+            : Core.Diagnostics.ExperimentKnobs.ReceiptsDegree > 0
+                ? new ParallelOptions { MaxDegreeOfParallelism = Core.Diagnostics.ExperimentKnobs.ReceiptsDegree }
+                : ParallelUnbalancedWork.DefaultOptions;
         return ParallelUnbalancedWork.BackgroundFor(0, receipts.Length, options,
             i => receipts[i].CalculateBloom(), () =>
             {
