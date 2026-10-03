@@ -14,6 +14,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -71,7 +72,8 @@ namespace Nethermind.Init.Steps
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
-                frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>()
+                frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>(),
+                leanProofStore: _api.Context.Resolve<LeanProofStore>()
             );
 
             _api.DisposeStack.Push(txPool);

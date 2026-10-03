@@ -815,7 +815,7 @@ public class EthereumRunnerTests
     [TestCase("gnosis", true)]
     [TestCase("xdc", true)]
     [TestCase("mainnet", false)]
-    public async Task Pool_initializer_retains_simulator_and_registers_shutdown_disposal(string network, bool chainSpecific)
+    public async Task Pool_initializer_retains_simulator_and_shared_proof_store_and_registers_shutdown_disposal(string network, bool chainSpecific)
     {
         ConfigProvider configProvider = new();
         configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
@@ -832,6 +832,7 @@ public class EthereumRunnerTests
             INethermindApi api = runner.Api;
             api.TransactionComparerProvider = new TransactionComparerProvider(api.SpecProvider!, api.BlockTree!.AsReadOnly());
             IFrameTxPrefixSimulator simulator = api.Context.Resolve<IFrameTxPrefixSimulator>();
+            LeanProofStore proofStore = api.Context.Resolve<LeanProofStore>();
             IEthereumStepsLoader loader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
             foreach (StepInfo step in loader.ResolveStepsImplementations())
             {
@@ -841,7 +842,12 @@ public class EthereumRunnerTests
                 MethodInfo createPool = step.StepType.GetMethod("CreateTxPool", BindingFlags.Instance | BindingFlags.NonPublic)!;
                 pool = (TxPool.TxPool)createPool.Invoke(initializer, [api.Context.Resolve<IChainHeadInfoProvider>()])!;
                 FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                Assert.That(simulatorField.GetValue(pool), Is.SameAs(simulator));
+                FieldInfo proofStoreField = typeof(TxPool.TxPool).GetField("_leanProofStore", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(simulatorField.GetValue(pool), Is.SameAs(simulator));
+                    Assert.That(proofStoreField.GetValue(pool), Is.SameAs(proofStore));
+                }
                 return;
             }
             Assert.Fail("No blockchain initializer resolved");
