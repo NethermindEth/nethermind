@@ -196,6 +196,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             List<(int Index, Transaction Tx)>? discoveryCandidates = addressWarmer.HasBal
                 ? null
                 : SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
+            blockState.UpFrontDiscovery = discoveryCandidates;
             session.Start(() =>
             {
                 // The coordinator owns the caller slot; all nested fan-outs share the remaining workers.
@@ -248,7 +249,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Starts storage discovery for one transaction whose warm is caught in a chain of cold reads.</summary>
     /// <remarks>
-    /// A transaction the up-front discovery selects is left to it. A block hands off at most
+    /// A transaction in the block's up-front discovery is left to it. A block hands off at most
     /// <see cref="MaxDiscoveryCandidates"/> transactions, and its hand-offs share one budget of
     /// <see cref="MaxDiscoveredCells"/> cells, the limits the up-front discovery has.
     /// </remarks>
@@ -256,7 +257,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         CancellationToken token = blockState.Token;
         if (MainThreadTxIndex >= txIndex || token.IsCancellationRequested || tx.SenderAddress is null || !blockState.HandsColdChainsToDiscovery
-            || IsUpFrontDiscoveryCandidate(tx) || !blockState.TryClaimDiscoveryHandOff())
+            || blockState.IsDiscoveredUpFront(txIndex) || !blockState.TryClaimDiscoveryHandOff())
         {
             return;
         }
@@ -269,7 +270,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             _ => DiscoverAndWarmStorageSafely([(txIndex, tx)], block, spec, null, token, cells)));
     }
 
-    /// <summary>Whether the up-front discovery selects <paramref name="tx"/>, up to its cap and unless it was speculatively warmed.</summary>
+    /// <summary>Whether the up-front discovery may select <paramref name="tx"/>; it takes at most <see cref="MaxDiscoveryCandidates"/>.</summary>
     private static bool IsUpFrontDiscoveryCandidate(Transaction tx) => tx.GasLimit > StorageDiscoveryGasThreshold && tx.To is not null;
 
     internal static List<(int Index, Transaction Tx)>? SelectDiscoveryCandidates(Block block, ISet<Hash256>? speculativelyWarmed)
@@ -621,8 +622,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// </remarks>
     internal sealed class PlaceholderFailureTracer : TxTracer
     {
-        private static ReadOnlySpan<byte> PanicSelector => [0x4e, 0x48, 0x7b, 0x71];
-
         public bool Failed { get; private set; }
         public override bool IsTracingReceipt => true;
         public override bool IsCollectingLogs => false;
@@ -631,7 +630,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         // A revert hands over its data, and one without data reports the revert sentinel; a halt has neither.
         public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) =>
-            Failed = output.AsSpan().StartsWith(PanicSelector) || (output.Length == 0 && error != TransactionSubstate.Revert);
+            Failed = output.AsSpan().StartsWith(TransactionSubstate.PanicFunctionSelector) || (output.Length == 0 && error != TransactionSubstate.Revert);
     }
 
     private bool WarmDiscoveredStorage(BlockHeader target, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
@@ -1564,6 +1563,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// <summary>Created on the first hand-off: most blocks have none.</summary>
         public void AddDiscoveryHandOff(ParallelUnbalancedWork.BackgroundWork work) =>
             LazyInitializer.EnsureInitialized(ref _discoveryHandOffs).Enqueue(work);
+
+        /// <summary>The transactions the block's up-front discovery runs; set before any warm starts.</summary>
+        public List<(int Index, Transaction Tx)>? UpFrontDiscovery { get; set; }
+
+        public bool IsDiscoveredUpFront(int txIndex)
+        {
+            if (UpFrontDiscovery is not { } candidates) return false;
+            foreach ((int index, Transaction _) in candidates)
+            {
+                if (index == txIndex) return true;
+            }
+
+            return false;
+        }
 
         /// <summary>Whether the block may hand one more transaction to discovery.</summary>
         public bool TryClaimDiscoveryHandOff() => Interlocked.Increment(ref _handOffClaims) <= MaxDiscoveryCandidates;
