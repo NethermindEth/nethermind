@@ -42,7 +42,7 @@ public partial class ParallelUnbalancedWork
         /// <summary>The runners the group holds, running or waiting; for tests.</summary>
         internal int ReservedRunners => _scheduler.ReservedRunners;
 
-        /// <summary>Whether a <see cref="KeepRunners"/> hold is on; for tests.</summary>
+        /// <summary>Whether a <see cref="KeepRunners"/> hold was set and not yet released, expired or not; for tests.</summary>
         internal bool KeepsRunners => _scheduler.KeepsRunners;
     }
 
