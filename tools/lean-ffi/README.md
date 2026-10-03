@@ -275,6 +275,13 @@ the prover. Managed aggregation folds at most four direct witnesses or two child
 per call and checks cancellation before and after each call. An individual native call
 remains uninterruptible; shutdown cancels peer work and joins the worker.
 
+Each producing block processor retains up to 64 verified aggregation steps within
+32 MiB, keyed by their complete inputs and expected statement. Work completed after
+an improvement deadline remains reusable, while the expired caller still cancels
+before publishing a block. This cache is a bounded optimization: a folding working
+set larger than its capacity can still repeat work, so the backend's 4096-dependency
+acceptance limit does not guarantee production within a normal slot budget.
+
 During channel backpressure, the shared sender retains up to 64 non-bulk messages
 within 12 MiB and drains them before bulk writes; exceeding the control queue closes the
 entire RLPx session, including its ETH and SNAP protocols, rather than silently dropping

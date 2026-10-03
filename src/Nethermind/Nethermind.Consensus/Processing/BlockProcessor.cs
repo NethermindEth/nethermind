@@ -53,6 +53,7 @@ public partial class BlockProcessor(
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
     protected readonly ISpecProvider _specProvider = specProvider;
     private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier));
+    private readonly ProductionProofCache _productionProofCache = new(leanProofVerifier);
     private (ValueHash256 Dependencies, ValueHash256 VerificationKey)? _productionProofKey;
     private byte[]? _productionProof;
     protected readonly IWorldState _stateProvider = stateProvider;
@@ -221,7 +222,7 @@ public partial class BlockProcessor(
                 AggregationInput input = new();
                 if (block is BlockToProduce producing)
                     input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
-                proof = RecursiveStarkAggregator.Prove(input, _leanProofVerifier, in depsHash, token);
+                proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, in depsHash, token);
                 token.ThrowIfCancellationRequested();
                 if (proof.Length is 0 or > Eip8288Constants.MaxProofBytes
                     || !_leanProofVerifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof))
@@ -231,6 +232,7 @@ public partial class BlockProcessor(
                 _productionProof = proof;
                 _productionProofKey = key;
             }
+            token.ThrowIfCancellationRequested();
             // Headers escape the processor; their mutable bytes cannot alias the improvement cache.
             block.Header.RecursiveStark = new RecursiveStark((byte[])proof.Clone(), new Hash256(depsHash));
         }
