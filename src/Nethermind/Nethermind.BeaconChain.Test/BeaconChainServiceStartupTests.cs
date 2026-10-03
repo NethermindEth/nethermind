@@ -29,6 +29,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.BeaconChain.Test;
 
@@ -117,12 +118,7 @@ public class BeaconChainServiceStartupTests
     {
         (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas, nextCommittee, key);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains(SyncCommitteeKeyAnchors.Refusal(nextCommittee, key)));
-            Assert.That(errors, Is.Empty, "the background run never started");
-            Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
-        }
+        AssertRefusedBeforeRun(refusal, errors, pubkeys, Is.TypeOf<InvalidDataException>().And.Message.Contains(SyncCommitteeKeyAnchors.Refusal(nextCommittee, key)));
     }
 
     /// <summary>
@@ -143,12 +139,8 @@ public class BeaconChainServiceStartupTests
             store.SetAnchor(storedUnder, slot);
         });
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains($"not the anchor root {storedUnder}").And.Message.Contains("Delete the beaconChain database"));
-            Assert.That(errors, Is.Empty, "the background run never started");
-            Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
-        }
+        AssertRefusedBeforeRun(refusal, errors, pubkeys,
+            Is.TypeOf<InvalidDataException>().And.Message.Contains($"not the anchor root {storedUnder}").And.Message.Contains("Delete the beaconChain database"));
     }
 
     /// <summary>A database written for another network must not seed this one; the anchor state's genesis_validators_root is checked on resume.</summary>
@@ -157,12 +149,8 @@ public class BeaconChainServiceStartupTests
     {
         (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas, nextCommittee: false, key: null, genesisValidatorsRoot: GloasTestFixtures.Hash(0x5A));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains("genesis_validators_root").And.Message.Contains("another network").And.Message.Contains("Delete the beaconChain database"));
-            Assert.That(errors, Is.Empty, "the background run never started");
-            Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
-        }
+        AssertRefusedBeforeRun(refusal, errors, pubkeys,
+            Is.TypeOf<InvalidDataException>().And.Message.Contains("genesis_validators_root").And.Message.Contains("another network").And.Message.Contains("Delete the beaconChain database"));
     }
 
     /// <summary>
@@ -184,12 +172,8 @@ public class BeaconChainServiceStartupTests
                 store.PutMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint, proofRecord == 3 ? [1] : record);
             });
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains("BeaconChain.WeakSubjectivityCheckpoint").And.Message.Contains("delete the beaconChain database"));
-            Assert.That(errors, Is.Empty, "the background run never started");
-            Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
-        }
+        AssertRefusedBeforeRun(refusal, errors, pubkeys,
+            Is.TypeOf<InvalidDataException>().And.Message.Contains("BeaconChain.WeakSubjectivityCheckpoint").And.Message.Contains("delete the beaconChain database"));
     }
 
     /// <summary>
@@ -966,6 +950,16 @@ public class BeaconChainServiceStartupTests
         }
 
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
+    }
+
+    private static void AssertRefusedBeforeRun(Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys, IResolveConstraint expected)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal, expected);
+            Assert.That(errors, Is.Empty, "the background run never started");
+            Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
+        }
     }
 
     private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> ResumeAsync(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key, Hash256? genesisValidatorsRoot = null,
