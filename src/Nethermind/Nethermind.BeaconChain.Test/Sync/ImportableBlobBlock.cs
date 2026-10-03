@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.DataAvailability;
 using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -295,16 +296,7 @@ internal sealed class ImportableBlobBlock
         ulong[] balances = new ulong[pubkeys.Length];
         for (int i = 0; i < validators.Length; i++)
         {
-            validators[i] = new Validator
-            {
-                Pubkey = pubkeys[i],
-                WithdrawalCredentials = Hash256.Zero,
-                EffectiveBalance = 32 * Gwei,
-                ActivationEpoch = 0,
-                ExitEpoch = Presets.FarFutureEpoch,
-                WithdrawableEpoch = Presets.FarFutureEpoch,
-                ActivationEligibilityEpoch = 0,
-            };
+            validators[i] = GloasTestFixtures.CreateActiveValidator(pubkeys[i]);
             balances[i] = 32 * Gwei;
         }
 

@@ -350,15 +350,7 @@ public class GloasSeedAndEpochCacheTests
         ulong[] balances = new ulong[validatorCount];
         for (int i = 0; i < validatorCount; i++)
         {
-            validators[i] = new Validator
-            {
-                WithdrawalCredentials = Hash256.Zero,
-                EffectiveBalance = 32 * Gwei,
-                ActivationEpoch = 0,
-                ExitEpoch = Presets.FarFutureEpoch,
-                WithdrawableEpoch = Presets.FarFutureEpoch,
-                ActivationEligibilityEpoch = 0,
-            };
+            validators[i] = GloasTestFixtures.CreateActiveValidator(default);
             balances[i] = 32 * Gwei;
         }
 

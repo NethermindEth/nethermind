@@ -508,16 +508,7 @@ public class GloasForkTransitionTests
         ulong[] balances = new ulong[validatorCount];
         for (int i = 0; i < validatorCount; i++)
         {
-            validators[i] = new Validator
-            {
-                Pubkey = PubkeyForIndex(i),
-                WithdrawalCredentials = Hash256.Zero,
-                EffectiveBalance = 32 * Gwei,
-                ActivationEpoch = 0,
-                ExitEpoch = Presets.FarFutureEpoch,
-                WithdrawableEpoch = Presets.FarFutureEpoch,
-                ActivationEligibilityEpoch = 0,
-            };
+            validators[i] = GloasTestFixtures.CreateActiveValidator(PubkeyForIndex(i));
             balances[i] = 32 * Gwei;
         }
 
