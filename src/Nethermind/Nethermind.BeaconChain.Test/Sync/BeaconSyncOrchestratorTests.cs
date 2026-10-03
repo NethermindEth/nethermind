@@ -1957,7 +1957,6 @@ public partial class BeaconSyncOrchestratorTests
 
         public bool IsKnown(Hash256 blockRoot) => Known.Contains(blockRoot);
 
-        public bool IsExpectedProposer(ForkedSignedBeaconBlock block) => ExpectedProposer;
 
         /// <summary>The roots imported as blocks this node requested, once per attempt.</summary>
         public List<Hash256> RequestedImports { get; } = [];

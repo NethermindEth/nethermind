@@ -62,11 +62,6 @@ public class BlockImporterTests
     private static NodeColumnCustody BaseCustody() => new(NodeId, Eip7594DasConstants.CustodyRequirement);
 
     [Test]
-    public void Gossip_rejection_status_is_not_public([Values(typeof(IBlockImporter), typeof(BlockImporter))] Type type) =>
-        Assert.That(type.GetProperty(nameof(IBlockImporter.RejectGossip)), Is.Null,
-            "the last import verdict is internal coordination state, not a public API contract");
-
-    [Test]
     public void Import_preserves_state_time_and_data_availability([Values] bool verifySignatures, [Values] bool available)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
@@ -1535,6 +1530,45 @@ public class BlockImporterTests
     }
 
     [Test]
+    public void Gloas_invalid_gossip_fields_record_failure_and_refuse_dependents([Values] bool wrongBidParent, [Values] bool verifySignatures)
+    {
+        const ulong forkSlot = 32;
+        SignedGloasChain chain = new();
+        FailedBlockRoots failed = new();
+        SlotClock clock = new(chain.Spec, new ManualTimestamper(TickFinalityFixture.SlotStart(chain.Spec, forkSlot + 1)));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: clock, failedBlocks: failed);
+        SignedGloasChain.Block broken = chain.Next(null, forkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = chain.Next(broken, forkSlot + 1, full: false, 0xA2);
+        if (wrongBidParent)
+            broken.Bid.ParentBlockRoot = UnknownBlockRoot;
+        else
+        {
+            int count = (int)(chain.Spec.GetBlobParameters(chain.Spec.GetEpoch(forkSlot))?.MaxBlobsPerBlock ?? chain.Spec.MaxBlobsPerBlockElectra) + 1;
+            broken.Bid.BlobKzgCommitments = Enumerable.Repeat(SszKzgCommitment.FromSpan(new byte[SszKzgCommitment.KzgCommitmentLength]), count).ToArray();
+        }
+        Hash256 brokenRoot = broken.Forked.ComputeMessageRoot();
+        broken.Signed.Signature = GloasTestFixtures.Sign(GloasTestFixtures.ValidatorKey((int)broken.Signed.Message!.ProposerIndex),
+            Domains.ComputeSigningRoot(brokenRoot, broken.PostState.GetDomain(DomainType.BeaconProposer, chain.Spec.GetEpoch(forkSlot))));
+        child.Signed.Message!.ParentRoot = brokenRoot;
+        child.Bid.ParentBlockRoot = brokenRoot;
+        broken.Envelope.Message!.BeaconBlockRoot = brokenRoot;
+        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, failedBlocks: failed);
+
+        BlockImportResult result = importer.Import(broken.Forked, brokenRoot, verifySignatures);
+        BlockImportResult childResult = importer.Import(child.Forked, child.Forked.ComputeMessageRoot(), verifySignatures);
+        MessageValidity envelopeVerdict = router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true,
+            Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(broken.Envelope)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(failed.Contains(brokenRoot), Is.True, "an invalid bid is committed by the block root");
+            Assert.That(childResult, Is.EqualTo(BlockImportResult.UnknownParent), "an invalid block cannot become an imported parent");
+            Assert.That(envelopeVerdict, Is.EqualTo(MessageValidity.Rejected), "the failed root must stop its envelope before import");
+        }
+    }
+
+    [Test]
     public void Gloas_block_refused_by_the_state_transition_is_recorded_as_failed()
     {
         const ulong forkSlot = 32;
@@ -1920,7 +1954,41 @@ public class BlockImporterTests
         // p2p-interface.md attester_slashing reads the retained head state; set the flag after anchoring to preserve the fixture root.
         chain.Anchor.AnchorState.Validators![1].Slashed = allSlashed;
         await AssertSlashingVerdictAsync(importer, slashing, gloasContainer,
-            !headRetained ? MessageValidity.Ignored : allSlashed ? MessageValidity.Rejected : MessageValidity.Accepted);
+            !headRetained ? MessageValidity.Ignored : allSlashed ? MessageValidity.Rejected : MessageValidity.Accepted, computeHead: headRetained);
+    }
+
+    [Test]
+    public void Gossip_slashing_validation_preserves_cached_head_and_scores([Values] bool gloasContainer, [Values] bool headComputed)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), importClock: chain.Anchor.ClockAtSlot(2));
+        importer.OnSlotTick(2);
+        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, 1, payloadHashByte: 0xA1);
+        Assert.That(importer.Import(block.Block, block.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        if (headComputed) runner.GetHead();
+        runner.OnAttestation(chain.Vote(1, block.Root), isFromBlock: true, verifySignature: false);
+        ForkChoiceSnapshot before = runner.Snapshot();
+        AttesterSlashing slashing = chain.DoubleVote([1], 1, chain.AnchorRoot, UnknownBlockRoot);
+        slashing.Attestation1!.Signature = default;
+
+        bool? accepted = gloasContainer
+            ? importer.OnGossipAttesterSlashing(new AttesterSlashingGloas
+            {
+                Attestation1 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation1.AttestingIndices, Data = slashing.Attestation1.Data, Signature = slashing.Attestation1.Signature },
+                Attestation2 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation2!.AttestingIndices, Data = slashing.Attestation2.Data, Signature = slashing.Attestation2.Signature },
+            })
+            : importer.OnGossipAttesterSlashing(slashing);
+
+        ForkChoiceSnapshot after = runner.Snapshot();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.EqualTo(headComputed ? (bool?)false : null), "a forgery is rejected only when local validation data is held");
+            Assert.That(after.Nodes, Is.EqualTo(before.Nodes), "a refused slashing must not apply pending vote scores");
+            Assert.That(after.ProposerBoostRoot, Is.EqualTo(before.ProposerBoostRoot));
+            if (!headComputed)
+                Assert.That(() => runner.GetHeldHeadState(), Throws.TypeOf<ForkChoiceException>().With.Message.Contains("No cached head"), "validation must not populate the head cache");
+        }
     }
 
     [Test]
@@ -2003,7 +2071,7 @@ public class BlockImporterTests
         }
     }
 
-    private static Task AssertSlashingVerdictAsync(BlockImporter importer, AttesterSlashing slashing, bool gloas, MessageValidity expected)
+    private static Task AssertSlashingVerdictAsync(BlockImporter importer, AttesterSlashing slashing, bool gloas, MessageValidity expected, bool computeHead = true)
     {
         if (gloas)
         {
@@ -2013,10 +2081,10 @@ public class BlockImporterTests
                 Attestation2 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation2!.AttestingIndices, Data = slashing.Attestation2.Data, Signature = slashing.Attestation2.Signature },
             };
             return BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, 2, GossipTopics.AttesterSlashing,
-                Snappy.CompressToArray(AttesterSlashingGloas.Encode(converted)), verdict => new BeaconSyncOrchestrator.GossipGloasAttesterSlashingItem(converted, verdict), expected);
+                Snappy.CompressToArray(AttesterSlashingGloas.Encode(converted)), verdict => new BeaconSyncOrchestrator.GossipGloasAttesterSlashingItem(converted, verdict), expected, computeHead: computeHead);
         }
         return BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, 2, GossipTopics.AttesterSlashing,
-            Snappy.CompressToArray(AttesterSlashing.Encode(slashing)), verdict => new BeaconSyncOrchestrator.GossipAttesterSlashingItem(slashing, verdict), expected);
+            Snappy.CompressToArray(AttesterSlashing.Encode(slashing)), verdict => new BeaconSyncOrchestrator.GossipAttesterSlashingItem(slashing, verdict), expected, computeHead: computeHead);
     }
 
     [Test]
@@ -2024,6 +2092,7 @@ public class BlockImporterTests
     {
         UnsignedChain chain = UnsignedChain.Create();
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        importer.ComputeHead();
         long refusedBefore = RefusedByForkChoice("gossip_attester_slashing");
         // The same vote twice is not slashable, so fork choice refuses it before any signature check.
         AttestationData data = chain.Vote(1, chain.AnchorRoot).Data!;
