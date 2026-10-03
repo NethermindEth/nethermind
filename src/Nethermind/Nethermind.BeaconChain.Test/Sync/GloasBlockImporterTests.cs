@@ -1019,15 +1019,9 @@ public class GloasBlockImporterTests
     public void Signed_blocks_on_evicted_parents_regenerate_within_a_per_slot_budget()
     {
         SignedGloasChain chain = new();
-        List<SignedGloasChain.Block> blocks = [];
-        SignedGloasChain.Block? tip = null;
-        for (ulong slot = ForkSlot; slot < 3 * ForkSlot + 8; slot++)
-        {
-            tip = chain.Next(tip, slot, full: false, (byte)slot);
-            blocks.Add(tip);
-        }
+        List<SignedGloasChain.Block> blocks = RegenerationLineage(chain);
 
-        ulong wallSlot = tip!.Signed.Message!.Slot + 2;
+        ulong wallSlot = blocks[^1].Signed.Message!.Slot + 2;
         ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + wallSlot * chain.Spec.SecondsPerSlot + 1));
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
         Import(importer, [.. blocks]);
@@ -1075,15 +1069,9 @@ public class GloasBlockImporterTests
     public void Gossip_block_deferred_after_its_regeneration_regenerates_again_on_retry()
     {
         SignedGloasChain chain = new();
-        List<SignedGloasChain.Block> blocks = [];
-        SignedGloasChain.Block? tip = null;
-        for (ulong slot = ForkSlot; slot < 3 * ForkSlot + 8; slot++)
-        {
-            tip = chain.Next(tip, slot, full: false, (byte)slot);
-            blocks.Add(tip);
-        }
+        List<SignedGloasChain.Block> blocks = RegenerationLineage(chain);
 
-        ulong blockSlot = tip!.Signed.Message!.Slot + 2;
+        ulong blockSlot = blocks[^1].Signed.Message!.Slot + 2;
         // Within MAXIMUM_GOSSIP_CLOCK_DISPARITY before the block's slot, so it waits for its slot after its transition.
         ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + blockSlot * chain.Spec.SecondsPerSlot).AddMilliseconds(-200));
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
@@ -1119,15 +1107,9 @@ public class GloasBlockImporterTests
     public void Blocks_fetched_by_root_regenerate_within_their_own_per_slot_budget()
     {
         SignedGloasChain chain = new();
-        List<SignedGloasChain.Block> blocks = [];
-        SignedGloasChain.Block? tip = null;
-        for (ulong slot = ForkSlot; slot < 3 * ForkSlot + 8; slot++)
-        {
-            tip = chain.Next(tip, slot, full: false, (byte)slot);
-            blocks.Add(tip);
-        }
+        List<SignedGloasChain.Block> blocks = RegenerationLineage(chain);
 
-        ulong wallSlot = tip!.Signed.Message!.Slot + 2;
+        ulong wallSlot = blocks[^1].Signed.Message!.Slot + 2;
         ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + wallSlot * chain.Spec.SecondsPerSlot + 1));
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
         Import(importer, [.. blocks]);
@@ -1948,6 +1930,18 @@ public class GloasBlockImporterTests
 
     private static long RefusedByForkChoice(string operation) =>
         Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
+
+    private static List<SignedGloasChain.Block> RegenerationLineage(SignedGloasChain chain)
+    {
+        List<SignedGloasChain.Block> blocks = [];
+        SignedGloasChain.Block? tip = null;
+        for (ulong slot = ForkSlot; slot < 3 * ForkSlot + 8; slot++)
+        {
+            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            blocks.Add(tip);
+        }
+        return blocks;
+    }
 
     private static void Import(BlockImporter importer, params SignedGloasChain.Block[] blocks)
     {

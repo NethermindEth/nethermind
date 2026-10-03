@@ -115,40 +115,28 @@ public class BlockImporterTests
         });
     }
 
-    [Test]
-    public void Blob_block_missing_one_custody_column_is_deferred()
+    [TestCase(true, TestName = "Blob_block_missing_one_custody_column_is_deferred")]
+    [TestCase(false, TestName = "Blob_block_missing_a_sampled_but_not_custodied_column_is_deferred")]
+    public void Blob_block_missing_a_required_column_is_deferred(bool custodied)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
         DataColumnSidecarPool pool = new();
-        ulong missing = custody.CustodyColumns[0];
+        ulong missing = custodied ? custody.CustodyColumns[0] : custody.SampledColumns.First(c => !custody.CustodyColumns.Contains(c));
         Hold(pool, chain, custody.SampledColumns.Where(c => c != missing));
         WarningCapture warnings = new();
         BlockImporter importer = CreateImporter(chain, custody, pool, warnings);
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), "missing columns are retryable, not a permanent rejection");
+            Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), custodied
+                ? "missing columns are retryable, not a permanent rejection"
+                : "custody columns alone are not enough: the per-slot sample must succeed too");
             Assert.That(importer.IsKnown(chain.BlockRoot), Is.False, "a block whose data is unavailable must not enter fork choice");
             Assert.That(warnings.Warnings, Has.None.Contains("blob data is not yet available"), "a block trailing its columns is routine at the head, not a warning");
-        });
-    }
-
-    [Test]
-    public void Blob_block_missing_a_sampled_but_not_custodied_column_is_deferred()
-    {
-        ImportableBlobBlock chain = ImportableBlobBlock.Create();
-        NodeColumnCustody custody = BaseCustody();
-        DataColumnSidecarPool pool = new();
-        ulong missing = custody.SampledColumns.First(c => !custody.CustodyColumns.Contains(c));
-        Hold(pool, chain, custody.SampledColumns.Where(c => c != missing));
-        BlockImporter importer = CreateImporter(chain, custody, pool);
-
-        BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
-
-        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), "custody columns alone are not enough: the per-slot sample must succeed too");
+        }
     }
 
     [Test]
@@ -164,38 +152,33 @@ public class BlockImporterTests
         Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), "a rule that cannot say which columns it needs cannot say a block is available, even holding all 128");
     }
 
-    [Test]
-    public void Held_column_that_fails_kzg_verification_does_not_count()
+    [TestCase(true, TestName = "Held_column_that_fails_kzg_verification_does_not_count")]
+    [TestCase(false, TestName = "Held_column_addressed_to_a_different_block_does_not_count")]
+    public void Invalid_held_column_does_not_count(bool invalidProof)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
         DataColumnSidecar tampered = chain.Columns[(int)custody.CustodyColumns[0]];
-        byte[] cell = tampered.Column![0].AsSpan().ToArray();
-        cell[0] ^= 0xFF;
-        tampered.Column[0] = SszBlobCell.FromSpan(cell);
+        if (invalidProof)
+        {
+            byte[] cell = tampered.Column![0].AsSpan().ToArray();
+            cell[0] ^= 0xFF;
+            tampered.Column[0] = SszBlobCell.FromSpan(cell);
+        }
+        else
+        {
+            // Same index, same commitments, valid proofs: only the header names another block.
+            tampered.SignedBlockHeader!.Message!.Slot = 999;
+        }
         DataColumnSidecarPool pool = new();
         Hold(pool, chain, custody.SampledColumns);
         BlockImporter importer = CreateImporter(chain, custody, pool);
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), "holding a column is not availability; the column must verify against the block's commitments");
-    }
-
-    [Test]
-    public void Held_column_addressed_to_a_different_block_does_not_count()
-    {
-        ImportableBlobBlock chain = ImportableBlobBlock.Create();
-        NodeColumnCustody custody = BaseCustody();
-        // Same index, same commitments, valid proofs: only the header names another block.
-        chain.Columns[(int)custody.CustodyColumns[0]].SignedBlockHeader!.Message!.Slot = 999;
-        DataColumnSidecarPool pool = new();
-        Hold(pool, chain, custody.SampledColumns);
-        BlockImporter importer = CreateImporter(chain, custody, pool);
-
-        BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
-
-        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable));
+        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), invalidProof
+            ? "holding a column is not availability; the column must verify against the block's commitments"
+            : null);
     }
 
     [Test]
@@ -1937,12 +1920,7 @@ public class BlockImporterTests
     public async Task Gossip_attester_slashing_requires_a_slashable_validator([Values] bool gloasContainer, [Values] bool allSlashed, [Values] bool headRetained)
     {
         UnsignedChain chain = UnsignedChain.Create();
-        AttesterSlashing slashing = chain.DoubleVote([1], 1, chain.AnchorRoot, UnknownBlockRoot);
-        foreach (IndexedAttestation vote in new[] { slashing.Attestation1!, slashing.Attestation2! })
-        {
-            Hash256 domain = chain.Anchor.AnchorState.GetDomain(DomainType.BeaconAttester, vote.Data!.Target!.Epoch);
-            vote.Signature = ImportableBlobBlock.Sign(ImportableBlobBlock.DeriveKey(1), SszRoots.HashTreeRoot(vote.Data), domain);
-        }
+        AttesterSlashing slashing = SignedDoubleVote(chain);
 
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
         if (!headRetained)
@@ -1980,11 +1958,7 @@ public class BlockImporterTests
         slashing.Attestation1!.Signature = default;
 
         bool? accepted = gloasContainer
-            ? importer.OnGossipAttesterSlashing(new AttesterSlashingGloas
-            {
-                Attestation1 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation1.AttestingIndices, Data = slashing.Attestation1.Data, Signature = slashing.Attestation1.Signature },
-                Attestation2 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation2!.AttestingIndices, Data = slashing.Attestation2.Data, Signature = slashing.Attestation2.Signature },
-            })
+            ? importer.OnGossipAttesterSlashing(ToGloas(slashing))
             : importer.OnGossipAttesterSlashing(slashing);
 
         ForkChoiceSnapshot after = runner.Snapshot();
@@ -2003,12 +1977,7 @@ public class BlockImporterTests
         [Values(1, 2)] int attestation, [Values] bool outOfRange)
     {
         UnsignedChain chain = UnsignedChain.Create();
-        AttesterSlashing slashing = chain.DoubleVote([1], 1, chain.AnchorRoot, UnknownBlockRoot);
-        foreach (IndexedAttestation vote in new[] { slashing.Attestation1!, slashing.Attestation2! })
-        {
-            vote.Signature = ImportableBlobBlock.Sign(ImportableBlobBlock.DeriveKey(1), SszRoots.HashTreeRoot(vote.Data!),
-                chain.Anchor.AnchorState.GetDomain(DomainType.BeaconAttester, vote.Data!.Target!.Epoch));
-        }
+        AttesterSlashing slashing = SignedDoubleVote(chain);
         IndexedAttestation invalid = attestation == 1 ? slashing.Attestation1! : slashing.Attestation2!;
         if (outOfRange) invalid.AttestingIndices = [1, ulong.MaxValue];
         else invalid.Signature = default;
@@ -2078,15 +2047,35 @@ public class BlockImporterTests
         }
     }
 
+    private static AttesterSlashing SignedDoubleVote(UnsignedChain chain)
+    {
+        AttesterSlashing slashing = chain.DoubleVote([1], 1, chain.AnchorRoot, UnknownBlockRoot);
+        foreach (IndexedAttestation vote in new[] { slashing.Attestation1!, slashing.Attestation2! })
+        {
+            vote.Signature = ImportableBlobBlock.Sign(ImportableBlobBlock.DeriveKey(1), SszRoots.HashTreeRoot(vote.Data!),
+                chain.Anchor.AnchorState.GetDomain(DomainType.BeaconAttester, vote.Data!.Target!.Epoch));
+        }
+        return slashing;
+    }
+
+    private static AttesterSlashingGloas ToGloas(AttesterSlashing slashing) => new()
+    {
+        Attestation1 = Convert(slashing.Attestation1!),
+        Attestation2 = Convert(slashing.Attestation2!),
+    };
+
+    private static IndexedAttestationGloas Convert(IndexedAttestation vote) => new()
+    {
+        AttestingIndices = vote.AttestingIndices,
+        Data = vote.Data,
+        Signature = vote.Signature,
+    };
+
     private static Task AssertSlashingVerdictAsync(BlockImporter importer, AttesterSlashing slashing, bool gloas, MessageValidity expected, bool computeHead = true)
     {
         if (gloas)
         {
-            AttesterSlashingGloas converted = new()
-            {
-                Attestation1 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation1!.AttestingIndices, Data = slashing.Attestation1.Data, Signature = slashing.Attestation1.Signature },
-                Attestation2 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation2!.AttestingIndices, Data = slashing.Attestation2.Data, Signature = slashing.Attestation2.Signature },
-            };
+            AttesterSlashingGloas converted = ToGloas(slashing);
             return BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, 2, GossipTopics.AttesterSlashing,
                 Snappy.CompressToArray(AttesterSlashingGloas.Encode(converted)), verdict => new BeaconSyncOrchestrator.GossipGloasAttesterSlashingItem(converted, verdict), expected, computeHead: computeHead);
         }
@@ -2104,17 +2093,14 @@ public class BlockImporterTests
         // The same vote twice is not slashable, so fork choice refuses it before any signature check.
         AttestationData data = chain.Vote(1, chain.AnchorRoot).Data!;
 
+        AttesterSlashing slashing = new()
+        {
+            Attestation1 = new IndexedAttestation { AttestingIndices = [1], Data = data },
+            Attestation2 = new IndexedAttestation { AttestingIndices = [1], Data = data },
+        };
         bool? accepted = gloasContainer
-            ? importer.OnGossipAttesterSlashing(new AttesterSlashingGloas
-            {
-                Attestation1 = new IndexedAttestationGloas { AttestingIndices = [1], Data = data },
-                Attestation2 = new IndexedAttestationGloas { AttestingIndices = [1], Data = data },
-            })
-            : importer.OnGossipAttesterSlashing(new AttesterSlashing
-            {
-                Attestation1 = new IndexedAttestation { AttestingIndices = [1], Data = data },
-                Attestation2 = new IndexedAttestation { AttestingIndices = [1], Data = data },
-            });
+            ? importer.OnGossipAttesterSlashing(ToGloas(slashing))
+            : importer.OnGossipAttesterSlashing(slashing);
 
         using (Assert.EnterMultipleScope())
         {
