@@ -134,8 +134,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
-            StartSenderRecovery(request);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            if (!decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
         {
