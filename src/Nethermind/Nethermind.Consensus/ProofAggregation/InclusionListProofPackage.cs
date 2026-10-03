@@ -28,8 +28,8 @@ public static class InclusionListProofValidator
     public const string InvalidProof = "FOCIL recursive STARK failed verification";
     private static readonly ConditionalWeakTable<ILeanProofVerifier, ProofVerdicts> VerifiedProofs = [];
 
-    public static bool Validate(InclusionListProofPackage focil, ILeanProofVerifier verifier, out string? error)
-        => Validate(focil.Transactions, focil.RecursiveStark, verifier, out _, out error, provenDependencies: focil.ProvenDependencies);
+    public static bool Validate(InclusionListProofPackage package, ILeanProofVerifier verifier, out string? error)
+        => Validate(package.Transactions, package.RecursiveStark, verifier, out _, out error, provenDependencies: package.ProvenDependencies);
 
     public static bool Validate(IReadOnlyList<Transaction> transactions, RecursiveStark? proof,
         ILeanProofVerifier verifier, out List<FrameDependency> deps, out string? error, IReleaseSpec? spec = null,
