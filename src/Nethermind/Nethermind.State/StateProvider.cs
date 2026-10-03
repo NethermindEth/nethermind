@@ -74,8 +74,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // when a restore/commit/reset recycles the change log (epoch).
     private Address? _cachedAddress;
     private Account? _cachedAccount;
-    private int _cachedEpoch = -1;
-    private int _epoch;
+    // Word-sized: every account read compares them, and the zkVM guest pays several times an aligned load for a narrow one.
+    private long _cachedEpoch = -1;
+    private long _epoch;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool IsFrontCacheHit(Address address) =>
