@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
 using System.Collections.Generic;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
@@ -46,48 +44,13 @@ internal static class TestChain
         }
     }
 
-    public static SignedBeaconBlock CreateBlock(ulong slot, Hash256 parentRoot) => new()
+    public static SignedBeaconBlock CreateBlock(ulong slot, Hash256 parentRoot)
     {
-        Message = new BeaconBlock
-        {
-            Slot = slot,
-            ProposerIndex = 21,
-            ParentRoot = parentRoot,
-            StateRoot = Hash256.Zero,
-            Body = new BeaconBlockBody
-            {
-                Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-                Graffiti = Hash256.Zero,
-                ProposerSlashings = [],
-                AttesterSlashings = [],
-                Attestations = [],
-                Deposits = [],
-                VoluntaryExits = [],
-                SyncAggregate = new SyncAggregate { SyncCommitteeBits = new BitArray(512) },
-                ExecutionPayload = new ExecutionPayload
-                {
-                    ParentHash = Hash256.Zero,
-                    FeeRecipient = Address.Zero,
-                    StateRoot = Hash256.Zero,
-                    ReceiptsRoot = Hash256.Zero,
-                    LogsBloom = Bloom.Empty,
-                    PrevRandao = Hash256.Zero,
-                    BlockNumber = slot,
-                    GasLimit = 30_000_000,
-                    GasUsed = 21_000,
-                    Timestamp = BeaconChainSpec.Mainnet.GenesisTime + slot * BeaconChainSpec.Mainnet.SecondsPerSlot,
-                    ExtraData = Bytes.FromHexString("0xc0ffee"),
-                    BaseFeePerGas = 7,
-                    BlockHash = Hash256.Zero,
-                    Transactions = [],
-                    Withdrawals = [],
-                    BlobGasUsed = 0,
-                    ExcessBlobGas = 0,
-                },
-                BlsToExecutionChanges = [],
-                BlobKzgCommitments = [],
-                ExecutionRequests = new ExecutionRequests { Deposits = [], Withdrawals = [], Consolidations = [] },
-            },
-        },
-    };
+        SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(slot);
+        block.Message!.ParentRoot = parentRoot;
+        ExecutionPayload payload = block.Message.Body!.ExecutionPayload!;
+        payload.BlockNumber = slot;
+        payload.Timestamp = BeaconChainSpec.Mainnet.GenesisTime + slot * BeaconChainSpec.Mainnet.SecondsPerSlot;
+        return block;
+    }
 }

@@ -3,12 +3,11 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -454,48 +453,15 @@ public class BeaconChainStoreChildrenIndexTests
         return new Hash256(bytes);
     }
 
-    private static SignedBeaconBlock CreateBlock(ulong slot, Hash256 parent, int transactionBytes = 0) => new()
+    private static SignedBeaconBlock CreateBlock(ulong slot, Hash256 parent, int transactionBytes = 0)
     {
-        Message = new BeaconBlock
-        {
-            Slot = slot,
-            ProposerIndex = 21,
-            ParentRoot = parent,
-            StateRoot = Hash256.Zero,
-            Body = new BeaconBlockBody
-            {
-                Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-                Graffiti = Hash256.Zero,
-                ProposerSlashings = [],
-                AttesterSlashings = [],
-                Attestations = [],
-                Deposits = [],
-                VoluntaryExits = [],
-                SyncAggregate = new SyncAggregate { SyncCommitteeBits = new BitArray(512) },
-                ExecutionPayload = new ExecutionPayload
-                {
-                    ParentHash = Hash256.Zero,
-                    FeeRecipient = Address.Zero,
-                    StateRoot = Hash256.Zero,
-                    ReceiptsRoot = Hash256.Zero,
-                    LogsBloom = Bloom.Empty,
-                    PrevRandao = Hash256.Zero,
-                    BlockNumber = 1,
-                    GasLimit = 30_000_000,
-                    GasUsed = 0,
-                    Timestamp = 1_750_000_000,
-                    ExtraData = Bytes.FromHexString("0x"),
-                    BaseFeePerGas = 7,
-                    BlockHash = Hash256.Zero,
-                    Transactions = transactionBytes == 0 ? [] : [new Transaction { Bytes = new byte[transactionBytes] }],
-                    Withdrawals = [],
-                    BlobGasUsed = 0,
-                    ExcessBlobGas = 0,
-                },
-                BlsToExecutionChanges = [],
-                BlobKzgCommitments = [],
-                ExecutionRequests = new ExecutionRequests { Deposits = [], Withdrawals = [], Consolidations = [] },
-            },
-        },
-    };
+        SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(slot);
+        block.Message!.ParentRoot = parent;
+        ExecutionPayload payload = block.Message.Body!.ExecutionPayload!;
+        payload.BlockNumber = 1;
+        payload.GasUsed = 0;
+        payload.ExtraData = Bytes.FromHexString("0x");
+        payload.Transactions = transactionBytes == 0 ? [] : [new Transaction { Bytes = new byte[transactionBytes] }];
+        return block;
+    }
 }
