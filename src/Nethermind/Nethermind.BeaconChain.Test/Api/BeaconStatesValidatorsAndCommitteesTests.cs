@@ -65,10 +65,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
     [Test]
     public async Task Validators_list_classifies_every_beacon_api_status_correctly()
     {
-        Hash256 root = TestRoot(10);
-        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
-        ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
-        PutState(root, validators, balances);
+        PutStatusState(TestRoot(10));
 
         HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators");
         string raw = await response.Content.ReadAsStringAsync();
@@ -95,10 +92,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
     [TestCase("active_ongoing", new[] { "active_ongoing" })]
     public async Task Validators_list_status_filter_matches_the_broad_group_or_the_exact_status(string filter, string[] expectedStatuses)
     {
-        Hash256 root = TestRoot(11);
-        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
-        ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
-        PutState(root, validators, balances);
+        PutStatusState(TestRoot(11));
 
         HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?status={filter}");
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -111,10 +105,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
     [Test]
     public async Task Validators_list_id_filter_accepts_index_and_pubkey_and_rejects_garbage()
     {
-        Hash256 root = TestRoot(12);
-        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
-        ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
-        PutState(root, validators, balances);
+        Validator[] validators = PutStatusState(TestRoot(12));
 
         string pubkeyOfIndex2 = validators[2].Pubkey.ToString();
         HttpResponseMessage byMixedId = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id=0&id={pubkeyOfIndex2}");
@@ -134,10 +125,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
     [Test]
     public async Task Validators_list_resolves_multiple_pubkey_ids_through_the_shared_request_map()
     {
-        Hash256 root = TestRoot(20);
-        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
-        ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
-        PutState(root, validators, balances);
+        Validator[] validators = PutStatusState(TestRoot(20));
 
         string pubkeyOfIndex1 = validators[1].Pubkey.ToString();
         string pubkeyOfIndex4 = validators[4].Pubkey.ToString();
@@ -155,10 +143,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
     [Test]
     public async Task Validator_balances_id_filter_accepts_index_and_multiple_pubkey_ids()
     {
-        Hash256 root = TestRoot(21);
-        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
-        ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
-        PutState(root, validators, balances);
+        Validator[] validators = PutStatusState(TestRoot(21));
 
         string pubkeyOfIndex1 = validators[1].Pubkey.ToString();
         string pubkeyOfIndex4 = validators[4].Pubkey.ToString();
@@ -178,10 +163,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
     [Test]
     public async Task Validators_list_id_and_status_filters_accept_both_comma_joined_and_repeated_forms()
     {
-        Hash256 root = TestRoot(18);
-        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
-        ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
-        PutState(root, validators, balances);
+        PutStatusState(TestRoot(18));
 
         // id=0,2 (comma-joined) must select the same two validators as the repeated-key form does.
         HttpResponseMessage commaId = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id=0,2");
@@ -206,17 +188,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
     [Test]
     public async Task Committees_repeated_index_key_is_400_not_a_silently_picked_value()
     {
-        const int validatorCount = 50;
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
-        for (int i = 0; i < validatorCount; i++)
-        {
-            validators[i] = MakeValidator(0, 0, Presets.FarFutureEpoch, Presets.FarFutureEpoch, false, 32_000_000_000);
-            balances[i] = 32_000_000_000;
-        }
-
-        Hash256 root = TestRoot(19);
-        PutState(root, validators, balances);
+        PutActiveState(TestRoot(19), 50);
 
         HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/committees?index=0&index=1");
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)400),
@@ -226,10 +198,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
     [Test]
     public async Task ValidatorById_is_404_for_an_out_of_range_index_and_400_for_a_malformed_id()
     {
-        Hash256 root = TestRoot(13);
-        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
-        ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
-        PutState(root, validators, balances);
+        Validator[] validators = PutStatusState(TestRoot(13));
 
         HttpResponseMessage outOfRange = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators/{validators.Length + 5}");
         Assert.That(outOfRange.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
@@ -262,16 +231,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
     public async Task Committees_partition_every_active_validator_exactly_once_across_the_epoch()
     {
         const int validatorCount = 50;
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
-        for (int i = 0; i < validatorCount; i++)
-        {
-            validators[i] = MakeValidator(0, 0, Presets.FarFutureEpoch, Presets.FarFutureEpoch, false, 32_000_000_000);
-            balances[i] = 32_000_000_000;
-        }
-
-        Hash256 root = TestRoot(15);
-        PutState(root, validators, balances);
+        PutActiveState(TestRoot(15), validatorCount);
 
         HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/committees?epoch={StateEpoch}");
         string raw = await response.Content.ReadAsStringAsync();
@@ -313,17 +273,7 @@ public class BeaconStatesValidatorsAndCommitteesTests
     [Test]
     public async Task Committees_filters_by_slot_and_index()
     {
-        const int validatorCount = 50;
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
-        for (int i = 0; i < validatorCount; i++)
-        {
-            validators[i] = MakeValidator(0, 0, Presets.FarFutureEpoch, Presets.FarFutureEpoch, false, 32_000_000_000);
-            balances[i] = 32_000_000_000;
-        }
-
-        Hash256 root = TestRoot(17);
-        PutState(root, validators, balances);
+        PutActiveState(TestRoot(17), 50);
 
         ulong targetSlot = StateSlot + 5;
         HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/committees?slot={targetSlot}&index=0");
@@ -355,6 +305,25 @@ public class BeaconStatesValidatorsAndCommitteesTests
         string ids = string.Join(commaSeparated ? "," : "&id=", Enumerable.Range(0, count));
         using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/invalid/{endpoint}?id={ids}");
         Assert.That((int)response.StatusCode, Is.EqualTo(count > 64 ? 414 : 400));
+    }
+
+    private Validator[] PutStatusState(Hash256 root)
+    {
+        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
+        PutState(root, validators, [.. validators.Select(v => v.EffectiveBalance)]);
+        return validators;
+    }
+
+    private void PutActiveState(Hash256 root, int validatorCount)
+    {
+        Validator[] validators = new Validator[validatorCount];
+        ulong[] balances = new ulong[validatorCount];
+        for (int i = 0; i < validatorCount; i++)
+        {
+            validators[i] = MakeValidator(0, 0, Presets.FarFutureEpoch, Presets.FarFutureEpoch, false, 32_000_000_000);
+            balances[i] = 32_000_000_000;
+        }
+        PutState(root, validators, balances);
     }
 
     private void PutState(Hash256 root, Validator[] validators, ulong[] balances)
