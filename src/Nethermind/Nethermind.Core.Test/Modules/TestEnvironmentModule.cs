@@ -102,6 +102,8 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             {
                 blocksConfig.PreWarmStateConcurrency = Math.Min(4, Environment.ProcessorCount);
                 blocksConfig.PreWarming = PreWarmMode.Block;
+                // A test host shares its CPUs with other tests: it neither takes a core for itself nor moves their threads.
+                blocksConfig.ProcessingCores = ProcessingCores.All;
                 return blocksConfig;
             })
             .AddSingleton(TestPreBlockCachesConfig.Small)

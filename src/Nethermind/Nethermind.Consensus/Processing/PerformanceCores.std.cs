@@ -60,6 +60,26 @@ internal static partial class PerformanceCores
 
             return false;
         }
+
+        public readonly CpuMask Without(in CpuMask other)
+        {
+            CpuMask rest = this;
+            for (int i = 0; i < MaskWords; i++) rest[i] &= ~other[i];
+            return rest;
+        }
+
+        public readonly bool IsEmpty
+        {
+            get
+            {
+                for (int i = 0; i < MaskWords; i++)
+                {
+                    if (this[i] != 0) return false;
+                }
+
+                return true;
+            }
+        }
     }
 
     // The thread narrowed onto the dedicated core, which the guard leaves there; 0 while none is.
@@ -162,8 +182,8 @@ internal static partial class PerformanceCores
     /// </summary>
     /// <remarks>
     /// The runtime starts each new thread on the process's full mask, so one pass is not enough: a background thread
-    /// checks every thread each <see cref="Interval"/> and narrows those that may run on the dedicated core to the
-    /// others. A thread that exits mid-pass, or a mask the kernel refuses, is tried again on the next pass.
+    /// checks every thread each <see cref="Interval"/> and takes the dedicated core out of the masks that hold it. A
+    /// thread that exits mid-pass, or a mask the kernel refuses, is tried again on the next pass.
     /// </remarks>
     private static class DedicatedCoreGuard
     {
@@ -203,8 +223,10 @@ internal static partial class PerformanceCores
     }
 
     /// <summary>
-    /// Narrows each of <paramref name="threads"/> that may run on <paramref name="dedicated"/> to <paramref name="others"/>,
-    /// except <paramref name="keep"/> and the registered processing thread.
+    /// Takes <paramref name="dedicated"/> out of the mask of each of <paramref name="threads"/> that may run on it, except
+    /// <paramref name="keep"/> and the registered processing thread. A thread pinned to nothing but the dedicated core,
+    /// such as a server GC heap thread, goes to <paramref name="others"/>: its background marking would otherwise run
+    /// beside block processing.
     /// </summary>
     /// <returns>How many threads were narrowed.</returns>
     internal static int MoveOffDedicatedCore(IEnumerable<int> threads, CpuMask others, CpuMask dedicated, int keep)
@@ -214,9 +236,19 @@ internal static partial class PerformanceCores
         {
             if (threadId == keep || threadId == Volatile.Read(ref _processingThreadId)) continue;
             if (!TryGetAffinity(threadId, out CpuMask current) || !current.Overlaps(dedicated)) continue;
-            // Read again: the processing loop may have registered this thread since the check above.
-            if (threadId == Volatile.Read(ref _processingThreadId)) continue;
-            if (sched_setaffinity(threadId, CpuMaskSize, ref others) == 0) moved++;
+
+            CpuMask narrowed = current.Without(dedicated);
+            if (narrowed.IsEmpty) narrowed = others;
+            if (sched_setaffinity(threadId, CpuMaskSize, ref narrowed) != 0) continue;
+            moved++;
+
+            // The processing loop may have registered this thread and narrowed it onto the dedicated core since the
+            // check above; it would then run its block off that core, so it goes back.
+            if (threadId == Volatile.Read(ref _processingThreadId))
+            {
+                CpuMask back = dedicated;
+                sched_setaffinity(threadId, CpuMaskSize, ref back);
+            }
         }
 
         return moved;
@@ -224,19 +256,21 @@ internal static partial class PerformanceCores
 
     internal static bool TryGetAffinity(int threadId, out CpuMask mask) => sched_getaffinity(threadId, CpuMaskSize, out mask) == 0;
 
-    /// <summary>The kernel's id of the calling thread; false where the C library does not export <c>gettid</c>.</summary>
+    internal static bool TrySetAffinity(int threadId, CpuMask mask) => sched_setaffinity(threadId, CpuMaskSize, ref mask) == 0;
+
+    // glibc exports a gettid wrapper only from 2.30, so the system call is made directly; its number depends on the architecture.
+    private static readonly long GettidSyscall = RuntimeInformation.ProcessArchitecture switch
+    {
+        Architecture.X64 => 186,
+        Architecture.Arm64 or Architecture.RiscV64 or Architecture.LoongArch64 => 178,
+        _ => -1,
+    };
+
+    /// <summary>The kernel's id of the calling thread; false on an architecture whose system call number is not known here.</summary>
     internal static bool TryGetCurrentThreadId(out int threadId)
     {
-        try
-        {
-            threadId = gettid();
-            return true;
-        }
-        catch (EntryPointNotFoundException)
-        {
-            threadId = 0;
-            return false;
-        }
+        threadId = GettidSyscall < 0 ? 0 : (int)syscall(GettidSyscall);
+        return threadId > 0;
     }
 
     internal sealed class Selection(CpuMask mask, int[] cpus)
@@ -561,5 +595,5 @@ internal static partial class PerformanceCores
     private static extern int sched_setaffinity(int pid, nint cpusetsize, ref CpuMask mask);
 
     [DllImport("libc")]
-    private static extern int gettid();
+    private static extern long syscall(long number);
 }

@@ -175,8 +175,11 @@ public class PerformanceCoresTests
         }
     }
 
-    [Test]
-    public void MoveOffDedicatedCore_NarrowsOtherThreadsButNotTheKeptOne()
+    /// <param name="pinning">The helper thread's mask before the pass: every CPU, the dedicated one and one other, or the dedicated one alone.</param>
+    [TestCase("all", TestName = "MoveOffDedicatedCore_UnpinnedThread_TakesTheOtherCpus")]
+    [TestCase("pair", TestName = "MoveOffDedicatedCore_ThreadPinnedElsewhereToo_KeepsItsOtherCpu")]
+    [TestCase("dedicated", TestName = "MoveOffDedicatedCore_ThreadPinnedToTheDedicatedCpuOnly_GoesToTheOthers")]
+    public void MoveOffDedicatedCore_LeavesTheKeptThreadAlone(string pinning)
     {
         if (!OperatingSystem.IsLinux()) Assert.Ignore("Thread affinity is read and set through Linux system calls.");
         Assert.That(PerformanceCores.TryGetAffinity(0, out PerformanceCores.CpuMask allowed), Is.True);
@@ -187,6 +190,31 @@ public class PerformanceCoresTests
         dedicated.Add(cpus[^1]);
         PerformanceCores.CpuMask others = default;
         foreach (int cpu in cpus[..^1]) others.Add(cpu);
+        PerformanceCores.CpuMask start = default;
+        switch (pinning)
+        {
+            case "all":
+                start = allowed;
+                break;
+            case "pair":
+                start.Add(cpus[0]);
+                start.Add(cpus[^1]);
+                break;
+            default:
+                start.Add(cpus[^1]);
+                break;
+        }
+
+        PerformanceCores.CpuMask expected = default;
+        switch (pinning)
+        {
+            case "pair":
+                expected.Add(cpus[0]);
+                break;
+            default:
+                expected = others;
+                break;
+        }
 
         using ManualResetEventSlim started = new();
         using ManualResetEventSlim release = new();
@@ -194,6 +222,7 @@ public class PerformanceCoresTests
         Thread thread = new(() =>
         {
             PerformanceCores.TryGetCurrentThreadId(out otherThread);
+            PerformanceCores.TrySetAffinity(0, start);
             started.Set();
             release.Wait();
         });
@@ -202,15 +231,17 @@ public class PerformanceCoresTests
         {
             started.Wait();
             Assert.That(PerformanceCores.TryGetCurrentThreadId(out int self), Is.True);
+            Assert.That(PerformanceCores.TryGetAffinity(self, out PerformanceCores.CpuMask selfBefore), Is.True);
             int moved = PerformanceCores.MoveOffDedicatedCore([otherThread, self], others, dedicated, keep: self);
 
             Assert.That(PerformanceCores.TryGetAffinity(otherThread, out PerformanceCores.CpuMask otherMask), Is.True);
-            Assert.That(PerformanceCores.TryGetAffinity(self, out PerformanceCores.CpuMask selfMask), Is.True);
+            Assert.That(PerformanceCores.TryGetAffinity(self, out PerformanceCores.CpuMask selfAfter), Is.True);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(moved, Is.EqualTo(1));
                 Assert.That(otherMask.Overlaps(dedicated), Is.False, "the other thread leaves the dedicated core");
-                Assert.That(selfMask.Overlaps(dedicated), Is.True, "the kept thread stays where it was");
+                Assert.That(otherMask.Overlaps(expected) && !otherMask.Without(expected).Overlaps(allowed), Is.True, "the rest of its mask is kept, or the others when nothing is left");
+                Assert.That(selfAfter.Overlaps(selfBefore) && !selfAfter.Without(selfBefore).Overlaps(allowed), Is.True, "the kept thread keeps its mask");
             }
         }
         finally
@@ -220,7 +251,6 @@ public class PerformanceCoresTests
         }
     }
 
-    /// <summary>Two cores of two hyperthreads: the other core would leave the rest of the node two logical processors.</summary>
     [Test]
     public void TryBuildUniformDedicated_TooFewCpusLeft_DoesNotNarrow() =>
         Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-3"), static cpu => $"{cpu % 2},{cpu % 2 + 2}", out _, out _), Is.False);
