@@ -80,25 +80,17 @@ public class CustodySamplingAvailabilityTests
         });
     }
 
-    [Test]
-    public void Unavailable_when_one_custody_column_is_missing()
+    [TestCase(false, TestName = "Unavailable_when_one_custody_column_is_missing")]
+    [TestCase(true, TestName = "Unavailable_when_one_sampled_only_column_is_missing")]
+    public void Unavailable_when_one_required_column_is_missing(bool sampledOnly)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
-        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != custody.CustodyColumns[^1])), chain.ClockAtEpoch(0));
+        ulong missing = sampledOnly ? custody.SampledColumns.First(c => !custody.CustodyColumns.Contains(c)) : custody.CustodyColumns[^1];
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != missing)), chain.ClockAtEpoch(0));
 
-        Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False);
-    }
-
-    [Test]
-    public void Unavailable_when_one_sampled_only_column_is_missing()
-    {
-        ImportableBlobBlock chain = ImportableBlobBlock.Create();
-        NodeColumnCustody custody = BaseCustody();
-        ulong sampledOnly = custody.SampledColumns.First(c => !custody.CustodyColumns.Contains(c));
-        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != sampledOnly)), chain.ClockAtEpoch(0));
-
-        Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False, "das-core: sampling succeeds only if every selected column is retrieved");
+        Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False,
+            sampledOnly ? "das-core: sampling succeeds only if every selected column is retrieved" : null);
     }
 
     [Test]
