@@ -62,10 +62,9 @@ runs use nearest-rank uniformly. With fewer than twenty samples, nearest-rank p9
 silently changing historical measurements.
 
 Shortest generic-witness normalization can require an extra native prune/prove call for each
-recursive parent carrying a longer duplicate, before the bounded merge. This avoids an
-intermediate oversized proof while retaining authenticated claims. Existing captures did not
-measure that overlap case; fresh-claim curves do not establish its production latency.
-
+recursive parent carrying a nonselected duplicate (including equal-length ties), before the bounded merge. This avoids an
+intermediate oversized proof while retaining authenticated claims. The [separate exploratory duplicate capture](results/2026-10-03/generic-duplicates/README.md)
+measures a small two-claim example; fresh-claim curves do not establish its production latency.
 
 Large captured JSON files are stored as deterministic `.json.gz`; decompression preserves every
 byte of their original metadata and samples. [Archive checksums](results/archive-integrity.json)
@@ -81,10 +80,13 @@ Packaging changes do not change the captured source revisions or measured values
 
 ## Duplicate generic-witness normalization
 
+[Measured samples and scope](results/2026-10-03/generic-duplicates/README.md).
+
 Generate two genuine CPU proofs for one claim using expansion factors 1/2 and one unique claim:
 
 ```sh
-cargo run --manifest-path tools/lean-ffi/Cargo.toml --release --locked --example bench_fixtures -- /tmp/lean-duplicate-vectors 0 0 --duplicate-generic
+(cd tools/lean-ffi && RUSTFLAGS='-C target-cpu=native' cargo build --release --locked --example bench_fixtures)
+tools/lean-ffi/target/release/examples/bench_fixtures /tmp/lean-duplicate-vectors 0 0 --duplicate-generic
 dotnet run --project tools/LeanBench -c Release -p:BuildLeanFfi=true -- --duplicate-normalization=true --fixtures=/tmp/lean-duplicate-vectors --out=/tmp/lean-duplicate-results --warmups=1 --repetitions=3 --source-revision=RECORDED_SOURCE_REVISION
 ```
 
@@ -104,7 +106,7 @@ fixture generation and parent preparation are excluded from fold timing.
 Build once, then measure the example directly in a fresh process; running it through Cargo would include compiler memory. This external Python `resource.getrusage(RUSAGE_CHILDREN)` measurement reports bytes on macOS and KiB converted to bytes on Linux:
 
 ```sh
-cargo build --manifest-path tools/lean-ffi/Cargo.toml --release --locked --example resource_probe
+(cd tools/lean-ffi && RUSTFLAGS='-C target-cpu=native' cargo build --release --locked --example resource_probe)
 python3 - 4 direct <<'PY'
 import resource, subprocess, sys
 result = subprocess.run(["tools/lean-ffi/target/release/examples/resource_probe", *sys.argv[1:]], check=True, capture_output=True, text=True)
