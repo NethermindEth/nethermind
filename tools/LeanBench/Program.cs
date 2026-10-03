@@ -41,6 +41,16 @@ public static partial class Program
     public static async Task Main(string[] args)
     {
         string Value(string name, string fallback) => args.FirstOrDefault(a => a.StartsWith("--" + name + "=", StringComparison.Ordinal))?.Split('=', 2)[1] ?? fallback;
+        if (Value("devnet-payload", "") != "")
+        {
+            InspectDevnetPayload(args);
+            return;
+        }
+        if (Value("devnet-transactions", "false") == "true")
+        {
+            GenerateDevnetTransactions(args);
+            return;
+        }
         if (Value("transport-checks", "false") == "true")
         {
             await TransportChecks.RunAsync();

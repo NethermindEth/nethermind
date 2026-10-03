@@ -1,0 +1,49 @@
+participants:
+  - el_type: nethermind
+    el_image: nethermind:lean8288-devnet
+    el_max_cpu: 2000
+    el_max_mem: 2048
+    el_extra_params:
+      - --Sync.SnapSync=false
+      - --Init.MemoryHint=512000000
+      - --Pruning.Mode=None
+    cl_type: lighthouse
+    cl_image: ethpandaops/lighthouse:glamsterdam-devnet-8
+    cl_max_cpu: 1000
+    cl_max_mem: 1536
+    supernode: true
+    cl_extra_params: ["--always-prepare-payload"]
+    vc_type: lighthouse
+    vc_image: ethpandaops/lighthouse:glamsterdam-devnet-8
+    vc_max_cpu: 500
+    vc_max_mem: 768
+    validator_count: 16
+    count: 2
+network_params:
+  network: kurtosis
+  network_id: "10088288"
+  num_validator_keys_per_node: 16
+  genesis_delay: 60
+  genesis_gaslimit: 30000000
+  slot_duration_ms: 12000
+  deneb_fork_epoch: 0
+  electra_fork_epoch: 0
+  fulu_fork_epoch: 0
+  gloas_fork_epoch: 0
+  heze_fork_epoch: 18446744073709551615
+  frames_enabled: false
+  builder_count: 0
+  deploy_eip8282_contracts: true
+additional_services: [dora]
+dora_params:
+  image: ethpandaops/dora:latest
+ethereum_genesis_generator_params:
+  image: ethpandaops/ethereum-genesis-generator:lean8288
+port_publisher:
+  nat_exit_ip: "178.79.137.95"
+  el: {enabled: true, public_port_start: 19403}
+  cl: {enabled: true, public_port_start: 19711}
+  additional_services: {enabled: true, public_port_start: 19490}
+wait_for_finalization: false
+snooper_params: {enabled: false}
+global_log_level: info

@@ -118,3 +118,13 @@ PY
 ```
 
 Use `16 raw-binary-tree` for the current production leaf policy. `proving_ms` includes every leaf and recursive combination in this mode. `direct` proves one raw batch (at most eight claims). `children` prepares singleton proofs before measuring their recursive combination: its `child_preparation_ms` is separate, so its `proving_ms` cannot be compared to end-to-end raw-tree proving. All modes report fixture-generation and total times; process peak RSS includes fixture generation and child preparation. These probes are separate from the archived load/crypto datasets and establish no hard memory bound.
+
+## Functional devnets
+
+The [two-Runner guide](devnet/README.md) adds signed-wrapper generation, a Python Engine driver,
+canonical-hash proof mutations, and compact evidence export. The [saved functional capture](devnet/captures/2026-10-03/README.md)
+records eight successful proof-bearing blocks and two unsuccessful 64-signature attempts.
+A separate [Kurtosis setup](devnet/consensus/README.md) uses real Lighthouse beacon/validator processes
+through a local Engine proof-field relay; three small proof cases have successful receipts on both ELs.
+These checks preserve their deployed source/binary provenance and do not replace the archived
+benchmark samples or establish 64-signature inclusion, native CL proof-field support, or throughput.
