@@ -100,6 +100,9 @@ public class TrieNodeLogTests
     private static long FlushedStateBytes() =>
         Metrics.TrieNodeLogFlushedBytes.TryGetValue(TrieNodeLogLabel.State, out long bytes) ? bytes : 0;
 
+    private static long SecondLevelStoredStateBytes() =>
+        Metrics.TrieNodeLogSecondLevelStoredBytes.TryGetValue(TrieNodeLogLabel.State, out long bytes) ? bytes : 0;
+
     [Test]
     public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges()
     {
@@ -336,11 +339,14 @@ public class TrieNodeLogTests
             batch.SetStateTrieNode(TopPath, Value(1));
             batch.SetStateTrieNode(coldPath, Rlp1);
         }
+        long secondLevelStoredBefore = SecondLevelStoredStateBytes();
         WriteTop(1, 2, Value(2)); // seals first-level generation 1, copied into the second level
         Assert.That(() => ShardFiles("state-0"), Is.Empty.After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ShardFiles("state-0-l2"), Is.Not.Empty);
+            Assert.That(SecondLevelStoredStateBytes() - secondLevelStoredBefore, Is.EqualTo(TrieNodeLogRecord.HeaderLength * 3 + 3 + 3000 + 3 + Rlp1.Length),
+                "the latest top record and the cold record, each with a 3-byte key, plus a commit record");
             Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null);
             Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.Null);
             Assert.That(ReadTop(), Is.EqualTo(Value(2)));

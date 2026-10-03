@@ -206,7 +206,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
 
         foreach ((TrieNodeLogGeneration generation, _) in _touched) generation.PublishFrontier(generation.WriteFrontier);
 
-        if (_storedBytes != 0) Metrics.TrieNodeLogStoredBytes.AddBy(shard.ColumnLabel, _storedBytes);
+        if (_storedBytes != 0) (shard.IsSecondLevel ? Metrics.TrieNodeLogSecondLevelStoredBytes : Metrics.TrieNodeLogStoredBytes).AddBy(shard.ColumnLabel, _storedBytes);
         _committed = true;
     }
 

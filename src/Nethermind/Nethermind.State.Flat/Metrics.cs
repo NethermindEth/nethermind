@@ -435,9 +435,14 @@ public static class Metrics
     public static void IncrementTrieNodeLogIndexFalseMatches() => Interlocked.Increment(ref _trieNodeLogIndexFalseMatches);
 
     [CounterMetric]
-    [Description("Bytes written to trie node log files (records with their headers), by column (state, storage)")]
+    [Description("Bytes written to first-level trie node log files (records with their headers), by column (state, storage)")]
     [KeyIsLabel("column")]
     public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogStoredBytes { get; } = new();
+
+    [CounterMetric]
+    [Description("Bytes copied from merged first-level generations into second-level trie node log files (records with their headers), by column (state, storage)")]
+    [KeyIsLabel("column")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogSecondLevelStoredBytes { get; } = new();
 
     [DetailedMetric]
     [Description("Time to merge one trie node log generation into RocksDB")]
