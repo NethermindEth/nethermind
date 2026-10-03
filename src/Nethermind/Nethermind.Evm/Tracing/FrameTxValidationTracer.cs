@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -49,6 +51,15 @@ public sealed class FrameTxValidationTracer(
     /// <summary>Set between a CREATE2 and the creation frame it is expected to open.</summary>
     private bool _createPending;
 
+    /// <summary>The <c>RECENT_ROOT_ADDRESS</c> storage keys the executing EIP-8272 <c>recent_root_verify</c> frame
+    /// derives from its tuples, or <c>null</c> outside one.</summary>
+    /// <remarks>EIP-8272 public-mempool rule: the frame is a violation unless the fork is active and that address
+    /// runs exactly <c>RECENT_ROOT_CODE</c>, since code needing neither permission would otherwise pass.</remarks>
+    private HashSet<UInt256>? _recentRootKeys;
+
+    /// <summary>Whether the current opcode runs <c>RECENT_ROOT_CODE</c> at the top level of a <c>recent_root_verify</c> frame.</summary>
+    private bool _inRecentRootCode;
+
     public override bool IsTracingInstructions => true;
     public override bool IsTracingOpLevelStorage => true;
     public override bool IsTracingStack => true;
@@ -82,10 +93,23 @@ public sealed class FrameTxValidationTracer(
 
     public Address? Payer { get; private set; }
 
-    void IFrameTxPrefixTracer.StartPrefixFrame(bool isDeployFrame, Address target)
+    void IFrameTxPrefixTracer.StartPrefixFrame(TxFrame frame, bool isDeployFrame, Address target)
     {
         SettleCreate();
         _inDeployFrame = isDeployFrame;
+        _recentRootKeys = null;
+        if (FrameTxValidation.IsRecentRootVerifyFrame(frame))
+        {
+            if (!spec.IsEip8272Enabled || state.GetCodeHash(Eip8272Constants.RecentRootAddress) != Eip8272Constants.RecentRootCodeHash)
+            {
+                Violate("recent_root_verify frame without RECENT_ROOT_CODE at RECENT_ROOT_ADDRESS");
+            }
+            else
+            {
+                _recentRootKeys = RecentRootKeys(frame.Data.Span);
+            }
+        }
+
         _inExpiryFrame = _prefixFrameIndex++ == 0 && !isDeployFrame && target == expiryVerifier;
 
         // The processor dispatches this target rather than an opcode, so it never meets the CALL* rule below,
@@ -103,6 +127,8 @@ public sealed class FrameTxValidationTracer(
         _valueStackIndex = -1;
         SettleCreate();
         if (Violated) return;
+
+        _inRecentRootCode = _recentRootKeys is not null && env.CallDepth == 0 && env.ExecutingAccount == Eip8272Constants.RecentRootAddress;
 
         switch (opcode)
         {
@@ -123,6 +149,9 @@ public sealed class FrameTxValidationTracer(
                 {
                     Violate("banned opcode TIMESTAMP in validation prefix");
                 }
+                break;
+            case Instruction.SLOTNUM:
+                if (!_inRecentRootCode) Violate($"banned opcode {opcode} in validation prefix");
                 break;
             case Instruction.CALL:
             case Instruction.CALLCODE:
@@ -146,7 +175,6 @@ public sealed class FrameTxValidationTracer(
             case Instruction.GASLIMIT:
             case Instruction.BASEFEE:
             case Instruction.BLOBBASEFEE:
-            case Instruction.SLOTNUM:
             case Instruction.INVALID:
             case Instruction.SELFDESTRUCT:
             case Instruction.BALANCE:
@@ -212,7 +240,7 @@ public sealed class FrameTxValidationTracer(
     public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
         // SLOAD may read only tx.sender storage, including transitively via CALL*/DELEGATECALL.
-        if (!Violated && address != sender) Violate("SLOAD outside tx.sender storage");
+        if (!Violated && address != sender && !IsRecentRootKeyRead(address, storageIndex)) Violate("SLOAD outside tx.sender storage");
     }
 
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
@@ -264,6 +292,22 @@ public sealed class FrameTxValidationTracer(
         if (target == sender || spec.IsPrecompile(target)) return false;
         if (!state.IsContract(target)) return true;
         return state.IsDelegatedCode(target);
+    }
+
+    /// <summary>EIP-8272: <c>RECENT_ROOT_CODE</c> may read the keys its own frame's tuples derive, and nothing else.</summary>
+    private bool IsRecentRootKeyRead(Address address, in UInt256 storageIndex) =>
+        _inRecentRootCode && address == Eip8272Constants.RecentRootAddress && _recentRootKeys!.Contains(storageIndex);
+
+    private static HashSet<UInt256> RecentRootKeys(ReadOnlySpan<byte> tuples)
+    {
+        HashSet<UInt256> keys = [];
+        for (int offset = 0; offset < tuples.Length; offset += Eip8272Constants.RecentRootTupleLength)
+        {
+            (ValueHash256 sourceId, ulong slot, _) = RecentRootStore.ReadTuple(tuples.Slice(offset));
+            keys.Add(RecentRootStore.ReferenceCell(sourceId, slot).Index);
+        }
+
+        return keys;
     }
 
     private static bool IsCall(Instruction opcode) => opcode is

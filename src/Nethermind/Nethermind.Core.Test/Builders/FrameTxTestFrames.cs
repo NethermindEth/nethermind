@@ -103,6 +103,25 @@ public static class FrameTxTestFrames
 
     public static TxFrame Expiry(ulong gasLimit = 30_000) => ExpiryAt(deadline: 0, gasLimit);
 
+    /// <summary>An EIP-8272 <c>recent_root_verify</c> frame carrying <paramref name="tuples"/> as packed 72-byte data.</summary>
+    public static TxFrame RecentRootVerify(ulong gasLimit, params (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples) =>
+        new(FrameMode.Verify, FrameFlags.None, Eip8272Constants.RecentRootAddress, gasLimit, UInt256.Zero, RecentRootTuples(tuples));
+
+    public static byte[] RecentRootTuples(params (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples)
+    {
+        const int tupleBytes = Eip8272Constants.RecentRootTupleLength;
+        byte[] data = new byte[tuples.Length * tupleBytes];
+        for (int i = 0; i < tuples.Length; i++)
+        {
+            Span<byte> tuple = data.AsSpan(i * tupleBytes, tupleBytes);
+            tuples[i].SourceId.Bytes.CopyTo(tuple);
+            BinaryPrimitives.WriteUInt64BigEndian(tuple.Slice(32, sizeof(ulong)), tuples[i].Slot);
+            tuples[i].Root.Bytes.CopyTo(tuple.Slice(40));
+        }
+
+        return data;
+    }
+
     public static TxFrame ExpiryAt(ulong deadline, ulong gasLimit = 30_000)
     {
         byte[] data = new byte[Eip8141Constants.ExpiryDataLength];

@@ -39,8 +39,6 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[][]? BlobVersionedHashes { get; set; }
 
-    public RecentRootReferenceForRpc[]? RecentRootReferences { get; set; }
-
     [JsonConstructor]
     public FrameTransactionForRpc() { }
 
@@ -50,7 +48,6 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         NonceKeys = transaction.NonceKeys;
         Frames = FrameForRpc.FromFrames(transaction.Frames);
         Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
-        RecentRootReferences = RecentRootReferenceForRpc.FromReferences(transaction.RecentRootReferences);
 
         // Covered by the sig hash, so always reported: a consumer must be able to rebuild the payload.
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
@@ -67,9 +64,6 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
         if (!FrameSignatureForRpc.TryToSignatures(Signatures, out TxFrameSignature[]? signatures))
             return RpcTransactionErrors.NullEntryIn("signatures");
-
-        if (!RecentRootReferenceForRpc.TryToReferences(RecentRootReferences, out RecentRootReference[]? references))
-            return RpcTransactionErrors.NullEntryIn("recentRootReferences");
 
         // The caller's gas field is not what this type spends, so the cap the base applied to
         // Transaction.GasLimit leaves the work a frame transaction asks for unbounded.
@@ -91,7 +85,6 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         tx.FrameSignatures = signatures;
         tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
         tx.BlobVersionedHashes = BlobVersionedHashes;
-        tx.RecentRootReferences = references;
         return tx;
     }
 

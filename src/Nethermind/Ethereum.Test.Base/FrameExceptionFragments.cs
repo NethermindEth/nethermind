@@ -64,15 +64,11 @@ public static class FrameExceptionFragments
         FrameTxValidation.KeyedNoncesNotEnabled,
         FrameTxValidation.LegacyNonceNotAllowed,
         FrameTxValidation.MalformedNonceKeySet,
-        FrameTxValidation.TooManyRecentRootReferences,
-        FrameTxValidation.RecentRootReferencesNotEnabled,
         // The fixtures file a signer that does not match as a format failure, and a signature that
         // does not verify as a signature failure.
         FrameTxSignatureValidator.InvalidSecp256k1Signer,
         FrameTxSignatureValidator.InvalidP256Signer,
-        // A decoder literal, no constant to reference: the trailing element is present but is not
-        // the recent-root-reference sequence. Thrown before any rule runs, so no rule names it.
-        "frame transaction must not carry a trailing signature",
+        "frame transaction must not carry a trailing element",
     ];
 
     /// <summary>Signature verification — the spec <c>validate_signature</c> step.</summary>
@@ -124,9 +120,7 @@ public static class FrameExceptionFragments
         // sequence and is not. The latter is trimmed of the byte range it goes on to name.
         "Unexpected RLP prefix",
         "Expected a sequence prefix",
-        // An overlong declared payload length runs the trailing recent-root-reference list off the end
-        // of the buffer. Frame context, so this does not widen the label to unrelated truncations.
-        "frame transaction recent root reference list is incomplete",
+        "frame transaction payload is incomplete",
         // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread
         // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",

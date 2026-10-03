@@ -48,8 +48,6 @@ public static class FrameTxValidation
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
-    public const string TooManyRecentRootReferences = "at most 16 recent root references are allowed";
-    public const string RecentRootReferencesNotEnabled = "recent root references are not enabled";
 
     /// <summary>
     /// Runs the EIP-8141 §Constraints checks a frame transaction can be judged on without state, over its frame
@@ -240,12 +238,6 @@ public static class FrameTxValidation
                     return false;
                 }
             }
-        }
-
-        if (transaction.RecentRootReferences is { Length: > Eip8272Constants.MaxRecentRootReferences })
-        {
-            error = TooManyRecentRootReferences;
-            return false;
         }
 
         // A value check, not a presence check: the decoder always populates both blob fields. Refusing a
@@ -447,15 +439,62 @@ public static class FrameTxValidation
     }
 
     /// <summary>Where a search for a validation prefix's approving frame starts: past the optional leading
-    /// expiry-verify and deploy frames, neither of which may carry approval scope.</summary>
+    /// protocol verifier and deploy frames, none of which may carry approval scope.</summary>
     /// <remarks>A lower bound only — the frame at this index need not approve either. Shared by the three walks
     /// that scan for the approving frame; the prefix simulation asks the same rule positionally and keeps its form.</remarks>
     public static int ApprovalSearchStart(TxFrame[] frames)
     {
-        int next = 0;
-        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
+        int next = ProtocolVerifierFrameCount(frames);
         if (next < frames.Length && IsDeployFrame(frames[next])) next++;
         return next;
+    }
+
+    /// <summary>The number of optional leading protocol verifier frames, an <c>expiry_verify</c> frame and then an
+    /// EIP-8272 <c>recent_root_verify</c> frame, which EIP-8141 prefix-shape matching skips.</summary>
+    public static int ProtocolVerifierFrameCount(TxFrame[] frames)
+    {
+        int next = RecentRootVerifyFrameIndex(frames);
+        if (next < frames.Length && IsRecentRootVerifyFrame(frames[next])) next++;
+        return next;
+    }
+
+    /// <summary>The only index the public mempool admits a <c>recent_root_verify</c> frame at: directly behind the
+    /// optional leading <c>expiry_verify</c> frame.</summary>
+    private static int RecentRootVerifyFrameIndex(TxFrame[] frames) =>
+        frames.Length > 0 && IsExpiryVerifyFrame(frames[0]) ? 1 : 0;
+
+    /// <summary>
+    /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame targeting <c>RECENT_ROOT_ADDRESS</c> that
+    /// is not a well-formed <c>recent_root_verify</c> frame, or one anywhere but directly behind the optional leading
+    /// <c>expiry_verify</c> frame, which also bars a second one.
+    /// </summary>
+    /// <remarks>An EIP-8272 public-mempool rule, decided on the frame list alone before any sender state is read.</remarks>
+    public static bool HasMisplacedRecentRootVerifyFrame(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        int permitted = RecentRootVerifyFrameIndex(frames);
+        for (int i = 0; i < frames.Length; i++)
+        {
+            if (frames[i].Mode == FrameMode.Verify
+                && frames[i].Target == Eip8272Constants.RecentRootAddress
+                && (i != permitted || !IsRecentRootVerifyFrame(frames[i])))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The tuples of the <c>recent_root_verify</c> frame of <paramref name="transaction"/>, if it carries one where
+    /// the public mempool admits it.</summary>
+    public static bool TryGetRecentRootTuples(Transaction transaction, out ReadOnlyMemory<byte> tuples)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        int index = RecentRootVerifyFrameIndex(frames);
+        bool found = index < frames.Length && IsRecentRootVerifyFrame(frames[index]);
+        tuples = found ? frames[index].Data : default;
+        return found;
     }
 
     /// <summary>Whether a frame transaction starts with a public-mempool validation prefix recognized by EIP-8141.</summary>
@@ -494,6 +533,18 @@ public static class FrameTxValidation
         && frame.Target == Eip8141Constants.ExpiryVerifierAddress
         && frame.Value.IsZero
         && frame.Data.Length == Eip8141Constants.ExpiryDataLength;
+
+    /// <summary>True if <paramref name="frame"/> is an EIP-8272 <c>recent_root_verify</c> frame: 1 to
+    /// <c>MAX_RECENT_ROOT_REFERENCES</c> 72-byte tuples verified by <c>RECENT_ROOT_ADDRESS</c>.</summary>
+    /// <remarks>Position is not checked.</remarks>
+    public static bool IsRecentRootVerifyFrame(TxFrame frame) =>
+        frame.Mode == FrameMode.Verify
+        && frame.Flags == FrameFlags.None
+        && frame.Target == Eip8272Constants.RecentRootAddress
+        && frame.Value.IsZero
+        && frame.StateGasLimit == 0
+        && frame.Data.Length is > 0 and <= Eip8272Constants.MaxRecentRootReferences * Eip8272Constants.RecentRootTupleLength
+        && frame.Data.Length % Eip8272Constants.RecentRootTupleLength == 0;
 
     /// <summary>True if <paramref name="frame"/> is a deploy frame: any default-mode frame carrying no
     /// approval scope, so it can never approve a payer.</summary>
@@ -545,12 +596,10 @@ public static class FrameTxValidation
     public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
         // Read once: re-reading them to stamp the memo would key a value on stats it was not computed from.
-        (int ZeroBytes, int NonZeroBytes) referenceCalldata = transaction.ReferenceCalldataStats;
         (int ZeroBytes, int NonZeroBytes) frameCalldata = transaction.FrameCalldataStats;
 
         if (Volatile.Read(ref transaction.IntrinsicGasMemo) is FrameGasBudgetMemo memo
             && ReferenceEquals(memo.Spec, spec)
-            && memo.ReferenceCalldata == referenceCalldata
             && memo.FrameCalldata == frameCalldata)
         {
             (intrinsicGas, floorGas, maxGas) = (memo.IntrinsicGas, memo.FloorGas, memo.MaxGas);
@@ -559,13 +608,12 @@ public static class FrameTxValidation
 
         bool priced = CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas);
         Volatile.Write(ref transaction.IntrinsicGasMemo, new FrameGasBudgetMemo(
-            spec, referenceCalldata, frameCalldata, priced, intrinsicGas, floorGas, maxGas));
+            spec, frameCalldata, priced, intrinsicGas, floorGas, maxGas));
         return priced;
     }
 
     private sealed record FrameGasBudgetMemo(
         IReleaseSpec Spec,
-        (int ZeroBytes, int NonZeroBytes) ReferenceCalldata,
         (int ZeroBytes, int NonZeroBytes) FrameCalldata,
         bool Priced,
         ulong IntrinsicGas,
@@ -667,13 +715,6 @@ public static class FrameTxValidation
             }
         }
 
-        if (transaction.RecentRootReferences is not null && spec.IsEip8272Enabled)
-        {
-            (int zeroBytes, int nonZeroBytes) = transaction.ReferenceCalldataStats;
-            tokens += (ulong)zeroBytes + (ulong)nonZeroBytes * spec.GasCosts.TxDataNonZeroMultiplier;
-            dataLength += (ulong)(zeroBytes + nonZeroBytes);
-        }
-
         if (transaction.NonceKeys is not null && spec.IsEip8250Enabled)
         {
             (int zeroBytes, int nonZeroBytes) = transaction.FrameCalldataStats;
@@ -684,8 +725,7 @@ public static class FrameTxValidation
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                              + signatureVerificationCost
-                             + valueTransferCost
-                             + RecentRootReference.IntrinsicGas(transaction.RecentRootReferences, spec);
+                             + valueTransferCost;
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;

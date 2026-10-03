@@ -150,6 +150,7 @@ namespace Nethermind.TxPool
         // Lets the per-head expiry pass skip the pool walk entirely when nothing can expire. Maintained by the
         // Inserted/Removed handlers under Interlocked, so readers need only Volatile.Read for visibility.
         private int _expiringFrameTxCount;
+        private readonly RecentRootDependencyIndex _recentRootDependencies = new();
 
 #if DEBUG
         // Bumped before the bookkeeping either side of a mutation moves, so a half-applied mutation cannot read as drift.
@@ -317,6 +318,7 @@ namespace Nethermind.TxPool
             [
                 new MalformedTxFilter(validator, _specChangeTxValidator, ecdsa, _logger),
                 new FrameTxMisplacedExpiryFrameFilter(_logger), // before ExpiredFrameTxFilter: leaves the deadline readable from the leading frame alone
+                new FrameTxMisplacedRecentRootFrameFilter(_logger, txPoolConfig.BlobsSupport.IsPersistentStorage()),
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new FrameTxVerifyGasFilter(txPoolConfig, _logger), // after MalformedTxFilter: reads gas limits from an already well-formed frame list
                 new FrameTxPayerlessFilter(_logger), // before FrameTxSignatureFilter: structural prefix verdicts need no signature work
@@ -577,6 +579,7 @@ namespace Nethermind.TxPool
             TrackPoolMutation();
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+            _recentRootDependencies.Add(args.Value);
             IndexFrameTxDependencies(args.Value);
             StageFrameEvictionRetries(args.Value);
         }
@@ -610,6 +613,7 @@ namespace Nethermind.TxPool
                 AssertExpiringFrameTxCountNotNegative(remaining);
             }
 
+            _recentRootDependencies.Remove(args.Value);
             ReleaseFrameTxReservations(args.Value);
             if (args.Value.SupportsFrames)
             {
@@ -876,12 +880,14 @@ namespace Nethermind.TxPool
                             CollectFrameTxsToRevalidate(changeListIsComplete ? accountChanges : null);
                             DisposeBlockAccountChanges(args.Block);
 
+                            bool extendsPreviousHead = args.PreviousBlock is null && args.Block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == args.Block.Number;
                             _lastBlockNumber = args.Block.Number;
                             _lastBlockHash = args.Block.Hash;
 
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             RemoveExpiredFrameTransactions(args.Block);
+                            RemoveUnreferenceableRecentRootTransactions(args.Block, extendsPreviousHead);
                             RevalidateFrameTransactions(args.Block);
 
                             if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
@@ -1160,6 +1166,46 @@ namespace Nethermind.TxPool
                         if (_logger.IsTrace) _logger.Trace($"Evicted expired frame transaction {tx.Hash} (deadline {deadline} < head timestamp {timestamp}).");
                     }
                 }
+            }
+        }
+
+        /// <summary>EIP-8272: evicts the pending transactions whose <c>recent_root_verify</c> tuples no longer verify at
+        /// the new head's <c>current_slot</c>, its <c>slotNumber + 1</c>.</summary>
+        /// <remarks>Every such transaction goes once the head is before activation or the code at <c>RECENT_ROOT_ADDRESS</c>
+        /// is not <c>RECENT_ROOT_CODE</c>. A head extending the previous one only ages tuples out: its block writes the
+        /// ring-buffer cells of its own slot, and a pending tuple naming that slot was admitted against the same write,
+        /// while any other tuple aliasing those cells is already out of the window. Any other head rereads every recorded
+        /// entry, which covers a rollback on the abandoned branch as well as a write on the new one. An aged-out tuple
+        /// never verifies again, so its hash stays cached; any other failure can reverse with a reorg.</remarks>
+        private void RemoveUnreferenceableRecentRootTransactions(Block block, bool extendsPreviousHead)
+        {
+            if (_recentRootDependencies.Count == 0) return;
+
+            IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
+            List<(Hash256 Hash, bool Final)> unreferenceable = [];
+            if (block.Header.SlotNumber is not ulong headSlot
+                || !_specProvider.GetSpec(block.Header).IsEip8272Enabled
+                || state.GetCodeHash(Eip8272Constants.RecentRootAddress) != Eip8272Constants.RecentRootCodeHash)
+            {
+                _recentRootDependencies.CollectAll(unreferenceable);
+            }
+            else if (extendsPreviousHead)
+            {
+                _recentRootDependencies.CollectExpired(headSlot + 1, unreferenceable);
+            }
+            else
+            {
+                _recentRootDependencies.CollectInvalid(state, headSlot + 1, unreferenceable);
+            }
+
+            foreach ((Hash256 hash, bool final) in unreferenceable)
+            {
+                if (!RemoveTransaction(hash, out Transaction? pooled)) continue;
+
+                EvictedPending?.Invoke(this, new TxEventArgs(pooled));
+                if (!final) _hashCache.DeleteFromLongTerm(hash);
+                Metrics.PendingTransactionsEvicted++;
+                if (_logger.IsTrace) _logger.Trace($"Evicted frame transaction {hash}, its recent roots do not verify at head {block.Number}.");
             }
         }
 

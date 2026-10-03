@@ -28,6 +28,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -3500,6 +3501,123 @@ namespace Nethermind.TxPool.Test
                 Is.EqualTo(AcceptTxResult.FrameTxMisplacedExpiryFrame));
         }
 
+        [Test]
+        public void SubmitTx_FrameTransactionWithAMisplacedRecentRootFrame_IsRejectedOnItsPlacement()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance));
+            Transaction frameTx = SelfVerifyFrameTx(FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple));
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.FrameTxMisplacedRecentRootFrame));
+        }
+
+        private const ulong RecentRootSlot = 1_000;
+
+        private static readonly (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) RecentRootTuple =
+            (TestItem.KeccakA.ValueHash256, RecentRootSlot, TestItem.KeccakB.ValueHash256);
+
+        [TestCase(RecentRootSlot, true, true, 1, false, TestName = "recent_root_frame_is_retained_while_its_entry_verifies")]
+        [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 2, true, true, 1, false, TestName = "recent_root_frame_is_retained_at_the_window_edge")]
+        [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 1, true, true, 0, false, TestName = "recent_root_frame_is_evicted_for_good_once_its_slot_ages_out")]
+        [TestCase(RecentRootSlot, false, true, 0, true, TestName = "recent_root_frame_is_evicted_resubmittably_when_its_entry_is_missing")]
+        [TestCase(RecentRootSlot, true, false, 0, true, TestName = "recent_root_frame_is_evicted_resubmittably_when_the_predeploy_code_differs")]
+        public async Task Recent_root_frame_transaction_is_rechecked_on_new_head(ulong headSlot, bool committed, bool recentRootCode, int expectedPending, bool resubmittable)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            _stateProvider.InsertCode(recentRootCode ? Eip8272Constants.RecentRootCode.ToArray() : [0x00], Eip8272Constants.RecentRootAddress);
+            Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            if (committed)
+            {
+                _stateProvider.Set(RecentRootStore.ReferenceCell(RecentRootTuple.SourceId, RecentRootSlot),
+                    RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
+            }
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(headSlot).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending));
+                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast) == AcceptTxResult.Accepted, Is.EqualTo(resubmittable));
+            }
+        }
+
+        [TestCase(1UL, 1, TestName = "recent_root_frame_is_not_reread_on_a_head_extending_the_previous_one")]
+        [TestCase(Eip8272Constants.RecentRootLength - 1, 0, TestName = "recent_root_frame_ages_out_on_a_head_extending_the_previous_one")]
+        public async Task Recent_root_frame_transaction_on_an_extending_head_is_checked_for_age_only(ulong slotsAfterWrite, int expectedPending)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            _stateProvider.InsertCode(Eip8272Constants.RecentRootCode.ToArray(), Eip8272Constants.RecentRootAddress);
+            StorageCell cell = RecentRootStore.ReferenceCell(RecentRootTuple.SourceId, RecentRootSlot);
+            _stateProvider.Set(cell, RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
+            Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Block head = Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            _stateProvider.Set(cell, UInt256.Zero);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithParent(head).WithSlotNumber(RecentRootSlot + slotsAfterWrite).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending));
+                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.Not.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
+        [Test]
+        public async Task Recent_root_frame_transaction_is_evicted_resubmittably_by_a_head_before_activation()
+        {
+            OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
+            _txPool = CreatePool(null, new TestSpecProvider(spec));
+            _stateProvider.InsertCode(Eip8272Constants.RecentRootCode.ToArray(), Eip8272Constants.RecentRootAddress);
+            _stateProvider.Set(RecentRootStore.ReferenceCell(RecentRootTuple.SourceId, RecentRootSlot),
+                RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
+            Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            spec.IsEip8272Enabled = false;
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
+        [TestCase(true, 1, TestName = "blob_carrying_recent_root_frame_is_retained_while_its_entry_verifies")]
+        [TestCase(false, 0, TestName = "blob_carrying_recent_root_frame_is_evicted_when_its_entry_is_missing")]
+        public async Task Blob_carrying_recent_root_frame_transaction_is_rechecked_on_new_head(bool committed, int expectedPending)
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory },
+                new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            _stateProvider.InsertCode(Eip8272Constants.RecentRootCode.ToArray(), Eip8272Constants.RecentRootAddress);
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, withRecentRoot: true);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            if (committed)
+            {
+                _stateProvider.Set(RecentRootStore.ReferenceCell(RecentRootTuple.SourceId, RecentRootSlot),
+                    RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
+            }
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedPending));
+        }
+
+        [Test]
+        public void SubmitTx_BlobCarryingRecentRootFrameTransaction_IsRejectedByAPersistentBlobPool()
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage },
+                new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, withRecentRoot: true);
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameTxRecentRootWithPersistentBlobs));
+        }
+
         // The decoder bounds the frame count off the wire; a locally submitted transaction never meets it,
         // so the transaction validator is the pool's only gate on the count.
         [TestCase(Eip8141Constants.MaxFrames - 1, true, TestName = "SubmitTx_FrameTransactionAtTheMaximumFrameCount_IsAccepted")]
@@ -3591,7 +3709,7 @@ namespace Nethermind.TxPool.Test
         private static TxFrame SelfVerifyPrefixFrame() =>
             new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>());
 
-        private Transaction SignedFrameTx(TxFrame[] frames, RecentRootReference[] recentRootReferences = null)
+        private Transaction SignedFrameTx(TxFrame[] frames)
         {
             Transaction frameTx = new()
             {
@@ -3601,7 +3719,6 @@ namespace Nethermind.TxPool.Test
                 SenderAddress = TestItem.PrivateKeyA.Address,
                 Frames = frames,
                 FrameSignatures = [],
-                RecentRootReferences = recentRootReferences,
                 GasLimit = 1_000_000,
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
@@ -3613,15 +3730,13 @@ namespace Nethermind.TxPool.Test
         }
 
         /// <summary>The frame-transaction properties a change of head specification can turn from valid to invalid.</summary>
-        public enum FrameForkGate { PostTx, RecentRoots, ExecutionGasCap }
+        public enum FrameForkGate { PostTx, ExecutionGasCap }
 
         // Each is admitted under a head that allows it, and the block that included it under the next head would
         // be invalid, so the pool must drop it at the transition. The retained rows hold the same transaction
         // across the same transition with the gate untouched, so the flipped flag is the only variable.
         [TestCase(FrameForkGate.PostTx, true, TestName = "post_tx_frame_is_evicted_when_the_new_head_drops_eip7906")]
         [TestCase(FrameForkGate.PostTx, false, TestName = "post_tx_frame_is_retained_while_eip7906_stays_active")]
-        [TestCase(FrameForkGate.RecentRoots, true, TestName = "recent_root_reference_is_evicted_when_the_new_head_drops_eip8272")]
-        [TestCase(FrameForkGate.RecentRoots, false, TestName = "recent_root_reference_is_retained_while_eip8272_stays_active")]
         [TestCase(FrameForkGate.ExecutionGasCap, true, TestName = "frame_execution_reservation_is_evicted_when_repriced_over_the_cap")]
         [TestCase(FrameForkGate.ExecutionGasCap, false, TestName = "frame_execution_reservation_is_retained_while_the_price_holds")]
         public async Task Frame_transaction_invalidated_by_the_new_head_is_evicted(FrameForkGate gate, bool revokedAtFork)
@@ -3632,13 +3747,11 @@ namespace Nethermind.TxPool.Test
             OverridableReleaseSpec preForkSpec = new(Eip8141Prototype.Instance)
             {
                 IsEip7906Enabled = gate == FrameForkGate.PostTx,
-                IsEip8272Enabled = gate == FrameForkGate.RecentRoots,
                 IsEip2780Enabled = false
             };
             OverridableReleaseSpec postForkSpec = new(Eip8141Prototype.Instance)
             {
                 IsEip7906Enabled = preForkSpec.IsEip7906Enabled && !(revokedAtFork && gate == FrameForkGate.PostTx),
-                IsEip8272Enabled = preForkSpec.IsEip8272Enabled && !(revokedAtFork && gate == FrameForkGate.RecentRoots),
                 IsEip2780Enabled = revokedAtFork && gate == FrameForkGate.ExecutionGasCap
             };
             TestSpecProvider provider = new(preForkSpec)
@@ -3667,10 +3780,6 @@ namespace Nethermind.TxPool.Test
                 case FrameForkGate.PostTx:
                     return SelfVerifyFrameTx(
                         new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
-                case FrameForkGate.RecentRoots:
-                    return SignedFrameTx(
-                        [SelfVerifyPrefixFrame()],
-                        [new RecentRootReference(TestItem.KeccakA, slot: 1, TestItem.KeccakB)]);
                 default:
                     // Reserving half the EIP-2780 transfer charge below the cap, so pricing the transfer at the
                     // next head is the whole difference. The half also absorbs the few tokens by which a fresh
@@ -3696,45 +3805,6 @@ namespace Nethermind.TxPool.Test
                 SelfVerifyPrefixFrame(),
                 new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, executionGasLimit, UInt256.One, Array.Empty<byte>())
             ]);
-
-        // A locally built frame tx skips the decoder that measures its EIP-8272 reference calldata, so admission
-        // has to measure before it prices: head revalidation prices the measured transaction, and anything
-        // admitted on the lighter reading is pooled, unselectable and evicted at the next transition.
-        [TestCase(true, TestName = "frame_tx_over_the_cap_once_its_reference_calldata_is_measured_is_refused")]
-        [TestCase(false, TestName = "frame_tx_under_the_cap_once_its_reference_calldata_is_measured_is_admitted")]
-        public void SubmitTx_LocallyBuiltFrameTx_IsPricedOnMeasuredReferenceCalldata(bool overCapOnceMeasured)
-        {
-            OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
-            _txPool = CreatePool(new TxPoolConfig { GasLimit = long.MaxValue, FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(spec));
-            _headInfo.BlockGasLimit = long.MaxValue;
-
-            RecentRootReference[] references = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences];
-            for (int i = 0; i < references.Length; i++)
-            {
-                references[i] = new RecentRootReference(TestItem.KeccakA, (ulong)i + 1, TestItem.KeccakB);
-            }
-
-            Transaction probe = ReferenceFrameTx(0);
-            probe.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(references);
-            Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(probe, spec, out ulong measured, out _), Is.True);
-
-            ulong headroom = Eip7825Constants.DefaultTxGasLimitCap - measured;
-            Transaction frameTx = ReferenceFrameTx(overCapOnceMeasured ? headroom + 1 : headroom);
-            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(!overCapOnceMeasured), result.ToString());
-                Assert.That(FrameTxHeadFieldsTxValidator.Instance.IsWellFormed(frameTx, spec).AsBool(), Is.EqualTo(!overCapOnceMeasured));
-            }
-
-            Transaction ReferenceFrameTx(ulong executionGasLimit) => SignedFrameTx(
-                [
-                    SelfVerifyPrefixFrame(),
-                    new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, executionGasLimit, UInt256.Zero, Array.Empty<byte>())
-                ],
-                references);
-        }
 
         [TestCase(100_000UL, 0UL, 0, true)]
         [TestCase(118_000UL, 0UL, 0, false)]
@@ -6529,16 +6599,6 @@ namespace Nethermind.TxPool.Test
                 ],
                 FrameSignatures = [],
                 NonceKeys = [UInt256.One],
-            },
-            new Transaction
-            {
-                Type = TxType.FrameTx,
-                ChainId = TestBlockchainIds.ChainId,
-                SenderAddress = TestItem.AddressA,
-                Frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas)],
-                FrameSignatures = [],
-                NonceKeys = [UInt256.One],
-                RecentRootReferences = [new RecentRootReference(TestItem.KeccakA, slot: 1, TestItem.KeccakB)],
             },
             NearCapFrameTx(),
         ];

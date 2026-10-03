@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
@@ -21,13 +22,38 @@ namespace Nethermind.Consensus.Test;
 public class PredeployInstallerTests
 {
     [Test]
-    public void Empty_canonical_predeploy_at_its_nonce_reads_no_code_and_writes_nothing()
+    public void Recent_root_predeploy_carrying_its_code_and_nonce_writes_nothing()
     {
-        (_, IReadOnlyStateProvider readState, IWorldState writeState) =
-            Install(static spec => spec.IsEip8272Enabled.Returns(true), Eip8272Constants.RecentRootAddress, nonce: 1, code: [0x60, 0x00]);
+        (_, _, IWorldState writeState) =
+            Install(static spec => spec.IsEip8272Enabled.Returns(true), Eip8272Constants.RecentRootAddress, nonce: 1, code: Eip8272Constants.RecentRootCode.ToArray());
 
-        readState.DidNotReceive().GetCode(Eip8272Constants.RecentRootAddress);
+        writeState.DidNotReceiveWithAnyArgs().InsertCode(default!, default, default!);
         writeState.DidNotReceive().SetNonce(Eip8272Constants.RecentRootAddress, Arg.Any<ulong>());
+    }
+
+    [TestCase(0ul, 1ul)]
+    [TestCase(5ul, 5ul)]
+    public void Recent_root_predeploy_over_a_codeless_account_keeps_its_balance_and_raises_its_nonce_to_one(ulong existingNonce, ulong expectedNonce)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true };
+        Address predeploy = Eip8272Constants.RecentRootAddress;
+        UInt256 balance = 7;
+
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        using (state.BeginScope(IWorldState.PreGenesis))
+        {
+            state.CreateAccount(predeploy, balance, existingNonce);
+            state.Commit(spec, isGenesis: true);
+
+            PredeployInstaller.Install(state, state, spec);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(state.GetCode(predeploy).ToArray(), Is.EqualTo(Eip8272Constants.RecentRootCode.ToArray()));
+                Assert.That(state.GetNonce(predeploy), Is.EqualTo(expectedNonce));
+                Assert.That(state.GetBalance(predeploy), Is.EqualTo(balance));
+            }
+        }
     }
 
     [TestCase(0UL, 1UL)]

@@ -20,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -46,7 +47,7 @@ public class FrameTxValidationPrefixSimulationTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        _specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true });
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
@@ -497,6 +498,92 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    [TestCase(false, false, TestName = "Simulate_RecentRootVerifyFrameOverRecentRootCode_ReadsItsSlotAndEntries")]
+    [TestCase(true, true, TestName = "Simulate_RecentRootVerifyFrameOverOtherCode_RecordsViolation")]
+    public void Simulate_RecentRootVerifyFrame_IsPermittedOnlyOverRecentRootCode(bool otherCode, bool violates)
+    {
+        byte[] code = Eip8272Constants.RecentRootCode.ToArray();
+        DeployContract(Eip8272Constants.RecentRootAddress, otherCode ? [.. code, 0x00] : code);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.RecentRootVerify(100_000, CommitRecentRoot()), SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx, RecentRootCurrentSlot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.EqualTo(violates));
+            Assert.That(tracer.Payer, violates ? Is.Null : Is.EqualTo(Sender));
+        }
+    }
+
+    [Test]
+    public void Simulate_SlotnumOutsideTheRecentRootVerifyFrame_RecordsViolation()
+    {
+        DeployContract(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray());
+        byte[] code = Prepare.EvmCode.Op(Instruction.SLOTNUM).Op(Instruction.POP).Done;
+        DeployContract(Sender, [.. code, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.RecentRootVerify(100_000, CommitRecentRoot()), SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx, RecentRootCurrentSlot);
+
+        Assert.That(tracer.Violated, Is.True);
+    }
+
+    [TestCase(0, 0, false, TestName = "LoadOperationStorage_TupleDerivedKeyInTheTopLevelRecentRootFrame_IsPermitted")]
+    [TestCase(1, 0, true, TestName = "LoadOperationStorage_KeyNoTupleDerives_RecordsViolation")]
+    [TestCase(0, 1, true, TestName = "LoadOperationStorage_TupleDerivedKeyInANestedCall_RecordsViolation")]
+    public void LoadOperationStorage_RecentRootStorage_IsReadableOnlyThroughItsOwnTupleKeysAtTheTopLevel(int slotOffset, int callDepth, bool violates)
+    {
+        DeployContract(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray());
+        (ValueHash256 sourceId, ulong slot, ValueHash256 root) = CommitRecentRoot();
+        TxFrame frame = FrameTxTestFrames.RecentRootVerify(100_000, (sourceId, slot, root));
+        FrameTxValidationTracer tracer = Tracer(FrameTx(nonce: 0, frame, SelfVerifyFrame()));
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(null!, Eip8272Constants.RecentRootAddress, Sender, null, callDepth, UInt256.Zero, frame.Data);
+
+        ((IFrameTxPrefixTracer)tracer).StartPrefixFrame(frame, isDeployFrame: false, Eip8272Constants.RecentRootAddress);
+        tracer.StartOperation(0, Instruction.SLOAD, 50_000, in env);
+        tracer.LoadOperationStorage(Eip8272Constants.RecentRootAddress, RecentRootStore.ReferenceCell(sourceId, slot + (ulong)slotOffset).Index, default);
+
+        Assert.That(tracer.Violated, Is.EqualTo(violates), tracer.ViolationReason);
+    }
+
+    [Test]
+    public void StartPrefixFrame_RecentRootVerifyFrameBeforeActivation_RecordsViolation()
+    {
+        DeployContract(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray());
+        TxFrame frame = FrameTxTestFrames.RecentRootVerify(100_000, CommitRecentRoot());
+        FrameTxValidationTracer tracer = new(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Eip8141Prototype.Instance);
+
+        ((IFrameTxPrefixTracer)tracer).StartPrefixFrame(frame, isDeployFrame: false, Eip8272Constants.RecentRootAddress);
+
+        Assert.That(tracer.Violated, Is.True);
+    }
+
+    [Test]
+    public void Simulate_RecentRootVerifyFrameOverCodeThatNeverReadsTheSlot_RecordsViolation()
+    {
+        DeployContract(Eip8272Constants.RecentRootAddress, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.RecentRootVerify(100_000, CommitRecentRoot()), SelfVerifyFrame());
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx, RecentRootCurrentSlot);
+
+        Assert.That(tracer.Violated, Is.True);
+    }
+
+    private const ulong RecentRootCurrentSlot = 1_001;
+
+    private (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) CommitRecentRoot()
+    {
+        ValueHash256 sourceId = RecentRootStore.SourceId(TestItem.AddressC, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        ulong slot = RecentRootCurrentSlot - 1;
+        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot), RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        return (sourceId, slot, root);
+    }
+
     [Test]
     public void Simulate_ExceedingWallClockBound_AbortsTheInterpreter()
     {
@@ -859,25 +946,6 @@ public class FrameTxValidationPrefixSimulationTests
             .GetValue(_virtualMachine)!;
 
     [Test]
-    public void Simulate_PrefixDeclaringAnUncommittedRecentRootReference_RejectedBeforeAnyFrameRuns()
-    {
-        // RECENTROOTREFLOAD reads the envelope on the strength of the pre-state check, so a prefix must
-        // not run against references the main path would reject.
-        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.RecentRootReferences = [new RecentRootReference(TestItem.KeccakA, slot: 9, TestItem.KeccakB)];
-
-        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx, slotNumber: 10);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.ErrorDescription, Does.Contain("recent root reference"));
-            Assert.That(tracer.Payer, Is.Null, "the prefix must not have resolved a payer");
-        }
-    }
-
-    [Test]
     public void Simulate_DeployFrameAfterANonExpiryVerifyFrame_NotClaimedAsTheDeployGap()
     {
         // RecognizedPrefixLength reaches index 1 only past an expiry-verify frame, so a deploy frame
@@ -894,12 +962,12 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     /// <summary>Runs a prefix the tracer may abort mid-execution, returning the tracer either way.</summary>
-    private (TransactionResult, FrameTxValidationTracer) SimulateAllowingAbort(Transaction tx)
+    private (TransactionResult, FrameTxValidationTracer) SimulateAllowingAbort(Transaction tx, ulong? slotNumber = null)
     {
         FrameTxValidationTracer tracer = Tracer(tx);
         try
         {
-            return (Run(tx, tracer), tracer);
+            return (Run(tx, tracer, slotNumber), tracer);
         }
         catch (OperationCanceledException)
         {

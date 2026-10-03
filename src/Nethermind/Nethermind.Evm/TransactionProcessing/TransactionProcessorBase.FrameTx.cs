@@ -167,19 +167,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}");
         }
 
-        if (tx.RecentRootReferences is not null && !spec.IsEip8272Enabled)
-        {
-            WorldState.Restore(txSnapshot);
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.RecentRootReferencesNotEnabled);
-        }
-
         if (tx.NonceKeys is not null)
         {
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
         }
 
         // The structural check bounds the frame gas sum alone; the budget it feeds can still overflow.
-        tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit, estimateSignatureBytes: allowEmptySignatures))
         {
             WorldState.Restore(txSnapshot);
@@ -227,7 +220,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.DecodedMaxFeePerGas,
             tx.MaxFeePerBlobGas.GetValueOrDefault(),
             WorldState.GetNonce(sender),
-            tx.RecentRootReferences,
             tx.NonceKeys)
         {
             SkipFeeReservation = opts.HasFlag(ExecutionOptions.FrameGasEstimation) && opts.HasFlag(ExecutionOptions.Restore)
@@ -250,12 +242,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             accessTracker.WarmUp(sender);
-        }
-
-        if (!RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, header.SlotNumber, in accessTracker))
-        {
-            WorldState.Restore(txSnapshot);
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
         }
 
         // A batch is the maximal run [i, j] where i..j-1 carry ATOMIC_BATCH_FLAG and j does not; any
@@ -678,7 +664,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 // The deploy-frame carve-outs are scoped to one frame and everything it calls, which the
                 // tracer cannot see from opcodes alone.
-                prefixTracer?.StartPrefixFrame(isDeployFrame, resolvedTarget);
+                prefixTracer?.StartPrefixFrame(frame, isDeployFrame, resolvedTarget);
 
                 // A deploy frame runs in DEFAULT mode, so unlike a VERIFY frame it may write state.
                 TransactionSubstate substate = ExecuteFrame<OnFlag>(boundedFrame, resolvedTarget, caller, isStatic: !isDeployFrame, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
@@ -777,7 +763,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             sender, tx.Nonce, tx.Frames!, tx.FrameSignatures ?? [], sigHash,
             in maxCost, in tx.MaxPriorityFeePerGas, tx.DecodedMaxFeePerGas, tx.MaxFeePerBlobGas.GetValueOrDefault(),
             WorldState.GetNonce(sender),
-            tx.RecentRootReferences,
             tx.NonceKeys);
 
         if (spec.UseHotAndColdStorage)
@@ -786,19 +771,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             accessTracker.WarmUp(sender);
         }
 
-        // RECENTROOTREFLOAD reads the envelope on the strength of this check, so it precedes the prefix.
-        // Anchored to the earliest slot the tx could execute in: the head slot is referenceable only from the next.
-        ulong? executionSlot = header.SlotNumber is { } headSlot ? headSlot + 1 : null;
-        return RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, executionSlot, in accessTracker)
-            ? TransactionResult.Ok
-            : TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
+        return TransactionResult.Ok;
     }
 
     /// <summary>Whether frame <paramref name="i"/> is a <c>deploy</c> frame opening the validation prefix.</summary>
-    /// <remarks>Positional, as RecognizedPrefixLength reaches index 1 only past an expiry-verify frame at index 0.
+    /// <remarks>Positional, as RecognizedPrefixLength reaches a deploy frame only past the optional protocol verifier frames.
     /// Spells the same prologue rule as <see cref="FrameTxValidation.ApprovalSearchStart"/>; a grammar change touches both.</remarks>
     private static bool OpensDeployPrefix(TxFrame[] frames, int i) =>
-        (i == 0 || (i == 1 && FrameTxValidation.IsExpiryVerifyFrame(frames[0])))
+        i == FrameTxValidation.ProtocolVerifierFrameCount(frames)
         && i + 1 < frames.Length
         && FrameTxValidation.IsDeployFrame(frames[i])
         && frames[i + 1].Mode == FrameMode.Verify;
