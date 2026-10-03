@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -49,7 +50,40 @@ internal static partial class PerformanceCores
         }
 
         public readonly bool Contains(int cpu) => (this[cpu >> 6] & (1UL << (cpu & 63))) != 0;
+
+        public readonly bool Overlaps(in CpuMask other)
+        {
+            for (int i = 0; i < MaskWords; i++)
+            {
+                if ((this[i] & other[i]) != 0) return true;
+            }
+
+            return false;
+        }
+
+        public readonly CpuMask Without(in CpuMask other)
+        {
+            CpuMask rest = this;
+            for (int i = 0; i < MaskWords; i++) rest[i] &= ~other[i];
+            return rest;
+        }
+
+        public readonly bool IsEmpty
+        {
+            get
+            {
+                for (int i = 0; i < MaskWords; i++)
+                {
+                    if (this[i] != 0) return false;
+                }
+
+                return true;
+            }
+        }
     }
+
+    // The thread narrowed onto the dedicated core, which the guard leaves there; 0 while none is.
+    private static int _processingThreadId;
 
     /// <summary>The logical processors <paramref name="cores"/> narrows the processing thread to; empty where it narrows nothing.</summary>
     public static ReadOnlySpan<int> Cpus(ProcessingCores cores) => Selected(cores)?.Cpus ?? [];
@@ -58,8 +92,23 @@ internal static partial class PerformanceCores
     /// Keeps the calling thread on the logical processors <paramref name="cores"/> selects until the scope is disposed,
     /// on the same thread. Does nothing where that narrows nothing, and where the kernel refuses.
     /// </summary>
-    public static Scope NarrowCurrentThread(ProcessingCores cores, ILogger logger) =>
-        Selected(cores) is { } selection ? Narrow(selection, logger) : default;
+    /// <remarks>
+    /// With <see cref="ProcessingCores.Dedicated"/>, the first call also starts <see cref="DedicatedCoreGuard"/>, which
+    /// keeps the process's other threads off that core.
+    /// </remarks>
+    public static Scope NarrowCurrentThread(ProcessingCores cores, ILogger logger)
+    {
+        if (Selected(cores) is not { } selection) return default;
+        if (cores != ProcessingCores.Dedicated || Host.OffDedicated is not { } others || !TryGetCurrentThreadId(out int threadId))
+            return Narrow(selection, logger);
+
+        // Registered before narrowing, so the guard never moves this thread off the core it is about to take.
+        Volatile.Write(ref _processingThreadId, threadId);
+        DedicatedCoreGuard.EnsureStarted(others.Mask, selection.Mask);
+        Scope scope = Narrow(selection, logger, processingThread: true);
+        if (!scope.Narrowed) Volatile.Write(ref _processingThreadId, 0);
+        return scope;
+    }
 
     /// <summary>
     /// How prewarm divides its workers between the core types: the first <see cref="PrewarmSplit.NearWorkers"/> run
@@ -84,40 +133,155 @@ internal static partial class PerformanceCores
         public Scope NarrowFar(ILogger logger) => Narrow(Far, logger);
     }
 
-    private static Scope Narrow(Selection selection, ILogger logger)
+    /// <param name="processingThread">The registered processing thread: on release it leaves the selection's processors too.</param>
+    internal static Scope Narrow(Selection selection, ILogger logger, bool processingThread = false)
     {
         // pid 0 is the calling thread.
         if (sched_getaffinity(0, CpuMaskSize, out CpuMask previous) != 0) return default;
         CpuMask mask = selection.Mask;
-        return sched_setaffinity(0, CpuMaskSize, ref mask) == 0 ? new Scope(previous, logger) : default;
+        return sched_setaffinity(0, CpuMaskSize, ref mask) == 0 ? new Scope(previous, mask, logger, processingThread) : default;
     }
 
     public readonly struct Scope : IDisposable
     {
         private readonly bool _narrowed;
+        private readonly bool _registered;
         private readonly CpuMask _previous;
+        private readonly CpuMask _narrowedTo;
         private readonly ILogger _logger;
 
-        internal Scope(CpuMask previous, ILogger logger)
+        internal Scope(CpuMask previous, CpuMask narrowedTo, ILogger logger, bool processingThread)
         {
             _narrowed = true;
+            _registered = processingThread;
             _previous = previous;
+            _narrowedTo = narrowedTo;
             _logger = logger;
         }
+
+        internal bool Narrowed => _narrowed;
 
         public void Dispose()
         {
             if (!_narrowed) return;
 
             CpuMask restored = _previous;
-            if (sched_setaffinity(0, CpuMaskSize, ref restored) == 0) return;
+            // The released thread returns to the pool: off the dedicated core now rather than at the guard's next pass.
+            if (_registered)
+            {
+                CpuMask off = restored.Without(_narrowedTo);
+                if (!off.IsEmpty) restored = off;
+            }
 
-            // A cpuset changed at runtime to exclude the previous mask; the kernel narrows every CPU to the new cpuset.
-            restored = CpuMask.Every();
-            sched_setaffinity(0, CpuMaskSize, ref restored);
-            if (Interlocked.Exchange(ref _restoreRefused, 1) == 0 && _logger.IsWarn)
-                _logger.Warn("A block processing thread could not restore its CPU affinity, so it was widened to every CPU the cpuset allows instead.");
+            if (sched_setaffinity(0, CpuMaskSize, ref restored) != 0)
+            {
+                // A cpuset changed at runtime to exclude the previous mask; the kernel narrows every CPU to the new cpuset.
+                restored = CpuMask.Every();
+                sched_setaffinity(0, CpuMaskSize, ref restored);
+                if (Interlocked.Exchange(ref _restoreRefused, 1) == 0 && _logger.IsWarn)
+                    _logger.Warn("A block processing thread could not restore its CPU affinity, so it was widened to every CPU the cpuset allows instead.");
+            }
+
+            if (_registered) Volatile.Write(ref _processingThreadId, 0);
         }
+    }
+
+    /// <summary>
+    /// Keeps every thread of the process but the processing one off the dedicated core. The scheduler would otherwise run
+    /// pool threads there, and the processing loop, narrowed onto the core each time it resumes, would wait for them.
+    /// </summary>
+    /// <remarks>
+    /// The runtime starts each new thread on the process's full mask, so one pass is not enough: a background thread
+    /// checks every thread each <see cref="Interval"/> and takes the dedicated core out of the masks that hold it. A
+    /// thread that exits mid-pass, or a mask the kernel refuses, is tried again on the next pass.
+    /// </remarks>
+    private static class DedicatedCoreGuard
+    {
+        private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(100);
+        private static int _started;
+
+        public static void EnsureStarted(CpuMask others, CpuMask dedicated)
+        {
+            if (Interlocked.Exchange(ref _started, 1) != 0) return;
+            new Thread(() => Run(others, dedicated)) { IsBackground = true, Name = "Dedicated core guard" }.Start();
+        }
+
+        private static void Run(CpuMask others, CpuMask dedicated)
+        {
+            while (true)
+            {
+                try
+                {
+                    MoveOffDedicatedCore(ThreadIds(), others, dedicated, keep: 0);
+                }
+                catch (Exception)
+                {
+                    // /proc unreadable for a moment: the next pass tries again.
+                }
+
+                Thread.Sleep(Interval);
+            }
+        }
+
+        private static IEnumerable<int> ThreadIds()
+        {
+            foreach (string task in Directory.EnumerateDirectories("/proc/self/task"))
+            {
+                if (int.TryParse(Path.GetFileName(task), out int threadId)) yield return threadId;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Takes <paramref name="dedicated"/> out of the mask of each of <paramref name="threads"/> that may run on it, except
+    /// <paramref name="keep"/> and the registered processing thread. A thread pinned to nothing but the dedicated core,
+    /// such as a server GC heap thread, goes to <paramref name="others"/>: its background marking would otherwise run
+    /// beside block processing.
+    /// </summary>
+    /// <returns>How many threads were narrowed.</returns>
+    internal static int MoveOffDedicatedCore(IEnumerable<int> threads, CpuMask others, CpuMask dedicated, int keep)
+    {
+        int moved = 0;
+        foreach (int threadId in threads)
+        {
+            if (threadId == keep || threadId == Volatile.Read(ref _processingThreadId)) continue;
+            if (!TryGetAffinity(threadId, out CpuMask current) || !current.Overlaps(dedicated)) continue;
+
+            CpuMask narrowed = current.Without(dedicated);
+            if (narrowed.IsEmpty) narrowed = others;
+            if (sched_setaffinity(threadId, CpuMaskSize, ref narrowed) != 0) continue;
+            moved++;
+
+            // The processing loop may have registered this thread and narrowed it onto the dedicated core since the
+            // check above; it would then run its block off that core, so it goes back. A thread that finishes its block
+            // in between is left on the dedicated core until the next pass.
+            if (threadId == Volatile.Read(ref _processingThreadId))
+            {
+                CpuMask back = dedicated;
+                sched_setaffinity(threadId, CpuMaskSize, ref back);
+            }
+        }
+
+        return moved;
+    }
+
+    internal static bool TryGetAffinity(int threadId, out CpuMask mask) => sched_getaffinity(threadId, CpuMaskSize, out mask) == 0;
+
+    internal static bool TrySetAffinity(int threadId, CpuMask mask) => sched_setaffinity(threadId, CpuMaskSize, ref mask) == 0;
+
+    // glibc exports a gettid wrapper only from 2.30, so the system call is made directly; its number depends on the architecture.
+    private static readonly long GettidSyscall = RuntimeInformation.ProcessArchitecture switch
+    {
+        Architecture.X64 => 186,
+        Architecture.Arm64 or Architecture.RiscV64 or Architecture.LoongArch64 => 178,
+        _ => -1,
+    };
+
+    /// <summary>The kernel's id of the calling thread; false on an architecture whose system call number is not known here.</summary>
+    internal static bool TryGetCurrentThreadId(out int threadId)
+    {
+        threadId = GettidSyscall < 0 ? 0 : (int)syscall(GettidSyscall);
+        return threadId > 0;
     }
 
     internal sealed class Selection(CpuMask mask, int[] cpus)
@@ -132,6 +296,8 @@ internal static partial class PerformanceCores
         public static readonly Selection?[] Selections;
         public static readonly PrewarmSplit? Prewarm;
         public static readonly PrewarmSplit? PrewarmDedicated;
+        /// <summary>Every allowed logical processor but the dedicated core's: where the guard keeps the other threads.</summary>
+        public static readonly Selection? OffDedicated;
 
         static Host()
         {
@@ -139,7 +305,7 @@ internal static partial class PerformanceCores
             try
             {
                 string? performanceCpus = ReadOrNull("/sys/devices/cpu_core/cpus");
-                if (performanceCpus is null || !TryReadAffinity(out CpuMask allowedMask)) return;
+                if (!TryReadAffinity(out CpuMask allowedMask)) return;
 
                 HashSet<int> allowed = [];
                 for (int cpu = 0; cpu < MaxCpus; cpu++)
@@ -147,10 +313,31 @@ internal static partial class PerformanceCores
                     if (allowedMask.Contains(cpu)) allowed.Add(cpu);
                 }
 
+                if (performanceCpus is null)
+                {
+                    // One kind of core: only Dedicated narrows anything.
+                    if (TryBuildUniformDedicated(allowed, ReadSiblings, out Selection? uniformCore, out PrewarmSplit? uniformPrewarm))
+                    {
+                        Selections[(int)ProcessingCores.Dedicated] = uniformCore;
+                        PrewarmDedicated = uniformPrewarm;
+                        OffDedicated = uniformPrewarm.Near;
+                    }
+
+                    return;
+                }
+
                 foreach (ProcessingCores cores in Enum.GetValues<ProcessingCores>())
                 {
                     if (TryBuildMask(cores, performanceCpus, allowed, ReadSiblings, out CpuMask mask, out int[] cpus))
                         Selections[(int)cores] = new Selection(mask, cpus);
+                }
+
+                int[] every = [.. allowed];
+                Array.Sort(every);
+                if (Selections[(int)ProcessingCores.Dedicated] is { } dedicatedCore
+                    && TryExclude(every, dedicatedCore.Cpus, out CpuMask othersMask, out int[] otherCpus))
+                {
+                    OffDedicated = new Selection(othersMask, otherCpus);
                 }
 
                 if (Selections[(int)ProcessingCores.Performance] is { } near
@@ -175,8 +362,43 @@ internal static partial class PerformanceCores
                 Selections = new Selection?[ModeCount];
                 Prewarm = null;
                 PrewarmDedicated = null;
+                OffDedicated = null;
             }
         }
+    }
+
+    /// <summary>
+    /// <see cref="ProcessingCores.Dedicated"/> on a CPU with one kind of core: every core counts as a performance core, the
+    /// processing thread gets one to itself, and every prewarm worker runs on the others.
+    /// </summary>
+    /// <remarks>
+    /// Without it, the processing thread shares a core with a prewarm worker whenever prewarming keeps every logical
+    /// processor busy, and the two hyperthreads then split the core's execution units. A host whose other cores would
+    /// keep fewer than <see cref="MinOtherCpusForUniformDedicated"/> logical processors is left unnarrowed: prewarm,
+    /// the network and the RPC would then crowd onto too few.
+    /// </remarks>
+    internal const int MinOtherCpusForUniformDedicated = 4;
+
+    internal static bool TryBuildUniformDedicated(HashSet<int> allowed, Func<int, string?> siblingsOf,
+        [NotNullWhen(true)] out Selection? dedicated, [NotNullWhen(true)] out PrewarmSplit? prewarm)
+    {
+        dedicated = null;
+        prewarm = null;
+        if (allowed.Count == 0) return false;
+
+        int[] every = [.. allowed];
+        Array.Sort(every);
+        if (!TryBuildMask(ProcessingCores.Dedicated, string.Join(",", every), allowed, siblingsOf, out CpuMask mask, out int[] cpus)
+            || !TryExclude(every, cpus, out CpuMask restMask, out int[] restCpus)
+            || restCpus.Length < MinOtherCpusForUniformDedicated)
+        {
+            return false;
+        }
+
+        dedicated = new Selection(mask, cpus);
+        Selection rest = new(restMask, restCpus);
+        prewarm = new PrewarmSplit(rest, rest, restCpus.Length);
+        return true;
     }
 
     // Any value the enum does not name - the config binder accepts numbers - narrows nothing.
@@ -382,4 +604,7 @@ internal static partial class PerformanceCores
 
     [DllImport("libc")]
     private static extern int sched_setaffinity(int pid, nint cpusetsize, ref CpuMask mask);
+
+    [DllImport("libc")]
+    private static extern long syscall(long number);
 }

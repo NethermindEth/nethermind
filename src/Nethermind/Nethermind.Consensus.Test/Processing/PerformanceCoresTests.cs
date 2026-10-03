@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Logging;
@@ -155,6 +156,149 @@ public class PerformanceCoresTests
     [Test]
     public void TryBuildMask_Dedicated_SiblingsUnknown_DoesNotNarrow() =>
         Assert.That(PerformanceCores.TryBuildMask(ProcessingCores.Dedicated, PerformanceCpus, Allowed("0-19"), static _ => null, out _, out _), Is.False);
+
+    /// <summary>One kind of core, hyperthreads numbered after every core as on most AMD CPUs: 0 and 8 share a core.</summary>
+    [Test]
+    public void TryBuildUniformDedicated_GivesTheProcessingThreadACoreAndPrewarmTheRest()
+    {
+        static string Uniform(int cpu) => $"{cpu % 8},{cpu % 8 + 8}";
+        bool built = PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-15"), Uniform,
+            out PerformanceCores.Selection dedicated, out PerformanceCores.PrewarmSplit prewarm);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True);
+            Assert.That(dedicated.Cpus, Is.EqualTo(new[] { 1, 9 }), "both hyperthreads of the first core without CPU 0");
+            Assert.That(prewarm.Near.Cpus, Is.EqualTo(new[] { 0, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15 }));
+            Assert.That(prewarm.Far.Cpus, Is.EqualTo(prewarm.Near.Cpus), "every prewarm worker stays off the processing core");
+            Assert.That(prewarm.NearWorkers, Is.EqualTo(14));
+        }
+    }
+
+    /// <param name="pinning">The helper thread's mask before the pass: every CPU, the dedicated one and one other, or the dedicated one alone.</param>
+    [TestCase("all", TestName = "MoveOffDedicatedCore_UnpinnedThread_TakesTheOtherCpus")]
+    [TestCase("pair", TestName = "MoveOffDedicatedCore_ThreadPinnedElsewhereToo_KeepsItsOtherCpu")]
+    [TestCase("dedicated", TestName = "MoveOffDedicatedCore_ThreadPinnedToTheDedicatedCpuOnly_GoesToTheOthers")]
+    public void MoveOffDedicatedCore_LeavesTheKeptThreadAlone(string pinning)
+    {
+        if (!OperatingSystem.IsLinux()) Assert.Ignore("Thread affinity is read and set through Linux system calls.");
+        Assert.That(PerformanceCores.TryGetAffinity(0, out PerformanceCores.CpuMask allowed), Is.True);
+        int[] cpus = Enumerable.Range(0, PerformanceCores.MaxCpus).Where(cpu => allowed.Contains(cpu)).ToArray();
+        if (cpus.Length < 2) Assert.Ignore("A thread needs two CPUs to be moved between.");
+
+        PerformanceCores.CpuMask dedicated = default;
+        dedicated.Add(cpus[^1]);
+        PerformanceCores.CpuMask others = default;
+        foreach (int cpu in cpus[..^1]) others.Add(cpu);
+        PerformanceCores.CpuMask start = default;
+        switch (pinning)
+        {
+            case "all":
+                start = allowed;
+                break;
+            case "pair":
+                start.Add(cpus[0]);
+                start.Add(cpus[^1]);
+                break;
+            default:
+                start.Add(cpus[^1]);
+                break;
+        }
+
+        PerformanceCores.CpuMask expected = default;
+        switch (pinning)
+        {
+            case "pair":
+                expected.Add(cpus[0]);
+                break;
+            default:
+                expected = others;
+                break;
+        }
+
+        using ManualResetEventSlim started = new();
+        using ManualResetEventSlim release = new();
+        int otherThread = 0;
+        Thread thread = new(() =>
+        {
+            PerformanceCores.TryGetCurrentThreadId(out otherThread);
+            PerformanceCores.TrySetAffinity(0, start);
+            started.Set();
+            release.Wait();
+        });
+        thread.Start();
+        try
+        {
+            started.Wait();
+            Assert.That(PerformanceCores.TryGetCurrentThreadId(out int self), Is.True);
+            Assert.That(PerformanceCores.TryGetAffinity(self, out PerformanceCores.CpuMask selfBefore), Is.True);
+            int moved = PerformanceCores.MoveOffDedicatedCore([otherThread, self], others, dedicated, keep: self);
+
+            Assert.That(PerformanceCores.TryGetAffinity(otherThread, out PerformanceCores.CpuMask otherMask), Is.True);
+            Assert.That(PerformanceCores.TryGetAffinity(self, out PerformanceCores.CpuMask selfAfter), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(moved, Is.EqualTo(1));
+                Assert.That(otherMask.Overlaps(dedicated), Is.False, "the other thread leaves the dedicated core");
+                Assert.That(otherMask.Overlaps(expected) && !otherMask.Without(expected).Overlaps(allowed), Is.True, "the rest of its mask is kept, or the others when nothing is left");
+                Assert.That(selfAfter.Overlaps(selfBefore) && !selfAfter.Without(selfBefore).Overlaps(allowed), Is.True, "the kept thread keeps its mask");
+            }
+        }
+        finally
+        {
+            release.Set();
+            thread.Join();
+        }
+    }
+
+    [Test]
+    public void Narrow_ProcessingThread_LeavesTheSelectionOnRelease([Values] bool processingThread)
+    {
+        if (!OperatingSystem.IsLinux()) Assert.Ignore("Thread affinity is read and set through Linux system calls.");
+        Assert.That(PerformanceCores.TryGetAffinity(0, out PerformanceCores.CpuMask before), Is.True);
+        int[] cpus = Enumerable.Range(0, PerformanceCores.MaxCpus).Where(cpu => before.Contains(cpu)).ToArray();
+        if (cpus.Length < 2) Assert.Ignore("A thread needs two CPUs to be moved between.");
+
+        PerformanceCores.CpuMask selected = default;
+        selected.Add(cpus[^1]);
+        PerformanceCores.Selection selection = new(selected, [cpus[^1]]);
+
+        // On a thread of its own, so the test runner's thread keeps its mask.
+        PerformanceCores.CpuMask during = default, after = default;
+        Thread thread = new(() =>
+        {
+            PerformanceCores.Scope scope = PerformanceCores.Narrow(selection, LimboLogs.Instance.GetClassLogger<PerformanceCoresTests>(), processingThread);
+            PerformanceCores.TryGetAffinity(0, out during);
+            scope.Dispose();
+            PerformanceCores.TryGetAffinity(0, out after);
+        });
+        thread.Start();
+        thread.Join();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(during.Overlaps(selected) && !during.Without(selected).Overlaps(before), Is.True, "narrowed to the selection");
+            Assert.That(after.Overlaps(selected), Is.EqualTo(!processingThread),
+                processingThread ? "the processing thread leaves the dedicated core on release" : "any other thread gets its whole mask back");
+        }
+    }
+
+    [Test]
+    public void TryBuildUniformDedicated_TooFewCpusLeft_DoesNotNarrow() =>
+        Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-3"), static cpu => $"{cpu % 2},{cpu % 2 + 2}", out _, out _), Is.False);
+
+    /// <summary>Three cores of two hyperthreads leave the rest of the node four.</summary>
+    [Test]
+    public void TryBuildUniformDedicated_FourCpusLeft_Narrows() =>
+        Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-5"), static cpu => $"{cpu % 3},{cpu % 3 + 3}", out _, out _), Is.True);
+
+    [Test]
+    public void TryBuildUniformDedicated_SiblingsUnknown_DoesNotNarrow() =>
+        Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-15"), static _ => null, out _, out _), Is.False);
+
+    [Test]
+    public void TryBuildUniformDedicated_OneCoreAllowed_HasNothingToLeavePrewarm() =>
+        Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("1,9"), static cpu => "1,9", out _, out _), Is.False);
 
     [Test]
     public void TryExclude_LeavesTheDedicatedCoreToTheProcessingThread()
