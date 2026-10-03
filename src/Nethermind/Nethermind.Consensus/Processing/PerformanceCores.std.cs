@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -139,12 +140,24 @@ internal static partial class PerformanceCores
             try
             {
                 string? performanceCpus = ReadOrNull("/sys/devices/cpu_core/cpus");
-                if (performanceCpus is null || !TryReadAffinity(out CpuMask allowedMask)) return;
+                if (!TryReadAffinity(out CpuMask allowedMask)) return;
 
                 HashSet<int> allowed = [];
                 for (int cpu = 0; cpu < MaxCpus; cpu++)
                 {
                     if (allowedMask.Contains(cpu)) allowed.Add(cpu);
+                }
+
+                if (performanceCpus is null)
+                {
+                    // One kind of core: only Dedicated narrows anything.
+                    if (TryBuildUniformDedicated(allowed, ReadSiblings, out Selection? uniformCore, out PrewarmSplit? uniformPrewarm))
+                    {
+                        Selections[(int)ProcessingCores.Dedicated] = uniformCore;
+                        PrewarmDedicated = uniformPrewarm;
+                    }
+
+                    return;
                 }
 
                 foreach (ProcessingCores cores in Enum.GetValues<ProcessingCores>())
@@ -177,6 +190,35 @@ internal static partial class PerformanceCores
                 PrewarmDedicated = null;
             }
         }
+    }
+
+    /// <summary>
+    /// <see cref="ProcessingCores.Dedicated"/> on a CPU with one kind of core: every core counts as a performance core, the
+    /// processing thread gets one to itself, and every prewarm worker runs on the others.
+    /// </summary>
+    /// <remarks>
+    /// Without it, the processing thread shares a core with a prewarm worker whenever prewarming keeps every logical
+    /// processor busy, and the two hyperthreads then split the core's execution units.
+    /// </remarks>
+    internal static bool TryBuildUniformDedicated(HashSet<int> allowed, Func<int, string?> siblingsOf,
+        [NotNullWhen(true)] out Selection? dedicated, [NotNullWhen(true)] out PrewarmSplit? prewarm)
+    {
+        dedicated = null;
+        prewarm = null;
+        if (allowed.Count == 0) return false;
+
+        int[] every = [.. allowed];
+        Array.Sort(every);
+        if (!TryBuildMask(ProcessingCores.Dedicated, string.Join(",", every), allowed, siblingsOf, out CpuMask mask, out int[] cpus)
+            || !TryExclude(every, cpus, out CpuMask restMask, out int[] restCpus))
+        {
+            return false;
+        }
+
+        dedicated = new Selection(mask, cpus);
+        Selection rest = new(restMask, restCpus);
+        prewarm = new PrewarmSplit(rest, rest, restCpus.Length);
+        return true;
     }
 
     // Any value the enum does not name - the config binder accepts numbers - narrows nothing.

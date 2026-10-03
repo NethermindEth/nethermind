@@ -156,6 +156,32 @@ public class PerformanceCoresTests
     public void TryBuildMask_Dedicated_SiblingsUnknown_DoesNotNarrow() =>
         Assert.That(PerformanceCores.TryBuildMask(ProcessingCores.Dedicated, PerformanceCpus, Allowed("0-19"), static _ => null, out _, out _), Is.False);
 
+    /// <summary>One kind of core, hyperthreads numbered after every core as on most AMD CPUs: 0 and 8 share a core.</summary>
+    [Test]
+    public void TryBuildUniformDedicated_GivesTheProcessingThreadACoreAndPrewarmTheRest()
+    {
+        static string Uniform(int cpu) => $"{cpu % 8},{cpu % 8 + 8}";
+        bool built = PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-15"), Uniform,
+            out PerformanceCores.Selection dedicated, out PerformanceCores.PrewarmSplit prewarm);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True);
+            Assert.That(dedicated.Cpus, Is.EqualTo(new[] { 1, 9 }), "both hyperthreads of the first core without CPU 0");
+            Assert.That(prewarm.Near.Cpus, Is.EqualTo(new[] { 0, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15 }));
+            Assert.That(prewarm.Far.Cpus, Is.EqualTo(prewarm.Near.Cpus), "every prewarm worker stays off the processing core");
+            Assert.That(prewarm.NearWorkers, Is.EqualTo(14));
+        }
+    }
+
+    [Test]
+    public void TryBuildUniformDedicated_SiblingsUnknown_DoesNotNarrow() =>
+        Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-15"), static _ => null, out _, out _), Is.False);
+
+    [Test]
+    public void TryBuildUniformDedicated_OneCoreAllowed_HasNothingToLeavePrewarm() =>
+        Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("1,9"), static cpu => "1,9", out _, out _), Is.False);
+
     [Test]
     public void TryExclude_LeavesTheDedicatedCoreToTheProcessingThread()
     {
