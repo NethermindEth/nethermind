@@ -668,10 +668,16 @@ namespace Nethermind.JsonRpc.Modules
             /// <see cref="JsonSerializer.Deserialize(ref Utf8JsonReader, JsonTypeInfo)"/> first skips over the whole value to
             /// scope a reader to it, an extra pass over every parameter. Calling the converter avoids that pass, so the
             /// check that it consumed exactly one value, which that scoping enforced, is made here instead.
+            /// A converter declared for a base type of <typeparamref name="T"/> cannot be called this way, so it is
+            /// read through the serializer.
             /// </remarks>
             private static ParameterValueReader CreateTypedValueReader<T>(JsonTypeInfo typeInfo)
             {
-                JsonConverter<T> converter = (JsonConverter<T>)typeInfo.Converter;
+                if (typeInfo.Converter is not JsonConverter<T> converter)
+                {
+                    return (ref Utf8JsonReader reader) => JsonSerializer.Deserialize(ref reader, typeInfo);
+                }
+
                 JsonSerializerOptions options = typeInfo.Options;
                 // STJ's own converters re-resolve metadata on Read, which only works on read-only options. GetTypeInfo
                 // resolves on mutable options without locking them, so lock them as the first serializer call would.

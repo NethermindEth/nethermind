@@ -251,6 +251,7 @@ public class RpcModuleProviderTests
     }
 
     [TestCase(nameof(DirectInvokerRpcModule.direct_with_converter), "[[1,2],3]", new[] { 42 })]
+    [TestCase(nameof(DirectInvokerRpcModule.direct_with_base_type_converter), "[[1,2],3]", new[] { 42 })]
     [TestCase(nameof(DirectInvokerRpcModule.direct_required_value_param), "[5,3]", 5)]
     public void Parameter_value_reader_stops_on_the_last_token_of_its_value(string methodName, string json, object expected)
     {
@@ -572,6 +573,10 @@ public class RpcModuleProviderTests
             [JsonRpcParameter(ConverterType = typeof(SingleIntArrayConverter))] int[] values) =>
             ResultWrapper<int>.Success(values[0]);
 
+        public ResultWrapper<int> direct_with_base_type_converter(
+            [JsonRpcParameter(ConverterType = typeof(IntListConverter))] int[] values) =>
+            ResultWrapper<int>.Success(values[0]);
+
         public ResultWrapper<int> direct_with_object_param(ObjectParameter parameter) => ResultWrapper<int>.Success(parameter.Value);
 
         public ResultWrapper<int> direct_with_underreading_converter(
@@ -616,6 +621,20 @@ public class RpcModuleProviderTests
         }
 
         public override void Write(Utf8JsonWriter writer, int[] value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+    }
+
+    public sealed class IntListConverter : JsonConverter<IReadOnlyList<int>>
+    {
+        public override bool CanConvert(Type typeToConvert) => typeof(IReadOnlyList<int>).IsAssignableFrom(typeToConvert);
+
+        public override IReadOnlyList<int> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            reader.Skip();
+            return new[] { 42 };
+        }
+
+        public override void Write(Utf8JsonWriter writer, IReadOnlyList<int> value, JsonSerializerOptions options) =>
             throw new NotSupportedException();
     }
 
