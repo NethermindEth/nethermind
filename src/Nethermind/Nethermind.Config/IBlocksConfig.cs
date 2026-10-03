@@ -51,7 +51,7 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
-    [ConfigItem(Description = "On Linux, pin block processing to: `All` logical processors; both hyperthreads of every `Performance` core or one hyperthread of each (`PerformancePhysical`), on an Intel hybrid CPU only; or one core to itself, the first without CPU 0, kept clear of prewarm and of the node's other threads (`Dedicated`). With one kind of core, `Dedicated` counts every core as a performance core and needs four logical processors left for the rest.", DefaultValue = "Dedicated", HiddenFromDocs = true)]
+    [ConfigItem(Description = "On Linux, pin block processing to: `All` logical processors; both hyperthreads of every `Performance` core or one hyperthread of each (`PerformancePhysical`), on an Intel hybrid CPU only; or one core to itself, the first without CPU 0, kept clear of prewarm and of the node's other threads (`Dedicated`). With one kind of core, `Dedicated` counts every core as a performance core and needs four logical processors left for the rest.", DefaultValue = "Performance", HiddenFromDocs = true)]
     ProcessingCores ProcessingCores { get; set; }
 
     [ConfigItem(Description = "On an Intel hybrid CPU, keep the pre-warm workers for the transactions block processing reaches next on the performance cores and the rest on the efficiency cores. No effect on other CPUs, nor with `ProcessingCores` set to `All`.", DefaultValue = "true", HiddenFromDocs = true)]
