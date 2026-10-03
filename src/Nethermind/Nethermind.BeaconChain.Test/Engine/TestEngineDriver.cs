@@ -4,8 +4,11 @@
 using System;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -23,8 +26,13 @@ internal static class TestEngineDriver
     private static SlotClock ClockAt(ulong slot) =>
         new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + slot * Spec.SecondsPerSlot)).UtcDateTime));
 
-    private sealed class FixedCustodySource(NodeColumnCustody? custody) : INodeColumnCustodySource
+    internal sealed class FixedCustodySource(NodeColumnCustody? custody) : INodeColumnCustodySource
     {
         public NodeColumnCustody? Current => custody;
+    }
+
+    internal sealed class BodyOnlyNotifier : INewPayloadNotifier
+    {
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 }

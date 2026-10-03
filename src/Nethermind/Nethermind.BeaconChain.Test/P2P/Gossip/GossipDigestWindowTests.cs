@@ -107,4 +107,19 @@ public class GossipDigestWindowTests
 
         public void Publish(IMessage value) { }
     }
+
+    internal sealed class SilentTopic : ITopic
+    {
+        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
+
+        public bool IsSubscribed => true;
+
+        public void Subscribe() { }
+
+        public void Unsubscribe() { }
+
+        public void Publish(byte[] value) { }
+
+        public void Publish(IMessage value) { }
+    }
 }

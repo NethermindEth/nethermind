@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
@@ -216,7 +217,7 @@ public class GloasCustodySamplingAvailabilityTests
 
     /// <summary>Typed as the <see cref="ExecutionPayloadEnvelopeImporter"/> delegate, so the rule's signature cannot drift from it.</summary>
     private static Func<Hash256, ExecutionPayloadBid, bool> CreateRule(NodeColumnCustody? custody, DataColumnSidecarPool pool, SlotClock clock) =>
-        new GloasCustodySamplingAvailability(new FixedCustodySource(custody), pool, clock, Spec).IsDataAvailable;
+        new GloasCustodySamplingAvailability(new TestEngineDriver.FixedCustodySource(custody), pool, clock, Spec).IsDataAvailable;
 
     private static ExecutionPayloadBid Bid(SszKzgCommitment[]? commitments = null) => new()
     {
@@ -239,9 +240,4 @@ public class GloasCustodySamplingAvailabilityTests
         new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + epoch * Spec.SlotsPerEpoch * Spec.SecondsPerSlot)).UtcDateTime));
 
     private static IEnumerable<ulong> All() => Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(c => (ulong)c);
-
-    private sealed class FixedCustodySource(NodeColumnCustody? custody) : INodeColumnCustodySource
-    {
-        public NodeColumnCustody? Current => custody;
-    }
 }

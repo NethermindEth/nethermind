@@ -8,11 +8,11 @@ using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
-using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.DataAvailability;
+using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Types;
@@ -137,7 +137,7 @@ internal sealed class ImportableBlobBlock
         payload.BlockHash = Hash(0x81);
 
         BeaconStateFulu postState = anchorState.Clone();
-        FuluStateTransition.Apply(postState, new SignedBeaconBlock { Message = block }, new EpochCache(), pubkeyCache, new AcceptingNotifier(), FuluFromGenesis, validateResult: false, verifySignatures: false);
+        FuluStateTransition.Apply(postState, new SignedBeaconBlock { Message = block }, new EpochCache(), pubkeyCache, new TestEngineDriver.BodyOnlyNotifier(), FuluFromGenesis, validateResult: false, verifySignatures: false);
         block.StateRoot = SszRoots.HashTreeRoot(postState);
         Hash256 blockRoot = SszRoots.HashTreeRoot(block);
         BlsSignature signature = Sign(proposerKey, blockRoot, anchorState.GetDomain(DomainType.BeaconProposer, 0));
@@ -356,10 +356,5 @@ internal sealed class ImportableBlobBlock
         byte[] bytes = new byte[32];
         bytes.AsSpan().Fill(value);
         return new Hash256(bytes);
-    }
-
-    private sealed class AcceptingNotifier : INewPayloadNotifier
-    {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 }
