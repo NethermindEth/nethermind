@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
@@ -75,6 +78,52 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
             )
             { TestName = "baseLen=uint32.MaxValue-68 (0xffffffbb): huge baseLength wraps exponent offset to header, must return zero (pre-EIP-7823)" };
         }
+    }
+
+    /// <summary>
+    /// An exponent of p - 2 with a listed prime p is computed as an inverse; the result must match the exponentiation,
+    /// whatever the base's size and however the exponent is padded, and a neighbouring exponent must still exponentiate.
+    /// </summary>
+    [TestCase("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001", TestName = "Inverse_BN254ScalarField")]
+    [TestCase("30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47", TestName = "Inverse_BN254BaseField")]
+    [TestCase("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", TestName = "Inverse_Secp256k1Order")]
+    [TestCase("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff", TestName = "Inverse_Secp256r1BaseField")]
+    [TestCase("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", TestName = "Inverse_Bls12381BaseField")]
+    public void PrimeMinusTwoExponent_MatchesTheExponentiation(string primeHex)
+    {
+        BigInteger p = BigInteger.Parse("0" + primeHex, System.Globalization.NumberStyles.HexNumber);
+        byte[] modulus = Convert.FromHexString(primeHex);
+        Random random = new(primeHex.Length);
+        List<BigInteger> bases = [2, 3, p - 1, p + 2, 2 * p + 5, (BigInteger.One << 400) + 11];
+        for (int i = 0; i < 40; i++)
+        {
+            byte[] b = new byte[random.Next(1, 65)];
+            random.NextBytes(b);
+            bases.Add(new BigInteger(b, isUnsigned: true, isBigEndian: true));
+        }
+
+        foreach (BigInteger exponent in new[] { p - 2, p - 3, p - 1 })
+            foreach (int padding in new[] { 0, 5 })
+                foreach (BigInteger b in bases)
+                {
+                    byte[] baseBytes = b.IsZero ? [0] : b.ToByteArray(isUnsigned: true, isBigEndian: true);
+                    byte[] exponentBytes = new byte[padding + exponent.GetByteCount(isUnsigned: true)];
+                    exponent.ToByteArray(isUnsigned: true, isBigEndian: true).CopyTo(exponentBytes, padding);
+                    byte[] input = new byte[96 + baseBytes.Length + exponentBytes.Length + modulus.Length];
+                    new BigInteger(baseBytes.Length).ToByteArray(isUnsigned: true, isBigEndian: true).CopyTo(input.AsSpan(32 - new BigInteger(baseBytes.Length).GetByteCount(isUnsigned: true)));
+                    new BigInteger(exponentBytes.Length).ToByteArray(isUnsigned: true, isBigEndian: true).CopyTo(input.AsSpan(64 - new BigInteger(exponentBytes.Length).GetByteCount(isUnsigned: true)));
+                    new BigInteger(modulus.Length).ToByteArray(isUnsigned: true, isBigEndian: true).CopyTo(input.AsSpan(96 - new BigInteger(modulus.Length).GetByteCount(isUnsigned: true)));
+                    baseBytes.CopyTo(input, 96);
+                    exponentBytes.CopyTo(input, 96 + baseBytes.Length);
+                    modulus.CopyTo(input, 96 + baseBytes.Length + exponentBytes.Length);
+
+                    byte[] expected = new byte[modulus.Length];
+                    byte[] power = BigInteger.ModPow(b, exponent, p).ToByteArray(isUnsigned: true, isBigEndian: true);
+                    power.CopyTo(expected, expected.Length - power.Length);
+
+                    Result<byte[]> result = ModExpPrecompile.Instance.Run(input, Osaka.Instance);
+                    Assert.That(result.Data, Is.EqualTo(expected), $"base {b:x}, exponent p{exponent - p}, padding {padding}");
+                }
     }
 
     [TestCaseSource(nameof(ReducibleBases))]
