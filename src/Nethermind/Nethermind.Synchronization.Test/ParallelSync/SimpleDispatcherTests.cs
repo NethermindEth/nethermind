@@ -123,7 +123,10 @@ public class SimpleDispatcherTests
 
         // Run must not return while dispatches are in flight, and despite free peers no dispatch
         // beyond the cap may start.
-        Assert.That(await Task.WhenAny(runTask, Task.Delay(200, cancellationToken)), Is.Not.SameAs(runTask));
+        Task first = await Task.WhenAny(runTask, Task.Delay(200, cancellationToken));
+        // Surfaces Run's exception in the failure if it faulted early.
+        if (first == runTask) await runTask;
+        Assert.That(first, Is.Not.SameAs(runTask));
         Assert.That(downloader.Started, Is.EqualTo(InFlightCap));
 
         downloader.ReleaseAll();
