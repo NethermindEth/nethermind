@@ -380,7 +380,7 @@ public partial class GossipRouterTests
     [Test]
     public void Gloas_topics_are_subscribed_only_on_a_Gloas_digest_and_survive_digest_rotation()
     {
-        BeaconChainSpec spec = GossipDigestWindowTests.WithBlobEntry(Sepolia, new BlobScheduleEntry(Sepolia.GloasForkEpoch + 1, 21));
+        BeaconChainSpec spec = DataColumnSidecarTestFixture.WithBlobEntry(Sepolia, new BlobScheduleEntry(Sepolia.GloasForkEpoch + 1, 21));
         byte[] fuluDigest = ForkDigest.Compute(spec, spec.GloasForkEpoch - 1);
         byte[] bpo1Digest = ForkDigest.Compute(spec, spec.GloasForkEpoch);
         byte[] bpo2Digest = ForkDigest.Compute(spec, spec.GloasForkEpoch + 1);
