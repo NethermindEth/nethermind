@@ -15,6 +15,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.ForkChoice;
@@ -212,6 +213,7 @@ public class GloasBlockImporterTests
         Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the head's payload is verified");
         if (ptcVotedTimely)
         {
+            importer.ComputeHead();
             foreach (ulong member in first.PostState.GetPtc(ForkSlot, chain.Spec).Indices!.Distinct())
             {
                 Assert.That(importer.OnGossipPayloadAttestation(PtcVote(first, member, payloadPresent: true)), Is.True, "fixture: a signed vote of a PTC member");
@@ -296,7 +298,10 @@ public class GloasBlockImporterTests
     public async Task Gossip_aggregate_claiming_a_payload_in_its_blocks_slot_charges_the_delivering_peer([Values] bool finalizedAncestor, [Values] bool validSignature)
     {
         SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: ClockAt(chain, ForkSlot, millisecondsEarly: 0));
+        BeaconChainStore store = chain.CreateStore();
+        SlotClock clock = ClockAt(chain, ForkSlot, millisecondsEarly: 0);
+        ForkChoiceSnapshotHolder snapshots = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, store: store, clock: clock);
         SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, block);
         SignedGloasChain.Block sibling = chain.Next(null, ForkSlot, full: false, 0xA2);
@@ -334,17 +339,47 @@ public class GloasBlockImporterTests
         aggregate.Signature = Sign(ValidatorKey(validSignature ? member : (member + 1) % ValidatorCount),
             Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(aggregate.Message), block.PostState.GetDomain(DomainType.AggregateAndProof, 1)));
         ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        runner.GetHead();
         Assert.That(() => runner.OnAggregateAndProof(aggregate),
             Throws.TypeOf<ForkChoiceException>().With.Message.EqualTo(!validSignature ? "Aggregator signature is invalid" : finalizedAncestor
                 ? $"Attestation for slot {ForkSlot} votes for the payload of a block from its own slot"
                 : $"Aggregate head block {block.Root} does not descend from the finalized checkpoint {new CheckpointRef(1, sibling.Root)}"),
             "finalized ancestry must be checked before the same-slot payload claim can charge a peer");
+        ColumnGossipRouter headers = new(chain.Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
+        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, store, headers: headers);
         await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, ForkSlot, GossipTopics.BeaconAggregateAndProof,
             Snappy.CompressToArray(SignedAggregateAndProofGloas.Encode(aggregate)), verdict => new BeaconSyncOrchestrator.GossipGloasAggregateItem(aggregate, verdict),
-            !validSignature || finalizedAncestor ? MessageValidity.Rejected : MessageValidity.Ignored);
+            !validSignature || finalizedAncestor ? MessageValidity.Rejected : MessageValidity.Ignored, router, gloas: true);
 
         BlsSignature SignVote(Hash256 root, ReadOnlySpan<byte> domain) =>
             Sign(ValidatorKey(member), Domains.ComputeSigningRoot(root, block.PostState.GetDomain(domain, 1)));
+    }
+
+    [Test]
+    public async Task Stale_aggregate_for_finalized_block_rejects_out_of_range_committee_before_timing([Values(1UL, ulong.MaxValue)] ulong targetEpoch)
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        BeaconChainStore store = chain.CreateStore();
+        store.PutForkedBlock(block.Root, block.Forked);
+        ulong currentSlot = 3 * ForkSlot;
+        SlotClock clock = ClockAt(chain, currentSlot, millisecondsEarly: 0);
+        ForkChoiceSnapshotHolder snapshots = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, store: store, clock: clock, gloasAnchor: block);
+        importer.OnSlotTick(currentSlot);
+        importer.ComputeHead();
+        SignedAggregateAndProofGloas aggregate = SignedAggregate(block);
+        aggregate.Message!.Aggregate!.Data!.Index = 1;
+        aggregate.Message.Aggregate.Data.Target!.Epoch = targetEpoch;
+        aggregate.Message.Aggregate.CommitteeBits!.SetAll(false);
+        aggregate.Message.Aggregate.CommitteeBits[1] = true;
+        ColumnGossipRouter headers = new(chain.Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
+        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, store, headers: headers);
+
+        Assert.That(headers.HasFinalizedAncestor(block.Root), Is.True, "the same-slot payload claim must not bypass committee validation for a held finalized block");
+        await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, currentSlot, GossipTopics.BeaconAggregateAndProof,
+            Snappy.CompressToArray(SignedAggregateAndProofGloas.Encode(aggregate)), verdict => new BeaconSyncOrchestrator.GossipGloasAggregateItem(aggregate, verdict),
+            MessageValidity.Rejected, router, gloas: true);
     }
 
     public enum GossipPtcVote
@@ -453,6 +488,7 @@ public class GloasBlockImporterTests
         Import(importer, first, second);
         GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance);
         router.PayloadAttestationMessageReceived += (vote, _) => importer.OnGossipPayloadAttestation(vote);
+        importer.ComputeHead();
         ulong member = second.PostState.GetPtc(ForkSlot + 1, chain.Spec).Indices![0];
         PayloadAttestationMessage genuine = PtcVote(second, member, payloadPresent: true);
         const int forgeries = 40;
@@ -486,6 +522,7 @@ public class GloasBlockImporterTests
         Import(importer, first, second);
         GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance);
         int accepted = 0;
+        importer.ComputeHead();
         router.PayloadAttestationMessageReceived += (vote, _) =>
         {
             if (importer.OnGossipPayloadAttestation(vote) == true)
@@ -519,6 +556,119 @@ public class GloasBlockImporterTests
             Assert.That(importer.GetPtc(Hash(0x5A), ForkSlot), Is.Null, "unknown head");
             Assert.That(importer.GetPtc(first.Root, ForkSlot + 10 * Presets.SlotsPerEpoch), Is.Null, "outside the state's window");
         }
+    }
+
+    [Test]
+    public async Task Worker_accepts_votes_after_a_slashing_without_an_intervening_tick([Values] bool gloasSlashing, [Values] bool payloadVote)
+    {
+        SignedGloasChain chain = new();
+        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot).AddSeconds(1));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        Import(importer, block);
+        AttesterSlashing slashing = SignedSlashing(chain, block);
+        List<MessageValidity> slashingVerdicts = [];
+        GossipVerdict slashingVerdict = new(validity => { slashingVerdicts.Add(validity); return true; }, null);
+        BeaconSyncOrchestrator.WorkItem preceding = gloasSlashing
+            ? new BeaconSyncOrchestrator.GossipGloasAttesterSlashingItem(new AttesterSlashingGloas
+            {
+                Attestation1 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation1!.AttestingIndices, Data = slashing.Attestation1.Data, Signature = slashing.Attestation1.Signature },
+                Attestation2 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation2!.AttestingIndices, Data = slashing.Attestation2.Data, Signature = slashing.Attestation2.Signature },
+            }, slashingVerdict)
+            : new BeaconSyncOrchestrator.GossipAttesterSlashingItem(slashing, slashingVerdict);
+
+        if (payloadVote)
+        {
+            PayloadAttestationMessage vote = PtcVote(block, block.PostState.GetPtc(ForkSlot, chain.Spec).Indices![0], payloadPresent: true);
+            await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, ForkSlot, GossipTopics.PayloadAttestationMessage,
+                Snappy.CompressToArray(PayloadAttestationMessage.Encode(vote)), verdict => new BeaconSyncOrchestrator.GossipPayloadAttestationItem(vote, verdict),
+                MessageValidity.Accepted, preceding: preceding);
+        }
+        else
+        {
+            SignedAggregateAndProofGloas aggregate = SignedAggregate(block);
+            await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, ForkSlot, GossipTopics.BeaconAggregateAndProof,
+                Snappy.CompressToArray(SignedAggregateAndProofGloas.Encode(aggregate)), verdict => new BeaconSyncOrchestrator.GossipGloasAggregateItem(aggregate, verdict),
+                MessageValidity.Accepted, preceding: preceding);
+        }
+
+        Assert.That(slashingVerdicts, Is.EqualTo(new[] { MessageValidity.Accepted }), "the slashing must clear the cached head before the following vote is consumed");
+    }
+
+    [Test]
+    public async Task Worker_accepts_gossip_after_a_skipped_tick_with_a_real_importer([Values] SkippedTickOperation operation)
+    {
+        SignedGloasChain chain = new();
+        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot));
+        SlotClock clock = new(chain.Spec, timestamper);
+        BeaconChainStore store = chain.CreateStore();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store, clock: clock);
+        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        Import(importer, block);
+        timestamper.Set(SlotStart(chain, ForkSlot + 1));
+        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, store);
+        string topic;
+        byte[] payload;
+        if (operation == SkippedTickOperation.Aggregate)
+        {
+            topic = GossipTopics.BeaconAggregateAndProof;
+            payload = SignedAggregateAndProofGloas.Encode(SignedAggregate(block));
+        }
+        else
+        {
+            topic = GossipTopics.AttesterSlashing;
+            AttesterSlashing slashing = SignedSlashing(chain, block);
+            payload = operation == SkippedTickOperation.FuluSlashing ? AttesterSlashing.Encode(slashing) : AttesterSlashingGloas.Encode(new AttesterSlashingGloas
+            {
+                Attestation1 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation1!.AttestingIndices, Data = slashing.Attestation1.Data, Signature = slashing.Attestation1.Signature },
+                Attestation2 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation2!.AttestingIndices, Data = slashing.Attestation2.Data, Signature = slashing.Attestation2.Signature },
+            });
+        }
+
+        await BeaconSyncOrchestratorTests.AssertOperationAfterSkippedTickAsync(importer, ForkSlot + 1, router, topic,
+            Snappy.CompressToArray(payload), gloas: operation != SkippedTickOperation.FuluSlashing);
+    }
+
+    public enum SkippedTickOperation { Aggregate, FuluSlashing, GloasSlashing }
+
+    internal static AttesterSlashing SignedSlashing(SignedGloasChain chain, SignedGloasChain.Block block)
+    {
+        AttestationData first = new() { Slot = 1, BeaconBlockRoot = chain.AnchorRoot, Source = chain.AnchorState.CurrentJustifiedCheckpoint, Target = new Checkpoint { Root = chain.AnchorRoot } };
+        AttestationData second = new() { Slot = 1, BeaconBlockRoot = Hash(0xEE), Source = first.Source, Target = first.Target };
+        return new()
+        {
+            Attestation1 = new IndexedAttestation { AttestingIndices = [1], Data = first, Signature = SignAs(1, SszRoots.HashTreeRoot(first), DomainType.BeaconAttester, 0) },
+            Attestation2 = new IndexedAttestation { AttestingIndices = [1], Data = second, Signature = SignAs(1, SszRoots.HashTreeRoot(second), DomainType.BeaconAttester, 0) },
+        };
+
+        BlsSignature SignAs(int validator, Hash256 root, ReadOnlySpan<byte> domain, ulong epoch) =>
+            Sign(ValidatorKey(validator), Domains.ComputeSigningRoot(root, block.PostState.GetDomain(domain, epoch)));
+    }
+
+    internal static SignedAggregateAndProofGloas SignedAggregate(SignedGloasChain.Block block)
+    {
+        CommitteeCache committees = new EpochCache().GetCommitteeCache(block.PostState, 1);
+        AttestationData data = new() { Slot = ForkSlot, BeaconBlockRoot = block.Root, Source = block.PostState.CurrentJustifiedCheckpoint, Target = new Checkpoint { Epoch = 1, Root = block.Root } };
+        byte[] slotRoot = new byte[32];
+        BitConverter.TryWriteBytes(slotRoot, ForkSlot);
+        int[] committee = committees.GetBeaconCommittee(ForkSlot, 0).ToArray();
+        int member = committee.First(index => BeaconStateAccessors.IsAggregator(committee.Length, SignAs(index, new Hash256(slotRoot), DomainType.SelectionProof, 1)));
+        AggregateAndProofGloas message = new()
+        {
+            AggregatorIndex = (ulong)member,
+            SelectionProof = SignAs(member, new Hash256(slotRoot), DomainType.SelectionProof, 1),
+            Aggregate = new AttestationGloas
+            {
+                Data = data,
+                AggregationBits = new BitArray(committee.Length) { [Array.IndexOf(committee, member)] = true },
+                CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
+                Signature = SignAs(member, SszRoots.HashTreeRoot(data), DomainType.BeaconAttester, 1),
+            },
+        };
+        return new() { Message = message, Signature = SignAs(member, SszRoots.HashTreeRoot(message), DomainType.AggregateAndProof, 1) };
+
+        BlsSignature SignAs(int validator, Hash256 root, ReadOnlySpan<byte> domain, ulong epoch) =>
+            Sign(ValidatorKey(validator), Domains.ComputeSigningRoot(root, block.PostState.GetDomain(domain, epoch)));
     }
 
     /// <summary>A PTC member's signed vote on <paramref name="block"/>'s payload for its slot, the data available with the payload.</summary>
@@ -1112,33 +1262,6 @@ public class GloasBlockImporterTests
         }
     }
 
-    /// <summary>
-    /// The gossip proposer check reads a Gloas block's proposer from its parent's lookahead, not from the Fulu lineage
-    /// frozen at the fork. A child in the parent's next epoch reads the lookahead's second half; reading the first
-    /// half would refuse the real proposer of every block that opens an epoch.
-    /// </summary>
-    [Test]
-    public void Gloas_proposer_is_checked_against_the_parents_lookahead([Values] bool nextEpoch)
-    {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        ulong[] lookahead = first.PostState.ProposerLookahead!;
-        int offsetInEpoch = nextEpoch ? Enumerable.Range(0, (int)ForkSlot).First(i => lookahead[i] != lookahead[ForkSlot + (ulong)i]) : 1;
-        SignedGloasChain.Block child = chain.Next(first, (nextEpoch ? 2 * ForkSlot : ForkSlot) + (ulong)offsetInEpoch, full: false, 0xA2);
-        Import(importer, first);
-
-        bool expected = importer.IsExpectedProposer(child.Forked);
-        child.Signed.Message!.ProposerIndex = (child.Signed.Message.ProposerIndex + 1) % ValidatorCount;
-        bool otherProposer = importer.IsExpectedProposer(child.Forked);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(expected, Is.True);
-            Assert.That(otherProposer, Is.False);
-        }
-    }
-
     public enum HeldProposal
     {
         Signed,
@@ -1419,7 +1542,8 @@ public class GloasBlockImporterTests
         SignedGloasChain chain = new();
         BeaconChainStore store = chain.CreateStore();
         SlotClock clock = ClockAt(chain, 2 * ForkSlot + 2, millisecondsEarly: 0);
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store, clock: clock);
+        ForkChoiceSnapshotHolder snapshots = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, store: store, clock: clock);
         SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
         SignedGloasChain.Block checkpoint = chain.Next(first, 2 * ForkSlot, full: false, 0xA2);
         SignedGloasChain.Block parent = chain.Next(first, 2 * ForkSlot + 1, full: false, 0xA3);
@@ -1458,7 +1582,9 @@ public class GloasBlockImporterTests
         Assert.That(ImportOrFailIfStuck(importer, child.Forked, child.Forked.ComputeMessageRoot()), Is.EqualTo(BlockImportResult.Invalid),
             "invalid children must still be refused before a transition or a payload retry is queued");
         Assert.That(DeferredCount(importer), Is.Zero);
-        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, store);
+        importer.ComputeHead();
+        ColumnGossipRouter headers = new(chain.Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
+        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, store, headers: headers);
         await BeaconSyncOrchestratorTests.AssertBlockVerdictAsync(importer, child.Forked,
             Snappy.CompressToArray(SignedBeaconBlockGloas.Encode(child.Signed)),
             validSignature && !payloadVerified && fault != GossipBlockFault.BidExecutionHead ? MessageValidity.Ignored : MessageValidity.Rejected, router);
@@ -1636,6 +1762,7 @@ public class GloasBlockImporterTests
         BlockImportResult early = importer.Import(block.Forked, block.Root, verifySignatures: true);
         bool knownEarly = importer.IsKnown(block.Root);
         ulong member = first.PostState.GetPtc(ForkSlot, chain.Spec).Indices![0];
+        importer.ComputeHead();
         bool? voteAccepted = importer.OnGossipPayloadAttestation(PtcVote(first, member, payloadPresent: true));
         time.Set(slotStart);
         BlockImportResult onTime = importer.Import(block.Forked, block.Root, verifySignatures: true);
@@ -1685,17 +1812,14 @@ public class GloasBlockImporterTests
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store);
         SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
         SignedGloasChain.Block child = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
-        SignedGloasChain.Block grandchild = chain.Next(child, ForkSlot + 2, full: false, 0xA3);
         Import(importer, first);
         importer.OnInvalidExecutionPayload(first.Root, latestValidHash: null);
 
         BlockImportResult result = importer.Import(child.Forked, child.Root, verifySignatures: true);
-        grandchild.Signed.Message!.ProposerIndex = (grandchild.Signed.Message.ProposerIndex + 1) % ValidatorCount;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "fixture: fork choice refuses a child of an invalid payload");
-            Assert.That(importer.IsExpectedProposer(grandchild.Forked), Is.True, "no lookahead is held for the refused block, so the check defers");
             Assert.That(store.HasBlock(child.Root), Is.False, "the refused block is not stored");
             Assert.That(importer.IsKnown(child.Root), Is.False);
         }

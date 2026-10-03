@@ -90,13 +90,6 @@ public interface IBlockImporter
     bool IsKnown(Hash256 blockRoot);
 
     /// <summary>
-    /// Gossip-level proposer check: whether the block's claimed proposer matches the proposer
-    /// lookahead of the retained parent post-state. Returns <c>true</c> (defer to the state transition) when no held state's
-    /// lookahead window covers the block's slot.
-    /// </summary>
-    bool IsExpectedProposer(ForkedSignedBeaconBlock block);
-
-    /// <summary>
     /// Runs the block through the state transition of the fork its slot belongs to, registers it
     /// with fork choice along with its body attestations and attester slashings, and persists it.
     /// A Fulu block drives <c>engine_newPayload</c> via the transition hook; a Gloas block carries
@@ -143,6 +136,9 @@ public interface IBlockImporter
     /// bid's <c>block_hash</c>: only then does the head build on that payload.
     /// </remarks>
     HeadView ComputeHead();
+
+    /// <summary>Whether gossip needs the worker to recompute the cached head.</summary>
+    internal bool IsHeadStale => false;
 
     /// <summary>Why the last import refused its block, where its result alone does not say.</summary>
     ImportRefusal LastRefusal => ImportRefusal.None;

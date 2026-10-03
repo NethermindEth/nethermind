@@ -746,6 +746,11 @@ public sealed class BeaconSyncOrchestrator(
         {
             _appliedSlotTick = vote.NewestSlotTick;
             _importer!.OnSlotTick(vote.NewestSlotTick);
+            await RunHeadStepAsync(token);
+        }
+        else if (_importer!.IsHeadStale || _importedSinceHeadStep)
+        {
+            await RunHeadStepAsync(token);
         }
 
         await ProcessItemAsync(vote.Item, token);
@@ -790,6 +795,7 @@ public sealed class BeaconSyncOrchestrator(
                 if (slashingAccepted == true)
                 {
                     MarkSlashedIndicesSeen(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
+                    await RunHeadStepAsync(token);
                 }
 
                 Settle(slashingItem.Verdict, slashingAccepted);
@@ -801,6 +807,7 @@ public sealed class BeaconSyncOrchestrator(
                 if (gloasSlashingAccepted == true)
                 {
                     MarkSlashedIndicesSeen(slashing.Attestation1!.AttestingIndices!, slashing.Attestation2!.AttestingIndices!);
+                    await RunHeadStepAsync(token);
                 }
 
                 Settle(gloasSlashingItem.Verdict, gloasSlashingAccepted);

@@ -6,6 +6,7 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -73,41 +74,59 @@ public partial class GossipRouterTests
         }
     }
 
-    public enum DeferredBlockField { FuluTimestamp, FuluBlobCount, FuluParentSlot, GloasBlobCount, GloasParentSlot, GloasBidParentRoot }
+    public enum InvalidBlockField { FuluTimestamp, FuluBlobCount, FuluParentSlot, GloasBlobCount, GloasParentSlot, GloasBidParentRoot }
 
     [Test]
-    public void Block_fields_wait_for_parent_validation([Values] DeferredBlockField fault, [Values] bool earlyNextSlot)
+    public void Invalid_block_fields_require_validated_parent_data([Values] InvalidBlockField fault, [Values] bool earlyNextSlot, [Values] bool parentValidated)
     {
-        bool gloas = fault is DeferredBlockField.GloasBlobCount or DeferredBlockField.GloasParentSlot or DeferredBlockField.GloasBidParentRoot;
+        bool gloas = fault is InvalidBlockField.GloasBlobCount or InvalidBlockField.GloasParentSlot or InvalidBlockField.GloasBidParentRoot;
         ulong currentSlot = gloas ? VoteSlot : CurrentSlot;
         ulong slot = currentSlot + (earlyNextSlot ? 1UL : 0UL);
-        (GossipRouter router, BeaconChainStore store) = gloas ? CreateSepoliaRouterWithStore() : CreateRouterWithStore();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), gloas ? Sepolia : Spec);
+        Hash256 parentRoot = Keccak.Compute("parent");
+        ulong parentSlot = fault is InvalidBlockField.FuluParentSlot or InvalidBlockField.GloasParentSlot ? slot : slot - 1;
+        SlotClock clock = new(gloas ? Sepolia : Spec, new ManualTimestamper(gloas ? SepoliaSlotStart(currentSlot).AddSeconds(6)
+            : DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + currentSlot * Spec.SecondsPerSlot + 6)));
+        CheckpointRef checkpoint = new(0, parentRoot);
+        ForkChoiceSnapshotHolder snapshots = new()
+        {
+            Current = new(checkpoint, checkpoint, Hash256.Zero, parentValidated
+                ? [new(parentSlot, parentRoot, null, 0, 0, 0, ExecutionStatus.Valid, Hash256.Zero, PayloadValid: true)] : []),
+        };
+        ColumnGossipRouter headers = new(gloas ? Sepolia : Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
+        GossipRouter router = new(gloas ? Sepolia : Spec, clock, LimboLogs.Instance, store, headers: headers);
         int received = 0;
         router.BeaconBlockReceived += (_, _) => received++;
-        Hash256 parentRoot = Keccak.Compute("parent");
-        ulong parentSlot = fault is DeferredBlockField.FuluParentSlot or DeferredBlockField.GloasParentSlot ? slot : slot - 1;
         byte[] payload;
         if (gloas)
         {
             store.PutForkedBlock(parentRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(parentSlot)));
             SignedBeaconBlockGloas block = CreateMinimalGloasBlock(slot, parentRoot);
-            if (fault == DeferredBlockField.GloasBidParentRoot) block.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockRoot = Keccak.Compute("other parent");
-            if (fault == DeferredBlockField.GloasBlobCount) block.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlobKzgCommitments = Commitments();
+            if (fault == InvalidBlockField.GloasBidParentRoot) block.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockRoot = Keccak.Compute("other parent");
+            if (fault == InvalidBlockField.GloasBlobCount) block.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlobKzgCommitments = Commitments();
             payload = SignedBeaconBlockGloas.Encode(block);
         }
         else
         {
             store.PutBlock(parentRoot, TestChain.CreateBlock(parentSlot, Hash256.Zero));
             SignedBeaconBlock block = TestChain.CreateBlock(slot, parentRoot);
-            if (fault == DeferredBlockField.FuluTimestamp) block.Message!.Body!.ExecutionPayload!.Timestamp++;
-            if (fault == DeferredBlockField.FuluBlobCount) block.Message!.Body!.BlobKzgCommitments = Commitments();
+            if (fault == InvalidBlockField.FuluTimestamp) block.Message!.Body!.ExecutionPayload!.Timestamp++;
+            if (fault == InvalidBlockField.FuluBlobCount) block.Message!.Body!.BlobKzgCommitments = Commitments();
             payload = SignedBeaconBlock.Encode(block);
         }
 
         MessageValidity validity = router.Handle(GossipTopics.BeaconBlock, gloas, Snappy.CompressToArray(payload));
 
-        Assert.That((validity, received), Is.EqualTo((MessageValidity.Ignored, earlyNextSlot ? 0 : 1)),
-            "the worker must check parent execution and payload availability before these block fields can charge a peer");
+        GossipDropReason reason = fault switch
+        {
+            InvalidBlockField.FuluParentSlot or InvalidBlockField.GloasParentSlot => GossipDropReason.NotAboveParentSlot,
+            InvalidBlockField.FuluBlobCount or InvalidBlockField.GloasBlobCount => GossipDropReason.LimitExceeded,
+            _ => GossipDropReason.InvalidField,
+        };
+        if (!parentValidated && earlyNextSlot)
+            Assert.That((validity, received), Is.EqualTo((MessageValidity.Ignored, 0)), "an early block waits for its slot before parent validation");
+        else
+            AssertVerdict(router, validity, received, parentValidated ? reason : null, rejected: parentValidated && !earlyNextSlot);
 
         static SszKzgCommitment[] Commitments() => Enumerable.Range(0, 100)
             .Select(_ => SszKzgCommitment.FromSpan(new byte[SszKzgCommitment.KzgCommitmentLength])).ToArray();
@@ -197,6 +216,48 @@ public partial class GossipRouterTests
             verdict.Complete(router.Handle(GossipTopics.BeaconAggregateAndProof, gloas, compressed, verdict));
             return Task.CompletedTask;
         }, MessageValidity.Ignored);
+
+        Assert.That(router.GetDropCount(GossipDropReason.UnknownBlock), Is.EqualTo(1), "an unseen block is unavailable, not an invalid field");
+    }
+
+    [Test]
+    public void Aggregate_failed_block_rejects_after_duplicates_before_committee_and_timing_checks(
+        [Values] bool gloas, [Values] bool verified, [Values] bool earlyNextSlot, [Values(0, 1)] int committeeIndex)
+    {
+        ulong wallSlot = gloas ? VoteSlot : CurrentSlot;
+        ulong slot = wallSlot + (earlyNextSlot ? 1UL : 0UL);
+        FailedBlockRoots failed = new();
+        failed.Add(Hash256.Zero, wallSlot);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), gloas ? Sepolia : Spec);
+        DateTime now = gloas ? SepoliaSlotStart(wallSlot) : DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + wallSlot * Spec.SecondsPerSlot);
+        GossipRouter router = new(gloas ? Sepolia : Spec, new SlotClock(gloas ? Sepolia : Spec, new ManualTimestamper(now.AddSeconds(6))),
+            LimboLogs.Instance, store, failedBlocks: failed);
+        int received = 0;
+        router.AggregateAndProofReceived += (_, _) => received++;
+        router.GloasAggregateAndProofReceived += (_, _) => received++;
+        SignedAggregateAndProof signed = CreateAggregate(slot);
+        AggregateAndProof message = signed.Message!;
+        Attestation aggregate = message.Aggregate!;
+        aggregate.CommitteeBits!.SetAll(false);
+        aggregate.CommitteeBits[committeeIndex] = true;
+        if (verified)
+            router.MarkAggregateSeen(aggregate.Data!, aggregate.CommitteeBits, aggregate.AggregationBits!, message.AggregatorIndex);
+
+        byte[] payload;
+        if (gloas)
+        {
+            SignedAggregateAndProofGloas signedGloas = VoteFor(Hash256.Zero, slot, 0);
+            signedGloas.Message!.Aggregate!.CommitteeBits = aggregate.CommitteeBits;
+            payload = SignedAggregateAndProofGloas.Encode(signedGloas);
+        }
+        else
+        {
+            payload = SignedAggregateAndProof.Encode(signed);
+        }
+
+        MessageValidity validity = router.Handle(GossipTopics.BeaconAggregateAndProof, gloas, Snappy.CompressToArray(payload));
+
+        AssertVerdict(router, validity, received, verified ? GossipDropReason.Duplicate : GossipDropReason.InvalidField, rejected: !verified);
     }
 
     // phase0 p2p attester_slashing: IGNORE when every intersecting index is seen, then REJECT non-slashable data.

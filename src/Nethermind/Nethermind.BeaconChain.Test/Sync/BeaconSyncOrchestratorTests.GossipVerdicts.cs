@@ -6,17 +6,24 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.P2P.Gossip;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Libp2p.Protocols.Pubsub;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using NSubstitute;
 using NUnit.Framework;
+using Snappier;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -233,7 +240,6 @@ public partial class BeaconSyncOrchestratorTests
         SignedBeaconBlock block = TestChain.CreateBlock(WallSlot, TestItem.KeccakA);
         IBlockImporter importer = Substitute.For<IBlockImporter>();
         importer.IsKnown(TestItem.KeccakA).Returns(true);
-        importer.IsExpectedProposer(Arg.Any<ForkedSignedBeaconBlock>()).Returns(true);
         Exception failure = cancelled ? new OperationCanceledException() : new InvalidOperationException("store unavailable");
         importer.Import(Arg.Any<ForkedSignedBeaconBlock>(), Arg.Any<Hash256>(), true).Returns(_ => throw failure);
         harness.Orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(0, Hash256.Zero)), Hash256.Zero);
@@ -271,11 +277,13 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     internal static async Task AssertOperationVerdictAsync(IBlockImporter importer, ulong slot, string topic, byte[] payload,
-        Func<GossipVerdict, BeaconSyncOrchestrator.WorkItem> work, MessageValidity expected, GossipRouter? router = null, bool gloas = false)
+        Func<GossipVerdict, BeaconSyncOrchestrator.WorkItem> work, MessageValidity expected, GossipRouter? router = null, bool gloas = false, bool computeHead = true,
+        BeaconSyncOrchestrator.WorkItem? preceding = null)
     {
         Harness harness = CreateHarness(anchorSlot: 0, wallSlot: slot);
         SignedBeaconBlock anchor = TestChain.CreateBlock(0, Hash256.Zero);
         harness.Orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchor), SszRoots.HashTreeRoot(anchor.Message!));
+        if (computeHead) importer.ComputeHead();
         if (router is not null)
         {
             router.AggregateAndProofReceived += (aggregate, verdict) => harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipAggregateItem(aggregate, verdict));
@@ -283,6 +291,7 @@ public partial class BeaconSyncOrchestratorTests
         }
         await GossipRouterTests.AssertDeferredPeerPenaltyAsync(topic, payload, async verdict =>
         {
+            if (preceding is not null) harness.Orchestrator.WorkWriter.TryWrite(preceding);
             if (router is null)
                 harness.Orchestrator.WorkWriter.TryWrite(work(verdict));
             else
@@ -292,6 +301,109 @@ public partial class BeaconSyncOrchestratorTests
             }
             await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         }, expected);
+    }
+
+    internal static async Task AssertOperationAfterSkippedTickAsync(BlockImporter importer, ulong slot, GossipRouter router, string topic, byte[] payload, bool gloas)
+    {
+        Harness harness = CreateHarness(anchorSlot: 0, wallSlot: slot - 1, router: router);
+        SignedBeaconBlock anchor = TestChain.CreateBlock(0, Hash256.Zero);
+        harness.Orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchor), SszRoots.HashTreeRoot(anchor.Message!));
+        importer.ComputeHead();
+        harness.Orchestrator.RouteGossipEvents();
+        (GossipVerdict verdict, List<MessageValidity> given) = RecordingVerdict();
+
+        await harness.Orchestrator.EnqueueSlotTickAsync(slot, CancellationToken.None);
+        router.Handle(topic, gloas, payload, verdict);
+        Assert.That(verdict.IsHandedOff, Is.True, "the router must queue the operation for the real importer");
+        await harness.Orchestrator.EnqueueSlotTickAsync(slot + 1, CancellationToken.None);
+        Assert.That(given, Is.Empty, "both ticks must be queued before the worker validates gossip");
+
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        Assert.That(given, Is.EqualTo(new[] { MessageValidity.Accepted }),
+            "applying the skipped tick must restore the cached head before gossip uses the available validation state");
+    }
+
+    [Test]
+    public async Task Worker_accepts_gossip_queued_during_import_before_next_tick([Values] bool invalidImport, [Values] bool slashing)
+    {
+        const ulong slot = 33;
+        SignedGloasChain chain = new();
+        BeaconChainStore store = chain.CreateStore();
+        SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + slot * chain.Spec.SecondsPerSlot)));
+        IEngineDriver engine = Substitute.For<IEngineDriver>();
+        engine.NotifyNewPayload(Arg.Any<BeaconBlockBody>(), out Arg.Any<Hash256?>()).Returns(ExecutionStatus.Invalid);
+        engine.HasAnsweredNewPayload.Returns(true);
+        BlockImporter importer = chain.CreateImporter(engine, store: store, clock: clock);
+        SignedGloasChain.Block first = chain.Next(null, slot - 1, full: false, 0xA1);
+        ForkedSignedBeaconBlock child = invalidImport ? chain.NextFulu(slot - 2).Forked : chain.Next(first, slot, full: false, 0xA2).Forked;
+        Assert.That(importer.Import(first.Forked, first.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+        string topic = slashing ? GossipTopics.AttesterSlashing : GossipTopics.BeaconAggregateAndProof;
+        byte[] payload = Snappy.CompressToArray(slashing
+            ? AttesterSlashing.Encode(GloasBlockImporterTests.SignedSlashing(chain, first))
+            : SignedAggregateAndProofGloas.Encode(GloasBlockImporterTests.SignedAggregate(first)));
+        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, store);
+        Harness harness = CreateHarness(anchorSlot: 0, wallSlot: slot, router: router);
+        GossipDuringImport forwarding = new(importer);
+        harness.Orchestrator.Initialize(forwarding, new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
+        harness.Orchestrator.RouteGossipEvents();
+        await harness.Orchestrator.EnqueueSlotTickAsync(slot, CancellationToken.None);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        (GossipVerdict verdict, List<MessageValidity> given) = RecordingVerdict();
+        forwarding.AfterImport = result =>
+        {
+            Assert.That(result, Is.EqualTo(invalidImport ? BlockImportResult.Invalid : BlockImportResult.Imported), "the real importer must reach the requested execution outcome");
+            Assert.That(((IBlockImporter)importer).IsHeadStale, Is.True, "both successful and INVALID imports must invalidate the cached head");
+            router.Handle(topic, gloasTopic: !slashing, payload, verdict);
+            Assert.That(verdict.IsHandedOff, Is.True, "gossip must reach the worker before the next tick");
+            Assert.That(harness.Orchestrator.EnqueueSlotTickAsync(slot + 1, CancellationToken.None).IsCompletedSuccessfully, Is.True);
+            Assert.That(given, Is.Empty, "the vote must wait until the import returns to the worker");
+        };
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(child));
+
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.IsKnown(child.ComputeMessageRoot()), Is.EqualTo(!invalidImport), "an invalid payload must not enter fork choice");
+            Assert.That(forwarding.VoteSlots, Is.EqualTo(new[] { slot }), "the vote must be consumed before the next queued tick");
+            Assert.That(given, Is.EqualTo(new[] { MessageValidity.Accepted }), "head invalidation must not hide available gossip validation state, even when the import fails");
+        }
+    }
+
+    private sealed class GossipDuringImport(IBlockImporter inner) : IBlockImporter
+    {
+        public Action<BlockImportResult>? AfterImport { get; set; }
+        public List<ulong> VoteSlots { get; } = [];
+        private ulong _appliedSlot;
+
+        bool IBlockImporter.IsHeadStale => inner.IsHeadStale;
+        public bool IsKnown(Hash256 root) => inner.IsKnown(root);
+        public HeadView ComputeHead() => inner.ComputeHead();
+        public void OnSlotTick(ulong slot) => inner.OnSlotTick(_appliedSlot = slot);
+        public void OnForkchoiceUpdated(Hash256 root, Hash256 hash, PayloadStatusV1 status) => inner.OnForkchoiceUpdated(root, hash, status);
+        public void OnFinalized(CheckpointRef finalized) => inner.OnFinalized(finalized);
+        public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 root, bool verifySignatures) => inner.Import(block, root, verifySignatures);
+        public ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope) => inner.ImportEnvelope(envelope);
+        public bool? VerifyEnvelopeSignature(SignedExecutionPayloadEnvelope envelope) => inner.VerifyEnvelopeSignature(envelope);
+        public bool? OnGossipAggregate(SignedAggregateAndProof aggregate) => RecordVote(() => inner.OnGossipAggregate(aggregate));
+        public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => RecordVote(() => inner.OnGossipAggregate(aggregate));
+        public bool? OnGossipAttesterSlashing(AttesterSlashing slashing) => RecordVote(() => inner.OnGossipAttesterSlashing(slashing));
+        public bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => RecordVote(() => inner.OnGossipAttesterSlashing(slashing));
+        public bool? OnGossipPayloadAttestation(PayloadAttestationMessage message) => RecordVote(() => inner.OnGossipPayloadAttestation(message));
+
+        public BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 root, bool fetchedByRoot = false)
+        {
+            BlockImportResult result = inner.ImportRequested(block, root, fetchedByRoot);
+            AfterImport?.Invoke(result);
+            return result;
+        }
+
+        private bool? RecordVote(Func<bool?> validate)
+        {
+            VoteSlots.Add(_appliedSlot);
+            return validate();
+        }
     }
 
     private static (GossipVerdict Verdict, List<MessageValidity> Given) RecordingVerdict()
