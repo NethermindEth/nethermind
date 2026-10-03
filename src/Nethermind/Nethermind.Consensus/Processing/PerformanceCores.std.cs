@@ -328,8 +328,12 @@ internal static partial class PerformanceCores
     /// </summary>
     /// <remarks>
     /// Without it, the processing thread shares a core with a prewarm worker whenever prewarming keeps every logical
-    /// processor busy, and the two hyperthreads then split the core's execution units.
+    /// processor busy, and the two hyperthreads then split the core's execution units. A host whose other cores would
+    /// keep fewer than <see cref="MinOtherCpusForUniformDedicated"/> logical processors is left unnarrowed: prewarm,
+    /// the network and the RPC would then crowd onto too few.
     /// </remarks>
+    internal const int MinOtherCpusForUniformDedicated = 4;
+
     internal static bool TryBuildUniformDedicated(HashSet<int> allowed, Func<int, string?> siblingsOf,
         [NotNullWhen(true)] out Selection? dedicated, [NotNullWhen(true)] out PrewarmSplit? prewarm)
     {
@@ -340,7 +344,8 @@ internal static partial class PerformanceCores
         int[] every = [.. allowed];
         Array.Sort(every);
         if (!TryBuildMask(ProcessingCores.Dedicated, string.Join(",", every), allowed, siblingsOf, out CpuMask mask, out int[] cpus)
-            || !TryExclude(every, cpus, out CpuMask restMask, out int[] restCpus))
+            || !TryExclude(every, cpus, out CpuMask restMask, out int[] restCpus)
+            || restCpus.Length < MinOtherCpusForUniformDedicated)
         {
             return false;
         }

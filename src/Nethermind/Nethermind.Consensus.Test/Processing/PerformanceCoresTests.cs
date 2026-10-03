@@ -220,6 +220,16 @@ public class PerformanceCoresTests
         }
     }
 
+    /// <summary>Two cores of two hyperthreads: the other core would leave the rest of the node two logical processors.</summary>
+    [Test]
+    public void TryBuildUniformDedicated_TooFewCpusLeft_DoesNotNarrow() =>
+        Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-3"), static cpu => $"{cpu % 2},{cpu % 2 + 2}", out _, out _), Is.False);
+
+    /// <summary>Three cores of two hyperthreads leave the rest of the node four.</summary>
+    [Test]
+    public void TryBuildUniformDedicated_FourCpusLeft_Narrows() =>
+        Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-5"), static cpu => $"{cpu % 3},{cpu % 3 + 3}", out _, out _), Is.True);
+
     [Test]
     public void TryBuildUniformDedicated_SiblingsUnknown_DoesNotNarrow() =>
         Assert.That(PerformanceCores.TryBuildUniformDedicated(PerformanceCores.ParseCpuList("0-15"), static _ => null, out _, out _), Is.False);

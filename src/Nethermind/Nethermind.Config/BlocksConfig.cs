@@ -71,7 +71,7 @@ namespace Nethermind.Config
         // Off: with parallel execution, reading code ahead has not beaten reading it on demand.
         public bool PrefetchBlockAccessListCode { get; set; }
 
-        public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
+        public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Dedicated;
 
         public bool PreWarmCoreSplit { get; set; } = true;
 
