@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
@@ -15,14 +14,12 @@ using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
-using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Api;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
@@ -604,41 +601,18 @@ public class RangeSyncColumnCustodyTests
 
     private static StubPeer PeerWithCustody(string id, PeerColumnCustody custody) => new(id, headSlot: 0, static (_, _) => [], custody: custody);
 
-    private sealed class Fixture : IAsyncDisposable
+    private sealed class Fixture(DeferredBlockColumnFetchTests.Fixture fixture) : IAsyncDisposable
     {
-        private readonly BeaconChainStore _store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        private BeaconDiscovery _discovery = null!;
-        private ManualTimestamper _time = null!;
+        public ImportableBlobBlock Chain => fixture.Chain;
+        public DataColumnSidecarPool SidecarPool => fixture.SidecarPool;
+        public BeaconDiscovery Discovery => fixture.Discovery;
+        public SlotClock Clock => fixture.Clock;
+        public IBlockImporter Importer => fixture.Importer;
+        public ulong[] Sampled => fixture.Sampled;
 
-        public ImportableBlobBlock Chain { get; } = ImportableBlobBlock.Create();
-        public DataColumnSidecarPool SidecarPool { get; } = new();
+        public static Fixture Create() => new(DeferredBlockColumnFetchTests.Fixture.Create(identity: TestItem.PrivateKeyA.KeyBytes));
 
-        public BeaconDiscovery Discovery => _discovery;
-
-        /// <summary>At epoch 1, which keeps the epoch-0 block inside the data availability window.</summary>
-        public SlotClock Clock { get; private set; } = null!;
-
-        public IBlockImporter Importer { get; private set; } = null!;
-
-        /// <summary>This node's sampled columns, which depend on its identity: the fixed key seeded in <see cref="Create"/>.</summary>
-        public ulong[] Sampled { get; private set; } = [];
-
-        public static Fixture Create()
-        {
-            Fixture fixture = new();
-            fixture._store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, TestItem.PrivateKeyA.KeyBytes);
-            fixture._discovery = new BeaconDiscovery(new BeaconChainConfig { Discv5Port = 0 }, fixture.Chain.Spec, fixture._store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
-            // Resolves the identity and local custody exactly as Start does, without binding a socket.
-            fixture._discovery.CreateDiscv5Services(IPAddress.Loopback);
-            fixture.Sampled = [.. new DiscoveryNodeCustodySource(fixture._discovery).Current!.SampledColumns];
-            fixture._time = new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(fixture.Chain.Spec.GenesisTime + fixture.Chain.Spec.SlotsPerEpoch * fixture.Chain.Spec.SecondsPerSlot)).UtcDateTime);
-            fixture.Clock = new SlotClock(fixture.Chain.Spec, fixture._time);
-            fixture.Importer = new BlockImporterFactory(fixture.Chain.Spec, fixture._store, fixture.Chain.Pubkeys, new NoOpEngineDriver(), new BeaconChainConfig(), LimboLogs.Instance, fixture.SidecarPool, fixture.Clock, fixture._discovery)
-                .Create(new ForkedBeaconState.OfFulu(fixture.Chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.AnchorBlock), fixture.Chain.AnchorRoot);
-            return fixture;
-        }
-
-        public void AdvanceSlots(ulong slots) => _time.Add(TimeSpan.FromSeconds(slots * Chain.Spec.SecondsPerSlot));
+        public void AdvanceSlots(ulong slots) => fixture.AdvanceSlots(slots);
 
         /// <summary>An honest peer: it serves the chain's block, and of the columns asked only those it custodies.</summary>
         public StubPeer Peer(string id, ulong[]? custodied = null, PeerColumnCustody? custody = null)
@@ -665,7 +639,7 @@ public class RangeSyncColumnCustodyTests
         public DataColumnSidecar[] ServeColumns(ulong[] columns) => [.. columns.Select(c => Chain.Columns[(int)c])];
 
         public RangeSync CreateRangeSync(IBeaconSyncPeer[] peers) =>
-            new(new StubPool(peers), LimboLogs.Instance, SidecarPool, Chain.Spec, Clock, _discovery);
+            new(new StubPool(peers), LimboLogs.Instance, SidecarPool, Chain.Spec, Clock, Discovery);
 
         public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RunOneRoundAsync(IBeaconSyncPeer[] peers, CancellationToken token)
         {
@@ -684,8 +658,8 @@ public class RangeSyncColumnCustodyTests
             BeaconSyncOrchestrator orchestrator = new(
                 new BeaconChainConfig(),
                 Chain.Spec,
-                _store,
-                new BlockImporterFactory(Chain.Spec, _store, Chain.Pubkeys, new NoOpEngineDriver(), new BeaconChainConfig(), LimboLogs.Instance, SidecarPool, Clock, _discovery),
+                fixture.Store,
+                new BlockImporterFactory(Chain.Spec, fixture.Store, Chain.Pubkeys, new NoOpEngineDriver(), new BeaconChainConfig(), LimboLogs.Instance, SidecarPool, Clock, Discovery),
                 new NoOpEngineDriver(),
                 pool,
                 CreateRangeSync(peers),
@@ -701,6 +675,6 @@ public class RangeSyncColumnCustodyTests
             return orchestrator;
         }
 
-        public ValueTask DisposeAsync() => _discovery.DisposeAsync();
+        public ValueTask DisposeAsync() => fixture.DisposeAsync();
     }
 }
