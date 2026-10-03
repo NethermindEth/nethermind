@@ -794,23 +794,15 @@ public partial class ParallelUnbalancedWorkTests
     public void Kept_runners_take_the_next_fan_out_and_leave_once_released()
     {
         ParallelUnbalancedWork.WorkerGroup group = new(4);
-        int calls = 0;
-        void Count(int _)
-        {
-            Thread.SpinWait(20_000);
-            Interlocked.Increment(ref calls);
-        }
-
         group.KeepRunners(TimeSpan.FromSeconds(30));
         try
         {
-            using (group.Enter()) ParallelUnbalancedWork.For(0, 64, Count);
+            int calls = RunFanOutWithBackgroundRunner(group);
 
             // The fan-out is done, and its runners stay with the group for the next one.
-            Thread.Sleep(50);
             Assert.That(group.ReservedRunners, Is.GreaterThan(0));
 
-            using (group.Enter()) ParallelUnbalancedWork.For(0, 64, Count);
+            calls += RunFanOutWithBackgroundRunner(group);
             Assert.That(calls, Is.EqualTo(128));
         }
         finally
@@ -826,7 +818,7 @@ public partial class ParallelUnbalancedWorkTests
     {
         ParallelUnbalancedWork.WorkerGroup group = new(4);
         group.KeepRunners(TimeSpan.FromMilliseconds(20));
-        using (group.Enter()) ParallelUnbalancedWork.For(0, 64, static _ => Thread.SpinWait(20_000));
+        RunFanOutWithBackgroundRunner(group);
 
         Assert.That(() => group.ReservedRunners == 0, Is.True.After(5_000, 10));
     }
@@ -835,9 +827,31 @@ public partial class ParallelUnbalancedWorkTests
     public void Runners_leave_after_the_fan_out_without_a_hold()
     {
         ParallelUnbalancedWork.WorkerGroup group = new(4);
-        using (group.Enter()) ParallelUnbalancedWork.For(0, 64, static _ => Thread.SpinWait(20_000));
+        RunFanOutWithBackgroundRunner(group);
 
         Assert.That(() => group.ReservedRunners == 0, Is.True.After(5_000, 10));
+    }
+
+    private static int RunFanOutWithBackgroundRunner(ParallelUnbalancedWork.WorkerGroup group)
+    {
+        using ManualResetEventSlim backgroundEntered = new();
+        ParallelOptions options = new() { MaxDegreeOfParallelism = group.Concurrency };
+        int callerThread = Environment.CurrentManagedThreadId;
+        int calls = 0;
+        using (group.Enter())
+        {
+            ParallelUnbalancedWork.For(0, 64, options, _ =>
+            {
+                if (Environment.CurrentManagedThreadId == callerThread)
+                    Assert.That(backgroundEntered.Wait(TimeSpan.FromSeconds(10)), Is.True, "a background runner must participate");
+                else
+                    backgroundEntered.Set();
+                Interlocked.Increment(ref calls);
+            });
+        }
+
+        Assert.That(backgroundEntered.IsSet, Is.True, "a background runner must participate");
+        return calls;
     }
 
     private sealed class CallbackWork(Action callback) : IThreadPoolWorkItem
