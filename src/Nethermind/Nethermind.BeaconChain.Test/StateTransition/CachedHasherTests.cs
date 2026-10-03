@@ -151,16 +151,7 @@ public class CachedHasherTests
         ulong[] inactivityScores = new ulong[validatorCount];
         for (int i = 0; i < validatorCount; i++)
         {
-            validators[i] = new Validator
-            {
-                Pubkey = Pubkey(i),
-                WithdrawalCredentials = Hash256.Zero,
-                EffectiveBalance = 32 * Gwei,
-                ActivationEpoch = 0,
-                ExitEpoch = Presets.FarFutureEpoch,
-                WithdrawableEpoch = Presets.FarFutureEpoch,
-                ActivationEligibilityEpoch = 0,
-            };
+            validators[i] = GloasTestFixtures.CreateActiveValidator(Pubkey(i));
             balances[i] = 32 * Gwei + (ulong)i;
             previousParticipation[i] = (byte)(i % 8);
             currentParticipation[i] = (byte)(i % 4);

@@ -131,16 +131,7 @@ internal static class GloasTestFixtures
         ulong[] balances = new ulong[validatorCount];
         for (int i = 0; i < validatorCount; i++)
         {
-            validators[i] = new Validator
-            {
-                Pubkey = Pubkey((byte)(0x50 + i)),
-                WithdrawalCredentials = Hash256.Zero,
-                EffectiveBalance = 32 * Gwei,
-                ActivationEpoch = 0,
-                ExitEpoch = Presets.FarFutureEpoch,
-                WithdrawableEpoch = Presets.FarFutureEpoch,
-                ActivationEligibilityEpoch = 0,
-            };
+            validators[i] = CreateActiveValidator(Pubkey((byte)(0x50 + i)));
             balances[i] = 32 * Gwei;
         }
 
@@ -178,6 +169,18 @@ internal static class GloasTestFixtures
             PendingConsolidations = [],
         };
     }
+
+    /// <summary>An active, unslashed genesis validator with a 32 ETH effective balance and the given pubkey.</summary>
+    public static Validator CreateActiveValidator(BlsPublicKey pubkey) => new()
+    {
+        Pubkey = pubkey,
+        WithdrawalCredentials = Hash256.Zero,
+        EffectiveBalance = 32 * Gwei,
+        ActivationEpoch = 0,
+        ExitEpoch = Presets.FarFutureEpoch,
+        WithdrawableEpoch = Presets.FarFutureEpoch,
+        ActivationEligibilityEpoch = 0,
+    };
 
     private static BlsPublicKey[] FillCommittee(BlsPublicKey pubkey)
     {
