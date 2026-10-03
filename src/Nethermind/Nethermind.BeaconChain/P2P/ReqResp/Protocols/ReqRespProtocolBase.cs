@@ -396,6 +396,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
 {
     public abstract string Id { get; }
 
+    /// <summary>Maximum framed request size, or zero for a request without a payload.</summary>
     protected abstract int MaxRequestSize { get; }
     protected abstract int MaxResponseSize { get; }
     protected abstract byte[] EncodeRequest(TRequest request);
@@ -429,9 +430,9 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
         }
     }
 
-    public async Task<TResponse> DialAsync(IChannel downChannel, ISessionContext context, TRequest request)
+    public virtual async Task<TResponse> DialAsync(IChannel downChannel, ISessionContext context, TRequest request)
     {
-        using RequestTiming.Exchange exchange = RequestTiming.Open(request);
+        using RequestTiming.Exchange exchange = MaxRequestSize == 0 ? default : RequestTiming.Open(request);
         RequestTiming? timing = exchange.Timing;
         using ChannelStreamAdapter input = new(downChannel);
         using CancellationTokenSource cts = StartTimeout(TtfbTimeout + RespTimeout);
@@ -441,7 +442,14 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
             ResponseChunk chunk;
             try
             {
-                await WriteRequestAndEofAsync(downChannel, input, EncodeRequest(request), cts.Token);
+                if (MaxRequestSize == 0)
+                {
+                    await WriteEofAsync(downChannel, cts.Token);
+                }
+                else
+                {
+                    await WriteRequestAndEofAsync(downChannel, input, EncodeRequest(request), cts.Token);
+                }
                 ResponseChunk? read = await ReqRespFraming.ReadResponseChunkAsync(input, 0, MaxResponseSize, cts.Token);
                 // A clean close before any byte is the peer or this node ending the session, not a malformed response.
                 classified = read is null;
@@ -492,7 +500,16 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
         using CancellationTokenSource cts = StartTimeout(RespTimeout);
         try
         {
-            TRequest request = DecodeRequest(await inboundSlot.ReadRequestAsync(stream, MaxRequestSize, cts.Token));
+            TRequest request;
+            if (MaxRequestSize == 0)
+            {
+                await inboundSlot.AcceptRequestWithoutPayloadAsync(stream, cts.Token);
+                request = default!;
+            }
+            else
+            {
+                request = DecodeRequest(await inboundSlot.ReadRequestAsync(stream, MaxRequestSize, cts.Token));
+            }
             await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, EncodeResponse(HandleRequest(request)), cts.Token);
         }
         catch (Eth2ReqRespException e)
