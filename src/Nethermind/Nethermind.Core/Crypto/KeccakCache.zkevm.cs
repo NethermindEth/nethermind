@@ -228,18 +228,15 @@ public static partial class KeccakCache
         ref byte inputRef = ref MemoryMarshal.GetReference(input);
         if (length is 20 or 32 or 64)
         {
-            ref ulong memo = ref MemoryMarshal.GetArrayDataReference(Memo);
-            ref ulong slot = ref Unsafe.NullRef<ulong>();
-            bool hit;
-            switch (length)
+            ref ulong slot = ref ProbeFixed(ref MemoryMarshal.GetArrayDataReference(Memo), ref inputRef, length, out bool hit);
+            if (hit)
             {
-                case 20: slot = ref ProbeFixed(ref memo, ref inputRef, 20, out hit); break;
-                case 32: slot = ref ProbeFixed(ref memo, ref inputRef, 32, out hit); break;
-                default: slot = ref ProbeFixed(ref memo, ref inputRef, 64, out hit); break;
+                keccak256 = Unsafe.As<ulong, ValueHash256>(ref Unsafe.Add(ref slot, MemoValueWord));
+                return true;
             }
 
-            keccak256 = hit ? Unsafe.As<ulong, ValueHash256>(ref Unsafe.Add(ref slot, MemoValueWord)) : default;
-            return hit;
+            Unsafe.SkipInit(out keccak256);
+            return false;
         }
 
         nuint words = length >> 3;
@@ -260,14 +257,7 @@ public static partial class KeccakCache
         ref byte inputRef = ref MemoryMarshal.GetReference(input);
         if (length is 20 or 32 or 64)
         {
-            ref ulong memo = ref MemoryMarshal.GetArrayDataReference(Memo);
-            switch (length)
-            {
-                case 20: WriteSlotFixed(ref ProbeFixed(ref memo, ref inputRef, 20, out _), ref inputRef, 20, keccak256); break;
-                case 32: WriteSlotFixed(ref ProbeFixed(ref memo, ref inputRef, 32, out _), ref inputRef, 32, keccak256); break;
-                default: WriteSlotFixed(ref ProbeFixed(ref memo, ref inputRef, 64, out _), ref inputRef, 64, keccak256); break;
-            }
-
+            WriteSlotFixed(ref ProbeFixed(ref MemoryMarshal.GetArrayDataReference(Memo), ref inputRef, length, out _), ref inputRef, length, keccak256);
             return;
         }
 

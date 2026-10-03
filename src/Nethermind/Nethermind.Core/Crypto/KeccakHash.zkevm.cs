@@ -197,7 +197,7 @@ public sealed partial class KeccakHash
     /// <param name="length">A constant from 8 to 135: each lane then folds to one store of an input word,
     /// the padded last word or zero, rather than a zeroing pass and a lane dispatch.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe void AbsorbShortFixed(ref ulong lane, byte* data, nuint length)
+    internal static unsafe void AbsorbShortFixed(ref ulong lane, byte* data, nuint length)
     {
         Unsafe.Add(ref lane, 0) = ShortMessageLane(data, length, 0);
         Unsafe.Add(ref lane, 1) = ShortMessageLane(data, length, 1);
