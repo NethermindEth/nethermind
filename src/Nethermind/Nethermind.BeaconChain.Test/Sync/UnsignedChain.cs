@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
+using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -94,7 +95,7 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
 
         SignedBeaconBlock signedBlock = new() { Message = block, Signature = Unsigned };
         BeaconStateFulu postState = parentState.Clone();
-        FuluStateTransition.Apply(postState, signedBlock, new EpochCache { Hasher = _hasher }, Anchor.Pubkeys, new AcceptingNotifier(), Spec, validateResult: false, verifySignatures: false);
+        FuluStateTransition.Apply(postState, signedBlock, new EpochCache { Hasher = _hasher }, Anchor.Pubkeys, new TestEngineDriver.BodyOnlyNotifier(), Spec, validateResult: false, verifySignatures: false);
         block.StateRoot = _hasher.HashTreeRoot(postState);
         Hash256 root = SszRoots.HashTreeRoot(block);
         if (signed)
@@ -175,10 +176,5 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
         byte[] bytes = new byte[32];
         bytes.AsSpan().Fill(value);
         return new Hash256(bytes);
-    }
-
-    private sealed class AcceptingNotifier : INewPayloadNotifier
-    {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 }
