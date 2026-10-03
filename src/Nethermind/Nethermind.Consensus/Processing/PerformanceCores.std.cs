@@ -49,7 +49,21 @@ internal static partial class PerformanceCores
         }
 
         public readonly bool Contains(int cpu) => (this[cpu >> 6] & (1UL << (cpu & 63))) != 0;
+
+        public readonly bool Overlaps(in CpuMask other)
+        {
+            for (int i = 0; i < MaskWords; i++)
+            {
+                if ((this[i] & other[i]) != 0) return true;
+            }
+
+            return false;
+        }
     }
+
+    // Experiment: the thread narrowed onto the dedicated core, which the janitor leaves alone; 0 when none is.
+    private static int s_processingTid;
+    private static bool s_excluding;
 
     /// <summary>The logical processors <paramref name="cores"/> narrows the processing thread to; empty where it narrows nothing.</summary>
     public static ReadOnlySpan<int> Cpus(ProcessingCores cores) => Selected(cores)?.Cpus ?? [];
@@ -58,8 +72,15 @@ internal static partial class PerformanceCores
     /// Keeps the calling thread on the logical processors <paramref name="cores"/> selects until the scope is disposed,
     /// on the same thread. Does nothing where that narrows nothing, and where the kernel refuses.
     /// </summary>
-    public static Scope NarrowCurrentThread(ProcessingCores cores, ILogger logger) =>
-        Selected(cores) is { } selection ? Narrow(selection, logger) : default;
+    public static Scope NarrowCurrentThread(ProcessingCores cores, ILogger logger)
+    {
+        if (Selected(cores) is not { } selection) return default;
+        bool register = cores == ProcessingCores.Dedicated && s_excluding;
+        if (register) Volatile.Write(ref s_processingTid, gettid());
+        Scope scope = Narrow(selection, logger, register);
+        if (register && !scope.Narrowed) Volatile.Write(ref s_processingTid, 0);
+        return scope;
+    }
 
     /// <summary>
     /// How prewarm divides its workers between the core types: the first <see cref="PrewarmSplit.NearWorkers"/> run
@@ -84,33 +105,73 @@ internal static partial class PerformanceCores
         public Scope NarrowFar(ILogger logger) => Narrow(Far, logger);
     }
 
-    private static Scope Narrow(Selection selection, ILogger logger)
+    private static Scope Narrow(Selection selection, ILogger logger, bool registered = false)
     {
         // pid 0 is the calling thread.
         if (sched_getaffinity(0, CpuMaskSize, out CpuMask previous) != 0) return default;
         CpuMask mask = selection.Mask;
-        return sched_setaffinity(0, CpuMaskSize, ref mask) == 0 ? new Scope(previous, logger) : default;
+        return sched_setaffinity(0, CpuMaskSize, ref mask) == 0 ? new Scope(previous, logger, registered) : default;
+    }
+
+    /// <summary>Experiment: every 20 ms, moves any thread but the processing one that may run on the dedicated core off it.</summary>
+    private static void StartExclusionJanitor(CpuMask rest, CpuMask dedicated)
+    {
+        s_excluding = true;
+        Thread janitor = new(() =>
+        {
+            int moved = 0;
+            long sweeps = 0;
+            while (true)
+            {
+                try
+                {
+                    foreach (string dir in Directory.EnumerateDirectories("/proc/self/task"))
+                    {
+                        if (!int.TryParse(Path.GetFileName(dir), out int tid) || tid == Volatile.Read(ref s_processingTid)) continue;
+                        if (sched_getaffinity(tid, CpuMaskSize, out CpuMask current) != 0 || !current.Overlaps(dedicated)) continue;
+                        if (tid == Volatile.Read(ref s_processingTid)) continue;
+                        CpuMask target = rest;
+                        if (sched_setaffinity(tid, CpuMaskSize, ref target) == 0) moved++;
+                    }
+                }
+                catch (Exception)
+                {
+                    // A thread that exits mid-sweep, or a refused mask: the next sweep tries again.
+                }
+
+                if (++sweeps % 3000 == 1) Console.Out.WriteLine($"EXP-DEDICATED janitor: {moved} thread moves after {sweeps} sweeps");
+                Thread.Sleep(20);
+            }
+        })
+        { IsBackground = true, Name = "Dedicated core janitor" };
+        janitor.Start();
     }
 
     public readonly struct Scope : IDisposable
     {
         private readonly bool _narrowed;
+        private readonly bool _registered;
         private readonly CpuMask _previous;
         private readonly ILogger _logger;
 
-        internal Scope(CpuMask previous, ILogger logger)
+        internal Scope(CpuMask previous, ILogger logger, bool registered = false)
         {
             _narrowed = true;
+            _registered = registered;
             _previous = previous;
             _logger = logger;
         }
+
+        internal bool Narrowed => _narrowed;
 
         public void Dispose()
         {
             if (!_narrowed) return;
 
             CpuMask restored = _previous;
-            if (sched_setaffinity(0, CpuMaskSize, ref restored) == 0) return;
+            int restoredResult = sched_setaffinity(0, CpuMaskSize, ref restored);
+            if (_registered) Volatile.Write(ref s_processingTid, 0);
+            if (restoredResult == 0) return;
 
             // A cpuset changed at runtime to exclude the previous mask; the kernel narrows every CPU to the new cpuset.
             restored = CpuMask.Every();
@@ -177,6 +238,7 @@ internal static partial class PerformanceCores
                         Selection rest = new(restMask, restCpus);
                         PrewarmDedicated = new PrewarmSplit(rest, rest, restCpus.Length);
                         Console.Out.WriteLine($"EXP-DEDICATED processing on CPUs {string.Join(",", dedicatedCore.Cpus)}, prewarm on {string.Join(",", restCpus)}");
+                        if (Core.Diagnostics.ExperimentKnobs.DedicatedExclude) StartExclusionJanitor(restMask, dedicatedCore.Mask);
                     }
                 }
 
@@ -409,4 +471,7 @@ internal static partial class PerformanceCores
 
     [DllImport("libc")]
     private static extern int sched_setaffinity(int pid, nint cpusetsize, ref CpuMask mask);
+
+    [DllImport("libc")]
+    private static extern int gettid();
 }

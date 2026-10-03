@@ -61,6 +61,12 @@ public static class ExperimentKnobs
     /// <summary>ProcessingCores=Dedicated also works on a CPU with one kind of core, treating every core as a performance core.</summary>
     public static readonly bool DedicatedNonHybrid = On("NETHERMIND_EXP_DEDICATED_NONHYBRID");
 
+    /// <summary>From the end of a block's transactions to its state root, an idle group runner spins this long for more work before leaving; 0 = off.</summary>
+    public static readonly int RunnerLingerUs = Int("NETHERMIND_EXP_RUNNER_LINGER_US", 0);
+
+    /// <summary>With the dedicated core, a janitor thread keeps every thread but the processing one off that core.</summary>
+    public static readonly bool DedicatedExclude = On("NETHERMIND_EXP_DEDICATED_EXCLUDE");
+
     /// <summary>The background blooms use at most this many workers and the receipts root is built serially; 0 = off.</summary>
     public static readonly int ReceiptsDegree = Int("NETHERMIND_EXP_RECEIPTS_DOP", 0);
 

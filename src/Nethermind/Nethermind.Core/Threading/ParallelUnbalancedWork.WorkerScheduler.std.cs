@@ -36,6 +36,29 @@ public partial class ParallelUnbalancedWork
             _schedule = parent is null ? schedule ?? QueueToThreadPool : parent.ScheduleChildRunner;
         }
 
+        private static long s_lingerUntil;
+
+        internal static long LingerUntil
+        {
+            get => Volatile.Read(ref s_lingerUntil);
+            set => Volatile.Write(ref s_lingerUntil, value);
+        }
+
+        /// <summary>Spins while the linger window is open and nothing is ready; true when work arrived.</summary>
+        private bool Linger()
+        {
+            long until = LingerUntil;
+            if (until == 0 || Stopwatch.GetTimestamp() >= until) return false;
+            SpinWait spinner = default;
+            while (Volatile.Read(ref _first) is null)
+            {
+                if (Stopwatch.GetTimestamp() >= until || LingerUntil == 0) return false;
+                spinner.SpinOnce(sleep1Threshold: -1);
+            }
+
+            return true;
+        }
+
         internal (int Reserved, int Unstarted, int Pending) Load()
         {
             long runners = Volatile.Read(ref _runners);
@@ -295,6 +318,7 @@ public partial class ParallelUnbalancedWork
                 while (true)
                 {
                     WorkQueue? queue = Volatile.Read(ref _first);
+                    if (queue is null && Linger()) continue;
                     if (queue is null)
                     {
                         // Release the reservation before rechecking publication, so either this

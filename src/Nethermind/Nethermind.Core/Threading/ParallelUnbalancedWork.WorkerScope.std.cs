@@ -22,6 +22,8 @@ public partial class ParallelUnbalancedWork
 
     internal static partial WorkerGroup? GetCurrentGroup() => WorkerScheduler.Current?.Group;
 
+    public static partial void LingerRunnersUntil(long untilTimestamp) => WorkerScheduler.LingerUntil = untilTimestamp;
+
     public static partial WorkerScope BeginDetachedWorkerScope(int maxDegreeOfParallelism)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);

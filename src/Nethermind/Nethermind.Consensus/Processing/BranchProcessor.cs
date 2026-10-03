@@ -97,6 +97,8 @@ public class BranchProcessor(
         void CancelBackgroundWork()
         {
             NewPayloadTrace.Stamp(NewPayloadTrace.TxsDone);
+            if (Core.Diagnostics.ExperimentKnobs.RunnerLingerUs > 0)
+                ParallelUnbalancedWork.LingerRunnersUntil(Stopwatch.GetTimestamp() + Core.Diagnostics.ExperimentKnobs.RunnerLingerUs * Stopwatch.Frequency / 1_000_000);
             backgroundCancellation?.Cancel();
         }
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
@@ -158,6 +160,7 @@ public class BranchProcessor(
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
                     NewPayloadTrace.SchedEnd();
                     NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneEnd);
+                    if (Core.Diagnostics.ExperimentKnobs.RunnerLingerUs > 0) ParallelUnbalancedWork.LingerRunnersUntil(0);
                 }
                 catch (BlockProcessor.BlockAccessListSequentialRetryException) when (
                     worldStateCloser is not null &&
