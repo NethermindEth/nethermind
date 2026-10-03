@@ -62,7 +62,7 @@ public static class PrecompileLookahead
     {
         byte[]? output = address.PrecompileIndexOrNegative() switch
         {
-            0x01 => new byte[32],
+            // ecrecover is answered for real: contracts check the signer at once, and a placeholder signer ends the pass.
             0x05 => ModExpOutput(input),
             0x07 => new byte[64],
             0x08 => True32,

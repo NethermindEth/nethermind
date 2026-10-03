@@ -229,6 +229,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
+    /// <summary>
+    /// Hands a transaction whose warm is caught in a chain of cold reads to storage discovery on the pool: its own run
+    /// reads them one after another, while discovery collects the cells behind placeholders and reads them in parallel.
+    /// </summary>
+    private void EscalateToDiscovery(int txIndex, Transaction tx, BlockState blockState, CancellationToken token)
+    {
+        if (MainThreadTxIndex >= txIndex || token.IsCancellationRequested || tx.SenderAddress is null) return;
+        if (Core.Diagnostics.NewPayloadTrace.Enabled) Core.Diagnostics.NewPayloadTrace.Note($"esc:{txIndex}@{Core.Diagnostics.NewPayloadTrace.NowUs()}");
+        ThreadPool.UnsafeQueueUserWorkItem(
+            static state => state.PreWarmer.DiscoverAndWarmStorageSafely([(state.TxIndex, state.Tx)], state.Block, state.Spec, null, state.Token),
+            (PreWarmer: this, TxIndex: txIndex, Tx: tx, blockState.Block, blockState.Spec, Token: token),
+            preferLocal: false);
+    }
+
     internal static List<(int Index, Transaction Tx)>? SelectDiscoveryCandidates(Block block, ISet<Hash256>? speculativelyWarmed)
     {
         List<(int Index, Transaction Tx)>? candidates = null;
@@ -1261,7 +1275,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (Core.Diagnostics.NewPayloadTrace.Enabled && issued > 0) Core.Diagnostics.NewPayloadTrace.Note($"pla:{txIndex}:{issued}@{Core.Diagnostics.NewPayloadTrace.NowUs()}");
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, tracer);
+            int missThreshold = Core.Diagnostics.ExperimentKnobs.DiscoveryOnMisses;
+            if (missThreshold > 0)
+                PrewarmMissWatch.Arm(missThreshold, () => blockState.PreWarmer.EscalateToDiscovery(txIndex, tx, blockState, cancellationToken));
+
+            TransactionResult result;
+            try
+            {
+                result = scope.TransactionProcessor.Warmup(tx, tracer);
+            }
+            finally
+            {
+                if (missThreshold > 0) PrewarmMissWatch.Disarm();
+            }
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }

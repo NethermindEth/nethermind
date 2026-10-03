@@ -441,6 +441,10 @@ public class PrewarmerScopeProvider(
                 _metrics.IncrementPreBlockStorageMisses();
                 Nethermind.Core.Diagnostics.NewPayloadTrace.Miss(storage: true);
             }
+            else
+            {
+                PrewarmMissWatch.Miss();
+            }
 
             baseStorageTree.Get(storageCell.Index, out value);
         }
