@@ -36,6 +36,43 @@ jobs:
     with:
       matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-arm64","os":"ubuntu-24.04-arm","variant":"release","build_args":""}]}'
 
+  native-lean:
+    name: Run native Lean integration tests
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+        project:
+          - Nethermind.Crypto.LeanFfi.Test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          rustup default 1.99.0
+
+      - name: Test native proof backend
+        run: cargo test --release --locked --manifest-path tools/lean-ffi/Cargo.toml -- --test-threads=1
+
+      - name: Test live Lean integration
+        run: |
+          dotnet build src/Nethermind/${{ matrix.project }}/${{ matrix.project }}.csproj -c release --disable-build-servers -m:1 -p:BuildLeanFfi=true
+          dotnet run --project src/Nethermind/${{ matrix.project }}/${{ matrix.project }}.csproj -c release --no-build -p:BuildLeanFfi=true
+
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     needs: build
@@ -473,7 +510,7 @@ jobs:
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked, nethtest, matrix-guard]
+    needs: [tests, tests-spec, tests-chunked, nethtest, matrix-guard, native-lean]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -484,7 +521,8 @@ jobs:
             "${{ needs.tests-spec.result }}" == "success" && \
             "${{ needs.tests-chunked.result }}" == "success" && \
             "${{ needs.nethtest.result }}" == "success" && \
-            "${{ needs.matrix-guard.result }}" == "success" \
+            "${{ needs.matrix-guard.result }}" == "success" && \
+            "${{ needs.native-lean.result }}" == "success" \
           ]]
 
   codecov-upload:
