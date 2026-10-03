@@ -57,6 +57,9 @@ public class BlockCachePreWarmerTests
     // stakeEnd does dividing by a day's share total.
     private static readonly Address PackedLoopContract = new("0x0000000000000000000000000000000000001007");
     private const int PackedLoopSlots = 32;
+    // More copies of it than a block may hand to discovery, each reading cold slots of its own.
+    private const int PackedLoopCopies = 20;
+    private static Address PackedLoopCopy(int i) => new($"0x00000000000000000000000000000000000021{i:x2}");
     private static UInt256 PackedLoopValue(int slot) => (UInt256.One << 72) | (UInt256)(ulong)(slot + 1);
 
     private IContainer _container;
@@ -110,6 +113,12 @@ public class BlockCachePreWarmerTests
             worldState.CreateAccount(PackedLoopContract, 0);
             worldState.InsertCode(PackedLoopContract, Keccak.Compute(packedLoopCode), packedLoopCode, Osaka.Instance);
             for (int i = 0; i < PackedLoopSlots; i++) worldState.Set(new StorageCell(PackedLoopContract, (UInt256)(ulong)i), PackedLoopValue(i));
+            for (int copy = 0; copy < PackedLoopCopies; copy++)
+            {
+                worldState.CreateAccount(PackedLoopCopy(copy), 0);
+                worldState.InsertCode(PackedLoopCopy(copy), Keccak.Compute(packedLoopCode), packedLoopCode, Osaka.Instance);
+                for (int i = 0; i < PackedLoopSlots; i++) worldState.Set(new StorageCell(PackedLoopCopy(copy), (UInt256)(ulong)i), PackedLoopValue(i));
+            }
             worldState.CreateAccount(LongLoopContract, 0);
             worldState.InsertCode(LongLoopContract, Keccak.Compute(longLoopCode), longLoopCode, Osaka.Instance);
             worldState.Set(LongLoopEntered, (UInt256)1);
@@ -1509,6 +1518,52 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public async Task PreWarmCaches_LeavesAnUpFrontDiscoveryCandidateToTheUpFrontDiscovery()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(
+                Build.A.Transaction.WithGasLimit(12_000_000).WithTo(PackedLoopContract).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.Zero, "a transaction above the gas threshold is discovered up front");
+    }
+
+    [Test]
+    public async Task PreWarmCaches_CapsTheHandOffsOfOneBlock()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        Transaction[] transactions = new Transaction[PackedLoopCopies];
+        for (int i = 0; i < PackedLoopCopies; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((ulong)i).WithGasLimit(1_000_000).WithTo(PackedLoopCopy(i)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        }
+
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).WithTransactions(transactions).TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.EqualTo(16), "every warm reads a chain of cold slots, but a block hands off at most 16");
+    }
+
+    [TestCase(new byte[] { 0x4e, 0x48, 0x7b, 0x71, 0x00 }, "revert", true, TestName = "Panic revert")]
+    [TestCase(new byte[0], "BadInstruction", true, TestName = "Halt")]
+    [TestCase(new byte[0], "revert", false, TestName = "Revert without data")]
+    [TestCase(new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0x00 }, "deadline passed", false, TestName = "Error(string) revert")]
+    public void PlaceholderFailureTracer_CountsOnlyFailuresAPlaceholderCanCause(byte[] output, string error, bool counted)
+    {
+        BlockCachePreWarmer.PlaceholderFailureTracer tracer = new();
+        tracer.MarkAsFailed(TestItem.AddressA, default, output, error);
+        Assert.That(tracer.Failed, Is.EqualTo(counted));
+    }
+
+    [Test]
     public void ColdReadWatch_CallsBackOnceAtTheThreshold()
     {
         CountingColdReadHandler handler = new();
@@ -2291,7 +2346,6 @@ public class BlockCachePreWarmerTests
 
     private const int SloadManySlotCount = BlockCachePreWarmer.MaxDiscoveredCells + 808;
 
-    /// <summary>Reads slot 1, counts down from 2^32 - 1 (minutes of execution), then reads slot 2.</summary>
     /// <summary>
     /// for (i = 0; i &lt; slots; i++) if (sload(i) &gt;&gt; 72 == 0) invalid();
     /// </summary>
@@ -2317,6 +2371,7 @@ public class BlockCachePreWarmerTests
         0x00,             // 16 STOP
     ];
 
+    /// <summary>Reads slot 1, counts down from 2^32 - 1 (minutes of execution), then reads slot 2.</summary>
     private static byte[] BuildLongLoopCode() =>
     [
         0x60, 0x01, 0x54, 0x50,             // PUSH1 1 SLOAD POP

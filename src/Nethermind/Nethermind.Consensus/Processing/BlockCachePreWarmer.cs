@@ -205,11 +205,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 using ParallelUnbalancedWork.BackgroundWork? discoveryWork = discoveryCandidates is null ? null
                     : ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions,
                         _ => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, spec, recovery, token));
-                PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
-                    suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
-                discoveryWork?.WaitForCompletion();
-                // Every warm has returned, so nothing queues behind this: the session must not end with discovery still writing.
-                blockState.JoinDiscoveryHandOffs();
+                try
+                {
+                    PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
+                        suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
+                    discoveryWork?.WaitForCompletion();
+                }
+                finally
+                {
+                    // Every warm has returned, so nothing queues behind this: the session must not end with discovery still writing.
+                    blockState.JoinDiscoveryHandOffs();
+                }
             }, addressWarmer);
             return session;
         }
@@ -220,11 +226,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void DiscoverAndWarmStorageSafely(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery, CancellationToken cancellationToken)
+    private void DiscoverAndWarmStorageSafely(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery,
+        CancellationToken cancellationToken, StrongBox<int>? sharedCells = null)
     {
         try
         {
-            DiscoverAndWarmStorage(candidates, block, spec, recovery, cancellationToken);
+            DiscoverAndWarmStorage(candidates, block, spec, recovery, cancellationToken, sharedCells);
         }
         catch (Exception ex)
         {
@@ -240,16 +247,30 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private int _discoveryHandOffs;
 
     /// <summary>Starts storage discovery for one transaction whose warm is caught in a chain of cold reads.</summary>
+    /// <remarks>
+    /// A transaction the up-front discovery selects is left to it. A block hands off at most
+    /// <see cref="MaxDiscoveryCandidates"/> transactions, and its hand-offs share one budget of
+    /// <see cref="MaxDiscoveredCells"/> cells, the limits the up-front discovery has.
+    /// </remarks>
     private void HandToDiscovery(int txIndex, Transaction tx, BlockState blockState)
     {
         CancellationToken token = blockState.Token;
-        if (MainThreadTxIndex >= txIndex || token.IsCancellationRequested || tx.SenderAddress is null || !blockState.HandsColdChainsToDiscovery) return;
+        if (MainThreadTxIndex >= txIndex || token.IsCancellationRequested || tx.SenderAddress is null || !blockState.HandsColdChainsToDiscovery
+            || IsUpFrontDiscoveryCandidate(tx) || !blockState.TryClaimDiscoveryHandOff())
+        {
+            return;
+        }
+
         Interlocked.Increment(ref _discoveryHandOffs);
         Block block = blockState.Block;
         IReleaseSpec spec = blockState.Spec;
+        StrongBox<int> cells = blockState.HandOffCells;
         blockState.AddDiscoveryHandOff(ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions,
-            _ => DiscoverAndWarmStorageSafely([(txIndex, tx)], block, spec, null, token)));
+            _ => DiscoverAndWarmStorageSafely([(txIndex, tx)], block, spec, null, token, cells)));
     }
+
+    /// <summary>Whether the up-front discovery selects <paramref name="tx"/>, up to its cap and unless it was speculatively warmed.</summary>
+    private static bool IsUpFrontDiscoveryCandidate(Transaction tx) => tx.GasLimit > StorageDiscoveryGasThreshold && tx.To is not null;
 
     internal static List<(int Index, Transaction Tx)>? SelectDiscoveryCandidates(Block block, ISet<Hash256>? speculativelyWarmed)
     {
@@ -261,7 +282,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Transaction tx = transactions[i];
             // Deliberately not filtered on the sender: selection runs while recovery is still in flight, and
             // dropping a heavy transaction here would switch discovery off for it for the whole block.
-            if (tx.GasLimit <= StorageDiscoveryGasThreshold || tx.To is null) continue;
+            if (!IsUpFrontDiscoveryCandidate(tx)) continue;
             if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
 
             (candidates ??= new(MaxDiscoveryCandidates)).Add((i, tx));
@@ -271,7 +292,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return candidates;
     }
 
-    internal void DiscoverAndWarmStorage(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery, CancellationToken cancellationToken)
+    /// <param name="sharedCells">Cells left in a budget this discovery shares with others; it stops once the budget is spent.</param>
+    internal void DiscoverAndWarmStorage(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery,
+        CancellationToken cancellationToken, StrongBox<int>? sharedCells = null)
     {
         if (cancellationToken.IsCancellationRequested) return;
 
@@ -315,6 +338,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
+            if (sharedCells is not null) cellBudget = Math.Min(cellBudget, Volatile.Read(ref sharedCells.Value));
+            if (cellBudget <= 0) return;
             DiscoveryRound roundState = new(block, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates, cancellationToken);
             ParallelOptions parallelOptions = new()
             {
@@ -339,8 +364,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (roundCells.Count > 0)
             {
                 allDiscoveredCells.UnionWith(roundCells);
+                // Concurrent sharers read the budget at their round's start, so together they can overrun it by a round.
+                bool sharedBudgetLeft = sharedCells is null || Interlocked.Add(ref sharedCells.Value, -roundCells.Count) > 0;
                 if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken)) return;
-                if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
+                if (allDiscoveredCells.Count >= MaxDiscoveredCells || !sharedBudgetLeft) return;
             }
             else if (awaiting == 0 && (deferred.Count == 0 || productive == admitted.Count))
             {
@@ -525,7 +552,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private static readonly UInt256 EveryBytePlaceholder = new(0x0101010101010101UL, 0x0101010101010101UL, 0x0101010101010101UL, 0x0101010101010101UL);
 
     /// <summary>One speculative run of a candidate with <paramref name="placeholder"/> for every skipped read; its cells join the round.</summary>
-    /// <returns>Whether the run failed: reverted, halted or threw.</returns>
+    /// <returns>Whether the run halted, panicked or threw: the failures a placeholder can cause and another can avoid.</returns>
     private bool CaptureRun(IPrewarmerEnv env, (int Index, Transaction Tx) candidate, DiscoveryRound round, UInt256 placeholder)
     {
         Transaction tx = candidate.Tx;
@@ -534,7 +561,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(round.Block.Header);
         scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(round.Block.Header, round.Spec));
 
-        FailureTracer status = new();
+        PlaceholderFailureTracer status = new();
         bool failed;
         try
         {
@@ -584,16 +611,27 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return failed;
     }
 
-    /// <summary>Records whether a speculative run ended in a failure.</summary>
-    private sealed class FailureTracer : TxTracer
+    /// <summary>
+    /// Records whether a speculative run ended in a halt, such as the invalid opcode older compilers emit on division by
+    /// zero, or in a <c>Panic(uint256)</c> revert, which newer ones use for it and for overflow and out-of-bounds access.
+    /// </summary>
+    /// <remarks>
+    /// Any other revert (a failed <c>require</c>, a passed deadline, slippage) is not counted: the run fails the same way
+    /// whatever the placeholder, so repeating it would only double its cost.
+    /// </remarks>
+    internal sealed class PlaceholderFailureTracer : TxTracer
     {
-        public bool Failed;
+        private static ReadOnlySpan<byte> PanicSelector => [0x4e, 0x48, 0x7b, 0x71];
+
+        public bool Failed { get; private set; }
         public override bool IsTracingReceipt => true;
         public override bool IsCollectingLogs => false;
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
 
-        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => Failed = true;
+        // A revert hands over its data, and one without data reports the revert sentinel; a halt has neither.
+        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) =>
+            Failed = output.AsSpan().StartsWith(PanicSelector) || (output.Length == 0 && error != TransactionSubstate.Revert);
     }
 
     private bool WarmDiscoveredStorage(BlockHeader target, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
@@ -1512,6 +1550,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         : IColdReadHandler
     {
         private ConcurrentQueue<ParallelUnbalancedWork.BackgroundWork>? _discoveryHandOffs;
+        private StrongBox<int>? _handOffCells;
+        private int _handOffClaims;
 
         /// <summary>Whether a warm caught in cold reads hands its transaction to discovery.</summary>
         public bool HandsColdChainsToDiscovery { get; init; }
@@ -1525,15 +1565,35 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public void AddDiscoveryHandOff(ParallelUnbalancedWork.BackgroundWork work) =>
             LazyInitializer.EnsureInitialized(ref _discoveryHandOffs).Enqueue(work);
 
+        /// <summary>Whether the block may hand one more transaction to discovery.</summary>
+        public bool TryClaimDiscoveryHandOff() => Interlocked.Increment(ref _handOffClaims) <= MaxDiscoveryCandidates;
+
+        /// <summary>The cells the block's hand-offs may still discover between them.</summary>
+        public StrongBox<int> HandOffCells => LazyInitializer.EnsureInitialized(ref _handOffCells, static () => new StrongBox<int>(MaxDiscoveredCells));
+
+        /// <summary>Waits for every hand-off; one that faults is rethrown only after the rest are joined.</summary>
         public void JoinDiscoveryHandOffs()
         {
             ConcurrentQueue<ParallelUnbalancedWork.BackgroundWork>? handOffs = Volatile.Read(ref _discoveryHandOffs);
             if (handOffs is null) return;
+            List<Exception>? faults = null;
             while (handOffs.TryDequeue(out ParallelUnbalancedWork.BackgroundWork? work))
             {
-                work.WaitForCompletion();
-                work.Dispose();
+                try
+                {
+                    work.WaitForCompletion();
+                }
+                catch (Exception e)
+                {
+                    (faults ??= []).Add(e);
+                }
+                finally
+                {
+                    work.Dispose();
+                }
             }
+
+            if (faults is not null) throw new AggregateException(faults);
         }
     }
 
