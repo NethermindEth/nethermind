@@ -855,18 +855,39 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         bool? RootUpdate,
         bool WasCleared);
 
+    /// <summary>A slot index as a map key.</summary>
+    /// <remarks>
+    /// Hashes through <see cref="UInt256Comparer"/>'s run-seeded mixer, as that comparer did when the maps were keyed by
+    /// <see cref="UInt256"/>, but as the key's own <see cref="GetHashCode"/>: the map then calls hash and equality
+    /// directly rather than through an interface call per probe.
+    /// </remarks>
+    private readonly struct SlotKey(in UInt256 index) : IEquatable<SlotKey>
+    {
+        public readonly UInt256 Index = index;
+
+        public bool Equals(SlotKey other) => Index.Equals(in other.Index);
+
+        public override bool Equals(object? obj) => obj is SlotKey other && Equals(other);
+
+        public override int GetHashCode() => UInt256Comparer.Instance.GetHashCode(Index);
+
+        public static implicit operator SlotKey(in UInt256 index) => new(in index);
+
+        public static implicit operator UInt256(in SlotKey key) => key.Index;
+    }
+
     private sealed class DefaultableDictionary()
     {
         /// <summary>A full map of at least this many entries moves into one from <see cref="LargeMaps"/>.</summary>
         private const int GrowIntoLargeAt = 512;
-        private static readonly LargeMapPool<UInt256, StorageChangeTrace> LargeMaps = new(UInt256Comparer.Instance, minRetainedCapacity: GrowIntoLargeAt * 2);
+        private static readonly LargeMapPool<SlotKey, StorageChangeTrace> LargeMaps = new(comparer: null, minRetainedCapacity: GrowIntoLargeAt * 2);
 
         private bool _missingAreDefault;
         private bool _clearedNonEmptyStorage;
-        private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(UInt256Comparer.Instance);
-        private Dictionary<UInt256, StorageChangeTrace>? _spare;
+        private Dictionary<SlotKey, StorageChangeTrace> _dictionary = [];
+        private Dictionary<SlotKey, StorageChangeTrace>? _spare;
         // The contract's own map while a pooled large one holds its entries.
-        private Dictionary<UInt256, StorageChangeTrace>? _parked;
+        private Dictionary<SlotKey, StorageChangeTrace>? _parked;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public int Count => _dictionary.Count;
         public bool HasClear => _missingAreDefault;
@@ -896,7 +917,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (_dictionary.Count > capacity)
             {
                 // These arrays will be discarded; clearing their entries first only adds writes.
-                _dictionary = new Dictionary<UInt256, StorageChangeTrace>(capacity, UInt256Comparer.Instance);
+                _dictionary = new Dictionary<SlotKey, StorageChangeTrace>(capacity);
             }
             else
             {
@@ -913,11 +934,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public ClearSnapshot ClearRevertibly(bool clearedNonEmptyStorage)
         {
-            Dictionary<UInt256, StorageChangeTrace>? previousEntries = null;
+            Dictionary<SlotKey, StorageChangeTrace>? previousEntries = null;
             if (_dictionary.Count != 0)
             {
                 previousEntries = _dictionary;
-                _dictionary = _spare ?? new Dictionary<UInt256, StorageChangeTrace>(UInt256Comparer.Instance);
+                _dictionary = _spare ?? [];
                 _spare = null;
             }
 
@@ -951,7 +972,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public ref StorageChangeTrace GetValueRefOrAddDefault(in UInt256 storageCellIndex, out bool exists)
         {
-            Dictionary<UInt256, StorageChangeTrace> dictionary = _dictionary;
+            Dictionary<SlotKey, StorageChangeTrace> dictionary = _dictionary;
             if (dictionary.Count == dictionary.Capacity && dictionary.Count >= GrowIntoLargeAt && !dictionary.ContainsKey(storageCellIndex))
             {
                 GrowIntoLarge();
@@ -973,9 +994,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// otherwise regrow on the LOH every block or call.</remarks>
         private void GrowIntoLarge()
         {
-            Dictionary<UInt256, StorageChangeTrace> current = _dictionary;
-            Dictionary<UInt256, StorageChangeTrace> large = LargeMaps.Rent(current.Count * 2);
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> entry in current) large.Add(entry.Key, entry.Value);
+            Dictionary<SlotKey, StorageChangeTrace> current = _dictionary;
+            Dictionary<SlotKey, StorageChangeTrace> large = LargeMaps.Rent(current.Count * 2);
+            foreach (KeyValuePair<SlotKey, StorageChangeTrace> entry in current) large.Add(entry.Key, entry.Value);
 
             if (_parked is null)
             {
@@ -998,7 +1019,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             set => _dictionary[key] = value;
         }
 
-        public Dictionary<UInt256, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
+        public Dictionary<SlotKey, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
         public void UnmarkClear()
         {
@@ -1007,7 +1028,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         public readonly record struct ClearSnapshot(
-            Dictionary<UInt256, StorageChangeTrace>? PreviousEntries,
+            Dictionary<SlotKey, StorageChangeTrace>? PreviousEntries,
             bool MissingAreDefault,
             bool ClearedNonEmptyStorage);
     }
@@ -1388,7 +1409,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
 
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
             {
                 UInt256 after = kvp.Value.After;
                 if (kvp.Value.Before != after || kvp.Value.IsInitialValue)
@@ -1444,7 +1465,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (BlockChange.Count == 0) return;
 
             using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(Address, BlockChange.Count);
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
             {
                 storageWriteBatch.Set(kvp.Key, kvp.Value.After);
             }
