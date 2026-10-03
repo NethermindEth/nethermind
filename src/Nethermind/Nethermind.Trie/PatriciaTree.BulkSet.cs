@@ -158,10 +158,12 @@ public partial class PatriciaTree
             jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
         }
 
+        Core.Diagnostics.FanOutTrace? fan = path.Length == 0 ? Core.Diagnostics.FanOutTrace.Begin(TrieNode.BranchesCount) : null;
         ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
             GetTraverseStack,
             (i, workerTraverseStack) =>
             {
+                fan?.JobStart(i);
                 (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
 
                 Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
@@ -188,11 +190,13 @@ public partial class PatriciaTree
                 }
 
                 jobs[i] = (startIdx, count, nib, childPath, reportedChild, newChild); // Just need the child actually...
+                fan?.JobEnd(i);
 
                 return workerTraverseStack;
             },
             ReturnTraverseStack
         );
+        fan?.Note("bset");
     }
 
     /// <param name="ctx">Just to reduce the param count</param>

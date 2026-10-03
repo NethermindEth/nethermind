@@ -136,18 +136,22 @@ internal static class DirtyNodeHasher
         }
 
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
+        Core.Diagnostics.FanOutTrace? fan = Core.Diagnostics.FanOutTrace.Begin(count);
         ParallelUnbalancedWork.For(0, count, RuntimeInformation.ParallelOptionsLogicalCores,
-            (childIndexes, root, resolver, pool, maxCollectedNodes),
+            (childIndexes, root, resolver, pool, maxCollectedNodes, fan),
             static (i, state) =>
             {
+                state.fan?.JobStart(i);
                 int childIndex = state.childIndexes[i];
                 state.root.TryGetDirtyChild(childIndex, out TrieNode? child);
                 TreePath childPath = TreePath.Empty;
                 childPath.AppendMut(childIndex);
                 HashSubtree(child!, in childPath, state.resolver, state.pool, state.maxCollectedNodes);
+                state.fan?.JobEnd(i);
                 return state;
             });
 
+        fan?.Note("hash");
         return true;
     }
 
