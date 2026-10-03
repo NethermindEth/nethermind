@@ -7,8 +7,8 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -203,51 +203,16 @@ public class ForkedStateTransitionTests
     }
 
     /// <summary>A block one slot ahead of <paramref name="state"/>, with the real (state-computed) proposer index.</summary>
-    private static SignedBeaconBlock MinimalBlock(BeaconStateFulu state, ulong proposerIndex, Hash256 parentRoot) => new()
+    private static SignedBeaconBlock MinimalBlock(BeaconStateFulu state, ulong proposerIndex, Hash256 parentRoot)
     {
-        Message = new BeaconBlock
-        {
-            Slot = state.Slot + 1,
-            ProposerIndex = proposerIndex,
-            ParentRoot = parentRoot,
-            StateRoot = Hash256.Zero,
-            Body = new BeaconBlockBody
-            {
-                Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-                Graffiti = Hash256.Zero,
-                ProposerSlashings = [],
-                AttesterSlashings = [],
-                Attestations = [],
-                Deposits = [],
-                VoluntaryExits = [],
-                SyncAggregate = new SyncAggregate { SyncCommitteeBits = new BitArray(512) },
-                ExecutionPayload = new ExecutionPayload
-                {
-                    ParentHash = Hash256.Zero,
-                    FeeRecipient = Address.Zero,
-                    StateRoot = Hash256.Zero,
-                    ReceiptsRoot = Hash256.Zero,
-                    LogsBloom = Bloom.Empty,
-                    PrevRandao = Hash256.Zero,
-                    BlockNumber = state.Slot,
-                    GasLimit = 30_000_000,
-                    GasUsed = 21_000,
-                    Timestamp = 1_750_000_000,
-                    ExtraData = [],
-                    BaseFeePerGas = 7,
-                    BlockHash = Hash256.Zero,
-                    Transactions = [],
-                    Withdrawals = [],
-                    BlobGasUsed = 0,
-                    ExcessBlobGas = 0,
-                },
-                BlsToExecutionChanges = [],
-                BlobKzgCommitments = [],
-                ExecutionRequests = new ExecutionRequests { Deposits = [], Withdrawals = [], Consolidations = [] },
-            },
-        },
-        Signature = default,
-    };
+        SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(state.Slot + 1);
+        block.Message!.ProposerIndex = proposerIndex;
+        block.Message.ParentRoot = parentRoot;
+        ExecutionPayload payload = block.Message.Body!.ExecutionPayload!;
+        payload.BlockNumber = state.Slot;
+        payload.ExtraData = [];
+        return block;
+    }
 
     private static Hash256 Hash(byte value)
     {

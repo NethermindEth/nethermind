@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -356,50 +357,17 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     }
 
     /// <summary>A well-formed block with an empty body at <paramref name="slot"/>, for endpoints that only need something decodable in the store.</summary>
-    public static SignedBeaconBlock MinimalBlock(ulong slot) => new()
+    public static SignedBeaconBlock MinimalBlock(ulong slot)
     {
-        Message = new BeaconBlock
-        {
-            Slot = slot,
-            ProposerIndex = 0,
-            ParentRoot = Hash256.Zero,
-            StateRoot = Hash256.Zero,
-            Body = new BeaconBlockBody
-            {
-                Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-                Graffiti = Hash256.Zero,
-                ProposerSlashings = [],
-                AttesterSlashings = [],
-                Attestations = [],
-                Deposits = [],
-                VoluntaryExits = [],
-                SyncAggregate = new SyncAggregate { SyncCommitteeBits = new BitArray(512) },
-                ExecutionPayload = new ExecutionPayload
-                {
-                    ParentHash = Hash256.Zero,
-                    FeeRecipient = Address.Zero,
-                    StateRoot = Hash256.Zero,
-                    ReceiptsRoot = Hash256.Zero,
-                    LogsBloom = Bloom.Empty,
-                    PrevRandao = Hash256.Zero,
-                    BlockNumber = 1,
-                    GasLimit = 30_000_000,
-                    GasUsed = 0,
-                    Timestamp = 1_606_824_023,
-                    ExtraData = [],
-                    BaseFeePerGas = 7,
-                    BlockHash = Hash256.Zero,
-                    Transactions = [],
-                    Withdrawals = [],
-                    BlobGasUsed = 0,
-                    ExcessBlobGas = 0,
-                },
-                BlsToExecutionChanges = [],
-                BlobKzgCommitments = [],
-                ExecutionRequests = new ExecutionRequests { Deposits = [], Withdrawals = [], Consolidations = [] },
-            },
-        },
-    };
+        SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(slot);
+        block.Message!.ProposerIndex = 0;
+        ExecutionPayload payload = block.Message.Body!.ExecutionPayload!;
+        payload.BlockNumber = 1;
+        payload.GasUsed = 0;
+        payload.Timestamp = 1_606_824_023;
+        payload.ExtraData = [];
+        return block;
+    }
 }
 
 /// <summary>An engine that reports every payload and fork choice as valid; availability is settable for sync-status endpoint tests.</summary>
