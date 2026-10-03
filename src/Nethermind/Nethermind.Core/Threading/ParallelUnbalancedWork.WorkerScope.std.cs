@@ -33,6 +33,14 @@ public partial class ParallelUnbalancedWork
             if (Concurrency == 1) work.Execute();
             else _scheduler.Enqueue(new(), work);
         }
+
+        internal partial void KeepRunners(TimeSpan hold) =>
+            _scheduler.KeepRunnersUntil(Stopwatch.GetTimestamp() + (long)(hold.TotalSeconds * Stopwatch.Frequency));
+
+        internal partial void ReleaseRunners() => _scheduler.KeepRunnersUntil(0);
+
+        /// <summary>The runners the group holds, running or waiting; for tests.</summary>
+        internal int ReservedRunners => _scheduler.ReservedRunners;
     }
 
     public sealed partial class WorkerScope
