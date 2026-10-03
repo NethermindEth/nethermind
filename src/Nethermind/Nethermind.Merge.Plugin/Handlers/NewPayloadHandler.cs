@@ -135,9 +135,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         using (preparation.Workers.Enter())
         {
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
-            // Overlaps ecrecover with everything that follows, block processing included; the pipeline recovers inline
-            // whatever it reaches before the background recovery does. Started only once the block is built: this request
-            // waits on the preparation's transactions-root work, which must not compete with recovery for the workers.
             if (!decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
