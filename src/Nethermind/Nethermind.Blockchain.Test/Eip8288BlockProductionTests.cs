@@ -73,6 +73,7 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(1));
             Assert.That(second.Header.RecursiveStark!.StarkProof,
                 Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(second).ToByteArray()));
         }
