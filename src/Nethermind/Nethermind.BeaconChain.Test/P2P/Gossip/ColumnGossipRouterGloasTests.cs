@@ -534,7 +534,7 @@ public class ColumnGossipRouterGloasTests
     public void Stored_bid_over_its_epochs_blob_limit_does_not_accept_a_matching_sidecar()
     {
         // A later schedule entry lifts the size bound to 22 cells while the block's own epoch allows 21.
-        BeaconChainSpec spec = WithBlobEntry(Sepolia, new BlobScheduleEntry(Sepolia.GloasForkEpoch + 1, 22));
+        BeaconChainSpec spec = DataColumnSidecarTestFixture.WithBlobEntry(Sepolia, new BlobScheduleEntry(Sepolia.GloasForkEpoch + 1, 22));
         SignedBeaconBlockGloas block = BlockWithBlobs();
         SszKzgCommitment commitment = DataColumnSidecarGloasTestFixture.Commitments()[0];
         block.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlobKzgCommitments = [.. Enumerable.Repeat(commitment, 22)];
@@ -557,7 +557,7 @@ public class ColumnGossipRouterGloasTests
     public void Column_over_the_blob_limit_is_convicted_only_by_a_held_block_and_a_slot_not_from_the_future(ulong slotsAhead, MessageValidity expected)
     {
         // A later schedule entry lifts the size bound to 22 cells while the block's own epoch allows 21.
-        BeaconChainSpec spec = WithBlobEntry(Sepolia, new BlobScheduleEntry(Sepolia.GloasForkEpoch + 1, 22));
+        BeaconChainSpec spec = DataColumnSidecarTestFixture.WithBlobEntry(Sepolia, new BlobScheduleEntry(Sepolia.GloasForkEpoch + 1, 22));
         (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(spec, populate: static (_, store) => store.PutForkedBlock(BlockRoot, new ForkedSignedBeaconBlock.OfGloas(Block)));
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, Encode(Sidecar(slot: BlockSlot + slotsAhead, mutate: static s => Widen(s, 22))));
@@ -824,22 +824,6 @@ public class ColumnGossipRouterGloasTests
         sidecar.Column = [.. Enumerable.Repeat(sidecar.Column![0], cells)];
         sidecar.KzgProofs = [.. Enumerable.Repeat(sidecar.KzgProofs![0], cells)];
     }
-
-    private static BeaconChainSpec WithBlobEntry(BeaconChainSpec spec, BlobScheduleEntry entry) => new()
-    {
-        SecondsPerSlot = spec.SecondsPerSlot,
-        SlotsPerEpoch = spec.SlotsPerEpoch,
-        GenesisTime = spec.GenesisTime,
-        GenesisValidatorsRoot = spec.GenesisValidatorsRoot,
-        Forks = spec.Forks,
-        BlobSchedule = [.. spec.BlobSchedule, entry],
-        ElectraForkEpoch = spec.ElectraForkEpoch,
-        FuluForkEpoch = spec.FuluForkEpoch,
-        MaxBlobsPerBlockElectra = spec.MaxBlobsPerBlockElectra,
-        GloasForkEpoch = spec.GloasForkEpoch,
-        GloasForkVersion = spec.GloasForkVersion,
-        Bootnodes = spec.Bootnodes,
-    };
 
     private static byte[] Encode(DataColumnSidecarGloas sidecar) => Snappy.CompressToArray(DataColumnSidecarGloas.Encode(sidecar));
 

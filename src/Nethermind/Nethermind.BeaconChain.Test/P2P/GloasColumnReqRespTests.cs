@@ -79,7 +79,7 @@ public class GloasColumnReqRespTests
     [TestCase(2, false, "structural", TestName = "Post-BPO chunk over that epoch's blob max but under the frame bound is refused")]
     public async Task The_Gloas_reader_uses_the_blob_parameters_of_the_sidecars_own_epoch(int cells, bool underForkEpochDigest, string? refusal)
     {
-        BeaconChainSpec spec = WithBlobEntry(Spec, new BlobScheduleEntry(Spec.GloasForkEpoch + 1, 1));
+        BeaconChainSpec spec = DataColumnSidecarTestFixture.WithBlobEntry(Spec, new BlobScheduleEntry(Spec.GloasForkEpoch + 1, 1));
         ulong slot = (Spec.GloasForkEpoch + 1) * Spec.SlotsPerEpoch;
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(9, slot);
         (sidecar.Column, sidecar.KzgProofs) = (sidecar.Column![..cells], sidecar.KzgProofs![..cells]);
@@ -101,7 +101,7 @@ public class GloasColumnReqRespTests
     public async Task The_Gloas_reader_accepts_a_sidecar_of_exactly_the_computed_bound()
     {
         const int maxBlobs = 64;
-        BeaconChainSpec spec = WithBlobEntry(Spec, new BlobScheduleEntry(Spec.GloasForkEpoch + 1, maxBlobs));
+        BeaconChainSpec spec = DataColumnSidecarTestFixture.WithBlobEntry(Spec, new BlobScheduleEntry(Spec.GloasForkEpoch + 1, maxBlobs));
         ulong slot = (Spec.GloasForkEpoch + 1) * Spec.SlotsPerEpoch;
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(9, slot);
         (sidecar.Column, sidecar.KzgProofs) = ([.. Enumerable.Repeat(sidecar.Column![0], maxBlobs)], [.. Enumerable.Repeat(sidecar.KzgProofs![0], maxBlobs)]);
@@ -250,22 +250,6 @@ public class GloasColumnReqRespTests
             Assert.That((served.BeaconBlockRoot, served.Index), Is.EqualTo((heldRoot, 3UL)));
         }
     }
-
-    private static BeaconChainSpec WithBlobEntry(BeaconChainSpec spec, BlobScheduleEntry entry) => new()
-    {
-        SecondsPerSlot = spec.SecondsPerSlot,
-        SlotsPerEpoch = spec.SlotsPerEpoch,
-        GenesisTime = spec.GenesisTime,
-        GenesisValidatorsRoot = spec.GenesisValidatorsRoot,
-        Forks = spec.Forks,
-        BlobSchedule = [.. spec.BlobSchedule, entry],
-        ElectraForkEpoch = spec.ElectraForkEpoch,
-        FuluForkEpoch = spec.FuluForkEpoch,
-        MaxBlobsPerBlockElectra = spec.MaxBlobsPerBlockElectra,
-        GloasForkEpoch = spec.GloasForkEpoch,
-        GloasForkVersion = spec.GloasForkVersion,
-        Bootnodes = spec.Bootnodes,
-    };
 
     private static byte[] ContextOf(ulong slot) => ForkDigest.Compute(Spec, Spec.GetEpoch(slot));
 

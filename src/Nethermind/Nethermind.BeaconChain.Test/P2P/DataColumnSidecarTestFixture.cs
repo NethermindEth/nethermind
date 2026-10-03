@@ -4,6 +4,7 @@
 using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Test.DataAvailability;
 using Nethermind.BeaconChain.Test.Types;
@@ -15,8 +16,7 @@ namespace Nethermind.BeaconChain.Test.P2P;
 
 /// <summary>
 /// Builds a fully valid <see cref="DataColumnSidecar"/> (real KZG cells/proofs and a genuinely
-/// folded inclusion proof) for the P2P-layer tests, mirroring
-/// <c>DataColumnSidecarVerifierTests.BuildValidSidecar</c> without depending on that test class.
+/// folded inclusion proof) for the verifier and P2P-layer tests.
 /// </summary>
 internal static class DataColumnSidecarTestFixture
 {
@@ -52,6 +52,23 @@ internal static class DataColumnSidecarTestFixture
             KzgCommitmentsInclusionProof = branch,
         };
     }
+
+    /// <summary>Returns a fresh specification with the additional blob-schedule entry.</summary>
+    public static BeaconChainSpec WithBlobEntry(BeaconChainSpec spec, BlobScheduleEntry entry) => new()
+    {
+        SecondsPerSlot = spec.SecondsPerSlot,
+        SlotsPerEpoch = spec.SlotsPerEpoch,
+        GenesisTime = spec.GenesisTime,
+        GenesisValidatorsRoot = spec.GenesisValidatorsRoot,
+        Forks = spec.Forks,
+        BlobSchedule = [.. spec.BlobSchedule, entry],
+        ElectraForkEpoch = spec.ElectraForkEpoch,
+        FuluForkEpoch = spec.FuluForkEpoch,
+        MaxBlobsPerBlockElectra = spec.MaxBlobsPerBlockElectra,
+        GloasForkEpoch = spec.GloasForkEpoch,
+        GloasForkVersion = spec.GloasForkVersion,
+        Bootnodes = spec.Bootnodes,
+    };
 
     /// <summary>Stores a block under the root of <paramref name="sidecar"/>'s header with its signature, as an imported block whose header the import verified.</summary>
     public static void StoreAsImported(BeaconChainStore store, DataColumnSidecar sidecar)
