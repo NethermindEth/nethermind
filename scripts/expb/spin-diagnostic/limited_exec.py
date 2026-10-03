@@ -11,7 +11,7 @@ import sys
 
 def main():
     parent, limit, executable, *args = sys.argv[1:]
-    if not executable.startswith("/") or not 1 <= int(limit) <= 64 * 1024 * 1024:
+    if not executable.startswith("/") or not 1 <= int(limit) <= 2048 * 1024 * 1024:
         raise ValueError("invalid child bounds")
     os.umask(0o077)
     resource.setrlimit(resource.RLIMIT_FSIZE, (int(limit), int(limit)))

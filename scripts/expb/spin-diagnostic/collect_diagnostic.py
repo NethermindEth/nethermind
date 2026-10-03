@@ -65,7 +65,7 @@ def main():
                '--input-dir', str(root), '--output-dir', str(public / 'encrypted'),
                '--certificate', str(bundle / 'recipient.crt')]
     try:
-        code = subprocess.run(command, check=False, timeout=180).returncode
+        code = subprocess.run(command, check=False, timeout=600).returncode
         steps['encrypted_archive'] = {'completed': code == 0, 'returncode': code}
     except Exception as error:
         steps['encrypted_archive'] = {'completed': False, 'error_type': type(error).__name__}

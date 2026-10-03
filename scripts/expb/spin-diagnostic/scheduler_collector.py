@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import select
+import shutil
 import signal
 import stat
 import subprocess
@@ -22,6 +23,15 @@ else:
     import pidfd_compat
 
 MIB = 1024 * 1024
+RECORD_LIMIT = 512 * MIB
+RECORD_FILE_LIMIT = 520 * MIB
+SCRIPT_LIMIT = 2048 * MIB
+PROJECTION_LIMIT = 512 * MIB
+DECODER_TIMEOUT = 300
+STORAGE_RESERVE = 1024 * MIB
+# Each child can fill both its data and diagnostic file; allow two archive copies.
+CAPTURE_FREE_BYTES = 3 * (2 * RECORD_FILE_LIMIT + 2 * SCRIPT_LIMIT) + PROJECTION_LIMIT + STORAGE_RESERVE
+DECODE_FREE_BYTES = 2 * SCRIPT_LIMIT + PROJECTION_LIMIT + STORAGE_RESERVE
 EVENTS = ("sched_switch", "sched_wakeup", "sched_wakeup_new")
 LINE = re.compile(
     r"^\s*(?P<tid>\d+)\s+\[(?P<cpu>\d+)\]\s+"
@@ -41,6 +51,13 @@ WAKE_FIELDS = re.compile(
 
 class CaptureError(RuntimeError):
     pass
+
+
+def check_free_space(directory, required):
+    free = shutil.disk_usage(directory).free
+    if free < required:
+        raise CaptureError("insufficient free space for bounded diagnostic outputs")
+    return {"free_bytes": free, "required_bytes": required}
 
 
 def clock_origin():
@@ -171,7 +188,7 @@ class OwnedProcess:
         self.process = self.pidfd = self.identity = None
         self.stop_evidence = None
 
-    def start(self, argv, *, stdout, stderr, pass_fds=(), file_limit=40 * MIB):
+    def start(self, argv, *, stdout, stderr, pass_fds=(), file_limit=RECORD_FILE_LIMIT):
         launcher = str(Path(__file__).with_name("limited_exec.py"))
         self.process = subprocess.Popen(
             [sys.executable, "-I", launcher, str(os.getpid()), str(file_limit), *argv],
@@ -266,6 +283,7 @@ class SchedulerCollector:
             raise
 
     def _start(self):
+        self.metadata["storage_preflight"] = check_free_space(self.directory, CAPTURE_FREE_BYTES)
         self._snapshot()
         self.metadata["boot_id"] = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
         self.metadata["clock_ticks_per_second"] = os.sysconf("SC_CLK_TCK")
@@ -276,7 +294,7 @@ class SchedulerCollector:
             descriptors.callback(os.close, ack_write)
             argv = [str(self.perf), "record", "--all-cpus", "--clockid", "mono",
                     "--no-buildid", "--no-buildid-cache", "--synth=no",
-                    "--mmap-pages=256", "--max-size=32M", "--delay=-1",
+                    "--mmap-pages=256", f"--max-size={RECORD_LIMIT // MIB}M", "--delay=-1",
                     f"--control=fd:{ctl_read},{ack_write}",
                     "--output", str(self.directory / "sched.data")]
             for event in EVENTS:
@@ -348,7 +366,7 @@ class SchedulerCollector:
             if (self.error or exc_type or not controlled
                     or self.metadata["record_returncode"] not in (0, -signal.SIGINT)):
                 raise CaptureError(self.error or "replay or perf record failed")
-            if not 0 < (self.directory / "sched.data").stat().st_size < 32 * MIB:
+            if not 0 < (self.directory / "sched.data").stat().st_size < RECORD_LIMIT:
                 raise CaptureError("record empty or at size limit")
             self.metadata["status"] = "RECORDED_REQUIRES_LINUX_VALIDATION"
         except Exception as error:
@@ -387,16 +405,19 @@ def decode_capture(directory: Path, *, perf=Path("/usr/bin/perf")):
     result = json.loads((directory / "result.json").read_text())
     if result["status"] != "RECORDED_REQUIRES_LINUX_VALIDATION":
         raise CaptureError("refusing incomplete/unknown capture")
+    if not 0 < (directory / "sched.data").stat().st_size < RECORD_LIMIT:
+        raise CaptureError("record empty or at size limit")
+    storage = check_free_space(directory, DECODE_FREE_BYTES)
     argv = [str(perf.resolve(strict=True)), "script", "--ns", "--show-lost-events",
             "--input", str(directory / "sched.data"), "-F", "tid,cpu,time,event,trace"]
     with (directory / "sched.script.txt").open("xb") as output, \
             (directory / "perf-script.log").open("xb") as errors:
         child = OwnedProcess()
-        decoder = {"status": "STARTING", "command": argv}
+        decoder = {"status": "STARTING", "command": argv, "storage_preflight": storage}
         failure = None
         try:
-            child.start(argv, stdout=output, stderr=errors, file_limit=64 * MIB)
-            code = child.process.wait(timeout=30)
+            child.start(argv, stdout=output, stderr=errors, file_limit=SCRIPT_LIMIT)
+            code = child.process.wait(timeout=DECODER_TIMEOUT)
             decoder.update(status="EXITED", returncode=code)
         except BaseException as error:
             failure = error
@@ -416,7 +437,7 @@ def decode_capture(directory: Path, *, perf=Path("/usr/bin/perf")):
             raise CaptureError("decoder failed; inspect private decoder-status.json") from failure
     if code != 0 or (directory / "perf-script.log").stat().st_size:
         raise CaptureError("decoder failed or emitted diagnostics; inspect private log")
-    if not 0 < (directory / "sched.script.txt").stat().st_size < 64 * MIB:
+    if not 0 < (directory / "sched.script.txt").stat().st_size < SCRIPT_LIMIT:
         raise CaptureError("decoder output empty or at size limit")
     with (directory / "sched.script.txt").open() as stream:
         summary = parse_script(stream)

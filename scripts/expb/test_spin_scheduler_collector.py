@@ -132,6 +132,7 @@ class OwnershipTests(unittest.TestCase):
                 with self.assertRaises(OSError):
                     child.start(["/usr/bin/perf", "record"], stdout=io.BytesIO(), stderr=io.BytesIO())
                 self.assertTrue(spawn.call_args.kwargs["start_new_session"])
+                self.assertEqual(spawn.call_args.args[0][4], str(sc.RECORD_FILE_LIMIT))
                 self.assertNotIn("shell", spawn.call_args.kwargs)
                 if spawned:
                     with self.assertRaisesRegex(sc.CaptureError, "UNKNOWN"):
@@ -222,27 +223,115 @@ class OwnershipTests(unittest.TestCase):
         resource = Mock(RLIMIT_FSIZE=1)
         libc = Mock()
         libc.prctl.return_value = 0
-        argv = ["limited_exec.py", "7", str(40 * sc.MIB), "/usr/bin/perf", "record"]
-        with patch.dict(sys.modules, {"resource": resource}), \
+        for limit in (1, sc.RECORD_FILE_LIMIT, sc.SCRIPT_LIMIT, 0, sc.SCRIPT_LIMIT + 1):
+            argv = ["limited_exec.py", "7", str(limit), "/usr/bin/perf", "record"]
+            with self.subTest(limit=limit), patch.dict(sys.modules, {"resource": resource}), \
                 patch.object(sys, "argv", argv), patch("ctypes.CDLL", return_value=libc), \
                 patch.object(sc.os, "getppid", return_value=7), \
                 patch.object(sc.os, "umask") as umask, \
                 patch.object(signal, "SIGXFSZ", 25, create=True), \
                 patch.object(signal, "signal"), patch.object(sc.os, "execv") as execute:
-            runpy.run_path(str(Path(sc.__file__).with_name("limited_exec.py")), run_name="__main__")
-            resource.setrlimit.assert_called_once_with(1, (40 * sc.MIB, 40 * sc.MIB))
-            umask.assert_called_once_with(0o077)
-            libc.prctl.assert_called_once_with(1, signal.SIGINT, 0, 0, 0)
-            execute.assert_called_once_with("/usr/bin/perf", ["/usr/bin/perf", "record"])
+                resource.reset_mock()
+                libc.reset_mock()
+                if not 1 <= limit <= sc.SCRIPT_LIMIT:
+                    with self.assertRaisesRegex(ValueError, "invalid child bounds"):
+                        runpy.run_path(str(Path(sc.__file__).with_name("limited_exec.py")), run_name="__main__")
+                    resource.setrlimit.assert_not_called()
+                    execute.assert_not_called()
+                    continue
+                runpy.run_path(str(Path(sc.__file__).with_name("limited_exec.py")), run_name="__main__")
+                resource.setrlimit.assert_called_once_with(1, (limit, limit))
+                umask.assert_called_once_with(0o077)
+                libc.prctl.assert_called_once_with(1, signal.SIGINT, 0, 0, 0)
+                execute.assert_called_once_with("/usr/bin/perf", ["/usr/bin/perf", "record"])
 
 
 class FailureTests(unittest.TestCase):
+    def test_storage_boundaries_and_capacity_formula(self):
+        self.assertEqual(sc.CAPTURE_FREE_BYTES,
+                         3 * (2 * sc.RECORD_FILE_LIMIT + 2 * sc.SCRIPT_LIMIT) + sc.PROJECTION_LIMIT + sc.STORAGE_RESERVE)
+        self.assertEqual(sc.DECODE_FREE_BYTES, 2 * sc.SCRIPT_LIMIT + sc.PROJECTION_LIMIT + sc.STORAGE_RESERVE)
+        self.assertEqual(sc.RECORD_LIMIT, 512 * sc.MIB)
+        self.assertEqual(sc.RECORD_FILE_LIMIT, 520 * sc.MIB)
+        self.assertEqual(sc.SCRIPT_LIMIT, 2048 * sc.MIB)
+        self.assertEqual(sc.PROJECTION_LIMIT, 512 * sc.MIB)
+        for required in (sc.CAPTURE_FREE_BYTES, sc.DECODE_FREE_BYTES):
+            for free in (required - 1, required, required + 1):
+                with self.subTest(required=required, free=free), \
+                        patch.object(sc.shutil, "disk_usage", return_value=Mock(free=free)):
+                    if free < required:
+                        with self.assertRaisesRegex(sc.CaptureError, "insufficient free space"):
+                            sc.check_free_space(Path("owned"), required)
+                    else:
+                        self.assertEqual(sc.check_free_space(Path("owned"), required),
+                                         {"free_bytes": free, "required_bytes": required})
+
+    def test_record_size_boundary_and_low_space_fail_closed(self):
+        for size in (0, 9, 10, 11):
+            with self.subTest(size=size), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp) / "capture"
+                with self.simulated_linux(directory) as (collector, child), patch.object(sc, "RECORD_LIMIT", 10):
+                    collector.__enter__()
+                    (directory / "sched.data").write_bytes(b"x" * size)
+                    if size == 9:
+                        collector.__exit__(None, None, None)
+                    else:
+                        with self.assertRaisesRegex(sc.CaptureError, "record empty or at size limit"):
+                            collector.__exit__(None, None, None)
+                    self.assertEqual(collector.metadata["status"],
+                                     "RECORDED_REQUIRES_LINUX_VALIDATION" if size == 9 else "FAILED")
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp) / "capture"
+            with self.simulated_linux(directory) as (collector, child):
+                child.process = None
+                sc.shutil.disk_usage.return_value.free = sc.CAPTURE_FREE_BYTES - 1
+                with self.assertRaisesRegex(sc.CaptureError, "insufficient free space"):
+                    collector.__enter__()
+                child.start.assert_not_called()
+                sc.os.pipe.assert_not_called()
+                self.assertEqual(json.loads((directory / "result.json").read_text())["status"], "FAILED")
+
+    def test_decoder_input_output_space_and_timeout_bounds(self):
+        for case in ("input_empty", "input_limit", "space", "output_empty", "output_limit", "timeout"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                sc.save_json(directory / "result.json", {"status": "RECORDED_REQUIRES_LINUX_VALIDATION"})
+                (directory / "sched.data").write_bytes(b"" if case == "input_empty" else b"synthetic")
+                child = Mock()
+                child.process.poll.return_value = 0
+                child.process.wait.return_value = 0
+                if case == "timeout":
+                    child.process.wait.side_effect = subprocess.TimeoutExpired("perf", sc.DECODER_TIMEOUT)
+                def start(argv, *, stdout, stderr, file_limit):
+                    if case != "output_empty":
+                        stdout.write(SWITCH.encode())
+                child.start.side_effect = start
+                with patch.object(sc, "OwnedProcess", return_value=child), \
+                        patch.object(sys, "platform", "linux"), \
+                        patch.object(sc.os, "getuid", return_value=0, create=True), \
+                        patch.object(sc.stat, "S_IMODE", return_value=0o700), \
+                        patch.object(sc.shutil, "disk_usage", return_value=Mock(
+                            free=sc.DECODE_FREE_BYTES - 1 if case == "space" else sc.CAPTURE_FREE_BYTES)), \
+                        patch.object(sc, "RECORD_LIMIT", 9 if case == "input_limit" else sc.RECORD_LIMIT), \
+                        patch.object(sc, "SCRIPT_LIMIT", len(SWITCH.encode()) if case == "output_limit" else sc.SCRIPT_LIMIT), \
+                        self.assertRaises(sc.CaptureError):
+                    sc.decode_capture(directory, perf=Path(sys.executable))
+                if case in ("input_empty", "input_limit", "space"):
+                    child.start.assert_not_called()
+                    self.assertFalse((directory / "sched.script.txt").exists())
+                if case == "timeout":
+                    child.process.wait.assert_called_once_with(timeout=300)
+                    child.stop.assert_called_once()
+                    self.assertEqual(json.loads((directory / "decoder-status.json").read_text())["status"], "FAILED")
+                self.assertTrue((directory / "sched.data").exists())
+
     def test_decoder_preserves_loss_and_rejects_errors(self):
         for loss, code, diagnostics in [(False, 0, b""), (True, 0, b""),
                                          (False, 1, b""), (False, 0, b"warning")]:
             with self.subTest(loss=loss, code=code, diagnostics=diagnostics), tempfile.TemporaryDirectory() as temp:
                 directory = Path(temp)
                 sc.save_json(directory / "result.json", {"status": "RECORDED_REQUIRES_LINUX_VALIDATION"})
+                (directory / "sched.data").write_bytes(b"synthetic")
                 child = Mock()
                 child.process.wait.return_value = code
                 child.process.poll.return_value = code
@@ -250,13 +339,14 @@ class FailureTests(unittest.TestCase):
                 def start(argv, *, stdout, stderr, file_limit):
                     stdout.write((SWITCH + WAKE + ("PERF_RECORD_LOST unknown\n" if loss else "")).encode())
                     stderr.write(diagnostics)
-                    self.assertEqual(file_limit, 64 * sc.MIB)
+                    self.assertEqual(file_limit, sc.SCRIPT_LIMIT)
                     self.assertIn("--show-lost-events", argv)
 
                 child.start.side_effect = start
                 with patch.object(sc, "OwnedProcess", return_value=child), \
                         patch.object(sys, "platform", "linux"), \
                         patch.object(sc.os, "getuid", return_value=0, create=True), \
+                        patch.object(sc.shutil, "disk_usage", return_value=Mock(free=sc.CAPTURE_FREE_BYTES)), \
                         patch.object(sc.stat, "S_IMODE", return_value=0o700):
                     if loss or code or diagnostics:
                         with self.assertRaises(sc.CaptureError):
@@ -264,6 +354,7 @@ class FailureTests(unittest.TestCase):
                     else:
                         result = sc.decode_capture(directory, perf=Path(sys.executable))
                         self.assertEqual(result["status"], "REQUIRES_CAPABILITY_AND_WINDOW_REVIEW")
+                child.process.wait.assert_called_once_with(timeout=sc.DECODER_TIMEOUT)
                 if loss:
                     result = json.loads((directory / "decode.json").read_text())
                     self.assertEqual(result["status"], "INVALID")
@@ -312,6 +403,7 @@ class FailureTests(unittest.TestCase):
                 (sc.os, "write", Mock()), (sc.os, "read", Mock(return_value=ack_bytes)),
                 (sc.os, "sysconf", Mock(return_value=100)),
                 (sc.stat, "S_IMODE", Mock(return_value=0o700)),
+                (sc.shutil, "disk_usage", Mock(return_value=Mock(free=sc.CAPTURE_FREE_BYTES))),
                 (signal, "pidfd_send_signal", Mock()),
                 (sc.select, "select", Mock(return_value=([13] if ack else [], [], []))),
                 (sc.threading, "Thread", Mock(return_value=thread)),
@@ -342,6 +434,11 @@ class FailureTests(unittest.TestCase):
                     if valid:
                         with collector:
                             self.assertEqual(collector.metadata["status"], "RECORDING")
+                            self.assertIn("--max-size=512M", collector.metadata["command"])
+                            self.assertIn("--mmap-pages=256", collector.metadata["command"])
+                            self.assertEqual(collector.seconds, 120)
+                            self.assertEqual([value for value in collector.metadata["command"] if value.startswith("sched:")],
+                                             ["sched:sched_switch", "sched:sched_wakeup", "sched:sched_wakeup_new"])
                     else:
                         with self.assertRaises(sc.CaptureError):
                             collector.__enter__()

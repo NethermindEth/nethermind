@@ -17,8 +17,8 @@ import scheduler_collector as collector
 MIB = 1024 * 1024
 SOURCE_LIMITS = {'started.json': 4 * MIB, 'result.json': 4 * MIB,
                  'decoder-status.json': 4 * MIB, 'decode.json': 4 * MIB,
-                 'sched.data': 40 * MIB, 'sched.script.txt': 64 * MIB,
-                 'perf-record.log': 40 * MIB, 'perf-script.log': 64 * MIB}
+                 'sched.data': collector.RECORD_LIMIT - 1, 'sched.script.txt': collector.SCRIPT_LIMIT - 1,
+                 'perf-record.log': collector.RECORD_FILE_LIMIT, 'perf-script.log': collector.SCRIPT_LIMIT}
 COUNTERS = ('lost_records', 'lost_events_known', 'lost_records_unparsed', 'malformed_lines')
 EVENT_CODES = {'sched_switch': 0, 'sched_wakeup': 1, 'sched_wakeup_new': 2}
 STATE_BITS = {name: 1 << index for index, name in enumerate('RSDTtXZPI')}
@@ -213,7 +213,7 @@ def export(directory, output):
             for row in rows:
                 encoded = (json.dumps(row, separators=(',', ':')) + '\n').encode()
                 byte_count += len(encoded)
-                if byte_count > 64 * MIB:
+                if byte_count > collector.PROJECTION_LIMIT:
                     raise ExportError('PUBLIC_PROJECTION_SIZE_LIMIT')
                 target.write(encoded)
                 digest.update(encoded)

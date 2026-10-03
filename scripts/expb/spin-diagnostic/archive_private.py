@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import subprocess
 import tarfile
@@ -17,10 +18,26 @@ CERTIFICATE_SHA256 = '2ff22f6fc2345a1aea365f516db3b746ad8d09010c20cac4409c11d745
 MIB = 1024 * 1024
 MAX_BYTES = 8 * 1024 * MIB
 MAX_FILES = 20000
+STORAGE_RESERVE = 1024 * MIB
 
 
 class ArchiveError(RuntimeError):
     pass
+
+
+def archive_copy_bound(source_bytes, entry_count):
+    # Includes 4096-byte PAX paths, file padding, tar end blocks and gzip expansion.
+    tar_bytes = source_bytes + entry_count * 8192 + 10240
+    return tar_bytes + tar_bytes // 100 + 2 * MIB
+
+
+def check_archive_space(temporary, output, copy_bound):
+    same_device = temporary.stat().st_dev == output.stat().st_dev
+    required = (2 if same_device else 1) * copy_bound + STORAGE_RESERVE
+    if shutil.disk_usage(temporary).free < required:
+        raise ArchiveError('INSUFFICIENT_PRIVATE_ARCHIVE_SPACE')
+    if not same_device and shutil.disk_usage(output).free < copy_bound + STORAGE_RESERVE:
+        raise ArchiveError('INSUFFICIENT_ENCRYPTED_ARCHIVE_SPACE')
 
 
 def digest_file(path):
@@ -99,6 +116,8 @@ def archive(input_dir, output_dir, certificate, openssl='/usr/bin/openssl'):
         raise ArchiveError('PUBLIC_CERTIFICATE_PIN_MISMATCH')
     entries, file_count, source_bytes = scan(source)
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
+    copy_bound = archive_copy_bound(source_bytes, len(entries))
+    check_archive_space(temporary, output, copy_bound)
     with tempfile.TemporaryDirectory(prefix='spin-raw-private-', dir=temporary) as scratch:
         private_directory(Path(scratch))
         plaintext = Path(scratch) / 'raw.tar.gz'
@@ -125,14 +144,20 @@ def archive(input_dir, output_dir, certificate, openssl='/usr/bin/openssl'):
         if scan(source)[0] != entries or identity(cert.lstat()) != identity(cert_info):
             raise ArchiveError('SOURCE_OR_CERTIFICATE_CHANGED')
         plaintext_sha, plaintext_bytes = digest_file(plaintext), plaintext.stat().st_size
+        if plaintext_bytes > copy_bound:
+            raise ArchiveError('ARCHIVE_COPY_SIZE_LIMIT')
+        if shutil.disk_usage(output).free < plaintext_bytes + 2 * MIB + STORAGE_RESERVE:
+            raise ArchiveError('INSUFFICIENT_ENCRYPTED_ARCHIVE_SPACE')
         cipher = output / 'raw.tar.gz.cms'
         subprocess.run([str(executable), 'cms', '-encrypt', '-binary', '-in', str(plaintext),
                         '-out', str(cipher), '-outform', 'DER', '-aes-256-cbc', '-recip', str(cert),
                         '-keyopt', 'rsa_padding_mode:oaep', '-keyopt', 'rsa_oaep_md:sha256',
                         '-keyopt', 'rsa_mgf1_md:sha256'], check=True, stdout=subprocess.PIPE,
-                       stderr=subprocess.PIPE, timeout=150)
+                       stderr=subprocess.PIPE, timeout=300)
         if not cipher.is_file() or cipher.is_symlink() or cipher.stat().st_size == 0:
             raise ArchiveError('ENCRYPTED_OUTPUT_MISSING')
+        if cipher.stat().st_size > copy_bound:
+            raise ArchiveError('ARCHIVE_COPY_SIZE_LIMIT')
         if identity(cert.lstat()) != identity(cert_info) or identity(executable.lstat()) != identity(executable_info):
             raise ArchiveError('ENCRYPTION_TOOL_OR_CERTIFICATE_CHANGED')
         (output / 'recipient.crt').write_bytes(cert.read_bytes())
