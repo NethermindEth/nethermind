@@ -21,7 +21,6 @@ using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
-using NSubstitute;
 using NUnit.Framework;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
@@ -128,7 +127,7 @@ public class ExecutionPayloadEnvelopesReqRespTests
         };
         byte[] emptyRoots = ExecutionPayloadEnvelopeRoots.Encode(new ExecutionPayloadEnvelopeRoots { Roots = [] });
 
-        Assert.That(await ListenAsync(listen, emptyRoots, token), Is.Empty);
+        Assert.That(await ReqRespTestChannel.ReadResponseAsync(listen, emptyRoots, token), Is.Empty);
     }
 
     [Test]
@@ -146,9 +145,9 @@ public class ExecutionPayloadEnvelopesReqRespTests
         byte[] request = ExecutionPayloadEnvelopeRoots.Encode(new ExecutionPayloadEnvelopeRoots { Roots = [root] });
 
         MessageValidity validity = router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true, Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(chain.Envelope(root))));
-        List<ResponseChunk> beforeVerified = await ListenAsync(protocol.ListenAsync, request, token);
+        List<ResponseChunk> beforeVerified = await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync, request, token);
         chain.AddEnvelopes(root);
-        List<ResponseChunk> afterVerified = await ListenAsync(protocol.ListenAsync, request, token);
+        List<ResponseChunk> afterVerified = await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync, request, token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -178,7 +177,7 @@ public class ExecutionPayloadEnvelopesReqRespTests
         chain.SetHead(tip, onChain[^1].Slot);
         ExecutionPayloadEnvelopesByRangeProtocol protocol = new(EnvelopeChain.Spec, chain.Pool);
 
-        List<ResponseChunk> chunks = await ListenAsync(protocol.ListenAsync,
+        List<ResponseChunk> chunks = await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync,
             ExecutionPayloadEnvelopesByRangeRequest.Encode(new ExecutionPayloadEnvelopesByRangeRequest { StartSlot = start, Count = ulong.MaxValue }), token);
 
         Assert.That(chunks.Select(static c => { SignedExecutionPayloadEnvelope.Decode(c.Payload, out SignedExecutionPayloadEnvelope e); return e.Message!.BeaconBlockRoot; }),
@@ -209,42 +208,11 @@ public class ExecutionPayloadEnvelopesReqRespTests
         ExecutionPayloadEnvelopesByRangeProtocol protocol = new(EnvelopeChain.Spec, chain.Pool);
         long before = FailureCount(protocol.Id, ReqRespFailureReason.InvalidMessage);
 
-        List<ResponseChunk> chunks = await ListenAsync(protocol.ListenAsync, ExecutionPayloadEnvelopesByRangeRequest.Encode(
+        List<ResponseChunk> chunks = await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync, ExecutionPayloadEnvelopesByRangeRequest.Encode(
             new ExecutionPayloadEnvelopesByRangeRequest { StartSlot = start, Count = fault == RangeFault.ZeroCount ? 0UL : 1UL }), token);
 
         Assert.That((chunks.Single().Result, FailureCount(protocol.Id, ReqRespFailureReason.InvalidMessage) - before), Is.EqualTo((expected, recorded)),
             "only a fault of the requesting peer is recorded against it");
-    }
-
-    // The libp2p host closes the response stream once the handler returns, even when it faults; the dial side reads until then.
-    private static async Task<List<ResponseChunk>> ListenAsync(Func<IChannel, ISessionContext, Task> listen, byte[] requestSsz, CancellationToken token)
-    {
-        ISessionContext context = Substitute.For<ISessionContext>();
-        context.State.Returns(new Nethermind.Libp2p.Core.State());
-        Channel channel = new();
-        Task listening = Task.Run(async () =>
-        {
-            try
-            {
-                await listen(channel.Reverse, context);
-            }
-            finally
-            {
-                await channel.Reverse.WriteEofAsync(token);
-            }
-        }, token);
-        Stream stream = new ChannelStreamAdapter(channel);
-        await ReqRespFraming.WriteRequestAsync(stream, requestSsz, token);
-        await channel.WriteEofAsync(token);
-
-        List<ResponseChunk> chunks = [];
-        while (await ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, token) is { } chunk)
-        {
-            chunks.Add(chunk);
-        }
-
-        await listening.WaitAsync(token);
-        return chunks;
     }
 
     private static long FailureCount(string protocolId, ReqRespFailureReason reason) =>
