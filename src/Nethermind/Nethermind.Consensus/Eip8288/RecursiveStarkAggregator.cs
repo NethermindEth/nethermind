@@ -173,7 +173,8 @@ public static class RecursiveStarkAggregator
 
         void Consider(FrameDependency dependency, int source, int bytes)
         {
-            if (!genericSources.TryGetValue(dependency, out (int Source, int Bytes) previous) || bytes < previous.Bytes)
+            if (!genericSources.TryGetValue(dependency, out (int Source, int Bytes) previous) || bytes < previous.Bytes
+                || bytes == previous.Bytes && source < input.RecursiveProofs.Count && previous.Source >= input.RecursiveProofs.Count)
                 genericSources[dependency] = (source, bytes);
         }
 
