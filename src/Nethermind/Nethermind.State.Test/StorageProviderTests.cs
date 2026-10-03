@@ -2566,6 +2566,9 @@ public class StorageProviderTests(bool useFlat)
             public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
                 => baseScope.HintBal(bal, sink);
 
+            public void ApplyBal(ReadOnlyBlockAccessList bal)
+                => baseScope.ApplyBal(bal);
+
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
             public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => baseScope.CreateStorageTree(address);
