@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
@@ -18,7 +16,6 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 [HardTimeout(60_000)]
 public class ForkedStateTransitionTests
 {
-    private const ulong Gwei = 1_000_000_000;
     private static readonly byte[] GloasVersion = Bytes.FromHexString("0x07000000");
 
     /// <summary>
@@ -60,7 +57,7 @@ public class ForkedStateTransitionTests
         BeaconChainSpec spec = SyntheticSpec(gloasForkEpoch: 1);
         ulong boundarySlot = Presets.SlotsPerEpoch;
         // A default (zero) bid parent block hash cannot match the fork-upgrade placeholder bid's
-        // block hash (Hash(0x71) below), so process_parent_execution_payload takes its "parent was
+        // block hash (0x71-filled in the fixture), so process_parent_execution_payload takes its "parent was
         // empty" path - a true no-op given empty parent execution requests - before process_block_header
         // runs and rejects the deliberately wrong (zero) parent root.
         SignedBeaconBlockGloas block = new()
@@ -152,54 +149,26 @@ public class ForkedStateTransitionTests
 
     private static BeaconStateFulu CreateState(int validatorCount)
     {
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        Array.Fill(randaoMixes, Hash(0x42));
-        Hash256[] blockRoots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
-        Array.Fill(blockRoots, Hash256.Zero);
-        Hash256[] stateRoots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
-        Array.Fill(stateRoots, Hash256.Zero);
-
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
-        for (int i = 0; i < validatorCount; i++)
+        BeaconStateFulu state = GloasTestFixtures.CreateFuluState(validatorCount == 0 ? 1 : validatorCount);
+        state.GenesisTime = 0;
+        state.GenesisValidatorsRoot = null;
+        state.HistoricalRoots = null;
+        state.Eth1DataVotes = null;
+        state.FinalizedCheckpoint!.Epoch = 0;
+        state.CurrentSyncCommittee = new SyncCommittee();
+        state.NextSyncCommittee = new SyncCommittee();
+        state.PendingDeposits = null;
+        state.PendingPartialWithdrawals = null;
+        state.PendingConsolidations = null;
+        if (validatorCount == 0)
         {
-            validators[i] = new Validator
-            {
-                Pubkey = Pubkey((byte)(0x50 + i)),
-                WithdrawalCredentials = Hash256.Zero,
-                EffectiveBalance = 32 * Gwei,
-                ActivationEpoch = 0,
-                ExitEpoch = Presets.FarFutureEpoch,
-                WithdrawableEpoch = Presets.FarFutureEpoch,
-                ActivationEligibilityEpoch = 0,
-            };
-            balances[i] = 32 * Gwei;
+            state.Validators = new Validator[validatorCount];
+            state.Balances = new ulong[validatorCount];
+            state.PreviousEpochParticipation = new byte[validatorCount];
+            state.CurrentEpochParticipation = new byte[validatorCount];
+            state.InactivityScores = new ulong[validatorCount];
         }
-
-        return new BeaconStateFulu
-        {
-            Slot = 0,
-            Fork = new Fork { PreviousVersion = Bytes.FromHexString("0x05000000"), CurrentVersion = Bytes.FromHexString("0x06000000"), Epoch = 0 },
-            LatestBlockHeader = new BeaconBlockHeader { Slot = 0, ProposerIndex = 0, ParentRoot = Hash(0x02), StateRoot = Hash256.Zero, BodyRoot = Hash256.Zero },
-            Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-            Validators = validators,
-            Balances = balances,
-            RandaoMixes = randaoMixes,
-            BlockRoots = blockRoots,
-            StateRoots = stateRoots,
-            Slashings = new ulong[(int)Presets.EpochsPerSlashingsVector],
-            PreviousEpochParticipation = new byte[validatorCount],
-            CurrentEpochParticipation = new byte[validatorCount],
-            InactivityScores = new ulong[validatorCount],
-            FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            JustificationBits = new BitArray(4),
-            PreviousJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            CurrentSyncCommittee = new SyncCommittee(),
-            NextSyncCommittee = new SyncCommittee(),
-            LatestExecutionPayloadHeader = new ExecutionPayloadHeader { ParentHash = Hash(0x70), BlockHash = Hash(0x71), PrevRandao = Hash(0x72), GasLimit = 30_000_000 },
-            ProposerLookahead = new ulong[(int)Presets.ProposerLookaheadSlots],
-        };
+        return state;
     }
 
     /// <summary>A block one slot ahead of <paramref name="state"/>, with the real (state-computed) proposer index.</summary>
@@ -212,20 +181,6 @@ public class ForkedStateTransitionTests
         payload.BlockNumber = state.Slot;
         payload.ExtraData = [];
         return block;
-    }
-
-    private static Hash256 Hash(byte value)
-    {
-        byte[] bytes = new byte[32];
-        bytes.AsSpan().Fill(value);
-        return new Hash256(bytes);
-    }
-
-    private static BlsPublicKey Pubkey(byte value)
-    {
-        byte[] bytes = new byte[BlsPublicKey.Length];
-        bytes.AsSpan().Fill(value);
-        return new BlsPublicKey(bytes);
     }
 
     private sealed class AcceptingNotifier : INewPayloadNotifier
