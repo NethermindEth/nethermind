@@ -213,6 +213,7 @@ public partial class RangeSyncTests
 
         /// <summary>The columns of every by-range and by-root column request, in order.</summary>
         public List<ulong[]> RequestedColumns { get; } = [];
+        public List<ulong[]> RequestedGloasColumns { get; } = [];
         public int RootColumnRequests { get; private set; }
         public int RootBlockRequests { get; private set; }
         public List<(ulong Start, ulong Count)> RequestedRanges { get; } = [];
@@ -257,8 +258,11 @@ public partial class RangeSyncTests
             return Task.FromResult<IReadOnlyList<DataColumnSidecar>>(rootHandler?.Invoke(identifiers) ?? []);
         }
 
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
-            Task.FromResult<IReadOnlyList<DataColumnSidecarGloas>>(gloasColumnHandler is null ? throw new NotSupportedException() : gloasColumnHandler(startSlot, count, columns));
+        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
+        {
+            RequestedGloasColumns.Add(columns);
+            return Task.FromResult<IReadOnlyList<DataColumnSidecarGloas>>(gloasColumnHandler is null ? throw new NotSupportedException() : gloasColumnHandler(startSlot, count, columns));
+        }
 
         public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<DataColumnSidecarGloas>>(gloasRootHandler is null ? throw new NotSupportedException() : gloasRootHandler(identifiers));
