@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
@@ -358,9 +359,9 @@ public class StorageProviderTests(bool useFlat)
     public void Large_map_pool_keeps_only_maps_it_can_rent_again()
     {
         PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
-        Dictionary<UInt256, int> tooSmall = new(100, UInt256Comparer.Instance);
-        Dictionary<UInt256, int> otherComparer = new(2048);
-        Dictionary<UInt256, int> fitting = new(2048, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> tooSmall = new(100, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> otherComparer = new(2048);
+        OptimizedDictionary<UInt256, int> fitting = new(2048, UInt256Comparer.Instance);
 
         pool.Return(tooSmall);
         pool.Return(otherComparer);
@@ -369,7 +370,7 @@ public class StorageProviderTests(bool useFlat)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pool.Rent(1), Is.SameAs(fitting));
-            Dictionary<UInt256, int> fresh = pool.Rent(1);
+            OptimizedDictionary<UInt256, int> fresh = pool.Rent(1);
             Assert.That(fresh, Is.Not.SameAs(tooSmall).And.Not.SameAs(otherComparer));
             Assert.That(fresh.Comparer, Is.SameAs(UInt256Comparer.Instance));
         }
