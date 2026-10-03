@@ -71,8 +71,9 @@ def main():
                 result[row["case"]].append(row)
         return result
 
+    protocol = "lean/2" if data.get("metadata", {}).get("protocolPreprovedTransport", "").startswith("lean/2") else "lean/1"
     for kind, prefix, scope in [("load", "transaction", "Proving + transport + admission"),
-                                ("protocol-preproved", "protocol", "Preproved lean/1 receive queue + admission")]:
+                                ("protocol-preproved", "protocol", f"Preproved {protocol} receive queue + admission")]:
         loads = series(kind)
         if not loads:
             continue
@@ -138,7 +139,8 @@ def main():
                               for row, n in zip(crypto, batches)], "o-", label="Verify / signature")
         axes[2].plot(counts, [row["proofBytesMean"] / row["sphincsCount"] for row in crypto], "o-",
                      label="Aggregate proof / signature")
-        axes[2].axhline(4956, linestyle="--", color="#9ba3b1", label="Direct SPHINCS witness")
+        witness_bytes = data.get("metadata", {}).get("sphincsWitnessBytes", 4956)
+        axes[2].axhline(witness_bytes, linestyle="--", color="#9ba3b1", label="Direct SPHINCS witness")
         axes[0].set(ylabel="Wall time / batch (ms)", title="Real native proving and verification")
         axes[1].set(ylabel="Wall time / signature (ms)", title="Amortized crypto cost")
         axes[2].set(ylabel="Serialized bytes / signature", title="Proof size versus direct witness")

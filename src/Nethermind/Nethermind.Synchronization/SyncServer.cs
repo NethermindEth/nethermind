@@ -86,13 +86,13 @@ namespace Nethermind.Synchronization
             IHistoryPruner historyPruner,
             ISpecProvider specProvider,
             ILogManager logManager,
-            ISyncPointers? syncPointers = null,
-            IHeaderDecoder? headerDecoder = null)
+            IHeaderDecoder headerDecoder,
+            ISyncPointers? syncPointers = null)
         {
             _syncPointers = syncPointers;
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncConfig = config;
-            _headerDecoder = headerDecoder ?? new HeaderDecoder();
+            _headerDecoder = headerDecoder;
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));

@@ -18,9 +18,6 @@ namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
-    public static byte[] Execute(ReadOnlySpan<byte> data)
-        => Execute(data, new NativeLeanProofVerifier());
-
     public static byte[] Execute(ReadOnlySpan<byte> data, ILeanProofVerifier leanProofVerifier)
     {
         ArgumentNullException.ThrowIfNull(leanProofVerifier);
@@ -89,9 +86,6 @@ public static class StatelessExecutor
 
         return output;
     }
-
-    public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
-        => Execute(suggestedBlock, witness, specProvider, new NativeLeanProofVerifier());
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, ILeanProofVerifier leanProofVerifier)
         => Execute(suggestedBlock, witness, specProvider, leanProofVerifier, validateHashes: true);

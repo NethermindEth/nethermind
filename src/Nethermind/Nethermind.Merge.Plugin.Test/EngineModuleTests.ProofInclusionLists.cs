@@ -37,6 +37,7 @@ public partial class EngineModuleTests
             : new([2], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash));
         PayloadAttributes attributes = BuildBogotaPayloadAttributes(list);
         attributes.InclusionListRecursiveStark = proof;
+        attributes.InclusionListProvenDependencies = proof is null ? null : Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(transaction));
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
             new(parent, Keccak.Zero, parent), attributes);
         Assert.That(build.Result.ResultType, Is.EqualTo(ResultType.Success), build.Result.Error);
@@ -44,6 +45,7 @@ public partial class EngineModuleTests
         Assert.That(produced.ExecutionPayload.InclusionListRecursiveStark, Is.Null);
         Assert.That(produced.ExecutionPayload.Transactions, Is.Empty);
         produced.ExecutionPayload.InclusionListRecursiveStark = proof;
+        produced.ExecutionPayload.InclusionListProvenDependencies = attributes.InclusionListProvenDependencies;
 
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(produced.ExecutionPayload,
             [], Keccak.Zero, produced.ExecutionRequests, list);
@@ -77,6 +79,8 @@ public partial class EngineModuleTests
             timestamp: produced.ExecutionPayload.Timestamp + 12, slotNumber: 2);
         attributes.InclusionListRecursiveStark = scenario == "missing-proof" ? null
             : new(scenario == "empty-proof" ? [] : [2], new Hash256(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction))));
+        attributes.InclusionListProvenDependencies = attributes.InclusionListRecursiveStark is null ? null
+            : Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(transaction));
         Hash256 head = produced.ExecutionPayload.BlockHash;
 
         ResultWrapper<ForkchoiceUpdatedV2Result> result = await rpc.engine_forkchoiceUpdatedV5(new(head, head, head), attributes);

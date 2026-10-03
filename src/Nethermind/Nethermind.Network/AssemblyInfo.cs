@@ -12,3 +12,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Nethermind.Xdc.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Bootnode")]
 [assembly: InternalsVisibleTo("Nethermind.Bootnode.Test")]
+
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]

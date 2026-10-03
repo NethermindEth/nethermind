@@ -72,35 +72,6 @@ namespace Nethermind.Consensus.Processing
 
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 ulong txStarkGas = spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(currentTx) : 0;
-                if (txStarkGas != 0)
-                {
-                    List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx);
-                    if (leanProofStore is null || !leanProofStore.TryGetInput(required, out AggregationInput candidateInput))
-                        return args.Set(TxAction.Skip, "Missing verified dependency witnesses");
-                    List<AggregationInput> inputs = [candidateInput];
-                    if (block is BlockToProduce producing)
-                    {
-                        inputs.AddRange(producing.LeanProofInputs);
-                        required.AddRange(producing.LeanDependencies);
-                    }
-                    required = Eip8288Dependencies.Canonicalize(required);
-                    if (required.Count > Eip8288Constants.MaxProofDependencies)
-                        return args.Set(TxAction.Skip, "Dependency proof count limit exceeded");
-                    int genericProofs = 0;
-                    foreach (FrameDependency dependency in required)
-                        if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) genericProofs++;
-                    if (genericProofs > Eip8288Constants.MaxGenericStarkProofs)
-                        return args.Set(TxAction.Skip, "Generic STARK proof count limit exceeded");
-                    candidateInput = RecursiveStarkAggregator.Combine(inputs, required);
-                    if (required.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies)
-                        return args.Set(TxAction.Skip, "Dependency witness coverage limit exceeded");
-                    long witnessBytes = RecursiveStarkAggregator.InputSize(candidateInput);
-                    if (witnessBytes > RecursiveStarkAggregator.MaxProductionWitnessBytes)
-                        return args.Set(TxAction.Skip, "Dependency witness budget exceeded");
-                    args.LeanProofInput = candidateInput;
-                    args.LeanDependencies = required;
-                    args.LeanWitnessBytes = witnessBytes;
-                }
                 gasRemaining = gasRemaining.SaturatingSub(txStarkGas);
 
                 if (transactionsInBlock.Contains(currentTx))
@@ -167,6 +138,22 @@ namespace Nethermind.Consensus.Processing
                     {
                         return args;
                     }
+                }
+
+                if (txStarkGas != 0)
+                {
+                    List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx);
+                    BlockToProduce? producing = block as BlockToProduce;
+                    LeanProofBudget budget = producing?.LeanProofBudget ?? new();
+                    List<FrameDependency> missing = budget.Missing(required);
+                    AggregationInput candidateInput = new();
+                    if (missing.Count != 0 && (leanProofStore is null || !leanProofStore.TryGetInput(missing, out candidateInput))
+                        && !budget.TryUseInclusionList(producing?.InclusionListProofInput, missing, out candidateInput))
+                        return args.Set(TxAction.Skip, "Missing verified dependency witnesses");
+                    if (!budget.TryPrepare(candidateInput, required, out AggregationInput contribution, out string? proofError))
+                        return args.Set(TxAction.Skip, proofError!);
+                    args.LeanProofInput = contribution;
+                    args.LeanDependencies = required;
                 }
 
                 OnAddingTransaction(args);

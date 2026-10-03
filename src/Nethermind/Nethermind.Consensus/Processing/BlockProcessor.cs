@@ -100,6 +100,7 @@ public partial class BlockProcessor(
             {
                 BlockAccessList = block.BlockAccessList,
                 InclusionListTransactions = block.InclusionListTransactions,
+                InclusionListProvenDependencies = block.InclusionListProvenDependencies,
                 InclusionListRecursiveStark = block.InclusionListRecursiveStark
             };
         }
@@ -196,17 +197,19 @@ public partial class BlockProcessor(
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
+        PrepareProductionProof(block, options, spec, token);
         return FinalizeBlock(block, blockTracer, options, spec, receipts);
     }
 
     protected virtual TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
         IReleaseSpec spec, TxReceipt[] receipts) =>
-        FinalizeBlockWithProof(block, blockTracer, options, spec, receipts);
+        FinalizeBlock<OnFlag>(block, blockTracer, spec, receipts);
 
-    private TxReceipt[] FinalizeBlockWithProof(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, TxReceipt[] receipts)
+    private void PrepareProductionProof(Block block, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
     {
         if (spec.IsEip8288Enabled && options.ContainsFlag(ProcessingOptions.ProducingBlock))
         {
+            token.ThrowIfCancellationRequested();
             List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block);
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
             (ValueHash256, ValueHash256) key = (depsHash, new ValueHash256(Eip8288Constants.AggregatedVk));
@@ -218,17 +221,19 @@ public partial class BlockProcessor(
                 AggregationInput input = new();
                 if (block is BlockToProduce producing)
                     input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
-                proof = RecursiveStarkAggregator.Prove(input, _leanProofVerifier, in depsHash);
+                proof = RecursiveStarkAggregator.Prove(input, _leanProofVerifier, in depsHash, token);
+                token.ThrowIfCancellationRequested();
                 if (proof.Length is 0 or > Eip8288Constants.MaxProofBytes
                     || !_leanProofVerifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof))
                     throw new InvalidOperationException("Produced EIP-8288 proof failed verification.");
+                token.ThrowIfCancellationRequested();
                 // One verified result per processor/backend; improvement passes reuse it without retaining old blocks.
                 _productionProof = proof;
                 _productionProofKey = key;
             }
+            // Headers escape the processor; their mutable bytes cannot alias the improvement cache.
             block.Header.RecursiveStark = new RecursiveStark((byte[])proof.Clone(), new Hash256(depsHash));
         }
-        return FinalizeBlock<OnFlag>(block, blockTracer, spec, receipts);
     }
 
     /// <summary>

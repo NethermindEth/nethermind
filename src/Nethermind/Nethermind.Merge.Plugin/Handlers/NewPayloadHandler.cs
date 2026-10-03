@@ -414,7 +414,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     // An absent IL digests to default, matching non-IL cache entries.
     internal static ValueHash256 ComputeInclusionListDigest(Block block)
     {
-        if (block.InclusionListTransactions is not { Length: > 0 } && block.InclusionListRecursiveStark is null) return default;
+        if (block.InclusionListTransactions is not { Length: > 0 } && block.InclusionListRecursiveStark is null && block.InclusionListProvenDependencies is null) return default;
         KeccakHash hash = KeccakHash.Create();
         hash.Update("EIP8288 inclusion list"u8);
         Span<byte> fields = stackalloc byte[sizeof(int) + 1];
@@ -427,6 +427,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             hash.Update((proof.BlockDepsHash ?? Keccak.Zero).Bytes);
             hash.Update(ValueKeccak.Compute(proof.StarkProof ?? []).Bytes);
         }
+        fields[^1] = block.InclusionListProvenDependencies is null ? (byte)0 : (byte)1;
+        hash.Update(fields[^1..]);
+        if (block.InclusionListProvenDependencies is { } dependencies) hash.Update(ValueKeccak.Compute(dependencies).Bytes);
         return hash.GenerateValueHash();
     }
 
@@ -459,9 +462,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <inheritdoc/>
     /// <remarks>Without EIP-8037 gas dimensions, answers only when every possible assignment gives the same verdict.</remarks>
     public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
-        => TryEvaluate(blockHash, inclusionListTransactions, null);
+        => TryEvaluate(blockHash, inclusionListTransactions, null, null);
 
     public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof)
+        => TryEvaluate(blockHash, inclusionListTransactions, proof, null);
+
+    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof, byte[]? provenDependencies)
     {
         Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         if (block is null || !_stateReader.HasStateForBlock(block.Header)) return null;
@@ -469,6 +475,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         block = block.WithReplacedBodyCloned(block.Body);
         block.Header.GasUsedPerDimension = RecordedGasDimensions(blockHash);
         block.InclusionListRecursiveStark = proof;
+        block.InclusionListProvenDependencies = provenDependencies;
 
         // Undecodable entries are dropped rather than failing the answer: a censoring proposer must not be
         // able to escape the check by having one bad entry gossiped into the aggregate.
@@ -481,21 +488,24 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (InclusionListValidator.IsBlockFull(block, spec)) return true;
         _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
         ILeanProofVerifier verifier = new InclusionListProofVerifier(_proofVerifier);
+        bool omittedFrame = false;
         if (spec.IsEip8288Enabled)
         {
-            // A read-only state cannot execute the validation prefix needed to excuse an omitted frame tx.
+            inclusionList = FocilInclusionListValidator.SelectEligible(inclusionList, block.InclusionListRecursiveStark,
+                block.InclusionListProvenDependencies, verifier, spec, out _, out _);
             HashSet<Hash256> included = [];
             foreach (Transaction tx in block.Transactions) if (tx.Hash is { } hash) included.Add(hash);
             foreach (Transaction tx in inclusionList)
-                if (tx.SupportsFrames && (tx.Hash is null || !included.Contains(tx.Hash)))
-                    return FocilInclusionListValidator.Validate(inclusionList, block.InclusionListRecursiveStark,
-                        verifier, out _, out _, spec) ? null : true;
+                if (tx.SupportsFrames && (tx.Hash is null || !included.Contains(tx.Hash))) omittedFrame = true;
         }
 
         SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
-        return spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
+        bool? ordinarySatisfied = spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
             ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec, verifier)
-            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier);
+            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator,
+                block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false);
+        // Ordinary omissions are decidable even if another valid frame needs prefix execution.
+        return ordinarySatisfied == false ? false : omittedFrame ? null : ordinarySatisfied;
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
@@ -511,13 +521,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         try
         {
             block.Header.GasUsedPerDimension = (transactionGas, transactionGas);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier)) return false;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false)) return false;
 
             block.Header.GasUsedPerDimension = (transactionGas, 0);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier)) return null;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false)) return null;
 
             block.Header.GasUsedPerDimension = (0, transactionGas);
-            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier) ? true : null;
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false) ? true : null;
         }
         finally
         {

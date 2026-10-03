@@ -746,7 +746,6 @@ public class ProtocolsManagerTests
         public void Dispose() { }
         public void ReceiveMessage(ZeroPacket zeroPacket) => throw new NotSupportedException();
         public int DeliverMessage<T>(T message) where T : P2PMessage => throw new NotSupportedException();
-        public System.Threading.Tasks.ValueTask<int> DeliverMessageAsync<T>(T message, System.Threading.CancellationToken cancellationToken) where T : P2PMessage => throw new NotSupportedException();
         public void EnableSnappy() => throw new NotSupportedException();
         public void AddSupportedCapability(Capability capability) => throw new NotSupportedException();
         public bool HasAvailableCapability(Capability capability) => throw new NotSupportedException();

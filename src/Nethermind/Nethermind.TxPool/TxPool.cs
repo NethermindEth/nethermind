@@ -151,6 +151,7 @@ namespace Nethermind.TxPool
         // Lets the per-head expiry pass skip the pool walk entirely when nothing can expire. Maintained by the
         // Inserted/Removed handlers under Interlocked, so readers need only Volatile.Read for visibility.
         private int _expiringFrameTxCount;
+        private readonly LeanProofStore? _leanProofStore;
 
 #if DEBUG
         // Bumped before the bookkeeping either side of a mutation moves, so a half-applied mutation cannot read as drift.
@@ -203,6 +204,7 @@ namespace Nethermind.TxPool
             _frameEvictionRetryBudget = txPoolConfig.FrameTxEvictionRetryBudget;
             _frameRevalidationDeferralBudget = txPoolConfig.FrameTxRevalidationDeferralBudget;
             _frameTxPrefixSimulator = frameTxPrefixSimulator;
+            _leanProofStore = leanProofStore;
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
             _pendingDelegations = new DelegationCache(_specProvider.ChainId);
@@ -579,6 +581,7 @@ namespace Nethermind.TxPool
         private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
         {
             TrackPoolMutation();
+            _leanProofStore?.PinPending(args.Value, this);
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
             IndexFrameTxDependencies(args.Value);
@@ -607,6 +610,7 @@ namespace Nethermind.TxPool
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
             TrackPoolMutation();
+            if (args.Value.Hash is { } hash) _leanProofStore?.UnpinPending(hash.ValueHash256, this);
             RemovePendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value))
             {
@@ -1603,6 +1607,7 @@ namespace Nethermind.TxPool
                     _pendingPaymasters.Decrement(paymaster);
                 }
 
+                state.ProofReservation?.Dispose();
                 _newHeadLock.ExitReadLock();
             }
 
@@ -1638,15 +1643,17 @@ namespace Nethermind.TxPool
                 return AcceptTxResult.Invalid;
             }
 
+            TxFilteringState state = default;
             _newHeadLock.EnterReadLock();
             try
             {
-                TxFilteringState state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
+                state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
                 bool canRecycle = false;
                 return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipSamplingDeferredFilters: true);
             }
             finally
             {
+                state.ProofReservation?.Dispose();
                 _newHeadLock.ExitReadLock();
             }
         }
@@ -2801,6 +2808,7 @@ namespace Nethermind.TxPool
             await _retryCache.DisposeAsync();
             await _headProcessing;
             await _revalidationProcessing;
+            _leanProofStore?.ReleasePending(this);
             _broadcaster.Dispose();
             (_blobTransactions as IDisposable)?.Dispose();
         }

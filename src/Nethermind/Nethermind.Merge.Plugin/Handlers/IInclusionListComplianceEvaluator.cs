@@ -23,4 +23,7 @@ public interface IInclusionListComplianceEvaluator
 
     /// <summary>Evaluates a proof-bearing list using the configured proof verifier.</summary>
     bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof);
+
+    /// <summary>Evaluates a list against the explicit dependency set committed by its proof.</summary>
+    bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof, byte[]? provenDependencies);
 }

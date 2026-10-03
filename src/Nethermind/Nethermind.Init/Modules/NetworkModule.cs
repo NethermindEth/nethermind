@@ -82,7 +82,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddLast<IP2PCapabilityResolver, LeanP2PCapabilityResolver>()
             .AddSingleton<Subprotocols.Lean.LeanProofGossip>()
             .AddMessageSerializer<Subprotocols.Lean.LeanStatusMessage, Subprotocols.Lean.LeanStatusMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.LeanProofWrapperMessage, Subprotocols.Lean.LeanProofWrapperMessageSerializer>()
             .AddMessageSerializer<Subprotocols.Lean.LeanProofChunkMessage, Subprotocols.Lean.LeanProofChunkMessageSerializer>()
 
             // Handshake
@@ -181,7 +180,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<State.SnapServer.ISnapServer, Synchronization.SnapSync.SnapServer>()
 
             // Protocol handler factories
-            .AddProtocolHandler<Subprotocols.Lean.LeanProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Lean.Lean2ProtocolHandler>()
             .AddSingleton<Subprotocols.Lean.LeanReassemblyBudget>()
             .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()

@@ -67,7 +67,7 @@ public class NativeLeanProtocolTests
         }
     }
 
-    private static async Task<Context> Create(ILeanProofVerifier? verifier = null, byte version = 1)
+    private static async Task<Context> Create(ILeanProofVerifier? verifier = null, byte version = 2)
     {
         Scheduler scheduler = new();
         BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
@@ -76,7 +76,8 @@ public class NativeLeanProtocolTests
                 .AddSingleton<IBackgroundTaskScheduler>(scheduler);
             if (verifier is not null) builder.AddSingleton(verifier);
         });
-        ISession session = Substitute.For<ISession>();
+        ISession session = Substitute.For<ISession, ILeanBulkSession>();
+        ((ILeanBulkSession)session).EnableLeanBulk().Returns(true);
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 1000, true));
         session.HasAgreedCapability(Arg.Any<Capability>()).Returns(true);
         IProtocolHandler? handler = null;
@@ -91,6 +92,11 @@ public class NativeLeanProtocolTests
 
     private static void Receive<T>(Context context, T message, IZeroMessageSerializer<T> serializer) where T : Nethermind.Network.P2P.Messages.P2PMessage
     {
+        if (message is LeanProofWrapperMessage wrapper)
+        {
+            ReceiveWrapper(context, wrapper.Wrapper);
+            return;
+        }
         IByteBuffer buffer = Unpooled.Buffer();
         try
         {
@@ -99,6 +105,19 @@ public class NativeLeanProtocolTests
             context.Handler.HandleMessage(packet);
         }
         finally { buffer.Release(); }
+    }
+
+    private static void ReceiveWrapper(Context context, byte[] wrapper)
+    {
+        int size = LeanProofChunkMessage.DefaultChunkSize;
+        int count = (wrapper.Length + size - 1) / size;
+        ValueHash256 hash = ValueKeccak.Compute(wrapper);
+        for (int index = 0; index < count; index++)
+        {
+            int offset = index * size;
+            Receive(context, new LeanProofChunkMessage(hash, wrapper.Length, index, count, size,
+                wrapper.AsMemory(offset, Math.Min(size, wrapper.Length - offset))), new LeanProofChunkMessageSerializer());
+        }
     }
 
     [TestCase("chain")]
@@ -132,7 +151,6 @@ public class NativeLeanProtocolTests
         Assert.That(after.Chain.Container.Resolve<LeanReassemblyBudget>().RetainedAssemblies, Is.Zero);
     }
 
-    [TestCase((byte)1)]
     [TestCase((byte)2)]
     public async Task Unnegotiated_capability_is_rejected(byte version)
     {
@@ -143,38 +161,6 @@ public class NativeLeanProtocolTests
     }
 
     [Test]
-    public async Task Two_negotiated_peers_transfer_real_proofs_and_transactions()
-    {
-        using Context source = await Create();
-        using Context target = await Create();
-        TaskCompletionSource<byte[]> broadcast = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        source.Session.DeliverMessageAsync(Arg.Any<LeanProofWrapperMessage>(), Arg.Any<CancellationToken>())
-            .Returns(call =>
-            {
-                byte[] wrapper = call.Arg<LeanProofWrapperMessage>().Wrapper;
-                broadcast.TrySetResult(wrapper);
-                return new ValueTask<int>(wrapper.Length);
-            });
-        Receive(source, Status(source), new LeanStatusMessageSerializer());
-        Receive(target, Status(source), new LeanStatusMessageSerializer());
-        Transaction transaction = NativeBlockProductionTests.CreateTransaction(source.Chain);
-        FrameDependency sphincs = NativeLeanProofVerifierTests.Dependency("sphincs");
-        FrameDependency stark = NativeLeanProofVerifierTests.Dependency("stark");
-        source.Chain.Container.Resolve<LeanProofStore>().AddVerified([sphincs, stark],
-            [NativeLeanProofVerifierTests.Witness("sphincs"), NativeLeanProofVerifierTests.Witness("stark")], null);
-        Assert.That(source.Chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-        byte[] wrapper = await broadcast.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Receive(target, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
-        await target.Scheduler.Completion.WaitAsync(TimeSpan.FromSeconds(10));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(target.Chain.Container.Resolve<LeanProofStore>().Covers(transaction), Is.True);
-            Assert.That(target.Chain.TxPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _), Is.True);
-            target.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
-        }
-    }
-
-    [Test]
     public async Task Lean2_chunks_reassemble_a_real_recursive_wrapper_before_admission()
     {
         using Context source = await Create(version: 2);
@@ -182,14 +168,14 @@ public class NativeLeanProtocolTests
         using LeanP2PCapabilityResolver resolver = new(source.Chain.BlockTree, source.Chain.SpecProvider);
         HashSet<Capability> capabilities = [];
         resolver.Resolve(capabilities);
-        Assert.That(capabilities, Does.Contain(new Capability("lean", 1)).And.Contain(new Capability("lean", 2)));
+        Assert.That(capabilities, Does.Contain(new Capability("lean", 2)).And.Not.Contain(new Capability("lean", 1)));
         source.Session.HasAgreedCapability(Arg.Any<Capability>())
             .Returns(call => call.Arg<Capability>().ProtocolCode == "lean" && call.Arg<Capability>().Version == 2);
         target.Session.HasAgreedCapability(Arg.Any<Capability>())
             .Returns(call => call.Arg<Capability>().ProtocolCode == "lean" && call.Arg<Capability>().Version == 2);
         TaskCompletionSource<int> complete = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int earlyAdmissions = 0;
-        source.Session.DeliverMessageAsync(Arg.Any<LeanProofChunkMessage>(), Arg.Any<CancellationToken>())
+        ((ILeanBulkSession)source.Session).DeliverLeanChunkAsync(Arg.Any<LeanProofChunkMessage>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 LeanProofChunkMessage chunk = call.Arg<LeanProofChunkMessage>();
@@ -223,9 +209,14 @@ public class NativeLeanProtocolTests
         }
     }
 
-    private static byte[] CreateValidWrapper(Context context)
+    private static byte[] CreateValidWrapper(Context context, ulong nonce = 0)
     {
         Transaction transaction = NativeBlockProductionTests.CreateTransaction(context.Chain);
+        transaction.Nonce = nonce;
+        transaction.Hash = null;
+        transaction.ClearPreHash();
+        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        transaction.Hash = transaction.CalculateHash();
         FrameDependency sphincs = NativeLeanProofVerifierTests.Dependency("sphincs");
         FrameDependency stark = NativeLeanProofVerifierTests.Dependency("stark");
         return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
@@ -239,7 +230,7 @@ public class NativeLeanProtocolTests
     }
 
     [Test]
-    public async Task Legacy_wrapper_admission_and_disposal_share_the_global_receive_budget()
+    public async Task Chunk_admission_and_disposal_share_the_global_receive_budget()
     {
         using Context context = await Create();
         Receive(context, Status(context), new LeanStatusMessageSerializer());
@@ -249,7 +240,7 @@ public class NativeLeanProtocolTests
         try
         {
             for (int i = 0; i < LeanReassemblyBudget.MaxAssemblies; i++)
-                leases.Add(budget.TryRent(1, static () => { }) ?? throw new InvalidOperationException("Could not fill receive budget"));
+                leases.Add(budget.TryRent(1, static _ => { }, incomplete: false) ?? throw new InvalidOperationException("Could not fill receive budget"));
             byte[] wrapper = CreateValidWrapper(context);
             Receive(context, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
             Assert.That(context.Scheduler.Scheduled, Is.Zero);
@@ -259,7 +250,7 @@ public class NativeLeanProtocolTests
             await context.Scheduler.RunPending();
             Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(1));
             Assert.That(budget.RetainedAssemblies, Is.EqualTo(LeanReassemblyBudget.MaxAssemblies - 1));
-            Receive(context, new LeanProofWrapperMessage(wrapper), new LeanProofWrapperMessageSerializer());
+            ReceiveWrapper(context, CreateValidWrapper(context, nonce: 1));
             Assert.That(budget.RetainedAssemblies, Is.EqualTo(LeanReassemblyBudget.MaxAssemblies));
             context.Handler.Dispose();
             Assert.That(budget.RetainedAssemblies, Is.EqualTo(LeanReassemblyBudget.MaxAssemblies - 1));
@@ -273,27 +264,29 @@ public class NativeLeanProtocolTests
     }
 
     [Test]
-    public async Task Busy_peer_keeps_only_the_latest_pending_wrapper()
+    public async Task Busy_peer_drops_a_third_stream_without_penalty_then_retries_after_admission()
     {
         using Context context = await Create();
         Receive(context, Status(context), new LeanStatusMessageSerializer());
         context.Scheduler.Defer = true;
-        byte[] valid = CreateValidWrapper(context);
-        Receive(context, new LeanProofWrapperMessage(valid), new LeanProofWrapperMessageSerializer());
-        Receive(context, new LeanProofWrapperMessage([0]), new LeanProofWrapperMessageSerializer());
-        Receive(context, new LeanProofWrapperMessage(valid), new LeanProofWrapperMessageSerializer());
+        byte[] first = CreateValidWrapper(context);
+        byte[] second = CreateValidWrapper(context, nonce: 1);
+        byte[] third = CreateValidWrapper(context, nonce: 2);
+        ReceiveWrapper(context, first);
+        ReceiveWrapper(context, second);
+        ReceiveWrapper(context, third);
         Assert.That(context.Scheduler.Scheduled, Is.EqualTo(1));
+        Assert.That(context.Chain.Container.Resolve<LeanReassemblyBudget>().RetainedAssemblies, Is.EqualTo(2));
         await context.Scheduler.RunPending();
         Assert.That(context.Scheduler.Scheduled, Is.EqualTo(2));
         await context.Scheduler.RunPending();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-            context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
-        }
-        Receive(context, new LeanProofWrapperMessage(valid), new LeanProofWrapperMessageSerializer());
+        Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(2));
+        context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        ReceiveWrapper(context, third);
         Assert.That(context.Scheduler.Scheduled, Is.EqualTo(3));
         await context.Scheduler.RunPending();
+        Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(3));
+        Assert.That(context.Chain.Container.Resolve<LeanReassemblyBudget>().RetainedAssemblies, Is.Zero);
     }
 
     [Test]
@@ -306,13 +299,13 @@ public class NativeLeanProtocolTests
         int blockedAttempts = 0;
         int writableAttempts = 0;
         TaskCompletionSource retried = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        gossip.AddPeer(_ =>
+        gossip.AddPeer((_, _, _) =>
         {
-            if (Interlocked.Increment(ref blockedAttempts) < 2) return false;
+            if (Interlocked.Increment(ref blockedAttempts) < 2) return new ValueTask<bool>(false);
             retried.TrySetResult();
-            return true;
+            return new ValueTask<bool>(true);
         });
-        gossip.AddPeer(_ => { Interlocked.Increment(ref writableAttempts); return true; });
+        gossip.AddPeer((_, _, _) => { Interlocked.Increment(ref writableAttempts); return new ValueTask<bool>(true); });
         await retried.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await Task.Delay(1200);
         using (Assert.EnterMultipleScope())
@@ -340,6 +333,76 @@ public class NativeLeanProtocolTests
         context.Handler.Dispose();
         await context.Scheduler.RunPending();
         context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    private sealed class BlockingVerifier : ILeanProofVerifier, IDisposable
+    {
+        private readonly ManualResetEventSlim _release = new();
+        private int _block = 1;
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Release() => _release.Set();
+        public void EnsureAvailable() => NativeLeanProofVerifier.Instance.EnsureAvailable();
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 key, ReadOnlySpan<byte> witness)
+        {
+            if (Interlocked.Exchange(ref _block, 0) == 1)
+            {
+                Started.TrySetResult();
+                _release.Wait();
+            }
+            return NativeLeanProofVerifier.Instance.VerifyLeanSphincs(in dataHash, in key, witness);
+        }
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 key, ReadOnlySpan<byte> witness)
+            => NativeLeanProofVerifier.Instance.VerifyLeanStark(in dataHash, in key, witness);
+        public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof)
+            => NativeLeanProofVerifier.Instance.VerifyRecursiveStark(in hash, key, proof);
+        public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
+            => NativeLeanProofVerifier.Instance.ProveRecursiveStark(in hash, key, input);
+        public void Dispose() { _release.Set(); _release.Dispose(); }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Busy_admission_retries_the_retained_wrapper_and_releases_it_on_cancellation(bool cancel)
+    {
+        using BlockingVerifier verifier = new();
+        using Context context = await Create(verifier);
+        using CancellationTokenSource cancellation = new();
+        context.Scheduler.Token = cancellation.Token;
+        Receive(context, Status(context), new LeanStatusMessageSerializer());
+        ProofWrapperService wrappers = context.Chain.Container.Resolve<ProofWrapperService>();
+        Task<ProofWrapperAcceptance> occupying = wrappers.AcceptDetailedAsync(CreateValidWrapper(context));
+        try
+        {
+            await verifier.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            byte[] pending = CreateValidWrapper(context, nonce: 1);
+            ReceiveWrapper(context, pending);
+            LeanReassemblyBudget budget = context.Chain.Container.Resolve<LeanReassemblyBudget>();
+            Assert.That(context.Scheduler.Completion.IsCompleted, Is.False, "local Busy must retain the completed wrapper for retry");
+            Assert.That(budget.RetainedAssemblies, Is.EqualTo(1));
+            if (cancel)
+            {
+                cancellation.Cancel();
+                await context.Scheduler.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.That(budget.RetainedAssemblies, Is.Zero);
+                Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.Zero);
+            }
+            verifier.Release();
+            Assert.That((await occupying.WaitAsync(TimeSpan.FromSeconds(10))).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+            if (cancel)
+            {
+                context.Scheduler.Token = CancellationToken.None;
+                ReceiveWrapper(context, pending);
+            }
+            await context.Scheduler.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(context.Chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(2));
+            Assert.That(budget.RetainedAssemblies, Is.Zero);
+            context.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+        finally
+        {
+            verifier.Release();
+            await occupying.WaitAsync(TimeSpan.FromSeconds(10));
+        }
     }
 
     private sealed class CancellingVerifier(CancellationTokenSource cancellation) : ILeanProofVerifier

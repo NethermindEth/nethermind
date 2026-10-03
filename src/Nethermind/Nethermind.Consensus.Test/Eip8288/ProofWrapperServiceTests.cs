@@ -100,6 +100,7 @@ public class ProofWrapperServiceTests
             ? await service.AcceptInclusionListAsync(FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
             {
                 Transactions = [transaction],
+                ProvenDependencies = Eip8288Dependencies.Serialize([dependency]),
                 RecursiveStark = recursive
             }).Bytes)
             : await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
@@ -135,6 +136,7 @@ public class ProofWrapperServiceTests
             ? await service.AcceptInclusionListAsync(FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
             {
                 Transactions = [transaction],
+                ProvenDependencies = Eip8288Dependencies.Serialize([dependency]),
                 RecursiveStark = recursive
             }).Bytes)
             : await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
@@ -173,6 +175,7 @@ public class ProofWrapperServiceTests
             ? await service.AcceptInclusionListAsync(FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
             {
                 Transactions = [transaction],
+                ProvenDependencies = Eip8288Dependencies.Serialize([dependency]),
                 RecursiveStark = recursive
             }).Bytes)
             : await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
@@ -391,11 +394,37 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public void Rpc_aggregation_is_rate_limited_and_cooperatively_cancelled()
+    public async Task Native_admission_is_offloaded_bounded_and_owns_its_input_snapshot()
+    {
+        (ProofWrapperService producer, _) = Create(1, 0);
+        byte[] encoded = producer.BuildWrapper().Data!;
+        byte[] original = (byte[])encoded.Clone();
+        FakeLeanProofVerifier verifier = new(true);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        verifier.OnVerification = () => { entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); };
+        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier);
+        Task<ProofWrapperAcceptance> first = service.AcceptDetailedAsync(encoded);
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(2)), Is.True);
+            Assert.That(first.IsCompleted, Is.False);
+            encoded[0] ^= 0xff;
+            Assert.That((await service.AcceptDetailedAsync(original)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Busy));
+        }
+        finally { release.Set(); }
+        Assert.That((await first).HasValidProof, Is.True);
+        verifier.OnVerification = null;
+        Assert.That((await service.AcceptDetailedAsync(original)).HasValidProof, Is.True);
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the memo belongs to the original owned bytes");
+    }
+
+    [Test]
+    public void Aggregation_reuses_proofs_and_cooperatively_cancels()
     {
         (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(1, 0);
-        Assert.That(service.BuildWrapper(rateLimit: true).IsSuccess, Is.True);
-        Assert.That(service.BuildWrapper(rateLimit: true).Error, Does.Contain("rate limited"));
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
         using CancellationTokenSource cancellation = new();
         cancellation.Cancel();
         Assert.Throws<OperationCanceledException>(() => service.BuildWrapper(cancellationToken: cancellation.Token));
@@ -473,6 +502,7 @@ public class ProofWrapperServiceTests
             byte[] encoded = FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
             {
                 Transactions = transactions,
+                ProvenDependencies = Eip8288Dependencies.Serialize(dependencies),
                 RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)))
             }).Bytes;
             Assert.ThrowsAsync<OperationCanceledException>(async () => { await service.AcceptInclusionListAsync(encoded, cancellation.Token); });

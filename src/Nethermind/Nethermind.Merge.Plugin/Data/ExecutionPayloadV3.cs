@@ -54,6 +54,11 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
             return Result<Block>.Fail("Invalid inclusion-list recursive STARK");
         }
 
+        if (InclusionListProvenDependencies is { } dependencies
+            && (InclusionListRecursiveStark is null || InclusionListTransactions is null
+                || !Nethermind.Consensus.Eip8288.FocilInclusionListValidator.HasValidMetadataLength(dependencies)))
+            return Result<Block>.Fail("Invalid inclusion-list proven dependencies");
+
         Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
         if (baseResult.IsError)
         {
@@ -67,6 +72,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
         block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
         block.InclusionListRecursiveStark = InclusionListRecursiveStark;
+        block.InclusionListProvenDependencies = InclusionListProvenDependencies;
         if (RecursiveStarkProof is null && RecursiveStarkBlockDepsHash is not null)
         {
             return Result<Block>.Fail($"Missing {nameof(RecursiveStarkProof)}");

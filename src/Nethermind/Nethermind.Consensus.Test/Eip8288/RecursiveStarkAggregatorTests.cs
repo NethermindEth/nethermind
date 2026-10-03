@@ -267,7 +267,8 @@ public class RecursiveStarkAggregatorTests
         };
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task<bool> captured;
-        using (store.BeginAdmission([dependency]))
+        Assert.That(store.TryBeginAdmission([dependency], [[1]], null, out IDisposable? admission), Is.True);
+        using (admission)
         {
             Assert.That(store.Covers(transaction), Is.True);
             captured = Task.Run(async () => { await release.Task; return store.Covers(transaction); });
@@ -276,6 +277,76 @@ public class RecursiveStarkAggregatorTests
         Assert.That(await captured, Is.False);
         Assert.That(store.Covers(transaction), Is.False);
     }
+
+    [Test]
+    public void Admission_reserves_capacity_and_pending_coverage_survives_unique_proof_floods()
+    {
+        LeanProofStore store = new();
+        List<Transaction> pending = [];
+        for (int i = 0; i < 1024; i++)
+        {
+            FrameDependency dependency = Sphincs($"pending:{i}");
+            Transaction transaction = DependencyTransaction(dependency);
+            Assert.That(store.TryBeginAdmission([dependency], [[1]], null, out IDisposable? admission), Is.True);
+            using (admission) store.PinPending(transaction);
+            pending.Add(transaction);
+        }
+        FrameDependency newcomer = Sphincs("newcomer");
+        Assert.That(store.TryBeginAdmission([newcomer], [[1]], null, out _), Is.False);
+        for (int i = 0; i < 20; i++) store.AddVerified([Sphincs($"flood:{i}")], [[1]], null);
+        foreach (Transaction transaction in pending) Assert.That(store.Covers(transaction), Is.True);
+        store.UnpinPending(pending[0].Hash!.ValueHash256);
+        Assert.That(store.TryBeginAdmission([newcomer], [[1]], null, out IDisposable? retry), Is.True);
+        using (retry) store.PinPending(DependencyTransaction(newcomer));
+        Assert.That(store.Covers(pending[0]), Is.False);
+        Assert.That(store.Covers(pending[1]), Is.True);
+    }
+
+    [Test]
+    public void Overlapping_partial_admission_and_cache_eviction_preserve_original_pending_witnesses()
+    {
+        LeanProofStore store = new();
+        FrameDependency a = Sphincs("pending-a"), b = Sphincs("pending-b");
+        Transaction original = DependencyTransaction(a), later = DependencyTransaction(b);
+        store.AddVerified([a], [[1]], null);
+        store.PinPending(original);
+        Assert.That(store.TryBeginAdmission([a, b], null, [2], out IDisposable? admission), Is.True);
+        using (admission)
+        {
+            store.PinPending(later);
+            store.AddVerified([a, b], null, [2], admittedDependencies: [b]);
+        }
+        store.UnpinPending(later.Hash!.ValueHash256);
+        for (int i = 0; i < 1100; i++)
+        {
+            store.AddVerified([Sphincs($"coverage:{i}")], [[1]], null);
+            store.AddCachedRecursive([Sphincs($"cache:{i}")], [3]);
+        }
+        Assert.That(store.TryGetInput([a], out AggregationInput input), Is.True);
+        Assert.That(input.Witnesses[0].Span[0], Is.EqualTo(1), "the unpinned overlapping parent must not replace pending coverage");
+        Assert.That(store.Covers(later), Is.False);
+    }
+
+    [Test]
+    public void Rejected_reservations_release_capacity_without_publishing_coverage()
+    {
+        LeanProofStore store = new();
+        for (int i = 0; i < 1100; i++)
+        {
+            FrameDependency dependency = Sphincs($"rejected:{i}");
+            Assert.That(store.TryBeginAdmission([dependency], [[1]], null, out IDisposable? admission), Is.True);
+            admission!.Dispose();
+            Assert.That(store.Covers(DependencyTransaction(dependency)), Is.False);
+        }
+    }
+
+    private static Transaction DependencyTransaction(FrameDependency dependency) => new()
+    {
+        Type = TxType.FrameTx,
+        Hash = new Hash256(dependency.DataHash),
+        Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            Nethermind.Int256.UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+    };
 
     [Test]
     public void Recursive_input_snapshots_caller_owned_buffers()

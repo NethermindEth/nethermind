@@ -32,7 +32,6 @@ public sealed class LeanP2PCapabilityResolver : IP2PCapabilityResolver, IDisposa
     {
         if (Volatile.Read(ref _enabled))
         {
-            capabilities.Add(new Capability(LeanProtocolHandler.Code, LeanProtocolHandler.Version));
             capabilities.Add(new Capability(Lean2ProtocolHandler.Code, Lean2ProtocolHandler.Version));
         }
     }
@@ -42,7 +41,7 @@ public sealed class LeanP2PCapabilityResolver : IP2PCapabilityResolver, IDisposa
     private void OnHead(object? sender, BlockEventArgs args)
     {
         bool enabled = IsEnabled();
-        if (_enabled == enabled) return;
+        if (Volatile.Read(ref _enabled) == enabled) return;
         Volatile.Write(ref _enabled, enabled);
         Changed?.Invoke();
     }

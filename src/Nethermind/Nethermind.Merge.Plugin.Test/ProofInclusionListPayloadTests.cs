@@ -93,6 +93,42 @@ public class ProofInclusionListPayloadTests
         Assert.That(payload.TryGetBlock().IsError, Is.True);
     }
 
+    [TestCase("orphan")]
+    [TestCase("partial-triple")]
+    [TestCase("oversized")]
+    public void Invalid_membership_wire_shape_is_rejected_before_a_build(string shape)
+    {
+        byte[] metadata = shape switch
+        {
+            "partial-triple" => [1],
+            "oversized" => new byte[Eip8288Constants.MaxInclusionListDependencyBytes + Eip8288Constants.DependencyTripleLength],
+            _ => []
+        };
+        OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
+        RecursiveStark? proof = shape == "orphan" ? null : new([1], Keccak.Zero);
+        PayloadAttributes attributes = new()
+        {
+            Timestamp = 1,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Zero,
+            SlotNumber = 1,
+            TargetGasLimit = 30_000_000,
+            InclusionListTransactions = [],
+            InclusionListRecursiveStark = proof,
+            InclusionListProvenDependencies = metadata
+        };
+        Assert.That(attributes.Validate(new TestSpecProvider(spec), 5, out _), Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes));
+        ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(Build.A.Block.TestObject);
+        payload.InclusionListTransactions = [];
+        payload.InclusionListRecursiveStark = proof;
+        payload.InclusionListProvenDependencies = metadata;
+        Assert.That(new ExecutionPayloadParams<ExecutionPayloadV3>(payload, [], Keccak.Zero, [], [])
+            .ValidateParams(spec, 6, out _), Is.EqualTo(ValidationResult.Fail));
+        Assert.That(payload.TryGetBlock().IsError, Is.True);
+    }
+
     [Test]
     public void Inclusion_proof_is_input_metadata_and_is_not_echoed_by_get_payload()
     {
@@ -100,15 +136,37 @@ public class ProofInclusionListPayloadTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         block.InclusionListTransactions = [];
         block.InclusionListRecursiveStark = proof;
+        byte[] metadata = new byte[Eip8288Constants.DependencyTripleLength];
+        block.InclusionListProvenDependencies = metadata;
         block = block.WithReplacedHeader(block.Header.Clone());
         Assert.That(block.InclusionListRecursiveStark, Is.SameAs(proof));
+        Assert.That(block.InclusionListProvenDependencies, Is.SameAs(metadata));
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
         Assert.That(payload.InclusionListRecursiveStark, Is.Null);
+        Assert.That(payload.InclusionListProvenDependencies, Is.Null);
         // The CL supplies its own list proof on newPayload.
         payload.InclusionListRecursiveStark = proof;
+        payload.InclusionListProvenDependencies = metadata;
         Result<Block> result = payload.TryGetBlock();
         Assert.That(result.IsError, Is.False, result.Error);
         Assert.That(result.Data!.InclusionListRecursiveStark, Is.SameAs(proof));
+        Assert.That(result.Data.InclusionListProvenDependencies, Is.SameAs(metadata));
+    }
+
+    [Test]
+    public void Membership_metadata_is_bound_to_payload_and_compliance_cache_ids()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        PayloadAttributes a = new() { InclusionListTransactions = [], InclusionListRecursiveStark = new([1], Keccak.Zero), InclusionListProvenDependencies = [] };
+        PayloadAttributes b = new() { InclusionListTransactions = [], InclusionListRecursiveStark = new([1], Keccak.Zero), InclusionListProvenDependencies = [1] };
+        Assert.That(a.GetPayloadId(parent), Is.Not.EqualTo(b.GetPayloadId(parent)));
+        Block block = Build.A.Block.TestObject;
+        block.InclusionListTransactions = [];
+        block.InclusionListRecursiveStark = a.InclusionListRecursiveStark;
+        block.InclusionListProvenDependencies = a.InclusionListProvenDependencies;
+        ValueHash256 original = NewPayloadHandler.ComputeInclusionListDigest(block);
+        block.InclusionListProvenDependencies = b.InclusionListProvenDependencies;
+        Assert.That(NewPayloadHandler.ComputeInclusionListDigest(block), Is.Not.EqualTo(original));
     }
 
     [Test]

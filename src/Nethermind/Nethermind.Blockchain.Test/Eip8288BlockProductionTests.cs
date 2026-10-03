@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -87,6 +88,66 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
+    public async Task Pool_membership_pins_witnesses_through_flood_replacement_and_removal()
+    {
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(new CountingVerifier(), proofs);
+        FrameDependency a = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending-a"), default);
+        FrameDependency b = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending-b"), default);
+        Transaction first = CreateTransaction(chain, a, [UInt256.Zero]);
+        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
+        Assert.That((await service.AcceptAsync(EncodeWrapper(a, first))).IsSuccess, Is.True);
+        Flood();
+        Assert.That(proofs.Covers(first), Is.True);
+        Transaction replacement = CreateTransaction(chain, b, [UInt256.Zero]);
+        replacement.GasPrice = 2.GWei;
+        replacement.DecodedMaxFeePerGas = 200.GWei;
+        FrameTxTestFrames.SignSecp256k1(replacement, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        replacement.Hash = replacement.CalculateHash();
+        Assert.That((await service.AcceptAsync(EncodeWrapper(b, replacement))).IsSuccess, Is.True);
+        Flood();
+        Assert.That(chain.TxPool.TryGetPendingTransaction(first.Hash!.ValueHash256, out _), Is.False);
+        Assert.That(proofs.Covers(first), Is.False);
+        Assert.That(proofs.Covers(replacement), Is.True);
+        Assert.That(chain.TxPool.RemoveTransaction(replacement.Hash), Is.True);
+        Flood();
+        Assert.That(proofs.Covers(replacement), Is.False);
+        FrameDependency c = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("shutdown"), default);
+        FrameDependency unrelated = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other-owner"), default);
+        Transaction shuttingDown = CreateTransaction(chain, c, [UInt256.Zero]);
+        Transaction otherOwner = CreateTransaction(chain, unrelated, [UInt256.Zero]);
+        proofs.AddVerified([unrelated], [[1]], null);
+        proofs.PinPending(otherOwner);
+        Assert.That((await service.AcceptAsync(EncodeWrapper(c, shuttingDown))).IsSuccess, Is.True);
+        await ((IAsyncDisposable)chain.TxPool).DisposeAsync();
+        Flood();
+        Assert.That(proofs.Covers(shuttingDown), Is.False);
+        Assert.That(proofs.Covers(otherOwner), Is.True, "shutdown releases only this pool's witness pins");
+
+
+        void Flood()
+        {
+            for (int i = 0; i < 1100; i++)
+                proofs.AddVerified([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"flood:{i}"), default)], [[1]], null);
+        }
+    }
+
+    [Test]
+    public async Task Cancelled_proving_does_not_publish_or_cache_the_proof()
+    {
+        using CancellationTokenSource cancellation = new();
+        CountingVerifier verifier = new() { OnProof = cancellation.Cancel };
+        using BasicTestBlockchain chain = await CreateChain(verifier, new LeanProofStore());
+        Assert.That(async () => await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock, cancellationToken: cancellation.Token),
+            Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        verifier.OnProof = null;
+        Block? fresh = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
+        Assert.That(fresh, Is.Not.Null);
+        Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+    }
+
+    [Test]
     public async Task Plain_producing_blocks_skip_uncovered_transactions_before_execution()
     {
         CountingVerifier verifier = new();
@@ -102,6 +163,41 @@ public class Eip8288BlockProductionTests
         Assert.That(processed!.Transactions, Is.Empty);
         Assert.That(Eip8288Dependencies.ForBlock(processed), Is.Empty);
         Assert.That(processed.Header.RecursiveStark!.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(processed).ToByteArray()));
+    }
+
+    [Test]
+    public async Task Owned_inclusion_list_witnesses_produce_when_the_shared_store_is_full()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        for (int i = 0; i < 1024; i++)
+        {
+            FrameDependency cached = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"cached:{i}"), default);
+            proofs.AddVerified([cached], [[1]], null);
+            proofs.PinPending(new Transaction
+            {
+                Type = TxType.FrameTx,
+                Hash = new Hash256(cached.DataHash),
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                    UInt256.Zero, Eip8288Dependencies.Serialize([cached]))]
+            });
+        }
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("inclusion-list"), default);
+        proofs.AddVerified([dependency], null, [1]);
+        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Assert.That(proofs.Covers(transaction), Is.False);
+        Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
+        BlockToProduce producing = new(template!.Header, [transaction], [], template.Withdrawals)
+        {
+            InclusionListProofInput = new() { RecursiveProofs = [new([dependency], Eip8288Dependencies.ComputeDepsHash([dependency]).ToByteArray())] }
+        };
+        await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
+        Block? processed = environment.ChainProcessor.Process(producing, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+        Assert.That(processed, Is.Not.Null);
+        Assert.That(processed!.Transactions, Has.Length.EqualTo(1));
+        Assert.That(verifier.LastInput!.RecursiveProofs, Has.Count.EqualTo(1));
+        Assert.That(proofs.Covers(transaction), Is.False, "production owns the verified IL witness without evicting pending pool coverage");
     }
 
     [Test]
@@ -159,7 +255,8 @@ public class Eip8288BlockProductionTests
         Assert.That(verifier.VerificationCalls, Is.EqualTo(matchingRoot ? 1 : 0));
         if (!matchingRoot)
         {
-            using (proofs.BeginAdmission([dependency]))
+            Assert.That(proofs.TryBeginAdmission([dependency], [[1]], null, out IDisposable? admission), Is.True);
+            using (admission)
                 Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.FrameTxRecentRootUnmet));
         }
         Block block = await ProduceAndImport(chain, slot);
@@ -262,6 +359,8 @@ public class Eip8288BlockProductionTests
     {
         public void EnsureAvailable() { }
         public int ProofCalls { get; private set; }
+        public Action? OnProof { get; set; }
+        public AggregationInput? LastInput { get; private set; }
         public int VerificationCalls { get; private set; }
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
         {
@@ -273,6 +372,8 @@ public class Eip8288BlockProductionTests
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             ProofCalls++;
+            LastInput = input;
+            OnProof?.Invoke();
             return depsHash.ToByteArray();
         }
     }

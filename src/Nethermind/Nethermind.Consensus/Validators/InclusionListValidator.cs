@@ -32,8 +32,8 @@ public static class InclusionListValidator
 
         if (spec.IsEip8288Enabled)
         {
-            // An invalid FOCIL package establishes no mandatory transactions.
-            if (!FocilInclusionListValidator.Validate(il, proof, verifier, out _, out _, spec)) return true;
+            il = FocilInclusionListValidator.SelectEligible(il, proof, block.InclusionListProvenDependencies,
+                verifier, spec, out _, out _);
         }
 
         // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.

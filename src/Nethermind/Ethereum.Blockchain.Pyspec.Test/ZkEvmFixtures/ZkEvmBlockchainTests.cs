@@ -16,6 +16,7 @@ using Nethermind.Serialization.Ssz;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.GnosisForks;
+using Nethermind.Crypto;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using NUnit.Framework;
@@ -26,6 +27,8 @@ public class ZkEvmBlockchainTests : ZkEvmBlockchainTestFixture;
 
 public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixture
 {
+    private static readonly ILeanProofVerifier _leanProofVerifier = new NativeLeanProofVerifier();
+
     protected ZkEvmBlockchainTestFixture() : base(parallel: false, batchRead: false) { }
 
     private static readonly LoadPyspecTestsStrategy _strategy = new() { ArchiveVersion = Constants.ArchiveVersion, ArchiveName = Constants.ArchiveName };
@@ -49,7 +52,7 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
         if (!expectedOutputBytes.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"StatelessOutputBytes must be 0x-prefixed.");
 
-        byte[] actualOutput = StatelessExecutor.Execute(Convert.FromHexString(inputBytes[2..]));
+        byte[] actualOutput = StatelessExecutor.Execute(Convert.FromHexString(inputBytes[2..]), _leanProofVerifier);
         byte[] expectedOutput = Convert.FromHexString(expectedOutputBytes[2..]);
 
         Assert.That(actualOutput, Is.EqualTo(expectedOutput),
@@ -115,7 +118,7 @@ public class StatelessSchemaTests
             SchemaId = InputDecoder.CurrentForkSchemaId
         });
 
-        Assert.That(StatelessExecutor.Execute(encoded), Is.EqualTo(expected));
+        Assert.That(StatelessExecutor.Execute(encoded, _leanProofVerifier), Is.EqualTo(expected));
     }
 
     [TestCase(ProtocolFork.Cancun)]

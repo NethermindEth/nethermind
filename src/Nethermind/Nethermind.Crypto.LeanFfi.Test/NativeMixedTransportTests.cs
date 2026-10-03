@@ -99,6 +99,7 @@ public class NativeMixedTransportTests
         });
         PacketSender sender = new(serializers, LimboLogs.Instance, TimeSpan.Zero);
         sender.HandlerAdded(context);
+        sender.EnableLeanBulk();
         using Socket listener = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         listener.Listen(1);

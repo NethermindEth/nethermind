@@ -60,25 +60,67 @@ public class HeaderStoreTests
         context.AssertReads(() => Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(100)), numberReads: 1);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Large_proofs_are_persisted_without_retaining_them_in_the_header_cache(bool explicitCache)
+    [Test]
+    public void Large_proof_cache_hits_skip_database_reads_and_isolate_mutable_proofs([Values] bool explicitCache)
     {
-        HeaderStore store = new(new MemDb(), new MemDb());
+        using MemDb headerDb = new();
+        using MemDb numberDb = new();
+        HeaderStore store = new(headerDb, numberDb);
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
         header.RecursiveStark = new RecursiveStark(new byte[128 * 1024], TestItem.KeccakA);
+        header.RecursiveStark.StarkProof[0] = 1;
         header.Hash = Keccak.Compute(Rlp.Encode(header).Bytes);
         store.Insert(header);
         if (explicitCache) store.Cache(header);
         BlockHeader decoded = store.Get(header.Hash!, shouldCache: true)!;
-        BlockHeader again = store.Get(header.Hash!, shouldCache: true)!;
+        long headerReads = headerDb.ReadsCount;
+        long numberReads = numberDb.ReadsCount;
+        decoded.RecursiveStark!.StarkProof[0] = 2;
+        header.RecursiveStark.StarkProof[0] = 3;
+        BlockHeader again = store.Get(header.Hash!)!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.RecursiveStark!.StarkProof, Has.Length.EqualTo(128 * 1024));
-            Assert.That(again.Hash, Is.EqualTo(header.Hash));
+            Assert.That(again.RecursiveStark!.StarkProof[0], Is.EqualTo(1));
             Assert.That(again, Is.Not.SameAs(decoded));
-            Assert.That(decoded, Is.Not.SameAs(header));
+            Assert.That(headerDb.ReadsCount, Is.EqualTo(headerReads));
+            Assert.That(numberDb.ReadsCount, Is.EqualTo(numberReads));
         }
+    }
+
+    [Test]
+    public void Large_proof_cache_evicts_by_bytes_and_count_preserving_recent_headers(
+        [Values(Eip8288Constants.MaxProofBytes, 65 * 1024)] int proofBytes)
+    {
+        HeaderStore store = new(new MemDb(), new MemDb());
+        int capacity = Math.Min(HeaderStore.MaxLargeProofHeaders, HeaderStore.MaxLargeProofCacheBytes / proofBytes);
+        BlockHeader[] headers = new BlockHeader[capacity + 1];
+        byte[] proof = new byte[proofBytes];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            headers[i] = Build.A.BlockHeader.WithNumber((ulong)i).TestObject;
+            headers[i].RecursiveStark = new RecursiveStark(proof, TestItem.KeccakA);
+            if (i < capacity) store.Cache(headers[i]);
+        }
+        Assert.That(store.Get(headers[0].Hash!), Is.Not.Null);
+        store.Cache(headers[^1]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(headers[0].Hash!), Is.Not.Null);
+            Assert.That(store.Get(headers[1].Hash!), Is.Null);
+            Assert.That(store.Get(headers[^1].Hash!), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void Large_proof_cache_clear_and_delete_release_cached_headers([Values] bool delete)
+    {
+        HeaderStore store = new(new MemDb(), new MemDb());
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        header.RecursiveStark = new RecursiveStark(new byte[128 * 1024], TestItem.KeccakA);
+        store.Cache(header);
+        if (delete) store.Delete(header.Hash!);
+        else ((IClearableCache)store).ClearCache();
+        Assert.That(store.Get(header.Hash!), Is.Null);
     }
 
     [Test]

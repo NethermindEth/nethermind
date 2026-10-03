@@ -142,6 +142,8 @@ public static partial class Program
                 commandLine = Environment.CommandLine,
                 sourceRevision = Value("source-revision", "working tree; see compiled hashes"),
                 hardware = Value("hardware", "unspecified"),
+                backendCommit = BackendCommit,
+                sphincsWitnessBytes = Eip8288Constants.LeanSphincsWitnessBytes,
                 utc = DateTimeOffset.UtcNow,
                 os = RuntimeInformation.OSDescription,
                 runtime = RuntimeInformation.FrameworkDescription,

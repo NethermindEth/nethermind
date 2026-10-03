@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -15,10 +16,11 @@ internal sealed class DependencyProofTxFilter(LeanProofStore? proofStore) : IInc
         {
             if (!FrameTxValidation.IsWellFormed(tx, state.HeadSpec, out string? error))
                 return AcceptTxResult.Invalid.WithMessage(error!);
-            (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(Eip8288Dependencies.ForTransaction(tx));
+            List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(tx);
+            (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(dependencies);
             if (sphincs > Eip8288Constants.MaxSigsPerTx || stark > Eip8288Constants.MaxStarksPerTx)
                 return AcceptTxResult.TooManyDependencies;
-            if (proofStore is null || !proofStore.Covers(tx))
+            if (proofStore is null || !proofStore.TryReserveTransaction(dependencies, out state.ProofReservation))
                 return AcceptTxResult.MissingDependencyProof;
         }
         return AcceptTxResult.Accepted;

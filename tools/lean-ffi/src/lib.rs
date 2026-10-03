@@ -5,7 +5,7 @@
 //! the upstream Ethereum guest recursively compresses SPHINCS claims.
 
 use bincode::Options;
-use leanvm_core::cpu::{self, Program};
+use lean_vm::cpu::{self, Program};
 use primitives::field::F192;
 use rec_aggregation::{ClaimSelection, EthereumProof, SignatureClaims};
 use sphincs::{SphincsPublicKey, SphincsSignature};
@@ -119,6 +119,7 @@ impl<'a> Preflight<'a> {
         self.vector(0, 32)?; // DA commitments are unsupported
         self.vector(32, 24)?;
         self.vector(32, 24)?;
+        self.vector(32, 24)?; // second Flock circuit (Keccak)
         self.cpu()
     }
     fn end(self) -> Result<(), ()> {
@@ -238,6 +239,21 @@ fn encode_program(program: &Program) -> Vec<u8> {
             ),
             Op::Jump { oc, od, of } => (4, [oc, od, of, 0], [0; 3], 0),
             Op::Blake2s { ins, cv, out, md } => (5, ins, [cv as u64, out as u64, 0], md),
+            Op::Sha3 {
+                m,
+                cap,
+                out,
+                digest,
+            } => (
+                6,
+                m[..4].try_into().unwrap(),
+                [
+                    m[4] as u64 | ((m[5] as u64) << 32),
+                    m[6] as u64 | ((m[7] as u64) << 32),
+                    cap as u64 | ((out as u64) << 32),
+                ],
+                digest as u32,
+            ),
         };
         out.push(tag);
         for x in args {
@@ -313,6 +329,32 @@ fn stark_program(code: &[u8]) -> Result<Program, ()> {
                 out: k[1] as u32,
                 md,
             },
+            6 if md <= 1 => {
+                let halves = |value: u64| [value as u32, (value >> 32) as u32];
+                let m = [
+                    a[0],
+                    a[1],
+                    a[2],
+                    a[3],
+                    halves(k[0])[0],
+                    halves(k[0])[1],
+                    halves(k[1])[0],
+                    halves(k[1])[1],
+                ];
+                let [cap, out] = halves(k[2]);
+                if m.iter().any(|value| *value > MAX_OPERAND)
+                    || cap > MAX_OPERAND - 4
+                    || out > MAX_OPERAND - 12
+                {
+                    return Err(());
+                }
+                Op::Sha3 {
+                    m,
+                    cap,
+                    out,
+                    digest: md != 0,
+                }
+            }
             _ => return Err(()),
         };
         ops.push(op);
@@ -365,6 +407,9 @@ fn decode_aggregate_with_hash(bytes: &[u8], expected: Option<&[u8; 32]>) -> Resu
         return Err(());
     }
     let proof = r.blob()?;
+    if proof.is_empty() != !deps.iter().any(|d| d[31] == 0x10) {
+        return Err(());
+    }
     let sphincs = if proof.is_empty() {
         None
     } else {
@@ -392,13 +437,17 @@ fn decode_aggregate_with_hash(bytes: &[u8], expected: Option<&[u8; 32]>) -> Resu
                 || !p.da_commitments().is_empty()
                 || p.sphincs_signers()
                     .iter()
-                    .map(|(pk, m)| sphincs_dependency(pk, m))
+                    .map(|(m, pk)| sphincs_dependency(pk, m))
                     .collect::<BTreeSet<_>>()
                     != expected
             {
                 return Err(());
             }
-            p.verify().map_err(|_| ())?;
+            rec_aggregation::verify_sphincs_deps(
+                &rec_aggregation::sphincs_deps_hash(p.sphincs_signers()),
+                &p.to_bytes_without_pubkeys(),
+            )
+            .map_err(|_| ())?;
         }
         None if !expected.is_empty() => return Err(()),
         None => (),
@@ -423,11 +472,99 @@ fn decode_aggregate_with_hash(bytes: &[u8], expected: Option<&[u8; 32]>) -> Resu
     })
 }
 
+// Keccak's proving witness is much larger than the former BLAKE2s profile.
+// Keep raw leaves and recursive fan-in small; aggregate size does not scale raw witness RAM.
+const RAW_SIGNATURES_PER_LEAF: usize = 4;
+const RECURSIVE_FAN_IN: usize = 2;
+fn aggregate_bounded(
+    children: Vec<EthereumProof>,
+    raw: Vec<(SphincsPublicKey, [u8; 32], SphincsSignature)>,
+    signatures: &SignatureClaims,
+) -> Result<EthereumProof, ()> {
+    let desired: BTreeSet<_> = signatures.sphincs.iter().copied().collect();
+    let had_children = !children.is_empty();
+    let mut nodes: Vec<_> = children
+        .into_iter()
+        .filter(|child| {
+            child
+                .sphincs_signers()
+                .iter()
+                .any(|claim| desired.contains(claim))
+        })
+        .collect();
+    let mut seen = HashSet::new();
+    let raw: Vec<_> = raw
+        .into_iter()
+        .filter(|(pk, message, _)| {
+            desired.contains(&(*message, *pk)) && seen.insert((*message, *pk))
+        })
+        .collect();
+    for leaf in raw.chunks(RAW_SIGNATURES_PER_LEAF) {
+        nodes.push(
+            rec_aggregation::aggregate(&[], vec![], leaf.to_vec(), &[], None, 1).map_err(|_| ())?,
+        );
+    }
+    let force_root = had_children && nodes.len() == 1;
+    while nodes.len() > 1 {
+        let mut next = Vec::new();
+        let mut input = nodes.into_iter();
+        while let Some(first) = input.next() {
+            let mut batch = vec![first];
+            batch.extend(input.by_ref().take(RECURSIVE_FAN_IN - 1));
+            let selected = SignatureClaims {
+                xmss: vec![],
+                sphincs: batch
+                    .iter()
+                    .flat_map(|node| node.sphincs_signers().iter().copied())
+                    .filter(|claim| desired.contains(claim))
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
+            };
+            if batch.len() == 1 && batch[0].sphincs_signers() == selected.sphincs {
+                next.push(batch.pop().ok_or(())?);
+            } else {
+                next.push(
+                    rec_aggregation::aggregate(
+                        &batch,
+                        vec![],
+                        vec![],
+                        &[],
+                        Some(ClaimSelection {
+                            signatures: &selected,
+                            da_commitments: &[],
+                        }),
+                        1,
+                    )
+                    .map_err(|_| ())?,
+                );
+            }
+        }
+        nodes = next;
+    }
+    let node = nodes.pop().ok_or(())?;
+    if !force_root && node.sphincs_signers() == signatures.sphincs {
+        return Ok(node);
+    }
+    rec_aggregation::aggregate(
+        &[node],
+        vec![],
+        vec![],
+        &[],
+        Some(ClaimSelection {
+            signatures,
+            da_commitments: &[],
+        }),
+        1,
+    )
+    .map_err(|_| ())
+}
+
 pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     let _guard = PROVER
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    leanvm_core::init_prover_pool();
+    lean_vm::init_prover_pool();
     let mut r = Reader { bytes: input };
     let mut all = Vec::new();
     let mut raw = Vec::new();
@@ -439,7 +576,7 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
         if d[31] == 0x10 {
             let m = d[32..64].try_into().map_err(|_| ())?;
             let (pk, sig) = parse_sphincs(&m, d[64..96].try_into().map_err(|_| ())?, w)?;
-            claims.insert(d, (pk, m));
+            claims.insert(d, (m, pk));
             raw.push((pk, m, sig));
         } else {
             if !verify_stark(
@@ -474,8 +611,8 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
         all.extend(deps);
         starks.extend(child.starks);
         if let Some(p) = child.sphincs {
-            for (pk, m) in p.sphincs_signers() {
-                claims.insert(sphincs_dependency(pk, m), (*pk, *m));
+            for (m, pk) in p.sphincs_signers() {
+                claims.insert(sphincs_dependency(pk, m), (*m, *pk));
             }
             children.push(p);
         }
@@ -508,19 +645,7 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     let proof = if signatures.sphincs.is_empty() {
         vec![]
     } else {
-        rec_aggregation::aggregate(
-            &children,
-            vec![],
-            raw,
-            &[],
-            Some(ClaimSelection {
-                signatures: &signatures,
-                da_commitments: &[],
-            }),
-            1,
-        )
-        .map_err(|_| ())?
-        .to_bytes()
+        aggregate_bounded(children, raw, &signatures)?.to_bytes()
     };
     let mut out = MAGIC.to_vec();
     put_deps(&mut out, &deps);
@@ -709,7 +834,7 @@ pub fn prove_stark(source: &str, hash: &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]),
     let _guard = PROVER
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    leanvm_core::init_prover_pool();
+    lean_vm::init_prover_pool();
     let program = lean_compiler::compile(&lean_compiler::parse(source).map_err(|_| ())?);
     let code = encode_program(&program);
     let (proof, _) = cpu::prove(&program, pi(hash), 1).map_err(|_| ())?;
@@ -750,7 +875,7 @@ mod tests {
         let message = [7; 32];
         let signature = [
             pk.flatten().as_slice(),
-            sphincs::sign(&sk, &message).unwrap().to_bytes().as_slice(),
+            sphincs::sign(&sk, &message).to_bytes().as_slice(),
         ]
         .concat();
         assert!(verify_sphincs(&message, &keccak(&pk.flatten()), &signature));
@@ -781,7 +906,7 @@ mod tests {
         let message = [7; 32];
         let signature = [
             pk.flatten().as_slice(),
-            sphincs::sign(&sk, &message).unwrap().to_bytes().as_slice(),
+            sphincs::sign(&sk, &message).to_bytes().as_slice(),
         ]
         .concat();
         let dep = sphincs_dependency(&pk, &message);
@@ -818,6 +943,55 @@ mod tests {
         assert!(prove_aggregate(&commitment(&[dep]), &discard).is_err());
     }
     #[test]
+    fn binary_recursion_preserves_overlapping_parents_and_partial_discards() {
+        let (sk, pk) = sphincs::key_gen_from_seed([43; 32]);
+        let mut deps = Vec::new();
+        let mut input = Vec::new();
+        put_number(&mut input, 3);
+        for index in 0..3u8 {
+            let message = [index; 32];
+            let dep = sphincs_dependency(&pk, &message);
+            let witness = [
+                pk.flatten().as_slice(),
+                sphincs::sign(&sk, &message).to_bytes().as_slice(),
+            ]
+            .concat();
+            deps.push(dep);
+            input.extend_from_slice(&dep);
+            put_blob(&mut input, &witness);
+        }
+        deps.sort();
+        put_number(&mut input, 0);
+        put_deps(&mut input, &[]);
+        let all = prove_aggregate(&commitment(&deps), &input).unwrap();
+        assert_eq!(decode_aggregate(&all).unwrap().deps, deps);
+        let combine = |parents: &[(&[Dep], &[u8])], discards: &[Dep], expected: &[Dep]| {
+            let mut input = Vec::new();
+            put_number(&mut input, 0);
+            put_number(&mut input, parents.len());
+            for (inner, proof) in parents {
+                put_deps(&mut input, inner);
+                put_blob(&mut input, proof);
+            }
+            put_deps(&mut input, discards);
+            prove_aggregate(&commitment(expected), &input).unwrap()
+        };
+        let left = combine(&[(&deps, &all)], &[deps[2]], &deps[..2]);
+        let right = combine(&[(&deps, &all)], &[deps[0]], &deps[1..]);
+        let retained = vec![deps[0], deps[2]];
+        let root = combine(
+            &[(&deps[..2], &left), (&deps[1..], &right)],
+            &[deps[1]],
+            &retained,
+        );
+        assert_eq!(decode_aggregate(&root).unwrap().deps, retained);
+        let repeated = combine(&[(&retained, &root)], &[], &retained);
+        assert_eq!(decode_aggregate(&repeated).unwrap().deps, retained);
+        assert_ne!(root, repeated);
+        assert!(decode_aggregate_with_hash(&root, Some(&commitment(&deps))).is_err());
+    }
+
+    #[test]
     fn malformed_buffers_fail_closed() {
         assert_eq!(
             unsafe {
@@ -832,6 +1006,19 @@ mod tests {
             0
         );
         assert!(decode_aggregate(b"NLR2\xff\xff\xff\xff").is_err());
+        for has_generic in [false, true] {
+            let mut deps = vec![];
+            if has_generic {
+                let mut dep = [0; 96];
+                dep[31] = 0x11;
+                deps.push(dep);
+            }
+            let mut envelope = MAGIC.to_vec();
+            put_deps(&mut envelope, &deps);
+            put_blob(&mut envelope, &[0]);
+            put_number(&mut envelope, 0);
+            assert!(decode_aggregate(&envelope).is_err());
+        }
         // Reject malicious nested vector lengths before upstream claim reconstruction.
         for preceding_vectors in 0..7 {
             let mut nested = vec![0; preceding_vectors * 8];
@@ -845,12 +1032,12 @@ mod tests {
         let (_, pk) = sphincs::key_gen_from_seed([42; 32]);
         let claims = SignatureClaims {
             xmss: vec![],
-            sphincs: vec![(pk, [7; 32]); MAX_DEPS + 1],
+            sphincs: vec![([7; 32], pk); MAX_DEPS + 1],
         };
         let core = (
             Vec::<[u8; 32]>::new(),
             Vec::<F192>::new(),
-            Vec::<F192>::new(),
+            [Vec::<F192>::new(), Vec::<F192>::new()],
             cpu::Proof {
                 stream: vec![],
                 merkle: vec![],

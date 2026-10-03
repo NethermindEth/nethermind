@@ -22,11 +22,15 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
     private readonly CancellationTokenSource _cts = new();
     private const int MaxDeferredBytes = 12 * 1024 * 1024;
     private const int MaxDeferredMessages = 64;
-    private readonly Lock _deferredLock = new();
-    private readonly Queue<IByteBuffer> _deferred = [];
-    private int _deferredBytes;
-    private bool _removed;
-    private TaskCompletionSource _writableChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private sealed class BulkSendState
+    {
+        public readonly Lock Gate = new();
+        public readonly Queue<IByteBuffer> Deferred = [];
+        public int DeferredBytes;
+        public TaskCompletionSource WritableChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+    private BulkSendState? _bulk;
+    private volatile bool _removed;
     private IChannelHandlerContext _context;
     private Action<Task, object?> _delayThenWrite;
     private Action<Task, object?> _observeWriteCompletion;
@@ -36,39 +40,51 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
     private Action<Task, object?> DelayThenWriteAction => _delayThenWrite ??= DelayThenWrite;
     private Action<Task, object?> ObserveWriteCompletionAction => _observeWriteCompletion ??= ObserveWriteCompletion;
 
+    internal void EnableLeanBulk() => Interlocked.CompareExchange(ref _bulk, new BulkSendState(), null);
+
     public int Enqueue<T>(T message) where T : P2PMessage
     {
-        lock (_deferredLock)
+        BulkSendState? bulk = Volatile.Read(ref _bulk);
+        if (bulk is not null) return EnqueueWithBulkTraffic(message, bulk);
+        if (_removed || !_context.Channel.IsWritable || !_context.Channel.Active) return 0;
+
+        IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
+        int length = buffer.ReadableBytes;
+        SendBuffer(buffer);
+        return length;
+    }
+
+    private int EnqueueWithBulkTraffic<T>(T message, BulkSendState bulk) where T : P2PMessage
+    {
+        lock (bulk.Gate)
         {
             if (_removed || !_context.Channel.Active) return 0;
-            bool deferred = !_context.Channel.IsWritable || _deferred.Count != 0;
-            // Bulk proof gossip retries from its own bounded latest view. Reserve the
-            // channel's deferred budget for eth, snap and session control traffic.
-            if (deferred && ((message.Protocol == "lean" && message.PacketType == 1) || _deferred.Count == MaxDeferredMessages
-                || _deferredBytes == MaxDeferredBytes)) return 0;
+            bool deferred = !_context.Channel.IsWritable || bulk.Deferred.Count != 0;
+            // Chunk producers retry independently; reserve the deferred budget for control traffic.
+            if (deferred && ((message.Protocol == "lean" && message.PacketType == 1)
+                || bulk.Deferred.Count == MaxDeferredMessages || bulk.DeferredBytes == MaxDeferredBytes)) return 0;
 
             IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
             int length = buffer.ReadableBytes;
             if (deferred)
             {
-                if (length > MaxDeferredBytes - _deferredBytes)
+                if (length > MaxDeferredBytes - bulk.DeferredBytes)
                 {
                     buffer.Release();
                     return 0;
                 }
-                _deferred.Enqueue(buffer);
-                _deferredBytes += length;
-                if (_context.Channel.IsWritable) DrainDeferred();
+                bulk.Deferred.Enqueue(buffer);
+                bulk.DeferredBytes += length;
+                if (_context.Channel.IsWritable) DrainDeferred(bulk);
             }
             else SendBuffer(buffer);
-
             return length;
         }
     }
 
-    /// <inheritdoc/>
-    public async ValueTask<int> EnqueueAsync<T>(T message, CancellationToken cancellationToken) where T : P2PMessage
+    internal async ValueTask<int> EnqueueAsync<T>(T message, CancellationToken cancellationToken) where T : P2PMessage
     {
+        BulkSendState bulk = Volatile.Read(ref _bulk) ?? throw new InvalidOperationException("Lean bulk transport is not enabled");
         if (_sendLatency != TimeSpan.Zero) await Task.Delay(_sendLatency, cancellationToken).ConfigureAwait(false);
         Task write;
         int length;
@@ -76,10 +92,10 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         {
             cancellationToken.ThrowIfCancellationRequested();
             Task wait;
-            lock (_deferredLock)
+            lock (bulk.Gate)
             {
                 if (_removed || !_context.Channel.Active) return 0;
-                if (_context.Channel.IsWritable && _deferred.Count == 0)
+                if (_context.Channel.IsWritable && bulk.Deferred.Count == 0)
                 {
                     IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
                     length = buffer.ReadableBytes;
@@ -87,40 +103,40 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
                     write = _context.WriteAndFlushAsync(buffer);
                     break;
                 }
-                wait = _writableChanged.Task;
+                wait = bulk.WritableChanged.Task;
             }
             await wait.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         await write.WaitAsync(cancellationToken).ConfigureAwait(false);
-        // A bulk producer must return to the scheduler between actual writes.
         await Task.Yield();
         return length;
     }
 
-    private void WakeBulkWriters()
+    private static void WakeBulkWriters(BulkSendState bulk)
     {
-        TaskCompletionSource previous = _writableChanged;
-        _writableChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource previous = bulk.WritableChanged;
+        bulk.WritableChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
         previous.TrySetResult();
     }
 
-    private void DrainDeferred()
+    private void DrainDeferred(BulkSendState bulk)
     {
-        while (!_removed && _context.Channel.Active && _context.Channel.IsWritable && _deferred.TryDequeue(out IByteBuffer? buffer))
+        while (!_removed && _context.Channel.Active && _context.Channel.IsWritable && bulk.Deferred.TryDequeue(out IByteBuffer? buffer))
         {
-            _deferredBytes -= buffer.ReadableBytes;
+            bulk.DeferredBytes -= buffer.ReadableBytes;
             SendBuffer(buffer);
         }
-        if (_deferred.Count == 0 && _context.Channel.IsWritable) WakeBulkWriters();
+        if (bulk.Deferred.Count == 0 && _context.Channel.IsWritable) WakeBulkWriters(bulk);
     }
 
     public override void ChannelWritabilityChanged(IChannelHandlerContext context)
     {
-        lock (_deferredLock)
-        {
-            DrainDeferred();
-            WakeBulkWriters();
-        }
+        if (Volatile.Read(ref _bulk) is { } bulk)
+            lock (bulk.Gate)
+            {
+                DrainDeferred(bulk);
+                WakeBulkWriters(bulk);
+            }
         context.FireChannelWritabilityChanged();
     }
 
@@ -239,7 +255,8 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
 
     public override void ChannelInactive(IChannelHandlerContext context)
     {
-        lock (_deferredLock) WakeBulkWriters();
+        if (Volatile.Read(ref _bulk) is { } bulk)
+            lock (bulk.Gate) WakeBulkWriters(bulk);
         context.FireChannelInactive();
     }
 
@@ -247,13 +264,14 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
 
     public override void HandlerRemoved(IChannelHandlerContext context)
     {
-        lock (_deferredLock)
-        {
-            _removed = true;
-            WakeBulkWriters();
-            while (_deferred.TryDequeue(out IByteBuffer? buffer)) buffer.Release();
-            _deferredBytes = 0;
-        }
+        _removed = true;
+        if (Volatile.Read(ref _bulk) is { } bulk)
+            lock (bulk.Gate)
+            {
+                WakeBulkWriters(bulk);
+                while (bulk.Deferred.TryDequeue(out IByteBuffer? buffer)) buffer.Release();
+                bulk.DeferredBytes = 0;
+            }
         _cts.Cancel();
         _cts.Dispose();
     }

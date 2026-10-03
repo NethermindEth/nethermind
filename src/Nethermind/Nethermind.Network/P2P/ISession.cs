@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.EventArg;
@@ -40,8 +38,6 @@ namespace Nethermind.Network.P2P
         void ReceiveMessage(ZeroPacket zeroPacket);
         int DeliverMessage<T>(T message) where T : P2PMessage;
 
-        /// <summary>Waits for completion of a bulk message write.</summary>
-        ValueTask<int> DeliverMessageAsync<T>(T message, CancellationToken cancellationToken) where T : P2PMessage;
         void EnableSnappy();
         void AddSupportedCapability(Capability capability);
         bool HasAvailableCapability(Capability capability);

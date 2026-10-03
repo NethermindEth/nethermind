@@ -51,6 +51,12 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return blockToProduce;
         }
 
+        protected override void ApplyInclusionList(BlockToProduce block, PayloadAttributes? attributes)
+        {
+            if (inclusionListTxSource is null) base.ApplyInclusionList(block, attributes);
+            else inclusionListTxSource.ApplyInclusionList(block, attributes);
+        }
+
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);

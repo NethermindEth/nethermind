@@ -80,6 +80,66 @@ public class FocilInclusionListTests
         }
     }
 
+    [TestCase("malformed")]
+    [TestCase("uncovered")]
+    [TestCase("invalid-proof")]
+    [TestCase("missing-proof")]
+    [TestCase("missing-metadata")]
+    public void Eligibility_preserves_independent_entries_when_one_frame_or_package_is_bad(string scenario)
+    {
+        Transaction ordinary = new();
+        Transaction covered = ValidDependencyFrame(default);
+        Transaction bad = ValidDependencyFrame(ValueKeccak.Compute("uncovered"));
+        if (scenario == "malformed") bad.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[1])];
+        byte[] metadata = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(covered));
+        RecursiveStark? proof = scenario == "missing-proof" ? null : new([1], new Hash256(ValueKeccak.Compute(metadata)));
+        FakeLeanProofVerifier verifier = new(scenario != "invalid-proof");
+
+        Transaction[] eligible = FocilInclusionListValidator.SelectEligible([covered, bad, ordinary], proof,
+            scenario == "missing-metadata" ? null : metadata, verifier, Eip8288Prototype.Instance, out _, out _);
+
+        Assert.That(eligible, scenario is "malformed" or "uncovered" ? Is.EqualTo(new[] { covered, ordinary }) : Is.EqualTo(new[] { ordinary }));
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(scenario is "missing-proof" or "missing-metadata" ? 0 : 1));
+    }
+
+    [TestCase("duplicate")]
+    [TestCase("padding")]
+    [TestCase("unknown-scheme")]
+    [TestCase("oversized")]
+    public void Noncanonical_or_oversized_membership_metadata_is_rejected_before_native(string scenario)
+    {
+        Transaction covered = ValidDependencyFrame(default);
+        byte[] metadata = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(covered));
+        metadata = scenario switch
+        {
+            "duplicate" => [.. metadata, .. metadata],
+            "oversized" => new byte[Eip8288Constants.MaxInclusionListDependencyBytes + Eip8288Constants.DependencyTripleLength],
+            _ => metadata
+        };
+        if (scenario == "padding") metadata[0] = 1;
+        if (scenario == "unknown-scheme") metadata[31] = 1;
+        FakeLeanProofVerifier verifier = new(true);
+        RecursiveStark proof = new([1], new Hash256(ValueKeccak.Compute(metadata)));
+        Assert.That(FocilInclusionListValidator.SelectEligible([covered], proof, metadata, verifier,
+            Eip8288Prototype.Instance, out _, out _), Is.Empty);
+        Assert.That(verifier.VerificationCalls, Is.Zero);
+    }
+
+    private static Transaction ValidDependencyFrame(ValueHash256 message)
+    {
+        FrameDependency dep = new(Eip8288Constants.LeanSphincsScheme, message, default);
+        TxFrame[] frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dep.VerificationGas,
+            UInt256.Zero, Eip8288Dependencies.Serialize([dep]))];
+        return new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [0],
+            SenderAddress = Address.Zero,
+            Frames = frames,
+            GasLimit = FrameTxValidation.TotalGasLimit(frames)
+        };
+    }
+
     [Test]
     public void Empty_focil_round_trips()
     {
@@ -109,6 +169,7 @@ public class FocilInclusionListTests
         {
             Transactions = txs,
             RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))),
+            ProvenDependencies = Eip8288Dependencies.Serialize(Eip8288Dependencies.Canonicalize(deps)),
         };
 
         Assert.That(FocilInclusionListValidator.Validate(focil, Accepting, out string? error), Is.True, error);
@@ -121,6 +182,7 @@ public class FocilInclusionListTests
         {
             Transactions = [DepTx(Eip8288Constants.LeanSphincsScheme)],
             RecursiveStark = new RecursiveStark([1], Keccak.Compute("wrong")),
+            ProvenDependencies = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(DepTx(Eip8288Constants.LeanSphincsScheme))),
         };
 
         Assert.That(FocilInclusionListValidator.Validate(focil, Accepting, out string? error), Is.False);

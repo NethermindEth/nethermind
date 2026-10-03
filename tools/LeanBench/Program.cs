@@ -28,6 +28,7 @@ namespace Nethermind.Tools.LeanBench;
 
 public static partial class Program
 {
+    private const string BackendCommit = "f33f31bf7c1191667e29a68a3acae63b9164c1c6";
     private static readonly List<BenchmarkRow> Rows = [];
     private static readonly List<BatchSample> Samples = [];
     private static readonly BenchCase[] Cases = [new("sphincs1", 1, 0), new("sphincs4", 4, 0),
@@ -70,8 +71,10 @@ public static partial class Program
             architecture = RuntimeInformation.ProcessArchitecture.ToString(),
             logicalCpus = Environment.ProcessorCount,
             runtime = RuntimeInformation.FrameworkDescription,
-            backendCommit = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30",
+            backendCommit = BackendCommit,
+            sphincsWitnessBytes = Eip8288Constants.LeanSphincsWitnessBytes,
             transport = "localhost TCP; production Snappy/AES/MAC RLPx codecs; preset session secrets; shared production wrapper admission; no WAN or capability-handshake timing",
+            protocolPreprovedTransport = "lean/2; 64KiB chunks; production reassembly and admission; codec/TCP transport excludes PacketSender",
             warmupBatches = warmups,
             cryptoRepetitions = repetitions,
             durationSeconds = seconds,
@@ -299,7 +302,6 @@ public static partial class Program
         MeasuredVerifier verifier = new();
         using ProtocolReceiver receiver = await ProtocolReceiver.Create(verifier);
         using TcpRlpxLoopback transport = new(receiver.Receive);
-        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(seconds + 180));
         int count = (int)Math.Ceiling(seconds * rate / scenario.TransactionsPerBatch);
         ConcurrentDictionary<Hash256, (BatchSample Sample, int Bytes, long Scheduled)> transactions = new();
         Dictionary<ValueHash256, BatchSample> byCommitment = [];
@@ -337,6 +339,7 @@ public static partial class Program
             prepared.Add((sample, wrapper, txs.Select(tx => tx.Hash!).ToArray()));
         }
         double preparationSeconds = Stopwatch.GetElapsedTime(preparationStarted).TotalSeconds;
+        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(seconds + 180));
         verifier.Verified = (commitment, wall, cpuMs) =>
         {
             BatchSample sample = byCommitment[commitment];
@@ -391,13 +394,13 @@ public static partial class Program
         List<BatchSample> samples = prepared.Select(p => p.Sample).ToList();
         long replaced = samples.Count(s => !s.ProofVerified);
         foreach (BatchSample sample in samples)
-            if (!sample.ProofVerified) sample.RejectionReason = "Replaced by latest pending wrapper";
+            if (!sample.ProofVerified) sample.RejectionReason = "Local ingress capacity or pending-wrapper drop";
             else if (sample.AcceptedUniqueTransactions != sample.TransactionCount) sample.RejectionReason = "Local pool admission decline";
         Rows.Add(Summarize("protocol-preproved", scenario, samples, rate, seconds, duration,
             count * scenario.TransactionsPerBatch, count, replaced * scenario.TransactionsPerBatch, replaced,
             MeasuredVerifier.CpuMilliseconds() - cpu, preparationSeconds, actualSendDuration));
         Samples.AddRange(samples);
-        Console.WriteLine($"Protocol {scenario.Name} target {rate:F0}: accepted {Rows[^1].AcceptedTxPerSecond:F2}tx/s latest-queue drops {replaced} preparation {preparationSeconds:F2}s");
+        Console.WriteLine($"Protocol {scenario.Name} target {rate:F0}: accepted {Rows[^1].AcceptedTxPerSecond:F2}tx/s ingress drops {replaced} preparation {preparationSeconds:F2}s");
     }
 
     private static async Task RunObjects(int size, double seconds, double rate, int capacity, int warmups)

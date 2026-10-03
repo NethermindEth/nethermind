@@ -243,11 +243,17 @@ namespace Nethermind.Consensus.Producers
                 Array.Empty<Transaction>() :
                 TxSource.GetTransactions(parent, header, header.GasLimit, payloadAttributes, filterSource: true);
 
-            return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals)
-            {
-                InclusionListTransactions = payloadAttributes?.InclusionListTransactions is { } il
-                    ? Nethermind.Serialization.Rlp.TxsDecoder.DecodeTxs(il, skipErrors: true).Transactions : null
-            };
+            BlockToProduce block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+            ApplyInclusionList(block, payloadAttributes);
+            return block;
+        }
+
+        protected virtual void ApplyInclusionList(BlockToProduce block, PayloadAttributes? attributes)
+        {
+            block.InclusionListTransactions = attributes?.InclusionListTransactions is { } il
+                ? Nethermind.Serialization.Rlp.TxsDecoder.DecodeTxs(il, skipErrors: true).Transactions : null;
+            block.InclusionListRecursiveStark = attributes?.InclusionListRecursiveStark;
+            block.InclusionListProvenDependencies = attributes?.InclusionListProvenDependencies;
         }
 
         private ProcessingOptions GetProcessingOptions()

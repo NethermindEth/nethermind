@@ -29,10 +29,13 @@ public sealed class TcpRlpxLoopback : IDisposable
     private readonly Socket _receiver;
     private const int ReadChunkBytes = 64 * 1024;
     private readonly LeanProofWrapperMessageSerializer _serializer = new();
+    private readonly LeanProofChunkMessageSerializer _chunks = new();
+    private readonly bool _useChunks;
     private TaskCompletionSource<byte[]>? _received;
 
     public TcpRlpxLoopback(Action<ZeroPacket>? receive = null)
     {
+        _useChunks = receive is not null;
         byte[] aes = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
         byte[] mac = Enumerable.Range(32, 32).Select(i => (byte)i).ToArray();
         KeccakHash initial = KeccakHash.Create();
@@ -56,6 +59,15 @@ public sealed class TcpRlpxLoopback : IDisposable
         {
             ZeroPacket packet = call.Arg<ZeroPacket>();
             int readerIndex = packet.Content.ReaderIndex;
+            if (_useChunks)
+            {
+                int index = packet.Content.GetInt(readerIndex + 36);
+                int count = packet.Content.GetInt(readerIndex + 40);
+                receive!(packet);
+                // The protocol queue owns reassembly and integrity checks; this result marks wire delivery.
+                if (index == count - 1) _received!.TrySetResult([]);
+                return;
+            }
             byte[] wrapper = _serializer.Deserialize(packet.Content).Wrapper;
             packet.Content.SetReaderIndex(readerIndex);
             receive?.Invoke(packet);
@@ -78,28 +90,58 @@ public sealed class TcpRlpxLoopback : IDisposable
 
     public async Task<TransportSample> TransferAsync(byte[] wrapper, CancellationToken cancellationToken)
     {
+        if (wrapper.Length is 0 or > LeanProofStore.MaxWrapperBytes) throw new ArgumentException("Invalid wrapper size", nameof(wrapper));
         _received = new(TaskCreationOptions.RunContinuationsAsynchronously);
         long started = Stopwatch.GetTimestamp();
-        IByteBuffer input = Unpooled.Buffer(wrapper.Length + 1);
-        input.WriteByte(1);
-        _serializer.Serialize(input, new LeanProofWrapperMessage(wrapper));
-        _outbound.WriteOutbound(input);
-        IByteBuffer wire = _outbound.ReadOutbound<IByteBuffer>();
-        double encodeMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        int wireBytes = wire.ReadableBytes;
-        long transferStarted = Stopwatch.GetTimestamp();
+        List<IByteBuffer> frames = [];
         try
         {
+            if (_useChunks)
+            {
+                ValueHash256 hash = ValueKeccak.Compute(wrapper);
+                const int chunkSize = LeanProofChunkMessage.DefaultChunkSize;
+                int count = (wrapper.Length + chunkSize - 1) / chunkSize;
+                for (int index = 0; index < count; index++)
+                {
+                    int offset = index * chunkSize;
+                    ReadOnlyMemory<byte> data = wrapper.AsMemory(offset, Math.Min(chunkSize, wrapper.Length - offset));
+                    IByteBuffer input = Unpooled.Buffer(data.Length + LeanProofChunkMessage.HeaderSize + 1);
+                    input.WriteByte(1);
+                    _chunks.Serialize(input, new(hash, wrapper.Length, index, count, chunkSize, data));
+                    _outbound.WriteOutbound(input);
+                    frames.Add(_outbound.ReadOutbound<IByteBuffer>());
+                }
+            }
+            else
+            {
+                IByteBuffer input = Unpooled.Buffer(wrapper.Length + 1);
+                input.WriteByte(1);
+                _serializer.Serialize(input, new LeanProofWrapperMessage(wrapper));
+                _outbound.WriteOutbound(input);
+                frames.Add(_outbound.ReadOutbound<IByteBuffer>());
+            }
+            double encodeMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            int wireBytes = 0;
+            long transferStarted = Stopwatch.GetTimestamp();
             Task receive = ReceiveAsync(cancellationToken);
-            int offset = 0;
-            while (offset < wireBytes)
-                offset += await _sender.SendAsync(wire.Array.AsMemory(wire.ArrayOffset + wire.ReaderIndex + offset,
-                    wireBytes - offset), SocketFlags.None, cancellationToken);
+            foreach (IByteBuffer wire in frames)
+            {
+                int length = wire.ReadableBytes;
+                wireBytes += length;
+                int offset = 0;
+                while (offset < length)
+                {
+                    int sent = await _sender.SendAsync(wire.Array.AsMemory(wire.ArrayOffset + wire.ReaderIndex + offset,
+                        length - offset), SocketFlags.None, cancellationToken);
+                    if (sent == 0) throw new EndOfStreamException("TCP peer closed");
+                    offset += sent;
+                }
+            }
             byte[] decoded = await _received.Task.WaitAsync(cancellationToken);
             await receive;
             return new(decoded, wireBytes, encodeMs, Stopwatch.GetElapsedTime(transferStarted).TotalMilliseconds);
         }
-        finally { wire.Release(); }
+        finally { foreach (IByteBuffer wire in frames) wire.Release(); }
     }
 
     private async Task ReceiveAsync(CancellationToken cancellationToken)

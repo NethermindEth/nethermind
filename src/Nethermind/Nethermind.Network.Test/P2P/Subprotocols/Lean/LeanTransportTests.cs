@@ -87,7 +87,7 @@ public class LeanTransportTests
         Assert.That(buffer.WriterIndex, Is.Zero);
     }
     [Test]
-    public void Chunks_reassemble_out_of_order_and_deduplicate([Values(32, 64, 128)] int chunkKiB)
+    public void Chunks_reassemble_sequentially_and_deduplicate([Values(32, 64, 128)] int chunkKiB)
     {
         int size = chunkKiB * 1024;
         byte[] payload = new byte[size * 3 + 17];
@@ -95,7 +95,7 @@ public class LeanTransportTests
         LeanReassemblyBudget budget = new();
         using LeanChunkReassembler reassembler = new(budget);
         LeanProofChunkMessageSerializer serializer = new();
-        int[] indices = [3, 1, 1, 0, 2];
+        int[] indices = [0, 1, 1, 2, 3];
         LeanProofWrapperMessage? result = null;
         foreach (int index in indices)
         {
@@ -140,33 +140,139 @@ public class LeanTransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(budget.RetainedAssemblies, Is.EqualTo(2));
-            Assert.That(budget.RetainedBytes, Is.EqualTo(2 * total));
+            Assert.That(budget.RetainedBytes, Is.EqualTo(2 * (fragment.Length + count * 16)));
         }
         reassembler.Dispose();
         Assert.That(budget.RetainedBytes, Is.Zero);
     }
 
     [Test]
-    public void Shared_byte_budget_bounds_many_peers_and_recovers_on_dispose()
+    public void Advertised_large_objects_charge_only_received_memory_and_leave_capacity_for_other_peers()
     {
         LeanReassemblyBudget budget = new();
         List<LeanChunkReassembler> peers = [];
-        byte[] fragment = new byte[LeanProofChunkMessage.DefaultChunkSize];
-        LeanProofChunkMessage chunk = new(default, LeanProofStore.MaxWrapperBytes, 0,
-            LeanProofStore.MaxWrapperBytes / fragment.Length, fragment.Length, fragment);
+        byte[] fragment = new byte[16 * 1024];
+        int total = LeanProofStore.MaxWrapperBytes;
+        int count = total / fragment.Length;
         try
         {
-            for (int i = 0; i < 7; i++)
+            for (int i = 0; i < 4; i++)
             {
                 LeanChunkReassembler peer = new(budget);
                 peers.Add(peer);
-                Assert.That(peer.Add(chunk), Is.Null);
+                for (int stream = 0; stream < 2; stream++)
+                    Assert.That(peer.Add(new(ValueKeccak.Compute($"{i}:{stream}"), total, 0,
+                        count, fragment.Length, fragment)), Is.Null);
             }
-            Assert.That(budget.RetainedAssemblies, Is.EqualTo(6));
-            Assert.That(budget.RetainedBytes, Is.EqualTo(6 * LeanProofStore.MaxWrapperBytes));
-            peers[0].Dispose();
-            peers[6].Add(chunk);
-            Assert.That(budget.RetainedAssemblies, Is.EqualTo(6));
+            Assert.That(budget.RetainedBytes, Is.EqualTo(8 * (fragment.Length + count * 16)));
+            using LeanChunkReassembler honest = new(budget);
+            using LeanProofWrapperMessage? admitted = honest.Add(Chunk([1], 0));
+            Assert.That(admitted, Is.Not.Null);
+        }
+        finally { foreach (LeanChunkReassembler peer in peers) peer.Dispose(); }
+        Assert.That(budget.RetainedBytes, Is.Zero);
+    }
+
+    [Test]
+    public void Missing_start_is_ignored_and_an_active_stream_rejects_gaps_without_growing()
+    {
+        LeanReassemblyBudget budget = new();
+        using LeanChunkReassembler peer = new(budget);
+        byte[] payload = new byte[3 * LeanProofChunkMessage.DefaultChunkSize];
+        Assert.That(peer.Add(Chunk(payload, 1)), Is.Null);
+        Assert.That(budget.RetainedBytes, Is.Zero);
+        peer.Add(Chunk(payload, 0));
+        Assert.Throws<RlpException>(() => peer.Add(Chunk(payload, 2)));
+        Assert.That(budget.RetainedBytes, Is.Zero, "malformed stream releases its fragments");
+    }
+
+    [Test]
+    public void Local_growth_pressure_releases_stream_and_later_chunks_cannot_open_it()
+    {
+        ManualTimeProvider clock = new();
+        int penalties = 0;
+        LeanReassemblyBudget budget = new();
+        using LeanChunkReassembler peer = new(budget, clock, () => penalties++);
+        byte[] payload = new byte[3 * LeanProofChunkMessage.DefaultChunkSize];
+        peer.Add(Chunk(payload, 0));
+        using IDisposable pressure = budget.TryRent(LeanReassemblyBudget.MaxBytes - budget.RetainedBytes, _ => { }, incomplete: false)!;
+        Assert.That(peer.Add(Chunk(payload, 1)), Is.Null);
+        Assert.That(budget.RetainedAssemblies, Is.EqualTo(1), "only the unrelated pressure lease remains");
+        Assert.That(peer.Add(Chunk(payload, 2)), Is.Null);
+        pressure.Dispose();
+        clock.AdvanceAndFireTimer(LeanChunkReassembler.MaxAssemblyLifetime);
+        Assert.That(penalties, Is.Zero);
+        Assert.That(budget.RetainedBytes, Is.Zero);
+    }
+
+    [Test]
+    public void Completion_copy_is_reserved_before_allocation_and_pressure_releases_all_fragments()
+    {
+        LeanReassemblyBudget budget = new();
+        using LeanChunkReassembler peer = new(budget);
+        byte[] payload = new byte[2 * LeanProofChunkMessage.DefaultChunkSize];
+        peer.Add(Chunk(payload, 0));
+        int availableForLastChunk = LeanProofChunkMessage.DefaultChunkSize;
+        using IDisposable pressure = budget.TryRent(LeanReassemblyBudget.MaxBytes - budget.RetainedBytes - availableForLastChunk, _ => { }, incomplete: false)!;
+        Assert.That(peer.Add(Chunk(payload, 1)), Is.Null);
+        Assert.That(budget.RetainedAssemblies, Is.EqualTo(1));
+        pressure.Dispose();
+        Assert.That(budget.RetainedBytes, Is.Zero);
+    }
+
+    [Test]
+    public void Two_maximum_streams_fit_the_wire_rate_budget_including_all_metadata()
+    {
+        int chunks = 2 * LeanProofStore.MaxWrapperBytes / (16 * 1024);
+        int bytes = 2 * LeanProofStore.MaxWrapperBytes + chunks * LeanProofChunkMessage.HeaderSize;
+        Assert.That(chunks, Is.LessThanOrEqualTo(LeanProtocolHandler.MaxChunksPerWindow));
+        Assert.That(bytes, Is.LessThanOrEqualTo(LeanProtocolHandler.MaxWireBytesPerWindow));
+    }
+
+    [Test]
+    public void Two_maximum_wrappers_complete_while_the_first_admission_lease_is_retained()
+    {
+        LeanReassemblyBudget budget = new();
+        using LeanChunkReassembler peer = new(budget);
+        byte[] payload = new byte[LeanProofStore.MaxWrapperBytes];
+        using LeanProofWrapperMessage? first = CompleteStream(peer, payload);
+        Assert.That(first, Is.Not.Null);
+        payload[0] = 1;
+        using LeanProofWrapperMessage? second = CompleteStream(peer, payload);
+        Assert.That(second, Is.Not.Null);
+        Assert.That(budget.RetainedBytes, Is.EqualTo(2 * payload.Length));
+        Assert.That(peer.Add(Chunk([3], 0)), Is.Null);
+    }
+
+    [Test]
+    public void Actual_partial_data_leaves_headroom_for_fresh_small_wrappers_and_completion()
+    {
+        LeanReassemblyBudget budget = new();
+        List<LeanChunkReassembler> peers = [];
+        byte[] payload = new byte[LeanProofStore.MaxWrapperBytes];
+        int size = LeanProofChunkMessage.DefaultChunkSize;
+        int count = payload.Length / size;
+        ValueHash256 hash = ValueKeccak.Compute(payload);
+        try
+        {
+            for (int p = 0; p < 5; p++)
+            {
+                LeanChunkReassembler peer = new(budget);
+                peers.Add(peer);
+                int received = p == 4 ? 131 : count - 1;
+                for (int index = 0; index < received; index++)
+                    Assert.That(peer.Add(new(hash, payload.Length, index, count, size,
+                        payload.AsMemory(index * size, size))), Is.Null);
+            }
+            Assert.That(budget.RetainedBytes,
+                Is.InRange(LeanReassemblyBudget.MaxIncompleteBytes - 128 * 1024, LeanReassemblyBudget.MaxIncompleteBytes));
+            using LeanChunkReassembler fresh = new(budget);
+            using LeanProofWrapperMessage? small = fresh.Add(Chunk([1], 0));
+            Assert.That(small, Is.Not.Null);
+            using LeanProofWrapperMessage? completed = peers[0].Add(new(hash, payload.Length, count - 1, count,
+                size, payload.AsMemory(payload.Length - size, size)));
+            Assert.That(completed, Is.Not.Null, "reserved headroom permits a real contiguous completion copy");
+            Assert.That(budget.RetainedBytes, Is.LessThanOrEqualTo(LeanReassemblyBudget.MaxBytes));
         }
         finally { foreach (LeanChunkReassembler peer in peers) peer.Dispose(); }
         Assert.That(budget.RetainedBytes, Is.Zero);
@@ -184,7 +290,7 @@ public class LeanTransportTests
             {
                 LeanChunkReassembler peer = new(budget);
                 peers.Add(peer);
-                admitted.Add(peer.Add(Chunk([(byte)i], 0))!);
+                admitted.Add(peer.Add(Chunk(BitConverter.GetBytes(i), 0))!);
             }
             using LeanChunkReassembler blocked = new(budget);
             Assert.That(blocked.Add(Chunk([255], 0)), Is.Null);
@@ -248,12 +354,53 @@ public class LeanTransportTests
     }
 
     [Test]
+    public void Repeated_incomplete_stream_expiry_reports_abuse_and_releases_quota()
+    {
+        ManualTimeProvider clock = new();
+        int penalties = 0;
+        LeanReassemblyBudget budget = new();
+        using LeanChunkReassembler peer = new(budget, clock, () => penalties++);
+        byte[] payload = new byte[2 * LeanProofChunkMessage.DefaultChunkSize];
+        peer.Add(Chunk(payload, 0));
+        clock.AdvanceAndFireTimer(LeanChunkReassembler.InactivityTimeout);
+        Assert.That(penalties, Is.Zero);
+        Assert.That(budget.RetainedBytes, Is.Zero);
+        peer.Add(Chunk(payload, 0));
+        clock.AdvanceAndFireTimer(LeanChunkReassembler.InactivityTimeout);
+        Assert.That(penalties, Is.EqualTo(1));
+        Assert.That(budget.RetainedBytes, Is.Zero);
+    }
+
+    [Test]
+    public void Admission_cancellation_can_retry_the_same_completed_commitment()
+    {
+        LeanReassemblyBudget budget = new();
+        using LeanChunkReassembler peer = new(budget);
+        using (LeanProofWrapperMessage? first = peer.Add(Chunk([1], 0)))
+            Assert.That(first, Is.Not.Null);
+        using LeanProofWrapperMessage? retry = peer.Add(Chunk([1], 0));
+        Assert.That(retry, Is.Not.Null);
+    }
+
+    [Test]
     public void Failed_commitment_releases_the_completed_buffer_lease()
     {
         LeanReassemblyBudget budget = new();
         using LeanChunkReassembler reassembler = new(budget);
         Assert.Throws<RlpException>(() => reassembler.Add(new(default, 1, 0, 1, LeanProofChunkMessage.DefaultChunkSize, new byte[] { 1 })));
         Assert.That(budget.RetainedBytes, Is.Zero);
+    }
+
+    private static LeanProofWrapperMessage? CompleteStream(LeanChunkReassembler peer, byte[] bytes)
+    {
+        int size = LeanProofChunkMessage.DefaultChunkSize;
+        int count = (bytes.Length + size - 1) / size;
+        ValueHash256 hash = ValueKeccak.Compute(bytes);
+        LeanProofWrapperMessage? completed = null;
+        for (int index = 0; index < count; index++)
+            completed = peer.Add(new(hash, bytes.Length, index, count, size,
+                bytes.AsMemory(index * size, Math.Min(size, bytes.Length - index * size))));
+        return completed;
     }
 
     private static LeanProofChunkMessage Chunk(byte[] bytes, int index, int chunkSize = LeanProofChunkMessage.DefaultChunkSize)

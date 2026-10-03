@@ -21,7 +21,7 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     /// <summary>An inclusion list retained for a payload that could not yet be validated.</summary>
-    private readonly record struct RetainedInclusionList(ulong Number, byte[][] Transactions, bool Accepted, RecursiveStark? Proof);
+    private readonly record struct RetainedInclusionList(ulong Number, byte[][] Transactions, bool Accepted, RecursiveStark? Proof, byte[]? ProvenDependencies);
     private readonly record struct InclusionListAnswer(ulong Number, bool Satisfied);
 
     private readonly Dictionary<Hash256, InclusionListAnswer> _inclusionListAnswers = [];
@@ -90,7 +90,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         {
             SetRetainedInclusionList(blockHash,
                 executionPayloadParams.ExecutionPayload.BlockNumber, retained,
-                status.Status == PayloadStatus.Accepted, executionPayloadParams.ExecutionPayload.InclusionListRecursiveStark);
+                status.Status == PayloadStatus.Accepted, executionPayloadParams.ExecutionPayload.InclusionListRecursiveStark,
+                executionPayloadParams.ExecutionPayload.InclusionListProvenDependencies);
         }
 
         return ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
@@ -127,7 +128,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             else
             {
-                inclusionListTxSource.Set(ilTxs, spec, payloadAttributes.InclusionListRecursiveStark);
+                inclusionListTxSource.Set(ilTxs, spec, payloadAttributes.InclusionListRecursiveStark, payloadAttributes.InclusionListProvenDependencies);
             }
         }
 
@@ -156,12 +157,14 @@ public partial class EngineRpcModule : IEngineRpcModule
     {
         byte[][] retained;
         RecursiveStark? proof;
+        byte[]? provenDependencies;
         lock (_inclusionListLock)
         {
             if (_inclusionListAnswers.TryGetValue(headBlockHash, out InclusionListAnswer cached)) return cached.Satisfied;
             if (!_retainedInclusionLists.TryGetValue(headBlockHash, out RetainedInclusionList state)) return null;
             retained = state.Transactions;
             proof = state.Proof;
+            provenDependencies = state.ProvenDependencies;
         }
 
         bool? evaluated;
@@ -170,7 +173,8 @@ public partial class EngineRpcModule : IEngineRpcModule
             // Sender recovery and state reads delay the payloadId response; accepted, as only a head newPayloadV6
             // left unanswered pays it, and publishing the answer caps it at once per head.
             evaluated = proof is null ? _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained)
-                : _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained, proof);
+                : provenDependencies is null ? _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained, proof)
+                    : _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained, proof, provenDependencies);
         }
         // The head is already applied and a build may be under way, and bogota.md permits a null answer, so
         // a state read that hits a pruned or still-healing subtrie must not fail the forkchoice update.
@@ -194,7 +198,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             return null;
         }
 
-        PublishInclusionListAnswer(headBlockHash, retained, proof, answer);
+        PublishInclusionListAnswer(headBlockHash, retained, proof, provenDependencies, answer);
 
         return answer;
     }
@@ -209,14 +213,14 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    internal void SetRetainedInclusionList(Hash256 blockHash, ulong number, byte[][] retained, bool accepted, RecursiveStark? proof = null)
+    internal void SetRetainedInclusionList(Hash256 blockHash, ulong number, byte[][] retained, bool accepted, RecursiveStark? proof = null, byte[]? provenDependencies = null)
     {
         lock (_inclusionListLock)
         {
             RemoveInclusionListAnswer(blockHash);
             if (!IsAfterFinalization(blockHash, number)) return;
             RemoveRetainedInclusionList(blockHash);
-            _retainedInclusionLists[blockHash] = new RetainedInclusionList(number, retained, accepted, proof);
+            _retainedInclusionLists[blockHash] = new RetainedInclusionList(number, retained, accepted, proof, provenDependencies);
             if (!accepted)
             {
                 _syncingInclusionListOrder.Add(blockHash);
@@ -245,12 +249,13 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// but only while that is still the list retained for it.</summary>
     /// <remarks>A concurrent <c>engine_newPayloadV6</c> may have retained a newer list, which outranks anything
     /// derived from the older one.</remarks>
-    private void PublishInclusionListAnswer(Hash256 blockHash, byte[][] retained, RecursiveStark? proof, bool answer)
+    private void PublishInclusionListAnswer(Hash256 blockHash, byte[][] retained, RecursiveStark? proof, byte[]? provenDependencies, bool answer)
     {
         lock (_inclusionListLock)
         {
             if (_retainedInclusionLists.TryGetValue(blockHash, out RetainedInclusionList current)
-                && ReferenceEquals(current.Transactions, retained) && ReferenceEquals(current.Proof, proof))
+                && ReferenceEquals(current.Transactions, retained) && ReferenceEquals(current.Proof, proof)
+                && ReferenceEquals(current.ProvenDependencies, provenDependencies))
             {
                 RemoveRetainedInclusionList(blockHash);
                 if (IsAfterFinalization(blockHash, current.Number))

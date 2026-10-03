@@ -24,7 +24,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private readonly object _aggregationLock = new();
     private int _rotation;
     private int _admissionActive;
-    private long? _lastRpcAggregation;
     private readonly Dictionary<ValueHash256, string?> _verifiedWrappers = [];
     private readonly Queue<ValueHash256> _verifiedWrapperOrder = [];
     private ValueHash256? _cachedSelection;
@@ -48,6 +47,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            wrapper = (byte[])wrapper.Clone();
             MempoolWrapper decoded;
             try { decoded = DecodeProofWrapper(wrapper); }
             catch (Exception exception) when (exception is RlpException or ArgumentException)
@@ -74,8 +74,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             ValueHash256 wrapperHash = ValueKeccak.Compute(wrapper);
             if (!_verifiedWrappers.TryGetValue(wrapperHash, out string? error))
             {
-                if (!MempoolWrapperValidator.Validate(decoded, leanProofVerifier, out error,
-                    hash => resolved.GetValueOrDefault(hash.ValueHash256)))
+                (bool valid, string? validationError) = await Task.Run(() =>
+                {
+                    bool proofValid = MempoolWrapperValidator.Validate(decoded, leanProofVerifier, out string? proofError,
+                        hash => resolved.GetValueOrDefault(hash.ValueHash256));
+                    return (proofValid, proofError);
+                }, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                error = validationError;
+                if (!valid)
                 {
                     if (error == MempoolWrapperValidator.UnknownTransaction) return ProofWrapperAcceptance.LocalFailure(error);
                     RememberVerification(wrapperHash, error);
@@ -87,7 +94,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> admittedDependencies = [];
             Result<Hash256[]> admission;
-            using (leanProofStore.BeginAdmission(decoded.Deps))
+            if (!leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out IDisposable? scope))
+                return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
+            using (scope)
             {
                 try
                 {
@@ -128,6 +137,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            inclusionList = (byte[])inclusionList.Clone();
             FocilInclusionList decoded = DecodeProofInclusionList(inclusionList);
             foreach (Transaction transaction in decoded.Transactions)
             {
@@ -138,20 +148,23 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                     if (!AreAdmissionRootsValid(transaction)) return Result<Hash256[]>.Fail(TxPoolErrorMessages.FrameTxRecentRootUnmet);
                 }
             }
-            if (!FocilInclusionListValidator.Validate(decoded, leanProofVerifier, out string? error))
-                return Result<Hash256[]>.Fail(error!);
+            (bool valid, string? error) = await Task.Run(() =>
+            {
+                bool proofValid = FocilInclusionListValidator.Validate(decoded, leanProofVerifier, out string? proofError);
+                return (proofValid, proofError);
+            }, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            List<FrameDependency> deps = [];
+            if (!valid) return Result<Hash256[]>.Fail(error!);
+            cancellationToken.ThrowIfCancellationRequested();
+            List<FrameDependency> canonical = Eip8288Dependencies.Parse(decoded.ProvenDependencies ?? []);
             List<WrapperTransaction> transactions = [];
             foreach (Transaction transaction in decoded.Transactions)
-            {
-                deps.AddRange(Eip8288Dependencies.ForTransaction(transaction));
                 transactions.Add(new WrapperTransaction(transaction));
-            }
-            List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
             List<FrameDependency> admittedDependencies = [];
             Result<Hash256[]> admission;
-            using (leanProofStore.BeginAdmission(canonical))
+            if (!leanProofStore.TryBeginAdmission(canonical, null, decoded.RecursiveStark.StarkProof, out IDisposable? scope))
+                return Result<Hash256[]>.Fail("Proof witness capacity is full; retry later.");
+            using (scope)
             {
                 try
                 {
@@ -218,19 +231,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     }
 
     /// <summary>Builds a recursive wrapper over the current proof-backed pool view.</summary>
-    public Result<byte[]> BuildWrapper(bool skipEmpty = false, CancellationToken cancellationToken = default, bool rateLimit = false)
+    public Result<byte[]> BuildWrapper(bool skipEmpty = false, CancellationToken cancellationToken = default)
     {
         if (!Monitor.TryEnter(_aggregationLock)) return Result<byte[]>.Fail("Proof aggregation is busy; retry later.");
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (rateLimit)
-            {
-                long now = Environment.TickCount64;
-                if (_lastRpcAggregation is { } previous && now - previous < 1000)
-                    return Result<byte[]>.Fail("Proof aggregation is rate limited; retry later.");
-                _lastRpcAggregation = now;
-            }
             return BuildWrapperCore(skipEmpty, cancellationToken);
         }
         finally { Monitor.Exit(_aggregationLock); }
@@ -260,18 +266,22 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (light.Hash is { } hash && txPool.TryGetPendingTransaction(hash.ValueHash256, out Transaction? full)) candidates.Add(full);
         candidates.Sort(static (a, b) => a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes));
         int start = candidates.Count == 0 ? 0 : (int)((uint)_rotation % (uint)candidates.Count);
-        int next = candidates.Count == 0 ? 0 : (start + 1) % candidates.Count;
-        for (int i = 0; i < candidates.Count; i++)
+        int next = 0;
+        for (int candidateIndex = start; candidateIndex < candidates.Count; candidateIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (transactions.Count == LeanProofStore.MaxWrapperTransactions) break;
-            int candidateIndex = (start + i) % candidates.Count;
             Transaction transaction = candidates[candidateIndex];
             if (!transaction.SupportsFrames) continue;
             List<FrameDependency> transactionDeps = Eip8288Dependencies.ForTransaction(transaction);
             if (transactionDeps.Count == 0) continue;
             int encodedLength = Rlp.LengthOfByteString(TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping), 0);
-            if (encodedLength > MaxWrapperTransactionBytes - transactionBytes) continue;
+            if (encodedLength > MaxWrapperTransactionBytes) continue;
+            if (encodedLength > MaxWrapperTransactionBytes - transactionBytes)
+            {
+                if (transactions.Count != 0) { next = candidateIndex; break; }
+                continue;
+            }
             bool addsDependencies = false;
             foreach (FrameDependency dependency in transactionDeps)
                 if (!covered.Contains(dependency)) { addsDependencies = true; break; }
@@ -280,7 +290,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 List<FrameDependency> combined = [.. deps, .. transactionDeps];
                 combined = Eip8288Dependencies.Canonicalize(combined);
                 (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(combined);
-                if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper || stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper) continue;
+                if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper || stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper)
+                {
+                    if (transactions.Count != 0) { next = candidateIndex; break; }
+                    continue;
+                }
                 if (!leanProofStore.TryGetInput(combined, out AggregationInput candidateInput)
                     || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies
                     || RecursiveStarkAggregator.InputSize(candidateInput) > RecursiveStarkAggregator.MaxProductionWitnessBytes) continue;
@@ -318,7 +332,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 Mode = MempoolWrapper.ModeRecursive,
                 RecursiveStark = new RecursiveStark(proof!, new Hash256(hash))
             };
-            leanProofStore.AddVerified(deps, null, proof);
+            leanProofStore.AddCachedRecursive(deps, proof!);
             byte[] encoded = MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes;
             if (encoded.Length > LeanProofStore.MaxWrapperBytes)
                 return Result<byte[]>.Fail("Aggregated wrapper exceeds the size limit.");

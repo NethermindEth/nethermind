@@ -41,7 +41,7 @@ public class LeanProofGossipTests
     }
 
     [Test]
-    public void Rotating_seventeen_distinct_dependencies_reuses_each_proven_selection()
+    public void Disjoint_rotation_reuses_proven_groups_without_sliding_overlap()
     {
         LeanProofStore store = new();
         Transaction[] transactions = new Transaction[17];
@@ -71,15 +71,15 @@ public class LeanProofGossipTests
             uniqueWrappers.Add(ValueKeccak.Compute(result.Data!));
             RlpReader reader = new(result.Data!);
             MempoolWrapper wrapper = MempoolWrapperDecoder.Instance.Decode(ref reader);
-            Assert.That(wrapper.Deps, Has.Count.EqualTo(Eip8288Constants.MaxLeanSigDepsPerWrapper));
+            Assert.That(wrapper.Deps.Count, Is.EqualTo(cadence % 2 == 0 ? Eip8288Constants.MaxLeanSigDepsPerWrapper : 1));
             propagated.UnionWith(wrapper.Deps);
         }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(propagated, Has.Count.EqualTo(17));
-            Assert.That(uniqueWrappers, Has.Count.EqualTo(17));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(17), "each bounded selection is proved once across three rotations");
+            Assert.That(uniqueWrappers, Has.Count.EqualTo(2));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(2), "the same two disjoint groups reuse their proofs across rotations");
         }
     }
 
@@ -106,18 +106,18 @@ public class LeanProofGossipTests
         TaskCompletionSource remainingRefresh = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int removedSends = 0;
         int remainingSends = 0;
-        Func<byte[], bool> removed = _ =>
+        Func<ReadOnlyMemory<byte>, ValueHash256, CancellationToken, ValueTask<bool>> removed = (_, _, _) =>
         {
             Interlocked.Increment(ref removedSends);
             removedFirst.TrySetResult();
-            return true;
+            return new(true);
         };
         gossip.AddPeer(removed);
-        gossip.AddPeer(_ =>
+        gossip.AddPeer((_, _, _) =>
         {
             if (Interlocked.Increment(ref remainingSends) == 1) remainingFirst.TrySetResult();
             else remainingRefresh.TrySetResult();
-            return true;
+            return new(true);
         });
         await time.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
         time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
@@ -152,7 +152,7 @@ public class LeanProofGossipTests
         TaskCompletionSource completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource second = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int sends = 0;
-        gossip.AddPeer(async (_, token) =>
+        gossip.AddPeer(async (_, _, token) =>
         {
             if (Interlocked.Increment(ref sends) == 1)
             {
@@ -179,6 +179,109 @@ public class LeanProofGossipTests
         time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
         await Task.Delay(20);
         Assert.That(sends, Is.EqualTo(2), "successful completion is memoized");
+    }
+
+    [Test]
+    public async Task Peers_and_late_joiner_share_the_wrapper_and_its_commitment()
+    {
+        ManualTimeProvider time = new();
+        await using LeanProofGossip gossip = new(CreateService(), LimboLogs.Instance, time);
+        TaskCompletionSource<(ReadOnlyMemory<byte> Bytes, ValueHash256 Hash)>[] deliveries = new TaskCompletionSource<(ReadOnlyMemory<byte>, ValueHash256)>[8];
+        for (int index = 0; index < deliveries.Length; index++)
+        {
+            TaskCompletionSource<(ReadOnlyMemory<byte>, ValueHash256)> delivered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            deliveries[index] = delivered;
+            gossip.AddPeer((bytes, hash, _) => { delivered.TrySetResult((bytes, hash)); return new(true); });
+        }
+        await time.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
+        time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+        (ReadOnlyMemory<byte> Bytes, ValueHash256 Hash)[] results = await Task.WhenAll(Array.ConvertAll(deliveries, delivered => delivered.Task)).WaitAsync(TimeSpan.FromSeconds(5));
+        TaskCompletionSource<(ReadOnlyMemory<byte> Bytes, ValueHash256 Hash)> late = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        gossip.AddPeer((bytes, hash, _) => { late.TrySetResult((bytes, hash)); return new(true); });
+        (ReadOnlyMemory<byte> Bytes, ValueHash256 Hash) joined = await late.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Hash, Is.EqualTo(ValueKeccak.Compute(results[0].Bytes.Span)));
+            foreach ((ReadOnlyMemory<byte> bytes, ValueHash256 hash) in results)
+            {
+                Assert.That(bytes.Equals(results[0].Bytes), Is.True, "peers share one readonly backing buffer");
+                Assert.That(hash, Is.EqualTo(results[0].Hash));
+            }
+            Assert.That(joined.Bytes.Equals(results[0].Bytes), Is.True);
+            Assert.That(joined.Hash, Is.EqualTo(results[0].Hash));
+        }
+    }
+
+    [Test]
+    public async Task Synchronous_peer_work_does_not_hold_the_registry_lock_or_block_other_peers()
+    {
+        ManualTimeProvider time = new();
+        await using LeanProofGossip gossip = new(CreateService(), LimboLogs.Instance, time);
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource other = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        gossip.AddPeer((_, _, _) =>
+        {
+            entered.TrySetResult();
+            if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Peer release timed out");
+            return new(true);
+        });
+        gossip.AddPeer((_, _, _) => { other.TrySetResult(); return new(true); });
+        await time.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
+        time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await other.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Run(() => gossip.AddPeer((_, _, _) => new(true))).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally { release.Set(); }
+    }
+
+    [Test]
+    public async Task Disposal_waits_for_a_removed_peers_active_worker()
+    {
+        ManualTimeProvider time = new();
+        await using LeanProofGossip gossip = new(CreateService(), LimboLogs.Instance, time);
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Func<ReadOnlyMemory<byte>, ValueHash256, CancellationToken, ValueTask<bool>> send = async (_, _, _) =>
+        {
+            entered.TrySetResult();
+            await release.Task;
+            return true;
+        };
+        gossip.AddPeer(send);
+        await time.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
+        time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        gossip.RemovePeer(send);
+        Task disposal = gossip.DisposeAsync().AsTask();
+        try
+        {
+            await Task.WhenAny(disposal, Task.Delay(100));
+            Assert.That(disposal.IsCompleted, Is.False, "removed workers still own the transfer until it finishes");
+        }
+        finally { release.TrySetResult(); }
+        await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    private static ProofWrapperService CreateService()
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            Hash = TestItem.KeccakA,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+        };
+        LeanProofStore store = new();
+        store.AddVerified([dependency], [[1]], null);
+        return CreateService([transaction], store, new Verifier());
     }
 
     private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier)
@@ -218,11 +321,11 @@ public class LeanProofGossipTests
         TaskCompletionSource first = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource refreshed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int sends = 0;
-        gossip.AddPeer(_ =>
+        gossip.AddPeer((_, _, _) =>
         {
             if (Interlocked.Increment(ref sends) == 1) first.TrySetResult();
             else refreshed.TrySetResult();
-            return true;
+            return new(true);
         });
         await time.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
         time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));

@@ -114,6 +114,70 @@ namespace Nethermind.Network.Test.P2P
             }
         }
         [Test]
+        public void Default_backpressure_drops_without_serializing_or_retaining([Values("eth", "snap", "lean")] string protocol)
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage _) = SetupChannel(true);
+            context.Channel.IsWritable.Returns(false);
+            TestMessage message = new(protocol);
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            try
+            {
+                Assert.That(sender.Enqueue(message), Is.Zero);
+                context.Channel.IsWritable.Returns(true);
+                sender.ChannelWritabilityChanged(context);
+                serializer.DidNotReceive().ZeroSerialize(message, Arg.Any<IByteBufferAllocator>());
+                context.DidNotReceive().WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+            }
+            finally { sender.HandlerRemoved(context); }
+        }
+
+        [Test]
+        public async Task Default_serialization_does_not_block_channel_events()
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage message) = SetupChannel(true);
+            using ManualResetEventSlim started = new();
+            using ManualResetEventSlim release = new();
+            using DisposableByteBuffer buffer = Unpooled.Buffer(4).WriteZero(4).AsDisposable();
+            serializer.ZeroSerialize(message, Arg.Any<IByteBufferAllocator>()).Returns(_ =>
+            {
+                started.Set();
+                Assert.That(release.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                return buffer;
+            });
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            Task<int> send = Task.Run(() => sender.Enqueue(message));
+            try
+            {
+                Assert.That(started.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                await Task.Run(() => sender.ChannelWritabilityChanged(context)).WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(send.IsCompleted, Is.False);
+            }
+            finally
+            {
+                release.Set();
+                await send.WaitAsync(TimeSpan.FromSeconds(5));
+                sender.HandlerRemoved(context);
+            }
+        }
+
+        [Test]
+        public void Bulk_async_path_requires_explicit_enablement()
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage message) = SetupChannel(true);
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            try
+            {
+                Assert.That(async () => await sender.EnqueueAsync(message, CancellationToken.None),
+                    Throws.InstanceOf<InvalidOperationException>());
+                serializer.DidNotReceive().ZeroSerialize(message, Arg.Any<IByteBufferAllocator>());
+            }
+            finally { sender.HandlerRemoved(context); }
+        }
+
+        [Test]
         public void Backpressure_defers_control_traffic_and_retries_bulk_gossip([Values("eth", "lean")] string controlProtocol)
         {
             (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage _) = SetupChannel(true);
@@ -125,6 +189,7 @@ namespace Nethermind.Network.Test.P2P
             context.Channel.IsWritable.Returns(false);
             PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
             sender.HandlerAdded(context);
+            sender.EnableLeanBulk();
             try
             {
                 Assert.That(sender.Enqueue(lean), Is.Zero);
@@ -159,6 +224,7 @@ namespace Nethermind.Network.Test.P2P
             serializer.ZeroSerialize(second, Arg.Any<IByteBufferAllocator>()).Returns(rejected);
             PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
             sender.HandlerAdded(context);
+            sender.EnableLeanBulk();
             try
             {
                 Assert.That(sender.Enqueue(first), Is.EqualTo(8 * 1024 * 1024));
@@ -191,6 +257,7 @@ namespace Nethermind.Network.Test.P2P
             context.WriteAndFlushAsync(small).Returns(Task.CompletedTask);
             PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
             sender.HandlerAdded(context);
+            sender.EnableLeanBulk();
             try
             {
                 Task<int> send = sender.EnqueueAsync(chunk, CancellationToken.None).AsTask();
@@ -223,6 +290,7 @@ namespace Nethermind.Network.Test.P2P
             });
             PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
             sender.HandlerAdded(context);
+            sender.EnableLeanBulk();
             try
             {
                 Task<int> send = sender.EnqueueAsync(chunk, CancellationToken.None).AsTask();
@@ -243,6 +311,7 @@ namespace Nethermind.Network.Test.P2P
             using CancellationTokenSource cancellation = new();
             PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
             sender.HandlerAdded(context);
+            sender.EnableLeanBulk();
             Task<int> send = sender.EnqueueAsync(chunk, cancellation.Token).AsTask();
             try
             {

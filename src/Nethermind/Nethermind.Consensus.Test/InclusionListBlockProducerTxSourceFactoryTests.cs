@@ -55,6 +55,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         };
         FrameTxTestFrames.SignSecp256k1(frame, TestItem.PrivateKeyA, frame.SenderAddress);
         List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(frame);
+        byte[] proven = Eip8288Dependencies.Serialize(dependencies);
         RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
         LeanProofStore store = new();
         FakeLeanProofVerifier verifier = new(true);
@@ -62,8 +63,8 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, store);
         byte[][] list = [TxDecoder.Instance.Encode(legacy, RlpBehaviors.SkipTypedWrapping).Bytes,
             TxDecoder.Instance.Encode(frame, RlpBehaviors.SkipTypedWrapping).Bytes];
-        source.Set(list, spec, proof);
-        PayloadAttributes attributes = new() { InclusionListTransactions = list, InclusionListRecursiveStark = proof };
+        source.Set(list, spec, proof, proven);
+        PayloadAttributes attributes = new() { InclusionListTransactions = list, InclusionListRecursiveStark = proof, InclusionListProvenDependencies = proven };
         ITxSource mempoolSource = Substitute.For<ITxSource>();
         mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns([mempool]);

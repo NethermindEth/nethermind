@@ -12,11 +12,11 @@ name = "nethermind_lean"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-sphincs = { git = "https://github.com/leanEthereum/leanVM", rev = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30" }
-rec_aggregation = { git = "https://github.com/leanEthereum/leanVM", rev = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30" }
-leanvm_core = { git = "https://github.com/leanEthereum/leanVM", rev = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30" }
-lean_compiler = { git = "https://github.com/leanEthereum/leanVM", rev = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30" }
-primitives = { git = "https://github.com/leanEthereum/leanVM", rev = "b977f5fa8f07cb2d40cbd76a66deefd67d975c30" }
+sphincs = { git = "https://github.com/leanEthereum/leanVM", rev = "f33f31bf7c1191667e29a68a3acae63b9164c1c6" }
+rec_aggregation = { git = "https://github.com/leanEthereum/leanVM", rev = "f33f31bf7c1191667e29a68a3acae63b9164c1c6" }
+lean_vm = { git = "https://github.com/leanEthereum/leanVM", rev = "f33f31bf7c1191667e29a68a3acae63b9164c1c6" }
+lean_compiler = { git = "https://github.com/leanEthereum/leanVM", rev = "f33f31bf7c1191667e29a68a3acae63b9164c1c6" }
+primitives = { git = "https://github.com/leanEthereum/leanVM", rev = "f33f31bf7c1191667e29a68a3acae63b9164c1c6" }
 bincode = "1.3"
 tiny-keccak = { version = "2.0", features = ["keccak"] }
 

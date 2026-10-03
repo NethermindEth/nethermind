@@ -395,7 +395,7 @@ public class SyncServerTests
             Policy.FullGossip,
             ctx.HistoryPruner,
             testSpecProvider,
-            LimboLogs.Instance);
+            LimboLogs.Instance, new HeaderDecoder());
 
         Block? remoteBestBlock = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
@@ -606,7 +606,7 @@ public class SyncServerTests
             Policy.FullGossip,
             ctx.HistoryPruner,
             testSpecProvider,
-            LimboLogs.Instance);
+            LimboLogs.Instance, new HeaderDecoder());
         ctx.SpecProvider = testSpecProvider;
         ctx.LocalBlockTree = localBlockTree;
 
@@ -887,6 +887,7 @@ public class SyncServerTests
             Substitute.For<IHistoryPruner>(),
             MainnetSpecProvider.Instance,
             LimboLogs.Instance,
+            new HeaderDecoder(),
             Substitute.For<ISyncPointers>());
 
         Assert.That(syncServer.LowestBlock, Is.EqualTo(expected),
@@ -1015,7 +1016,7 @@ public class SyncServerTests
             Policy.FullGossip,
             ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+            LimboLogs.Instance, new HeaderDecoder());
 
         Hash256 nodeKey = TestItem.KeccakA;
         TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
@@ -1164,7 +1165,7 @@ public class SyncServerTests
             Policy.FullGossip,
             historyPruner,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance))
+            LimboLogs.Instance, new HeaderDecoder()))
         {
             BlockHeader oldest = blockTree.Genesis!;
             // The window between publishing a new source and reading its token is a few instructions wide, so the
@@ -1268,7 +1269,7 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 MainnetSpecProvider.Instance,
-                LimboLogs.Instance,
+                LimboLogs.Instance, new HeaderDecoder(),
                 SyncPointers);
         }
 
@@ -1303,7 +1304,7 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 specProvider ?? MainnetSpecProvider.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance, new HeaderDecoder());
 
         public SyncServer CreateSyncServer(IBlockAccessListStore blockAccessListStore) =>
             new(
@@ -1320,6 +1321,6 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 MainnetSpecProvider.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance, new HeaderDecoder());
     }
 }

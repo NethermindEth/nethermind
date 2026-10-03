@@ -81,6 +81,7 @@ internal sealed class MixedTrafficTransport : IAsyncDisposable
             SerializerInfo.Create(_whole), SerializerInfo.Create(_chunks),
             SerializerInfo.Create(_headers), SerializerInfo.Create(_headerResponses), SerializerInfo.Create(new PingMessageSerializer()));
         _packets = new(serialization, LimboLogs.Instance, TimeSpan.Zero);
+        _packets.EnableLeanBulk();
         _writer = new(_sender, wireMbps, _stop.Token);
         _outbound = new(_writer, splitter, _packets);
         ISession session = Substitute.For<ISession>();

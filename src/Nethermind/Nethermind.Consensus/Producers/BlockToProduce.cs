@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Nethermind.Consensus.Eip8288;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -53,9 +54,9 @@ namespace Nethermind.Consensus.Producers
         /// <remarks>Charged to the header only after execution, so selection must hold it back itself.</remarks>
         public ulong RecursiveStarkGas { get; internal set; }
 
+        internal AggregationInput? InclusionListProofInput { get; set; }
         internal List<AggregationInput> LeanProofInputs { get; } = [];
-        internal List<FrameDependency> LeanDependencies { get; } = [];
-        internal long LeanWitnessBytes { get; set; }
+        internal LeanProofBudget LeanProofBudget { get; private set; } = new();
 
         public override Block WithReplacedHeader(BlockHeader newHeader)
         {
@@ -63,12 +64,13 @@ namespace Nethermind.Consensus.Producers
             {
                 InclusionListTransactions = InclusionListTransactions,
                 InclusionListRecursiveStark = InclusionListRecursiveStark,
+                InclusionListProvenDependencies = InclusionListProvenDependencies,
+                InclusionListProofInput = InclusionListProofInput,
                 TxByteLength = TxByteLength,
                 RecursiveStarkGas = RecursiveStarkGas,
-                LeanWitnessBytes = LeanWitnessBytes
+                LeanProofBudget = LeanProofBudget.Clone()
             };
             replacement.LeanProofInputs.AddRange(LeanProofInputs);
-            replacement.LeanDependencies.AddRange(LeanDependencies);
             return replacement;
         }
     }

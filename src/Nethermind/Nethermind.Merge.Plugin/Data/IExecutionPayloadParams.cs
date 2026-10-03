@@ -133,6 +133,15 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Fail;
         }
 
+        if (executionPayload.InclusionListProvenDependencies is { } dependencies
+            && (!spec.IsEip8288Enabled || !spec.InclusionListsEnabled || InclusionListTransactions is null
+                || executionPayload.InclusionListRecursiveStark is null
+                || !Nethermind.Consensus.Eip8288.FocilInclusionListValidator.HasValidMetadataLength(dependencies)))
+        {
+            error = "Invalid inclusion-list proven dependencies";
+            return ValidationResult.Fail;
+        }
+
         bool isEmptyPreForkV4 = version == EngineApiVersions.NewPayload.V4 &&
             !spec.BlockLevelAccessListsEnabled &&
             executionPayload.BlockAccessList is { Length: 0 };

@@ -23,7 +23,7 @@ using NSubstitute;
 
 namespace Nethermind.Tools.LeanBench;
 
-/// <summary>Runs the actual lean/1 receive queue and production pool admission.</summary>
+/// <summary>Runs the actual lean/2 receive queue and production pool admission.</summary>
 public sealed class ProtocolReceiver : IDisposable
 {
     private sealed class Scheduler : IBackgroundTaskScheduler
@@ -75,11 +75,11 @@ public sealed class ProtocolReceiver : IDisposable
             .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance))
             .AddSingleton<ILeanProofVerifier>(verifier)
             .AddSingleton<IBackgroundTaskScheduler>(scheduler));
-        ISession session = Substitute.For<ISession>();
+        ISession session = Substitute.For<ISession, ILeanBulkSession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 1000, true));
         session.HasAgreedCapability(Arg.Any<Capability>()).Returns(true);
         IProtocolHandlerFactory factory = chain.Container.Resolve<IProtocolHandlerFactory[]>().First(f => f.ProtocolCode == "lean");
-        if (!factory.TryCreate(session, 1, out IProtocolHandler? handler)) throw new InvalidOperationException("lean/1 unavailable");
+        if (!factory.TryCreate(session, Lean2ProtocolHandler.Version, out IProtocolHandler? handler)) throw new InvalidOperationException("lean/2 unavailable");
         return new(chain, (LeanProtocolHandler)handler!, scheduler, session);
     }
 

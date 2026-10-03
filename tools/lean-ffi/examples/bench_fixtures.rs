@@ -37,7 +37,7 @@ fn main() {
         let message = keccak(&identity);
         let started = Instant::now();
         let (sk, pk) = &keys[index as usize % keys.len()];
-        let signature = sphincs::sign(sk, &message).unwrap();
+        let signature = sphincs::sign(sk, &message);
         let elapsed = started.elapsed().as_secs_f64() * 1000.0;
         let witness = [pk.flatten().as_slice(), signature.to_bytes().as_slice()].concat();
         signatures.write_all(&message).unwrap();

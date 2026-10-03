@@ -20,11 +20,11 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
 /// <summary>Negotiated proof-wrapper gossip for the EIP-8288 prototype.</summary>
-public class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInfo
+public abstract class LeanProtocolHandler : ZeroProtocolHandlerBase
 {
     public static string Code => "lean";
-    public static byte Version => 1;
-    public override string Name => "lean1";
+    public static byte Version => 2;
+    public override string Name => "lean2";
     public override string ProtocolCode => Code;
     public override byte ProtocolVersion => Version;
     public override int MessageIdSpaceSize => 2;
@@ -32,7 +32,6 @@ public class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInfo
     private readonly IBlockTree _blockTree;
     private readonly ProofWrapperService _wrappers;
     private readonly LeanProofGossip _gossip;
-    private readonly LeanReassemblyBudget _budget;
     private readonly CancellationTokenSource _stop = new();
     private readonly CancellationToken _stopToken;
     private readonly Lock _receiveLock = new();
@@ -43,16 +42,18 @@ public class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInfo
     private int _disposed;
     private long _receiveWindow = Environment.TickCount64;
     private int _receivedBytes;
+    private int _receivedChunks;
+    internal const int MaxChunksPerWindow = 2 * ((LeanProofStore.MaxWrapperBytes + 16 * 1024 - 1) / (16 * 1024));
+    internal const int MaxWireBytesPerWindow = 2 * LeanProofStore.MaxWrapperBytes + MaxChunksPerWindow * LeanProofChunkMessage.HeaderSize;
 
     public LeanProtocolHandler(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer,
         IBackgroundTaskScheduler backgroundTaskScheduler, ILogManager logManager,
-        IBlockTree blockTree, ProofWrapperService wrappers, LeanProofGossip gossip, LeanReassemblyBudget budget)
+        IBlockTree blockTree, ProofWrapperService wrappers, LeanProofGossip gossip)
         : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager)
     {
         _blockTree = blockTree;
         _wrappers = wrappers;
         _gossip = gossip;
-        _budget = budget;
         _stopToken = _stop.Token;
     }
 
@@ -114,11 +115,17 @@ public class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInfo
             {
                 _receiveWindow = now;
                 _receivedBytes = 0;
+                _receivedChunks = 0;
             }
             // Bound repeated replacement allocations as well as retained queue memory.
             int length = message.Content.ReadableBytes;
-            if (length > 2 * LeanProofStore.MaxWrapperBytes - _receivedBytes) return true;
+            if (length > MaxWireBytesPerWindow - _receivedBytes || _receivedChunks == MaxChunksPerWindow)
+            {
+                DropIncompleteForPressure();
+                return true;
+            }
             _receivedBytes += length;
+            _receivedChunks++;
         }
         LeanProofWrapperMessage? wrapper = DecodeWrapper(message);
         if (wrapper is null) return true;
@@ -173,7 +180,14 @@ public class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInfo
             using (message)
             {
                 linked.Token.ThrowIfCancellationRequested();
-                ProofWrapperAcceptance result = await _wrappers.AcceptDetailedAsync(message.Wrapper, linked.Token);
+                long retryUntil = Environment.TickCount64 + 5_000;
+                ProofWrapperAcceptance result;
+                do
+                {
+                    result = await _wrappers.AcceptDetailedAsync(message.Wrapper, linked.Token);
+                    if (result.Status != ProofWrapperAcceptanceStatus.Busy || Environment.TickCount64 >= retryUntil) break;
+                    await Task.Delay(100, linked.Token).ConfigureAwait(false);
+                } while (true);
                 if (result.Status == ProofWrapperAcceptanceStatus.Invalid) throw new RlpException(result.Result.Error ?? "Invalid lean proof wrapper");
             }
             bool schedule;
@@ -203,24 +217,11 @@ public class LeanProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInfo
         }
     }
 
-    protected virtual LeanProofWrapperMessage? DecodeWrapper(ZeroPacket message)
-    {
-        int length = message.Content.ReadableBytes;
-        if (length is 0 or > LeanProofStore.MaxWrapperBytes) throw new RlpException("Invalid lean wrapper size");
-        IDisposable? lease = _budget.TryRent(length, static () => { });
-        if (lease is null) return null;
-        try { return new(Deserialize<LeanProofWrapperMessage>(message.Content).Wrapper, lease); }
-        catch { lease.Dispose(); throw; }
-    }
-
+    protected abstract LeanProofWrapperMessage? DecodeWrapper(ZeroPacket message);
+    protected abstract void DropIncompleteForPressure();
     protected bool CanBroadcast => Volatile.Read(ref _disposed) == 0 && !Session.IsClosing && _initialized && _wrappers.IsEnabled;
     protected CancellationToken StopToken => _stopToken;
-
-    protected virtual async ValueTask<bool> BroadcastAsync(byte[] wrapper, CancellationToken cancellationToken)
-    {
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(_stopToken, cancellationToken);
-        return CanBroadcast && await Session.DeliverMessageAsync(new LeanProofWrapperMessage(wrapper), linked.Token).ConfigureAwait(false) > 0;
-    }
+    protected abstract ValueTask<bool> BroadcastAsync(ReadOnlyMemory<byte> wrapper, ValueHash256 hash, CancellationToken cancellationToken);
 
     public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) => Dispose();
 

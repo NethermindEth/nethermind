@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.Eip8288;
 
 /// <summary>
-/// RLP codec for the EIP-8288 FOCIL inclusion list <c>[transactions, [stark_proof, deps_hash]]</c>.
+/// RLP codec for the EIP-8288 FOCIL inclusion list <c>[transactions, [stark_proof, deps_hash, proven_dependencies]]</c>.
 /// </summary>
 public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
 {
@@ -40,6 +40,10 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
         int proofCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         byte[] starkProof = decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(RecursiveStark.StarkProof)));
         Hash256 depsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
+        byte[] provenDependencies = decoderContext.DecodeByteArray(RlpLimit.For<FocilInclusionList>(
+            Eip8288Constants.MaxInclusionListDependencyBytes, nameof(FocilInclusionList.ProvenDependencies)));
+        if (!FocilInclusionListValidator.HasValidMetadataLength(provenDependencies))
+            throw new RlpException("Invalid inclusion-list dependency metadata length");
         decoderContext.Check(proofCheck);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
@@ -51,13 +55,15 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
         {
             Transactions = transactions,
             RecursiveStark = new RecursiveStark(starkProof, depsHash),
+            ProvenDependencies = provenDependencies,
         };
     }
 
     public override void Encode<TWriter>(ref TWriter writer, FocilInclusionList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         (int txContentLength, byte[][] txEntries) = GetTransactionsContent(item);
-        int recursiveStarkContentLength = Rlp.LengthOf(item.RecursiveStark.StarkProof) + Rlp.LengthOf(item.RecursiveStark.BlockDepsHash);
+        int recursiveStarkContentLength = Rlp.LengthOf(item.RecursiveStark.StarkProof) + Rlp.LengthOf(item.RecursiveStark.BlockDepsHash)
+            + Rlp.LengthOf(item.ProvenDependencies ?? []);
 
         writer.StartSequence(Rlp.LengthOfSequence(txContentLength) + Rlp.LengthOfSequence(recursiveStarkContentLength));
 
@@ -67,12 +73,14 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
         writer.StartSequence(recursiveStarkContentLength);
         writer.Encode(item.RecursiveStark.StarkProof);
         writer.Encode(item.RecursiveStark.BlockDepsHash);
+        writer.Encode(item.ProvenDependencies ?? []);
     }
 
     public override int GetLength(FocilInclusionList item, RlpBehaviors rlpBehaviors)
     {
         (int txContentLength, _) = GetTransactionsContent(item);
-        int recursiveStarkContentLength = Rlp.LengthOf(item.RecursiveStark.StarkProof) + Rlp.LengthOf(item.RecursiveStark.BlockDepsHash);
+        int recursiveStarkContentLength = Rlp.LengthOf(item.RecursiveStark.StarkProof) + Rlp.LengthOf(item.RecursiveStark.BlockDepsHash)
+            + Rlp.LengthOf(item.ProvenDependencies ?? []);
 
         return Rlp.LengthOfSequence(Rlp.LengthOfSequence(txContentLength) + Rlp.LengthOfSequence(recursiveStarkContentLength));
     }

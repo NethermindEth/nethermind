@@ -24,6 +24,7 @@ public static class Eip8288Constants
     /// <summary>Maximum distinct dependencies covered by the prototype native proof envelope.</summary>
     public const int MaxProofDependencies = 4096;
     public const int MaxGenericStarkProofs = 16;
+    public const int MaxInclusionListDependencyBytes = MaxProofDependencies * DependencyTripleLength;
 
     /// <summary>Maximum encoded native witness or recursive proof size.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
@@ -31,8 +32,8 @@ public static class Eip8288Constants
     /// <summary>Maximum encoded ETH header response, including room around an 8 MiB proof.</summary>
     public const int MaxHeaderResponseBytes = MaxProofBytes + 1024 * 1024;
 
-    /// <summary>Encoded public key and signature size of the pinned BLAKE2s SPHINCS scheme.</summary>
-    public const int LeanSphincsWitnessBytes = 32 + 4924;
+    /// <summary>Encoded public key and signature size of the pinned NiceTry/Daisugi Keccak SPHINCS scheme.</summary>
+    public const int LeanSphincsWitnessBytes = 32 + 6176;
 
     public const byte LeanSphincsScheme = 0x10;
     public const byte LeanStarkScheme = 0x11;
@@ -52,5 +53,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("e7460b4eab9119fe4a008be144aa1a5d465c8919ec9dcc52f5146a75049be45e");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("23305f2492843c52dfc0cf62ce46827b776071fcc6486504781ab8c8cf8ed387");
 }

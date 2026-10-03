@@ -1,7 +1,8 @@
 # EIP-8288 native Lean integration
 
-This library pins official [leanVM](https://github.com/leanEthereum/leanVM/tree/b977f5fa8f07cb2d40cbd76a66deefd67d975c30)
-commit `b977f5fa8f07cb2d40cbd76a66deefd67d975c30`. It verifies real BLAKE2s SPHINCS
+This library pins official [leanVM](https://github.com/leanEthereum/leanVM/tree/f33f31bf7c1191667e29a68a3acae63b9164c1c6)
+`block-deps-hash` revision `f33f31bf7c1191667e29a68a3acae63b9164c1c6`, atop the
+NiceTry/Daisugi branch (distinct from upstream `main`). It verifies real Keccak SPHINCS
 signatures and binary-field leanVM proofs. No hash-based proof substitute is accepted.
 
 ## Build and test
@@ -48,11 +49,17 @@ pinned key are prototype protocol choices, pending finalized EIP-8288 encodings.
 The [EIP](https://eips.ethereum.org/EIPS/eip-8288#recursive-stark-header-entry) requires the proof in the block header, so the header database and caches retain it.
 Generic STARK witnesses can make each header approach 8 MiB. On proof-bearing chains,
 header serving loads full headers incrementally and stops at a 9 MiB response budget
-before loading the next header. Headers with proofs above 64 KiB bypass the header
-cache. Large proofs reduce batch size. This trades header-sync throughput and storage for the prototype's
+before loading the next header. Headers with proofs above 64 KiB use a separate
+32 MiB / 128-header LRU with owned proof snapshots; repeated reads avoid DB decoding
+without multiplying the ordinary cache's capacity by large proof size. Large proofs reduce batch size. This trades header-sync throughput and storage for the prototype's
 current header format; a finalized sidecar format would require a protocol change.
+ETH header responses retain their standard whole-message encoding, so a large
+proof-bearing header can still delay other traffic on that connection.
+The decoded block cache skips proofs above 64 KiB. Invalid-block diagnostics retain
+large proof-bearing records in a separate eight-entry / 64 MiB tier, counting header
+proofs and inclusion-list proof/dependency buffers and returning owned copies.
 
-* **SPHINCS witness:** public key (32 bytes), signature (4924 bytes). The dependency key
+* **SPHINCS witness:** public key (32 bytes), signature (6176 bytes). The dependency key
   is Keccak-256 of the public key. Both this hash and the signature over `data_hash` are checked.
 * **leanSTARK witness:** bytecode blob length, canonical bytecode, then fixed-integer bincode
   serialization of the upstream CPU proof (no trailing bytes). The dependency key is
@@ -61,7 +68,9 @@ current header format; a finalized sidecar format would require a protocol chang
   At most 16384 instructions and operand offsets through 65535 are accepted; the offset
   limit bounds upstream assembly's g-power table. Each instruction is a 45-byte record: opcode
   byte, four u32 operands, three u64 immediate limbs, then u32 BLAKE2s metadata operand.
-  Opcodes 0–5 are XOR, MUL, SET, DEREF, JUMP, BLAKE2s. Unused fields are zero.
+  Opcodes 0–6 are XOR, MUL, SET, DEREF, JUMP, BLAKE2s, SHA3. Unused fields are zero. SHA3 packs its four extra message offsets
+  in the first two immediate limbs, capacity/output offsets in the third, and its digest flag
+  in the metadata field.
 * **aggregation input:** direct count then `(96-byte dependency, witness blob)` pairs;
   child count then `(dependency count/triples, proof blob)` pairs; discard count/triples.
 * **aggregate:** `NLR2`, canonical dependency count/triples, upstream EthereumProof blob
@@ -74,6 +83,33 @@ cryptographically verified SPHINCS claims, verifies every generic STARK, and rec
 canonical Keccak dependency commitment. Proving verifies every direct witness and child,
 then applies union, deduplication and discard selection. Caller-supplied dependency metadata
 cannot create a claim absent from the verified witnesses.
+
+Upstream `sphincs_deps_hash` is BLAKE2s over sorted distinct `message || raw_public_key`
+(64-byte claims); it is not the EIP adapter's Keccak commitment over 96-byte triples.
+The adapter verifies that native statement with `verify_sphincs_deps`, reconstructs
+`Keccak(public_key)` from the verified claim preimages, and requires exact equality
+with the EIP dependency set. Neither digest is substituted for the other. With no
+SPHINCS claims the guest blob must be empty; an empty dependency set has exactly the
+16-byte canonical `NLR2` envelope and no guest proof. Generic-only envelopes still
+verify every generic witness. The guest key is pinned, not trusted dynamically at startup.
+
+## Proving resources
+
+This Keccak profile has a much larger raw proving witness than the former BLAKE2s
+profile. The adapter verifies every input, proves at most four unique selected signatures
+per leaf, and combines at most two children at each recursive node. Discards are applied
+to declared claims at every level. Larger signature sets use genuine recursive proofs
+rather than one large raw witness. Upstream's direct 100-signature memory estimate is
+about 57 GiB; historical BLAKE2s benchmark results do not describe this profile.
+
+On the 32 GiB ARM development host, fresh-process direct batches of 2/4/8 signatures
+used 1.28/2.07/3.92 GiB peak RSS. Four-signature leaves produced a verified 16-signature
+aggregate in 4.11 s with 4.52 GiB process peak, versus 15.30 s and 4.95 GiB with singleton
+leaves. Four is the conservative default for smaller CI hosts; these observations are
+not a hard memory bound. Proving is serialized within each aggregation request.
+Reproduce sizing with `cargo run --release --example resource_probe -- 4 direct` or
+`cargo run --release --example resource_probe -- 16` from this directory; signature
+generation is outside the reported proving time but included in process peak RSS.
 
 ## Recursive compression limit
 
@@ -136,17 +172,21 @@ The `eth` JSON-RPC module provides:
 A raw dependency transaction without retained valid witnesses is rejected. Builders snapshot
 selected witnesses, recursively fold batches of at most sixteen children, discard dependencies
 outside the selected transaction set, and verify the produced header proof. Selection reserves
-recursive-proof gas from both execution and state gas budgets. Witness storage is bounded to
-64 MiB; production reserves at most 4 MiB of serialized witnesses per block to stay within the
+recursive-proof gas from both execution and state gas budgets. Required witness storage is
+bounded to 64 MiB / 1024 records. Admission reserves capacity before pool insertion;
+pending transactions pin their required records until removal, replacement or shutdown.
+Full protected capacity defers new admission rather than evicting those witnesses.
+Generated aggregates use a separate 64 MiB / 1024-record LRU that cannot replace required
+coverage. Production reserves at most 4 MiB of serialized witnesses per block to stay within the
 native 8 MiB input and proof bounds and the 4096-dependency envelope limit. Production also
 bounds witness coverage, including dependencies it discards, to 4096. Transactions beyond the current witness budget remain
 pending for another block.
 
 ## Negotiated proof gossip
 
-When the prototype fork is active at the node's head, it advertises `lean/1` and
-`lean/2` alongside normal Ethereum capabilities. Peers choose their highest common
-version; `lean/1` remains a whole-wrapper fallback. The existing protocol registry
+When the prototype fork is active at the node's head, it advertises only `lean/2`
+alongside normal Ethereum capabilities. The obsolete whole-object `lean/1` fallback
+is disabled so proof gossip cannot stall ETH traffic behind a large single write. The existing protocol registry
 shares negotiation and shutdown with Ethereum handlers, using the Consensus proof
 admission service and background scheduler.
 
@@ -155,7 +195,7 @@ recursive guest key (32 bytes). All three must match before message 1 is accepte
 a mismatch disables only lean, preserving the session's other protocols.
 The RLP mempool wrapper includes full transactions and is bounded by 10 MiB and
 4096 transactions. Outgoing selection reserves 8 MiB for the proof before encoding
-transactions. `lean/1` sends the whole wrapper within the 16 MiB frame cap.
+transactions.
 
 `lean/2` streams independent chunks: a 48-byte header holds the whole-wrapper
 Keccak commitment and big-endian total length, index, count and chunk size, followed
@@ -166,20 +206,31 @@ still pass shared admission before gaining proof-backed pool coverage. This is a
 [EIP-8411](https://eips.ethereum.org/EIPS/eip-8411)-inspired bounded transfer, without
 signed bids or Merkle authentication of individual chunks.
 
-Both protocol versions share a 64 MiB / 64-object receive budget covering incomplete
-reassembly and completed wrappers queued or undergoing verification. `lean/2` retains
-at most two objects per peer (up to 20 MiB). `lean/1` has one active and one pending
-wrapper; decoding a replacement can temporarily add a third copy before replacing
-the pending wrapper, with that copy also charged to the global budget.
-Incomplete objects expire after 30 seconds without a new chunk, or five minutes
-absolutely; duplicates do not extend their lifetime, and timer expiry needs no new
-inbound traffic. Queue replacement and shutdown release leases. A 20 MiB/s per-peer
-receive budget is checked before copying. Each verification returns pending work to
-the shared scheduler. Invalid proofs or encodings disconnect the peer; ordinary pool
+A shared 64 MiB / 1024-object budget covers received fragment memory, assembly metadata,
+completion copies and completed wrappers queued or undergoing verification. Incomplete
+fragment memory is capped at 48 MiB, preserving completion headroom within the total budget;
+single-chunk complete objects can use that headroom without an incomplete reservation. Advertised
+length never reserves or allocates a full wrapper: a 16 KiB start retains that fragment
+and bounded metadata. The final contiguous buffer is reserved before allocation; fragment
+memory is released after copying. Each peer retains at most two objects and approximately
+20 MiB persistently; one temporary completion copy can raise its charge to approximately
+30 MiB under the global cap, so two maximum wrappers can finish while admission is pending. Local quota or rate pressure drops incomplete
+streams without penalizing the peer. TCP streams must start at index zero and advance in
+order; unknown continuation chunks are ignored, and gaps within an accepted stream are
+malformed. This prevents dropped starts from creating assemblies that can never complete.
+Incomplete objects expire after 30 seconds without progress or five minutes absolutely.
+Duplicates do not extend their lifetime, timer expiry needs no inbound traffic, and repeated
+abandonment within five minutes disconnects the peer. Shutdown and cancelled admission release leases; a completed
+commitment is suppressed only while its admission buffer remains retained, so cancellation
+can retry. Per-peer wire bytes and message counts are bounded before copying, allowing two
+maximum wrappers per second including every chunk header. Each verification returns pending
+work to the shared scheduler. Invalid proofs or encodings disconnect the peer; ordinary pool
 rejection does not.
+Busy verification retains the charged wrapper for cancellable retries, up to five seconds;
+RPC native validation runs asynchronously under the same bounded admission gate.
 
 One node-wide worker aggregates eligible pending transactions every second. Bounded
-selection rotates past the last selected transaction; unchanged dependency sets reuse
+selection rotates across disjoint bounded groups; unchanged dependency sets reuse
 verified proofs. Each peer keeps one active transfer and the latest pending selection;
 a cadence never cancels an active object. Chunk sends await actual channel writes and
 yield between chunks so control and ETH traffic can interleave. A whole transfer is
@@ -200,14 +251,21 @@ fragments of one RLPx object.
 ## Proof-bearing inclusion lists
 
 With both EIP-8288 and EIP-7805 active, FCUv5 payload attributes and newPayloadV6's
-execution payload accept `inclusionListRecursiveStark: {starkProof, blockDepsHash}`.
-It is required when the inclusion list declares dependencies. The proof commits to
-that list's canonical sorted/deduplicated dependencies and is verified before mandatory
-prefix checks; its verified witnesses seed the builder's shared proof store. An invalid
-or missing package proof creates no mandatory transaction obligations, consistently
-for builders and validators. `getPayload` does not echo this proof; the consensus client
-supplies its own inclusion list and proof to `newPayload`. The consensus
-client can construct it through the same native aggregation or proof-wrapper path.
+execution payload accept `inclusionListRecursiveStark: {starkProof, blockDepsHash}` and
+`inclusionListProvenDependencies`, a hex string concatenating sorted, deduplicated 96-byte
+triples (at most 4096 / 384 KiB). The explicit metadata hashes exactly to the proof's public
+commitment and is required for dependency-bearing entries. Proof-bearing FOCIL RLP is
+`[transactions, [stark_proof, deps_hash, proven_dependencies]]`; this prototype extension
+makes membership independently checkable when a committee contributes a bad entry.
+Verification precedes mandatory prefix checks. Malformed frames and frames declaring any
+uncovered dependency are ineligible; ordinary and zero-dependency frame obligations remain
+when the package proof is invalid or missing. Valid covered frames retain their obligations
+in a mixed list. Builders and validators use the same selection. Each build owns one decoded
+snapshot and its verified parent proof even when shared witness storage is full. Bounded input
+snapshots are taken once to prevent caller mutation; later improvements reuse decoded entries
+and production order. `getPayload` echoes neither proof nor metadata; the consensus client
+supplies its own sidecar to `newPayload`. The CL can construct it through native aggregation
+or the proof-wrapper path.
 `engine_getInclusionListV1` retains its existing non-frame candidate sampling; externally
 formed proof-bearing frame inclusion lists are validated and enforced.
 

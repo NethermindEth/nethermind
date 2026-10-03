@@ -8,7 +8,7 @@ fn main() {
         |name: &str, bytes: &[u8]| std::fs::write(format!("{directory}/{name}"), bytes).unwrap();
     let (sk, pk) = sphincs::key_gen_from_seed([42; 32]);
     let message = [7; 32];
-    let sig = sphincs::sign(&sk, &message).unwrap();
+    let sig = sphincs::sign(&sk, &message);
     save("sphincs-key.bin", &keccak(&pk.flatten()));
     save("sphincs-message.bin", &message);
     save(
@@ -18,7 +18,7 @@ fn main() {
     let mut multi = Vec::new();
     for index in 0u64..16 {
         let message = keccak(&index.to_le_bytes());
-        let signature = sphincs::sign(&sk, &message).unwrap();
+        let signature = sphincs::sign(&sk, &message);
         multi.extend_from_slice(&message);
         multi.extend_from_slice(&pk.flatten());
         multi.extend_from_slice(&signature.to_bytes());
@@ -32,7 +32,7 @@ fn main() {
         let message = keccak(&[index]);
         multi_keys.extend_from_slice(&message);
         multi_keys.extend_from_slice(&pk.flatten());
-        multi_keys.extend_from_slice(&sphincs::sign(&sk, &message).unwrap().to_bytes());
+        multi_keys.extend_from_slice(&sphincs::sign(&sk, &message).to_bytes());
     }
     save("sphincs-multi-keys.bin", &multi_keys);
     let source = "from snark_lib import *\ndef main():\n    p = GEN ** 0\n    p[1] = 7\n    p[GEN] = 9\n    return\n";

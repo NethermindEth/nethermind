@@ -40,10 +40,16 @@ public class ProofInclusionListEnforcementTests
     [TestCase("mixed-omit-frame", false)]
     [TestCase("mixed-omit-legacy", false)]
     [TestCase("mixed-included", true)]
+    [TestCase("mixed-malformed-omit-frame", false)]
+    [TestCase("mixed-malformed-omit-legacy", false)]
+    [TestCase("mixed-uncovered-omit-frame", false)]
+    [TestCase("mixed-invalid-proof-omit-legacy", false)]
+    [TestCase("mixed-invalid-proof-frame-only", true)]
     public async Task Enforces_proven_frame_prefixes_through_production_processor(string scenario, bool satisfied)
     {
         OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
-        FakeLeanProofVerifier verifier = new(scenario is not ("bad-proof" or "full-bad-proof"));
+        FakeLeanProofVerifier verifier = new(scenario is not ("bad-proof" or "full-bad-proof")
+            && !scenario.StartsWith("mixed-invalid-proof", System.StringComparison.Ordinal));
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(spec))
             .AddSingleton<ILeanProofVerifier>(verifier));
@@ -88,8 +94,8 @@ public class ProofInclusionListEnforcementTests
             .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Transaction[] includedTransactions = scenario switch
         {
-            "included" or "mixed-omit-legacy" => [transaction],
-            "mixed-omit-frame" => [legacy],
+            "included" or "mixed-omit-legacy" or "mixed-malformed-omit-legacy" or "mixed-invalid-proof-omit-legacy" => [transaction],
+            "mixed-omit-frame" or "mixed-malformed-omit-frame" or "mixed-uncovered-omit-frame" or "mixed-invalid-proof-frame-only" => [legacy],
             "mixed-included" => [legacy, transaction],
             _ => []
         };
@@ -109,12 +115,37 @@ public class ProofInclusionListEnforcementTests
         }
         if (scenario == "full-bad-proof") block.Header.GasUsed = block.GasLimit;
         block.InclusionListTransactions = mixed ? [legacy, transaction] : [transaction];
+        if (scenario.StartsWith("mixed-malformed", System.StringComparison.Ordinal)
+            || scenario.StartsWith("mixed-uncovered", System.StringComparison.Ordinal))
+        {
+            byte[] extra = new byte[Eip8288Constants.DependencyTripleLength];
+            extra[31] = Eip8288Constants.LeanStarkScheme;
+            TxFrame[] extraFrames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
+                new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanStarkVerificationGas, UInt256.Zero, extra)];
+            Transaction bad = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = chain.SpecProvider.ChainId,
+                NonceKeys = [0],
+                SenderAddress = TestItem.PrivateKeyC.Address,
+                Frames = extraFrames,
+                GasLimit = FrameTxValidation.TotalGasLimit(extraFrames),
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 100.GWei
+            };
+            FrameTxTestFrames.SignSecp256k1(bad, TestItem.PrivateKeyC, bad.SenderAddress);
+            if (scenario.StartsWith("mixed-malformed", System.StringComparison.Ordinal))
+                bad.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[1])];
+            bad.Hash = bad.CalculateHash();
+            block.InclusionListTransactions = [legacy, bad, transaction];
+        }
         if (scenario == "withdrawal-funded")
             block = block.WithReplacedBody(new(block.Transactions, block.Uncles,
                 [new Withdrawal { Address = sender, AmountInGwei = 1_000_000_000 }]));
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction));
         block.InclusionListRecursiveStark = scenario == "missing-proof" ? null
             : new RecursiveStark([1], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash));
+        block.InclusionListProvenDependencies = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(transaction));
         (ulong, ulong)? originalDimensions = block.Header.GasUsedPerDimension;
         ulong originalGasUsed = block.GasUsed;
         UInt256 balance = state.GetBalance(sender);

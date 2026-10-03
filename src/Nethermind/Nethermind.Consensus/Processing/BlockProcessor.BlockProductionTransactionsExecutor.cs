@@ -124,11 +124,8 @@ namespace Nethermind.Consensus.Processing
                         balManager.NextTransaction();
                         if (block is BlockToProduce producing && args.LeanProofInput is { } proofInput)
                         {
-                            producing.LeanProofInputs.Clear();
-                            producing.LeanProofInputs.Add(proofInput);
-                            producing.LeanDependencies.Clear();
-                            producing.LeanDependencies.AddRange(args.LeanDependencies);
-                            producing.LeanWitnessBytes = args.LeanWitnessBytes;
+                            if (proofInput.Deps.Count != 0 || proofInput.RecursiveProofs.Count != 0) producing.LeanProofInputs.Add(proofInput);
+                            producing.LeanProofBudget.Commit(proofInput, args.LeanDependencies);
                         }
                     }
                     else

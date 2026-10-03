@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
@@ -28,30 +29,43 @@ public sealed class Lean2ProtocolHandler : LeanProtocolHandler, IStaticProtocolI
         IBackgroundTaskScheduler backgroundTaskScheduler, ILogManager logManager, IBlockTree blockTree,
         ProofWrapperService wrappers, LeanProofGossip gossip, LeanReassemblyBudget budget,
         int chunkSize = LeanProofChunkMessage.DefaultChunkSize)
-        : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager, blockTree, wrappers, gossip, budget)
+        : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager, blockTree, wrappers, gossip)
     {
         if (chunkSize is not (16 * 1024 or 32 * 1024 or LeanProofChunkMessage.DefaultChunkSize or LeanProofChunkMessage.MaxChunkSize))
             throw new ArgumentOutOfRangeException(nameof(chunkSize));
         _chunkSize = chunkSize;
-        _reassembler = new(budget);
+        _reassembler = new(budget, onIncompleteAbuse: () =>
+            Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Repeated incomplete lean streams"));
     }
+
+    public override void Init()
+    {
+        if (Session.HasAgreedCapability(new Capability(Code, Version))
+            && (Session is not ILeanBulkSession bulk || !bulk.EnableLeanBulk()))
+        {
+            Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Lean streaming transport unavailable");
+            return;
+        }
+        base.Init();
+    }
+
+    protected override void DropIncompleteForPressure() => _reassembler.DropIncompleteForPressure();
 
     protected override LeanProofWrapperMessage? DecodeWrapper(ZeroPacket message)
         => _reassembler.Add(Deserialize<LeanProofChunkMessage>(message.Content));
 
-    protected override async ValueTask<bool> BroadcastAsync(byte[] wrapper, CancellationToken cancellationToken)
+    protected override async ValueTask<bool> BroadcastAsync(ReadOnlyMemory<byte> wrapper, ValueHash256 hash, CancellationToken cancellationToken)
     {
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(StopToken, cancellationToken);
-        if (!CanBroadcast) return false;
-        ValueHash256 hash = ValueKeccak.Compute(wrapper);
+        if (!CanBroadcast || Session is not ILeanBulkSession bulk) return false;
         int count = (wrapper.Length + _chunkSize - 1) / _chunkSize;
         for (int index = 0; index < count; index++)
         {
             if (!CanBroadcast) return false;
             int offset = index * _chunkSize;
             LeanProofChunkMessage chunk = new(hash, wrapper.Length, index, count, _chunkSize,
-                wrapper.AsMemory(offset, Math.Min(_chunkSize, wrapper.Length - offset)));
-            if (await Session.DeliverMessageAsync(chunk, linked.Token).ConfigureAwait(false) == 0) return false;
+                wrapper.Slice(offset, Math.Min(_chunkSize, wrapper.Length - offset)));
+            if (await bulk.DeliverLeanChunkAsync(chunk, linked.Token).ConfigureAwait(false) == 0) return false;
         }
         return true;
     }

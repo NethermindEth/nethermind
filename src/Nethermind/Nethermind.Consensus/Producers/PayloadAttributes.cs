@@ -32,6 +32,9 @@ public class PayloadAttributes
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RecursiveStark? InclusionListRecursiveStark { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? InclusionListProvenDependencies { get; set; }
+
     public ulong? SlotNumber { get; set; }
 
     public ulong? TargetGasLimit { get; set; }
@@ -100,7 +103,8 @@ public class PayloadAttributes
         + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
         + (TargetGasLimit is null ? 0 : sizeof(ulong)) // target gas limit
         + (InclusionListTransactions is null ? 0 : Keccak.Size) // inclusion list digest
-        + (InclusionListRecursiveStark is null ? 0 : 2 * Keccak.Size);
+        + (InclusionListRecursiveStark is null ? 0 : 2 * Keccak.Size)
+        + (InclusionListProvenDependencies is null ? 0 : Keccak.Size);
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -160,6 +164,12 @@ public class PayloadAttributes
             (proof.BlockDepsHash ?? Keccak.Zero).Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
             ValueKeccak.Compute(proof.StarkProof ?? []).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
+        if (InclusionListProvenDependencies is { } dependencies)
+        {
+            ValueKeccak.Compute(dependencies).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }
 
@@ -305,6 +315,14 @@ public class PayloadAttributes
                 || proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes }))
         {
             error = "Invalid inclusion-list recursive STARK";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
+        if (result == PayloadAttributesValidationResult.Success && InclusionListProvenDependencies is { } dependencies
+            && (!spec.IsEip8288Enabled || !spec.InclusionListsEnabled || InclusionListTransactions is null
+                || InclusionListRecursiveStark is null || !Nethermind.Consensus.Eip8288.FocilInclusionListValidator.HasValidMetadataLength(dependencies)))
+        {
+            error = "Invalid inclusion-list proven dependencies";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
