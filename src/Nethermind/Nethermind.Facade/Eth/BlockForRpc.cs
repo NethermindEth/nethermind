@@ -89,7 +89,7 @@ public class BlockForRpc
         ParentHash = block.ParentHash;
         ReceiptsRoot = block.ReceiptsRoot;
         Sha3Uncles = block.UnclesHash;
-        Size = BlockDecoder.GetLength(block, RlpBehaviors.None);
+        Size = block.EncodedSize ?? BlockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
 
