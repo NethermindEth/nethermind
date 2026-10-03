@@ -10,6 +10,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -36,12 +37,14 @@ public class Eip8037StateGasInvariantTests : VirtualMachineTestsBase
             .SetName("RefundOnTopLevelHalt_flags_reservoir_exceeding_gas_limit");
         yield return new TestCaseData("RefundOnTopLevelHalt", new EthereumGasPolicy { StateGasUsed = (long)GasLimit + 1 }, new object[] { 0UL, 0UL })
             .SetName("RefundOnTopLevelHalt_flags_state_gas_exceeding_pre_refund_gas");
+        yield return new TestCaseData("RefundOnTopLevelHalt", default(EthereumGasPolicy), new object[] { 0UL, GasLimit + 1 })
+            .SetName("RefundOnTopLevelHalt_flags_refund_exceeding_pre_refund_gas");
     }
 
     [TestCaseSource(nameof(RefundGuards))]
     public void Refund_path_flags_state_gas_invariant(string method, EthereumGasPolicy corrupted, object[] tail)
     {
-        object[] args = [Tx(), Spec, ExecutionOptions.Commit, corrupted, UInt256.Zero, default(EthereumGasPolicy), .. tail];
+        object[] args = [Tx(), new OverridableReleaseSpec(Spec) { IsEip3298Enabled = true }, ExecutionOptions.Commit, corrupted, UInt256.Zero, default(EthereumGasPolicy), .. tail];
         RefundResult result = Invoke<RefundResult>(method, args);
         Assert.That(result.Result.Error, Is.EqualTo(TransactionResult.ErrorType.StateGasInvariantViolated));
     }

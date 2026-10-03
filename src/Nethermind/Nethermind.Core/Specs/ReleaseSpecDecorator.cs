@@ -123,6 +123,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip7954Enabled => spec.IsEip7954Enabled;
     public virtual bool IsEip8246Enabled => spec.IsEip8246Enabled;
     public virtual bool IsEip2780Enabled => spec.IsEip2780Enabled;
+    public virtual bool IsEip3298Enabled => spec.IsEip3298Enabled;
     public virtual bool IsEip8024Enabled => spec.IsEip8024Enabled;
     public SpecGasCosts GasCosts => spec.GasCosts;
 }

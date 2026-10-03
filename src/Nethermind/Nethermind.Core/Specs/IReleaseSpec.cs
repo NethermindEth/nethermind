@@ -488,6 +488,16 @@ namespace Nethermind.Core.Specs
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
+        /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
+        /// </summary>
+        /// <remarks>
+        /// Specified as a delta on EIP-8037 and EIP-8038. Enabled without them, it still strikes whichever
+        /// storage-clear refund and refund cap the spec would otherwise apply, and the pre-EIP-3529 SELFDESTRUCT
+        /// refund, which no same-transaction charge bounds.
+        /// </remarks>
+        public bool IsEip3298Enabled { get; }
+
+        /// <summary>
         /// EIP-7805: Inclusion lists
         /// </summary>
         bool IsEip7805Enabled { get; }
