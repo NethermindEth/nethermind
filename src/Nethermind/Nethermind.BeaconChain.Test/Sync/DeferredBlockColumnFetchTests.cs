@@ -1743,7 +1743,6 @@ public class DeferredBlockColumnFetchTests
 
         public bool IsKnown(Hash256 blockRoot) => _accepted.Contains(blockRoot) || inner.IsKnown(blockRoot);
 
-        public bool IsExpectedProposer(ForkedSignedBeaconBlock block) => inner.IsExpectedProposer(block);
 
         public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
         {

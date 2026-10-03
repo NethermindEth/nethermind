@@ -22,6 +22,10 @@ public interface IForkChoiceStateProvider
     /// <remarks>The runner treats the returned state as read-only.</remarks>
     BeaconStateFulu? GetBlockState(Hash256 blockRoot);
 
+    /// <summary>Returns a held post-state without replaying stored blocks.</summary>
+    /// <remarks>Providers that regenerate states must override this accessor.</remarks>
+    internal BeaconStateFulu? GetHeldBlockState(Hash256 blockRoot) => GetBlockState(blockRoot);
+
     /// <summary>Returns a mutable copy of the post-state of <paramref name="blockRoot"/>, or <c>null</c> when unknown.</summary>
     /// <remarks>The runner slot-advances the copy to an epoch boundary (the spec's <c>store_target_checkpoint_state</c>).</remarks>
     BeaconStateFulu? CopyBlockState(Hash256 blockRoot);

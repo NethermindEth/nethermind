@@ -68,6 +68,7 @@ public sealed class ForkChoiceRunner
     /// <summary>The head <see cref="GetHeadNode"/> last returned, which gossip aggregates are checked against; cleared when a tick, a block, a slashing or an invalid payload may move it.</summary>
     /// <remarks>A vote does not clear it: recomputing <c>get_head</c> for every aggregate would cost more than a head one vote can move.</remarks>
     private Hash256? _lastHeadRoot;
+    private readonly List<(Hash256 Head, ulong Epoch, int Count)> _gossipCommitteeCounts = [];
 
     /// <summary>The store epoch <see cref="_offHeadBuilds"/> counts in.</summary>
     private ulong _offHeadBuildEpoch;
@@ -633,7 +634,7 @@ public sealed class ForkChoiceRunner
     private PtcVoteWrite? ResolvePtcVote(PayloadAttestationData data, ulong[] validatorIndices, BlsSignature signature, bool isFromBlock, bool verifySignature)
     {
         Hash256 root = data.BeaconBlockRoot ?? throw new ForkChoiceException($"Payload attestation at slot {data.Slot} has no block root");
-        ForkedBeaconState state = GetBlockState(root);
+        ForkedBeaconState state = isFromBlock ? GetBlockState(root) : GetHeldBlockState(root);
         if (data.Slot != state.Slot)
             return null;
         // get_ptc asserts a Gloas epoch, and only Gloas blocks have PTC votes.
@@ -644,7 +645,7 @@ public sealed class ForkChoiceRunner
         {
             if (data.Slot != _store.CurrentSlot)
                 throw new ForkChoiceException($"Payload attestation for slot {data.Slot} is not for the current slot {_store.CurrentSlot}");
-            ForkedBeaconState headState = GetBlockState(GetHead());
+            ForkedBeaconState headState = GetHeldHeadState();
             if (headState is not ForkedBeaconState.OfGloas { State: BeaconStateGloas headGloas })
                 throw new ForkChoiceException("Head state has no payload timeliness committee");
             ulong[] headPtc = headGloas.GetPtc(data.Slot, _spec).Indices!;
@@ -954,7 +955,10 @@ public sealed class ForkChoiceRunner
         ShufflingKey? key = GetShufflingKey(target);
         ForkedBeaconState? targetState = HeldVoteState(target, key);
         if (aggregator is { } gossipProof)
-            targetState = GetGossipTargetState(target, targetState, data, aggregationBits, committeeBits, signature, gossipProof);
+        {
+            targetState = GetGossipTargetState(target, targetState, data, aggregationBits, committeeBits, signature, gossipProof, out bool signatureVerified);
+            verifySignature &= !signatureVerified;
+        }
 
         // p2p-interface.md beacon_aggregate_and_proof: IGNORE unless the finalized checkpoint is an ancestor of the voted block.
         if (aggregator is not null && !_protoArray.IsFinalizedCheckpointOrDescendant(beaconBlockRoot, _store.FinalizedCheckpoint))
@@ -976,7 +980,7 @@ public sealed class ForkChoiceRunner
         }
 
         bool unheld = targetState is null;
-        targetState ??= ComputeCheckpointState(target);
+        targetState ??= ComputeCheckpointState(target, requireHeld: aggregator is not null);
         ulong[] attestingIndices = AttestingIndices(targetState, target.Epoch, data, aggregationBits, committeeBits, signature);
         if (gloasContainer)
             ThrowIfOverGloasIndexedAttestationBound(attestingIndices, "Attestation");
@@ -1004,23 +1008,57 @@ public sealed class ForkChoiceRunner
         ApplyVotes(attestingIndices, beaconBlockRoot, data.Slot, target.Epoch, payloadPresent);
     }
 
+    /// <summary>Whether gossip needs the worker to recompute the cached head.</summary>
+    internal bool IsHeadStale => _lastHeadRoot is null;
+
+    /// <summary>Returns the cached head's held state without computing the head or replaying blocks.</summary>
+    internal ForkedBeaconState GetHeldHeadState()
+    {
+        Hash256 head = _lastHeadRoot ?? throw new ForkChoiceException("No cached head for gossip validation");
+        return GetHeldBlockState(head);
+    }
+
+    private ForkedBeaconState GetHeldBlockState(Hash256 blockRoot)
+    {
+        ulong slot = _protoArray.GetBlockSlot(blockRoot) ?? throw new ForkChoiceException($"Block {blockRoot} is unknown to fork choice");
+        if (IsGloasSlot(slot))
+        {
+            if (_gloasStateProvider?.GetGloasBlockState(blockRoot) is { } gloas)
+                return new ForkedBeaconState.OfGloas(gloas);
+        }
+        else if (_stateProvider.GetHeldBlockState(blockRoot) is { } fulu)
+            return new ForkedBeaconState.OfFulu(fulu);
+        throw new ForkChoiceException($"No held state for the block {blockRoot}");
+    }
+
     private void CheckGossipCommitteeRange(BitArray committeeBits, ulong epoch)
     {
         int index = 0;
         while (index < committeeBits.Length && !committeeBits[index]) index++;
         if (index == 0) return;
 
-        Validator[] validators = GetBlockState(GetHead()) switch
+        ForkedBeaconState state = GetHeldHeadState();
+        int count = -1;
+        foreach ((Hash256 Head, ulong Epoch, int Count) entry in _gossipCommitteeCounts)
         {
-            ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
-            ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
-            _ => throw new NotSupportedException("Unsupported head state"),
-        };
-        int active = 0;
-        foreach (Validator validator in validators)
-            if (validator.IsActiveValidator(epoch)) active++;
+            if (entry.Head == _lastHeadRoot && entry.Epoch == epoch)
+            {
+                count = entry.Count;
+                break;
+            }
+        }
+        if (count < 0)
+        {
+            int active = 0;
+            foreach (Validator validator in ValidatorsOf(state))
+                if (validator.IsActiveValidator(epoch)) active++;
+            count = CommitteeCache.GetCommitteeCountPerSlot(active);
+            if (_gossipCommitteeCounts.Count == CommitteeCacheLru.DefaultCapacity)
+                _gossipCommitteeCounts.RemoveAt(0);
+            _gossipCommitteeCounts.Add((_lastHeadRoot!, epoch, count));
+        }
         // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The committee index is within the expected range".
-        if (index >= CommitteeCache.GetCommitteeCountPerSlot(active))
+        if (index >= count)
             throw new ForkChoiceException($"Committee index {index} is out of range at epoch {epoch}") { RejectGossip = true };
     }
 
@@ -1175,7 +1213,9 @@ public sealed class ForkChoiceRunner
         }
 
         // ethereum/consensus-specs fork-choice.md on_attester_slashing: "state = store.block_states[store.justified_checkpoint.root]".
-        ForkedBeaconState justifiedState = GetBlockState(_store.JustifiedCheckpoint.Root);
+        ForkedBeaconState justifiedState = gossipState is null
+            ? GetBlockState(_store.JustifiedCheckpoint.Root)
+            : GetHeldBlockState(_store.JustifiedCheckpoint.Root);
         if (!IsValidIndexedAttestation(justifiedState, attestation1, verifySignatures))
             throw new ForkChoiceException("Attester slashing attestation 1 is invalid against the justified state");
         if (!IsValidIndexedAttestation(justifiedState, attestation2, verifySignatures))
@@ -1775,12 +1815,12 @@ public sealed class ForkChoiceRunner
     /// state across the fork. The block state itself is never mutated.
     /// </remarks>
     /// <exception cref="ForkChoiceException">The checkpoint block's state cannot be resolved; see <see cref="GetBlockState"/>.</exception>
-    internal ForkedBeaconState GetCheckpointState(CheckpointRef checkpoint)
+    internal ForkedBeaconState GetCheckpointState(CheckpointRef checkpoint, bool requireHeld = false)
     {
         if (_checkpointStates.TryGetValue(checkpoint, out ForkedBeaconState? cached))
             return cached;
 
-        ForkedBeaconState state = ComputeCheckpointState(checkpoint);
+        ForkedBeaconState state = ComputeCheckpointState(checkpoint, requireHeld);
         _checkpointStates[checkpoint] = state;
         return state;
     }
@@ -1804,20 +1844,25 @@ public sealed class ForkChoiceRunner
     /// </remarks>
     /// <exception cref="ForkChoiceException">The target is such an ancestor, the aggregate does not authenticate with the head state, or the builds for other shufflings are spent.</exception>
     /// <param name="held">A state held for the target's shuffling, which stands in for the head's only when the shuffling is the head's.</param>
-    private ForkedBeaconState? GetGossipTargetState(CheckpointRef target, ForkedBeaconState? held, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, AggregatorProof proof)
+    /// <param name="signatureVerified">Whether the aggregate signature already verified against the returned state.</param>
+    private ForkedBeaconState? GetGossipTargetState(CheckpointRef target, ForkedBeaconState? held, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, AggregatorProof proof, out bool signatureVerified)
     {
-        Hash256 head = _lastHeadRoot ?? GetHead();
+        signatureVerified = false;
+        Hash256 head = _lastHeadRoot ?? throw new ForkChoiceException("No cached head for gossip validation");
         CheckpointRef headTarget = new(target.Epoch, GetCheckpointBlock(head, target.Epoch));
         ShufflingKey? headKey = GetShufflingKey(headTarget);
         bool sameShuffling = target == headTarget || HasShufflingOf(head, target);
         if (!sameShuffling && _protoArray.IsDescendant(target.Root, head))
             throw new ForkChoiceException($"Aggregate target {target} is an ancestor of the head with another shuffling than the head's target {headTarget}");
 
-        ForkedBeaconState headState = (sameShuffling ? held : null) ?? HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget);
+        ForkedBeaconState headState = (sameShuffling ? held : null) ?? HeldVoteState(headTarget, headKey) ?? GetCheckpointState(headTarget, requireHeld: true);
         ulong[] headIndices = AttestingIndices(headState, target.Epoch, data, aggregationBits, committeeBits, signature, rejectGossip: true);
         VerifyAggregator(headState, target.Epoch, data.Slot, committeeBits, proof, new IndexedVote(headIndices, data, signature));
         if (sameShuffling)
+        {
+            signatureVerified = true;
             return headState;
+        }
         if (held is not null)
             return held;
 
@@ -2039,28 +2084,30 @@ public sealed class ForkChoiceRunner
     }
 
     /// <summary>The spec's <c>store_target_checkpoint_state</c> computation, without the cache; see <see cref="GetCheckpointState"/>.</summary>
-    private ForkedBeaconState ComputeCheckpointState(CheckpointRef checkpoint)
+    private ForkedBeaconState ComputeCheckpointState(CheckpointRef checkpoint, bool requireHeld = false)
     {
         ulong blockSlot = _protoArray.GetBlockSlot(checkpoint.Root) ?? throw new ForkChoiceException($"Block {checkpoint.Root} is unknown to fork choice");
         ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(checkpoint.Epoch);
         if (blockSlot >= startSlot)
-            return GetBlockState(checkpoint.Root);
+            return requireHeld ? GetHeldBlockState(checkpoint.Root) : GetBlockState(checkpoint.Root);
 
         // Only a copy is asked for, so a Fulu block state that has to be regenerated is not held for this.
-        ForkedBeaconState state = AdvanceCopy(checkpoint.Root, blockSlot, startSlot, IsGloasSlot(startSlot) ? BeaconFork.Gloas : BeaconFork.Fulu);
+        ForkedBeaconState state = AdvanceCopy(checkpoint.Root, blockSlot, startSlot, IsGloasSlot(startSlot) ? BeaconFork.Gloas : BeaconFork.Fulu, requireHeld);
         // The epoch transitions above can apply pending deposits and grow the registry.
         ExtendPubkeys(ValidatorsOf(state));
         return state;
     }
 
     /// <summary>A mutable copy of the post-state of <paramref name="blockRoot"/> advanced to <paramref name="targetSlot"/>, crossing into <paramref name="targetFork"/> on the way when needed.</summary>
-    private ForkedBeaconState AdvanceCopy(Hash256 blockRoot, ulong blockSlot, ulong targetSlot, BeaconFork targetFork)
+    private ForkedBeaconState AdvanceCopy(Hash256 blockRoot, ulong blockSlot, ulong targetSlot, BeaconFork targetFork, bool requireHeld = false)
     {
         Hash256 blockStateRoot = _protoArray.EnumerateAncestorNodes(blockRoot).First().StateRoot;
         EpochCache cache = new() { Hasher = new KnownSlotRoots(blockSlot, KnownAdvanceRoots(blockRoot, blockStateRoot, blockSlot, targetSlot), CheckpointStateHasher()) };
         ForkedBeaconState state = IsGloasSlot(blockSlot)
             ? new ForkedBeaconState.OfGloas(((ForkedBeaconState.OfGloas)GetBlockState(blockRoot)).State.Clone())
-            : new ForkedBeaconState.OfFulu(_stateProvider.CopyBlockState(blockRoot) ?? throw new ForkChoiceException($"No state for the block {blockRoot}"));
+            : new ForkedBeaconState.OfFulu(requireHeld
+                ? ((ForkedBeaconState.OfFulu)GetHeldBlockState(blockRoot)).State.Clone()
+                : _stateProvider.CopyBlockState(blockRoot) ?? throw new ForkChoiceException($"No state for the block {blockRoot}"));
 
         state = ForkedStateTransition.CrossBoundaryIfNeeded(state, targetFork, _spec, cache);
         switch (state)

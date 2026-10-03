@@ -102,6 +102,7 @@ internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasB
     /// <summary>Every distinct member of <paramref name="block"/>'s PTC votes on its payload from the wire, in the block's slot.</summary>
     public void AllPtcVote(Block block, bool payloadPresent, bool blobDataAvailable)
     {
+        Runner.GetHead();
         foreach (ulong member in Ptc(block).Distinct())
             Runner.OnPayloadAttestationMessage(PtcMessage(block, member, payloadPresent, blobDataAvailable, sign: false), verifySignature: false);
     }

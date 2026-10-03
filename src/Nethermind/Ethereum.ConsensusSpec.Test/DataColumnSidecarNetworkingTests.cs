@@ -276,7 +276,7 @@ public class DataColumnSidecarNetworkingTests
     }
 
     /// <summary>meta.yaml's <c>finalized_checkpoint</c> root, given as <c>root</c> or as the name of a <c>block_0x{root}</c> file.</summary>
-    private static Hash256? ReadFinalizedRoot(string casePath)
+    internal static Hash256? ReadFinalizedRoot(string casePath)
     {
         using StreamReader reader = new(Path.Combine(casePath, "meta.yaml"));
         YamlStream yaml = [];

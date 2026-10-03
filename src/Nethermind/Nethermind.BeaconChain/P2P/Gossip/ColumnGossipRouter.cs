@@ -639,6 +639,22 @@ public sealed class ColumnGossipRouter(
             : Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
     }
 
+    // ethereum/consensus-specs fulu and gloas/p2p-interface.md: later block REJECTs require a validated parent and available payload.
+    internal bool CanRejectBlockFields(ForkedSignedBeaconBlock block)
+    {
+        if (CurrentSnapshot() is not { } snapshot || !snapshot.Nodes.TryGetValue(block.ParentRoot, out ForkChoiceSnapshotNode? parent)
+            || parent.ExecutionStatus == ExecutionStatus.Invalid)
+            return false;
+
+        return block is not ForkedSignedBeaconBlock.OfGloas { Block.Message.Body.SignedExecutionPayloadBid.Message: { } bid }
+            || parent.PayloadValid || SignedBeaconBlockCodec.IsGloasSlot(parent.Slot, spec)
+                && parent.ExecutionBlockHash is { } hash && bid.ParentBlockHash != hash;
+    }
+
+    // ethereum/consensus-specs gloas/p2p-interface.md: finalized ancestry precedes the same-slot payload REJECT.
+    internal bool HasFinalizedAncestor(Hash256 blockRoot) =>
+        CurrentSnapshot() is { } snapshot && snapshot.DescendsFromFinalized.GetValueOrDefault(blockRoot);
+
     /// <summary>
     /// The phase0 p2p-interface.md <c>beacon_block</c> rules that need beacon state, run for a Fulu block's header against the published
     /// fork-choice snapshot, proposer lookahead and key cache, as for a sidecar's header.
