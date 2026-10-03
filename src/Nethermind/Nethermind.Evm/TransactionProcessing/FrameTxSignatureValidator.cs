@@ -33,22 +33,27 @@ public static class FrameTxSignatureValidator
     public static readonly Address P256VerifyPrecompileAddress = PrecompiledAddresses.P256Verify;
 
     public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
-        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false);
-
-    /// <summary>Same validation, optionally accepting a SECP256K1 or P256 entry with empty signature bytes as a
-    /// placeholder. Simulation can also skip signature verification while retaining structural checks.</summary>
-    /// <remarks>With <paramref name="skipVerification"/> only the length and the SECP256K1 recovery id are checked:
-    /// execution-apis#907 exempts signature checks from eth_simulateV1, so placeholder bytes need not be a
-    /// canonical signature nor, for P256, carry the signer's public key.</remarks>
-    internal static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification)
-        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures, skipVerification);
+    {
+        ValueHash256? knownSigHash = sigHash;
+        return Validate(tx, ref knownSigHash, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false, skipVerification: false);
+    }
 
     /// <summary>Same validation for callers without a sig hash: computed lazily, so a transaction whose
     /// entries all carry an explicit digest never pays for it.</summary>
     public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
-        => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false);
+    {
+        ValueHash256? sigHash = null;
+        return Validate(tx, ref sigHash, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false, skipVerification: false);
+    }
 
-    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification = false)
+    /// <summary>Same validation, optionally accepting a SECP256K1 or P256 entry with empty signature bytes as a
+    /// placeholder. Simulation can also skip signature verification while retaining structural checks.</summary>
+    /// <param name="sigHash">The canonical signature hash when the caller has it; otherwise <see langword="null"/>,
+    /// set here only if an entry signs it.</param>
+    /// <remarks>With <paramref name="skipVerification"/> only the length and the SECP256K1 recovery id are checked:
+    /// execution-apis#907 exempts signature checks from eth_simulateV1, so placeholder bytes need not be a
+    /// canonical signature nor, for P256, carry the signer's public key.</remarks>
+    internal static bool Validate(Transaction tx, ref ValueHash256? sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification)
     {
         error = null;
         TxFrameSignature[]? signatures = tx.FrameSignatures;
@@ -80,13 +85,7 @@ public static class FrameTxSignatureValidator
                 return Fail(InvalidSignature, out error);
             }
 
-            if (signature.Msg.IsEmpty && !sigHashComputed)
-            {
-                sigHash = FrameTxSigHash.ComputeValue(tx);
-                sigHashComputed = true;
-            }
-
-            ValueHash256 message = signature.Msg.IsEmpty ? sigHash : new ValueHash256(signature.Msg.Span);
+            ValueHash256 message = signature.Msg.IsEmpty ? sigHash ??= FrameTxSigHash.ComputeValue(tx) : new ValueHash256(signature.Msg.Span);
             Address resolvedSigner = signature.Signer ?? tx.SenderAddress!;
 
             bool ok = signature.Scheme switch
