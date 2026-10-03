@@ -168,8 +168,7 @@ def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
 def verify_clean(config: dict) -> None:
     root = Path(get("EXPB_DATA_DIR")).resolve()
     docker = get("DOCKER_BIN", "docker")
-    subprocess.check_output([docker, "container", "prune", "--force", "--filter", "label=expb"], text=True)
-    for label, args in (("containers", ["container", "ps", "-q"]), ("networks", ["network", "ls", "-q"])):
+    for label, args in (("containers", ["container", "ps", "-aq"]), ("networks", ["network", "ls", "-q"])):
         result = subprocess.check_output([docker, *args, "--filter", "label=expb"], text=True).strip()
         if result: raise RuntimeError(f"benchmark {label} remain: {result}")
     for line in Path("/proc/self/mounts").read_text(errors="replace").splitlines():
