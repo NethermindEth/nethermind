@@ -71,13 +71,11 @@ public class PeerBandTests
     public async Task A_dial_address_that_does_not_decode_is_refused_without_throwing(CancellationToken token)
     {
         Node node = CreateNode();
-        await using (node.P2P)
-        {
-            await node.P2P.StartAsync(token);
-            PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+        await using NodeScope nodes = new(node);
+        await nodes.StartAsync(token, node);
+        PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
 
-            Assert.That(await peerManager.TryAddPeerAsync("/ip4/127.0.0.1/tcp/1/p2p/not-a-peer-id", token), Is.False);
-        }
+        Assert.That(await peerManager.TryAddPeerAsync("/ip4/127.0.0.1/tcp/1/p2p/not-a-peer-id", token), Is.False);
     }
 
     /// <summary>
@@ -101,28 +99,24 @@ public class PeerBandTests
         Node client = CreateNode();
         Node server = CreateNode();
         SetMatchingStatus(client, server);
-        await using (client.P2P)
-        await using (server.P2P)
+        await using NodeScope nodes = new(client, server);
+        await nodes.StartAsync(token, client, server);
+        PeerManager manager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        ulong connectedBefore = Metrics.BeaconChainPeersConnected;
+        ulong droppedBefore = Metrics.BeaconChainPeersDropped;
+
+        Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
+        (int Pool, int Gauge, ulong Connected) admitted = (manager.PeerCount, Metrics.BeaconChainPeerCount, Metrics.BeaconChainPeersConnected);
+
+        IBeaconSyncPeer peer = manager.GetBestPeers(0).Single();
+        // A content violation is never kept at the peer floor, so the last failure drops the peer.
+        for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new Eth2ReqRespException("malformed reply"), 0, token);
+
+        using (Assert.EnterMultipleScope())
         {
-            await client.P2P.StartAsync(token);
-            await server.P2P.StartAsync(token);
-            PeerManager manager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            ulong connectedBefore = Metrics.BeaconChainPeersConnected;
-            ulong droppedBefore = Metrics.BeaconChainPeersDropped;
-
-            Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
-            (int Pool, int Gauge, ulong Connected) admitted = (manager.PeerCount, Metrics.BeaconChainPeerCount, Metrics.BeaconChainPeersConnected);
-
-            IBeaconSyncPeer peer = manager.GetBestPeers(0).Single();
-            // A content violation is never kept at the peer floor, so the last failure drops the peer.
-            for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new Eth2ReqRespException("malformed reply"), 0, token);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(admitted, Is.EqualTo((1, 1, connectedBefore + 1)), "after the admission");
-                Assert.That((manager.PeerCount, Metrics.BeaconChainPeerCount), Is.EqualTo((0, 0)), "after the drop");
-                Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(droppedBefore + 1));
-            }
+            Assert.That(admitted, Is.EqualTo((1, 1, connectedBefore + 1)), "after the admission");
+            Assert.That((manager.PeerCount, Metrics.BeaconChainPeerCount), Is.EqualTo((0, 0)), "after the drop");
+            Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(droppedBefore + 1));
         }
     }
 
@@ -192,23 +186,17 @@ public class PeerBandTests
         SetMatchingStatus(server1, server2, client);
         client.Config.MaxPeerCount = 1;
 
-        await using (client.P2P)
-        await using (server1.P2P)
-        await using (server2.P2P)
-        {
-            await server1.P2P.StartAsync(token);
-            await server2.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
+        await using NodeScope nodes = new(client, server1, server2);
+        await nodes.StartAsync(token, server1, server2, client);
 
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
 
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server1.P2P), token), Is.True);
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1));
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server1.P2P), token), Is.True);
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1));
 
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server2.P2P), token), Is.False,
-                "already at MaxPeerCount: must refuse without attempting the second dial");
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1));
-        }
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server2.P2P), token), Is.False,
+            "already at MaxPeerCount: must refuse without attempting the second dial");
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1));
     }
 
     [Test]
@@ -222,32 +210,26 @@ public class PeerBandTests
         worseServer.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot;
         betterServer.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot + 100;
 
-        await using (client.P2P)
-        await using (worseServer.P2P)
-        await using (betterServer.P2P)
-        {
-            await worseServer.P2P.StartAsync(token);
-            await betterServer.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
+        await using NodeScope nodes = new(client, worseServer, betterServer);
+        await nodes.StartAsync(token, worseServer, betterServer, client);
 
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(worseServer.P2P), token), Is.True);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(betterServer.P2P), token), Is.True);
-            Assert.That(peerManager.PeerCount, Is.EqualTo(2));
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(worseServer.P2P), token), Is.True);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(betterServer.P2P), token), Is.True);
+        Assert.That(peerManager.PeerCount, Is.EqualTo(2));
 
-            // Lower the high watermark below the already-connected count, as a config-driven band
-            // change or a dial-race overshoot would: the next maintenance round must trim back down.
-            client.Config.MaxPeerCount = 1;
-            client.Config.TargetPeerCount = 1;
-            await peerManager.RunMaintenanceRoundAsync(token);
+        // Lower the high watermark below the already-connected count, as a config-driven band
+        // change or a dial-race overshoot would: the next maintenance round must trim back down.
+        client.Config.MaxPeerCount = 1;
+        client.Config.TargetPeerCount = 1;
+        await peerManager.RunMaintenanceRoundAsync(token);
 
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "must trim down to the target");
-            IBeaconSyncPeer remaining = peerManager.GetBestPeers(0).Single();
-            Assert.That(remaining.HeadSlot, Is.EqualTo(AnchorSlot + 100), "the peer with the lower head slot is the worst and should be trimmed");
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1), "must trim down to the target");
+        IBeaconSyncPeer remaining = peerManager.GetBestPeers(0).Single();
+        Assert.That(remaining.HeadSlot, Is.EqualTo(AnchorSlot + 100), "the peer with the lower head slot is the worst and should be trimmed");
 
-            PeerManager.PeerDiagnostics trimmed = peerManager.GetPeerDiagnostics().Single(d => d.HeadSlot != AnchorSlot + 100 && d.DisconnectCount > 0);
-            Assert.That(trimmed.LastDisconnectReason, Is.EqualTo("TooManyPeers"));
-        }
+        PeerManager.PeerDiagnostics trimmed = peerManager.GetPeerDiagnostics().Single(d => d.HeadSlot != AnchorSlot + 100 && d.DisconnectCount > 0);
+        Assert.That(trimmed.LastDisconnectReason, Is.EqualTo("TooManyPeers"));
     }
 
     [Test]
@@ -264,29 +246,23 @@ public class PeerBandTests
         staticPeer.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot;
         other.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot + 100;
 
-        await using (local.P2P)
-        await using (staticPeer.P2P)
-        await using (other.P2P)
-        {
-            await staticPeer.P2P.StartAsync(token);
-            await other.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            local.Config.StaticPeers = LoopbackAddress(staticPeer.P2P);
-            PeerManager peerManager = watch.Watch(local, staticPeer, other);
+        await using NodeScope nodes = new(local, staticPeer, other);
+        await nodes.StartAsync(token, staticPeer, other, local);
+        local.Config.StaticPeers = LoopbackAddress(staticPeer.P2P);
+        PeerManager peerManager = watch.Watch(local, staticPeer, other);
 
-            await PeerSessionNodes.DialAsync(staticPeer.P2P, local.P2P, token);
-            await watch.AdmittedAsync("the static peer's inbound session was never admitted", token);
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1));
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token), Is.True, () => watch.Describe("the second peer was not admitted"));
+        await PeerSessionNodes.DialAsync(staticPeer.P2P, local.P2P, token);
+        await watch.AdmittedAsync("the static peer's inbound session was never admitted", token);
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1));
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token), Is.True, () => watch.Describe("the second peer was not admitted"));
 
-            local.Config.MaxPeerCount = 1;
-            local.Config.TargetPeerCount = 1;
-            await peerManager.RunMaintenanceRoundAsync(token);
+        local.Config.MaxPeerCount = 1;
+        local.Config.TargetPeerCount = 1;
+        await peerManager.RunMaintenanceRoundAsync(token);
 
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "must trim down to the target");
-            Assert.That(peerManager.GetBestPeers(0).Single().HeadSlot, Is.EqualTo(AnchorSlot),
-                "the static peer is the worse one by head slot and must still be the one kept");
-        }
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1), "must trim down to the target");
+        Assert.That(peerManager.GetBestPeers(0).Single().HeadSlot, Is.EqualTo(AnchorSlot),
+            "the static peer is the worse one by head slot and must still be the one kept");
     }
 
     [Test]
@@ -297,29 +273,25 @@ public class PeerBandTests
         Node client = CreateNode();
         SetMatchingStatus(server, client);
 
-        await using (client.P2P)
-        await using (server.P2P)
-        {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
+        await using NodeScope nodes = new(client, server);
+        await nodes.StartAsync(token, server, client);
 
-            string address = LoopbackAddress(server.P2P);
-            client.Config.StaticPeers = address;
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        string address = LoopbackAddress(server.P2P);
+        client.Config.StaticPeers = address;
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
 
-            // Ban the id ahead of time, the way three real consecutive fault disconnects would have
-            // left it (RecordDisconnect's own accumulation is covered directly above): the address
-            // stays perfectly reachable, so a plain connectivity failure cannot explain a refusal here.
-            string peerId = PeerManager.ExtractPeerIdForTest(address);
-            peerManager.RecordDisconnect(peerId, 0, 0, GoodbyeReason.Fault, "repeated failures");
-            peerManager.RecordDisconnect(peerId, 0, 0, GoodbyeReason.Fault, "repeated failures");
-            peerManager.RecordDisconnect(peerId, 0, 0, GoodbyeReason.Fault, "repeated failures");
-            Assert.That(peerManager.IsBannedForTest(peerId), Is.True, "test setup: three faults must have banned it already");
+        // Ban the id ahead of time, the way three real consecutive fault disconnects would have
+        // left it (RecordDisconnect's own accumulation is covered directly above): the address
+        // stays perfectly reachable, so a plain connectivity failure cannot explain a refusal here.
+        string peerId = PeerManager.ExtractPeerIdForTest(address);
+        peerManager.RecordDisconnect(peerId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+        peerManager.RecordDisconnect(peerId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+        peerManager.RecordDisconnect(peerId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+        Assert.That(peerManager.IsBannedForTest(peerId), Is.True, "test setup: three faults must have banned it already");
 
-            await peerManager.RunMaintenanceRoundAsync(token);
+        await peerManager.RunMaintenanceRoundAsync(token);
 
-            Assert.That(peerManager.PeerCount, Is.EqualTo(0), "the static-peer reconnect loop must not dial a banned id");
-        }
+        Assert.That(peerManager.PeerCount, Is.EqualTo(0), "the static-peer reconnect loop must not dial a banned id");
     }
 
     [Test]
@@ -336,29 +308,21 @@ public class PeerBandTests
         SetMatchingStatus(server1, server2, server3, client);
         client.Config.MaxPeerCount = 1;
 
-        await using (client.P2P)
-        await using (server1.P2P)
-        await using (server2.P2P)
-        await using (server3.P2P)
-        {
-            await server1.P2P.StartAsync(token);
-            await server2.P2P.StartAsync(token);
-            await server3.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
+        await using NodeScope nodes = new(client, server1, server2, server3);
+        await nodes.StartAsync(token, server1, server2, server3, client);
 
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
 
-            Task<bool>[] dials =
-            [
-                peerManager.TryAddPeerAsync(LoopbackAddress(server1.P2P), token),
-                peerManager.TryAddPeerAsync(LoopbackAddress(server2.P2P), token),
-                peerManager.TryAddPeerAsync(LoopbackAddress(server3.P2P), token),
-            ];
-            bool[] results = await Task.WhenAll(dials);
+        Task<bool>[] dials =
+        [
+            peerManager.TryAddPeerAsync(LoopbackAddress(server1.P2P), token),
+            peerManager.TryAddPeerAsync(LoopbackAddress(server2.P2P), token),
+            peerManager.TryAddPeerAsync(LoopbackAddress(server3.P2P), token),
+        ];
+        bool[] results = await Task.WhenAll(dials);
 
-            Assert.That(results.Count(r => r), Is.EqualTo(1), "only one of the three concurrent dials may be admitted once MaxPeerCount=1 is reached");
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "the configured maximum must not be overshot by concurrent dials racing the check");
-        }
+        Assert.That(results.Count(r => r), Is.EqualTo(1), "only one of the three concurrent dials may be admitted once MaxPeerCount=1 is reached");
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1), "the configured maximum must not be overshot by concurrent dials racing the check");
     }
 
     [Test]
@@ -375,21 +339,15 @@ public class PeerBandTests
         client.Config.MaxPeerCount = 1;
         client.Config.TargetPeerCount = 1;
 
-        await using (client.P2P)
-        await using (server1.P2P)
-        await using (server2.P2P)
-        {
-            await server1.P2P.StartAsync(token);
-            await server2.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
+        await using NodeScope nodes = new(client, server1, server2);
+        await nodes.StartAsync(token, server1, server2, client);
 
-            client.Config.StaticPeers = $"{LoopbackAddress(server1.P2P)},{LoopbackAddress(server2.P2P)}";
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        client.Config.StaticPeers = $"{LoopbackAddress(server1.P2P)},{LoopbackAddress(server2.P2P)}";
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
 
-            await peerManager.RunMaintenanceRoundAsync(token);
+        await peerManager.RunMaintenanceRoundAsync(token);
 
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a static reconnect must go through the same ceiling reservation as a discovery dial");
-        }
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a static reconnect must go through the same ceiling reservation as a discovery dial");
     }
 
     [Test]
@@ -403,35 +361,31 @@ public class PeerBandTests
         // Distinguishable from our own identify literal, so the field provably carries what the remote sent.
         remote.P2P.IdentifySettingsForTest.AgentVersion = "test-remote/inbound-1.2.3";
 
-        await using (local.P2P)
-        await using (remote.P2P)
+        await using NodeScope nodes = new(local, remote);
+        await nodes.StartAsync(token, remote, local);
+        // Admission failures are logged at Debug only; the watch keeps that log so a failure names why the session was dropped.
+        PeerManager peerManager = watch.Watch(local, remote);
+
+        await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
+
+        await watch.AdmittedAsync("the manager never admitted the session the remote opened", token);
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("the admitted peer does not match"));
+        IPeerDirectory directory = peerManager;
+        PeerRecord record = directory.Peers.Single();
+        using (Assert.EnterMultipleScope())
         {
-            await remote.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            // Admission failures are logged at Debug only; the watch keeps that log so a failure names why the session was dropped.
-            PeerManager peerManager = watch.Watch(local, remote);
-
-            await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
-
-            await watch.AdmittedAsync("the manager never admitted the session the remote opened", token);
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("the admitted peer does not match"));
-            IPeerDirectory directory = peerManager;
-            PeerRecord record = directory.Peers.Single();
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(record.PeerId, Is.EqualTo(remote.P2P.LocalPeerId!.ToString()), () => watch.Describe("the admitted peer does not match"));
-                Assert.That(record.Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the remote dialed us: reporting it as Outbound is the lie this closes"));
-                Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected), () => watch.Describe("the admitted peer does not match"));
-                Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"), () => watch.Describe("the admitted peer does not match"));
-                Assert.That(record.AgentVersion, Is.EqualTo("test-remote/inbound-1.2.3"), () => watch.Describe("the identify agent string the remote advertised, not null and not our own"));
-                // A session the remote opened was never discovered by us, so there is no ENR to
-                // attribute - fabricating one here would be worse than reporting the honest gap.
-                Assert.That(record.Enr, Is.Null, () => watch.Describe("the admitted peer does not match"));
-            }
-
-            Assert.That(directory.TryGetPeer(record.PeerId, out PeerRecord lookedUp), Is.True, () => watch.Describe("the admitted peer does not match"));
-            Assert.That(lookedUp.Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
+            Assert.That(record.PeerId, Is.EqualTo(remote.P2P.LocalPeerId!.ToString()), () => watch.Describe("the admitted peer does not match"));
+            Assert.That(record.Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the remote dialed us: reporting it as Outbound is the lie this closes"));
+            Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected), () => watch.Describe("the admitted peer does not match"));
+            Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"), () => watch.Describe("the admitted peer does not match"));
+            Assert.That(record.AgentVersion, Is.EqualTo("test-remote/inbound-1.2.3"), () => watch.Describe("the identify agent string the remote advertised, not null and not our own"));
+            // A session the remote opened was never discovered by us, so there is no ENR to
+            // attribute - fabricating one here would be worse than reporting the honest gap.
+            Assert.That(record.Enr, Is.Null, () => watch.Describe("the admitted peer does not match"));
         }
+
+        Assert.That(directory.TryGetPeer(record.PeerId, out PeerRecord lookedUp), Is.True, () => watch.Describe("the admitted peer does not match"));
+        Assert.That(lookedUp.Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
     }
 
     [Test]
@@ -446,32 +400,28 @@ public class PeerBandTests
         Node local = CreateNode(logManager: watch.LogManager);
         SetMatchingStatus(remote, local);
 
-        await using (local.P2P)
-        await using (remote.P2P)
-        {
-            await remote.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            PeerManager peerManager = watch.Watch(local, remote);
+        await using NodeScope nodes = new(local, remote);
+        await nodes.StartAsync(token, remote, local);
+        PeerManager peerManager = watch.Watch(local, remote);
 
-            await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
-            await watch.AdmittedAsync("the inbound session was never admitted", token);
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("the admitted peer does not match"));
+        await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
+        await watch.AdmittedAsync("the inbound session was never admitted", token);
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("the admitted peer does not match"));
 
-            // Straight at the libp2p layer: the manager's own dial path short-circuits on "already
-            // connected" before it ever dials, so only a direct dial exercises the session reuse.
-            ISession reused = await local.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(remote.P2P)), token);
+        // Straight at the libp2p layer: the manager's own dial path short-circuits on "already
+        // connected" before it ever dials, so only a direct dial exercises the session reuse.
+        ISession reused = await local.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(remote.P2P)), token);
 
-            Assert.That(local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? established), Is.True, () => watch.Describe("the admitted peer does not match"));
-            Assert.That(reused, Is.SameAs(established), () => watch.Describe("the dial must hand back the session the remote opened, not open a second one"));
-            Assert.That((await local.P2P.GetSessionInfoAsync(reused, token)).Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
-            Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1), () => watch.Describe("one connection, not a second outbound one"));
+        Assert.That(local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? established), Is.True, () => watch.Describe("the admitted peer does not match"));
+        Assert.That(reused, Is.SameAs(established), () => watch.Describe("the dial must hand back the session the remote opened, not open a second one"));
+        Assert.That((await local.P2P.GetSessionInfoAsync(reused, token)).Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
+        Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1), () => watch.Describe("one connection, not a second outbound one"));
 
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True, () => watch.Describe("already connected counts as success"));
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True, () => watch.Describe("already connected counts as success"));
 
-            IPeerDirectory directory = peerManager;
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("one session, one entry"));
-            Assert.That(directory.Peers.Single().Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
-        }
+        IPeerDirectory directory = peerManager;
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("one session, one entry"));
+        Assert.That(directory.Peers.Single().Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
     }
 
     [Test]
@@ -484,31 +434,25 @@ public class PeerBandTests
         SetMatchingStatus(dialed, knocking, local);
         local.Config.MaxPeerCount = 1;
 
-        await using (local.P2P)
-        await using (dialed.P2P)
-        await using (knocking.P2P)
+        await using NodeScope nodes = new(local, dialed, knocking);
+        await nodes.StartAsync(token, dialed, knocking, local);
+        PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
+
+        using BeaconP2P.SessionWatch knockingSessions = local.P2P.WatchSessions(knocking.P2P.LocalPeerId!);
+        await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
+
+        string knockingId = knocking.P2P.LocalPeerId!.ToString();
+        // The knocking side losing its session proves the refusal ran to its disconnect, so the
+        // record check below cannot pass merely by looking before the refusal happened.
+        await WaitUntilAsync(() => knocking.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
+        await WaitUntilAsync(() => local.P2P.SessionCountForTest == 1, token, "the refused session was not torn down");
+        using (Assert.EnterMultipleScope())
         {
-            await dialed.P2P.StartAsync(token);
-            await knocking.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
-
-            using BeaconP2P.SessionWatch knockingSessions = local.P2P.WatchSessions(knocking.P2P.LocalPeerId!);
-            await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
-
-            string knockingId = knocking.P2P.LocalPeerId!.ToString();
-            // The knocking side losing its session proves the refusal ran to its disconnect, so the
-            // record check below cannot pass merely by looking before the refusal happened.
-            await WaitUntilAsync(() => knocking.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
-            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 1, token, "the refused session was not torn down");
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(knockingSessions.Opened, Is.EqualTo(1), "the knocking session reached this node, so the refusal path ran");
-                Assert.That(peerManager.PeerCount, Is.EqualTo(1), "an inbound session must not take the pool past MaxPeerCount");
-                Assert.That(peerManager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), Is.False,
-                    "a never-admitted id must not get a record: distinct knockers at the ceiling would otherwise evict real peers' history");
-            }
+            Assert.That(knockingSessions.Opened, Is.EqualTo(1), "the knocking session reached this node, so the refusal path ran");
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "an inbound session must not take the pool past MaxPeerCount");
+            Assert.That(peerManager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), Is.False,
+                "a never-admitted id must not get a record: distinct knockers at the ceiling would otherwise evict real peers' history");
         }
     }
 
@@ -523,26 +467,20 @@ public class PeerBandTests
         local.Config.MaxPeerCount = 1;
         local.Config.FaultDisconnectsBeforeBan = 2;
 
-        await using (local.P2P)
-        await using (dialed.P2P)
-        await using (knocking.P2P)
-        {
-            await dialed.P2P.StartAsync(token);
-            await knocking.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
-            string knockingId = knocking.P2P.LocalPeerId!.ToString();
-            peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
+        await using NodeScope nodes = new(local, dialed, knocking);
+        await nodes.StartAsync(token, dialed, knocking, local);
+        PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+        string knockingId = knocking.P2P.LocalPeerId!.ToString();
+        peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
 
-            await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
-            await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId).LastDisconnectReason == "TooManyPeers", token, "the refusal was never recorded");
+        await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
+        await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId).LastDisconnectReason == "TooManyPeers", token, "the refusal was never recorded");
 
-            // Being turned away while we are full says nothing about the peer's behaviour: the fault
-            // before it and the fault after it must still add up to the threshold of two.
-            peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
-            Assert.That(peerManager.IsBannedForTest(knockingId), Is.True);
-        }
+        // Being turned away while we are full says nothing about the peer's behaviour: the fault
+        // before it and the fault after it must still add up to the threshold of two.
+        peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+        Assert.That(peerManager.IsBannedForTest(knockingId), Is.True);
     }
 
     [Test]
@@ -553,25 +491,21 @@ public class PeerBandTests
         Node local = CreateNode();
         SetMatchingStatus(banned, local);
 
-        await using (local.P2P)
-        await using (banned.P2P)
-        {
-            await banned.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+        await using NodeScope nodes = new(local, banned);
+        await nodes.StartAsync(token, banned, local);
+        PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
 
-            string bannedId = banned.P2P.LocalPeerId!.ToString();
-            peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
-            peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
-            peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
-            Assert.That(peerManager.IsBannedForTest(bannedId), Is.True, "test setup: three faults must have banned it already");
+        string bannedId = banned.P2P.LocalPeerId!.ToString();
+        peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+        peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+        peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+        Assert.That(peerManager.IsBannedForTest(bannedId), Is.True, "test setup: three faults must have banned it already");
 
-            await PeerSessionNodes.DialToBeRefusedAsync(banned.P2P, local.P2P, token);
+        await PeerSessionNodes.DialToBeRefusedAsync(banned.P2P, local.P2P, token);
 
-            await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == bannedId).LastDisconnectReason == "Banned", token, "the refusal was never recorded");
-            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
-            Assert.That(peerManager.PeerCount, Is.EqualTo(0), "a ban must hold against a peer that connects to us, not only against our own dials");
-        }
+        await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == bannedId).LastDisconnectReason == "Banned", token, "the refusal was never recorded");
+        await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
+        Assert.That(peerManager.PeerCount, Is.EqualTo(0), "a ban must hold against a peer that connects to us, not only against our own dials");
     }
 
     [Test]
@@ -583,21 +517,17 @@ public class PeerBandTests
         Node local = CreateNode();
         SetMatchingStatus(local);
 
-        await using (local.P2P)
-        await using (remote.P2P)
-        {
-            await remote.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+        await using NodeScope nodes = new(local, remote);
+        await nodes.StartAsync(token, remote, local);
+        PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
 
-            await PeerSessionNodes.DialToBeRefusedAsync(remote.P2P, local.P2P, token);
+        await PeerSessionNodes.DialToBeRefusedAsync(remote.P2P, local.P2P, token);
 
-            // Both status versions were refused over the open session, so the admission provably threw
-            // after the session existed: a count of zero below cannot be the pre-connect zero.
-            await PeerSessionNodes.WaitUntilAsync(() => refusing.Requests >= 2, "the status exchange never reached the remote", token);
-            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
-            Assert.That(peerManager.PeerCount, Is.EqualTo(0));
-        }
+        // Both status versions were refused over the open session, so the admission provably threw
+        // after the session existed: a count of zero below cannot be the pre-connect zero.
+        await PeerSessionNodes.WaitUntilAsync(() => refusing.Requests >= 2, "the status exchange never reached the remote", token);
+        await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
+        Assert.That(peerManager.PeerCount, Is.EqualTo(0));
     }
 
     [Test]
@@ -609,26 +539,22 @@ public class PeerBandTests
         Node local = CreateNode();
         SetMatchingStatus(local);
 
-        await using (local.P2P)
-        await using (remote.P2P)
-        {
-            await remote.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            ManualTimestamper clock = new();
-            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: clock);
+        await using NodeScope nodes = new(local, remote);
+        await nodes.StartAsync(token, remote, local);
+        ManualTimestamper clock = new();
+        PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: clock);
 
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
 
-            Assert.That(refusing.Requests, Is.GreaterThanOrEqualTo(2), "the status exchange never reached the remote");
-            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
-            Assert.That(peerManager.PeerCount, Is.EqualTo(0));
-            int requests = refusing.Requests;
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
-            Assert.That(refusing.Requests, Is.EqualTo(requests), "a failed endpoint is not immediately dialled again");
-            clock.Add(TimeSpan.FromMinutes(15));
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
-            Assert.That(refusing.Requests, Is.GreaterThan(requests), "an expired backoff permits another dial");
-        }
+        Assert.That(refusing.Requests, Is.GreaterThanOrEqualTo(2), "the status exchange never reached the remote");
+        await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
+        Assert.That(peerManager.PeerCount, Is.EqualTo(0));
+        int requests = refusing.Requests;
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
+        Assert.That(refusing.Requests, Is.EqualTo(requests), "a failed endpoint is not immediately dialled again");
+        clock.Add(TimeSpan.FromMinutes(15));
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
+        Assert.That(refusing.Requests, Is.GreaterThan(requests), "an expired backoff permits another dial");
     }
 
     /// <summary>Polls a condition with a short cadence; the caller's token bounds the wait.</summary>
@@ -670,24 +596,20 @@ public class PeerBandTests
         Node client = CreateNode();
         SetMatchingStatus(server, client);
 
-        await using (client.P2P)
-        await using (server.P2P)
-        {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
+        await using NodeScope nodes = new(client, server);
+        await nodes.StartAsync(token, server, client);
 
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
-            client.Config.TargetPeerCount = 1;
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
+        client.Config.TargetPeerCount = 1;
 
-            using CancellationTokenSource shortLived = new(TimeSpan.FromMilliseconds(300));
-            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, shortLived.Token);
+        using CancellationTokenSource shortLived = new(TimeSpan.FromMilliseconds(300));
+        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, shortLived.Token);
 
-            // CatchAsync, not ThrowsAsync: Task.Delay throws the derived TaskCanceledException, and
-            // ThrowsAsync requires an exact type match.
-            Assert.CatchAsync<OperationCanceledException>(async () => await peerManager.WaitForAdmissionCapacityAsync(linked.Token),
-                "at the target watermark the wait must not return on its own");
-        }
+        // CatchAsync, not ThrowsAsync: Task.Delay throws the derived TaskCanceledException, and
+        // ThrowsAsync requires an exact type match.
+        Assert.CatchAsync<OperationCanceledException>(async () => await peerManager.WaitForAdmissionCapacityAsync(linked.Token),
+            "at the target watermark the wait must not return on its own");
     }
 
     [Test]
@@ -713,22 +635,18 @@ public class PeerBandTests
         Node client = CreateNode();
         SetMatchingStatus(server, client);
 
-        await using (client.P2P)
-        await using (server.P2P)
-        {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
+        await using NodeScope nodes = new(client, server);
+        await nodes.StartAsync(token, server, client);
 
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
-            IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
+        IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
 
-            long before = FailureCount("ProtocolViolation");
-            peer.ReportFailure(PeerFailureReason.ProtocolViolation, "some unbounded detail nobody should turn into a label: " + Guid.NewGuid());
-            long after = FailureCount("ProtocolViolation");
+        long before = FailureCount("ProtocolViolation");
+        peer.ReportFailure(PeerFailureReason.ProtocolViolation, "some unbounded detail nobody should turn into a label: " + Guid.NewGuid());
+        long after = FailureCount("ProtocolViolation");
 
-            Assert.That(after - before, Is.EqualTo(1), "the closed-cardinality reason, not the free-text detail, is the metric label");
-        }
+        Assert.That(after - before, Is.EqualTo(1), "the closed-cardinality reason, not the free-text detail, is the metric label");
     }
 
     [Test]
@@ -741,39 +659,35 @@ public class PeerBandTests
         server.P2P.IdentifySettingsForTest.AgentVersion = "test-remote/outbound-4.5.6";
         const string discoveredEnr = "enr:-discovered-test-record";
 
-        await using (client.P2P)
-        await using (server.P2P)
+        await using NodeScope nodes = new(client, server);
+        await nodes.StartAsync(token, server, client);
+
+        string address = LoopbackAddress(server.P2P);
+        string expectedPeerId = PeerManager.ExtractPeerIdForTest(address);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        // Passed the way the discovery dial loop passes it (see BeaconSyncOrchestrator.DialCandidateAsync),
+        // not the plain two-arg overload a static-peer reconnect uses.
+        Assert.That(await peerManager.TryAddPeerAsync(address, token, discoveredEnr), Is.True);
+
+        IPeerDirectory directory = peerManager;
+        PeerRecord record = directory.Peers.Single();
+        using (Assert.EnterMultipleScope())
         {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
-
-            string address = LoopbackAddress(server.P2P);
-            string expectedPeerId = PeerManager.ExtractPeerIdForTest(address);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            // Passed the way the discovery dial loop passes it (see BeaconSyncOrchestrator.DialCandidateAsync),
-            // not the plain two-arg overload a static-peer reconnect uses.
-            Assert.That(await peerManager.TryAddPeerAsync(address, token, discoveredEnr), Is.True);
-
-            IPeerDirectory directory = peerManager;
-            PeerRecord record = directory.Peers.Single();
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(record.PeerId, Is.EqualTo(expectedPeerId));
-                Assert.That(record.Direction, Is.EqualTo(PeerDirection.Outbound));
-                Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected));
-                // Not just "non-empty": must be the real loopback remote address, not a placeholder
-                // or the pre-connect dial address (which uses 0.0.0.0, not 127.0.0.1, before rewrite).
-                Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"));
-                Assert.That(record.AgentVersion, Is.EqualTo("test-remote/outbound-4.5.6"), "the identify agent string the server advertised, not null and not our own");
-                // The Beacon API's node/peers endpoint reads this straight off the record; dropping it
-                // here silently regresses that endpoint back to reporting null for a discovered peer.
-                Assert.That(record.Enr, Is.EqualTo(discoveredEnr));
-            }
-
-            Assert.That(directory.TryGetPeer(expectedPeerId, out PeerRecord lookedUp), Is.True);
-            Assert.That(lookedUp.PeerId, Is.EqualTo(expectedPeerId));
-            Assert.That(lookedUp.Enr, Is.EqualTo(discoveredEnr));
+            Assert.That(record.PeerId, Is.EqualTo(expectedPeerId));
+            Assert.That(record.Direction, Is.EqualTo(PeerDirection.Outbound));
+            Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected));
+            // Not just "non-empty": must be the real loopback remote address, not a placeholder
+            // or the pre-connect dial address (which uses 0.0.0.0, not 127.0.0.1, before rewrite).
+            Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"));
+            Assert.That(record.AgentVersion, Is.EqualTo("test-remote/outbound-4.5.6"), "the identify agent string the server advertised, not null and not our own");
+            // The Beacon API's node/peers endpoint reads this straight off the record; dropping it
+            // here silently regresses that endpoint back to reporting null for a discovered peer.
+            Assert.That(record.Enr, Is.EqualTo(discoveredEnr));
         }
+
+        Assert.That(directory.TryGetPeer(expectedPeerId, out PeerRecord lookedUp), Is.True);
+        Assert.That(lookedUp.PeerId, Is.EqualTo(expectedPeerId));
+        Assert.That(lookedUp.Enr, Is.EqualTo(discoveredEnr));
     }
 
     [Test]
@@ -861,53 +775,78 @@ public class PeerBandTests
         Node client = CreateNode();
         SetMatchingStatus(server, client);
 
-        await using (client.P2P)
-        await using (server.P2P)
+        await using NodeScope nodes = new(client, server);
+        await nodes.StartAsync(token, server, client);
+
+        string address = LoopbackAddress(server.P2P);
+        client.Config.StaticPeers = address;
+        ManualTimestamper time = new();
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, timestamper: time);
+        string peerId = PeerManager.ExtractPeerIdForTest(address);
+        for (int i = 0; i < client.Config.FaultDisconnectsBeforeBan; i++)
         {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
-
-            string address = LoopbackAddress(server.P2P);
-            client.Config.StaticPeers = address;
-            ManualTimestamper time = new();
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, timestamper: time);
-            string peerId = PeerManager.ExtractPeerIdForTest(address);
-            for (int i = 0; i < client.Config.FaultDisconnectsBeforeBan; i++)
-            {
-                peerManager.RecordDisconnect(peerId, 0, 0, GoodbyeReason.Fault, "invalid response");
-            }
-
-            await peerManager.RunMaintenanceRoundAsync(token);
-            Assert.That(peerManager.PeerCount, Is.EqualTo(0), "test setup: the ban must hold before it ends");
-
-            time.Add(TimeSpan.FromMinutes(client.Config.PeerBanMinutes));
-            await peerManager.RunMaintenanceRoundAsync(token);
-
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a peer whose ban has ended is admitted like any other");
+            peerManager.RecordDisconnect(peerId, 0, 0, GoodbyeReason.Fault, "invalid response");
         }
+
+        await peerManager.RunMaintenanceRoundAsync(token);
+        Assert.That(peerManager.PeerCount, Is.EqualTo(0), "test setup: the ban must hold before it ends");
+
+        time.Add(TimeSpan.FromMinutes(client.Config.PeerBanMinutes));
+        await peerManager.RunMaintenanceRoundAsync(token);
+
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a peer whose ban has ended is admitted like any other");
     }
 
-    [Test]
-    public void The_ban_table_stays_within_its_cap_when_every_entry_is_banned()
-    {
-        ManualTimestamper time = new();
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 1, time);
+    public enum BanTableScenario { AllBanned, ActiveBan, ExpiredBan, NoBans }
 
+    [TestCase(BanTableScenario.AllBanned, TestName = "The_ban_table_stays_within_its_cap_when_every_entry_is_banned")]
+    [TestCase(BanTableScenario.ActiveBan, TestName = "A_full_table_evicts_the_oldest_entry_that_is_not_banned_before_any_active_ban")]
+    [TestCase(BanTableScenario.ExpiredBan, TestName = "A_full_table_treats_an_expired_ban_as_an_ordinary_entry")]
+    [TestCase(BanTableScenario.NoBans, TestName = "The_ban_diagnostics_table_evicts_the_oldest_non_banned_entry_once_over_capacity")]
+    public void A_full_ban_table_evicts_the_oldest_entry_without_an_active_ban(BanTableScenario scenario)
+    {
         const int capacity = 8192;
+        ManualTimestamper time = new();
+        int threshold = scenario switch { BanTableScenario.AllBanned => 1, BanTableScenario.NoBans => 1000, _ => 2 };
+        PeerManager manager = NewManagerWithoutSessions(threshold, time);
+        string reason = scenario == BanTableScenario.NoBans ? "repeated failures" : "invalid response";
         for (int i = 0; i < capacity; i++)
         {
-            manager.RecordDisconnect($"peer-{i}", 0, 0, GoodbyeReason.Fault, "invalid response");
-            time.Add(TimeSpan.FromMilliseconds(1));
+            manager.RecordDisconnect($"peer-{i}", 0, 0, GoodbyeReason.Fault, reason);
+            if (i == 0 && scenario is BanTableScenario.ActiveBan or BanTableScenario.ExpiredBan)
+            {
+                manager.RecordDisconnect("peer-0", 0, 0, GoodbyeReason.Fault, reason);
+                if (scenario == BanTableScenario.ExpiredBan)
+                {
+                    time.Add(TimeSpan.FromMinutes(new BeaconChainConfig().PeerBanMinutes));
+                }
+            }
+            if (scenario == BanTableScenario.AllBanned) time.Add(TimeSpan.FromMilliseconds(1));
         }
 
-        manager.RecordDisconnect("peer-new", 0, 0, GoodbyeReason.Fault, "invalid response");
+        Assert.That(manager.GetPeerDiagnostics().Count, Is.EqualTo(capacity));
+        manager.RecordDisconnect("peer-new", 0, 0, GoodbyeReason.Fault, reason);
 
         HashSet<string> remaining = [.. manager.GetPeerDiagnostics().Select(d => d.PeerId)];
+        bool firstBanIsActive = scenario == BanTableScenario.ActiveBan;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(remaining.Count, Is.EqualTo(capacity), "a table of active bans must not grow past the cap");
-            Assert.That(remaining.Contains("peer-0"), Is.False, "the ban closest to running out is the one that goes");
+            Assert.That(remaining.Count, Is.EqualTo(capacity), scenario == BanTableScenario.AllBanned ? "a table of active bans must not grow past the cap" : null);
+            Assert.That(remaining.Contains("peer-0"), Is.EqualTo(firstBanIsActive), scenario switch
+            {
+                BanTableScenario.AllBanned => "the ban closest to running out is the one that goes",
+                BanTableScenario.ExpiredBan => "a ban that has run out protects nothing, and this entry is the oldest",
+                BanTableScenario.NoBans => "the oldest tracked non-banned id must be the one evicted",
+                _ => "an active ban protects the oldest entry from eviction",
+            });
+            Assert.That(remaining.Contains("peer-1"), Is.EqualTo(!firstBanIsActive), scenario switch
+            {
+                BanTableScenario.ActiveBan => "the oldest entry that is not banned goes instead",
+                BanTableScenario.NoBans => "only the oldest entry is evicted, not an arbitrary one",
+                _ => null,
+            });
             Assert.That(remaining.Contains("peer-new"), Is.True);
+            if (firstBanIsActive) Assert.That(manager.IsBannedForTest("peer-0"), Is.True, "a flood of new ids must not push an active ban out of the table");
         }
     }
 
@@ -941,77 +880,29 @@ public class PeerBandTests
         Assert.That(manager.IsBannedForTest("peerA"), Is.EqualTo(expectedBanned));
     }
 
-    [Test]
-    public void A_full_table_evicts_the_oldest_entry_that_is_not_banned_before_any_active_ban()
+    private sealed class NodeScope(params Node[] nodes) : IAsyncDisposable
     {
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 2);
-        manager.RecordDisconnect("peer-0", 0, 0, GoodbyeReason.Fault, "invalid response");
-        manager.RecordDisconnect("peer-0", 0, 0, GoodbyeReason.Fault, "invalid response");
-        for (int i = 1; i < 8192; i++)
+        public async Task StartAsync(CancellationToken token, params Node[] startupOrder)
         {
-            manager.RecordDisconnect($"peer-{i}", 0, 0, GoodbyeReason.Fault, "invalid response");
+            foreach (Node node in startupOrder)
+            {
+                await node.P2P.StartAsync(token);
+            }
         }
 
-        manager.RecordDisconnect("peer-new", 0, 0, GoodbyeReason.Fault, "invalid response");
+        public ValueTask DisposeAsync() => DisposeAsync(nodes.Length - 1);
 
-        HashSet<string> remaining = [.. manager.GetPeerDiagnostics().Select(d => d.PeerId)];
-        using (Assert.EnterMultipleScope())
+        private async ValueTask DisposeAsync(int index)
         {
-            Assert.That(manager.IsBannedForTest("peer-0"), Is.True, "a flood of new ids must not push an active ban out of the table");
-            Assert.That(remaining.Contains("peer-1"), Is.False, "the oldest entry that is not banned goes instead");
-            Assert.That(remaining.Count, Is.EqualTo(8192));
-        }
-    }
-
-    [Test]
-    public void A_full_table_treats_an_expired_ban_as_an_ordinary_entry()
-    {
-        ManualTimestamper time = new();
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 2, time);
-        manager.RecordDisconnect("peer-0", 0, 0, GoodbyeReason.Fault, "invalid response");
-        manager.RecordDisconnect("peer-0", 0, 0, GoodbyeReason.Fault, "invalid response");
-        time.Add(TimeSpan.FromMinutes(new BeaconChainConfig().PeerBanMinutes));
-        for (int i = 1; i < 8192; i++)
-        {
-            manager.RecordDisconnect($"peer-{i}", 0, 0, GoodbyeReason.Fault, "invalid response");
-        }
-
-        manager.RecordDisconnect("peer-new", 0, 0, GoodbyeReason.Fault, "invalid response");
-
-        HashSet<string> remaining = [.. manager.GetPeerDiagnostics().Select(d => d.PeerId)];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(remaining.Contains("peer-0"), Is.False, "a ban that has run out protects nothing, and this entry is the oldest");
-            Assert.That(remaining.Contains("peer-1"), Is.True);
-        }
-    }
-
-    [Test]
-    public void The_ban_diagnostics_table_evicts_the_oldest_non_banned_entry_once_over_capacity()
-    {
-        // A real (deterministic) bound, not "some arbitrary entry from undefined dictionary order":
-        // fill the table to its cap, then confirm specifically the FIRST-created id is the one gone,
-        // and every later one survived.
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 1000);
-
-        const int capacity = 8192;
-        for (int i = 0; i < capacity; i++)
-        {
-            manager.RecordDisconnect($"peer-{i}", 0, 0, GoodbyeReason.Fault, "repeated failures");
-        }
-
-        Assert.That(manager.GetPeerDiagnostics().Count, Is.EqualTo(capacity));
-
-        // One more entry pushes the table over its cap and must evict the oldest (peer-0).
-        manager.RecordDisconnect("peer-new", 0, 0, GoodbyeReason.Fault, "repeated failures");
-
-        HashSet<string> remaining = [.. manager.GetPeerDiagnostics().Select(d => d.PeerId)];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(remaining.Contains("peer-0"), Is.False, "the oldest tracked non-banned id must be the one evicted");
-            Assert.That(remaining.Contains("peer-1"), Is.True, "only the oldest entry is evicted, not an arbitrary one");
-            Assert.That(remaining.Contains("peer-new"), Is.True);
-            Assert.That(remaining.Count, Is.EqualTo(capacity));
+            if (index < 0) return;
+            try
+            {
+                await nodes[index].P2P.DisposeAsync();
+            }
+            finally
+            {
+                await DisposeAsync(index - 1);
+            }
         }
     }
 
