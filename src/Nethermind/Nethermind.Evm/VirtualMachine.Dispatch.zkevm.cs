@@ -26,6 +26,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public VirtualMachine<TGasPolicy> Vm;
 
         /// <summary>The running frame's memory, which handlers that stay in line reach without going through <see cref="Vm"/>.</summary>
+        /// <remarks>
+        /// Captured as the chain starts, so it holds for that frame only: a handler that changes the running frame must
+        /// leave the chain, as every call, create and halt does, or refresh this field.
+        /// </remarks>
         public ref EvmPooledMemory Memory;
 
         /// <summary>Where the chain stopped. Written only as the chain leaves.</summary>
@@ -113,10 +117,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <summary>The guest's dispatch handlers, each of which ends in a tail call through the opcode table.</summary>
     /// <remarks>
     /// See the host's <c>RawCalliHelper</c> in <c>VirtualMachine.Dispatch.std.cs</c> for the name. The handlers take eight
-    /// arguments, all of which RV64 passes in registers: the remaining execution gas, the stack head, the table, the
-    /// bytecode and the stack's bottom slot ride from handler to handler, so a handler whose body stays inline neither
-    /// loads nor stores them. Most handlers address a slot, while only jumps read the code length, so the bottom slot
-    /// rides in its place. x64 passes only four (Windows) or six (SysV) in registers, which is why the host keeps five.
+    /// arguments, all of which RV64 passes in registers: the remaining execution gas, the instruction's address, the
+    /// stack head, the table, the bytecode and the stack's bottom slot ride from handler to handler, so a handler whose
+    /// body stays inline neither loads nor stores them. Jumps read the code length from the stack. x64 passes only four (Windows) or six (SysV) in registers, which is why the host keeps five.
     /// <para>
     /// A checked body pays its fixed cost from the carried gas and runs on a copy of the stack that holds the carried
     /// head and bytecode, and dispatch moves the head by the body's declared growth, so neither reaches memory on the

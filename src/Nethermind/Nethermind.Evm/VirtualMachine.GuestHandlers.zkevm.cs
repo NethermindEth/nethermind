@@ -48,22 +48,60 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         lookup[(int)Instruction.PUSH1] = AsTableEntry(&RawCalliHelper.ExecutePush1);
         lookup[(int)Instruction.DUP1] = AsTableEntry(&RawCalliHelper.ExecuteDup1);
+        lookup[(int)Instruction.POP] = AsTableEntry(&RawCalliHelper.ExecutePop);
         lookup[(int)Instruction.ISZERO] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.IsZeroCondition>);
         lookup[(int)Instruction.EQ] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.EqualCondition>);
         lookup[(int)Instruction.LT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.LessThanCondition>);
         lookup[(int)Instruction.GT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.GreaterThanCondition>);
+        lookup[(int)Instruction.SLT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.SignedLessThanCondition>);
+        lookup[(int)Instruction.SGT] = AsTableEntry(&RawCalliHelper.ExecuteCondition<RawCalliHelper.SignedGreaterThanCondition>);
         lookup[(int)Instruction.PUSH2] = AsTableEntry(&RawCalliHelper.ExecutePush2);
+        lookup[(int)Instruction.PUSH3] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op3>);
+        lookup[(int)Instruction.PUSH4] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op4>);
+        lookup[(int)Instruction.PUSH5] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op5>);
+        lookup[(int)Instruction.PUSH6] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op6>);
+        lookup[(int)Instruction.PUSH7] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op7>);
+        lookup[(int)Instruction.PUSH8] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op8>);
+        lookup[(int)Instruction.PUSH9] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op9>);
+        lookup[(int)Instruction.PUSH10] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op10>);
+        lookup[(int)Instruction.PUSH11] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op11>);
+        lookup[(int)Instruction.PUSH12] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op12>);
+        lookup[(int)Instruction.PUSH13] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op13>);
+        lookup[(int)Instruction.PUSH14] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op14>);
+        lookup[(int)Instruction.PUSH15] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op15>);
+        lookup[(int)Instruction.PUSH16] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op16>);
+        lookup[(int)Instruction.PUSH17] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op17>);
+        lookup[(int)Instruction.PUSH18] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op18>);
+        lookup[(int)Instruction.PUSH19] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op19>);
+        lookup[(int)Instruction.PUSH20] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op20>);
+        lookup[(int)Instruction.PUSH21] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op21>);
+        lookup[(int)Instruction.PUSH22] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op22>);
+        lookup[(int)Instruction.PUSH23] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op23>);
+        lookup[(int)Instruction.PUSH24] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op24>);
+        lookup[(int)Instruction.PUSH25] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op25>);
+        lookup[(int)Instruction.PUSH26] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op26>);
+        lookup[(int)Instruction.PUSH27] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op27>);
+        lookup[(int)Instruction.PUSH28] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op28>);
+        lookup[(int)Instruction.PUSH29] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op29>);
+        lookup[(int)Instruction.PUSH30] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op30>);
+        lookup[(int)Instruction.PUSH31] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op31>);
+        lookup[(int)Instruction.PUSH32] = AsTableEntry(&RawCalliHelper.ExecutePush<EvmInstructions.Op32>);
         lookup[(int)Instruction.JUMP] = AsTableEntry(&RawCalliHelper.ExecuteJumpToAnalyzedDestination);
         lookup[(int)Instruction.JUMPI] = AsTableEntry(&RawCalliHelper.ExecuteJumpIfToAnalyzedDestination);
         lookup[(int)Instruction.MLOAD] = AsTableEntry(&RawCalliHelper.ExecuteMLoadFromActiveMemory);
-        lookup[(int)Instruction.MSTORE] = AsTableEntry(&RawCalliHelper.ExecuteMStoreWithoutClearing);
+        lookup[(int)Instruction.MSTORE] = AsTableEntry(&RawCalliHelper.ExecuteMStoreInsideBacking);
         lookup[(int)Instruction.CALLDATALOAD] = AsTableEntry(&RawCalliHelper.ExecuteCallDataLoadOfWholeWord);
+        lookup[(int)Instruction.CALLDATASIZE] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.CallDataSizeValue>);
+        if (spec.IncludePush0Instruction)
+            lookup[(int)Instruction.PUSH0] = AsTableEntry(&RawCalliHelper.ExecutePushValue<RawCalliHelper.ZeroValue>);
         lookup[(int)Instruction.KECCAK256] = AsTableEntry(&RawCalliHelper.ExecuteKeccak256OfActiveMemory);
         lookup[(int)Instruction.ADD] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AddOperation>);
         lookup[(int)Instruction.SUB] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SubtractOperation>);
         lookup[(int)Instruction.AND] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.AndOperation>);
         lookup[(int)Instruction.OR] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.OrOperation>);
         lookup[(int)Instruction.XOR] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.XorOperation>);
+        lookup[(int)Instruction.MUL] = AsTableEntry(&RawCalliHelper.ExecuteMul);
+        lookup[(int)Instruction.DIV] = AsTableEntry(&RawCalliHelper.ExecuteDiv);
         lookup[(int)Instruction.DUP2] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op2>);
         lookup[(int)Instruction.DUP3] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op3>);
         lookup[(int)Instruction.DUP4] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op4>);
@@ -165,12 +203,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // Addressed off the head: keeps the handler frameless.
                 ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head));
                 ulong condition = TCondition.Evaluate(ref end) ? 1UL : 0UL;
+                // PUSH2, its two immediates and JUMPI; the first is the opcode an unfused comparison dispatches on.
+                ref byte opcode = ref ip;
+                uint branch = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 1));
                 // The branch's PUSH2 overflows a stack the comparison leaves full, which only ISZERO can.
                 if (TCondition.Inputs > 1 || head < EvmStack.MaxStackSize - 1)
                 {
-                    // PUSH2, its two immediates and JUMPI.
-                    ref byte opcode = ref ip;
-                    uint branch = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 1));
                     if ((byte)branch == (byte)Instruction.PUSH2 && branch >> 24 == (byte)Instruction.JUMPI)
                     {
                         // The comparison is charged; the fused step charges the rest.
@@ -201,8 +239,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     // An ISZERO between the comparison and the branch only inverts what the branch tests.
                     else if ((byte)branch == (byte)Instruction.ISZERO)
                     {
-                        branch = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 2));
-                        if ((byte)branch == (byte)Instruction.PUSH2 && branch >> 24 == (byte)Instruction.JUMPI)
+                        uint inverted = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 2));
+                        if ((byte)inverted == (byte)Instruction.PUSH2 && inverted >> 24 == (byte)Instruction.JUMPI)
                         {
                             if (condition != 0)
                             {
@@ -218,7 +256,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             else
                             {
                                 ulong takenGas = 2 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-                                nuint destination = ReadBigEndianUInt16(branch >> 8);
+                                nuint destination = ReadBigEndianUInt16(inverted >> 8);
                                 if (gas >= takenGas && destination < (nuint)stack.CodeLength && stack.IsAnalyzedJumpDestination(destination))
                                 {
                                     head -= TCondition.Inputs;
@@ -239,7 +277,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Unsafe.Add(ref end, result + 3) = 0;
                 head -= TCondition.Inputs - 1;
                 ip = ref Unsafe.Add(ref ip, 1);
-                goto Dispatch;
+                nint unfused = handlers[(byte)branch];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, unfused);
             }
 
             nint shared = TCondition.SharedHandler;
@@ -319,6 +358,32 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static bool Evaluate(ref ulong end) => IsBelow(ref end, -2 * LimbsPerWord, -LimbsPerWord);
         }
 
+        /// <summary>SLT: whether the top word is below the one under it, both as two's complement.</summary>
+        internal readonly struct SignedLessThanCondition : IStackCondition
+        {
+            public static int Inputs => 2;
+
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<Math2Opcode<EvmInstructions.OpSLt, OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static bool Evaluate(ref ulong end) => IsSignedBelow(ref end, -LimbsPerWord, -2 * LimbsPerWord);
+        }
+
+        /// <summary>SGT: whether the top word is above the one under it, both as two's complement.</summary>
+        internal readonly struct SignedGreaterThanCondition : IStackCondition
+        {
+            public static int Inputs => 2;
+
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<Math2Opcode<EvmInstructions.OpSGt, OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static bool Evaluate(ref ulong end) => IsSignedBelow(ref end, -2 * LimbsPerWord, -LimbsPerWord);
+        }
+
         /// <summary>A very-low-cost operation on the top two words, with both addressed off the head.</summary>
         /// <remarks>A short stack or gas runs the shared handler of the operation instead, which faults on it.</remarks>
         [SkipLocalsInit]
@@ -369,16 +434,39 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                 &ExecuteOpcode<Math2Opcode<EvmInstructions.OpAdd, OffFlag>, OffFlag, OffFlag, OnFlag>;
 
+            /// <remarks>
+            /// Nearly every addition adds a word below 2^64 - an offset, a length, a count - whose upper limbs add nothing,
+            /// so only a carry out of the low limb, which is rare, reaches the limbs above it.
+            /// </remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end)
             {
                 ulong left = Unsafe.Add(ref end, -8);
                 ulong sum = left + Unsafe.Add(ref end, -4);
-                ulong carry = sum < left ? 1UL : 0UL;
                 Unsafe.Add(ref end, -8) = sum;
+                if ((Unsafe.Add(ref end, -3) | Unsafe.Add(ref end, -2) | Unsafe.Add(ref end, -1)) == 0)
+                {
+                    if (sum < left) IncrementUpperLimbs(ref end);
+                    return;
+                }
+
+                ulong carry = sum < left ? 1UL : 0UL;
                 carry = AddLimb(ref end, -7, carry);
                 carry = AddLimb(ref end, -6, carry);
                 Unsafe.Add(ref end, -5) = Unsafe.Add(ref end, -5) + Unsafe.Add(ref end, -1) + carry;
+            }
+
+            /// <summary>Adds a carry into the second word's limbs above its low one.</summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static void IncrementUpperLimbs(ref ulong end)
+            {
+                ulong limb = Unsafe.Add(ref end, -7) + 1;
+                Unsafe.Add(ref end, -7) = limb;
+                if (limb != 0) return;
+                limb = Unsafe.Add(ref end, -6) + 1;
+                Unsafe.Add(ref end, -6) = limb;
+                if (limb != 0) return;
+                Unsafe.Add(ref end, -5) = Unsafe.Add(ref end, -5) + 1;
             }
 
             /// <summary>Adds the top word's limb and <paramref name="carry"/> into the second word's limb at <paramref name="limb"/>, and returns the carry out.</summary>
@@ -402,6 +490,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                 &ExecuteOpcode<Math2Opcode<EvmInstructions.OpSub, OffFlag>, OffFlag, OffFlag, OnFlag>;
 
+            /// <remarks>
+            /// Most subtractions take a word below 2^64 away, whose upper limbs take nothing: the minuend's carry over,
+            /// less a borrow out of the low limb, which only rarely reaches past the next one.
+            /// </remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end)
             {
@@ -409,6 +501,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong subtrahend = Unsafe.Add(ref end, -8);
                 ulong borrow = minuend < subtrahend ? 1UL : 0UL;
                 Unsafe.Add(ref end, -8) = minuend - subtrahend;
+                if ((Unsafe.Add(ref end, -7) | Unsafe.Add(ref end, -6) | Unsafe.Add(ref end, -5)) == 0)
+                {
+                    ulong upper = Unsafe.Add(ref end, -3);
+                    Unsafe.Add(ref end, -7) = upper - borrow;
+                    if (upper >= borrow)
+                    {
+                        Unsafe.Add(ref end, -6) = Unsafe.Add(ref end, -2);
+                        Unsafe.Add(ref end, -5) = Unsafe.Add(ref end, -1);
+                        return;
+                    }
+
+                    // The borrow went through a zero limb, which leaves it for the limbs above.
+                    upper = Unsafe.Add(ref end, -2);
+                    Unsafe.Add(ref end, -6) = upper - 1;
+                    Unsafe.Add(ref end, -5) = Unsafe.Add(ref end, -1) - (upper == 0 ? 1UL : 0UL);
+                    return;
+                }
+
                 borrow = SubtractLimb(ref end, -7, borrow);
                 borrow = SubtractLimb(ref end, -6, borrow);
                 Unsafe.Add(ref end, -5) = Unsafe.Add(ref end, -1) - Unsafe.Add(ref end, -5) - borrow;
@@ -502,12 +612,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte bottom)
         {
-            if (head > 0 && head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            // One unsigned test bounds the depth on both sides: on an empty stack the difference wraps past the limit.
+            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && TryCharge(ref gas, VeryLowGasCost.GasCost))
             {
                 ref ulong top = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
                 // PUSH4, its four immediates, EQ, PUSH2, its two immediates and JUMPI.
                 ref byte opcode = ref ip;
-                if (Unsafe.Add(ref opcode, 1) == (byte)Instruction.PUSH4 &&
+                byte following = Unsafe.Add(ref opcode, 1);
+                if (following == (byte)Instruction.PUSH4 &&
                     Unsafe.Add(ref opcode, 6) == (byte)Instruction.EQ && head < EvmStack.MaxStackSize - 2)
                 {
                     uint branch = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 7));
@@ -546,7 +658,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Unsafe.Add(ref copy, 3) = Unsafe.Add(ref top, 3);
                 head++;
                 ip = ref Unsafe.Add(ref ip, 1);
-                goto Dispatch;
+                nint unfused = handlers[following];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, unfused);
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
@@ -591,6 +704,46 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                 &ExecuteOpcode<DupOpcode<TOpCount, OffFlag>, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>POP, fused with a POP after it.</summary>
+        /// <remarks>
+        /// Compilers drop the words a scope leaves in runs, so the fused step saves the second POP its dispatch; one
+        /// short of stack or gas runs alone after the first. A short stack or gas runs the shared POP handler instead.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecutePop(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            if (head > 0 && TryCharge(ref gas, BaseGasCost.GasCost))
+            {
+                head--;
+                byte following = Unsafe.Add(ref ip, 1);
+                if (following == (byte)Instruction.POP && head > 0 && gas >= BaseGasCost.GasCost)
+                {
+                    head--;
+                    gas -= BaseGasCost.GasCost;
+                    ip = ref Unsafe.Add(ref ip, 2);
+                    nint fused = handlers[ip];
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, fused);
+                }
+
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = handlers[following];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<PopOpcode, OffFlag, OffFlag, OnFlag>;
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -672,6 +825,123 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
+        /// <summary>An opcode that pushes a value below 2^64 it reads without a call, as <typeparamref name="TValue"/> reads it.</summary>
+        /// <remarks>A short gas or a full stack runs the shared handler of the opcode instead.</remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecutePushValue<TValue>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+            where TValue : struct, IStackValue
+        {
+            if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, BaseGasCost.GasCost))
+            {
+                SetWord(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), TValue.Read(ref stack));
+                head++;
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = handlers[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+            nint shared = TValue.SharedHandler;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>A value of base cost that <see cref="ExecutePushValue{TValue}"/> pushes.</summary>
+        internal interface IStackValue
+        {
+            /// <summary>The shared handler of the opcode, which handles every case that faults.</summary>
+            static abstract nint SharedHandler { get; }
+
+            /// <summary>Reads the value out of <paramref name="stack"/>.</summary>
+            static abstract ulong Read(ref EvmStack stack);
+        }
+
+        /// <summary>PUSH0: zero.</summary>
+        internal readonly struct ZeroValue : IStackValue
+        {
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<Push0Opcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static ulong Read(ref EvmStack stack) => 0;
+        }
+
+        /// <summary>CALLDATASIZE: the length of the input data the stack holds.</summary>
+        internal readonly struct CallDataSizeValue : IStackValue
+        {
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<EnvUInt32Opcode<EvmInstructions.OpCallDataSize<TGasPolicy>, OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static ulong Read(ref EvmStack stack) => (ulong)stack.InputDataLength;
+        }
+
+        /// <summary>PUSHn for n from 3 to 32, with the immediates read a limb at a time off the instruction's address.</summary>
+        /// <remarks>
+        /// Immediates that run past the end of the code read the padding's zeros, as the EVM pads them. A short gas or
+        /// a full stack runs the shared PUSHn handler instead.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecutePush<TOpCount>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+            where TOpCount : struct, EvmInstructions.IOpCount
+        {
+            if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            {
+                ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head));
+                ref byte immediates = ref Unsafe.Add(ref ip, 1);
+                // The leading limb takes the bytes that do not fill a whole one, or a whole one; the rest follow it whole.
+                int leadingBytes = ((TOpCount.Count - 1) & 7) + 1;
+                int limbs = (TOpCount.Count + 7) >> 3;
+                ulong leading = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref immediates)) >> (64 - 8 * leadingBytes);
+                ref byte rest = ref Unsafe.Add(ref immediates, leadingBytes);
+                if (limbs == 1)
+                {
+                    SetWord(ref slot, leading);
+                }
+                else
+                {
+                    Unsafe.Add(ref slot, limbs - 1) = leading;
+                    Unsafe.Add(ref slot, limbs - 2) = ReadBigEndianLimb(ref rest, 0);
+                    if (limbs > 2) Unsafe.Add(ref slot, limbs - 3) = ReadBigEndianLimb(ref rest, 1);
+                    if (limbs > 3) slot = ReadBigEndianLimb(ref rest, 2);
+                    if (limbs < 4) Unsafe.Add(ref slot, 3) = 0;
+                    if (limbs < 3) Unsafe.Add(ref slot, 2) = 0;
+                }
+
+                head++;
+                ip = ref Unsafe.Add(ref ip, 1 + TOpCount.Count);
+                nint next = handlers[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<PushOpcode<TOpCount, OffFlag>, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>The big-endian limb <paramref name="index"/> limbs past <paramref name="bytes"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong ReadBigEndianLimb(ref byte bytes, nint index) =>
+            BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, index * sizeof(ulong))));
+
         /// <summary>PUSH2, fused with a JUMP or JUMPI after it whenever <see cref="EvmInstructions.InstructionPush2{TGasPolicy, TTracingInst}"/> would fuse them.</summary>
         /// <remarks>
         /// Fuses on the same conditions: a destination the incremental bitmap already holds, or a zero JUMPI
@@ -746,8 +1016,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             SetWord(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), value);
             ip = ref Unsafe.Add(ref ip, 3);
             head++;
-            // Read again rather than held: live through the JUMPI branch, the opcode takes a callee-saved register there.
-            nint next = handlers[ip];
+            nint next = handlers[following];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
 
         Dispatch:
@@ -762,15 +1031,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
-        /// <summary>MSTORE of a word that needs no clearing and no new backing, growing the active memory over it when it has to.</summary>
+        /// <summary>MSTORE of a word that needs no new backing, growing the active memory over it when it has to.</summary>
         /// <remarks>
-        /// Such a word starts inside the initialized memory, so this covers memory growing a word at a time as well. Every
-        /// other case - short gas or stack, a word that leaves a gap or outgrows the backing, an offset of 2^32 or more,
-        /// which runs out of gas - runs the shared MSTORE handler instead.
+        /// Every other case - short gas or stack, a word that outgrows the backing, an offset of 2^32 or more, which runs
+        /// out of gas - runs the shared MSTORE handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteMStoreWithoutClearing(
+        internal static EvmExceptionType ExecuteMStoreInsideBacking(
             ref EvmStack stack,
             ulong gas,
             ref DispatchState state,
@@ -1022,6 +1290,133 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                 &ExecuteOpcode<ShiftOpcode<EvmInstructions.OpShr, OffFlag>, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>MUL of two factors below 2^64, or by a power of two, which it shifts in.</summary>
+        /// <remarks>
+        /// The shared handler multiplies in 32-bit halves and saves every callee-saved register to hold them. Every
+        /// other case - a short stack or gas, or two wider factors neither of which is a power of two - runs the shared
+        /// MUL handler instead.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteMul(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            if (head > 1 && TryCharge(ref gas, LowGasCost.GasCost))
+            {
+                // The product replaces the second word.
+                ref ulong product = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
+                ref ulong top = ref Unsafe.Add(ref product, LimbsPerWord);
+                if ((Unsafe.Add(ref top, 1) | Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3) |
+                     Unsafe.Add(ref product, 1) | Unsafe.Add(ref product, 2) | Unsafe.Add(ref product, 3)) == 0)
+                {
+                    ulong left = top;
+                    ulong right = product;
+                    product = left * right;
+                    Unsafe.Add(ref product, 1) = (left | right) >> 32 == 0 ? 0 : MultiplyHigh(left, right);
+                }
+                else
+                {
+                    if (!TryGetLog2(ref top, out int shift))
+                    {
+                        if (!TryGetLog2(ref product, out shift))
+                        {
+                            gas += LowGasCost.GasCost;
+                            goto Shared;
+                        }
+
+                        CopyWord(ref top, ref product);
+                    }
+
+                    ShiftLeft(ref product, shift);
+                }
+
+                head--;
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = handlers[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+        Shared:
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<Math2Opcode<EvmInstructions.OpMul, OffFlag>, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>The high 64 bits of the product of <paramref name="left"/> and <paramref name="right"/>.</summary>
+        /// <remarks><see cref="Math.BigMul(ulong, ulong, out ulong)"/> is a call here, which would cost the MUL handler every callee-saved register.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong MultiplyHigh(ulong left, ulong right)
+        {
+            ulong leftLow = (uint)left;
+            ulong leftHigh = left >> 32;
+            ulong rightLow = (uint)right;
+            ulong rightHigh = right >> 32;
+            ulong lowHigh = leftLow * rightHigh;
+            ulong highLow = leftHigh * rightLow;
+            // At most three 32-bit values, so the carry into the high half stays in its own bits.
+            ulong middle = ((leftLow * rightLow) >> 32) + (uint)lowHigh + (uint)highLow;
+            return leftHigh * rightHigh + (lowHigh >> 32) + (highLow >> 32) + (middle >> 32);
+        }
+
+        /// <summary>DIV of a dividend below 2^64 by a nonzero divisor below 2^64, or by a power of two, which it shifts out.</summary>
+        /// <remarks>
+        /// Either takes one instruction or a shift, where the shared handler calls out to the zkVM's 256-bit division.
+        /// Every other case - a short stack or gas, a zero divisor, or wider operands whose divisor is not a power of
+        /// two - runs the shared DIV handler instead.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteDiv(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            if (head > 1 && TryCharge(ref gas, LowGasCost.GasCost))
+            {
+                // The dividend is the top word; the quotient replaces the divisor below it.
+                ref ulong quotient = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
+                ref ulong dividend = ref Unsafe.Add(ref quotient, LimbsPerWord);
+                ulong divisor = quotient;
+                if ((Unsafe.Add(ref dividend, 1) | Unsafe.Add(ref dividend, 2) | Unsafe.Add(ref dividend, 3) |
+                     Unsafe.Add(ref quotient, 1) | Unsafe.Add(ref quotient, 2) | Unsafe.Add(ref quotient, 3)) == 0 && divisor != 0)
+                {
+                    quotient = dividend / divisor;
+                }
+                else if (TryGetLog2(ref quotient, out int shift))
+                {
+                    CopyWord(ref dividend, ref quotient);
+                    ShiftRight(ref quotient, shift);
+                }
+                else
+                {
+                    gas += LowGasCost.GasCost;
+                    goto Shared;
+                }
+
+                head--;
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = handlers[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+        Shared:
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<Math2Opcode<EvmInstructions.OpDiv, OffFlag>, OffFlag, OffFlag, OnFlag>;
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
