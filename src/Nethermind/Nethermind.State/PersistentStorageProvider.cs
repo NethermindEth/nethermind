@@ -1069,7 +1069,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    private sealed class PerContractState : IReturnable
+    private sealed partial class PerContractState : IReturnable
     {
         private IWorldStateScopeProvider.IStorageTree? _backend;
 
@@ -1349,9 +1349,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             EnsureStorageTree();
             using IWorldStateScopeProvider.IStorageWriteBatch _ = storageWriteBatch;
 
-            int writes = 0;
-            int skipped = 0;
-
             if (BlockChange.HasClear)
             {
                 storageWriteBatch.Clear();
@@ -1365,72 +1362,20 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             // stateless verifiers that insert before deleting (see EELS client), which may avoid unnecessary branch
             // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
             // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
+            return WriteChanges(storageWriteBatch);
+        }
 
-            using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
+        private partial (int writes, int skipped) WriteChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch);
 
-#if ZK_EVM
-            // ILC block-copies each 104-byte pair through corelib's out-of-line Memmove several times per entry, so
-            // the guest walks keys and reaches each entry by ref. The host keeps the pair walk: for the unchanged
-            // reads that make up most entries, the extra lookup costs it more than the copies save.
-            foreach (UInt256 key in BlockChange.Keys)
-            {
-                ref StorageChangeTrace change = ref BlockChange.GetValueRefOrNullRef(key);
-                UInt256 after = change.After;
-                if (change.Before != after || change.IsInitialValue)
-                {
-                    if (after.IsZero)
-                    {
-                        deferredDeletes.Add(key);
-                    }
-                    else
-                    {
-                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
-                        change.Set(after, after, isInitialValue: false);
-                        storageWriteBatch.Set(key, in after);
-
-                        writes++;
-                    }
-                }
-                else
-                {
-                    skipped++;
-                }
-            }
-#else
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
-            {
-                UInt256 after = kvp.Value.After;
-                if (kvp.Value.Before != after || kvp.Value.IsInitialValue)
-                {
-                    if (after.IsZero)
-                    {
-                        deferredDeletes.Add(kvp.Key);
-                    }
-                    else
-                    {
-                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
-                        BlockChange[kvp.Key] = new(after, after);
-                        storageWriteBatch.Set(kvp.Key, in after);
-
-                        writes++;
-                    }
-                }
-                else
-                {
-                    skipped++;
-                }
-            }
-#endif
-
-            foreach (ref readonly UInt256 key in deferredDeletes.AsSpan())
+        private int WriteDeletes(ReadOnlySpan<UInt256> keys, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
+        {
+            foreach (ref readonly UInt256 key in keys)
             {
                 BlockChange[key] = default;
                 storageWriteBatch.Set(in key, UInt256.Zero);
-
-                writes++;
             }
 
-            return (writes, skipped);
+            return keys.Length;
         }
 
         /// <summary>Whether the contract held storage before the block, or <see langword="null"/> when the block never resolved its tree.</summary>

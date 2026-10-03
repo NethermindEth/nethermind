@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -28,7 +29,7 @@ public ref struct RlpWriter(Span<byte> data) : IRlpWriteBackend
 
     void IRlpWriteBackend.Write(scoped ReadOnlySpan<byte> bytesToWrite)
     {
-        Core.Extensions.Bytes.Copy(bytesToWrite, _data.Slice(_position, bytesToWrite.Length));
+        Bytes.Copy(bytesToWrite, _data.Slice(_position, bytesToWrite.Length));
         _position += bytesToWrite.Length;
     }
 
