@@ -409,22 +409,8 @@ public class GloasAnchorImportTests
 
     /// <summary>A Gloas record found by the Fulu getter is refused by its slot, never decoded: a malformed body a full decode would log answers unknown silently.</summary>
     [Test]
-    public void Gloas_record_under_a_fulu_lookup_is_refused_by_its_slot_without_a_full_decode([Values(48, 49, 200)] int length)
-    {
-        SignedGloasChain chain = new();
-        BeaconChainStore store = chain.CreateStore();
-        store.PutState(TestItem.KeccakA, CorruptRecord(length, ForkSlot + 1));
-        TestLogger logger = new();
-        PostStateCache states = new(store, chain.Spec, null, null, logManager: new OneLoggerLogManager(new ILogger(logger)));
-
-        BeaconStateFulu? state = null;
-        Assert.DoesNotThrow(() => state = states.GetBlockState(TestItem.KeccakA));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(state, Is.Null);
-            Assert.That(logger.LogList.Where(static l => l.Contains(TestItem.KeccakA.ToString())), Is.Empty, "no decode was attempted");
-        }
-    }
+    public void Gloas_record_under_a_fulu_lookup_is_refused_by_its_slot_without_a_full_decode([Values(48, 49, 200)] int length) =>
+        AssertPersistedStateAbsent(CorruptRecord(length, ForkSlot + 1), gloas: false, decodeExpected: false);
 
     /// <summary>
     /// A persisted state is served only by the getter of its own fork. The Fulu getter tells the fork by the slot that follows
@@ -824,20 +810,25 @@ public class GloasAnchorImportTests
     /// envelope, proposer check or fork choice lookup that names its root; it is logged and treated as absent.
     /// </summary>
     [Test]
-    public void Corrupt_persisted_state_is_absent([Values(10, 200)] int length, [Values] bool gloas)
+    public void Corrupt_persisted_state_is_absent([Values(10, 200)] int length, [Values] bool gloas) =>
+        AssertPersistedStateAbsent(CorruptRecord(length, gloas ? ForkSlot + 1 : ForkSlot - 1), gloas, decodeExpected: true);
+
+    private static void AssertPersistedStateAbsent(byte[] record, bool gloas, bool decodeExpected)
     {
         SignedGloasChain chain = new();
         BeaconChainStore store = chain.CreateStore();
-        store.PutState(TestItem.KeccakA, CorruptRecord(length, gloas ? ForkSlot + 1 : ForkSlot - 1));
+        store.PutState(TestItem.KeccakA, record);
         TestLogger logger = new();
-        PostStateCache states = new(store, chain.Spec, null, null, _ => true, logManager: new OneLoggerLogManager(new ILogger(logger)));
+        PostStateCache states = new(store, chain.Spec, null, null, isGloasBlock: decodeExpected ? _ => true : null,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
 
         object? state = null;
         Assert.DoesNotThrow(() => state = gloas ? states.GetGloasBlockState(TestItem.KeccakA) : states.GetBlockState(TestItem.KeccakA));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(state, Is.Null);
-            Assert.That(logger.LogList.Where(static l => l.Contains(TestItem.KeccakA.ToString())), Is.Not.Empty);
+            Assert.That(logger.LogList.Where(static l => l.Contains(TestItem.KeccakA.ToString())),
+                decodeExpected ? Is.Not.Empty : Is.Empty, "a fork mismatch must not attempt a full decode");
         }
     }
 
