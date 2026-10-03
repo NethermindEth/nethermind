@@ -2082,22 +2082,18 @@ public partial class BlockProcessorTests
     [Test]
     public void ProcessOne_adds_the_world_states_account_changes_to_the_bals()
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
-        BlockProcessor processor = new(
-            HoodiSpecProvider.Instance,
-            TestBlockValidator.AlwaysValid,
-            NoBlockRewards.Instance,
-            transactionsExecutor,
-            stateProvider,
-            NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-            Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
-            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor),
-            new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>()));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(HoodiSpecProvider.Instance)
+            .Build();
+        using ILifetimeScope lifetime = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState)
+            .AddSingleton(Substitute.For<ITransactionProcessor>())
+            .AddSingleton(transactionsExecutor)
+            .AddSingleton<IBlockAccessListManager>(new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>())));
+        IWorldState stateProvider = lifetime.Resolve<IWorldState>();
+        IBlockProcessor processor = lifetime.Resolve<IBlockProcessor>();
 
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(

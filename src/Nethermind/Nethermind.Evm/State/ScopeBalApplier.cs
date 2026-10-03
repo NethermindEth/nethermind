@@ -22,61 +22,66 @@ public static class ScopeBalApplier
         ArrayPoolList<ValueHash256>? writtenCodeHashes = null;
         try
         {
-            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(bal.AccountChanges.Count);
-            foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+            try
             {
-                if (!accountChanges.HasStateChanges) continue;
-
-                Address address = accountChanges.Address;
-                Account? existing = scope.Get(address);
-                if (accountChanges.BalanceChanges.Length == 0 && accountChanges.NonceChanges.Length == 0 && accountChanges.CodeChanges.Length == 0)
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(bal.AccountChanges.Count);
+                foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                 {
-                    // Slot writes alone are not an account change: they neither create a missing account nor touch an
-                    // existing one, so EIP-158 leaves an empty account holding storage in place.
-                    if (existing is not null) WriteSlots(writeBatch, accountChanges);
-                    continue;
-                }
+                    if (!accountChanges.HasStateChanges) continue;
 
-                Account account = existing ?? Account.TotallyEmpty;
-
-                if (accountChanges.BalanceChanges.Length > 0) account = account.WithChangedBalance(accountChanges.BalanceChanges[^1].Value);
-                if (accountChanges.NonceChanges.Length > 0) account = account.WithChangedNonce(accountChanges.NonceChanges[^1].Value);
-                if (accountChanges.CodeChanges.Length > 0)
-                {
-                    CodeChange codeChange = accountChanges.CodeChanges[^1];
-                    if (writtenCodeHashes?.Contains(codeChange.CodeHash) != true && !scope.CodeDb.ContainsCode(codeChange.CodeHash))
+                    Address address = accountChanges.Address;
+                    Account? existing = scope.Get(address);
+                    if (accountChanges.BalanceChanges.Length == 0 && accountChanges.NonceChanges.Length == 0 && accountChanges.CodeChanges.Length == 0)
                     {
-                        codeSetter ??= scope.CodeDb.BeginCodeWrite();
-                        codeSetter.Set(codeChange.CodeHash, codeChange.Code);
-                        (writtenCodeHashes ??= new ArrayPoolList<ValueHash256>(1)).Add(codeChange.CodeHash);
+                        // Slot writes alone are not an account change: they neither create a missing account nor touch an
+                        // existing one, so EIP-158 leaves an empty account holding storage in place.
+                        if (existing is not null) WriteSlots(writeBatch, accountChanges);
+                        continue;
                     }
-                    account = account.WithChangedCodeHash(codeChange.CodeHash.ToCommitment());
-                }
 
-                // EIP-158 is always active with BALs (EIP-7928 postdates Spurious Dragon), so an empty account is removed.
-                if (account.IsEmpty)
-                {
-                    writeBatch.Set(address, null);
-                    continue;
-                }
+                    Account account = existing ?? Account.TotallyEmpty;
 
-                writeBatch.Set(address, account);
-                WriteSlots(writeBatch, accountChanges);
+                    if (accountChanges.BalanceChanges.Length > 0) account = account.WithChangedBalance(accountChanges.BalanceChanges[^1].Value);
+                    if (accountChanges.NonceChanges.Length > 0) account = account.WithChangedNonce(accountChanges.NonceChanges[^1].Value);
+                    if (accountChanges.CodeChanges.Length > 0)
+                    {
+                        CodeChange codeChange = accountChanges.CodeChanges[^1];
+                        if (writtenCodeHashes?.Contains(codeChange.CodeHash) != true && !scope.CodeDb.ContainsCode(codeChange.CodeHash))
+                        {
+                            codeSetter ??= scope.CodeDb.BeginCodeWrite();
+                            codeSetter.Set(codeChange.CodeHash, codeChange.Code);
+                            (writtenCodeHashes ??= new ArrayPoolList<ValueHash256>(1)).Add(codeChange.CodeHash);
+                        }
+                        account = account.WithChangedCodeHash(codeChange.CodeHash.ToCommitment());
+                    }
+
+                    // EIP-158 is always active with BALs (EIP-7928 postdates Spurious Dragon), so an empty account is removed.
+                    if (account.IsEmpty)
+                    {
+                        writeBatch.Set(address, null);
+                        continue;
+                    }
+
+                    writeBatch.Set(address, account);
+                    WriteSlots(writeBatch, accountChanges);
+                }
+            }
+            finally
+            {
+                codeSetter?.Dispose();
+            }
+
+            if (writtenCodeHashes is null) return;
+
+            foreach (ValueHash256 codeHash in writtenCodeHashes.AsSpan())
+            {
+                scope.CodeDb.MarkCodePersisted(in codeHash);
             }
         }
         finally
         {
-            codeSetter?.Dispose();
+            writtenCodeHashes?.Dispose();
         }
-
-        if (writtenCodeHashes is null) return;
-
-        foreach (ValueHash256 codeHash in writtenCodeHashes.AsSpan())
-        {
-            scope.CodeDb.MarkCodePersisted(in codeHash);
-        }
-
-        writtenCodeHashes.Dispose();
     }
 
     private static void WriteSlots(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ReadOnlyAccountChanges accountChanges)
