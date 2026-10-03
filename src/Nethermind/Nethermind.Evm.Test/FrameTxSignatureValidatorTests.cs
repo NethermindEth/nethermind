@@ -332,7 +332,8 @@ public class FrameTxSignatureValidatorTests
         byte[] signature = skipVerification ? new byte[TxFrameSignature.P256SignatureLength] : [];
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, signature)];
 
-        bool ok = FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), _ethereumEcdsa, p256Precompile: null, _spec, out string? error, allowEmptySignatures: true, skipVerification);
+        ValueHash256? sigHash = null;
+        bool ok = FrameTxSignatureValidator.Validate(tx, ref sigHash, _ethereumEcdsa, p256Precompile: null, _spec, out string? error, allowEmptySignatures: true, skipVerification);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ok, Is.False);
