@@ -1,0 +1,104 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using Nethermind.Core.Extensions;
+using Nethermind.Network.Libp2p;
+using NUnit.Framework;
+using Snappier;
+
+namespace Nethermind.BeaconChain.Test.P2P.Gossip;
+
+public class Eth2MessageIdTests
+{
+    private const string Topic = "/eth2/8c9f62fe/beacon_block/ssz_snappy";
+
+    // Expected ids hand-derived with Python (hashlib + manually encoded snappy block framing):
+    // SHA256(domain ++ uint64_le(38) ++ topic ++ payload)[:20] where payload is the snappy
+    // decompression of the data for the valid domain (0x01000000) and the raw data otherwise.
+    [TestCase("0x051068656c6c6f", "0xd58fc6bfe68c6db632dfb39698a85bdf1ff5975a", TestName = "valid snappy ('hello')")]
+    [TestCase("0xffffffff", "0xbaeefcde2929c18a17edafb95a98bd25d7faf18f", TestName = "invalid snappy (truncated varint)")]
+    [TestCase("0x05106865", "0x24ffdda03b98a8f19348882134a3040afb9a29c8", TestName = "invalid snappy (truncated literal)")]
+    [TestCase("0x8080c0051068656c6c6f", "0x2f2d09180ea8448bbcad0d5d83d0b818a0dba8c5", TestName = "oversized declared length (11 MiB) uses the invalid domain")]
+    public void Computes_known_vectors(string dataHex, string expectedIdHex)
+    {
+        byte[] id = Eth2MessageId.Compute(Topic, Bytes.FromHexString(dataHex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(id, Has.Length.EqualTo(20));
+            Assert.That(id, Is.EqualTo(Bytes.FromHexString(expectedIdHex)));
+        }
+    }
+
+    [Test]
+    public void Matches_independent_implementation_for_a_round_tripped_payload()
+    {
+        byte[] payload = new byte[300];
+        new Random(42).NextBytes(payload);
+        byte[] compressed = Snappy.CompressToArray(payload);
+
+        // Independent implementation: plain concatenation hashed in one shot.
+        byte[] topicBytes = Encoding.ASCII.GetBytes(Topic);
+        byte[] preimage = [0x01, 0x00, 0x00, 0x00, (byte)topicBytes.Length, 0, 0, 0, 0, 0, 0, 0, .. topicBytes, .. payload];
+        byte[] expected = SHA256.HashData(preimage)[..20];
+
+        Assert.That(Eth2MessageId.Compute(Topic, compressed), Is.EqualTo(expected));
+    }
+
+    // phase0 p2p max_compressed_len(n) = 32 + n + n // 6; 12233418 is max_compressed_len(MAX_PAYLOAD_SIZE), and the result saturates at int.MaxValue.
+    [TestCase(0, 32)]
+    [TestCase(5, 37)]
+    [TestCase(6, 39)]
+    [TestCase(16829, 19665)]
+    [TestCase(10 * 1024 * 1024, 12233418)]
+    [TestCase(int.MaxValue, int.MaxValue)]
+    public void Max_compressed_len_follows_the_spec_formula(int maxUncompressed, int expected) =>
+        Assert.That(Eth2MessageId.MaxCompressedLength(maxUncompressed), Is.EqualTo(expected));
+
+    [Test]
+    public void Max_compressed_len_of_a_negative_size_throws() =>
+        Assert.That(() => Eth2MessageId.MaxCompressedLength(-1), Throws.InstanceOf<ArgumentOutOfRangeException>());
+
+    [TestCase("0x051068656c6c6f", SnappyDecodeResult.Decoded, "0x68656c6c6f", TestName = "decodes valid block data")]
+    [TestCase("0xffffffff", SnappyDecodeResult.Invalid, null, TestName = "rejects corrupt data")]
+    [TestCase("0x8080c0051068656c6c6f", SnappyDecodeResult.Oversized, null, TestName = "rejects an oversized declared length without decompressing")]
+    [TestCase("0x8080800500", SnappyDecodeResult.Invalid, null, TestName = "rejects a declared length its input cannot expand to")]
+    public void Capped_decompression_reports_the_outcome(string dataHex, SnappyDecodeResult expected, string? decompressedHex)
+    {
+        SnappyDecodeResult result = Eth2MessageId.TryDecompress(Bytes.FromHexString(dataHex), Eth2MessageId.MaxGossipSize, out byte[]? decompressed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expected));
+            Assert.That(decompressed, Is.EqualTo(decompressedHex is null ? null : Bytes.FromHexString(decompressedHex)));
+        }
+    }
+
+    /// <summary>The expansion bound must never refuse real data: a stream of 3-byte copies of 64 bytes is the densest snappy can encode.</summary>
+    [TestCase(1)]
+    [TestCase(163_839)]
+    public void A_stream_expanding_at_the_snappy_maximum_still_decodes(int copies)
+    {
+        int length = 1 + 64 * copies;
+        List<byte> stream = [];
+        for (uint v = (uint)length; ; v >>= 7)
+        {
+            stream.Add((byte)(v < 0x80 ? v : (v & 0x7f) | 0x80));
+            if (v < 0x80) break;
+        }
+
+        // One literal byte, then copies of length 64 at offset 1 (tag 0b111111_10, little-endian 2-byte offset).
+        stream.AddRange([0x00, 0x2a]);
+        for (int i = 0; i < copies; i++)
+        {
+            stream.AddRange([0xfe, 0x01, 0x00]);
+        }
+
+        SnappyDecodeResult result = Eth2MessageId.TryDecompress(stream.ToArray(), Eth2MessageId.MaxGossipSize, out byte[]? decompressed);
+
+        Assert.That((result, decompressed?.Length, decompressed?.All(static b => b == 0x2a)), Is.EqualTo((SnappyDecodeResult.Decoded, (int?)length, (bool?)true)));
+    }
+}
