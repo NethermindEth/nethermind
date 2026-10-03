@@ -183,7 +183,9 @@ public class TrailingRequestBytesLoopbackTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task Bytes_sent_after_the_response_is_complete_are_reported_against_the_peer(CancellationToken token)
+    public async Task Bytes_sent_after_the_response_is_complete_are_reported_against_the_peer(
+        [Values(StatusV2, MetaData, Goodbye)] string protocolId,
+        CancellationToken token)
     {
         TaskCompletionSource<PeerFailureReason> reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Identity requester = new(privateKey: null, KeyType.Secp256K1);
@@ -196,8 +198,8 @@ public class TrailingRequestBytesLoopbackTests
         await using BeaconP2P server = PeerSessionNodes.Create(peerPool: new Lazy<IBeaconSyncPeerPool>(() => pool)).P2P;
         await server.StartAsync(token);
 
-        byte[] wire = await EncodeAsync(StatusV2, 0, token);
-        await RequestAsync(server, StatusV2, wire, halfClose: false, token, requester, afterResponse: async (channel, requestToken) =>
+        byte[] wire = await EncodeAsync(protocolId, 0, token);
+        await RequestAsync(server, protocolId, wire, halfClose: false, token, requester, afterResponse: async (channel, requestToken) =>
         {
             await channel.WriteAsync(new ReadOnlySequence<byte>(TrailingBytes(3)), requestToken);
             await reported.Task.WaitAsync(TimeSpan.FromSeconds(3), requestToken);

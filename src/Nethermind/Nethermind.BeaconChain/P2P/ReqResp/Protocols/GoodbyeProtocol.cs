@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,41 +26,23 @@ public static class GoodbyeReason
 
 /// <summary>The eth2 <c>goodbye</c> protocol.</summary>
 /// <remarks>The listener answers with one success chunk echoing the reason (p2p-interface Goodbye); the dial side does not await it before disconnecting.</remarks>
-public sealed class GoodbyeProtocol : ReqRespProtocolBase, ISessionProtocol<ulong, ulong>
+public sealed class GoodbyeProtocol : SingleChunkProtocol<ulong, ulong>
 {
-    public string Id => "/eth2/beacon_chain/req/goodbye/1/ssz_snappy";
+    public override string Id => "/eth2/beacon_chain/req/goodbye/1/ssz_snappy";
 
-    public async Task<ulong> DialAsync(IChannel downChannel, ISessionContext context, ulong request)
+    protected override int MaxRequestSize => sizeof(ulong);
+    protected override int MaxResponseSize => sizeof(ulong);
+    protected override byte[] EncodeRequest(ulong request) => Eth2PingProtocol.EncodeUint64(request);
+    protected override ulong DecodeRequest(byte[] ssz) => Eth2PingProtocol.DecodeUint64(ssz);
+    protected override byte[] EncodeResponse(ulong response) => Eth2PingProtocol.EncodeUint64(response);
+    protected override ulong DecodeResponse(byte[] ssz) => Eth2PingProtocol.DecodeUint64(ssz);
+    protected override ulong HandleRequest(ulong request) => request;
+
+    public override async Task<ulong> DialAsync(IChannel downChannel, ISessionContext context, ulong request)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
         using CancellationTokenSource cts = StartTimeout(RespTimeout);
         await WriteRequestAndEofAsync(downChannel, stream, Eth2PingProtocol.EncodeUint64(request), cts.Token);
         return request;
-    }
-
-    public async Task ListenAsync(IChannel downChannel, ISessionContext context)
-    {
-        Stream stream = new ChannelStreamAdapter(downChannel);
-        await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
-        if (inboundSlot is null)
-        {
-            return;
-        }
-
-        using CancellationTokenSource cts = StartTimeout(RespTimeout);
-        try
-        {
-            ulong reason = Eth2PingProtocol.DecodeUint64(await inboundSlot.ReadRequestAsync(stream, sizeof(ulong), cts.Token));
-            await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, Eth2PingProtocol.EncodeUint64(reason), cts.Token);
-        }
-        catch (Eth2ReqRespException e)
-        {
-            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
-            await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            RecordFailure(Id, ReqRespFailureReason.Timeout);
-        }
     }
 }
