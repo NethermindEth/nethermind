@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nethermind.Network.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]
-[assembly: InternalsVisibleTo("LeanBench")]
 [assembly: InternalsVisibleTo("Nethermind.Crypto.LeanFfi.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Discovery")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Discovery.Test")]
