@@ -1597,8 +1597,13 @@ namespace Nethermind.TxPool
             {
                 _hashCache.DeleteFromCurrentBlock(tx.Hash!);
             }
-            else if (accepted != AcceptTxResult.Invalid
-                && accepted != AcceptTxResult.InvalidBlobProofs)
+            // A pushed one, which nothing requested, stays known so resending it buys no further validation,
+            // until a peer announces it and NotifyAboutTx makes the request it is owed.
+            // A resend of such a push is AlreadyKnown and must leave its entry for the announcement it waits for.
+            else if (!(state.FrameSimulationYielded && _retryCache.TryAwaitAnnouncement(tx.Hash!))
+                && accepted != AcceptTxResult.Invalid
+                && accepted != AcceptTxResult.InvalidBlobProofs
+                && !(accepted == AcceptTxResult.AlreadyKnown && _retryCache.IsAwaitingAnnouncement(tx.Hash!)))
             {
                 _retryCache.Received(tx.Hash!);
             }
@@ -1613,10 +1618,26 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
-            (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(in hash) ?
-                AnnounceResult.Delayed :
-                _retryCache.Announced(in hash, retryHandler);
+        public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler)
+        {
+            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
+            {
+                return AnnounceResult.Delayed;
+            }
+
+            if (!_hashCache.Get(in hash))
+            {
+                return _retryCache.Announced(in hash, retryHandler);
+            }
+
+            if (!_retryCache.TryClaimUnrequested(in hash, retryHandler))
+            {
+                return AnnounceResult.Delayed;
+            }
+
+            _hashCache.DeleteFromCurrentBlock(in hash);
+            return AnnounceResult.RequestRequired;
+        }
 
         public AcceptTxResult ValidateTxForBlobSampling(Transaction tx)
         {
