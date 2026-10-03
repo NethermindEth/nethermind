@@ -124,7 +124,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
     /// <summary>Envelope column key of the lowest and highest slot (8 bytes big-endian each) that may still have envelopes; its 1-byte length never collides with slot (8) or root (32) keys.</summary>
     private static ReadOnlySpan<byte> EnvelopeBoundsKey => [0];
-    private const int EnvelopeBoundsLength = 2 * sizeof(ulong);
+    private const int SlotBoundsLength = 2 * sizeof(ulong);
 
     /// <summary><c>MAX_PAYLOAD_SIZE</c> (phase0/p2p-interface.md): no envelope a peer can send, and so none stored, is larger uncompressed.</summary>
     private const int MaxEnvelopeLength = 10 * 1024 * 1024;
@@ -152,7 +152,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     private static ReadOnlySpan<byte> ColumnBoundsKey => [0];
     private static ReadOnlySpan<byte> ColumnFloorKey => [1];
     private static ReadOnlySpan<byte> ColumnCheckedKey => [2];
-    private const int ColumnBoundsLength = 2 * sizeof(ulong);
 
     /// <summary>A slot index entry is a block root followed by the 128-bit big-endian bitmap of its stored columns.</summary>
     private const int ColumnSlotEntryLength = Hash256.Size + 16;
@@ -938,10 +937,10 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
                 envelopes.Set(slotKey, [.. roots, .. blockRoot.Bytes]);
             }
 
-            bool bounded = TryGetEnvelopeBounds(out ulong lowest, out ulong highest);
+            bool bounded = TryGetSlotBounds(_envelopes, EnvelopeBoundsKey, out ulong lowest, out ulong highest);
             if (!bounded || slot < lowest || slot > highest)
             {
-                envelopes.Set(EnvelopeBoundsKey, EnvelopeBounds(bounded ? Math.Min(lowest, slot) : slot, bounded ? Math.Max(highest, slot) : slot));
+                envelopes.Set(EnvelopeBoundsKey, SlotBounds(bounded ? Math.Min(lowest, slot) : slot, bounded ? Math.Max(highest, slot) : slot));
             }
 
             if (valid)
@@ -1043,7 +1042,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     {
         lock (_envelopeIndexLock)
         {
-            if (!TryGetEnvelopeBounds(out ulong lowest, out ulong highest) || keepFrom <= lowest)
+            if (!TryGetSlotBounds(_envelopes, EnvelopeBoundsKey, out ulong lowest, out ulong highest) || keepFrom <= lowest)
             {
                 return false;
             }
@@ -1080,25 +1079,25 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             }
             else
             {
-                envelopes.Set(EnvelopeBoundsKey, EnvelopeBounds(batchLast + 1, highest));
+                envelopes.Set(EnvelopeBoundsKey, SlotBounds(batchLast + 1, highest));
             }
 
             return true;
         }
     }
 
-    /// <summary>The stored slot bounds, rebuilt from the slot index when the record is malformed or inverted; the caller holds <see cref="_envelopeIndexLock"/>.</summary>
-    /// <returns><c>false</c> when no slot may have envelopes.</returns>
-    private bool TryGetEnvelopeBounds(out ulong lowest, out ulong highest)
+    /// <summary>The stored slot bounds, rebuilt from the slot index when the record is malformed or inverted; the caller holds the table's index lock.</summary>
+    /// <returns><c>false</c> when no slot may hold records.</returns>
+    private static bool TryGetSlotBounds(IDb table, ReadOnlySpan<byte> boundsKey, out ulong lowest, out ulong highest)
     {
-        byte[]? value = _envelopes.Get(EnvelopeBoundsKey);
+        byte[]? value = table.Get(boundsKey);
         if (value is null)
         {
             lowest = highest = 0;
             return false;
         }
 
-        if (value.Length == EnvelopeBoundsLength)
+        if (value.Length == SlotBoundsLength)
         {
             lowest = BinaryPrimitives.ReadUInt64BigEndian(value);
             highest = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(sizeof(ulong)));
@@ -1108,17 +1107,17 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             }
         }
 
-        return RebuildEnvelopeBounds(out lowest, out highest);
+        return RebuildSlotBounds(table, boundsKey, out lowest, out highest);
     }
 
     /// <summary>Replaces the slot bounds record with the lowest and highest slot the slot index holds, or removes it when the index is empty.</summary>
     /// <remarks>Scans every key of the column, so it runs only on a damaged record, which would otherwise leave slots outside the bounds that no prune visits.</remarks>
-    private bool RebuildEnvelopeBounds(out ulong lowest, out ulong highest)
+    private static bool RebuildSlotBounds(IDb table, ReadOnlySpan<byte> boundsKey, out ulong lowest, out ulong highest)
     {
         bool found = false;
         lowest = ulong.MaxValue;
         highest = 0;
-        foreach (byte[] key in _envelopes.GetAllKeys())
+        foreach (byte[] key in table.GetAllKeys())
         {
             if (key.Length != sizeof(ulong))
             {
@@ -1133,18 +1132,18 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
         if (found)
         {
-            _envelopes.Set(EnvelopeBoundsKey, EnvelopeBounds(lowest, highest));
+            table.Set(boundsKey, SlotBounds(lowest, highest));
             return true;
         }
 
-        _envelopes.Remove(EnvelopeBoundsKey);
+        table.Remove(boundsKey);
         lowest = highest = 0;
         return false;
     }
 
-    private static byte[] EnvelopeBounds(ulong lowest, ulong highest)
+    private static byte[] SlotBounds(ulong lowest, ulong highest)
     {
-        byte[] value = new byte[EnvelopeBoundsLength];
+        byte[] value = new byte[SlotBoundsLength];
         BinaryPrimitives.WriteUInt64BigEndian(value, lowest);
         BinaryPrimitives.WriteUInt64BigEndian(value.AsSpan(sizeof(ulong)), highest);
         return value;
@@ -1213,10 +1212,10 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
                 columns.PutSpan(ColumnCheckedKey, rewound);
             }
 
-            bool bounded = TryGetColumnBounds(out ulong lowest, out ulong highest);
+            bool bounded = TryGetSlotBounds(_dataColumns, ColumnBoundsKey, out ulong lowest, out ulong highest);
             if (!bounded || slot < lowest || slot > highest)
             {
-                columns.Set(ColumnBoundsKey, ColumnBounds(bounded ? Math.Min(lowest, slot) : slot, bounded ? Math.Max(highest, slot) : slot));
+                columns.Set(ColumnBoundsKey, SlotBounds(bounded ? Math.Min(lowest, slot) : slot, bounded ? Math.Max(highest, slot) : slot));
             }
         }
     }
@@ -1519,7 +1518,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     {
         lock (_columnIndexLock)
         {
-            if (!TryGetColumnBounds(out ulong lowest, out ulong highest) || keepFrom <= lowest)
+            if (!TryGetSlotBounds(_dataColumns, ColumnBoundsKey, out ulong lowest, out ulong highest) || keepFrom <= lowest)
             {
                 return false;
             }
@@ -1556,7 +1555,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             }
             else
             {
-                columns.Set(ColumnBoundsKey, ColumnBounds(batchLast + 1, highest));
+                columns.Set(ColumnBoundsKey, SlotBounds(batchLast + 1, highest));
             }
 
             return true;
@@ -1568,7 +1567,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     {
         lock (_columnIndexLock)
         {
-            if (!TryGetColumnBounds(out ulong lowest, out ulong highest))
+            if (!TryGetSlotBounds(_dataColumns, ColumnBoundsKey, out ulong lowest, out ulong highest))
             {
                 return false;
             }
@@ -1715,68 +1714,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     {
         blockRoot.Bytes.CopyTo(key);
         BinaryPrimitives.WriteUInt64BigEndian(key[Hash256.Size..], column);
-    }
-
-    /// <summary>The stored slot bounds of the column table, rebuilt from the slot index when the record is malformed or inverted; the caller holds <see cref="_columnIndexLock"/>.</summary>
-    /// <returns><c>false</c> when no slot may hold sidecars.</returns>
-    private bool TryGetColumnBounds(out ulong lowest, out ulong highest)
-    {
-        lowest = highest = 0;
-        byte[]? value = _dataColumns.Get(ColumnBoundsKey);
-        if (value is null)
-        {
-            return false;
-        }
-
-        if (value.Length == ColumnBoundsLength)
-        {
-            lowest = BinaryPrimitives.ReadUInt64BigEndian(value);
-            highest = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(sizeof(ulong)));
-            if (lowest <= highest)
-            {
-                return true;
-            }
-        }
-
-        return RebuildColumnBounds(out lowest, out highest);
-    }
-
-    /// <remarks>Scans every key of the table, so it runs only on a damaged record, which would otherwise leave slots outside the bounds that no prune visits.</remarks>
-    private bool RebuildColumnBounds(out ulong lowest, out ulong highest)
-    {
-        bool found = false;
-        lowest = ulong.MaxValue;
-        highest = 0;
-        foreach (byte[] key in _dataColumns.GetAllKeys())
-        {
-            if (key.Length != sizeof(ulong))
-            {
-                continue;
-            }
-
-            ulong slot = BinaryPrimitives.ReadUInt64BigEndian(key);
-            lowest = Math.Min(lowest, slot);
-            highest = Math.Max(highest, slot);
-            found = true;
-        }
-
-        if (found)
-        {
-            _dataColumns.Set(ColumnBoundsKey, ColumnBounds(lowest, highest));
-            return true;
-        }
-
-        _dataColumns.Remove(ColumnBoundsKey);
-        lowest = highest = 0;
-        return false;
-    }
-
-    private static byte[] ColumnBounds(ulong lowest, ulong highest)
-    {
-        byte[] value = new byte[ColumnBoundsLength];
-        BinaryPrimitives.WriteUInt64BigEndian(value, lowest);
-        BinaryPrimitives.WriteUInt64BigEndian(value.AsSpan(sizeof(ulong)), highest);
-        return value;
     }
 
     public byte[]? GetMetadata(string key) => _metadata.Get(Encoding.UTF8.GetBytes(key));
