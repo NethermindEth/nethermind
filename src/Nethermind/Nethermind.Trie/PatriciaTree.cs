@@ -871,6 +871,7 @@ namespace Nethermind.Trie
             private Inline64 _entries;
             private int _count;
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Push(TraverseStackFrame frame) => _entries[_count++] = frame;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
