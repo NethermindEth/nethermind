@@ -204,6 +204,8 @@ db_isolation_for() {
 # $1 config $2 rps $3 duration $4 cell dir $5 ctype $6 label [$7 corpus file] [$8 node container to sample]
 run_cell() {
   local corpus="${7:-}" node="${8:-}" sampler_container="" sampler_out=""
+  local runner=("$here/run-jsonbench.sh")
+  if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then runner=(python3 "$here/private_audit.py" cell); fi
   mkdir -p "$4"
   [[ -n "$node" && "$CORPUS_RESOURCE_SAMPLING" == "true" ]] && { sampler_container="$node"; sampler_out="$4/resources.json"; }
   OUT_DIR="$4" RPC_URL="$RPC" CLIENT_TYPE="$5" LABEL="$6" SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
@@ -212,7 +214,7 @@ run_cell() {
     JB_ETH_CALL_CORPUS="$([[ -n "$corpus" ]] && echo true || echo false)" JB_ETH_CALL_CORPUS_FILE="$corpus" \
     CORPUS_METHOD="$CORPUS_METHOD" CORPUS_TRACER="$CORPUS_TRACER" CORPUS_TRACE_TYPES="$CORPUS_TRACE_TYPES" \
     RESOURCE_SAMPLER_CONTAINER="$sampler_container" RESOURCE_SAMPLER_OUT="$sampler_out" \
-    "$here/run-jsonbench.sh"
+    "${runner[@]}"
 }
 
 # Percentiles above the failure rate describe failures, not latency — say so per cell.
@@ -255,8 +257,10 @@ warm_node() {
   local warm_cell="$SCRATCH_ROOT/warmup-cell/$1/$2"   # outside OUT_DIR so it is never staged
   echo "-- WARMUP $1 $2 @ rps=${warm_rps} for ${WARMUP_SECONDS}s (discarded) --"
   if [[ -n "$RPS_LIST" ]]; then
-    if ! JB_MAX_FAIL_RATE_PCT=100 JB_SEED="$WARMUP_SEED" run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" "$warm_cell" "$4" "$2" "$3" ""; then
-      echo "::warning::warmup for $2 failed — measured cells may be cold"; return 0
+    if ! RPC_PRIVATE_AUDIT_PHASE=warm JB_MAX_FAIL_RATE_PCT=100 JB_SEED="$WARMUP_SEED" run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" "$warm_cell" "$4" "$2" "$3" ""; then
+      echo "::warning::warmup for $2 failed — measured cells may be cold"
+      [[ "${RPC_PRIVATE_AUDIT:-false}" != "true" ]] || return 1
+      return 0
     fi
     WARMED_SECONDS="$WARMUP_SECONDS"
     got="$(json_number "$warm_cell/summary.json" '.metrics.http_reqs.values.count' 0)"
@@ -310,7 +314,7 @@ parity_compare() {
 # $1 clabel $2 label $3 corpus $4 ctype $5 container
 run_corpus() {
   local clabel="$1" label="$2" corpus="$3" ctype="$4" cname="$5" rps slot cell dur report_dir
-  warm_node "$clabel" "$label" "$corpus" "$ctype"
+  warm_node "$clabel" "$label" "$corpus" "$ctype" || { cell_fail=$((cell_fail + 1)); return 1; }
   declare -A rps_seen=()
   for rps in $RPS_LIST; do
     rps_seen[$rps]=$(( ${rps_seen[$rps]:-0} + 1 ))
@@ -318,7 +322,7 @@ run_corpus() {
     cell="$OUT_DIR/corpus/$clabel/$label/$slot"
     dur="$(corpus_cell_duration "$corpus" "$rps")"
     echo "-- CORPUS $clabel $label @ rps=$rps for $dur --"
-    run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$dur" "$cell" "$ctype" "$label" "$corpus" "$cname" \
+    RPC_PRIVATE_AUDIT_PHASE=main run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$dur" "$cell" "$ctype" "$label" "$corpus" "$cname" \
       || { echo "::warning::corpus $clabel/$label/$slot failed"; cell_fail=$((cell_fail + 1)); }
     report_fail_rate "$cell" "$clabel/$label/$slot"
     [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|$clabel|$label|$slot=$cell/jsonbench-summary.md")
@@ -370,6 +374,10 @@ run_corpus() {
 
 # $1 label $2 ctype $3 log file. Corpus mode prints counts only and deletes the log (lines could quote call data).
 scan_node_log() {
+  if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+    python3 "$here/private_audit.py" node --label "$1" --source-dir "$(dirname "$3")" || node_issue=1
+    return 0
+  fi
   [[ -f "$3" ]] || return 0
   local clean="$3.clean" show="true" exc pattern
   [[ "$JB_ETH_CALL_CORPUS" == "true" ]] && show="false"
@@ -428,6 +436,20 @@ for (( round = 1; round <= ROUNDS; round++ )); do
 done
 echo "Schedule (${ROUNDS} round(s)): ${schedule[*]}"
 log_system_provenance
+
+if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+  read -ra private_rates <<< "$RPS_LIST"
+  [[ "$JB_ETH_CALL_CORPUS" == "true" && "$CORPUS_BASELINE" == "none" && "${#CORPORA[@]}" -eq 1
+     && "${#schedule[@]}" -eq 4 && "${#entries[@]}" -eq 2 && "${#private_rates[@]}" -eq 1
+     && "$CORPUS_RESOURCE_SAMPLING" == "true" && -n "$CORPUS_REQUESTS" && "$WARMUP_SECONDS" -gt 0
+     && "$CORPUS_WARMUP_RPS" -eq "${private_rates[0]}" && "$CORPUS_WARMUP_RPS_MAX" -eq "$CORPUS_WARMUP_RPS" ]] \
+    || { echo "::error::private audit requires the fixed corpus ABBA shape"; exit 1; }
+  python3 "$here/private_audit.py" prepare --arms "${#schedule[@]}" \
+    --warm-count "$(( WARMUP_SECONDS * CORPUS_WARMUP_RPS ))" --main-count "$CORPUS_REQUESTS" || exit 1
+  trap 'python3 "$here/private_audit.py" teardown > "$RPC_PRIVATE_STORAGE_ROOT/teardown-trap.log" 2>&1 || true' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+fi
 
 for entry in "${schedule[@]}"; do
   # ctype[@image][#K=V[,K=V]][+flag[;flag]] — the optional env suffix (docker -e, on top of NODE_ENV_VARS) and flag
@@ -510,6 +532,13 @@ for entry in "${schedule[@]}"; do
       # two-arm dispatch quietly becomes a single-arm run with no comparison.
       echo "::error::${label} failed to start — its cells are missing from the matrix"; arm_fail=$((arm_fail + 1))
     fi
+    if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+      if owned_id="$(python3 "$here/private_audit.py" node-cid --state "$cst" 2>/dev/null)"; then
+        docker logs "$owned_id" > "$cst/node.log" 2>&1 || true
+      fi
+      scan_node_log "$label" "$ctype" "$cst/node.log"
+      echo "::endgroup::"; break
+    fi
     echo "::endgroup::"; continue
   fi
   LABELS+=("$label")
@@ -536,6 +565,7 @@ for entry in "${schedule[@]}"; do
     || { echo "::error::${label}: stop-node failed (DB integrity check or teardown)"; stop_fail=1; }
   scan_node_log "$label" "$ctype" "$cst/node.log"
   echo "::endgroup::"
+  if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]] && (( node_issue + cell_fail + stop_fail + parity_fail > 0 )); then break; fi
 done
 
 sink="${GITHUB_STEP_SUMMARY:-/dev/stdout}"

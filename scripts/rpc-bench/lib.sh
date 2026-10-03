@@ -480,6 +480,11 @@ assert_no_mounts_under() {
 reap_stale_containers() {
   local prefix ids
   for prefix in "$@"; do
+    if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+      ids="$(docker ps -aq --filter "name=^${prefix}" 2>/dev/null)" || die "private container lookup failed"
+      [[ -z "$ids" ]] || die "private run refuses pre-existing benchmark containers"
+      continue
+    fi
     ids="$(docker ps -aq --filter "name=^${prefix}" 2>/dev/null || true)"
     if [[ -n "$ids" ]]; then
       log "Reaping stale container(s) matching '${prefix}*'..."

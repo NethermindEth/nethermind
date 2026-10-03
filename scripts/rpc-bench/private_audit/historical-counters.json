@@ -1,0 +1,405 @@
+{
+  "kind": "NUMERIC_PROJECTION_OF_PRESERVED_SANITIZED_SUMMARIES_NOT_RAW_SCHEMA_PROOF",
+  "cells": [
+    {
+      "run": "36420120642",
+      "original_summary_sha256": "5ad4c39c2317a59c6047a8b9164ad5b353f2c83504f214b751b4d6d7ddd44405",
+      "original_resources_sha256": "f3b0ecb2cf0f518351c61a2617f1d4990ac2fb07ae06fb0f0afcad2442364aec",
+      "summary": {
+        "metrics": {
+          "http_reqs": {
+            "values": {
+              "count": 20001,
+              "rate": 99.9887695164665
+            }
+          },
+          "http_req_failed": {
+            "values": {
+              "rate": 0.0008499575021248938
+            }
+          },
+          "checks": {
+            "values": {
+              "fails": 34,
+              "passes": 39968
+            }
+          },
+          "dropped_iterations": {
+            "values": {
+              "count": 0
+            }
+          }
+        }
+      },
+      "resources": {
+        "cpu_avg_cores": 1.833,
+        "cpu_ms_per_request": 22.0383,
+        "cpu_peak_cores": 6.958,
+        "cpu_seconds": 440.788,
+        "cpu_throttled_usec": 0,
+        "io_read_bytes": 29945856,
+        "io_read_bytes_per_request": 1497.2,
+        "io_write_bytes": 212992,
+        "memory_avg_bytes": 9870880026,
+        "memory_peak_bytes": 10250141696,
+        "requests": 20001,
+        "samples": 961,
+        "stall_cpu_usec": 151975,
+        "stall_io_usec": 6289,
+        "stall_memory_usec": 0,
+        "wall_seconds": 240.521
+      },
+      "expected_accept": false
+    },
+    {
+      "run": "36420120642",
+      "original_summary_sha256": "d39517a6a616c1e4eaa83af245014040d2cb5d3e2963fe4ad0e582c934eac674",
+      "original_resources_sha256": "4a3282cc98660ff56002d44e1e13eec1051fb450a21be978f5de9e315ad1ce43",
+      "summary": {
+        "metrics": {
+          "http_reqs": {
+            "values": {
+              "count": 20000,
+              "rate": 99.98825458121068
+            }
+          },
+          "http_req_failed": {
+            "values": {
+              "rate": 0
+            }
+          },
+          "checks": {
+            "values": {
+              "fails": 0,
+              "passes": 40000
+            }
+          },
+          "dropped_iterations": {
+            "values": {
+              "count": 0
+            }
+          }
+        }
+      },
+      "resources": {
+        "cpu_avg_cores": 1.736,
+        "cpu_ms_per_request": 20.9391,
+        "cpu_peak_cores": 4.824,
+        "cpu_seconds": 418.782,
+        "cpu_throttled_usec": 0,
+        "io_read_bytes": 22691840,
+        "io_read_bytes_per_request": 1134.6,
+        "io_write_bytes": 204800,
+        "memory_avg_bytes": 10537087681,
+        "memory_peak_bytes": 10733703168,
+        "requests": 20000,
+        "samples": 964,
+        "stall_cpu_usec": 115646,
+        "stall_io_usec": 5341,
+        "stall_memory_usec": 0,
+        "wall_seconds": 241.275
+      },
+      "expected_accept": true
+    },
+    {
+      "run": "36420120642",
+      "original_summary_sha256": "88daa133175a2f05b598abaf37deae9fa678a8322b9e558f3f4ca2f0588e78d8",
+      "original_resources_sha256": "084ae44805d32f8f8101963ba48ece82644efda7f585e85599d9c2fa16deada9",
+      "summary": {
+        "metrics": {
+          "http_reqs": {
+            "values": {
+              "count": 20001,
+              "rate": 99.9890743306761
+            }
+          },
+          "http_req_failed": {
+            "values": {
+              "rate": 0
+            }
+          },
+          "checks": {
+            "values": {
+              "fails": 0,
+              "passes": 40002
+            }
+          },
+          "dropped_iterations": {
+            "values": {
+              "count": 0
+            }
+          }
+        }
+      },
+      "resources": {
+        "cpu_avg_cores": 1.817,
+        "cpu_ms_per_request": 21.7874,
+        "cpu_peak_cores": 4.994,
+        "cpu_seconds": 435.77,
+        "cpu_throttled_usec": 0,
+        "io_read_bytes": 21520384,
+        "io_read_bytes_per_request": 1076.0,
+        "io_write_bytes": 212992,
+        "memory_avg_bytes": 10441542559,
+        "memory_peak_bytes": 10611138560,
+        "requests": 20001,
+        "samples": 958,
+        "stall_cpu_usec": 118857,
+        "stall_io_usec": 6908,
+        "stall_memory_usec": 0,
+        "wall_seconds": 239.772
+      },
+      "expected_accept": true
+    },
+    {
+      "run": "36420120642",
+      "original_summary_sha256": "ededc324afbba27acb4b8b91151cb784380c38a60b937fa18ea95494e69be65d",
+      "original_resources_sha256": "4ac627060b2e3404f39051505caf28a0c407240860c0b56b29424bdbba420c4a",
+      "summary": {
+        "metrics": {
+          "http_reqs": {
+            "values": {
+              "count": 20000,
+              "rate": 99.98640021929191
+            }
+          },
+          "http_req_failed": {
+            "values": {
+              "rate": 0
+            }
+          },
+          "checks": {
+            "values": {
+              "fails": 0,
+              "passes": 40000
+            }
+          },
+          "dropped_iterations": {
+            "values": {
+              "count": 0
+            }
+          }
+        }
+      },
+      "resources": {
+        "cpu_avg_cores": 1.767,
+        "cpu_ms_per_request": 21.1791,
+        "cpu_peak_cores": 5.04,
+        "cpu_seconds": 423.583,
+        "cpu_throttled_usec": 0,
+        "io_read_bytes": 17645568,
+        "io_read_bytes_per_request": 882.3,
+        "io_write_bytes": 212992,
+        "memory_avg_bytes": 10764833691,
+        "memory_peak_bytes": 10922491904,
+        "requests": 20000,
+        "samples": 958,
+        "stall_cpu_usec": 119346,
+        "stall_io_usec": 4864,
+        "stall_memory_usec": 0,
+        "wall_seconds": 239.772
+      },
+      "expected_accept": true
+    },
+    {
+      "run": "36444291694",
+      "original_summary_sha256": "49c42038b61a4a3acb836e793e8341f967d243d36d273be8c1fe05af7533b60d",
+      "original_resources_sha256": "6e05e09c05dba74e4dd3e080ce8ba3b8bf7ceb7255ff3bc91f9a672b25d247dc",
+      "summary": {
+        "metrics": {
+          "http_reqs": {
+            "values": {
+              "count": 20001,
+              "rate": 99.98838610124551
+            }
+          },
+          "http_req_failed": {
+            "values": {
+              "rate": 0
+            }
+          },
+          "checks": {
+            "values": {
+              "fails": 0,
+              "passes": 40002
+            }
+          },
+          "dropped_iterations": {
+            "values": {
+              "count": 0
+            }
+          }
+        }
+      },
+      "resources": {
+        "cpu_avg_cores": 1.692,
+        "cpu_ms_per_request": 20.2464,
+        "cpu_peak_cores": 4.836,
+        "cpu_seconds": 404.948,
+        "cpu_throttled_usec": 0,
+        "io_read_bytes": 22528000,
+        "io_read_bytes_per_request": 1126.3,
+        "io_write_bytes": 204800,
+        "memory_avg_bytes": 10190103470,
+        "memory_peak_bytes": 10354073600,
+        "requests": 20001,
+        "samples": 956,
+        "stall_cpu_usec": 98878,
+        "stall_io_usec": 11429,
+        "stall_memory_usec": 3617,
+        "wall_seconds": 239.271
+      },
+      "expected_accept": true
+    },
+    {
+      "run": "36444291694",
+      "original_summary_sha256": "7e8a36eac5c38614882129f7aeec4b26afb6b7cd0f6fa4843dc40380f31935ae",
+      "original_resources_sha256": "e73c812bdcdf5dd3444f99f040770bd3c47a413432abc0b1fea5b699a286fb97",
+      "summary": {
+        "metrics": {
+          "http_reqs": {
+            "values": {
+              "count": 20001,
+              "rate": 99.99047035125645
+            }
+          },
+          "http_req_failed": {
+            "values": {
+              "rate": 0
+            }
+          },
+          "checks": {
+            "values": {
+              "fails": 0,
+              "passes": 40002
+            }
+          },
+          "dropped_iterations": {
+            "values": {
+              "count": 0
+            }
+          }
+        }
+      },
+      "resources": {
+        "cpu_avg_cores": 1.678,
+        "cpu_ms_per_request": 19.9868,
+        "cpu_peak_cores": 4.685,
+        "cpu_seconds": 399.755,
+        "cpu_throttled_usec": 0,
+        "io_read_bytes": 17563648,
+        "io_read_bytes_per_request": 878.1,
+        "io_write_bytes": 212992,
+        "memory_avg_bytes": 10502798155,
+        "memory_peak_bytes": 10755821568,
+        "requests": 20001,
+        "samples": 952,
+        "stall_cpu_usec": 100873,
+        "stall_io_usec": 5255,
+        "stall_memory_usec": 0,
+        "wall_seconds": 238.272
+      },
+      "expected_accept": true
+    },
+    {
+      "run": "36444291694",
+      "original_summary_sha256": "6c324db35cc9547a648b7d122cf3305f1c52570480c05766900d88aa92b2b876",
+      "original_resources_sha256": "64fec0044f4e049504a631e15b5bb570c160feadb3f2c269cb34def7f2b0d3d4",
+      "summary": {
+        "metrics": {
+          "http_reqs": {
+            "values": {
+              "count": 20001,
+              "rate": 99.99075818482389
+            }
+          },
+          "http_req_failed": {
+            "values": {
+              "rate": 0
+            }
+          },
+          "checks": {
+            "values": {
+              "fails": 0,
+              "passes": 40002
+            }
+          },
+          "dropped_iterations": {
+            "values": {
+              "count": 0
+            }
+          }
+        }
+      },
+      "resources": {
+        "cpu_avg_cores": 1.648,
+        "cpu_ms_per_request": 19.8129,
+        "cpu_peak_cores": 4.014,
+        "cpu_seconds": 396.277,
+        "cpu_throttled_usec": 0,
+        "io_read_bytes": 20062208,
+        "io_read_bytes_per_request": 1003.1,
+        "io_write_bytes": 1622016,
+        "memory_avg_bytes": 10533730250,
+        "memory_peak_bytes": 10664566784,
+        "requests": 20001,
+        "samples": 961,
+        "stall_cpu_usec": 98816,
+        "stall_io_usec": 7363,
+        "stall_memory_usec": 2984,
+        "wall_seconds": 240.522
+      },
+      "expected_accept": true
+    },
+    {
+      "run": "36444291694",
+      "original_summary_sha256": "ed09a2152a1a62e9d31ecfdd0b32c284769ffe0c29f201990c558a476dc8db53",
+      "original_resources_sha256": "b940fcad0bcbcb2c0c46fac76e16cc3dd33e400e428364929f7270518923721a",
+      "summary": {
+        "metrics": {
+          "http_reqs": {
+            "values": {
+              "count": 20001,
+              "rate": 99.99024687753045
+            }
+          },
+          "http_req_failed": {
+            "values": {
+              "rate": 0
+            }
+          },
+          "checks": {
+            "values": {
+              "fails": 0,
+              "passes": 40002
+            }
+          },
+          "dropped_iterations": {
+            "values": {
+              "count": 0
+            }
+          }
+        }
+      },
+      "resources": {
+        "cpu_avg_cores": 1.668,
+        "cpu_ms_per_request": 20.0541,
+        "cpu_peak_cores": 4.473,
+        "cpu_seconds": 401.103,
+        "cpu_throttled_usec": 0,
+        "io_read_bytes": 16986112,
+        "io_read_bytes_per_request": 849.3,
+        "io_write_bytes": 212992,
+        "memory_avg_bytes": 10789250000,
+        "memory_peak_bytes": 10957041664,
+        "requests": 20001,
+        "samples": 961,
+        "stall_cpu_usec": 93755,
+        "stall_io_usec": 5843,
+        "stall_memory_usec": 0,
+        "wall_seconds": 240.522
+      },
+      "expected_accept": true
+    }
+  ]
+}

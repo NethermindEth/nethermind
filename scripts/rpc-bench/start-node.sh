@@ -150,14 +150,19 @@ if [[ -f "$ANCHOR_FILE" ]] && [[ "$(head -n 1 "$ANCHOR_FILE")" == "$(head -n 1 "
 fi
 
 # Only the primary reaps: the reference starts second and must not kill this run's primary.
-[[ "$INSTANCE" == "primary" ]] && reap_stale_containers "rpcbench-" "nethermind-rpcbench" "ethcallchaos-bench" "jsonbench-"
+[[ "${RPC_PRIVATE_AUDIT:-false}" != "true" && "$INSTANCE" == "primary" ]] && reap_stale_containers "rpcbench-" "nethermind-rpcbench" "ethcallchaos-bench" "jsonbench-"
 
 RUN_SCRATCH="$SCRATCH_ROOT/run$SUFFIX"
+if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+  [[ "$DB_ISOLATION" == "overlay" ]] || die "private audit requires overlay isolation"
+  python3 "$HERE/private_audit.py" node-begin --state "$STATE_DIR" --scratch "$RUN_SCRATCH" --name "$CONTAINER_NAME" --image "$NODE_IMAGE"
+else
 for m in "$RUN_SCRATCH/merged" "$RUN_SCRATCH/ro"; do
   mountpoint -q "$m" 2>/dev/null && { as_root umount "$m" 2>/dev/null || as_root umount -l "$m" 2>/dev/null || true; }
 done
 assert_no_mounts_under "$RUN_SCRATCH"
 as_root rm -rf "$RUN_SCRATCH"
+fi
 mkdir -p "$RUN_SCRATCH" "$DIAG_DIR"
 
 MOUNT_OPT="rw"
@@ -169,6 +174,9 @@ case "$DB_ISOLATION" in
       -o "lowerdir=$DB_SOURCE,upperdir=$RUN_SCRATCH/upper,workdir=$RUN_SCRATCH/work,redirect_dir=on,metacopy=on,volatile" "$RUN_SCRATCH/merged" \
       || as_root mount -t overlay overlay -o "lowerdir=$DB_SOURCE,upperdir=$RUN_SCRATCH/upper,workdir=$RUN_SCRATCH/work" "$RUN_SCRATCH/merged" \
       || die "overlay mount failed — pick db_isolation=copy if the runner lacks overlayfs"
+    if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+      python3 "$HERE/private_audit.py" node-mounted --state "$STATE_DIR" --mount "$RUN_SCRATCH/merged"
+    fi
     DATA_DIR_SOURCE="$RUN_SCRATCH/merged"
     ;;
   copy)
@@ -372,11 +380,18 @@ if [[ "$DOTTRACE" == "true" ]]; then
   entry_args+=(/nethermind/nethermind)
 fi
 
-docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
+if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+  docker_args+=(--cidfile "$STATE_DIR/node.cid" --label "codex.rpc.private-run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}")
+else
+  docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
+fi
 log "Starting $CLIENT container '$CONTAINER_NAME'..."
 log "  node args: ${node_args[*]}"
 docker run "${docker_args[@]}" "$NODE_IMAGE" ${entry_args[@]+"${entry_args[@]}"} "${node_args[@]}"
 
+if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+  CONTAINER_NAME="$(python3 "$HERE/private_audit.py" node-cid --state "$STATE_DIR")"
+fi
 wait_for_rpc "http://localhost:${RPC_PORT}" "$HEALTH_TIMEOUT" "$CONTAINER_NAME"
 log "=== Node ready for benchmarking ==="
 

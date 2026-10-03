@@ -133,6 +133,8 @@ fi
 as_root rm -rf "$work/io"
 mkdir -p "$work/io/out"
 
+private_source_head=""
+private_built_current=false
 if [[ "$reuse_prepared" != "true" ]]; then
   rm -f "$prepared_marker"
   # A sweep calls this script once per cell, so re-fetching the tool per cell cost ~100 authenticated
@@ -164,7 +166,13 @@ if [[ "$reuse_prepared" != "true" ]]; then
   runner_dockerfile="$work/src/runner/Dockerfile"
   [[ -f "$runner_dockerfile" ]] || die "json-bench runner Dockerfile not found at $runner_dockerfile"
   log "Building $image_tag from runner/Dockerfile..."
+  if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+    private_source_head="$(python3 "$HERE/private_audit.py" verify-source --source "$work/src" --ref "$JB_REF")" || die "private source verification failed"
+    image_tag="$(docker build -q -f "$runner_dockerfile" -t "$image_tag" "$work/src")" || die "failed to build the json-bench runner image"
+    private_built_current=true
+  else
   docker build -q -f "$runner_dockerfile" -t "$image_tag" "$work/src" >/dev/null || die "failed to build the json-bench runner image"
+  fi
 fi
 
 clients_yaml="$work/io/clients.yaml"
@@ -271,7 +279,14 @@ fi
 chmod -R a+rwX "$work/io"   # the runner image runs as uid 1001
 read -ra extra_args_arr <<< "$JB_EXTRA_ARGS"
 docker_common=(--rm --name "$CONTAINER_NAME" --network host -w /jb -v "$work/src:/jb:ro" -v "$work/io:/io")
-docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
+[[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]] || { docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true; }
+
+if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+  image_tag="$(python3 "$HERE/private_audit.py" runtime-pin --image "$image_tag" --source-head "$private_source_head" --built-current "$private_built_current")" \
+    || die "private runtime provenance failed"
+  private_cidfile="$(python3 "$HERE/private_audit.py" tool-begin --image "$image_tag")" || die "private tool ownership failed"
+  docker_common+=(--cidfile "$private_cidfile" --label "codex.rpc.private-run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}")
+fi
 
 # Resource sampling brackets container execution only.
 sampler_pid=""

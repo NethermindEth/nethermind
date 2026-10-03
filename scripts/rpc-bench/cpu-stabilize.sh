@@ -18,7 +18,12 @@ CPU_SYSFS="${CPU_SYSFS:-/sys/devices/system/cpu}"   # overridable so the tests c
 SAVED="$STATE_DIR/cpu-sysfs.orig"
 
 write_sys() { as_root sh -c "printf '%s' '$2' > '$1'" 2>/dev/null; }
-save_sys() { printf '%s\t%s\n' "$1" "$(cat "$1")" >> "$SAVED"; }
+save_sys() {
+  local original
+  original="$(cat "$1")" || return 1
+  [[ -n "$original" ]] || return 1
+  printf '%s\t%s\n' "$1" "$original" >> "$SAVED" || return 1
+}
 
 turbo_path() {
   [[ -e "$CPU_SYSFS/intel_pstate/no_turbo" ]] && { echo "$CPU_SYSFS/intel_pstate/no_turbo 1"; return; }
@@ -27,7 +32,7 @@ turbo_path() {
 
 apply() {
   [[ -z "$CPU_MAX_FREQ_KHZ" || "$CPU_MAX_FREQ_KHZ" =~ ^[1-9][0-9]*$ ]] || die "CPU_MAX_FREQ_KHZ must be a positive integer, got '$CPU_MAX_FREQ_KHZ'"
-  mkdir -p "$STATE_DIR"
+  mkdir -p "$STATE_DIR" || return 1
   # A run killed between apply and restore leaves the box capped; restoring first keeps the cap from being
   # recorded as the "original" and made permanent.
   [[ -s "$SAVED" ]] && { log "::warning::stale saved cpu state from an earlier run — restoring it first"; restore; }
@@ -37,17 +42,17 @@ apply() {
     log "::error::refusing to apply over unrestored cpu state in $SAVED — the box is still capped; restore it by hand first"
     return 1
   fi
-  : > "$SAVED"
+  : > "$SAVED" || return 1
   local turbo off policy n policies=()
   read -r turbo off <<< "$(turbo_path)"
   # One entry per cpufreq policy, not per CPU: cpuN/cpufreq links to its policy and a cluster's CPUs share one, so a
   # per-CPU walk read the second CPU's "original" after the first one's write. Every original is recorded before the
   # first write, turbo's included, so none of them is a value this script already changed.
   for policy in "$CPU_SYSFS"/cpufreq/policy[0-9]*; do [[ -e "$policy/scaling_governor" ]] && policies+=("$policy"); done
-  [[ -z "${turbo:-}" ]] || save_sys "$turbo"
+  [[ -z "${turbo:-}" ]] || save_sys "$turbo" || return 1
   for policy in "${policies[@]}"; do
-    save_sys "$policy/scaling_governor"
-    [[ -z "$CPU_MAX_FREQ_KHZ" ]] || save_sys "$policy/scaling_max_freq"
+    save_sys "$policy/scaling_governor" || return 1
+    [[ -z "$CPU_MAX_FREQ_KHZ" ]] || save_sys "$policy/scaling_max_freq" || return 1
   done
 
   if [[ -n "${turbo:-}" ]]; then

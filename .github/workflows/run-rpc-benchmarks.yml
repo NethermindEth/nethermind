@@ -180,6 +180,11 @@ on:
         required: false
         type: boolean
         default: false
+      private_audit:
+        description: Opt-in encrypted full-log audit for the fixed private corpus ABBA; raw evidence stays private.
+        required: false
+        type: boolean
+        default: false
       tool_config:
         description: >-
           Advanced — JSON merged over the values derived from the inputs above (its keys win).
@@ -297,6 +302,7 @@ jobs:
           IN_DEBUG_TRACE_CALL_CORPUS: ${{ inputs.debug_trace_call_corpus }}
           IN_FLAGS: ${{ inputs.additional_nethermind_flags }}
           IN_TOOL_CONFIG: ${{ inputs.tool_config }}
+          IN_PRIVATE_AUDIT: ${{ inputs.private_audit }}
           IN_NODE_CONFIG: ${{ inputs.node_config }}
           WR_EVENT: ${{ github.event.workflow_run.event }}
           WR_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
@@ -474,6 +480,13 @@ jobs:
             echo "  gh workflow run publish-docker.yml --ref ${branch} -f image-name=nethermind -f tag=<tag> -f dockerfile=Dockerfile -f build-config=release"
             echo "  gh workflow run run-rpc-benchmarks.yml --ref ${branch} -f docker_image=nethermindeth/nethermind:<tag> ..."
             exit 1
+          fi
+
+          if [[ "${IN_PRIVATE_AUDIT:-false}" == "true" ]]; then
+            [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${preset}" == "corpus-ab" && "${arch}" == "amd64"
+               && "${baseline_image}" != "cache" && "${rounds}" == "2" && "${dottrace}" == "false"
+               && "${perf}" == "false" && "${dotnet_trace}" == "false" && "${dotnet_dump}" == "false" ]] \
+              || fail "private_audit requires an unprofiled amd64 corpus-ab with explicit baseline and rounds=2."
           fi
 
           # tool_config = preset-derived keys, then the user's JSON on top.
@@ -763,6 +776,7 @@ jobs:
         # Other workflows leave sparse-checkout state in the shared workspace's .git.
         working-directory: rpc-bench-workspace
     env:
+      RPC_PRIVATE_AUDIT: ${{ inputs.private_audit == true && 'true' || 'false' }}
       # Run output paths are initialized before checkout so early failures can still report a summary.
       DIAG_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag
       CONTAINER_NAME: rpcbench-primary-${{ github.run_id }}
@@ -780,6 +794,8 @@ jobs:
         env:
           RUNNER_LABEL: ${{ needs.resolve.outputs.runner_label }}
           BENCH_SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          PRIVATE_DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
+          RPC_PRIVATE_AUDIT: ${{ inputs.private_audit == true && 'true' || 'false' }}
         run: |
           mkdir -p rpc-bench-workspace
           # The baseline cache restores into the shared workspace, which checkout no longer cleans, so a previous run's
@@ -791,7 +807,23 @@ jobs:
             output_parent="${BENCH_SCRATCH_ROOT}"
           fi
           mkdir -p "${output_parent}"
+          if [[ "${RPC_PRIVATE_AUDIT}" == "true" ]]; then
+            [[ "${GITHUB_RUN_ID}" =~ ^[1-9][0-9]{0,19}$ && "${GITHUB_RUN_ATTEMPT}" =~ ^[1-9][0-9]{0,19}$ ]] || exit 1
+            private_parent="$(realpath -e -- "${BENCH_SCRATCH_ROOT}")" || exit 1
+            private_db="$(realpath -e -- "${PRIVATE_DB_SOURCE}")" || exit 1
+            [[ "$private_parent" != "$private_db" && "$private_parent/" != "$private_db/"* && "$private_db/" != "$private_parent/"* ]] || exit 1
+            bench_temp="${private_parent}/rpc-private-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            mkdir -m 0700 -- "${bench_temp}" || exit 1
+            mkdir -m 0700 -- "${bench_temp}/scratch" || exit 1
+            {
+              echo "RPC_PRIVATE_STORAGE_ROOT=${bench_temp}"
+              echo "RPC_PRIVATE_SHARED_SCRATCH_ROOT=${private_parent}"
+              echo "RPC_PRIVATE_SCRATCH_ROOT=${bench_temp}/scratch"
+              echo "DIAG_DIR=${bench_temp}/scratch/diag"
+            } >> "$GITHUB_ENV"
+          else
           bench_temp="$(mktemp -d "${output_parent}/rpcbench.XXXXXX")"
+          fi
           mkdir -p "${bench_temp}/out" "${bench_temp}/state"
           {
             echo "BENCH_TEMP=${bench_temp}"
@@ -898,7 +930,7 @@ jobs:
           BENCHMARK_TOOL: ${{ needs.resolve.outputs.benchmark_tool }}
           DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
           REFERENCE_DB_SOURCE: ${{ needs.resolve.outputs.ref_db_source }}
-          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SCRATCH_ROOT: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}
           SNAPSHOT_ROOT: ${{ needs.resolve.outputs.snapshot_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
         run: |
@@ -971,7 +1003,7 @@ jobs:
             ${{ needs.resolve.outputs.image_ref }}
             ${{ needs.resolve.outputs.ref_image_ref }}
           KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
-          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SCRATCH_ROOT: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}
         run: |
           set -uo pipefail
           source scripts/rpc-bench/lib.sh   # arm_image: the sweep's own `clients` entry -> image ref normalisation
@@ -1067,14 +1099,28 @@ jobs:
 
       # The saved sysfs values live on the scratch disk, not in the run output dir: a killed run must leave them for the
       # next apply to restore, or the frequency cap becomes permanent and leaks into every other benchmark on the box.
+      - name: Check private run ownership
+        id: private-preflight
+        if: inputs.private_audit == true
+        run: python3 scripts/rpc-bench/private_audit.py preflight
+
       - name: Stabilize CPU frequency
+        id: cpu-apply
         env:
           CPU_MAX_FREQ_KHZ: ${{ needs.resolve.outputs.cpu_max_freq_khz }}
-          STATE_DIR: ${{ needs.resolve.outputs.scratch_root }}/cpu-state
+          STATE_DIR: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}/cpu-state
         # cpu_stabilize=false (node_config.cpu_max_freq_khz 0) runs the clock free; restore only clears a cap a killed run left behind.
         run: |
+          if [[ "${RPC_PRIVATE_AUDIT}" == "true" ]]; then
+            if [[ "${{ needs.resolve.outputs.cpu_stabilize }}" == "true" ]]; then
+              STATE_DIR="$(python3 scripts/rpc-bench/private_audit.py cpu-apply-attempt)" || exit 1
+              export STATE_DIR
+              ./scripts/rpc-bench/cpu-stabilize.sh apply
+            fi
+          else
           if [[ "${{ needs.resolve.outputs.cpu_stabilize }}" == "true" ]]; then ./scripts/rpc-bench/cpu-stabilize.sh apply
           else ./scripts/rpc-bench/cpu-stabilize.sh restore; fi
+          fi
 
       - name: Start node
         id: start-node
@@ -1085,7 +1131,7 @@ jobs:
           NODE_IMAGE: ${{ needs.resolve.outputs.image_ref }}
           DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
           DB_ISOLATION: ${{ needs.resolve.outputs.db_isolation }}
-          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SCRATCH_ROOT: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}
           NETWORK: ${{ needs.resolve.outputs.network }}
           JSONRPC_MODULES: ${{ needs.resolve.outputs.jsonrpc_modules }}
           LAYOUT_FLAGS: ${{ needs.resolve.outputs.layout_flags }}
@@ -1115,7 +1161,7 @@ jobs:
           RPC_PORT: ${{ env.REF_RPC_PORT }}
           DB_SOURCE: ${{ needs.resolve.outputs.ref_db_source }}
           DB_ISOLATION: ${{ needs.resolve.outputs.ref_db_isolation }}
-          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SCRATCH_ROOT: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}
           NETWORK: ${{ needs.resolve.outputs.network }}
           JSONRPC_MODULES: ${{ needs.resolve.outputs.jsonrpc_modules }}
           LAYOUT_FLAGS: ${{ needs.resolve.outputs.ref_layout_flags }}
@@ -1158,7 +1204,7 @@ jobs:
         if: needs.resolve.outputs.benchmark_tool == 'jsonbench' && needs.resolve.outputs.warmup_seconds != '0'
         env:
           RPC_URL: http://localhost:8545
-          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SCRATCH_ROOT: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
           CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
@@ -1226,7 +1272,7 @@ jobs:
         continue-on-error: true
         env:
           RPC_URL: http://localhost:8545
-          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SCRATCH_ROOT: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           JB_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
           CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
@@ -1273,7 +1319,7 @@ jobs:
         continue-on-error: true
         env:
           RPC_URL: http://localhost:8545
-          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SCRATCH_ROOT: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
         shell: bash
         run: |
@@ -1342,8 +1388,9 @@ jobs:
         id: run-sweep
         if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep'
         env:
+          RPC_PRIVATE_AUDIT: ${{ inputs.private_audit == true && 'true' || 'false' }}
           NM_IMAGE: ${{ needs.resolve.outputs.image_ref }}
-          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SCRATCH_ROOT: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}
           JSONRPC_MODULES: ${{ needs.resolve.outputs.jsonrpc_modules }}
           HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
           NETWORK: ${{ needs.resolve.outputs.network }}
@@ -1399,11 +1446,28 @@ jobs:
           STOP_GRACE: "180"
         run: ./scripts/rpc-bench/stop-node.sh
 
+      - name: Stop owned private RPC resources
+        id: private-teardown
+        if: always() && inputs.private_audit == true && steps.private-preflight.outcome == 'success'
+        run: python3 scripts/rpc-bench/private_audit.py teardown
+
       - name: Restore CPU frequency
-        if: always() && steps.scripts.outcome == 'success'
+        id: cpu-restore
+        if: always() && steps.scripts.outcome == 'success' && (inputs.private_audit != true || steps.private-preflight.outcome == 'success')
         env:
-          STATE_DIR: ${{ needs.resolve.outputs.scratch_root }}/cpu-state
-        run: ./scripts/rpc-bench/cpu-stabilize.sh restore || true
+          STATE_DIR: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}/cpu-state
+        run: |
+          if [[ "${RPC_PRIVATE_AUDIT}" == "true" ]]; then
+            private_cpu_state="$(python3 scripts/rpc-bench/private_audit.py cpu-restore-state)" || exit 1
+            if [[ -n "$private_cpu_state" ]]; then
+              STATE_DIR="$private_cpu_state"
+              export STATE_DIR
+              ./scripts/rpc-bench/cpu-stabilize.sh restore
+              [[ ! -s "${STATE_DIR}/cpu-sysfs.orig" ]] || exit 1
+            fi
+          else
+            ./scripts/rpc-bench/cpu-stabilize.sh restore || true
+          fi
 
       - name: Collect dotTrace snapshots
         if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dottrace == 'true'
@@ -1743,15 +1807,43 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      - name: Archive private RPC evidence
+        id: private-audit-finalize
+        if: always() && inputs.private_audit == true && steps.scripts.outcome == 'success'
+        env:
+          RPC_PRIVATE_SWEEP_OUTCOME: ${{ steps.run-sweep.outcome }}
+          RPC_PRIVATE_TEARDOWN_OUTCOME: ${{ steps.private-teardown.outcome }}
+          RPC_PRIVATE_CPU_RESTORE_OUTCOME: ${{ steps.cpu-restore.outcome }}
+        run: python3 scripts/rpc-bench/private_audit.py finalize
+
+      - name: Upload encrypted RPC evidence
+        id: private-audit-upload
+        if: always() && inputs.private_audit == true && steps.private-audit-finalize.outputs.archive_ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rpc-private-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.BENCH_TEMP }}/rpc-private-public-${{ github.run_id }}-${{ github.run_attempt }}/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Remove uploaded private RPC sources
+        if: always() && inputs.private_audit == true && steps.private-audit-finalize.outcome == 'success' && steps.private-audit-upload.outcome == 'success' && steps.private-teardown.outcome == 'success' && steps.cpu-restore.outcome == 'success'
+        env:
+          AUDIT_OUTCOME: ${{ steps.private-audit-finalize.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.private-audit-upload.outcome }}
+          TEARDOWN_OUTCOME: ${{ steps.private-teardown.outcome }}
+          CPU_OUTCOME: ${{ steps.cpu-restore.outcome }}
+        run: python3 scripts/rpc-bench/private_audit.py cleanup-sources --audit-outcome "$AUDIT_OUTCOME" --upload-outcome "$UPLOAD_OUTCOME" --teardown-outcome "$TEARDOWN_OUTCOME" --cpu-outcome "$CPU_OUTCOME"
+
       - name: Remove run output
-        if: always() && steps.paths.outcome == 'success'
+        if: always() && steps.paths.outcome == 'success' && inputs.private_audit != true
         run: rm -rf -- "${BENCH_TEMP:?}"
 
       - name: Defensive cleanup
-        if: always() && steps.scripts.outcome == 'success'
+        if: always() && steps.scripts.outcome == 'success' && inputs.private_audit != true
         shell: bash
         env:
-          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SCRATCH_ROOT: ${{ env.RPC_PRIVATE_SCRATCH_ROOT || needs.resolve.outputs.scratch_root }}
           DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
         run: ./scripts/rpc-bench/cleanup.sh || true
 
