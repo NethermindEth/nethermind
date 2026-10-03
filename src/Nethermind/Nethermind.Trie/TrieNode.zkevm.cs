@@ -141,8 +141,10 @@ namespace Nethermind.Trie
         /// <remarks>
         /// Without the std form's wrapping of a decoding error into a <see cref="TrieNodeException"/>: the guest fails the
         /// block on any exception, and the handler costs every resolve a frame pointer and spilled arguments.
+        /// Inlined into each walk, unlike the std form: nearly every witness node is resolved exactly once, so the
+        /// call and its saved registers were paid per node.
         /// </remarks>
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ResolveUnknownNodeWithContext(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
             ICappedArrayPool? bufferPool) => ResolveUnknownNode(tree, path, readFlags, bufferPool);
 
