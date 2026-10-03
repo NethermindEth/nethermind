@@ -26,7 +26,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class StatelessBlockProcessingEnv(
+public partial class StatelessBlockProcessingEnv(
     Witness witness,
     ISpecProvider specProvider,
     ISealValidator sealValidator,
@@ -53,7 +53,7 @@ public class StatelessBlockProcessingEnv(
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
-    public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
+    public IWorldState WorldState => _worldState ??= RequireWitnessedBytecode(
         new WorldState(
             new TrieStoreScopeProvider(
                 new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
@@ -61,6 +61,9 @@ public class StatelessBlockProcessingEnv(
             logManager
         )
     );
+
+    /// <summary>Makes a bytecode access fail when the witness lacks the code.</summary>
+    private static partial IWorldState RequireWitnessedBytecode(WorldState worldState);
 
     private BlockProcessor GetProcessor()
     {

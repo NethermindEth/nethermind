@@ -82,6 +82,32 @@ public class GuestAddressHashTests
         }
     }
 
+    [Test]
+    public void Slot_index_hash_reuses_the_memo_only_for_the_last_slot([Values] bool zeroKey)
+    {
+        // A fresh seed leaves the memo holding the all-zero key.
+        byte[] slot = zeroKey ? new byte[32] : SlotBytes;
+        byte[] otherSlot = (byte[])SlotBytes.Clone();
+        otherSlot[^1] ^= 0x01;
+        ulong addressSum = SpanExtensions.SumAddressWords(ref MemoryMarshal.GetArrayDataReference(AddressBytes));
+
+        SpanExtensions.SeedHashes(SeedGuestHashes.Seed);
+        ulong afterReseed = MixSlotIndex(slot);
+        MixSlot(addressSum, otherSlot);
+        ulong computed = MixSlotIndex(slot);
+        MixSlot(~addressSum, slot);
+        ulong remembered = MixSlotIndex(slot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterReseed, Is.EqualTo(computed), "after reseed");
+            Assert.That(remembered, Is.EqualTo(computed), "remembered");
+            Assert.That(MixSlotIndex(otherSlot), Is.Not.EqualTo(computed), "other slot");
+        }
+    }
+
+    private static ulong MixSlotIndex(byte[] slot) => SpanExtensions.MixSlotIndex(ref MemoryMarshal.GetArrayDataReference(slot));
+
     private static ulong MixSlot(byte[] address, byte[] slot) =>
         MixSlot(SpanExtensions.SumAddressWords(ref MemoryMarshal.GetArrayDataReference(address)), slot);
 
