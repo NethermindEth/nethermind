@@ -17,7 +17,6 @@ using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -186,37 +185,9 @@ public class BeaconApiErrorMappingTests
 
     private static byte[] MinimalFuluState(ulong slot)
     {
-        BeaconStateFulu state = new()
-        {
-            GenesisTime = Spec.GenesisTime,
-            GenesisValidatorsRoot = Spec.GenesisValidatorsRoot,
-            Slot = slot,
-            Fork = new Fork { PreviousVersion = [5, 0, 0, 0], CurrentVersion = [6, 0, 0, 0], Epoch = 0 },
-            LatestBlockHeader = new BeaconBlockHeader { Slot = slot - 1, ProposerIndex = 0, ParentRoot = Hash256.Zero, StateRoot = Hash256.Zero, BodyRoot = Hash256.Zero },
-            Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-            Validators = [],
-            Balances = [],
-            RandaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector],
-            Slashings = new ulong[(int)Presets.EpochsPerSlashingsVector],
-            JustificationBits = new System.Collections.BitArray(4),
-            PreviousJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            ProposerLookahead = new ulong[(int)Presets.ProposerLookaheadSlots],
-            LatestExecutionPayloadHeader = new ExecutionPayloadHeader
-            {
-                ParentHash = Hash256.Zero,
-                FeeRecipient = Address.Zero,
-                StateRoot = Hash256.Zero,
-                ReceiptsRoot = Hash256.Zero,
-                LogsBloom = Bloom.Empty,
-                PrevRandao = Hash256.Zero,
-                ExtraData = [],
-                BlockHash = Hash256.Zero,
-                TransactionsRoot = Hash256.Zero,
-                WithdrawalsRoot = Hash256.Zero,
-            },
-        };
+        BeaconStateFulu state = MinimalState(Spec, slot,
+            new Fork { PreviousVersion = [5, 0, 0, 0], CurrentVersion = [6, 0, 0, 0], Epoch = 0 },
+            [], [], new Hash256[(int)Presets.EpochsPerHistoricalVector]);
         Array.Fill(state.RandaoMixes!, Hash256.Zero);
         return BeaconStateFulu.Encode(state);
     }
