@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
-using Autofac.Core.Resolving.Pipeline;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Config;
@@ -21,33 +20,12 @@ public class BeaconApiHeadSnapshotDiTests
     [Test]
     public void Orchestrator_and_the_beacon_api_share_the_one_registered_head_snapshot_holder()
     {
-        List<(Type Consumer, object? Instance)> resolved = [];
-        Stack<Type> activating = new();
+        List<(Type Consumer, Type Dependency, object? Instance)> resolved = [];
         ContainerBuilder builder = BeaconChainTestContainer.Builder(BlockchainIds.Sepolia)
             .AddModule(new BeaconApiModule())
             .AddSingleton<IBeaconApiConfig>(new BeaconApiConfig())
             .AddSingleton(Substitute.For<IProcessExitSource>());
-        builder.ComponentRegistryBuilder.Registered += (_, registered) => registered.ComponentRegistration.PipelineBuilding += (_, pipeline) =>
-            pipeline.Use(PipelinePhase.RegistrationPipelineStart, (context, next) =>
-            {
-                activating.Push(context.Registration.Activator.LimitType);
-                try
-                {
-                    next(context);
-                }
-                finally
-                {
-                    activating.Pop();
-                }
-            });
-        using IContainer container = builder.Build();
-        container.ResolveOperationBeginning += (_, operation) => operation.ResolveOperation.ResolveRequestBeginning += (_, request) =>
-        {
-            if (request.RequestContext.Registration.Activator.LimitType == typeof(HeadSnapshotHolder) && activating.TryPeek(out Type? consumer))
-            {
-                request.RequestContext.RequestCompleting += (_, completing) => resolved.Add((consumer, completing.RequestContext.Instance));
-            }
-        };
+        using IContainer container = BeaconChainTestContainer.BuildTrackingDependencies(builder, resolved, typeof(HeadSnapshotHolder));
 
         container.Resolve<BeaconSyncOrchestrator>();
         container.Resolve<BeaconApiHost>();
