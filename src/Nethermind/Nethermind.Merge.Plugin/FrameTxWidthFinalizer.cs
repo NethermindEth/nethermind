@@ -25,7 +25,7 @@ namespace Nethermind.Merge.Plugin;
 /// than <see cref="MaxBlocksPerFinalization"/> credits only its latest blocks. Such a gap follows an offline consensus
 /// client, and also any stretch of three epochs or more without finality while the consensus client stays online;
 /// in both cases the older blocks are skipped and logged. Skipping only withholds width and never grants any. Senders come from the frame transaction's own
-/// <c>sender</c> field, so receipts are read without signature recovery. Inert unless the pool holds a width ledger and
+/// <c>sender</c> field, so receipts are read without signature recovery. Inert unless
 /// <see cref="ITxPoolConfig.FrameTxWidthEnabled"/> is set. The block tree raises finalizations outside its own lock, so
 /// the handler serializes them: overlapping finalizations credit each block once and never move the watermark back.
 /// </remarks>
