@@ -9,6 +9,14 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool;
 
+/// <summary>
+/// Holds the MATCHA width each sender has earned from finalized keyed-nonce frame transactions.
+/// </summary>
+/// <remarks>
+/// One instance is shared by the transaction pool, which spends width on admission, and the finalization source,
+/// which earns it. Credits are capped per sender at <see cref="ITxPoolConfig.FrameTxWidthCap"/>. Inert unless
+/// <see cref="ITxPoolConfig.FrameTxWidthEnabled"/> is set.
+/// </remarks>
 public sealed class FrameTxWidthLedger(ITxPoolConfig txPoolConfig, ILogManager logManager) : IFrameTxWidthLedger
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FrameTxWidthLedger>();
@@ -16,6 +24,7 @@ public sealed class FrameTxWidthLedger(ITxPoolConfig txPoolConfig, ILogManager l
 
     internal SenderWidthCache SenderWidth { get; } = new();
 
+    /// <inheritdoc/>
     public void EarnWidthOnFinalization(Block finalizedBlock, TxReceipt[] receipts)
     {
         if (!txPoolConfig.FrameTxWidthEnabled) return;
