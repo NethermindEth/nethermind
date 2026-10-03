@@ -57,6 +57,9 @@ public sealed class MemoizingCodeInfoRepository(ICodeInfoRepository codeInfoRepo
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
+
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         memo.Forget(codeOwner);

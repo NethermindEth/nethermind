@@ -96,6 +96,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     private TransactionResult ExecuteFrameTx<TTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
         where TTracing : struct, IFlag
     {
+        if (!spec.IsEip8141Enabled)
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(TxErrorMessages.InvalidTxType(spec.Name));
+        }
+
         // eth_call and the other estimation/tracing entry points reach the processor with validation
         // skipped, so the whole structural constraint set is enforced here and not only in TxValidator.
         if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out string? malformed))
@@ -223,7 +228,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.MaxFeePerBlobGas.GetValueOrDefault(),
             WorldState.GetNonce(sender),
             tx.RecentRootReferences,
-            tx.NonceKeys);
+            tx.NonceKeys)
+        {
+            SkipFeeReservation = opts.HasFlag(ExecutionOptions.FrameGasEstimation) && opts.HasFlag(ExecutionOptions.Restore)
+        };
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
         ulong totalFrameGasUsed = 0;
@@ -537,7 +545,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // and blob legs. Both legs are bounded by max_cost, so the subtraction cannot underflow.
         UInt256 spentCost = (UInt256)spentGas * effectiveGasPrice;
         UInt256 chargedCost = spentCost + blobFee;
-        if (maxCost > chargedCost)
+        if (!frameContext.SkipFeeReservation && maxCost > chargedCost)
         {
             WorldState.AddToBalance(payer, maxCost - chargedCost, spec);
         }
@@ -875,12 +883,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
             }
 
-            // Read only once the access is paid for. EIP-7702: a precompile must not execute via delegation,
-            // asked of the repository because that is what dispatches: a state override can move a precompile.
+            // Read only once the access is paid for.
             WorldState.AddAccountRead(delegation);
-            codeInfo = _codeInfoRepository.GetPrecompile(delegation, spec) is not null
-                ? CodeInfo.Empty
-                : _codeInfoRepository.GetCachedCodeInfoNoDelegation(delegation, spec);
+            codeInfo = _codeInfoRepository.GetDelegatedCodeInfo(delegation, spec);
         }
 
         ReadOnlyMemory<byte> inputData = frame.Data;

@@ -180,6 +180,13 @@ public class Eth70ProtocolHandlerTests
         _session.DidNotReceive().DeliverMessage(Arg.Any<ReceiptsMessage70>());
     }
 
+    [Test]
+    public void Should_reject_unrequested_receipts_before_decoding()
+    {
+        HandleIncomingStatusMessage();
+        UndecodableResponse.AssertRejectedAsUnrequested(_handler.HandleMessage, Eth70MessageCode.Receipts);
+    }
+
     [TestCaseSource(nameof(SingleBlockReceiptResponseCases))]
     public void Should_return_expected_receipts_for_first_block_receipt_index(
         long firstBlockReceiptIndex,
@@ -348,7 +355,7 @@ public class Eth70ProtocolHandlerTests
         Assert.That(result, Has.Count.EqualTo(2));
         AssertReceiptsEqual(result[0], block1);
         AssertReceiptsEqual(result[1], block2);
-        Assert.That(seenOffsets.AsSpan().ToArray(), Is.EqualTo(new[] { 0L, 2L }));
+        Assert.That(seenOffsets.AsSpan(), Is.SequenceEqualTo(new[] { 0L, 2L }));
     }
 
     [Test]

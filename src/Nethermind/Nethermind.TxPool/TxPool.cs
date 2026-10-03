@@ -633,6 +633,8 @@ namespace Nethermind.TxPool
         /// it and would collect the whole expiring population — the sweep this index exists to avoid. Its
         /// predeployed code never changes, so the entry has no true positives, and the deadline it stands for
         /// is swept by <see cref="RemoveExpiredFrameTransactions"/> instead.
+        /// The prefix paymaster is indexed as well, so a head that changes its code reapplies the non-canonical
+        /// paymaster cap even when no payer was resolved.
         /// Two kinds of dependency sit outside the set (EIP8141-GAP): helper contracts an opaque prefix reaches
         /// through <c>CALL*</c>, so a code change at one does not trigger revalidation; and block context it
         /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe.
@@ -650,13 +652,16 @@ namespace Nethermind.TxPool
 
             Address? payer = tx.PayerAddress ?? resolvedPayer;
             bool hasDistinctPayer = payer is not null && payer != tx.SenderAddress;
+            Address? paymaster = PendingPaymasterCache.KeyFor(tx);
+            bool hasDistinctPaymaster = paymaster is not null && paymaster != tx.SenderAddress && paymaster != payer;
             // A delegated sender runs the delegate's code, so that account is a dependency too; the sender's
             // own code hash only pins the designation.
             Address? delegated = resolveDelegation ? DelegationTargetOf(tx.SenderAddress!) : null;
-            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (delegated is not null ? 1 : 0)];
+            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (hasDistinctPaymaster ? 1 : 0) + (delegated is not null ? 1 : 0)];
             int next = 0;
             accounts[next++] = tx.SenderAddress!;
             if (hasDistinctPayer) accounts[next++] = payer!;
+            if (hasDistinctPaymaster) accounts[next++] = paymaster!;
             if (delegated is not null) accounts[next] = delegated;
 
             if (onlyIfTracked) _frameDependencies.Update(tx.Hash!.ValueHash256, accounts);
@@ -1301,22 +1306,9 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        /// <summary>
-        /// Re-resolves the validation prefix of the pending frame transactions whose tracked dependencies
-        /// the new block touched, and evicts those that no longer satisfy the public mempool rules.
-        /// </summary>
-        /// <remarks>
-        /// EIP-8141 "Revalidation". Only the dependency-affected subset is rechecked, plus whatever the
-        /// previous head's admission bounds left unjudged — revalidating the
-        /// whole pool per head would be its own denial-of-service vector, and it is why caching a simulation
-        /// result against its dependency set would add nothing: a re-simulated prefix has already moved.
-        /// Evicting here is the spec's
-        /// "invalid against the current head first" eviction order: such transactions never compete for
-        /// pool space in the first place. A simulation that fails on a resource bound rather than on the
-        /// prefix leaves the transaction pending. The fork gate reads the incoming block's spec, matching
-        /// <see cref="RemoveExpiredFrameTransactions"/>. Nothing here re-prices or moves a reservation: the
-        /// pooled record is left as admission wrote it, so removal releases exactly what admission took.
-        /// </remarks>
+        /// <summary>Revalidates affected pending frame transactions against the new head.</summary>
+        /// <remarks>EIP-8141 "Revalidation": revisit changed dependencies and deferred work only.
+        /// Indeterminate simulation leaves transactions pending; removals release admission's reservations.</remarks>
         private void RevalidateFrameTransactions(Block block)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Header);
@@ -1330,7 +1322,6 @@ namespace Nethermind.TxPool
 
             foreach (ValueHash256 hash in _frameTxsToRevalidate)
             {
-                // A type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both.
                 if (!_transactions.TryGetValue(hash, out Transaction? tx)
                     && !TryReadBlobFrameTransaction(hash, out tx))
                 {
@@ -1342,14 +1333,11 @@ namespace Nethermind.TxPool
                 Interlocked.Increment(ref Metrics.FrameTxRevalidations);
                 if (!TryRevalidateFrameTransaction(tx, state))
                 {
-                    // The record is untouched, so the Removed handler releases exactly what admission took.
-                    // The blob pool reconstitutes the full transaction above, so the events must carry the
-                    // pooled record the removal returned rather than that copy.
+                    // Use the removed record, not a blob transaction's reconstructed copy.
                     if (RemoveTransaction(tx.Hash, out Transaction? pooled))
                     {
                         EvictedPending?.Invoke(this, new TxEventArgs(pooled));
-                        // Unlike expiry, invalidity here is relative to this head and reverses (the payer
-                        // refunds, a reorg restores the state), so the hash must stay resubmittable.
+                        // Head-relative invalidity can reverse after a reorg or refund.
                         _hashCache.DeleteFromLongTerm(tx.Hash!);
                         Interlocked.Increment(ref Metrics.FrameTxRevalidationEvictions);
                         Metrics.PendingTransactionsEvicted++;
@@ -1361,20 +1349,19 @@ namespace Nethermind.TxPool
             _frameTxsToRevalidate.Clear();
         }
 
-        /// <summary>Whether <paramref name="tx"/> still resolves the solvent payer it was admitted against.</summary>
-        /// <remarks>
-        /// The solvency test compares the payer's whole pending exposure against its balance, so an
-        /// over-committed payer sheds transactions one at a time: each eviction releases its reservation,
-        /// and the rest of the sweep re-tests against the reduced total, leaving only the surplus dropped.
-        /// <em>Which</em> of that payer's transactions survive follows index iteration order, not the spec's
-        /// nearest-expiry-then-lowest-fee order.
-        /// A transaction that stays pending is re-indexed for the sender's delegation target, a head-state
-        /// snapshot that can move while the payer does not, since a payer that moves evicts instead. The
-        /// re-index is update-only: block production evicts without the head lock, so it can drop the
-        /// transaction while the prefix simulates, and recreating the entry here would leak it.
-        /// </remarks>
+        /// <summary>Whether <paramref name="tx"/> still satisfies the head's payer and paymaster rules.</summary>
+        /// <remarks>Solvency and paymaster caps shed surplus in index order. Checking the cap before simulation
+        /// saves work but can leave fewer survivors when a later prefix fails.
+        /// Dependency updates never recreate entries: block production can evict during simulation.</remarks>
         private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state)
         {
+            if (PendingPaymasterCache.KeyFor(tx) is Address paymaster
+                && _pendingPaymasters.GetPendingCount(paymaster) > Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
+                && FrameTxPaymasterFilter.IsNonCanonicalPaymaster(paymaster, state))
+            {
+                return false;
+            }
+
             bool stillValid = ResolveFrameTxAgainstHead(tx, state, out Address? resolvedPayer);
             if (stillValid) IndexFrameTxDependencies(tx, resolvedPayer, onlyIfTracked: true);
             return stillValid;
@@ -1397,17 +1384,13 @@ namespace Nethermind.TxPool
                     payer = resolution.Payer;
                     break;
                 default:
-                    // Opaque: with no simulator wired the prefix stays unresolved, exactly as at admission.
                     if (_frameTxPrefixSimulator is null) return true;
-                    // validate_signature reads no state, so admission's verdict still holds and re-verifying
-                    // would only spend the per-head simulation budget this pool rations.
+                    // Signature validation is state-independent; admission's verdict still holds.
                     FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
                     if (simulated.Outcome != FrameTxSimulationOutcome.Accepted)
                     {
-                        // A node fault or an admission bound decides nothing, so the transaction stays
-                        // pending — and stays queued, or a one-off change is never rechecked against a
-                        // later head whose change list does not mention its dependencies. Only a bound this
-                        // node spent: a prefix that trips its own wall clock would re-queue forever.
+                        // Requeue node-bound deferrals so one-off dependency changes are not forgotten.
+                        // Prefix timeouts must not requeue forever.
                         if (simulated.NodeBound)
                         {
                             if (TryDeferToNextHead(tx.Hash!.ValueHash256)) Interlocked.Increment(ref Metrics.FrameTxRevalidationsDeferred);
@@ -1422,19 +1405,13 @@ namespace Nethermind.TxPool
 
             if (tx.PayerAddress == payer)
             {
-                // Same payer: only its balance can have invalidated the bound.
                 return payer is null || _payerExposure.GetReserved(payer) <= BalanceOf(state, payer);
             }
 
-            // The payer moved, and it is never rewritten in place: RemoveTransaction runs from block production
-            // and the network thread without the head lock, so a removal landing between the payer and exposure
-            // writes would release the wrong figure from the wrong payer, and both errors are permanent.
-            // Evict instead, so the reservation leaves through the Removed handler that took it.
+            // Evict a moved payer: concurrent removal could otherwise release the wrong reservation.
             if (tx.PayerAddress is not null) return false;
 
-            // Admitted while this node could not simulate, so it holds no reservation and there is nothing to
-            // move. Tracked in the index only, which never touches the record: writing the payer here would
-            // reopen that race, so the exposure ledger keeps missing it (EIP8141-GAP).
+            // Unresolved admission held no reservation. Re-index without rewriting the payer (EIP8141-GAP).
             resolvedPayer = payer;
             return true;
         }

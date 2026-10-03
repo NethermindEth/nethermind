@@ -110,6 +110,17 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        nint fusedOpCodeCount = 0;
+        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where TUseVmCounter : struct, IFlag
+    {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
@@ -141,14 +152,12 @@ public static partial class EvmInstructions
 
             if (nextInstruction == Instruction.JUMP)
             {
-                if (DispatchFlags.CountOpcodes)
-                    vm.OpCodeCount++;
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
             }
             else
             {
-                if (DispatchFlags.CountOpcodes)
-                    vm.OpCodeCount++;
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 if (!stack.EnsureDepth(1)) goto StackUnderflow;
                 if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
@@ -166,9 +175,7 @@ public static partial class EvmInstructions
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
             programCounter = jumpTarget + 1;
-            PrefetchCodeAtDestination(ref stack, programCounter);
-            if (DispatchFlags.CountOpcodes)
-                vm.OpCodeCount++;
+            IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
             goto Success;
@@ -200,6 +207,20 @@ public static partial class EvmInstructions
         return EvmExceptionType.InvalidJumpDestination;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(VirtualMachine<TGasPolicy> vm, ref nint fusedOpCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TUseVmCounter : struct, IFlag
+    {
+        if (DispatchFlags.CountOpcodes)
+        {
+            if (TUseVmCounter.IsActive)
+                vm.OpCodeCount++;
+            else
+                fusedOpCodeCount++;
+        }
     }
 
     /// <summary>

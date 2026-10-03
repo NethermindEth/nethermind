@@ -5146,6 +5146,53 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Revalidation_reapplies_the_noncanonical_paymaster_cap(
+            [Values] bool gainsCode, [Values] bool simulationIndeterminate, [Values] bool admittedUnresolved)
+        {
+            FrameTxSimulationResult acceptD = FrameTxSimulationResult.Accept(TestItem.AddressD);
+            FrameTxSimulationResult undecided = FrameTxSimulationResult.Undecided("simulator unavailable");
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(admittedUnresolved ? undecided : acceptD);
+            Block baseline = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(baseline);
+            PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+            Transaction[] sponsored = new Transaction[senders.Length];
+            UInt256 totalCost = UInt256.Zero;
+            for (int i = 0; i < senders.Length; i++)
+            {
+                EnsureSenderBalance(senders[i].Address, UInt256.MaxValue);
+                sponsored[i] = SponsoredFrameTx(senders[i], TestItem.PrivateKeyD);
+                Assert.That(FrameTxValidation.TryCalculateMaxCost(sponsored[i], Eip8141Prototype.Instance, out UInt256 cost), Is.True);
+                totalCost += cost;
+            }
+            EnsureSenderBalance(TestItem.AddressD, totalCost);
+            foreach (Transaction tx in sponsored)
+            {
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            if (gainsCode) _stateProvider.InsertCode([0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00], TestItem.AddressD);
+            SimulatesAs(simulator, simulationIndeterminate ? undecided : acceptD);
+            Block head = Build.A.Block.WithNumber(2).WithParent(baseline).TestObject;
+            head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressD };
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+
+            Transaction[] pending = _txPool.GetPendingTransactions();
+            int expectedCount = gainsCode ? Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster : sponsored.Length;
+            Assert.That(pending, Has.Length.EqualTo(expectedCount));
+            if (!gainsCode) return;
+
+            SimulatesAs(simulator, acceptD);
+            Transaction[] evicted = sponsored.Where(tx => tx.Hash != pending[0].Hash).ToArray();
+            Assert.That(_txPool.SubmitTx(evicted[0], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+            _txPool.RemoveTransaction(pending[0].Hash);
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(evicted[1], Eip8141Prototype.Instance, out UInt256 remainingCost), Is.True);
+            EnsureSenderBalance(TestItem.AddressD, remainingCost);
+            _txPool.ResetAddress(TestItem.AddressD);
+            Assert.That(_txPool.SubmitTx(evicted[1], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted),
+                "head eviction releases payer exposure and the paymaster slot, leaving the transaction resubmittable");
+        }
+
+        [Test]
         public void SubmitTx_FrameTransactions_SharingNonCanonicalPaymaster_BoundByPendingCap_ReleasedOnRemoval()
         {
             // Distinct senders share one code-carrying pay target, so the non-canonical paymaster cap

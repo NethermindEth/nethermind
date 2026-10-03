@@ -774,12 +774,12 @@ public class FrameTxMempoolDosMeasurement
     {
         if (senderCode.Length == 0) return;
 
-        Assert.That(_poolState.GetCode(Sender).ToArray(), Is.EqualTo(senderCode),
+        Assert.That(_poolState.GetCode(Sender), Is.SequenceEqualTo(senderCode),
             "the pool's chain-head view does not carry the sender's code, so the two stores disagree");
 
         using IReadOnlyTxProcessorSource source = envFactory.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(head);
-        Assert.That(scope.WorldState.GetCode(Sender).ToArray(), Is.EqualTo(senderCode),
+        Assert.That(scope.WorldState.GetCode(Sender), Is.SequenceEqualTo(senderCode),
             "the simulator's view of the head does not carry the sender's code, so the EVM would run "
             + "default verify code and the measurement would describe the wrong work");
     }

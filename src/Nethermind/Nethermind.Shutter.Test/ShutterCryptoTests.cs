@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Crypto;
@@ -36,7 +37,7 @@ class ShutterCryptoTests
         ShutterCrypto.GTExp(ref p2, r);
         Span<byte> h2 = ShutterCrypto.Hash2(p2);
 
-        Assert.That(h1.ToArray(), Is.EqualTo(h2.ToArray()));
+        Assert.That(h1, Is.SequenceEqualTo(h2));
     }
 
     [Test]
@@ -56,7 +57,7 @@ class ShutterCryptoTests
         G1 key = identity.Dup().Mult(sk.ToLittleEndian());
 
         ShutterCrypto.RecoverSigma(out Span<byte> recoveredSigma, encryptedMessage, key.ToAffine());
-        Assert.That(recoveredSigma.ToArray(), Is.EqualTo(sigma.ToArray()));
+        Assert.That(recoveredSigma, Is.SequenceEqualTo(sigma));
 
         Span<byte> decryptedMessage = stackalloc byte[ShutterCrypto.GetDecryptedDataLength(encryptedMessage)];
         ShutterCrypto.Decrypt(ref decryptedMessage, encryptedMessage, key);
@@ -64,8 +65,8 @@ class ShutterCryptoTests
 
         EncryptedMessage decoded = ShutterCrypto.DecodeEncryptedMessage(ShutterCrypto.EncodeEncryptedMessage(encryptedMessage));
         Assert.That(encryptedMessage.C1.IsEqual(decoded.C1));
-        Assert.That(encryptedMessage.C2.ToArray(), Is.EqualTo(decoded.C2.ToArray()));
-        Assert.That(encryptedMessage.C3.ToArray(), Is.EqualTo(decoded.C3.ToArray()));
+        Assert.That(encryptedMessage.C2, Is.SequenceEqualTo(decoded.C2));
+        Assert.That(encryptedMessage.C3, Is.SequenceEqualTo(decoded.C3));
     }
 
     [Test]
@@ -131,7 +132,7 @@ class ShutterCryptoTests
 
         Span<byte> encoded = ShutterCrypto.EncodeEncryptedMessage(c);
         TestContext.Out.WriteLine("encrypted msg: " + Convert.ToHexString(encoded));
-        Assert.That(encoded.ToArray(), Is.EqualTo(expected));
+        Assert.That(encoded, Is.SequenceEqualTo(expected));
     }
 
     [Test]

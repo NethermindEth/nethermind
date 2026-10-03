@@ -95,12 +95,12 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(TestItem.AddressA, first, _releaseSpec);
 
         // Resolve twice so the second answer is the one the memo serves.
-        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(first));
-        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(first));
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(first));
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(first));
 
         stateProvider.InsertCode(TestItem.AddressA, second, _releaseSpec);
 
-        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(second));
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(second));
     }
 
     /// <summary>Two accounts sharing a code hash share its body; a different one must not be confused.</summary>
@@ -125,13 +125,13 @@ public class CodeInfoRepositoryTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(shared));
-            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
-            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(shared));
-            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(shared));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(other));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(shared));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(other));
             // Alternating never produces a memo hit; repeating the last address is what pins that a hit
             // answers for the right address rather than only that a miss is not confused.
-            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(other));
         }
     }
 
@@ -265,7 +265,7 @@ public class CodeInfoRepositoryTests
         EthereumCodeInfoRepository sut = new(stateProvider);
 
         CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec);
-        Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(delegationCode));
+        Assert.That(result.CodeSpan, Is.SequenceEqualTo(delegationCode));
     }
 
     [Test]
@@ -299,7 +299,7 @@ public class CodeInfoRepositoryTests
             Assert.That(firstTryAddress, Is.SameAs(firstAddress));
             Assert.That(repeatedTryAddress, Is.SameAs(firstAddress));
             Assert.That(firstAddress, Is.EqualTo(firstTarget));
-            Assert.That(first.CodeSpan.ToArray(), Is.EqualTo(firstDelegation));
+            Assert.That(first.CodeSpan, Is.SequenceEqualTo(firstDelegation));
         }
 
         Snapshot snapshot = stateProvider.TakeSnapshot();
@@ -322,7 +322,7 @@ public class CodeInfoRepositoryTests
             Assert.That(ordinaryTryHasDelegation, Is.False);
             Assert.That(ordinaryTryAddress, Is.Null);
             Assert.That(noAddress, Is.Null);
-            Assert.That(ordinary.CodeSpan.ToArray(), Is.EqualTo(ordinaryCode));
+            Assert.That(ordinary.CodeSpan, Is.SequenceEqualTo(ordinaryCode));
         }
 
         stateProvider.Restore(snapshot);
@@ -409,7 +409,7 @@ public class CodeInfoRepositoryTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(codeInfo.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(codeInfo.CodeSpan, Is.SequenceEqualTo(code));
             Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.CodeSpan), ref MemoryMarshal.GetReference(codeInfo.ExecutionCodeSpan)), Is.True,
                 "execution must run from the buffer read out of the store, not a second copy");
             Assert.That(generated.HasAccount(TestItem.AddressA), Is.True);

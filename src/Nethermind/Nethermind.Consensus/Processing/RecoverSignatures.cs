@@ -90,6 +90,7 @@ namespace Nethermind.Consensus.Processing
         /// Recovery runs in ascending transaction order, so consumers that tolerate a not-yet-recovered sender
         /// (the transaction processor recovers inline, the prewarmer warms transactions as their senders arrive)
         /// rarely wait. A failure is logged and left to the processing path, whose own attempt rejects the block.
+        /// A shared single-threaded group leaves recovery to the processing path because it has no background slot.
         /// <paramref name="blockHash"/> only suppresses a duplicate start for the same hash; a resent payload
         /// decodes its own transaction objects, and those get no background recovery at all — the pipeline
         /// recovers them on the processing thread.
@@ -102,6 +103,8 @@ namespace Nethermind.Consensus.Processing
         /// </remarks>
         public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec)
         {
+            ParallelUnbalancedWork.WorkerGroup? group = ParallelUnbalancedWork.GetCurrentGroup();
+            if (group?.Concurrency == 1) return;
             if (txs.Length == 0 || AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
                 return;
 
@@ -110,11 +113,12 @@ namespace Nethermind.Consensus.Processing
             if (current is not null && !current.IsCompleted && current.BlockHash == blockHash)
                 return;
 
-            Recovery recovery = new(this, blockHash, txs, releaseSpec);
+            Recovery recovery = new(this, blockHash, txs, releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2));
             Volatile.Write(ref _current, recovery);
             try
             {
-                ThreadPool.UnsafeQueueUserWorkItem(recovery, preferLocal: false);
+                if (group is not null) group.Queue(recovery);
+                else ThreadPool.UnsafeQueueUserWorkItem(recovery, preferLocal: false);
             }
             catch
             {
@@ -252,10 +256,10 @@ namespace Nethermind.Consensus.Processing
         /// touched a few times per worker rather than once per transaction; completion is pulsed under the gate the
         /// waiters wait on.
         /// </summary>
-        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec) : IThreadPoolWorkItem, ISenderRecoveryProgress
+        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, int concurrency) : IThreadPoolWorkItem, ISenderRecoveryProgress
         {
             private readonly object _gate = new();
-            private readonly int _progressBatch = Math.Max(1, txs.Length / (ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism * ProgressPublicationsPerWorker));
+            private readonly int _progressBatch = Math.Max(1, txs.Length / (concurrency * ProgressPublicationsPerWorker));
             private int _recovered;
             private volatile bool _completed;
 
@@ -276,7 +280,7 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
                     // Skip errors: one malformed signature must not abort the parallel loop and leave every
                     // later sender to the processing thread. A null sender still rejects the block.
                     if (txs.Length > 3)
