@@ -40,7 +40,6 @@ dora_params:
 ethereum_genesis_generator_params:
   image: ethpandaops/ethereum-genesis-generator:lean8288
 port_publisher:
-  nat_exit_ip: "178.79.137.95"
   el: {enabled: true, public_port_start: 19403}
   cl: {enabled: true, public_port_start: 19711}
   additional_services: {enabled: true, public_port_start: 19490}

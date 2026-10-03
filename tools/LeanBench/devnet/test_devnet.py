@@ -1,5 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
 """Offline control-plane checks; native proof validation is exercised by LeanBench."""
 import contextlib
+import concurrent.futures
 import importlib.util
 import io
 import json
@@ -121,6 +124,33 @@ class DevnetChecks(unittest.TestCase):
             self.assertEqual(artifact['proofBytes'], 2)
             self.assertEqual(len(artifact['proofSha256']), 64)
             self.assertEqual(exported['runs']['driver']['report']['error'], 'recorded failure')
+
+    def test_viewer_poll_failure_is_visible_and_recovers(self):
+        status = load('status')
+        with tempfile.TemporaryDirectory() as directory, concurrent.futures.ThreadPoolExecutor(max_workers=2) as workers:
+            root = Path(directory)
+            with patch.object(status, 'node', side_effect=AttributeError('unexpected shape')):
+                failed = status.collect_status(root, workers, (19145, 19245))
+            self.assertEqual(failed['report']['state'], 'Status temporarily unavailable')
+            self.assertEqual(failed['nodes'], [])
+            self.assertNotIn('unexpected shape', json.dumps(failed))
+            with patch.object(status, 'node', return_value={'online': True}):
+                recovered = status.collect_status(root, workers, (19145, 19245))
+            self.assertEqual(len(recovered['nodes']), 2)
+            self.assertTrue(all(node['online'] for node in recovered['nodes']))
+            with patch.object(status, 'rpc', side_effect=[{}, [None], {}, 'offline']):
+                malformed = status.node(19145, 'node1')
+            self.assertFalse(malformed['online'])
+
+    def test_viewer_requires_explicit_public_bind(self):
+        status = load('status')
+        for arguments, expected in [([], '127.0.0.1'), (['--bind=0.0.0.0'], '0.0.0.0')]:
+            with self.subTest(arguments=arguments), tempfile.TemporaryDirectory() as directory:
+                with patch.object(sys, 'argv', ['status.py', '--root=' + directory] + arguments), \
+                        patch.object(status, 'ThreadingHTTPServer') as server, patch.object(status.threading, 'Thread'):
+                    server.return_value.serve_forever.side_effect = KeyboardInterrupt
+                    status.main()
+                    self.assertEqual(server.call_args.args[0], (expected, 19480))
 
     def test_prepare_uses_separate_identities_shared_genesis_without_local_jwt(self):
         prepare = load('prepare')

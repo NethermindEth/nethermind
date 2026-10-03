@@ -155,6 +155,8 @@ def handle(request, endpoint, authorization, cache, send=forward):
     if not isinstance(method, str) or not (method.startswith("engine_") or method in
             ("eth_syncing", "eth_chainId", "eth_getBlockByNumber", "eth_getBlockByHash", "net_version")):
         raise ProxyError("Unsupported proxy method")
+    if method == "engine_newPayloadV6":
+        raise ProxyError("Bogota newPayloadV6 is unsupported by the Amsterdam proof relay")
     if method == "engine_newPayloadV5":
         params = request.get("params")
         if not isinstance(params, list) or len(params) != 4 or not isinstance(params[0], dict):
@@ -166,7 +168,10 @@ def handle(request, endpoint, authorization, cache, send=forward):
     if not isinstance(result, dict):
         raise ProxyError("Invalid Engine response")
     if method == "engine_getPayloadV6" and "error" not in result:
-        payload = result.get("result", {}).get("executionPayload")
+        envelope = result.get("result")
+        if not isinstance(envelope, dict):
+            raise ProxyError("Invalid getPayload result")
+        payload = envelope.get("executionPayload")
         if not isinstance(payload, dict):
             raise ProxyError("Missing execution payload")
         cache.remember(payload)
@@ -175,7 +180,9 @@ def handle(request, endpoint, authorization, cache, send=forward):
     return result
 
 
-def handler(endpoint, secret, cache, capacity):
+def handler(endpoint, secret, cache, capacity=None):
+    if capacity is None:
+        capacity = threading.BoundedSemaphore(2)
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             self.connection.settimeout(SOCKET_TIMEOUT)
@@ -243,13 +250,12 @@ def main():
     if len(secret) != 32:
         parser.error("Engine JWT must contain exactly 32 bytes")
     cache = ProofCache(args.cache)
-    capacity = threading.BoundedSemaphore(2)
 
     endpoints = (args.upstream_url1 or f"http://127.0.0.1:{args.upstream1}",
         args.upstream_url2 or f"http://127.0.0.1:{args.upstream2}")
     if any(not endpoint.startswith("http://") for endpoint in endpoints):
         parser.error("Upstream endpoints must use HTTP on the private devnet network")
-    servers = [ThreadingHTTPServer((args.bind, listen), handler(endpoint, secret, cache, capacity))
+    servers = [ThreadingHTTPServer((args.bind, listen), handler(endpoint, secret, cache))
         for listen, endpoint in zip((args.listen1, args.listen2), endpoints)]
     threads = [threading.Thread(target=server.serve_forever, daemon=True) for server in servers]
     for thread in threads:

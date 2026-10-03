@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
 """Export fixed devnet evidence without secrets or complete proof/transaction bytes."""
 import argparse
 import hashlib

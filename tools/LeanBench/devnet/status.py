@@ -179,8 +179,22 @@ def node(port, name):
                 "peers": len(peers), "capabilities": sorted({cap for peer in peers for cap in peer.get("caps", [])
                     if isinstance(cap, str) and re.fullmatch(r"[a-z]+/\d+", cap)}),
                 "pool": select(pool, ("pending", "queued"))}
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {"name": name, "online": False, "state": "RPC status unavailable"}
+
+
+def collect_status(root, workers, ports):
+    updated = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    try:
+        futures = [workers.submit(node, port, "node" + str(index + 1)) for index, port in enumerate(ports)]
+        return {"updated": updated, "nodes": [future.result() for future in futures],
+                "report": combined_report(root),
+                "logs": {name: tail(root / "logs" / f"{name}.log")
+                         for name in ("node1", "node2", "driver", "driver-sphincs64")}}
+    except Exception:
+        # Keep polling after an unexpected RPC/report shape without exposing exception details.
+        return {"updated": updated, "nodes": [], "logs": {},
+                "report": {"blocks": [], "state": "Status temporarily unavailable"}}
 
 
 HTML = """<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
@@ -208,6 +222,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--port", type=int, default=19480)
+    parser.add_argument("--bind", default="127.0.0.1")
     parser.add_argument("--node1-port", type=int, default=19145)
     parser.add_argument("--node2-port", type=int, default=19245)
     args = parser.parse_args()
@@ -222,10 +237,7 @@ def main():
         nonlocal snapshot
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as workers:
             while not stop.is_set():
-                futures = [workers.submit(node, args.node1_port, "node1"), workers.submit(node, args.node2_port, "node2")]
-                data = {"updated": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
-                    "nodes": [future.result() for future in futures], "report": combined_report(root),
-                    "logs": {name: tail(root / "logs" / f"{name}.log") for name in ("node1", "node2", "driver", "driver-sphincs64")}}
+                data = collect_status(root, workers, (args.node1_port, args.node2_port))
                 with lock:
                     snapshot = json.dumps(data, allow_nan=False).encode()
                 stop.wait(5)
@@ -253,7 +265,7 @@ def main():
         def log_message(self, *_):
             pass
 
-    server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
+    server = ThreadingHTTPServer((args.bind, args.port), Handler)
     thread = threading.Thread(target=poll, daemon=True)
     thread.start()
     try:

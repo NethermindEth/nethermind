@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
 """Real HTTP response ownership checks; no native proving or live devnet calls."""
 import base64
 import contextlib
@@ -42,8 +44,8 @@ def wait_for(predicate, timeout=4):
 
 class ResponseOwnershipChecks(unittest.TestCase):
     @contextlib.contextmanager
-    def server(self, capacity, headers_sent):
-        base = proxy.handler("http://offline", SECRET, None, capacity)
+    def server(self, capacity, headers_sent, endpoint="http://offline"):
+        base = proxy.handler(endpoint, SECRET, None, capacity)
 
         class Handler(base):
             def setup(self):
@@ -147,6 +149,55 @@ class ResponseOwnershipChecks(unittest.TestCase):
                 self.assertTrue(wait_for(capacity_restored, timeout=2), "failed writes must release before the socket deadline")
             finally:
                 connection.close()
+
+    def test_saturated_listener_does_not_block_other_execution_node(self):
+        ready = threading.Event()
+        lock = threading.Lock()
+        header_count = 0
+
+        def headers_sent():
+            nonlocal header_count
+            with lock:
+                header_count += 1
+                if header_count == 2:
+                    ready.set()
+
+        large_response = {"jsonrpc": "2.0", "id": 1, "result": "x" * (8 * 1024 * 1024)}
+
+        def upstream(request, endpoint, *_):
+            return large_response if endpoint == "http://slow" else {"jsonrpc": "2.0", "id": 1, "result": "0x1"}
+
+        clients = []
+        with contextlib.redirect_stdout(io.StringIO()), patch.object(proxy, "SOCKET_TIMEOUT", 1.5), \
+                patch.object(proxy, "handle", side_effect=upstream), \
+                self.server(None, headers_sent, "http://slow") as slow, \
+                self.server(None, lambda: None, "http://other") as other:
+            try:
+                clients = [self.send_without_reading(slow) for _ in range(2)]
+                self.assertTrue(ready.wait(3))
+                request = urllib.request.Request(f"http://{other[0]}:{other[1]}", b"{}",
+                                                 {"Authorization": authorization()})
+                with urllib.request.urlopen(request, timeout=3) as response:
+                    self.assertEqual(json.load(response)["result"], "0x1")
+            finally:
+                for connection in clients:
+                    connection.close()
+
+    def test_non_dictionary_get_payload_result_is_a_proxy_error(self):
+        request = {"jsonrpc": "2.0", "id": 1, "method": "engine_getPayloadV6", "params": []}
+        for result in (None, [], "malformed", 1):
+            with self.subTest(result=result), self.assertRaisesRegex(proxy.ProxyError, "Invalid getPayload result"):
+                proxy.handle(request, "http://offline", "", None,
+                             send=lambda *_: {"jsonrpc": "2.0", "id": 1, "result": result})
+
+    def test_bogota_import_is_rejected_before_forwarding(self):
+        request = {"jsonrpc": "2.0", "id": 1, "method": "engine_newPayloadV6", "params": []}
+
+        def unexpected_forward(*_):
+            self.fail("the Amsterdam relay must not silently forward an unsupported proof-bearing import")
+
+        with self.assertRaisesRegex(proxy.ProxyError, "Bogota newPayloadV6 is unsupported"):
+            proxy.handle(request, "http://offline", "", None, send=unexpected_forward)
 
 
 if __name__ == "__main__":
