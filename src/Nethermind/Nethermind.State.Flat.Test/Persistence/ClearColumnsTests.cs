@@ -110,7 +110,7 @@ public class ClearColumnsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.Events.Count(static e => e == WriteOrderSpyColumnsDb.CommitEvent), Is.GreaterThan(1));
-            Assert.That(db.Events.Count(static e => e == nameof(FlatDbColumns.Metadata)), Is.EqualTo(2));
+            Assert.That(db.Events.Count(static e => e == nameof(FlatDbColumns.Metadata)), Is.EqualTo(3));
             Assert.That(db.Events[0], Is.EqualTo(nameof(FlatDbColumns.Metadata)));
             Assert.That(db.Events.IndexOf(WriteOrderSpyColumnsDb.CommitEvent), Is.LessThan(db.Events.LastIndexOf(nameof(FlatDbColumns.Metadata))));
             Assert.That(db.Events.TakeLast(2), Is.EqualTo(new[] { nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent }));

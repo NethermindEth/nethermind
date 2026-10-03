@@ -37,7 +37,11 @@ public class TrieReassemblerTests
     }
 
     [TearDown]
-    public void TearDown() => _columnsDb.Dispose();
+    public void TearDown()
+    {
+        (_persistence as IDisposable)?.Dispose();
+        _columnsDb.Dispose();
+    }
 
     [Test]
     public void Reassembles_state_root_from_single_account()
