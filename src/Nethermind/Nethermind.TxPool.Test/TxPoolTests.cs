@@ -121,6 +121,22 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test, NonParallelizable]
+        public async Task Disposed_pool_returns_only_exclusively_owned_blob_buffers([Values] bool ownsTransaction)
+        {
+            _txPool = CreatePool();
+            await _txPool.DisposeAsync();
+            Transaction tx = DecodeReceivedBlob(0x11, pooled: true);
+            object wrapper = tx.NetworkWrapper;
+            bool canRecycle = false;
+            AcceptTxResult result = ownsTransaction
+                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out canRecycle)
+                : _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            Assert.That(canRecycle, Is.EqualTo(ownsTransaction));
+            Assert.That(tx.NetworkWrapper, ownsTransaction ? Is.Null : Is.SameAs(wrapper));
+        }
+
+        [Test, NonParallelizable]
         public void Rejected_blob_buffers_are_reused_only_without_discovery_subscribers(
             [Values(0, 1, 2)] int listenerMode, [Values] bool pooled, [Values] bool ownsTransaction,
             [Values("size", "syncing", "translation")] string rejection)
@@ -6727,10 +6743,11 @@ namespace Nethermind.TxPool.Test
 
         private static void FloodUnpinnedProofs(LeanProofStore store)
         {
+            byte[] witness = new byte[64 * 1024];
             for (int i = 0; i < 1100; i++)
             {
                 FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"blob-flood:{i}"), default);
-                store.AddVerified([dependency], [[1]], null);
+                store.AddVerified([dependency], [witness], null);
             }
         }
 

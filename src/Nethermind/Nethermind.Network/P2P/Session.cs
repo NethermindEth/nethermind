@@ -288,7 +288,7 @@ namespace Nethermind.Network.P2P
 
         bool ILeanBulkSession.EnableLeanBulk()
         {
-            if (!HasAgreedCapability(new Capability("lean", 2)) || _packetSender is not PacketSender sender) return false;
+            if (!HasAgreedCapability(new Capability("lean", 1)) || _packetSender is not PacketSender sender) return false;
             sender.EnableLeanBulk();
             return true;
         }
@@ -303,7 +303,7 @@ namespace Nethermind.Network.P2P
                     if (IsClosed) return 0;
                 }
                 if (message is not LeanProofChunkMessage
-                    || !HasAgreedCapability(new Capability("lean", 2)) || _packetSender is not PacketSender sender) return 0;
+                    || !HasAgreedCapability(new Capability("lean", 1)) || _packetSender is not PacketSender sender) return 0;
                 message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
                 int size = await sender.EnqueueAsync(message, cancellationToken).ConfigureAwait(false);
                 if (size != 0)

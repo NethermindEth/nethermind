@@ -61,24 +61,92 @@ public static class LeanProofCapacity
 
     /// <summary>Checks distinct required claims against the public count and reserved-output bounds.</summary>
     public static string? CapacityError(IReadOnlySet<FrameDependency> required, IReadOnlyDictionary<FrameDependency, int> lengths)
+        => CreateAppendBudget(required, lengths).CapacityError([]);
+
+    /// <summary>Checks additional distinct claims before their witness lengths are read.</summary>
+    public static string? CapacityError(IReadOnlySet<FrameDependency> existing, int genericProofs, IReadOnlyList<FrameDependency> appended)
     {
-        if (required.Count > Eip8288Constants.MaxProofDependencies) return "Dependency proof count limit exceeded";
-        long bytes = 16 + (long)required.Count * Eip8288Constants.DependencyTripleLength;
-        int generic = 0;
-        bool sphincs = false;
-        foreach (FrameDependency dependency in required)
-        {
-            if (dependency.Scheme == Eip8288Constants.LeanSphincsScheme) sphincs = true;
-            else if (dependency.Scheme == Eip8288Constants.LeanStarkScheme)
+        int count = existing.Count;
+        HashSet<FrameDependency> added = [];
+        foreach (FrameDependency dependency in appended)
+            if (!existing.Contains(dependency) && added.Add(dependency))
             {
-                if (++generic > Eip8288Constants.MaxGenericStarkProofs) return "Generic STARK proof count limit exceeded";
-                if (!lengths.TryGetValue(dependency, out int length) || length <= 0) return "Missing generic STARK witness length";
-                bytes += Eip8288Constants.DependencyTripleLength + 4L + length;
+                count++;
+                if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) genericProofs++;
             }
-            else return "Unknown dependency proof scheme";
+        if (count > Eip8288Constants.MaxProofDependencies) return "Dependency proof count limit exceeded";
+        return genericProofs > Eip8288Constants.MaxGenericStarkProofs ? "Generic STARK proof count limit exceeded" : null;
+    }
+
+    /// <summary>Measures an unchanged base set once for repeated candidate appendability checks.</summary>
+    public static AppendBudget CreateAppendBudget(IReadOnlySet<FrameDependency> existing, IReadOnlyDictionary<FrameDependency, int> lengths)
+        => new(existing, lengths);
+
+    /// <summary>Output accounting for candidates appended independently to an unchanged dependency set.</summary>
+    public sealed class AppendBudget
+    {
+        private readonly IReadOnlySet<FrameDependency> _existing;
+        private readonly IReadOnlyDictionary<FrameDependency, int> _lengths;
+        private readonly long _bytes;
+        private readonly int _generic;
+        private readonly bool _sphincs;
+        private readonly string? _error;
+
+        internal AppendBudget(IReadOnlySet<FrameDependency> existing, IReadOnlyDictionary<FrameDependency, int> lengths)
+        {
+            _existing = existing;
+            _lengths = lengths;
+            long bytes = 16;
+            int generic = 0;
+            bool sphincs = false;
+            if (existing.Count > Eip8288Constants.MaxProofDependencies) _error = "Dependency proof count limit exceeded";
+            foreach (FrameDependency dependency in existing)
+            {
+                _error ??= Add(dependency, lengths, ref bytes, ref generic, ref sphincs);
+            }
+            _bytes = bytes;
+            _generic = generic;
+            _sphincs = sphincs;
+            _error ??= bytes > Eip8288Constants.MaxProofBytes ? "Dependency proof output limit exceeded" : null;
         }
-        if (sphincs) bytes += Eip8288Constants.MaxSphincsGuestProofBytes;
-        return bytes > Eip8288Constants.MaxProofBytes ? "Dependency proof output limit exceeded" : null;
+
+        /// <summary>Checks one candidate without rescanning or copying the base set.</summary>
+        public string? CapacityError(IReadOnlyList<FrameDependency> appended)
+        {
+            if (_error is not null) return _error;
+            int count = _existing.Count;
+            long bytes = _bytes;
+            int generic = _generic;
+            bool sphincs = _sphincs;
+            HashSet<FrameDependency> added = [];
+            foreach (FrameDependency dependency in appended)
+            {
+                if (_existing.Contains(dependency) || !added.Add(dependency)) continue;
+                if (++count > Eip8288Constants.MaxProofDependencies) return "Dependency proof count limit exceeded";
+                string? error = Add(dependency, _lengths, ref bytes, ref generic, ref sphincs);
+                if (error is not null) return error;
+            }
+            return bytes > Eip8288Constants.MaxProofBytes ? "Dependency proof output limit exceeded" : null;
+        }
+    }
+
+    private static string? Add(FrameDependency dependency, IReadOnlyDictionary<FrameDependency, int> lengths,
+        ref long bytes, ref int generic, ref bool sphincs)
+    {
+        bytes += Eip8288Constants.DependencyTripleLength;
+        if (dependency.Scheme == Eip8288Constants.LeanSphincsScheme)
+        {
+            if (!sphincs) bytes += Eip8288Constants.MaxSphincsGuestProofBytes;
+            sphincs = true;
+        }
+        else if (dependency.Scheme == Eip8288Constants.LeanStarkScheme)
+        {
+            if (++generic > Eip8288Constants.MaxGenericStarkProofs) return "Generic STARK proof count limit exceeded";
+            if (!lengths.TryGetValue(dependency, out int length) || length <= 0) return "Missing generic STARK witness length";
+            bytes += Eip8288Constants.DependencyTripleLength + 4L + length;
+        }
+        else return "Unknown dependency proof scheme";
+        return null;
     }
 
     private static FrameDependency ParseDependency(ReadOnlySpan<byte> triple)

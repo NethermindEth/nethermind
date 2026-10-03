@@ -48,7 +48,7 @@ internal sealed class LeanProofBudget
     {
         contribution = new();
         error = null;
-        error = CapacityError(_required, _genericProofs, required);
+        error = LeanProofCapacity.CapacityError(_required, _genericProofs, required);
         if (error is not null) return false;
         HashSet<FrameDependency> addedCoverage = [];
         List<RecursiveProofInput> parents = [];
@@ -94,19 +94,6 @@ internal sealed class LeanProofBudget
             if (generic && !LeanProofCapacity.TryReadGenericWitnessLengths(parent.Proof.Span, lengths)) return false;
         }
         return true;
-    }
-
-    internal static string? CapacityError(IReadOnlySet<FrameDependency> existing, int genericProofs, IReadOnlyList<FrameDependency> appended)
-    {
-        int count = existing.Count;
-        foreach (FrameDependency dependency in appended)
-            if (!existing.Contains(dependency))
-            {
-                count++;
-                if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) genericProofs++;
-            }
-        if (count > Eip8288Constants.MaxProofDependencies) return "Dependency proof count limit exceeded";
-        return genericProofs > Eip8288Constants.MaxGenericStarkProofs ? "Generic STARK proof count limit exceeded" : null;
     }
 
     public void Commit(AggregationInput contribution, IReadOnlyList<FrameDependency> required)

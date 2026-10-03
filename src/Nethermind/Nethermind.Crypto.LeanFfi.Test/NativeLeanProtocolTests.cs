@@ -67,7 +67,7 @@ public class NativeLeanProtocolTests
         }
     }
 
-    private static async Task<Context> Create(ILeanProofVerifier? verifier = null, byte version = 2)
+    private static async Task<Context> Create(ILeanProofVerifier? verifier = null, byte version = 1)
     {
         Scheduler scheduler = new();
         BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
@@ -151,28 +151,34 @@ public class NativeLeanProtocolTests
         Assert.That(after.Chain.Container.Resolve<LeanReassemblyBudget>().RetainedAssemblies, Is.Zero);
     }
 
-    [TestCase((byte)2)]
+    [TestCase((byte)1)]
     public async Task Unnegotiated_capability_is_rejected(byte version)
     {
         using Context context = await Create(version: version);
+        foreach (IProtocolHandlerFactory factory in context.Chain.Container.Resolve<IProtocolHandlerFactory[]>())
+            if (factory.ProtocolCode == "lean")
+            {
+                Assert.That(factory.TryCreate(context.Session, 2, out IProtocolHandler? unsupported), Is.False);
+                Assert.That(unsupported, Is.Null);
+            }
         context.Session.HasAgreedCapability(Arg.Any<Capability>()).Returns(false);
         Receive(context, Status(context), new LeanStatusMessageSerializer());
         context.Session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
     }
 
     [Test]
-    public async Task Lean2_chunks_reassemble_a_real_recursive_wrapper_before_admission()
+    public async Task Lean1_chunks_reassemble_a_real_recursive_wrapper_before_admission()
     {
-        using Context source = await Create(version: 2);
-        using Context target = await Create(version: 2);
+        using Context source = await Create(version: 1);
+        using Context target = await Create(version: 1);
         using LeanP2PCapabilityResolver resolver = new(source.Chain.BlockTree, source.Chain.SpecProvider);
         HashSet<Capability> capabilities = [];
         resolver.Resolve(capabilities);
-        Assert.That(capabilities, Does.Contain(new Capability("lean", 2)).And.Not.Contain(new Capability("lean", 1)));
+        Assert.That(capabilities, Does.Contain(new Capability("lean", 1)).And.Not.Contain(new Capability("lean", 2)));
         source.Session.HasAgreedCapability(Arg.Any<Capability>())
-            .Returns(call => call.Arg<Capability>().ProtocolCode == "lean" && call.Arg<Capability>().Version == 2);
+            .Returns(call => call.Arg<Capability>().ProtocolCode == "lean" && call.Arg<Capability>().Version == 1);
         target.Session.HasAgreedCapability(Arg.Any<Capability>())
-            .Returns(call => call.Arg<Capability>().ProtocolCode == "lean" && call.Arg<Capability>().Version == 2);
+            .Returns(call => call.Arg<Capability>().ProtocolCode == "lean" && call.Arg<Capability>().Version == 1);
         TaskCompletionSource<int> complete = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int earlyAdmissions = 0;
         ((ILeanBulkSession)source.Session).DeliverLeanChunkAsync(Arg.Any<LeanProofChunkMessage>(), Arg.Any<CancellationToken>())
@@ -198,7 +204,7 @@ public class NativeLeanProtocolTests
         await target.Scheduler.Completion.WaitAsync(TimeSpan.FromSeconds(10));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(source.Handler.ProtocolVersion, Is.EqualTo(2));
+            Assert.That(source.Handler.ProtocolVersion, Is.EqualTo(1));
             Assert.That(chunks, Is.GreaterThan(1));
             Assert.That(earlyAdmissions, Is.Zero);
             Assert.That(target.Scheduler.Scheduled, Is.EqualTo(1));

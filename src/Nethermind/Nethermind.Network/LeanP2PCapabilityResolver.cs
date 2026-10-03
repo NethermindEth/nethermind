@@ -32,7 +32,7 @@ public sealed class LeanP2PCapabilityResolver : IP2PCapabilityResolver, IDisposa
     {
         if (Volatile.Read(ref _enabled))
         {
-            capabilities.Add(new Capability(Lean2ProtocolHandler.Code, Lean2ProtocolHandler.Version));
+            capabilities.Add(new Capability(Lean1ProtocolHandler.Code, Lean1ProtocolHandler.Version));
         }
     }
 

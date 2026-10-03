@@ -48,6 +48,23 @@ public class FocilInclusionListTests
     }
 
     [Test]
+    public void Shared_cache_consults_the_request_memo_for_positive_and_negative_verdicts([Values] bool valid)
+    {
+        FakeLeanProofVerifier backend = new(valid);
+        InclusionListProofVerifier verifier = new(backend);
+        Transaction transaction = DepTx(Eip8288Constants.LeanSphincsScheme);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        byte[] metadata = Eip8288Dependencies.Serialize(dependencies);
+        RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
+        for (int check = 0; check < 4; check++)
+            Assert.That(FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.EqualTo(valid));
+        Assert.That(backend.VerificationCalls, Is.EqualTo(1));
+        proof.StarkProof[0] = 2;
+        Assert.That(FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.EqualTo(valid));
+        Assert.That(backend.VerificationCalls, Is.EqualTo(2));
+    }
+
+    [Test]
     public void Request_memo_reuses_only_identical_proof_and_public_inputs()
     {
         FakeLeanProofVerifier backend = new(true);

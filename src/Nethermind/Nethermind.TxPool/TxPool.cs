@@ -1535,13 +1535,13 @@ namespace Nethermind.TxPool
         private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle)
         {
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
+            if (!canRecycle)
+                PooledBlobBuffers.Disown(tx);
             if (Volatile.Read(ref _isDisposed))
             {
                 PooledBlobBuffers.Return(tx);
                 return AcceptTxResult.Invalid.WithMessage("Transaction pool is disposed.");
             }
-            if (!canRecycle)
-                PooledBlobBuffers.Disown(tx);
             bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
                                   && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;

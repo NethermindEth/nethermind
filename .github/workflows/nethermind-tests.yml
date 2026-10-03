@@ -37,41 +37,94 @@ jobs:
       matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-arm64","os":"ubuntu-24.04-arm","variant":"release","build_args":""}]}'
 
   native-lean:
-    name: Run native Lean integration tests
+    name: Run native Lean integration tests (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
+    env:
+      NATIVE_TEST_PROJECT: Nethermind.Crypto.LeanFfi.Test
+      RUSTFLAGS: -C target-cpu=native
     strategy:
       fail-fast: false
       matrix:
         runner:
           - ubuntu-latest
           - ubuntu-24.04-arm
-        project:
-          - Nethermind.Crypto.LeanFfi.Test
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Check native integration paths
+        id: lean-paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          relevant=true
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            git diff --name-only "$BASE_SHA" HEAD > "$RUNNER_TEMP/lean-changed-paths"
+            if ! grep -qE '^(tools/lean-ffi/|src/Nethermind/(Nethermind\.(Core|Crypto|Consensus|Blockchain|Evm|TxPool|Network|Synchronization|Init|Specs|Merge|State|Trie|Serialization|Runner|Stateless)([./])|tests\.props)|build/|global\.json$|\.gitmodules$|\.github/(workflows/nethermind-tests\.yml|actions/fetch-submodules/))|(^|/)(Directory\.(Build|Packages)\.(props|targets)|[Nn]u[Gg]et\.[Cc]onfig)$' "$RUNNER_TEMP/lean-changed-paths"; then
+              relevant=false
+            fi
+          fi
+          echo "run=$relevant" >> "$GITHUB_OUTPUT"
+
       - name: Fetch submodules
+        if: steps.lean-paths.outputs.run == 'true'
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
 
       - name: Set up .NET
+        if: steps.lean-paths.outputs.run == 'true'
         uses: actions/setup-dotnet@v5
 
       - name: Set up Rust
+        if: steps.lean-paths.outputs.run == 'true'
         run: |
-          rustup toolchain install 1.99.0 --profile minimal
-          rustup default 1.99.0
+          toolchain=$(sed -n 's/^channel = "\(.*\)"$/\1/p' tools/lean-ffi/rust-toolchain.toml)
+          test -n "$toolchain"
+          rustup toolchain install "$toolchain" --profile minimal
+
+      - name: Fingerprint host CPU
+        if: steps.lean-paths.outputs.run == 'true'
+        id: lean-cpu
+        run: |
+          LC_ALL=C lscpu > "$RUNNER_TEMP/lean-cpu-info"
+          awk -F: '$1 ~ /^(Architecture|Vendor ID|CPU family|Model|Model name|Stepping|Flags|Features)$/ { print }' "$RUNNER_TEMP/lean-cpu-info" > "$RUNNER_TEMP/lean-cpu-features"
+          grep -qE '^(Flags|Features):' "$RUNNER_TEMP/lean-cpu-features"
+          printf '%s\n' "$RUSTFLAGS" >> "$RUNNER_TEMP/lean-cpu-features"
+          fingerprint=$(sha256sum "$RUNNER_TEMP/lean-cpu-features" | cut -d' ' -f1)
+          echo "hash=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Cargo sources
+        if: steps.lean-paths.outputs.run == 'true'
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: lean-cargo-sources-${{ runner.os }}-${{ hashFiles('tools/lean-ffi/Cargo.lock') }}
+          restore-keys: lean-cargo-sources-${{ runner.os }}-
+
+      - name: Cache host-native Cargo artifacts
+        if: steps.lean-paths.outputs.run == 'true'
+        uses: actions/cache@v5
+        with:
+          path: tools/lean-ffi/target
+          key: lean-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.lean-cpu.outputs.hash }}-${{ hashFiles('tools/lean-ffi/Cargo.lock', 'tools/lean-ffi/rust-toolchain.toml') }}-${{ hashFiles('tools/lean-ffi/src/**', 'tools/lean-ffi/examples/**', 'tools/lean-ffi/Cargo.toml') }}
+          # Never restore host-native code across CPU features or Rust/lockfile versions.
+          restore-keys: lean-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.lean-cpu.outputs.hash }}-${{ hashFiles('tools/lean-ffi/Cargo.lock', 'tools/lean-ffi/rust-toolchain.toml') }}-
 
       - name: Test native proof backend
-        run: cargo test --release --locked --manifest-path tools/lean-ffi/Cargo.toml -- --test-threads=1
+        if: steps.lean-paths.outputs.run == 'true'
+        working-directory: tools/lean-ffi
+        run: cargo test --release --locked -- --test-threads=1
 
       - name: Test live Lean integration
+        if: steps.lean-paths.outputs.run == 'true'
         run: |
-          dotnet build src/Nethermind/${{ matrix.project }}/${{ matrix.project }}.csproj -c release --disable-build-servers -m:1 -p:BuildLeanFfi=true
-          dotnet run --project src/Nethermind/${{ matrix.project }}/${{ matrix.project }}.csproj -c release --no-build -p:BuildLeanFfi=true
+          dotnet build "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --disable-build-servers -m:1 -p:BuildLeanFfi=true
+          dotnet run --project "src/Nethermind/$NATIVE_TEST_PROJECT/$NATIVE_TEST_PROJECT.csproj" -c release --no-build -p:BuildLeanFfi=true
 
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
@@ -501,7 +554,7 @@ jobs:
             [[ -f "$dir/$project.csproj" ]] || continue
             [[ " $allowlist " == *" $project "* ]] && continue
             esc=$(printf '%s' "$project" | sed 's/\./\\./g')
-            if ! grep -qE "^ +- ${esc}\$|project: ${esc}[,} ]" .github/workflows/nethermind-tests.yml; then
+            if ! grep -qE "^ +- ${esc}\$|project: ${esc}[,} ]|NATIVE_TEST_PROJECT: ${esc}\$" .github/workflows/nethermind-tests.yml; then
               echo "::error::$project runs in no CI matrix - add it to a matrix in nethermind-tests.yml or to the allowlist in this step"
               missing=1
             fi

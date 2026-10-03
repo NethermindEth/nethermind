@@ -27,7 +27,7 @@ public class ZkEvmBlockchainTests : ZkEvmBlockchainTestFixture;
 
 public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixture
 {
-    private static readonly ILeanProofVerifier _leanProofVerifier = new NativeLeanProofVerifier();
+    private static readonly ILeanProofVerifier _leanProofVerifier = NativeLeanProofVerifier.Instance;
 
     protected ZkEvmBlockchainTestFixture() : base(parallel: false, batchRead: false) { }
 

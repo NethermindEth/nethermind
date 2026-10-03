@@ -23,8 +23,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean;
 public abstract class LeanProtocolHandler : ZeroProtocolHandlerBase
 {
     public static string Code => "lean";
-    public static byte Version => 2;
-    public override string Name => "lean2";
+    public static byte Version => 1;
+    public override string Name => "lean1";
     public override string ProtocolCode => Code;
     public override byte ProtocolVersion => Version;
     public override int MessageIdSpaceSize => 2;
@@ -67,6 +67,7 @@ public abstract class LeanProtocolHandler : ZeroProtocolHandlerBase
         }
         if (_blockTree.Genesis?.Hash is not { } genesis)
         {
+            Session.InitiateDisconnect(DisconnectReason.ClientQuitting, "Lean genesis is unavailable");
             Dispose();
             return;
         }

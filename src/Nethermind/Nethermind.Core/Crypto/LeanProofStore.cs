@@ -15,8 +15,13 @@ public sealed class LeanProofStore
     public const int MaxWrapperTransactions = 4096;
     /// <summary>Full witness bytes a sender may retain through pending transactions.</summary>
     public const long MaxSenderPinnedBytes = 12 * 1024 * 1024;
+    /// <summary>Distinct witness records a sender may retain through pending transactions.</summary>
+    public const int MaxSenderPinnedRecords = 256;
     private const long MaxStoredBytes = 64 * 1024 * 1024;
-    private const int MaxStoredRecords = 1024;
+    // Enough record slots for 2048 transactions with 16 independent signatures each;
+    // the byte bound still limits large witnesses independently.
+    private const int MaxStoredRecords = 2048 * 16;
+    private const int MaxCachedRecursiveRecords = 1024;
     private readonly object _lock = new();
     private readonly Dictionary<FrameDependency, ProofRecord> _coverage = [];
     private readonly LinkedList<ProofRecord> _records = [];
@@ -229,13 +234,14 @@ public sealed class LeanProofStore
         if (records.Length == 0) return true;
         _senders.TryGetValue(sender, out SenderPins? pins);
         long bytes = pins?.Bytes ?? 0;
+        int count = pins?.Records.Count ?? 0;
         foreach (ProofRecord record in records)
-            if (pins is null || !pins.Records.ContainsKey(record)) bytes += record.Size;
-        if (bytes > MaxSenderPinnedBytes) return false;
+            if (pins is null || !pins.Records.ContainsKey(record)) { bytes += record.Size; count++; }
+        if (bytes > MaxSenderPinnedBytes || count > MaxSenderPinnedRecords) return false;
         if (pins is null) _senders.Add(sender, pins = new());
         foreach (ProofRecord record in records)
         {
-            if (pins.Records.TryGetValue(record, out int count)) pins.Records[record] = count + 1;
+            if (pins.Records.TryGetValue(record, out int references)) pins.Records[record] = references + 1;
             else { pins.Records.Add(record, 1); pins.Bytes += record.Size; }
         }
         return true;
@@ -335,7 +341,7 @@ public sealed class LeanProofStore
             record.Node = _recursiveCache.AddLast(record);
             _recursiveByDeps.Add(hash, record);
             _cachedBytes += record.Size;
-            while (_cachedBytes > MaxStoredBytes || _recursiveCache.Count > MaxStoredRecords)
+            while (_cachedBytes > MaxStoredBytes || _recursiveCache.Count > MaxCachedRecursiveRecords)
             {
                 ProofRecord oldest = _recursiveCache.First!.Value;
                 _recursiveCache.RemoveFirst();

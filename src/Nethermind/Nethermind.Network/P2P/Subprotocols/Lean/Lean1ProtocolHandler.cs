@@ -17,15 +17,15 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
 /// <summary>Streams bounded wrapper chunks while preserving the shared proof-admission path.</summary>
-public sealed class Lean2ProtocolHandler : LeanProtocolHandler, IStaticProtocolInfo
+public sealed class Lean1ProtocolHandler : LeanProtocolHandler, IStaticProtocolInfo
 {
-    public new static byte Version => 2;
-    public override string Name => "lean2";
+    public new static byte Version => 1;
+    public override string Name => "lean1";
     public override byte ProtocolVersion => Version;
     private readonly LeanChunkReassembler _reassembler;
     private readonly int _chunkSize;
 
-    public Lean2ProtocolHandler(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer,
+    public Lean1ProtocolHandler(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer,
         IBackgroundTaskScheduler backgroundTaskScheduler, ILogManager logManager, IBlockTree blockTree,
         ProofWrapperService wrappers, LeanProofGossip gossip, LeanReassemblyBudget budget,
         int chunkSize = LeanProofChunkMessage.DefaultChunkSize)

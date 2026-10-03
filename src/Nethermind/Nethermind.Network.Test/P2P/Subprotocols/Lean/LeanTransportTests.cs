@@ -372,6 +372,23 @@ public class LeanTransportTests
     }
 
     [Test]
+    public void Isolated_stalled_transfers_do_not_accumulate_strikes_forever()
+    {
+        ManualTimeProvider clock = new();
+        int penalties = 0;
+        LeanReassemblyBudget budget = new();
+        using LeanChunkReassembler peer = new(budget, clock, () => penalties++);
+        byte[] payload = new byte[2 * LeanProofChunkMessage.DefaultChunkSize];
+        peer.Add(Chunk(payload, 0));
+        clock.AdvanceAndFireTimer(LeanChunkReassembler.InactivityTimeout);
+        clock.AdvanceAndFireTimer(LeanChunkReassembler.AbandonmentWindow);
+        peer.Add(Chunk(payload, 0));
+        clock.AdvanceAndFireTimer(LeanChunkReassembler.InactivityTimeout);
+        Assert.That(penalties, Is.Zero);
+        Assert.That(budget.RetainedBytes, Is.Zero);
+    }
+
+    [Test]
     public void Slow_streams_cannot_reset_abandonment_strikes_between_absolute_expiries()
     {
         ManualTimeProvider clock = new();

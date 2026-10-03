@@ -180,7 +180,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<State.SnapServer.ISnapServer, Synchronization.SnapSync.SnapServer>()
 
             // Protocol handler factories
-            .AddProtocolHandler<Subprotocols.Lean.Lean2ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Lean.Lean1ProtocolHandler>()
             .AddSingleton<Subprotocols.Lean.LeanReassemblyBudget>()
             .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Snap.V2.Snap2ProtocolHandler>()
