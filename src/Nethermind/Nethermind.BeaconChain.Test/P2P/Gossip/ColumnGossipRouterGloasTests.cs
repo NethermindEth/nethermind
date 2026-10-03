@@ -286,7 +286,7 @@ public class ColumnGossipRouterGloasTests
         (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(legacyBlockIndex: true, populate: (db, store) =>
         {
             blocks = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Blocks);
-            roots = kind == StoredRoots.GloasAtOtherSlots ? StoreGloasBlocksAfterBlockSlot(store, count) : StoreFuluBlocks(store, count);
+            roots = kind == StoredRoots.GloasAtOtherSlots ? StoreGloasBlocks(store, count, atBlockSlot: false) : StoreFuluBlocks(store, count);
         });
         long readsBefore = blocks!.ReadsCount;
         ulong slot = kind == StoredRoots.FuluBeforeFork ? FirstGloasSlot - 1 : BlockSlot;
@@ -316,10 +316,7 @@ public class ColumnGossipRouterGloasTests
         (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(legacyBlockIndex: true, populate: (_, store) => roots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot));
         // A forgery reads and caches the block without marking its (root, index) seen.
         MessageValidity forged = router.Handle(Column, gloasTopic: true, Encode(Sidecar(mutate: static s => s.KzgProofs = [s.KzgProofs![1], s.KzgProofs[0]])));
-        foreach (Hash256 root in roots)
-        {
-            router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: root)));
-        }
+        RouteStoredRoots(router, roots);
 
         MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
 
@@ -344,10 +341,7 @@ public class ColumnGossipRouterGloasTests
             blocks = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Blocks);
             roots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot);
         });
-        foreach (Hash256 root in roots)
-        {
-            router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: root)));
-        }
+        RouteStoredRoots(router, roots);
 
         long readsBefore = blocks!.ReadsCount;
         MessageValidity spent = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
@@ -381,10 +375,7 @@ public class ColumnGossipRouterGloasTests
             roots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot);
             store.SetCanonicalRoot(BlockSlot, canonical ? BlockRoot : Keccak.Compute("competing block"));
         });
-        foreach (Hash256 root in roots)
-        {
-            router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: root)));
-        }
+        RouteStoredRoots(router, roots);
 
         MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
         router.Handle(Column, gloasTopic: true, Encode(Sidecar(slot: BlockSlot + slotsSinceBlock, root: UnknownRoot)));
@@ -413,10 +404,7 @@ public class ColumnGossipRouterGloasTests
         long readsBefore = blocks!.ReadsCount;
 
         MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
-        foreach (Hash256 root in roots)
-        {
-            router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: root)));
-        }
+        RouteStoredRoots(router, roots);
 
         using (Assert.EnterMultipleScope())
         {
@@ -579,7 +567,7 @@ public class ColumnGossipRouterGloasTests
         (ColumnGossipRouter router, DataColumnSidecarPool _) = Create(legacyBlockIndex: true, populate: (_, store) =>
         {
             fuluRoots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot);
-            gloasParents = StoreGloasBlocksAtBlockSlot(store, ColumnGossipRouter.ParentSlotReadsPerSlot + 1);
+            gloasParents = StoreGloasBlocks(store, ColumnGossipRouter.ParentSlotReadsPerSlot + 1, atBlockSlot: true);
         });
         DataColumnSidecar fulu = DataColumnSidecarTestFixture.BuildValidSidecar(Column, BlockSlot);
 
@@ -639,10 +627,7 @@ public class ColumnGossipRouterGloasTests
             store.SetCanonicalRoot(BlockSlot, canonical ? BlockRoot : Keccak.Compute("competing block"));
         });
         long readsBefore = blocks!.ReadsCount;
-        foreach (Hash256 root in roots)
-        {
-            router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: root)));
-        }
+        RouteStoredRoots(router, roots);
 
         MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
 
@@ -656,18 +641,27 @@ public class ColumnGossipRouterGloasTests
         }
     }
 
-    /// <summary>Checks that gloas/p2p-interface.md validation reads summaries after a router restart.</summary>
-    [Test]
-    public void The_summary_of_a_stored_block_serves_a_router_started_after_a_restart()
+    /// <summary>Stored summaries serve a restarted router without another block decode, including one written from a legacy record.</summary>
+    [TestCase(false, TestName = "The_summary_of_a_stored_block_serves_a_router_started_after_a_restart")]
+    [TestCase(true, TestName = "A_block_stored_before_the_summary_existed_is_decoded_once_and_then_served_from_its_summary")]
+    public void Stored_summaries_serve_a_restarted_router_without_further_decodes(bool legacyBlockIndex)
     {
         MemColumnsDb<BeaconChainDbColumns>? database = null;
         MemDb? blocks = null;
-        Create(populate: (db, _) =>
+        (ColumnGossipRouter router, _) = Create(legacyBlockIndex: legacyBlockIndex, populate: (db, _) =>
         {
             database = db;
             blocks = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Blocks);
         });
         long readsBefore = blocks!.ReadsCount;
+        MessageValidity? first = null;
+        long readsForFirst = 0;
+        if (legacyBlockIndex)
+        {
+            first = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
+            readsForFirst = blocks.ReadsCount - readsBefore;
+        }
+
         DataColumnSidecarPool pool = new();
         ColumnGossipRouter restarted = new(Sepolia, new SlotClock(Sepolia, WallClock(Sepolia, BlockSlot)), LimboLogs.Instance, pool, new BeaconChainStore(database!, Sepolia));
         restarted.Start(_ => new ForwardingTopic(), ForkDigest.Compute(Sepolia, Sepolia.GetEpoch(BlockSlot)), [Column]);
@@ -676,37 +670,13 @@ public class ColumnGossipRouterGloasTests
 
         using (Assert.EnterMultipleScope())
         {
+            if (legacyBlockIndex)
+            {
+                Assert.That(first, Is.EqualTo(MessageValidity.Accepted));
+                Assert.That(readsForFirst, Is.EqualTo(1), "the old record is decoded to write its summary");
+            }
             Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
-            Assert.That(blocks.ReadsCount - readsBefore, Is.Zero, "the restarted router reads no block record");
-        }
-    }
-
-    /// <summary>Checks that legacy blocks pay for one decode across restarts of gloas/p2p-interface.md validation.</summary>
-    [Test]
-    public void A_block_stored_before_the_summary_existed_is_decoded_once_and_then_served_from_its_summary()
-    {
-        MemColumnsDb<BeaconChainDbColumns>? database = null;
-        MemDb? blocks = null;
-        (ColumnGossipRouter router, _) = Create(legacyBlockIndex: true, populate: (db, _) =>
-        {
-            database = db;
-            blocks = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Blocks);
-        });
-        long readsBefore = blocks!.ReadsCount;
-        MessageValidity first = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
-        long readsForFirst = blocks.ReadsCount - readsBefore;
-        DataColumnSidecarPool pool = new();
-        ColumnGossipRouter restarted = new(Sepolia, new SlotClock(Sepolia, WallClock(Sepolia, BlockSlot)), LimboLogs.Instance, pool, new BeaconChainStore(database!, Sepolia));
-        restarted.Start(_ => new ForwardingTopic(), ForkDigest.Compute(Sepolia, Sepolia.GetEpoch(BlockSlot)), [Column]);
-
-        MessageValidity second = restarted.Handle(Column, gloasTopic: true, Encode(Sidecar()));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(first, Is.EqualTo(MessageValidity.Accepted));
-            Assert.That(readsForFirst, Is.EqualTo(1), "the old record is decoded to write its summary");
-            Assert.That(second, Is.EqualTo(MessageValidity.Accepted));
-            Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(1), "the restarted router reads no block record");
+            Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(legacyBlockIndex ? 1 : 0), "the restarted router reads no block record");
         }
     }
 
@@ -769,12 +739,16 @@ public class ColumnGossipRouterGloasTests
         return roots;
     }
 
-    private static Hash256[] StoreGloasBlocksAfterBlockSlot(BeaconChainStore store, int count)
+    private static Hash256[] StoreGloasBlocks(BeaconChainStore store, int count, bool atBlockSlot)
     {
         Hash256[] roots = new Hash256[count];
         for (int i = 0; i < count; i++)
         {
-            SignedBeaconBlockGloas gloas = CreateMinimalGloasBlock(BlockSlot + 1 + (ulong)i);
+            SignedBeaconBlockGloas gloas = CreateMinimalGloasBlock(atBlockSlot ? BlockSlot : BlockSlot + 1 + (ulong)i);
+            if (atBlockSlot)
+            {
+                gloas.Message!.ProposerIndex = 100 + (ulong)i;
+            }
             roots[i] = SszRoots.HashTreeRoot(gloas.Message!);
             store.PutForkedBlock(roots[i], new ForkedSignedBeaconBlock.OfGloas(gloas));
         }
@@ -782,18 +756,12 @@ public class ColumnGossipRouterGloasTests
         return roots;
     }
 
-    private static Hash256[] StoreGloasBlocksAtBlockSlot(BeaconChainStore store, int count)
+    private static void RouteStoredRoots(ColumnGossipRouter router, Hash256[] roots)
     {
-        Hash256[] roots = new Hash256[count];
-        for (int i = 0; i < count; i++)
+        foreach (Hash256 root in roots)
         {
-            SignedBeaconBlockGloas gloas = CreateMinimalGloasBlock(BlockSlot);
-            gloas.Message!.ProposerIndex = 100 + (ulong)i;
-            roots[i] = SszRoots.HashTreeRoot(gloas.Message);
-            store.PutForkedBlock(roots[i], new ForkedSignedBeaconBlock.OfGloas(gloas));
+            router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: root)));
         }
-
-        return roots;
     }
 
     // The inclusion proof binds the commitments to the header's body root only, so parent and proposer can be rewritten.
