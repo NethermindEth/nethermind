@@ -17,7 +17,8 @@ public enum ProcessingCores
 
     /// <summary>
     /// One performance core to itself: the first that does not hold CPU 0, which takes more interrupts, with prewarm
-    /// kept clear of it. On a CPU with one kind of core, every core counts as a performance core.
+    /// kept clear of it. On a CPU with one kind of core, every core counts as a performance core. The process's other
+    /// threads are kept off that core too.
     /// </summary>
     Dedicated,
 }
