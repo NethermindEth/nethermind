@@ -7,16 +7,16 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Consensus.Eip8288;
+namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
-/// RLP codec for the EIP-8288 FOCIL inclusion list <c>[transactions, [stark_proof, deps_hash, proven_dependencies]]</c>.
+/// RLP codec for an inclusion-list proof package <c>[transactions, [stark_proof, deps_hash, proven_dependencies]]</c>.
 /// </summary>
-public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
+public sealed class InclusionListProofPackageDecoder : RlpDecoder<InclusionListProofPackage>
 {
-    public static readonly FocilInclusionListDecoder Instance = new();
+    public static readonly InclusionListProofPackageDecoder Instance = new();
 
-    protected override FocilInclusionList DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override InclusionListProofPackage DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int length = decoderContext.ReadSequenceLength();
         int check = length + decoderContext.Position;
@@ -28,8 +28,8 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
         {
             if (transactions.Count >= Eip7805Constants.MaxAggregateInclusionListTransactions)
                 throw new RlpException("Too many inclusion-list transactions");
-            byte[] encoded = decoderContext.DecodeByteArray(RlpLimit.For<FocilInclusionList>(
-                Eip7805Constants.MaxAggregateInclusionListBytes, nameof(FocilInclusionList.Transactions)));
+            byte[] encoded = decoderContext.DecodeByteArray(RlpLimit.For<InclusionListProofPackage>(
+                Eip7805Constants.MaxAggregateInclusionListBytes, nameof(InclusionListProofPackage.Transactions)));
             transactionBytes += encoded.Length;
             if (transactionBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
                 throw new RlpException("Inclusion-list transactions exceed the aggregate byte limit");
@@ -40,9 +40,9 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
         int proofCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         byte[] starkProof = decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(RecursiveStark.StarkProof)));
         Hash256 depsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
-        byte[] provenDependencies = decoderContext.DecodeByteArray(RlpLimit.For<FocilInclusionList>(
-            Eip8288Constants.MaxInclusionListDependencyBytes, nameof(FocilInclusionList.ProvenDependencies)));
-        if (!FocilInclusionListValidator.HasValidMetadataLength(provenDependencies))
+        byte[] provenDependencies = decoderContext.DecodeByteArray(RlpLimit.For<InclusionListProofPackage>(
+            Eip8288Constants.MaxInclusionListDependencyBytes, nameof(InclusionListProofPackage.ProvenDependencies)));
+        if (!InclusionListProofValidator.HasValidMetadataLength(provenDependencies))
             throw new RlpException("Invalid inclusion-list dependency metadata length");
         decoderContext.Check(proofCheck);
 
@@ -51,7 +51,7 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
             decoderContext.Check(check);
         }
 
-        return new FocilInclusionList
+        return new InclusionListProofPackage
         {
             Transactions = transactions,
             RecursiveStark = new RecursiveStark(starkProof, depsHash),
@@ -59,7 +59,7 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
         };
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, FocilInclusionList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, InclusionListProofPackage item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         (int txContentLength, byte[][] txEntries) = GetTransactionsContent(item);
         int recursiveStarkContentLength = Rlp.LengthOf(item.RecursiveStark.StarkProof) + Rlp.LengthOf(item.RecursiveStark.BlockDepsHash)
@@ -76,7 +76,7 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
         writer.Encode(item.ProvenDependencies ?? []);
     }
 
-    public override int GetLength(FocilInclusionList item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(InclusionListProofPackage item, RlpBehaviors rlpBehaviors)
     {
         (int txContentLength, _) = GetTransactionsContent(item);
         int recursiveStarkContentLength = Rlp.LengthOf(item.RecursiveStark.StarkProof) + Rlp.LengthOf(item.RecursiveStark.BlockDepsHash)
@@ -85,7 +85,7 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
         return Rlp.LengthOfSequence(Rlp.LengthOfSequence(txContentLength) + Rlp.LengthOfSequence(recursiveStarkContentLength));
     }
 
-    private static (int ContentLength, byte[][] Entries) GetTransactionsContent(FocilInclusionList item)
+    private static (int ContentLength, byte[][] Entries) GetTransactionsContent(InclusionListProofPackage item)
     {
         byte[][] entries = new byte[item.Transactions.Count][];
         int contentLength = 0;
@@ -100,5 +100,5 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
 
     [DoesNotReturn]
     private static Hash256 ThrowMissingBlockDepsHash() =>
-        throw new RlpException($"Missing {nameof(RecursiveStark.BlockDepsHash)} in {nameof(FocilInclusionList)}");
+        throw new RlpException($"Missing {nameof(RecursiveStark.BlockDepsHash)} in {nameof(InclusionListProofPackage)}");
 }

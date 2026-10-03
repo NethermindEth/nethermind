@@ -9,7 +9,7 @@ using System.Threading;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -24,7 +24,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Consensus.Test.Eip8288;
+namespace Nethermind.Consensus.Test.ProofAggregation;
 
 public class ProofWrapperServiceTests
 {
@@ -97,7 +97,7 @@ public class ProofWrapperServiceTests
         };
         RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
         Result<Hash256[]> accepted = inclusionList
-            ? await service.AcceptInclusionListAsync(FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
+            ? await service.AcceptInclusionListAsync(InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
             {
                 Transactions = [transaction],
                 ProvenDependencies = Eip8288Dependencies.Serialize([dependency]),
@@ -133,7 +133,7 @@ public class ProofWrapperServiceTests
         };
         RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
         Result<Hash256[]> accepted = inclusionList
-            ? await service.AcceptInclusionListAsync(FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
+            ? await service.AcceptInclusionListAsync(InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
             {
                 Transactions = [transaction],
                 ProvenDependencies = Eip8288Dependencies.Serialize([dependency]),
@@ -172,7 +172,7 @@ public class ProofWrapperServiceTests
         };
         RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
         Result<Hash256[]> accepted = inclusionList
-            ? await service.AcceptInclusionListAsync(FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
+            ? await service.AcceptInclusionListAsync(InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
             {
                 Transactions = [transaction],
                 ProvenDependencies = Eip8288Dependencies.Serialize([dependency]),
@@ -545,7 +545,7 @@ public class ProofWrapperServiceTests
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
         if (inclusionList)
         {
-            byte[] encoded = FocilInclusionListDecoder.Instance.Encode(new FocilInclusionList
+            byte[] encoded = InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
             {
                 Transactions = transactions,
                 ProvenDependencies = Eip8288Dependencies.Serialize(dependencies),

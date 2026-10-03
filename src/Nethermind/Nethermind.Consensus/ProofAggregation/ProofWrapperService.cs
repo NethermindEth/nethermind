@@ -14,7 +14,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Evm;
 using Nethermind.TxPool;
 
-namespace Nethermind.Consensus.Eip8288;
+namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>Shared proof-wrapper validation, admission and aggregation for RPC and negotiated peers.</summary>
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
@@ -137,7 +137,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             cancellationToken.ThrowIfCancellationRequested();
             inclusionList = (byte[])inclusionList.Clone();
-            FocilInclusionList decoded = DecodeProofInclusionList(inclusionList);
+            InclusionListProofPackage decoded = DecodeProofInclusionList(inclusionList);
             foreach (Transaction transaction in decoded.Transactions)
             {
                 if (!Preflight(transaction, out string? frameError)) return Result<Hash256[]>.Fail(frameError!);
@@ -149,7 +149,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             (bool valid, string? error) = await Task.Run(() =>
             {
-                bool proofValid = FocilInclusionListValidator.Validate(decoded, leanProofVerifier, out string? proofError);
+                bool proofValid = InclusionListProofValidator.Validate(decoded, leanProofVerifier, out string? proofError);
                 return (proofValid, proofError);
             }, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -380,10 +380,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return envelope;
     }
 
-    private static FocilInclusionList DecodeProofInclusionList(byte[] encoded)
+    private static InclusionListProofPackage DecodeProofInclusionList(byte[] encoded)
     {
         RlpReader reader = new(encoded);
-        FocilInclusionList inclusionList = FocilInclusionListDecoder.Instance.Decode(ref reader);
+        InclusionListProofPackage inclusionList = InclusionListProofPackageDecoder.Instance.Decode(ref reader);
         reader.Check(encoded.Length);
         return inclusionList;
     }

@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 using Autofac;
 using DotNetty.Buffers;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.TxPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

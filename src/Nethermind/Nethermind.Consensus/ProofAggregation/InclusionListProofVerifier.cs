@@ -4,7 +4,7 @@
 using System;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus.Eip8288;
+namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>Shares one exact proof verdict across a request's gas-dimension checks.</summary>
 public sealed class InclusionListProofVerifier(ILeanProofVerifier verifier) : ILeanProofVerifier

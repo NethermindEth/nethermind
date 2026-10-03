@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus.Eip8288;
+namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>A wrapper transaction entry: either the full transaction or, if already broadcast, its hash.</summary>
 public readonly struct WrapperTransaction

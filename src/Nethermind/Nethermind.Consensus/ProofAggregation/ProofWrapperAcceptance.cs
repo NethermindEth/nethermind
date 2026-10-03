@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus.Eip8288;
+namespace Nethermind.Consensus.ProofAggregation;
 
 public enum ProofWrapperAcceptanceStatus
 {

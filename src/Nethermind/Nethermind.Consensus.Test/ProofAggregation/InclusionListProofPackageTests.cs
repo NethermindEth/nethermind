@@ -4,7 +4,7 @@
 #nullable enable
 
 using System.Collections.Generic;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -14,9 +14,9 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
 
-namespace Nethermind.Consensus.Test.Eip8288;
+namespace Nethermind.Consensus.Test.ProofAggregation;
 
-public class FocilInclusionListTests
+public class InclusionListProofPackageTests
 {
     private static readonly ILeanProofVerifier Accepting = new FakeLeanProofVerifier(true);
 
@@ -39,11 +39,11 @@ public class FocilInclusionListTests
         List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
         RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
         byte[] metadata = Eip8288Dependencies.Serialize(dependencies);
-        Assert.That(FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
-        Assert.That(FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
+        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
+        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
         proof.StarkProof[0] = 2;
-        Assert.That(FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
+        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(2));
     }
 
@@ -57,10 +57,10 @@ public class FocilInclusionListTests
         byte[] metadata = Eip8288Dependencies.Serialize(dependencies);
         RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
         for (int check = 0; check < 4; check++)
-            Assert.That(FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.EqualTo(valid));
+            Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.EqualTo(valid));
         Assert.That(backend.VerificationCalls, Is.EqualTo(1));
         proof.StarkProof[0] = 2;
-        Assert.That(FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.EqualTo(valid));
+        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.EqualTo(valid));
         Assert.That(backend.VerificationCalls, Is.EqualTo(2));
     }
 
@@ -103,7 +103,7 @@ public class FocilInclusionListTests
         FakeLeanProofVerifier verifier = new(true);
         RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
 
-        bool valid = FocilInclusionListValidator.Validate([transaction], proof, verifier, out _, out string? error, spec);
+        bool valid = InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out string? error, spec);
 
         using (Assert.EnterMultipleScope())
         {
@@ -128,7 +128,7 @@ public class FocilInclusionListTests
         RecursiveStark? proof = scenario == "missing-proof" ? null : new([1], new Hash256(ValueKeccak.Compute(metadata)));
         FakeLeanProofVerifier verifier = new(scenario != "invalid-proof");
 
-        Transaction[] eligible = FocilInclusionListValidator.SelectEligible([covered, bad, ordinary], proof,
+        Transaction[] eligible = InclusionListProofValidator.SelectEligible([covered, bad, ordinary], proof,
             scenario == "missing-metadata" ? null : metadata, verifier, Eip8288Prototype.Instance, out _, out _);
 
         Assert.That(eligible, scenario is "malformed" or "uncovered" ? Is.EqualTo(new[] { covered, ordinary }) : Is.EqualTo(new[] { ordinary }));
@@ -153,7 +153,7 @@ public class FocilInclusionListTests
         if (scenario == "unknown-scheme") metadata[31] = 1;
         FakeLeanProofVerifier verifier = new(true);
         RecursiveStark proof = new([1], new Hash256(ValueKeccak.Compute(metadata)));
-        Assert.That(FocilInclusionListValidator.SelectEligible([covered], proof, metadata, verifier,
+        Assert.That(InclusionListProofValidator.SelectEligible([covered], proof, metadata, verifier,
             Eip8288Prototype.Instance, out _, out _), Is.Empty);
         Assert.That(verifier.VerificationCalls, Is.Zero);
     }
@@ -176,15 +176,15 @@ public class FocilInclusionListTests
     [Test]
     public void Empty_focil_round_trips()
     {
-        FocilInclusionList focil = new()
+        InclusionListProofPackage focil = new()
         {
             Transactions = [],
             RecursiveStark = new RecursiveStark([1, 2, 3], Keccak.Compute("deps")),
         };
 
-        Rlp rlp = FocilInclusionListDecoder.Instance.Encode(focil);
+        Rlp rlp = InclusionListProofPackageDecoder.Instance.Encode(focil);
         RlpReader reader = new(rlp.Bytes);
-        FocilInclusionList decoded = FocilInclusionListDecoder.Instance.Decode(ref reader)!;
+        InclusionListProofPackage decoded = InclusionListProofPackageDecoder.Instance.Decode(ref reader)!;
 
         Assert.That(decoded.Transactions.Count, Is.EqualTo(0));
         Assert.That(decoded.RecursiveStark.StarkProof, Is.EqualTo(new byte[] { 1, 2, 3 }));
@@ -198,42 +198,42 @@ public class FocilInclusionListTests
         List<FrameDependency> deps = [];
         foreach (Transaction tx in txs) deps.AddRange(Eip8288Dependencies.ForTransaction(tx));
 
-        FocilInclusionList focil = new()
+        InclusionListProofPackage focil = new()
         {
             Transactions = txs,
             RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))),
             ProvenDependencies = Eip8288Dependencies.Serialize(Eip8288Dependencies.Canonicalize(deps)),
         };
 
-        Assert.That(FocilInclusionListValidator.Validate(focil, Accepting, out string? error), Is.True, error);
+        Assert.That(InclusionListProofValidator.Validate(focil, Accepting, out string? error), Is.True, error);
     }
 
     [Test]
     public void Rejects_deps_hash_mismatch()
     {
-        FocilInclusionList focil = new()
+        InclusionListProofPackage focil = new()
         {
             Transactions = [DepTx(Eip8288Constants.LeanSphincsScheme)],
             RecursiveStark = new RecursiveStark([1], Keccak.Compute("wrong")),
             ProvenDependencies = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(DepTx(Eip8288Constants.LeanSphincsScheme))),
         };
 
-        Assert.That(FocilInclusionListValidator.Validate(focil, Accepting, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FocilInclusionListValidator.DepsHashMismatch));
+        Assert.That(InclusionListProofValidator.Validate(focil, Accepting, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(InclusionListProofValidator.DepsHashMismatch));
     }
     [Test]
     public void Typed_transactions_use_canonical_inclusion_list_encoding()
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        FocilInclusionList list = new() { Transactions = [tx], RecursiveStark = new([1], Keccak.Zero) };
-        Rlp encoded = FocilInclusionListDecoder.Instance.Encode(list);
+        InclusionListProofPackage list = new() { Transactions = [tx], RecursiveStark = new([1], Keccak.Zero) };
+        Rlp encoded = InclusionListProofPackageDecoder.Instance.Encode(list);
         RlpReader reader = new(encoded.Bytes);
         reader.ReadSequenceLength();
         reader.ReadSequenceLength();
         byte[] entry = reader.DecodeByteArray();
         Assert.That(entry[0], Is.EqualTo((byte)TxType.EIP1559));
         reader = new(encoded.Bytes);
-        Assert.That(FocilInclusionListDecoder.Instance.Decode(ref reader)!.Transactions[0].Hash, Is.EqualTo(tx.Hash));
+        Assert.That(InclusionListProofPackageDecoder.Instance.Decode(ref reader)!.Transactions[0].Hash, Is.EqualTo(tx.Hash));
     }
 
     [Test]
@@ -244,7 +244,7 @@ public class FocilInclusionListTests
         Assert.Throws<RlpException>(() =>
         {
             RlpReader reader = new(encoded.Bytes);
-            FocilInclusionListDecoder.Instance.Decode(ref reader);
+            InclusionListProofPackageDecoder.Instance.Decode(ref reader);
         });
     }
 
@@ -252,23 +252,23 @@ public class FocilInclusionListTests
     [TestCase(Eip8288Constants.MaxProofBytes + 1, false)]
     public void Proof_decoder_matches_native_size_bound(int proofBytes, bool accepted)
     {
-        FocilInclusionList list = new()
+        InclusionListProofPackage list = new()
         {
             Transactions = [],
             RecursiveStark = new RecursiveStark(new byte[proofBytes], Keccak.Zero)
         };
-        Rlp encoded = FocilInclusionListDecoder.Instance.Encode(list);
+        Rlp encoded = InclusionListProofPackageDecoder.Instance.Encode(list);
         if (accepted)
         {
             RlpReader reader = new(encoded.Bytes);
-            Assert.That(FocilInclusionListDecoder.Instance.Decode(ref reader)!.RecursiveStark.StarkProof, Has.Length.EqualTo(proofBytes));
+            Assert.That(InclusionListProofPackageDecoder.Instance.Decode(ref reader)!.RecursiveStark.StarkProof, Has.Length.EqualTo(proofBytes));
         }
         else
         {
             Assert.That(() =>
             {
                 RlpReader reader = new(encoded.Bytes);
-                FocilInclusionListDecoder.Instance.Decode(ref reader);
+                InclusionListProofPackageDecoder.Instance.Decode(ref reader);
             }, Throws.InstanceOf<RlpException>());
         }
     }

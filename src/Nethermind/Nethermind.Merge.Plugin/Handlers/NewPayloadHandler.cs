@@ -13,7 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -491,7 +491,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         bool omittedFrame = false;
         if (spec.IsEip8288Enabled)
         {
-            inclusionList = FocilInclusionListValidator.SelectEligible(inclusionList, block.InclusionListRecursiveStark,
+            inclusionList = InclusionListProofValidator.SelectEligible(inclusionList, block.InclusionListRecursiveStark,
                 block.InclusionListProvenDependencies, verifier, spec, out _, out _);
             HashSet<Hash256> included = [];
             foreach (Transaction tx in block.Transactions) if (tx.Hash is { } hash) included.Add(hash);

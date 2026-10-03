@@ -5,14 +5,14 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Consensus.Test.Eip8288;
+namespace Nethermind.Consensus.Test.ProofAggregation;
 
 public class MempoolWrapperTests
 {

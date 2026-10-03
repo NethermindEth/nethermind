@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

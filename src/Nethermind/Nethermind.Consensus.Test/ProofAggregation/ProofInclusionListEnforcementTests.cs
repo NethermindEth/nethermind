@@ -22,7 +22,7 @@ using Nethermind.Specs.Test;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
-namespace Nethermind.Consensus.Test.Eip8288;
+namespace Nethermind.Consensus.Test.ProofAggregation;
 
 [NonParallelizable]
 public class ProofInclusionListEnforcementTests

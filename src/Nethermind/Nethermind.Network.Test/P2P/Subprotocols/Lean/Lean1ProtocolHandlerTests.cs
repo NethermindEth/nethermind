@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

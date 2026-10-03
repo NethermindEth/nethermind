@@ -56,7 +56,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
         if (InclusionListProvenDependencies is { } dependencies
             && (InclusionListRecursiveStark is null || InclusionListTransactions is null
-                || !Nethermind.Consensus.Eip8288.FocilInclusionListValidator.HasValidMetadataLength(dependencies)))
+                || !Nethermind.Consensus.ProofAggregation.InclusionListProofValidator.HasValidMetadataLength(dependencies)))
             return Result<Block>.Fail("Invalid inclusion-list proven dependencies");
 
         Result<Block> baseResult = base.TryGetBlock(totalDifficulty);

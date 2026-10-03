@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus.Eip8288;
+namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>Tracks accepted witnesses without rebuilding the accumulated proof for each candidate.</summary>
 internal sealed class LeanProofBudget

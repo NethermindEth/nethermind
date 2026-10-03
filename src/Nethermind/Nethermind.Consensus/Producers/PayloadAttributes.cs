@@ -320,7 +320,7 @@ public class PayloadAttributes
 
         if (result == PayloadAttributesValidationResult.Success && InclusionListProvenDependencies is { } dependencies
             && (!spec.IsEip8288Enabled || !spec.InclusionListsEnabled || InclusionListTransactions is null
-                || InclusionListRecursiveStark is null || !Nethermind.Consensus.Eip8288.FocilInclusionListValidator.HasValidMetadataLength(dependencies)))
+                || InclusionListRecursiveStark is null || !Nethermind.Consensus.ProofAggregation.InclusionListProofValidator.HasValidMetadataLength(dependencies)))
         {
             error = "Invalid inclusion-list proven dependencies";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;

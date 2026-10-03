@@ -8,7 +8,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Autofac;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -195,12 +195,21 @@ public class Eip8288BlockProductionTests
         {
             InclusionListProofInput = new() { RecursiveProofs = [new([dependency], Eip8288Dependencies.ComputeDepsHash([dependency]).ToByteArray())] }
         };
+        int proofCallsBefore = verifier.ProofCalls;
+        int verificationCallsBefore = verifier.RecursiveVerificationCalls;
         await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
         Block? processed = environment.ChainProcessor.Process(producing, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
         Assert.That(processed, Is.Not.Null);
-        Assert.That(processed!.Transactions, Has.Length.EqualTo(1));
-        Assert.That(verifier.LastInput!.RecursiveProofs, Has.Count.EqualTo(1));
-        Assert.That(proofs.Covers(transaction), Is.False, "production owns the verified IL witness without evicting pending pool coverage");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed!.Transactions, Is.EqualTo((Transaction[])[transaction]));
+            Assert.That(Eip8288Dependencies.ForBlock(processed), Is.EqualTo((FrameDependency[])[dependency]));
+            Assert.That(processed.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency]))));
+            Assert.That(processed.Header.RecursiveStark.StarkProof, Is.EqualTo(producing.InclusionListProofInput!.RecursiveProofs[0].Proof.ToArray()));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(proofCallsBefore), "the unchanged verified IL statement needs no new proof");
+            Assert.That(verifier.RecursiveVerificationCalls, Is.GreaterThan(verificationCallsBefore));
+            Assert.That(proofs.Covers(transaction), Is.False, "production owns the verified IL witness without evicting pending pool coverage");
+        }
     }
 
     [Test]
@@ -363,7 +372,7 @@ public class Eip8288BlockProductionTests
         public void EnsureAvailable() { }
         public int ProofCalls { get; private set; }
         public Action? OnProof { get; set; }
-        public AggregationInput? LastInput { get; private set; }
+        public int RecursiveVerificationCalls { get; private set; }
         public int VerificationCalls { get; private set; }
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
         {
@@ -371,11 +380,14 @@ public class Eip8288BlockProductionTests
             return true;
         }
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
-        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => proof.SequenceEqual(depsHash.Bytes);
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+        {
+            RecursiveVerificationCalls++;
+            return proof.SequenceEqual(depsHash.Bytes);
+        }
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             ProofCalls++;
-            LastInput = input;
             OnProof?.Invoke();
             return depsHash.ToByteArray();
         }

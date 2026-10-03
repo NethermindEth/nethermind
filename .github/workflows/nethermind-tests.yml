@@ -67,7 +67,7 @@ jobs:
             cat > "$RUNNER_TEMP/lean-native-patterns" <<'PATHS'
           ^tools/lean-ffi/
           ^src/Nethermind/Nethermind\.Crypto\.LeanFfi\.Test/
-          ^src/Nethermind/.*(/|^)([^/]*Eip8288[^/]*|I?Lean[^/]*|NativeLean[^/]*|[^/]*FrameTx[^/]*)(/|\.cs$)
+          ^src/Nethermind/.*(/|^)(ProofAggregation|[^/]*Eip8288[^/]*|I?Lean[^/]*|NativeLean[^/]*|[^/]*FrameTx[^/]*)(/|\.cs$)
           ^src/Nethermind/Nethermind\.Core/(Block(Header|Body)?|Transaction[^/]*|TxFrame|FrameMode|FrameFlags|PayloadAttributes|RecursiveStark)\.cs$
           ^src/Nethermind/Nethermind\.Core/(Crypto/(AggregationInput|Keccak|ValueHash256)|Specs/IReleaseSpec)\.cs$
           ^src/Nethermind/Nethermind\.Crypto/(NativeLeanProofVerifier|Keccak|EthereumEcdsa)\.cs$
