@@ -5,6 +5,7 @@ using System.ComponentModel;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NonBlocking;
 
 
@@ -414,4 +415,73 @@ public static class Metrics
     [CounterMetric]
     [Description("Number of history window pruner passes that left work for the next pass - the wall-clock budget expired mid-sweep, a floor drain did not finish inside it, or a completed cycle found the floor had advanced under it and queued the next cycle")]
     public static long FlatHistoryPrunePassesYielded { get; set; }
+
+    [CounterMetric]
+    [Description("Key and value bytes merged from the trie node log into RocksDB (the latest record per key of each generation), by column (state, storage)")]
+    [KeyIsLabel("column")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedBytes { get; } = new();
+
+    [CounterMetric]
+    [Description("Trie node reads answered by the trie node log: hit (served from the log), chain (served after walking to an older version), miss (fell through to RocksDB)")]
+    [KeyIsLabel("outcome")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogReads { get; } = new();
+
+    private static long _trieNodeLogIndexFalseMatches;
+
+    [CounterMetric]
+    [Description("Trie node log index probes whose slot tag matched but whose record held another key, so the record was read for nothing")]
+    public static long TrieNodeLogIndexFalseMatches => Volatile.Read(ref _trieNodeLogIndexFalseMatches);
+
+    public static void IncrementTrieNodeLogIndexFalseMatches() => Interlocked.Increment(ref _trieNodeLogIndexFalseMatches);
+
+    [CounterMetric]
+    [Description("Bytes written to trie node log files (records with their headers), by column (state, storage)")]
+    [KeyIsLabel("column")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogStoredBytes { get; } = new();
+
+    [DetailedMetric]
+    [Description("Time to merge one trie node log generation into RocksDB")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver TrieNodeLogMergeTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Time a trie node log shard waited for a merge before starting a new generation because its backlog of unmerged generations was full; persistence stalls for this long")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver TrieNodeLogBackpressureTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Time to commit one batch to the trie node log: buffer flush, fsync and index publish")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver TrieNodeLogCommitTime { get; set; } = new NoopMetricObserver();
+
+    [GaugeMetric]
+    [Description("Trie node log generations by state: active (being appended to), sealed (waiting for or being merged), merged_pinned (merged into RocksDB but still held open by a reader)")]
+    [KeyIsLabel("state")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogGenerationCount { get; } = new();
+
+    private static long _trieNodeLogBytes;
+
+    [GaugeMetric]
+    [Description("Bytes of trie node log generation files not yet merged into RocksDB")]
+    public static long TrieNodeLogBytes
+    {
+        get => Volatile.Read(ref _trieNodeLogBytes);
+        set => Interlocked.Exchange(ref _trieNodeLogBytes, value);
+    }
+
+    public static void AddTrieNodeLogBytes(long delta) => Interlocked.Add(ref _trieNodeLogBytes, delta);
+
+    [GaugeMetric]
+    [Description("Native memory held by trie node log generation indexes, including merged generations still pinned by readers")]
+    public static long TrieNodeLogIndexBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Version of the last batch committed to the trie node log, by shard")]
+    [KeyIsLabel("shard")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogVersion { get; } = new();
+
+    [GaugeMetric]
+    [Description("Newest trie node log generation merged into RocksDB, by shard")]
+    [KeyIsLabel("shard")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedGeneration { get; } = new();
 }

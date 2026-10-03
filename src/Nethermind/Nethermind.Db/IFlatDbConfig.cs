@@ -177,4 +177,31 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Persistent dedicated reader threads used to resolve hinted BAL read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. Values below 1 are clamped to 1. Use --Blocks.ParallelExecutionBatchRead=false to disable BAL warming entirely.", DefaultValue = "-1")]
     int WarmReadConcurrency { get; set; }
+
+    [ConfigItem(Description = "Write trie nodes (StateTopNodes, StateNodes and StorageNodes; FallbackNodes stays direct) through an append-only trie node log (with an in-memory index) that is merged into RocksDB one generation at a time, so nodes rewritten within a generation are written to RocksDB once. Experimental: a self-destruct only removes the storage trie nodes already in RocksDB, nodes still in the log are left as unreachable orphans.", DefaultValue = "false")]
+    bool TrieNodeLogEnabled { get; set; }
+
+    [ConfigItem(Description = "Byte budget of the state partition of the trie node log (StateTopNodes and StateNodes), split evenly over its shards: each shard's generation, i.e. its deduplication window before it is merged into RocksDB, is this divided by the partition's shard count. Each live generation also keeps an in-memory index of 1/64 of its size (1/32 for the storage partition).", DefaultValue = "524288000")]
+    long TrieNodeLogStateBytes { get; set; }
+
+    [ConfigItem(Description = "Byte budget of the storage partition of the trie node log (StorageNodes), split evenly over its shards like TrieNodeLogStateBytes.", DefaultValue = "524288000")]
+    long TrieNodeLogStorageBytes { get; set; }
+
+    [ConfigItem(Description = "Number of shards of the state partition of the trie node log, a power of two. Nodes are sharded by the first byte of their column key (the first path nibbles for state nodes, the first byte of the address hash for storage nodes); shards are appended to and merged in parallel.", DefaultValue = "2")]
+    int TrieNodeLogStateShardCount { get; set; }
+
+    [ConfigItem(Description = "Number of shards of the storage partition of the trie node log, a power of two.", DefaultValue = "2")]
+    int TrieNodeLogStorageShardCount { get; set; }
+
+    [ConfigItem(Description = "Maximum number of trie node log generation merges (across all shards) running at the same time; each merge is one RocksDB write batch.", DefaultValue = "2")]
+    int TrieNodeLogMaxConcurrentMerges { get; set; }
+
+    [ConfigItem(Description = "Sealed trie node log generations a shard may accumulate beyond TrieNodeLogMergeLag before starting a new generation waits for a merge to finish, which stalls persistence until the merges catch up.", DefaultValue = "2")]
+    int TrieNodeLogMergeBacklogMargin { get; set; }
+
+    [ConfigItem(Description = "Merge the whole trie node log into RocksDB at shutdown. The log otherwise persists across restarts, keeping its deduplication window; mainly for debugging.", DefaultValue = "false")]
+    bool TrieNodeLogDrainOnShutdown { get; set; }
+
+    [ConfigItem(Description = "Number of sealed trie node log generations kept unmerged behind the newest one. A generation is merged into RocksDB only once this many newer generations are sealed, and keys rewritten in those are skipped, so the effective deduplication window is (1 + this) generations at the cost of that many extra generation files and in-memory indexes.", DefaultValue = "2")]
+    int TrieNodeLogMergeLag { get; set; }
 }

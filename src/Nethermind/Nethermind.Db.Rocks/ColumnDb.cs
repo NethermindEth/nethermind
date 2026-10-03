@@ -147,6 +147,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
+    public void FlushOrThrow() => _mainDb.FlushWithColumnFamilyOrThrow(_columnFamily);
+
     public void Compact() => _mainDb.CompactOpenRange(_columnFamily, forceBottommost: false);
 
     /// <inheritdoc/>

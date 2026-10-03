@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -50,8 +51,8 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         // so slot-presence detection can't kick in — pin the raw encoding up front.
         BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
         _persistence = IsPreimage
-            ? new PreimageRocksdbPersistence(_columnsDb, _logManager, layout)
-            : new RocksDbPersistence(_columnsDb, _logManager);
+            ? new PreimageRocksdbPersistence(_columnsDb, _logManager, layout, NullTrieNodeLog.Instance)
+            : new RocksDbPersistence(_columnsDb, _logManager, NullTrieNodeLog.Instance);
     }
 
     [TearDown]

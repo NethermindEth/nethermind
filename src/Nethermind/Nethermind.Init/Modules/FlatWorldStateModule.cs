@@ -23,6 +23,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Api;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -103,6 +104,17 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     Path.Combine("persistedSnapshot", "catalog"))))
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
+            .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, ILogManager>((cfg, initConfig, db, logManager) =>
+            {
+                string basePath = Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog");
+                // The log is recovered across restarts, keeping its deduplication window, unless it is now disabled or
+                // its shard layout changed; then whatever the previous run left is merged into RocksDB first.
+                if (!cfg.TrieNodeLogEnabled || !TrieNodeLog.MatchesOnDiskLayout(basePath, cfg))
+                    TrieNodeLog.MergeAllOnDisk(basePath, db, logManager);
+                return cfg.TrieNodeLogEnabled
+                    ? new TrieNodeLog(basePath, db, cfg, logManager)
+                    : NullTrieNodeLog.Instance;
+            })
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .Add<CarryForwardCachingPersistence>()
@@ -115,7 +127,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat =>
-                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout),
+                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout, ctx.Resolve<ITrieNodeLog>()),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 
