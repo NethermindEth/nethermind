@@ -53,6 +53,14 @@ public class BlockCachePreWarmerTests
     private static readonly Address LongLoopContract = new("0x00000000000000000000000000000000000010ad");
     private static readonly StorageCell LongLoopEntered = new(LongLoopContract, 1);
     private static readonly StorageCell LongLoopFinished = new(LongLoopContract, 2);
+    // Loops over PackedLoopSlots packed slots and halts unless each one's field above bit 72 is non-zero, as HEX's
+    // stakeEnd does dividing by a day's share total.
+    private static readonly Address PackedLoopContract = new("0x0000000000000000000000000000000000001007");
+    private const int PackedLoopSlots = 32;
+    // More copies of it than a block may hand to discovery, each reading cold slots of its own.
+    private const int PackedLoopCopies = 20;
+    private static Address PackedLoopCopy(int i) => new($"0x00000000000000000000000000000000000021{i:x2}");
+    private static UInt256 PackedLoopValue(int slot) => (UInt256.One << 72) | (UInt256)(ulong)(slot + 1);
 
     private IContainer _container;
     private ILifetimeScope _processingScope;
@@ -101,6 +109,16 @@ public class BlockCachePreWarmerTests
             // Non-empty storage root, or reads short-circuit to defaults without touching the tree
             worldState.Set(new StorageCell(TestItem.AddressF, 0), (UInt256)1);
             byte[] longLoopCode = BuildLongLoopCode();
+            byte[] packedLoopCode = BuildPackedLoopCode(PackedLoopSlots);
+            worldState.CreateAccount(PackedLoopContract, 0);
+            worldState.InsertCode(PackedLoopContract, Keccak.Compute(packedLoopCode), packedLoopCode, Osaka.Instance);
+            for (int i = 0; i < PackedLoopSlots; i++) worldState.Set(new StorageCell(PackedLoopContract, (UInt256)(ulong)i), PackedLoopValue(i));
+            for (int copy = 0; copy < PackedLoopCopies; copy++)
+            {
+                worldState.CreateAccount(PackedLoopCopy(copy), 0);
+                worldState.InsertCode(PackedLoopCopy(copy), Keccak.Compute(packedLoopCode), packedLoopCode, Osaka.Instance);
+                for (int i = 0; i < PackedLoopSlots; i++) worldState.Set(new StorageCell(PackedLoopCopy(copy), (UInt256)(ulong)i), PackedLoopValue(i));
+            }
             worldState.CreateAccount(LongLoopContract, 0);
             worldState.InsertCode(LongLoopContract, Keccak.Compute(longLoopCode), longLoopCode, Osaka.Instance);
             worldState.Set(LongLoopEntered, (UInt256)1);
@@ -1448,6 +1466,182 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    /// <summary>
+    /// A loop over packed slots that divides by an upper field ends at its first slot when every skipped read is 1, so
+    /// rounds alone discover one slot each and the rounds run out long before the loop does. The run is repeated with a
+    /// placeholder whose every byte is non-zero, which keeps it going to the end.
+    /// </summary>
+    [Test]
+    public void DiscoverAndWarmStorage_RetriesAHaltedRunWithEveryPackedFieldNonZero()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction tx = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(PackedLoopContract)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+
+            preWarmer.DiscoverAndWarmStorage([(0, tx)], block, Osaka.Instance, null, CancellationToken.None);
+
+            StorageCell last = new(PackedLoopContract, (UInt256)(ulong)(PackedLoopSlots - 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(in last, out UInt256 value), Is.True,
+                    "the loop's last slot is discovered, far past what one slot per round would reach");
+                Assert.That(value, Is.EqualTo(PackedLoopValue(PackedLoopSlots - 1)), "the warmed value is the real one");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A warm that keeps reading cold slots, below the gas a transaction needs to be picked for discovery up front, hands
+    /// its transaction to discovery; one that reads a couple of slots does not.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_HandsAWarmCaughtInColdReadsToDiscovery()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        Assert.That(PackedLoopSlots, Is.GreaterThan(BlockCachePreWarmer.ColdReadsBeforeDiscovery));
+
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(
+                Build.A.Transaction.WithGasLimit(1_000_000).WithTo(PackedLoopContract).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                // Below three transactions a block gets no reactive warm at all.
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.EqualTo(1), "only the warm reading a chain of cold slots is handed off");
+    }
+
+    [Test]
+    public async Task PreWarmCaches_HandsOffWhenTheSpecHasAccessListsButTheBlockCarriesNone()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        Assert.That(preWarmer.IsBalReadWarmingEnabled(Amsterdam.Instance), Is.True);
+
+        // A block being produced has no access list yet, so its warms execute its transactions.
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(
+                Build.A.Transaction.WithGasLimit(1_000_000).WithTo(PackedLoopContract).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.EqualTo(1), "the warm reading a chain of cold slots is handed off");
+    }
+
+    [Test]
+    public async Task PreWarmCaches_LeavesAnUpFrontDiscoveryCandidateToTheUpFrontDiscovery()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(
+                Build.A.Transaction.WithGasLimit(12_000_000).WithTo(PackedLoopContract).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.Zero, "a transaction above the gas threshold is discovered up front");
+    }
+
+    [Test]
+    public async Task PreWarmCaches_CapsTheHandOffsOfOneBlock()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        Transaction[] transactions = new Transaction[PackedLoopCopies];
+        for (int i = 0; i < PackedLoopCopies; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((ulong)i).WithGasLimit(1_000_000).WithTo(PackedLoopCopy(i)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        }
+
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).WithTransactions(transactions).TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.EqualTo(16), "every warm reads a chain of cold slots, but a block hands off at most 16");
+    }
+
+    [TestCase(new byte[] { 0x4e, 0x48, 0x7b, 0x71, 0x00 }, "revert", true, TestName = "Panic revert")]
+    [TestCase(new byte[0], "BadInstruction", true, TestName = "Halt")]
+    [TestCase(new byte[0], "revert", false, TestName = "Revert without data")]
+    [TestCase(new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0x00 }, "deadline passed", false, TestName = "Error(string) revert")]
+    public void PlaceholderFailureTracer_CountsOnlyFailuresAPlaceholderCanCause(byte[] output, string error, bool counted)
+    {
+        BlockCachePreWarmer.PlaceholderFailureTracer tracer = new();
+        tracer.MarkAsFailed(TestItem.AddressA, default, output, error);
+        Assert.That(tracer.Failed, Is.EqualTo(counted));
+    }
+
+    [Test]
+    public void ColdReadWatch_CallsBackOnceAtTheThreshold()
+    {
+        CountingColdReadHandler handler = new();
+        object item = new();
+        ColdReadWatch.Arm(3, handler, 7, item);
+        try
+        {
+            ColdReadWatch.Read();
+            ColdReadWatch.Read();
+            Assert.That(handler.Calls, Is.Zero, "below the threshold");
+            ColdReadWatch.Read();
+            ColdReadWatch.Read();
+            Assert.That(handler.Calls, Is.EqualTo(1), "once, at the threshold");
+            Assert.That(handler.LastIndex, Is.EqualTo(7));
+            Assert.That(handler.LastItem, Is.SameAs(item));
+        }
+        finally
+        {
+            ColdReadWatch.Disarm();
+        }
+
+        ColdReadWatch.Read();
+        Assert.That(handler.Calls, Is.EqualTo(1), "nothing counts once disarmed");
+    }
+
+    [Test]
+    public void ColdReadWatch_ArmingAllocatesNothing()
+    {
+        CountingColdReadHandler handler = new();
+        object item = new();
+        // The first arm on a thread allocates its thread-static storage.
+        ColdReadWatch.Arm(3, handler, 0, item);
+        ColdReadWatch.Disarm();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_000; i++)
+        {
+            ColdReadWatch.Arm(3, handler, i, item);
+            ColdReadWatch.Read();
+            ColdReadWatch.Disarm();
+        }
+
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero, "every warmed transaction arms the watch");
+    }
+
+    private sealed class CountingColdReadHandler : IColdReadHandler
+    {
+        public int Calls;
+        public int LastIndex = -1;
+        public object? LastItem;
+
+        public void OnColdReads(int index, object? item)
+        {
+            Calls++;
+            LastIndex = index;
+            LastItem = item;
+        }
+    }
+
     [Test]
     public void DiscoverAndWarmStorage_SkipsCandidatesMainThreadHasStarted()
     {
@@ -2170,6 +2364,31 @@ public class BlockCachePreWarmerTests
     }
 
     private const int SloadManySlotCount = BlockCachePreWarmer.MaxDiscoveredCells + 808;
+
+    /// <summary>
+    /// for (i = 0; i &lt; slots; i++) if (sload(i) &gt;&gt; 72 == 0) invalid();
+    /// </summary>
+    private static byte[] BuildPackedLoopCode(int slots) =>
+    [
+        0x5F,             // 00 PUSH0              i
+        0x5B,             // 01 JUMPDEST           loop
+        0x80,             // 02 DUP1               i i
+        0x54,             // 03 SLOAD              v i
+        0x60, 0x48,       // 04 PUSH1 72           72 v i
+        0x1C,             // 06 SHR                v>>72 i
+        0x60, 0x0B,       // 07 PUSH1 ok           ok v>>72 i
+        0x57,             // 09 JUMPI              i
+        0xFE,             // 0A INVALID
+        0x5B,             // 0B JUMPDEST           ok
+        0x60, 0x01,       // 0C PUSH1 1
+        0x01,             // 0E ADD                i+1
+        0x80,             // 0F DUP1               i+1 i+1
+        0x60, (byte)slots, // 10 PUSH1 slots       slots i+1 i+1
+        0x11,             // 12 GT                 slots>i+1 i+1
+        0x60, 0x01,       // 13 PUSH1 loop
+        0x57,             // 15 JUMPI              i+1
+        0x00,             // 16 STOP
+    ];
 
     /// <summary>Reads slot 1, counts down from 2^32 - 1 (minutes of execution), then reads slot 2.</summary>
     private static byte[] BuildLongLoopCode() =>
