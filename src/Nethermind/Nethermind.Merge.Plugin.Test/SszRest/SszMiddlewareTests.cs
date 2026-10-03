@@ -1548,9 +1548,9 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task GetPayload_proof_extension_returns_unsupported_fork(bool inclusionProof)
+    [TestCase(false, TestName = "GetPayload_block_proof_extension_returns_unsupported_fork")]
+    [TestCase(true, TestName = "GetPayload_does_not_echo_the_CL_inclusion_proof_in_SSZ")]
+    public async Task GetPayload_proof_extensions_preserve_the_SSZ_response_contract(bool inclusionProof)
     {
         Block block = MakeMinimalBlock();
         if (inclusionProof) block.InclusionListRecursiveStark = new([1], Keccak.Zero);
@@ -1561,9 +1561,29 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
-        Assert.That(ctx.Response.ContentType, Is.EqualTo("application/problem+json"));
-        Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain("/engine-api/errors/unsupported-fork"));
+        if (inclusionProof)
+        {
+            Block baseline = MakeMinimalBlock();
+            _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(ResultWrapper<GetPayloadV6Result?>.Success(
+                new GetPayloadV6Result(baseline, UInt256.Zero, new BlobsBundleV2(baseline), [], false)));
+            DefaultHttpContext ordinary = MakeGetContext("/engine/v1/payloads/0x0102030405060708", fork: "amsterdam");
+            await _middleware.InvokeAsync(ordinary);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+                Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+                Assert.That(ResponseBytes(ctx), Is.EqualTo(ResponseBytes(ordinary)), "the CL retains its own inclusion-list proof");
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+                Assert.That(ctx.Response.ContentType, Is.EqualTo("application/problem+json"));
+                Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain("/engine-api/errors/unsupported-fork"));
+            }
+        }
     }
 
     [TestCase(null, TestName = "Get_accept_absent_is_served")]

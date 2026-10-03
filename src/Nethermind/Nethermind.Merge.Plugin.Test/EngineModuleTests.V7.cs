@@ -787,6 +787,15 @@ public partial class EngineModuleTests
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
         Assert.That(payload.Transactions, Has.Length.EqualTo(satisfied ? 1 : 0));
+        ConcurrentQueue<string> processingEvents = new();
+        chain.BlockProcessingQueue.BlockAdded += (_, args) =>
+        {
+            if (args.Block.Hash == payload.BlockHash) processingEvents.Enqueue("added");
+        };
+        chain.BlockProcessingQueue.BlockRemoved += (_, args) =>
+        {
+            if (args.BlockHash == payload.BlockHash) processingEvents.Enqueue($"removed: {args.ProcessingResult}, {args.Message}, {args.Exception}");
+        };
 
         // This node never answers ACCEPTED itself, so that status is forced on an otherwise processed payload.
         TaskCompletionSource releaseProcessing = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -796,6 +805,16 @@ public partial class EngineModuleTests
             if (newPayloadStatus == PayloadStatus.Syncing)
             {
                 OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
+                // SYNCING can exhaust its whole request budget before enqueueing, so establish the queued copy explicitly.
+                payload.ExecutionRequests = payloadResult.Data.ExecutionRequests;
+                payload.InclusionListTransactions = inclusionList;
+                Result<Block> decoded = payload.TryGetBlock(parent.TotalDifficulty);
+                Assert.That(decoded.IsSuccess, Is.True, decoded.Error);
+                Block queuedPayload = decoded.Data!;
+                AddBlockResult added = await chain.BlockTree.SuggestBlockAsync(queuedPayload, BlockTreeSuggestOptions.ForceDontSetAsMain);
+                Assert.That(added, Is.AnyOf(AddBlockResult.Added, AddBlockResult.AlreadyKnown));
+                await chain.BlockProcessingQueue.Enqueue(queuedPayload, ProcessingOptions.EthereumMerge);
+                Assert.That(processingEvents, Does.Contain("added"), "the payload must actually be queued behind the barrier");
             }
             else newPayloadHandler.Status = newPayloadStatus;
 
@@ -819,9 +838,14 @@ public partial class EngineModuleTests
             newPayloadHandler.Status = null;
         }
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(20));
-        while (!chain.BlockTree.WasProcessed(payload.BlockNumber, payload.BlockHash))
+        try
         {
-            await Task.Delay(20, cts.Token);
+            while (!chain.BlockTree.WasProcessed(payload.BlockNumber, payload.BlockHash))
+                await Task.Delay(20, cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            Assert.Fail($"Payload did not commit: known={chain.BlockTree.IsKnownBlock(payload.BlockNumber, payload.BlockHash)}, status={newPayloadHandler.LastStatus?.Status}, events={string.Join("; ", processingEvents)}");
         }
 
         if (stateReadThrows) headState.MissingNodeBlock = payload.BlockHash;
