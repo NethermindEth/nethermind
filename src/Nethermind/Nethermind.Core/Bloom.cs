@@ -18,6 +18,13 @@ namespace Nethermind.Core;
 public class Bloom : IEquatable<Bloom>
 {
     public static readonly Bloom Empty = new();
+
+    /// <summary>The zero-length logs bloom that EIP-7668 requires in headers and receipts.</summary>
+    /// <remarks>
+    /// Unlike <see cref="Empty"/> (256 zero bytes) it exposes no bytes and RLP-encodes as <c>0x80</c>.
+    /// It carries no filter information, so it matches every query.
+    /// </remarks>
+    public static readonly Bloom Removed = new();
     public const int BitLength = 2048;
     public const int ByteLength = BitLength / 8;
     private BloomData _bloomData;
@@ -51,14 +58,17 @@ public class Bloom : IEquatable<Bloom>
     public Bloom(ReadOnlySpan<byte> bytes) => bytes.CopyTo(Bytes);
 
     [JsonIgnore]
-    public Span<byte> Bytes => _bloomData.AsSpan();
+    public Span<byte> Bytes => IsRemoved ? default : _bloomData.AsSpan();
     [JsonIgnore]
-    public ReadOnlySpan<byte> ReadOnlyBytes => _bloomData.AsReadOnlySpan();
+    public ReadOnlySpan<byte> ReadOnlyBytes => IsRemoved ? default : _bloomData.AsReadOnlySpan();
+    /// <summary>Whether this is the zero-length <see cref="Removed"/> bloom.</summary>
+    [JsonIgnore]
+    public bool IsRemoved => ReferenceEquals(this, Removed);
     private Span<ulong> ULongs => _bloomData.AsULongs();
 
     public void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
     {
-        if (ReferenceEquals(this, Empty))
+        if (ReferenceEquals(this, Empty) || IsRemoved)
         {
             ThrowInvalidUpdate();
         }
@@ -145,7 +155,7 @@ public class Bloom : IEquatable<Bloom>
 
     public void Accumulate(Bloom? bloom)
     {
-        if (bloom is null)
+        if (bloom is null || bloom.IsRemoved)
         {
             return;
         }
@@ -211,7 +221,7 @@ public class Bloom : IEquatable<Bloom>
 
     public bool Matches(Hash256 topic) => Matches(topic.Bytes);
 
-    public bool Matches(BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
+    public bool Matches(BloomExtract extract) => IsRemoved || (Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3));
 
     public static BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
@@ -240,6 +250,8 @@ public class Bloom : IEquatable<Bloom>
 
     public Bloom Clone()
     {
+        if (IsRemoved) return this;
+
         Bloom clone = new();
         ReadOnlyBytes.CopyTo(clone.Bytes);
         return clone;
@@ -256,7 +268,7 @@ public class Bloom : IEquatable<Bloom>
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidUpdate()
-        => throw new InvalidOperationException("An attempt was made to update Bloom.Empty constant");
+        => throw new InvalidOperationException("An attempt was made to update a shared Bloom constant");
 }
 
 public ref struct BloomStructRef
@@ -325,7 +337,8 @@ public ref struct BloomStructRef
 
     public readonly bool Matches(Hash256 topic) => Matches(topic.Bytes);
 
-    public readonly bool Matches(Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
+    /// <remarks>A zero-length bloom (EIP-7668, or one missing from storage) matches every query.</remarks>
+    public readonly bool Matches(Bloom.BloomExtract extract) => Bytes.IsEmpty || (Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3));
 
     public static Bloom.BloomExtract GetExtract(Address address) => Bloom.GetExtract(address.Bytes);
 

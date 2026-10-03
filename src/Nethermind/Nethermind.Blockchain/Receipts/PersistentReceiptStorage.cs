@@ -428,6 +428,7 @@ namespace Nethermind.Blockchain.Receipts
                 else
                 {
                     receipts = _storageDecoder.Decode(in receiptsData);
+                    RemoveBloomsIfEip7668(block.Header, receipts);
 
                     if (recover)
                     {
@@ -523,12 +524,23 @@ namespace Nethermind.Blockchain.Receipts
             try
             {
                 if (receiptsData.IsNullOrEmpty() || ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData)) return [];
-                return _storageDecoder.Decode(in receiptsData);
+                TxReceipt[] receipts = _storageDecoder.Decode(in receiptsData);
+                RemoveBloomsIfEip7668(header, receipts);
+                return receipts;
             }
             finally
             {
                 _receiptsDb.DangerousReleaseMemory(receiptsData);
             }
+        }
+
+        /// <remarks>
+        /// The compact encoding recomputes each bloom on decode, and a receipt synced without one computes it lazily;
+        /// either would otherwise be served for a post-EIP-7668 block.
+        /// </remarks>
+        private void RemoveBloomsIfEip7668(BlockHeader header, TxReceipt[] receipts)
+        {
+            if (_specProvider.GetSpec(header).IsEip7668Enabled) receipts.RemoveBlooms();
         }
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => blockNumber >= MigratedBlockNumber;
@@ -616,6 +628,7 @@ namespace Nethermind.Blockchain.Receipts
             // and the DB write both defer: reads serve the receipts objects, never the bytes, so the RLP is only
             // needed by the queued write and is produced on the consumer instead of on the processing path.
             _receiptsRecovery.TryRecover(block, txReceipts, false);
+            if (spec.IsEip7668Enabled) txReceipts.RemoveBlooms();
 
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
@@ -825,6 +838,7 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             _receiptsRecovery.TryRecover(block, txReceipts, false);
+            if (spec.IsEip7668Enabled) txReceipts.RemoveBlooms();
 
             ulong blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;

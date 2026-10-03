@@ -32,6 +32,13 @@ namespace Ethereum.Test.Base
         private static ulong? ParseULongNullable(string? hex) =>
             hex is null ? null : (ulong?)Bytes.FromHexString(hex).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
 
+        // EIP-7668: "0x" is the zero-length bloom.
+        private static Bloom ParseBloom(string hex)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+            return bytes.Length == 0 ? Bloom.Removed : new Bloom(bytes);
+        }
+
         private static ForkActivation TransitionForkActivation(string transitionInfo)
         {
             const string timestampPrefix = "Time";
@@ -74,7 +81,7 @@ namespace Ethereum.Test.Base
                 headerJson.SlotNumber is null ? null : ParseULong(headerJson.SlotNumber)
             )
             {
-                Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom)),
+                Bloom = ParseBloom(headerJson.Bloom),
                 GasUsed = ParseULong(headerJson.GasUsed),
                 Hash = new Hash256(headerJson.Hash),
                 MixHash = new Hash256(headerJson.MixHash),

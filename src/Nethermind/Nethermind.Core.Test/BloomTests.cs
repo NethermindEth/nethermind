@@ -41,6 +41,29 @@ namespace Nethermind.Core.Test
                 addedEntries.Sum(a => a.Topics.Length)), false);
 
         [Test]
+        public void Removed_matches_any_item()
+        {
+            LogEntry[] entries = GetLogEntries(10, 3);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entries.Select(static e => Bloom.Removed.Matches(e)), Is.All.True);
+                Assert.That(Bloom.Removed.ToStructRef().Matches(entries[0]), Is.True);
+            }
+        }
+
+        [Test]
+        public void Removed_is_zero_length_and_distinct_from_empty()
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Bloom.Removed.ReadOnlyBytes.Length, Is.Zero);
+                Assert.That(Bloom.Removed, Is.Not.EqualTo(Bloom.Empty));
+                Assert.That(Bloom.Removed.Clone(), Is.SameAs(Bloom.Removed));
+                Assert.That(() => Bloom.Removed.Set(Keccak.OfAnEmptyString.Bytes), Throws.InvalidOperationException);
+            }
+        }
+
+        [Test]
         public void empty_does_not_match_any_item() => MatchingTest(Array.Empty<LogEntry>, static addedEntries => GetLogEntries(100, 10), false);
 
         public void MatchingTest(Func<LogEntry[]> addedEntries, Func<LogEntry[], LogEntry[]> testedEntries, bool isMatchExpectation)

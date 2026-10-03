@@ -679,23 +679,30 @@ internal static partial class RlpHelpers
         return position;
     }
 
-    /// <summary>Decodes a bloom that must be present as a plain 256-byte string.</summary>
-    /// <remarks>Unlike <see cref="DecodeBloomOrNull"/> this does not accept the legacy sequence form.</remarks>
+    /// <summary>Decodes a bloom that must be present as a plain 256-byte string, or the zero-length EIP-7668 bloom.</summary>
+    /// <remarks>
+    /// Unlike <see cref="DecodeBloomOrNull"/> this does not accept the legacy sequence form.
+    /// An RLP null decodes as <see cref="Bloom.Removed"/>; whether it is allowed is left to validation.
+    /// </remarks>
     /// <returns>The position past the item.</returns>
-    /// <exception cref="RlpException">The item is not a 256-byte string.</exception>
+    /// <exception cref="RlpException">The item is neither a 256-byte nor an empty string.</exception>
     public static int DecodeBloom(ReadOnlySpan<byte> data, int position, out Bloom bloom)
     {
-        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> bloomBytes, RlpLimit.Bloom, Bloom.ByteLength);
-        bloom = CreateBloom(bloomBytes);
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> bloomBytes, RlpLimit.Bloom);
+        bloom = bloomBytes.IsEmpty ? Bloom.Removed : CreateBloom(bloomBytes);
         return position;
     }
 
-    /// <inheritdoc cref="DecodeBloomOrNull"/>
-    /// <exception cref="RlpException">The item is an RLP null.</exception>
+    /// <summary>Decodes a bloom, interning <see cref="Bloom.Empty"/>; an RLP null decodes as <see cref="Bloom.Removed"/> (EIP-7668).</summary>
+    /// <remarks>
+    /// The result is never null, but a zero-length bloom is accepted at every fork: the decoder has no spec,
+    /// so a pre-fork one is rejected by the receipts-root check, whose encoding it cannot match.
+    /// </remarks>
+    /// <returns>The position past the item.</returns>
     public static int DecodeBloomNonNull(ReadOnlySpan<byte> data, int position, out Bloom bloom)
     {
         position = DecodeBloomOrNull(data, position, out Bloom? value);
-        bloom = value ?? ThrowNullDecodedValue<Bloom>();
+        bloom = value ?? Bloom.Removed;
         return position;
     }
 

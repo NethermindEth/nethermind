@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -439,6 +440,22 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
         // second should be from cache
         _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Get_serves_zero_length_blooms_after_eip7668(bool eip7668)
+    {
+        _specProvider.NextForkSpec = new OverridableReleaseSpec(Byzantium.Instance) { IsEip7668Enabled = eip7668 };
+        (Block block, _) = PrepareBlock();
+        // A receipt synced without a bloom computes one lazily, as the compact encoding does on decode.
+        TxReceipt receipt = Build.A.Receipt.WithLogs(new LogEntry(TestItem.AddressA, [], [TestItem.KeccakA])).TestObject;
+        receipt.Bloom = null;
+
+        _storage.Insert(block, [receipt]);
+        _storage.ClearCache();
+
+        Assert.That(_storage.Get(block).Select(static r => r.Bloom.IsRemoved), Is.All.EqualTo(eip7668));
     }
 
     [Test]

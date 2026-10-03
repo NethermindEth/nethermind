@@ -214,6 +214,25 @@ public class HeaderValidatorTests
         }
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_header_bloom_length_matches_eip7668([Values] bool eip7668, [Values] bool zeroLengthBloom)
+    {
+        bool expectedResult = eip7668 == zeroLengthBloom;
+        IReleaseSpec spec = new OverridableReleaseSpec(Byzantium.Instance) { IsEip7668Enabled = eip7668 };
+        _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec),
+            new OneLoggerLogManager(new(_testLogger)));
+        _block.Header.Bloom = zeroLengthBloom ? Bloom.Removed : Bloom.Empty;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, Is.EqualTo(expectedResult ? null : BlockErrorMessages.InvalidLogsBloomLength(eip7668)));
+        }
+    }
+
     private static IEnumerable<TestCaseData> OrphanedBlobGasFieldCases()
     {
         const ulong lastPreCancun = MainnetSpecProvider.CancunBlockTimestamp - 1;

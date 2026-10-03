@@ -69,6 +69,8 @@ using System.Linq;
 using Nethermind.Trie;
 using Nethermind.State.Proofs;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Blockchain.Test.Builders;
+using Nethermind.Facade.Filters;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -179,6 +181,31 @@ public partial class BlockProcessorTests
             Assert.That(processed.Header.StateRoot, expectStateRoot ? Is.EqualTo(block.Header.StateRoot) : Is.Null,
                 "only a validated or persisted block needs its state root derived");
             Assert.That(processed.Hash, Is.EqualTo(block.Hash), "the processed header must keep the canonical hash either way");
+        }
+    }
+
+    [Test]
+    public async Task Eip7668_ProducedBlock_HasZeroLengthBloomsAndLogsStayFindable([Values] bool eip7668)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Prague.Instance) { IsEip7668Enabled = eip7668 };
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
+        byte[] logInInitCode = Prepare.EvmCode.PushData(TestItem.KeccakA.Bytes.ToArray()).PushData(0).PushData(0).Op(Instruction.LOG1).Done;
+        Transaction deploy = Build.A.Transaction.WithCode(logInInitCode).WithTo(null).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Address contract = ContractAddress.From(TestItem.AddressB, deploy.Nonce);
+
+        Block block = await chain.AddBlock(deploy);
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        FilterLog[] logs = chain.LogFinder.FindLogs(FilterBuilder.New().FromBlock(block.Number).ToBlock(block.Number).WithAddress(contract).Build()).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.Bloom!.IsRemoved, Is.EqualTo(eip7668));
+            Assert.That(block.Header.Bloom.Matches(contract), Is.True);
+            Assert.That(receipts.Select(static r => r.Bloom.IsRemoved), Is.All.EqualTo(eip7668));
+            Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(ReceiptTrie.CalculateRoot(Prague.Instance, receipts, new ReceiptMessageDecoder())));
+            Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { contract }));
         }
     }
 
