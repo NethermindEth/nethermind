@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Decoders;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core.Crypto;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -63,7 +63,7 @@ public class InclusionListTxSource(
             bytes += transaction?.Length ?? 0;
             if (bytes > Eip7805Constants.MaxAggregateInclusionListBytes) return;
         }
-        if (provenDependencies is not null && !FocilInclusionListValidator.HasValidMetadataLength(provenDependencies)) return;
+        if (provenDependencies is not null && !InclusionListProofValidator.HasValidMetadataLength(provenDependencies)) return;
         if (proof is not null && (proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes })) return;
         if (_decodedByAttributes.TryGetValue(inclusionListTransactions, out BuildInclusionList? existing)
             && ReferenceEquals(existing.Spec, spec)
@@ -110,7 +110,7 @@ public class InclusionListTxSource(
         AggregationInput? proofInput = null;
         if (spec.IsEip8288Enabled)
         {
-            eligible = FocilInclusionListValidator.SelectEligible(transactions, proof, provenDependencies, proofVerifier,
+            eligible = InclusionListProofValidator.SelectEligible(transactions, proof, provenDependencies, proofVerifier,
                 spec, out List<FrameDependency> deps, out string? error);
             if (error is not null && _logger.IsWarn) _logger.Warn($"Discarding proof-dependent inclusion-list entries: {error}.");
             if (deps.Count > 0)

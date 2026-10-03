@@ -6,7 +6,7 @@
 using System;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus.Test.Eip8288;
+namespace Nethermind.Consensus.Test.ProofAggregation;
 
 /// <summary>Test verifier with a fixed verdict, to exercise both accept and reject paths.</summary>
 internal sealed class FakeLeanProofVerifier(bool result) : ILeanProofVerifier

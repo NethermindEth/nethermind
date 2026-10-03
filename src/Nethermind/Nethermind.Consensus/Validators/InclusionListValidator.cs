@@ -5,7 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -32,7 +32,7 @@ public static class InclusionListValidator
 
         if (spec.IsEip8288Enabled)
         {
-            il = FocilInclusionListValidator.SelectEligible(il, proof, block.InclusionListProvenDependencies,
+            il = InclusionListProofValidator.SelectEligible(il, proof, block.InclusionListProvenDependencies,
                 verifier, spec, out _, out _);
         }
 

@@ -136,7 +136,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         if (executionPayload.InclusionListProvenDependencies is { } dependencies
             && (!spec.IsEip8288Enabled || !spec.InclusionListsEnabled || InclusionListTransactions is null
                 || executionPayload.InclusionListRecursiveStark is null
-                || !Nethermind.Consensus.Eip8288.FocilInclusionListValidator.HasValidMetadataLength(dependencies)))
+                || !Nethermind.Consensus.ProofAggregation.InclusionListProofValidator.HasValidMetadataLength(dependencies)))
         {
             error = "Invalid inclusion-list proven dependencies";
             return ValidationResult.Fail;

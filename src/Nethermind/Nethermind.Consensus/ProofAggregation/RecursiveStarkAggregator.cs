@@ -7,7 +7,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus.Eip8288;
+namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>The "verify, union and discard" logic shared by mempool re-forwarders, FOCIL creators, and block builders.</summary>
 public static class RecursiveStarkAggregator

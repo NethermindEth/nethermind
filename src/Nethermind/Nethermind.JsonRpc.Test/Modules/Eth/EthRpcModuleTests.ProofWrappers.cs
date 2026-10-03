@@ -4,7 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

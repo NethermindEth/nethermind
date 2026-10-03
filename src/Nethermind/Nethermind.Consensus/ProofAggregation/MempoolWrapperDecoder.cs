@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Consensus.Eip8288;
+namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
 /// RLP codec for the EIP-8288 mempool wrapper <c>[transactions, mode, content]</c>. A transaction

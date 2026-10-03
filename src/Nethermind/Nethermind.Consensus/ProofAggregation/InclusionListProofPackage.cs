@@ -9,28 +9,27 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Consensus.Eip8288;
+namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
-/// Prototype FOCIL extension carrying transactions, a recursive proof and its explicit dependency set.
-/// Membership remains independently checkable when another inclusion-list entry is malformed.
+/// Packages inclusion-list transactions with an aggregate dependency proof and its explicit proven set.
 /// </summary>
-public sealed class FocilInclusionList
+public sealed class InclusionListProofPackage
 {
     public required IReadOnlyList<Transaction> Transactions { get; init; }
     public required RecursiveStark RecursiveStark { get; init; }
     public byte[]? ProvenDependencies { get; init; }
 }
 
-/// <summary>Validates that a FOCIL's recursive STARK proves the dependencies of all its transactions.</summary>
-public static class FocilInclusionListValidator
+/// <summary>Validates aggregate dependency proof coverage for inclusion-list transactions.</summary>
+public static class InclusionListProofValidator
 {
     public const string DepsHashMismatch = "FOCIL recursive STARK public input must equal hash(deps)";
     public const string InvalidProof = "FOCIL recursive STARK failed verification";
     private static readonly ConditionalWeakTable<ILeanProofVerifier, ProofVerdicts> VerifiedProofs = [];
 
-    public static bool Validate(FocilInclusionList focil, ILeanProofVerifier verifier, out string? error)
-        => Validate(focil.Transactions, focil.RecursiveStark, verifier, out _, out error, provenDependencies: focil.ProvenDependencies);
+    public static bool Validate(InclusionListProofPackage package, ILeanProofVerifier verifier, out string? error)
+        => Validate(package.Transactions, package.RecursiveStark, verifier, out _, out error, provenDependencies: package.ProvenDependencies);
 
     public static bool Validate(IReadOnlyList<Transaction> transactions, RecursiveStark? proof,
         ILeanProofVerifier verifier, out List<FrameDependency> deps, out string? error, IReleaseSpec? spec = null,

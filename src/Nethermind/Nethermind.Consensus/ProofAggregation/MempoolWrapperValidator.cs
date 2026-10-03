@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus.Eip8288;
+namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
 /// Validates an EIP-8288 mempool wrapper per the spec "Mempool Wrapper Object" rules: the dependency
