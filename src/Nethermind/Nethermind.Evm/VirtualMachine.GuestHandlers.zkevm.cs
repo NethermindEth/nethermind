@@ -11,6 +11,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Int256;
+using Nethermind.Zkvm.Abstractions;
 using static Nethermind.Evm.GuestWord;
 
 namespace Nethermind.Evm;
@@ -102,6 +104,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.XOR] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.XorOperation>);
         lookup[(int)Instruction.MUL] = AsTableEntry(&RawCalliHelper.ExecuteMul);
         lookup[(int)Instruction.DIV] = AsTableEntry(&RawCalliHelper.ExecuteDiv);
+        lookup[(int)Instruction.ADDMOD] = AsTableEntry(&RawCalliHelper.ExecuteModular<EvmInstructions.OpAddMod>);
+        lookup[(int)Instruction.MULMOD] = AsTableEntry(&RawCalliHelper.ExecuteModular<EvmInstructions.OpMulMod>);
+        lookup[(int)Instruction.SIGNEXTEND] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.SignExtendOperation>);
+        lookup[(int)Instruction.NOT] = AsTableEntry(&RawCalliHelper.ExecuteNot);
+        lookup[(int)Instruction.BYTE] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.ByteOperation>);
         lookup[(int)Instruction.DUP2] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op2>);
         lookup[(int)Instruction.DUP3] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op3>);
         lookup[(int)Instruction.DUP4] = AsTableEntry(&RawCalliHelper.ExecuteDup<EvmInstructions.Op4>);
@@ -137,6 +144,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             lookup[(int)Instruction.SHL] = AsTableEntry(&RawCalliHelper.ExecuteShl);
             lookup[(int)Instruction.SHR] = AsTableEntry(&RawCalliHelper.ExecuteShr);
+            lookup[(int)Instruction.SAR] = AsTableEntry(&RawCalliHelper.ExecuteBinary<RawCalliHelper.ArithmeticShiftRightOperation>);
         }
     }
 
@@ -384,7 +392,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static bool Evaluate(ref ulong end) => IsSignedBelow(ref end, -2 * LimbsPerWord, -LimbsPerWord);
         }
 
-        /// <summary>A very-low-cost operation on the top two words, with both addressed off the head.</summary>
+        /// <summary>A fixed-cost operation on the top two words, with both addressed off the head.</summary>
         /// <remarks>A short stack or gas runs the shared handler of the operation instead, which faults on it.</remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -399,7 +407,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte bottom)
             where TOperation : struct, IStackBinaryOperation
         {
-            if (head > 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head > 1 && TryCharge(ref gas, TOperation.GasCost))
             {
                 TOperation.Apply(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)));
                 head--;
@@ -415,6 +423,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>An operation on the top two words, as <see cref="ExecuteBinary{TOperation}"/> runs it.</summary>
         internal interface IStackBinaryOperation
         {
+            /// <summary>The operation's fixed gas cost.</summary>
+            static virtual ulong GasCost => VeryLowGasCost.GasCost;
+
             /// <summary>The shared handler of the operation, which handles every case that faults.</summary>
             static abstract nint SharedHandler { get; }
 
@@ -587,6 +598,174 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Unsafe.Add(ref end, -6) = Unsafe.Add(ref end, -6) ^ Unsafe.Add(ref end, -2);
                 Unsafe.Add(ref end, -5) = Unsafe.Add(ref end, -5) ^ Unsafe.Add(ref end, -1);
             }
+        }
+
+        /// <summary>SAR: the second word shifted right by the top word, filling with its sign; a shift of 256 or more leaves only the sign.</summary>
+        internal readonly struct ArithmeticShiftRightOperation : IStackBinaryOperation
+        {
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<SarOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Apply(ref ulong end)
+            {
+                ulong bits = Unsafe.Add(ref end, -4);
+                if ((Unsafe.Add(ref end, -3) | Unsafe.Add(ref end, -2) | Unsafe.Add(ref end, -1) | (bits >> 8)) == 0)
+                {
+                    ShiftRight(ref Unsafe.Add(ref end, -8), (int)bits, arithmetic: true);
+                    return;
+                }
+
+                ulong fill = (ulong)((long)Unsafe.Add(ref end, -5) >> 63);
+                Unsafe.Add(ref end, -8) = fill;
+                Unsafe.Add(ref end, -7) = fill;
+                Unsafe.Add(ref end, -6) = fill;
+                Unsafe.Add(ref end, -5) = fill;
+            }
+        }
+
+        /// <summary>BYTE: the byte of the second word the top word indexes, counted from its most significant; zero past the word.</summary>
+        internal readonly struct ByteOperation : IStackBinaryOperation
+        {
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<ByteOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            /// <remarks>The byte is shifted out of its limb, where loading it alone would be a narrow access.</remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Apply(ref ulong end)
+            {
+                ulong index = Unsafe.Add(ref end, -4);
+                ulong selected = 0;
+                if ((Unsafe.Add(ref end, -3) | Unsafe.Add(ref end, -2) | Unsafe.Add(ref end, -1)) == 0 && index < EvmStack.WordSize)
+                {
+                    // Big-endian byte `index` is byte `31 - index` of the word's limb layout.
+                    int fromLow = EvmStack.WordSize - 1 - (int)index;
+                    selected = (byte)(Unsafe.Add(ref end, -8 + (fromLow >> 3)) >> ((fromLow & 7) * 8));
+                }
+
+                SetWord(ref Unsafe.Add(ref end, -8), selected);
+            }
+        }
+
+        /// <summary>SIGNEXTEND: the second word extended from the sign of its byte the top word indexes, counted from its least significant.</summary>
+        internal readonly struct SignExtendOperation : IStackBinaryOperation
+        {
+            public static ulong GasCost => LowGasCost.GasCost;
+
+            public static nint SharedHandler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<SignExtendOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+
+            /// <remarks>
+            /// An index of 31 or more leaves the word as it is. The limb holding the sign byte is extended in place by an
+            /// arithmetic shift down and up, and the limbs above it take the fill.
+            /// </remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Apply(ref ulong end)
+            {
+                ulong position = Unsafe.Add(ref end, -4);
+                if ((Unsafe.Add(ref end, -3) | Unsafe.Add(ref end, -2) | Unsafe.Add(ref end, -1)) != 0 || position >= EvmStack.WordSize - 1)
+                    return;
+
+                nint limb = (nint)(position >> 3);
+                int unused = 56 - (int)(position & 7) * 8;
+                ref ulong partial = ref Unsafe.Add(ref end, -8 + limb);
+                long extended = ((long)partial << unused) >> unused;
+                partial = (ulong)extended;
+                ulong fill = (ulong)(extended >> 63);
+                if (limb < 1) Unsafe.Add(ref end, -7) = fill;
+                if (limb < 2) Unsafe.Add(ref end, -6) = fill;
+                if (limb < 3) Unsafe.Add(ref end, -5) = fill;
+            }
+        }
+
+        /// <summary>NOT of the top word, in place.</summary>
+        /// <remarks>A short stack or gas runs the shared NOT handler instead, which faults on it.</remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteNot(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            if (head > 0 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            {
+                ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head));
+                Unsafe.Add(ref end, -4) = ~Unsafe.Add(ref end, -4);
+                Unsafe.Add(ref end, -3) = ~Unsafe.Add(ref end, -3);
+                Unsafe.Add(ref end, -2) = ~Unsafe.Add(ref end, -2);
+                Unsafe.Add(ref end, -1) = ~Unsafe.Add(ref end, -1);
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = handlers[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<Math1Opcode<EvmInstructions.OpNot, OffFlag>, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>ADDMOD or MULMOD, as <typeparamref name="TOperation"/> computes it, with its operands and result in their stack slots.</summary>
+        /// <remarks>
+        /// The shared handler copies the three operands out and the result back. ZisK's routines take a zero modulus
+        /// themselves; elsewhere a zero modulus leaves the zero its slot holds. A short stack or gas runs the shared
+        /// handler instead, which faults on it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteModular<TOperation>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+            where TOperation : struct, EvmInstructions.IOpMath3Param
+        {
+            if (head > 2 && TryCharge(ref gas, MidGasCost.GasCost))
+            {
+                // The result replaces the modulus, the deepest of the three.
+                ref ulong modulus = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 3));
+                if (ZiskArith256Flag.IsActive)
+                {
+                    // The stack is pinned. The result must not alias an operand.
+                    ulong* m = (ulong*)Unsafe.AsPointer(ref modulus);
+                    UInt256 result;
+                    if (typeof(TOperation) == typeof(EvmInstructions.OpAddMod))
+                        Accelerators.AddMod256(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
+                    else
+                        Accelerators.MulMod256(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
+                    *(UInt256*)m = result;
+                }
+                else if ((modulus | Unsafe.Add(ref modulus, 1) | Unsafe.Add(ref modulus, 2) | Unsafe.Add(ref modulus, 3)) != 0)
+                {
+                    ref UInt256 m = ref Unsafe.As<ulong, UInt256>(ref modulus);
+                    TOperation.Operation(in Unsafe.Add(ref m, 2), in Unsafe.Add(ref m, 1), in m, out UInt256 result);
+                    m = result;
+                }
+
+                // Reloaded rather than held across the call, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                bottom = ref stack.Bottom;
+                head -= 2;
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = handlers[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+            }
+
+            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecuteOpcode<Math3Opcode<TOperation, OffFlag>, OffFlag, OffFlag, OnFlag>;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
         /// <summary>
@@ -1293,11 +1472,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
-        /// <summary>MUL of two factors below 2^64, or by a power of two, which it shifts in.</summary>
+        /// <summary>MUL of two factors below 2^64.</summary>
         /// <remarks>
-        /// The shared handler multiplies in 32-bit halves and saves every callee-saved register to hold them. Every
-        /// other case - a short stack or gas, or two wider factors neither of which is a power of two - runs the shared
-        /// MUL handler instead.
+        /// Wider factors go to <see cref="ExecuteMulOfHalfWidthFactors"/> or <see cref="ExecuteMulOfWideFactors"/>, so
+        /// this handler needs no frame. A short stack or gas runs the shared MUL handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1316,40 +1494,193 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // The product replaces the second word.
                 ref ulong product = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
                 ref ulong top = ref Unsafe.Add(ref product, LimbsPerWord);
-                if ((Unsafe.Add(ref top, 1) | Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3) |
-                     Unsafe.Add(ref product, 1) | Unsafe.Add(ref product, 2) | Unsafe.Add(ref product, 3)) == 0)
+                ulong upperHalves = Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3) | Unsafe.Add(ref product, 2) | Unsafe.Add(ref product, 3);
+                if ((Unsafe.Add(ref top, 1) | Unsafe.Add(ref product, 1) | upperHalves) != 0)
                 {
-                    ulong left = top;
-                    ulong right = product;
-                    product = left * right;
-                    Unsafe.Add(ref product, 1) = (left | right) >> 32 == 0 ? 0 : MultiplyHigh(left, right);
-                }
-                else
-                {
-                    if (!TryGetLog2(ref top, out int shift))
-                    {
-                        if (!TryGetLog2(ref product, out shift))
-                        {
-                            gas += LowGasCost.GasCost;
-                            goto Shared;
-                        }
-
-                        CopyWord(ref top, ref product);
-                    }
-
-                    ShiftLeft(ref product, shift);
+                    nint wide = upperHalves == 0
+                        ? (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                            &ExecuteMulOfHalfWidthFactors
+                        : (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                            &ExecuteMulOfWideFactors;
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, wide);
                 }
 
+                ulong left = top;
+                ulong right = product;
+                product = left * right;
+                Unsafe.Add(ref product, 1) = (left | right) >> 32 == 0 ? 0 : MultiplyHigh(left, right);
                 head--;
                 ip = ref Unsafe.Add(ref ip, 1);
                 nint next = handlers[ip];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-        Shared:
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                 &ExecuteOpcode<Math2Opcode<EvmInstructions.OpMul, OffFlag>, OffFlag, OffFlag, OnFlag>;
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>The rest of <see cref="ExecuteMul"/> for factors below 2^128, at least one of which is 2^64 or more.</summary>
+        /// <remarks>
+        /// Entered only from there, with the stack checked and the gas charged. The ZisK guest hands the product to its
+        /// 256-bit arithmetic, which takes fewer steps than the four 64-bit products every other guest takes.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ExecuteMulOfHalfWidthFactors(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            ref ulong product = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
+            ref ulong top = ref Unsafe.Add(ref product, LimbsPerWord);
+            if (ZiskArith256Flag.IsActive)
+            {
+                // The product stays below 2^256 - 1, so reducing it modulo that leaves it whole. The result must not
+                // alias an operand; the stack is pinned.
+                UInt256 result;
+                ulong* right = (ulong*)Unsafe.AsPointer(ref product);
+                fixed (UInt256* modulus = &Unsafe.AsRef(in UInt256.MaxValue))
+                    Accelerators.MulMod256((ulong*)Unsafe.AsPointer(ref top), right, (ulong*)modulus, (ulong*)&result);
+                *(UInt256*)right = result;
+
+                // Reloaded rather than held across the call, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                bottom = ref stack.Bottom;
+            }
+            else
+            {
+                // Nothing is truncated, so the top limb takes no carry out.
+                ulong a0 = top, a1 = Unsafe.Add(ref top, 1);
+                ulong b0 = product, b1 = Unsafe.Add(ref product, 1);
+                ulong low01 = a0 * b1;
+                ulong low10 = a1 * b0;
+                ulong r1 = MultiplyHigh(a0, b0) + low01;
+                ulong carry = r1 < low01 ? 1UL : 0UL;
+                r1 += low10;
+                carry += r1 < low10 ? 1UL : 0UL;
+                ulong high10 = MultiplyHigh(a1, b0);
+                ulong low11 = a1 * b1;
+                ulong r2 = MultiplyHigh(a0, b1) + high10;
+                ulong carry2 = r2 < high10 ? 1UL : 0UL;
+                r2 += low11;
+                carry2 += r2 < low11 ? 1UL : 0UL;
+                r2 += carry;
+                carry2 += r2 < carry ? 1UL : 0UL;
+                product = a0 * b0;
+                Unsafe.Add(ref product, 1) = r1;
+                Unsafe.Add(ref product, 2) = r2;
+                Unsafe.Add(ref product, 3) = MultiplyHigh(a1, b1) + carry2;
+            }
+
+            head--;
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = handlers[ip];
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+        }
+
+        /// <summary>The rest of <see cref="ExecuteMul"/> for factors at least one of which is 2^128 or more.</summary>
+        /// <remarks>
+        /// Entered only from there, with the stack checked and the gas charged. Takes the ten 64-bit products that
+        /// reach the low 256 bits of the product, row by row over the second factor's limbs; the ZisK guest takes the
+        /// product of the low halves from its 256-bit arithmetic instead, which leaves six.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ExecuteMulOfWideFactors(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            ref ulong product = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
+            ref ulong top = ref Unsafe.Add(ref product, LimbsPerWord);
+            ulong a0 = top, a1 = Unsafe.Add(ref top, 1), a2 = Unsafe.Add(ref top, 2), a3 = Unsafe.Add(ref top, 3);
+            ulong b0 = product, b1 = Unsafe.Add(ref product, 1), b2 = Unsafe.Add(ref product, 2), b3 = Unsafe.Add(ref product, 3);
+            ulong r0, r1, r2, r3;
+            if (ZiskArith256Flag.IsActive)
+            {
+                // The low halves' product whole, as ExecuteMulOfHalfWidthFactors takes it, and the cross products of a low
+                // half with a high one only below 2^128, the part that reaches the low 256 bits of the product.
+                UInt256 left = new(a0, a1, 0, 0);
+                UInt256 right = new(b0, b1, 0, 0);
+                UInt256 low;
+                fixed (UInt256* modulus = &Unsafe.AsRef(in UInt256.MaxValue))
+                    Accelerators.MulMod256((ulong*)&left, (ulong*)&right, (ulong*)modulus, (ulong*)&low);
+
+                ulong cross02 = a0 * b2;
+                ulong cross20 = a2 * b0;
+                ulong crossLow = cross02 + cross20;
+                ulong crossHigh = MultiplyHigh(a0, b2) + MultiplyHigh(a2, b0) + a0 * b3 + a1 * b2 + a2 * b1 + a3 * b0 +
+                    (crossLow < cross20 ? 1UL : 0UL);
+                r0 = low.u0;
+                r1 = low.u1;
+                r2 = low.u2 + crossLow;
+                r3 = low.u3 + crossHigh + (r2 < crossLow ? 1UL : 0UL);
+                // Reloaded rather than held across the call, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                bottom = ref stack.Bottom;
+                product = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
+            }
+            else
+            {
+                r0 = a0 * b0;
+                ulong carry = MultiplyHigh(a0, b0);
+                r1 = MultiplyAdd(a1, b0, carry, out carry);
+                r2 = MultiplyAdd(a2, b0, carry, out carry);
+                r3 = a3 * b0 + carry;
+
+                r1 = MultiplyAccumulate(a0, b1, r1, 0, out carry);
+                r2 = MultiplyAccumulate(a1, b1, r2, carry, out carry);
+                r3 += a2 * b1 + carry;
+
+                r2 = MultiplyAccumulate(a0, b2, r2, 0, out carry);
+                r3 += a1 * b2 + carry + a0 * b3;
+            }
+
+            product = r0;
+            Unsafe.Add(ref product, 1) = r1;
+            Unsafe.Add(ref product, 2) = r2;
+            Unsafe.Add(ref product, 3) = r3;
+            head--;
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = handlers[ip];
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+        }
+
+        /// <summary>The low limb of <paramref name="left"/> times <paramref name="right"/> plus <paramref name="addend"/>, with the high limb in <paramref name="high"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong MultiplyAdd(ulong left, ulong right, ulong addend, out ulong high)
+        {
+            ulong low = left * right + addend;
+            high = MultiplyHigh(left, right) + (low < addend ? 1UL : 0UL);
+            return low;
+        }
+
+        /// <summary>
+        /// The low limb of <paramref name="left"/> times <paramref name="right"/> plus <paramref name="accumulator"/> and
+        /// <paramref name="carry"/>, with the high limb in <paramref name="high"/>; the sum fits 128 bits.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong MultiplyAccumulate(ulong left, ulong right, ulong accumulator, ulong carry, out ulong high)
+        {
+            ulong low = left * right + carry;
+            ulong carryOut = low < carry ? 1UL : 0UL;
+            low += accumulator;
+            carryOut += low < accumulator ? 1UL : 0UL;
+            high = MultiplyHigh(left, right) + carryOut;
+            return low;
         }
 
         /// <summary>The high 64 bits of the product of <paramref name="left"/> and <paramref name="right"/>.</summary>
@@ -1361,18 +1692,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ulong leftHigh = left >> 32;
             ulong rightLow = (uint)right;
             ulong rightHigh = right >> 32;
+            // Each half is last used as early as it can be, so the handler's common case fits the temporary registers.
+            ulong middle = (leftLow * rightLow) >> 32;
             ulong lowHigh = leftLow * rightHigh;
             ulong highLow = leftHigh * rightLow;
             // At most three 32-bit values, so the carry into the high half stays in its own bits.
-            ulong middle = ((leftLow * rightLow) >> 32) + (uint)lowHigh + (uint)highLow;
+            middle = middle + (uint)lowHigh + (uint)highLow;
             return leftHigh * rightHigh + (lowHigh >> 32) + (highLow >> 32) + (middle >> 32);
         }
 
         /// <summary>DIV of a dividend below 2^64 by a nonzero divisor below 2^64, or by a power of two, which it shifts out.</summary>
         /// <remarks>
         /// Either takes one instruction or a shift, where the shared handler calls out to the zkVM's 256-bit division.
-        /// Every other case - a short stack or gas, a zero divisor, or wider operands whose divisor is not a power of
-        /// two - runs the shared DIV handler instead.
+        /// In the ZisK guest every other division goes to <see cref="ExecuteDivOfWideOperands"/>; a short stack or gas,
+        /// or elsewhere a zero divisor or wider operands whose divisor is not a power of two, runs the shared DIV handler.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1402,6 +1735,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     CopyWord(ref dividend, ref quotient);
                     ShiftRight(ref quotient, shift);
                 }
+                else if (ZiskArith256Flag.IsActive)
+                {
+                    nint wide = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                        &ExecuteDivOfWideOperands;
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, wide);
+                }
                 else
                 {
                     gas += LowGasCost.GasCost;
@@ -1418,6 +1757,50 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                 &ExecuteOpcode<Math2Opcode<EvmInstructions.OpDiv, OffFlag>, OffFlag, OffFlag, OnFlag>;
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+        }
+
+        /// <summary>The rest of <see cref="ExecuteDiv"/> in the ZisK guest, for wider operands whose divisor is not a power of two.</summary>
+        /// <remarks>
+        /// Entered only from there, with the stack checked and the gas charged. A zero divisor leaves the zero its slot
+        /// holds, and a dividend below the divisor a zero quotient; the rest go to ZisK's 256-bit division.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ExecuteDivOfWideOperands(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            ref ulong quotient = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
+            if ((quotient | Unsafe.Add(ref quotient, 1) | Unsafe.Add(ref quotient, 2) | Unsafe.Add(ref quotient, 3)) != 0)
+            {
+                if (IsBelow(ref quotient, LimbsPerWord, 0))
+                {
+                    SetWord(ref quotient, 0);
+                }
+                else
+                {
+                    UInt256 result, remainder;
+                    // The stack is pinned. The quotient must not alias an operand.
+                    ulong* divisor = (ulong*)Unsafe.AsPointer(ref quotient);
+                    Accelerators.DivRem256(divisor + LimbsPerWord, divisor, (ulong*)&result, (ulong*)&remainder);
+                    *(UInt256*)divisor = result;
+                    // Reloaded rather than held across the call, where each would take a callee-saved register.
+                    handlers = state.OpcodeHandlers;
+                    code = ref stack.Code;
+                    bottom = ref stack.Bottom;
+                }
+            }
+
+            head--;
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = handlers[ip];
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
         }
 
         /// <summary>JUMP onto a destination the incremental bitmap already holds, with the JUMPDEST it lands on.</summary>

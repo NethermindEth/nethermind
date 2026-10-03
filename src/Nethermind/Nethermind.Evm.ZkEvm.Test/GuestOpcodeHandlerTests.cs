@@ -44,6 +44,12 @@ public class GuestOpcodeHandlerTests
     private const byte EQ = (byte)Instruction.EQ;
     private const byte SHL = (byte)Instruction.SHL;
     private const byte SHR = (byte)Instruction.SHR;
+    private const byte SAR = (byte)Instruction.SAR;
+    private const byte BYTE = (byte)Instruction.BYTE;
+    private const byte SIGNEXTEND = (byte)Instruction.SIGNEXTEND;
+    private const byte NOT = (byte)Instruction.NOT;
+    private const byte ADDMOD = (byte)Instruction.ADDMOD;
+    private const byte MULMOD = (byte)Instruction.MULMOD;
     private const byte ISZERO = (byte)Instruction.ISZERO;
     private const byte MLOAD = (byte)Instruction.MLOAD;
     private const byte MSTORE = (byte)Instruction.MSTORE;
@@ -366,6 +372,50 @@ public class GuestOpcodeHandlerTests
                 shiftGas, Word(amount < 256 ? shifted << (int)amount : BigInteger.Zero));
             yield return Succeeds($"SHR by {name}", Code([PUSH32, .. WordB, PUSH32, .. Word(amount), SHR, PUSH1, 0, MSTORE, STOP]),
                 shiftGas, Word(amount < 256 ? shifted >> (int)amount : BigInteger.Zero));
+            // BigInteger shifts arithmetically, and a shift past the word leaves the sign.
+            BigInteger negative = shifted - (BigInteger.One << 256);
+            yield return Succeeds($"SAR of a negative word by {name}", Code([PUSH32, .. WordB, PUSH32, .. Word(amount), SAR, PUSH1, 0, MSTORE, STOP]),
+                shiftGas, Word(negative >> (int)BigInteger.Min(amount, 256)));
+            yield return Succeeds($"SAR of a positive word by {name}", Code([PUSH32, .. WordA, PUSH32, .. Word(amount), SAR, PUSH1, 0, MSTORE, STOP]),
+                shiftGas, Word(new BigInteger(WordA, isUnsigned: true, isBigEndian: true) >> (int)BigInteger.Min(amount, 256)));
+        }
+
+        // Every byte boundary of a limb, the last byte of the word, and indices past it, including one only a high limb makes large.
+        BigInteger[] indices = [0, 1, 7, 8, 15, 16, 23, 24, 30, 31, 32, BigInteger.One << 64];
+        foreach (BigInteger index in indices)
+        {
+            string name = index > ushort.MaxValue ? "2^64" : index.ToString();
+            yield return Succeeds($"BYTE {name}", Code([PUSH32, .. WordB, PUSH32, .. Word(index), BYTE, PUSH1, 0, MSTORE, STOP]),
+                3 + 3 + 3 + (3 + 3 + 3), Word(index < 32 ? WordB[(int)index] : 0));
+            // WordA's bytes are below 0x80 and WordB's above, so the sign byte at every index extends both ways.
+            foreach (byte[] word in (byte[][])[WordA, WordB])
+            {
+                BigInteger value = new(word, isUnsigned: true, isBigEndian: true);
+                BigInteger extended = value;
+                if (index < 31)
+                {
+                    int bits = 8 * ((int)index + 1);
+                    BigInteger low = value & ((BigInteger.One << bits) - 1);
+                    extended = low >= BigInteger.One << (bits - 1) ? low - (BigInteger.One << bits) : low;
+                }
+
+                yield return Succeeds($"SIGNEXTEND {name} of {word[0]:x2}..", Code([PUSH32, .. word, PUSH32, .. Word(index), SIGNEXTEND, PUSH1, 0, MSTORE, STOP]),
+                    3 + 3 + 5 + (3 + 3 + 3), Word(extended));
+            }
+        }
+
+        yield return Succeeds("NOT", Code([PUSH32, .. WordA, NOT, PUSH1, 0, MSTORE, STOP]), 3 + 3 + (3 + 3 + 3),
+            Word(~new BigInteger(WordA, isUnsigned: true, isBigEndian: true)));
+
+        // A zero modulus, one, and ones the operands reach or pass.
+        BigInteger[] moduli = [0, 1, 97, ulong.MaxValue, new BigInteger(WordB, isUnsigned: true, isBigEndian: true)];
+        foreach (BigInteger modulus in moduli)
+        {
+            BigInteger a = new(WordB, isUnsigned: true, isBigEndian: true), b = new(WordA, isUnsigned: true, isBigEndian: true);
+            yield return Succeeds($"ADDMOD mod {modulus:x}", Code([PUSH32, .. Word(modulus), PUSH32, .. WordA, PUSH32, .. WordB, ADDMOD, PUSH1, 0, MSTORE, STOP]),
+                3 + 3 + 3 + 8 + (3 + 3 + 3), Word(modulus.IsZero ? 0 : (a + b) % modulus));
+            yield return Succeeds($"MULMOD mod {modulus:x}", Code([PUSH32, .. Word(modulus), PUSH32, .. WordA, PUSH32, .. WordB, MULMOD, PUSH1, 0, MSTORE, STOP]),
+                3 + 3 + 3 + 8 + (3 + 3 + 3), Word(modulus.IsZero ? 0 : a * b % modulus));
         }
     }
 
@@ -444,6 +494,16 @@ public class GuestOpcodeHandlerTests
         }
 
         yield return Fails("SHR with one operand", Code(PUSH1, 1, SHR), EvmExceptionType.StackUnderflow);
+        foreach (byte op in (byte[])[SAR, BYTE, SIGNEXTEND])
+        {
+            yield return Fails($"{(Instruction)op} with one operand", Code(PUSH1, 1, op), EvmExceptionType.StackUnderflow);
+        }
+
+        yield return Fails("NOT on an empty stack", Code(NOT), EvmExceptionType.StackUnderflow);
+        foreach (byte op in (byte[])[ADDMOD, MULMOD])
+        {
+            yield return Fails($"{(Instruction)op} with two operands", Code(PUSH1, 1, PUSH1, 1, op), EvmExceptionType.StackUnderflow);
+        }
     }
 
     [TestCaseSource(nameof(Successes))]

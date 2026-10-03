@@ -133,6 +133,61 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    /// <remarks>
+    /// The operands lean on the limb and sign boundaries the guest's arithmetic splits its cases on; each result is
+    /// stored to memory, and the gas each program leaves tells a charge that differs.
+    /// </remarks>
+    [Test]
+    public void Arithmetic_matches_the_shared_handlers(
+        [Values(Instruction.MUL, Instruction.DIV, Instruction.SDIV, Instruction.MOD, Instruction.SMOD, Instruction.ADDMOD, Instruction.MULMOD,
+            Instruction.SIGNEXTEND, Instruction.NOT, Instruction.BYTE, Instruction.SHL, Instruction.SHR, Instruction.SAR)] Instruction op,
+        [Range(0, 3)] int seed)
+    {
+        List<string> mismatches = [];
+        Random random = new(seed * 7919 + (int)op);
+        for (int i = 0; i < 400 && mismatches.Count < 5; i++)
+        {
+            List<byte> code = [];
+            for (int operand = 0; operand < 3; operand++)
+                code.AddRange([(byte)Instruction.PUSH32, .. EdgeWord(random)]);
+            code.AddRange([(byte)op, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]);
+            byte[] program = [.. code];
+
+            Outcome untraced = Run(100_000, [], 0, new CodeInfo(program), Table.Untraced);
+            Outcome traced = Run(100_000, [], 0, new CodeInfo(program), Table.Traced);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"code {Convert.ToHexString(program)}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <summary>A big-endian word drawn mostly from the values arithmetic splits its cases on.</summary>
+    private static byte[] EdgeWord(Random random)
+    {
+        UInt256 word = random.Next(12) switch
+        {
+            0 => UInt256.Zero,
+            1 => UInt256.One,
+            2 => UInt256.MaxValue,
+            3 => UInt256.One << 255,
+            4 => (UInt256.One << 255) - 1,
+            5 => UInt256.One << random.Next(256),
+            6 => (UInt256.One << random.Next(1, 256)) - 1,
+            7 => UInt256.MaxValue - (ulong)random.Next(0, 300),
+            8 => (ulong)random.Next(0, 300),
+            _ => RandomWord(random) >> (64 * random.Next(4)),
+        };
+        return word.ToBigEndian();
+    }
+
+    private static UInt256 RandomWord(Random random)
+    {
+        Span<byte> bytes = stackalloc byte[32];
+        random.NextBytes(bytes);
+        return new UInt256(bytes, isBigEndian: true);
+    }
+
     private static bool IsFault(EvmExceptionType exception) => exception is not (EvmExceptionType.None or EvmExceptionType.Stop);
 
     private static bool Matches(Outcome outcome, Outcome reference) =>
