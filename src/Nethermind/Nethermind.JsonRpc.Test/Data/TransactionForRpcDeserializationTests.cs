@@ -104,11 +104,13 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"frames":null}""");
             yield return Make(TxType.SetCode, """{"AuthorizationList":[]}""");
 
-            yield return Make(TxType.Legacy, """{"type":"0x0"}""");
-            yield return Make(TxType.AccessList, """{"type":"0x1"}""");
+            // An explicit type alone does not pick the class: a call runs on its fields, which here are none,
+            // so it is defaulted like any other; the signing methods apply the type (WithRequestedType).
+            yield return Make(TxType.EIP1559, """{"type":"0x0"}""");
+            yield return Make(TxType.EIP1559, """{"type":"0x1"}""");
             yield return Make(TxType.EIP1559, """{"type":"0x2"}""");
-            yield return Make(TxType.Blob, """{"type":"0x3"}""");
-            yield return Make(TxType.SetCode, """{"type":"0x4"}""");
+            yield return Make(TxType.EIP1559, """{"type":"0x3"}""");
+            yield return Make(TxType.EIP1559, """{"type":"0x4"}""");
 
             string largeInput = "0x" + new string('a', 64 * 1024);
             yield return Make(TxType.EIP1559, $$"""{"type":"0x2","input":"{{largeInput}}","maxFeePerGas":"0x1"}""");
@@ -145,9 +147,9 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{}""", Berlin.Instance);
             yield return Make(TxType.EIP1559, """{}""", London.Instance);
 
-            // Explicit type is preserved regardless of spec
-            yield return Make(TxType.EIP1559, """{"type":"0x2"}""", Istanbul.Instance);
-            yield return Make(TxType.AccessList, """{"type":"0x1"}""", Istanbul.Instance);
+            // An explicit type alone is not a feature, so the call is defaulted by spec like any other
+            yield return Make(TxType.Legacy, """{"type":"0x2"}""", Istanbul.Instance);
+            yield return Make(TxType.Legacy, """{"type":"0x1"}""", Istanbul.Instance);
 
             // Discriminator-matched type is not defaulted → preserved
             yield return Make(TxType.AccessList, """{"accessList":[]}""", Istanbul.Instance);

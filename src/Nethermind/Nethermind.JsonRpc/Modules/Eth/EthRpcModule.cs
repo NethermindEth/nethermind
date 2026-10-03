@@ -354,6 +354,10 @@ public partial class EthRpcModule(
 
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
     {
+        if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
+            return Task.FromResult(ResultWrapper<Hash256>.Fail(typeConflict, ErrorCodes.InvalidInput));
+        rpcTx = (SignableTransactionForRpc)requested;
+
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
         {
@@ -390,6 +394,10 @@ public partial class EthRpcModule(
         Address from = (rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero;
         if (!_wallet.IsUnlocked(from))
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
+
+        if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
+            return ResultWrapper<SignTransactionResult>.Fail(typeConflict, ErrorCodes.InvalidInput);
+        rpcTx = (SignableTransactionForRpc)requested;
 
         Result<Transaction> txResult = rpcTx.ToSignableTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
@@ -465,6 +473,10 @@ public partial class EthRpcModule(
 
     public virtual async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(SignableTransactionForRpc rpcTx)
     {
+        if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
+            return ResultWrapper<FillTransactionResult>.Fail(typeConflict, ErrorCodes.InvalidInput);
+        rpcTx = (SignableTransactionForRpc)requested;
+
         BlockHeader? head = _blockFinder.Head?.Header;
         if (head is null)
             return ResultWrapper<FillTransactionResult>.Fail("No head block available", ErrorCodes.ResourceUnavailable);
