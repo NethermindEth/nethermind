@@ -24,6 +24,7 @@ internal sealed class NodeHealthReportCollector(
     IConfiguration configuration,
     Func<IHealthCheckReportCollector> httpCollector) : IHealthCheckReportCollector
 {
+    internal const string EndpointName = "health";
     internal const string HttpCollectorKey = "nethermind-health-http";
 
     /// <inheritdoc />
@@ -31,7 +32,8 @@ internal sealed class NodeHealthReportCollector(
     {
         List<HealthCheckConfiguration> endpoints = await db.Configurations.ToListAsync(cancellationToken);
         // Retain the library collector for remote endpoints and its optional notification policy.
-        if (endpoints.Count != 1 || endpoints[0].Name != "health" || endpoints[0].Uri != endpoint ||
+        // The library's effective notify-once setting is internal, so code-based enabling is not detected.
+        if (endpoints.Count != 1 || endpoints[0].Name != EndpointName || endpoints[0].Uri != endpoint ||
             configuration.GetSectionWithFallBack("HealthChecksUI", "HealthChecks-UI").GetValue<bool>("NotifyUnHealthyOneTimeUntilChange"))
         {
             await httpCollector().Collect(cancellationToken);

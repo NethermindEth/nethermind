@@ -42,7 +42,7 @@ public class HealthCheckJsonRpcConfigurer(
             string endpoint = BuildEndpointForUi();
             service.AddHealthChecksUI(setup =>
                 {
-                    setup.AddHealthCheckEndpoint("health", endpoint);
+                    setup.AddHealthCheckEndpoint(NodeHealthReportCollector.EndpointName, endpoint);
                     setup.SetEvaluationTimeInSeconds(healthChecksConfig.PollingInterval);
                     setup.SetHeaderText("Nethermind Node Health");
                     if (healthChecksConfig.WebhooksEnabled)
