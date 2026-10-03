@@ -34,6 +34,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private static readonly FlatDbColumns[] StorageColumns = [FlatDbColumns.StorageNodes];
     private readonly SemaphoreSlim _mergeLimiter;
     private readonly Lock _drainLock = new(); // drains and clears queue behind each other; sync runs bypass batches from several threads
+    private readonly bool _drainOnShutdown;
     private readonly ILogger _logger;
     private int _disposed;
 
@@ -44,14 +45,15 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         if (config.TrieNodeLogMergeBacklogMargin < 1)
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMergeBacklogMargin)} must be at least 1, got {config.TrieNodeLogMergeBacklogMargin}", -1);
         _mergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
+        _drainOnShutdown = config.TrieNodeLogDrainOnShutdown;
         _logger = logManager.GetClassLogger<TrieNodeLog>();
 
         // A generation's index is 1/IndexRatio of its bytes and rolls it at three-quarters occupancy, so the ratio
         // follows the partition's typical record size: state nodes are mostly branches, storage has smaller leaves.
         ReadOnlySpan<(string Name, FlatDbColumns[] Columns, long Budget, int ShardCount, string ShardCountSetting, int IndexRatio)> partitions =
         [
-            ("state", StateColumns, config.TrieNodeLogStateBytes, config.TrieNodeLogStateShardCount, nameof(IFlatDbConfig.TrieNodeLogStateShardCount), 64),
-            ("storage", StorageColumns, config.TrieNodeLogStorageBytes, config.TrieNodeLogStorageShardCount, nameof(IFlatDbConfig.TrieNodeLogStorageShardCount), 32),
+            (StatePartitionName, StateColumns, config.TrieNodeLogStateBytes, config.TrieNodeLogStateShardCount, nameof(IFlatDbConfig.TrieNodeLogStateShardCount), 64),
+            (StoragePartitionName, StorageColumns, config.TrieNodeLogStorageBytes, config.TrieNodeLogStorageShardCount, nameof(IFlatDbConfig.TrieNodeLogStorageShardCount), 32),
         ];
         List<TrieNodeLogShard> shards = [];
         try
@@ -84,6 +86,28 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     internal IReadOnlyList<TrieNodeLogShard> Shards => _shards;
 
     /// <summary>
+    /// Whether the shard directories under <paramref name="basePath"/> are exactly those <paramref name="config"/>
+    /// would create, so a log constructed over them recovers their generations instead of needing
+    /// <see cref="MergeAllOnDisk"/> first. A partition with no directories at all is fine; one with another shard
+    /// count is not, since the shard a key maps to depends on that count.
+    /// </summary>
+    public static bool MatchesOnDiskLayout(string basePath, IFlatDbConfig config)
+    {
+        if (!Directory.Exists(basePath)) return true;
+        HashSet<string> onDisk = Directory.GetDirectories(basePath).Select(Path.GetFileName).ToHashSet()!;
+        foreach ((string name, int shardCount) in new[] { (StatePartitionName, config.TrieNodeLogStateShardCount), (StoragePartitionName, config.TrieNodeLogStorageShardCount) })
+        {
+            int present = 0;
+            for (int shard = 0; shard < shardCount; shard++)
+            {
+                if (onDisk.Remove($"{name}-{shard}")) present++;
+            }
+            if (present != 0 && present != shardCount) return false;
+        }
+        return onDisk.Count == 0;
+    }
+
+    /// <summary>
     /// Merges every shard directory found under <paramref name="basePath"/> into RocksDB and removes it, whatever
     /// shard layout wrote it, so the log can be reconfigured or disabled between runs without losing nodes.
     /// Run before the log is constructed; the configured shards then start empty.
@@ -98,8 +122,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             string name = Path.GetFileName(directory);
             FlatDbColumns[]? columns = name.Split('-')[0] switch
             {
-                "state_top" or "state" => StateColumns,
-                "storage" => StorageColumns,
+                "state_top" or StatePartitionName => StateColumns,
+                StoragePartitionName => StorageColumns,
                 _ => null,
             };
             if (columns is null)
@@ -124,6 +148,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     internal static bool Covers(FlatDbColumns column) => column is FlatDbColumns.StateTopNodes or FlatDbColumns.StateNodes or FlatDbColumns.StorageNodes;
 
+    private const string StatePartitionName = "state";
+    private const string StoragePartitionName = "storage";
     private const int StatePartition = 0;
     private const int StoragePartition = 1;
     private const int PartitionCount = 2;
@@ -229,6 +255,17 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (_drainOnShutdown)
+        {
+            try
+            {
+                Drain();
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Trie node log merge at shutdown failed; the generations are kept for the next start", e);
+            }
+        }
         foreach (TrieNodeLogShard shard in _shards) await shard.DisposeAsync();
         _mergeLimiter.Dispose();
     }

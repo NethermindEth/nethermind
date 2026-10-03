@@ -107,8 +107,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, ILogManager>((cfg, initConfig, db, logManager) =>
             {
                 string basePath = Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog");
-                // Whatever the previous run left is merged first, so the shard layout and the enabled flag can change freely.
-                TrieNodeLog.MergeAllOnDisk(basePath, db, logManager);
+                // The log is recovered across restarts, keeping its deduplication window, unless it is now disabled or
+                // its shard layout changed; then whatever the previous run left is merged into RocksDB first.
+                if (!cfg.TrieNodeLogEnabled || !TrieNodeLog.MatchesOnDiskLayout(basePath, cfg))
+                    TrieNodeLog.MergeAllOnDisk(basePath, db, logManager);
                 return cfg.TrieNodeLogEnabled
                     ? new TrieNodeLog(basePath, db, cfg, logManager)
                     : NullTrieNodeLog.Instance;

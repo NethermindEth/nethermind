@@ -193,6 +193,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Sealed trie node log generations a shard may accumulate beyond TrieNodeLogMergeLag before starting a new generation waits for a merge to finish, which stalls persistence until the merges catch up.", DefaultValue = "2")]
     int TrieNodeLogMergeBacklogMargin { get; set; }
 
+    [ConfigItem(Description = "Merge the whole trie node log into RocksDB at shutdown. The log otherwise persists across restarts, keeping its deduplication window; mainly for debugging.", DefaultValue = "false")]
+    bool TrieNodeLogDrainOnShutdown { get; set; }
+
     [ConfigItem(Description = "Number of sealed trie node log generations kept unmerged behind the newest one. A generation is merged into RocksDB only once this many newer generations are sealed, and keys rewritten in those are skipped, so the effective deduplication window is (1 + this) generations at the cost of that many extra generation files and in-memory indexes.", DefaultValue = "2")]
     int TrieNodeLogMergeLag { get; set; }
 }

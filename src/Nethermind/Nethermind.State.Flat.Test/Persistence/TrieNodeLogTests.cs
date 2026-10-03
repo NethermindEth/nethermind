@@ -394,6 +394,45 @@ public class TrieNodeLogTests
         }
     }
 
+    [TestCase(2, true)]
+    [TestCase(1, false)]
+    [TestCase(4, false)]
+    public async Task The_on_disk_layout_matches_the_config_only_with_the_same_shard_count(int stateShardCount, bool matches)
+    {
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+        _config.TrieNodeLogStateShardCount = stateShardCount;
+
+        Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, _config), Is.EqualTo(matches));
+    }
+
+    [Test]
+    public async Task The_on_disk_layout_does_not_match_with_a_directory_of_another_layout()
+    {
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+        Directory.CreateDirectory(Path.Combine(_directory.Path, "state_top-0"));
+
+        Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, _config), Is.False);
+    }
+
+    [Test]
+    public async Task Draining_on_shutdown_is_opt_in()
+    {
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+        Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "by default the log is kept for the next start");
+
+        _config.TrieNodeLogDrainOnShutdown = true;
+        Open();
+        await _log.DisposeAsync();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Rlp1));
+            Assert.That(LogFiles(), Is.Empty);
+        }
+    }
+
     [Test]
     public async Task A_generation_file_of_another_format_is_refused()
     {
