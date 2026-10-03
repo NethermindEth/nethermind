@@ -109,17 +109,9 @@ public class DataColumnSidecarVerifierTests
         Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
     }
 
-    [Test]
-    public void VerifyStructure_rejects_a_column_proofs_length_mismatch()
-    {
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-        sidecar.KzgProofs = [sidecar.KzgProofs![0]];
-
-        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
-    }
-
-    [Test]
-    public void VerifyKzgProofs_rejects_a_structurally_invalid_sidecar_without_indexing_past_its_arrays()
+    [TestCase(false, TestName = "VerifyStructure_rejects_a_column_proofs_length_mismatch")]
+    [TestCase(true, TestName = "VerifyKzgProofs_rejects_a_structurally_invalid_sidecar_without_indexing_past_its_arrays")]
+    public void Mismatched_proof_lengths_are_refused_before_indexing_the_arrays(bool verifyKzg)
     {
         DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
         // A hostile peer can send mismatched lengths; the batch loop indexes all three arrays in
@@ -129,25 +121,20 @@ public class DataColumnSidecarVerifierTests
         Assert.Multiple(() =>
         {
             Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
-            Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
-            Assert.That(DataColumnSidecarVerifier.Verify(sidecar, BeaconChainSpec.Mainnet), Is.False);
+            if (verifyKzg)
+            {
+                Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
+                Assert.That(DataColumnSidecarVerifier.Verify(sidecar, BeaconChainSpec.Mainnet), Is.False);
+            }
         });
     }
 
-    [Test]
-    public void VerifyBlobCount_rejects_a_sidecar_with_no_commitments()
+    [TestCase(false, TestName = "VerifyBlobCount_rejects_a_sidecar_with_no_commitments")]
+    [TestCase(true, TestName = "VerifyBlobCount_rejects_a_sidecar_with_null_commitments")]
+    public void VerifyBlobCount_requires_commitments(bool nullCommitments)
     {
         DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-        sidecar.KzgCommitments = [];
-
-        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, BeaconChainSpec.Mainnet), Is.False);
-    }
-
-    [Test]
-    public void VerifyBlobCount_rejects_a_sidecar_with_null_commitments()
-    {
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-        sidecar.KzgCommitments = null;
+        sidecar.KzgCommitments = nullCommitments ? null : [];
 
         Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, BeaconChainSpec.Mainnet), Is.False);
     }

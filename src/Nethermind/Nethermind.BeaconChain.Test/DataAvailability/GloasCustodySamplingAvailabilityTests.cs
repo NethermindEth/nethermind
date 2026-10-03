@@ -120,13 +120,19 @@ public class GloasCustodySamplingAvailabilityTests
         }
     }
 
-    [Test]
-    public void A_pending_column_that_fails_against_the_bid_is_not_served()
+    /// <summary>
+    /// Slot is not bound by KZG, and a pending sidecar predates its block, so no gossip check has matched
+    /// its slot to the block's; served, it would claim a slot its block does not occupy.
+    /// </summary>
+    [TestCase(false, TestName = "A_pending_column_that_fails_against_the_bid_is_not_served")]
+    [TestCase(true, TestName = "A_pending_column_naming_another_slot_is_not_served")]
+    public void A_pending_column_that_fails_bid_validation_is_not_served(bool wrongSlot)
     {
         DataColumnSidecarPool pool = PoolHolding(Custody.SampledColumns.Skip(1));
         ulong column = Custody.SampledColumns[0];
-        DataColumnSidecarGloas pending = DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot);
-        pending.KzgProofs = [pending.KzgProofs![1], pending.KzgProofs[0]];
+        DataColumnSidecarGloas pending = DataColumnSidecarGloasTestFixture.BuildSidecar(column, wrongSlot ? BlockSlot + 1 : BlockSlot);
+        if (!wrongSlot)
+            pending.KzgProofs = [pending.KzgProofs![1], pending.KzgProofs[0]];
         pool.AddPendingGloas(pending, BlockSlot);
         Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
 
@@ -135,31 +141,8 @@ public class GloasCustodySamplingAvailabilityTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(available, Is.False);
-            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, column, out _), Is.False, "an unverified sidecar must never reach req/resp");
-            Assert.That(pool.PendingGloasCount, Is.Zero, "a candidate that fails against the block's bid can never verify");
-        }
-    }
-
-    /// <summary>
-    /// Slot is not bound by KZG, and a pending sidecar predates its block, so no gossip check has matched
-    /// its slot to the block's; served, it would claim a slot its block does not occupy.
-    /// </summary>
-    [Test]
-    public void A_pending_column_naming_another_slot_is_not_served()
-    {
-        DataColumnSidecarPool pool = PoolHolding(Custody.SampledColumns.Skip(1));
-        ulong column = Custody.SampledColumns[0];
-        const ulong forgedSlot = BlockSlot + 1;
-        pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, forgedSlot), BlockSlot);
-        Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
-
-        bool available = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.False);
-            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, column, out _), Is.False);
-            Assert.That(pool.PendingGloasCount, Is.Zero);
+            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, column, out _), Is.False, wrongSlot ? null : "an unverified sidecar must never reach req/resp");
+            Assert.That(pool.PendingGloasCount, Is.Zero, wrongSlot ? null : "a candidate that fails against the block's bid can never verify");
         }
     }
 

@@ -83,22 +83,14 @@ public class DataAvailabilitySamplingTests
         Assert.That(columns, Has.Length.EqualTo((int)custodyGroupCount));
     }
 
-    [Test]
-    public void IsSampleAvailable_true_only_when_every_sampled_column_is_held()
+    [TestCase(true, TestName = "IsSampleAvailable_true_only_when_every_sampled_column_is_held")]
+    [TestCase(false, TestName = "IsSampleAvailable_false_when_one_sampled_column_is_missing")]
+    public void IsSampleAvailable_requires_every_sampled_column(bool lastColumnHeld)
     {
         ulong[] columnsToSample = [1, 5, 9];
-        bool[] held = [false, true, false, false, false, true, false, false, false, true]; // 1,5,9 held
+        bool[] held = [false, true, false, false, false, true, false, false, false, lastColumnHeld];
 
-        Assert.That(DataAvailabilitySampling.IsSampleAvailable(columnsToSample, c => held[c]), Is.True);
-    }
-
-    [Test]
-    public void IsSampleAvailable_false_when_one_sampled_column_is_missing()
-    {
-        ulong[] columnsToSample = [1, 5, 9];
-        bool[] held = [false, true, false, false, false, true, false, false, false, false]; // 9 missing
-
-        Assert.That(DataAvailabilitySampling.IsSampleAvailable(columnsToSample, c => held[c]), Is.False);
+        Assert.That(DataAvailabilitySampling.IsSampleAvailable(columnsToSample, c => held[c]), Is.EqualTo(lastColumnHeld));
     }
 
     [Test]
