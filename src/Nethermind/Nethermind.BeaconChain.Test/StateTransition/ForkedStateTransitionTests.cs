@@ -131,21 +131,7 @@ public class ForkedStateTransitionTests
         Assert.That(ex.Message, Does.Contain("already crossed into Gloas"));
     }
 
-    private static BeaconChainSpec SyntheticSpec(ulong gloasForkEpoch) => new()
-    {
-        SecondsPerSlot = 12,
-        SlotsPerEpoch = Presets.SlotsPerEpoch,
-        GenesisTime = 1_606_824_023,
-        GenesisValidatorsRoot = Hash256.Zero,
-        Forks = [new(Bytes.FromHexString("0x06000000"), 0)],
-        BlobSchedule = [],
-        ElectraForkEpoch = 0,
-        FuluForkEpoch = 0,
-        MaxBlobsPerBlockElectra = 9,
-        GloasForkEpoch = gloasForkEpoch,
-        GloasForkVersion = GloasVersion,
-        Bootnodes = [],
-    };
+    private static BeaconChainSpec SyntheticSpec(ulong gloasForkEpoch) => GloasTestFixtures.SyntheticSpec(gloasForkEpoch, GloasVersion);
 
     private static BeaconStateFulu CreateState(int validatorCount)
     {
