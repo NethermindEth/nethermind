@@ -163,6 +163,13 @@ internal static partial class PerformanceCores
             if (!_narrowed) return;
 
             CpuMask restored = _previous;
+            // The released thread returns to the pool: off the dedicated core now rather than at the guard's next pass.
+            if (_registered && Host.Selections[(int)ProcessingCores.Dedicated] is { } dedicated)
+            {
+                CpuMask off = restored.Without(dedicated.Mask);
+                if (!off.IsEmpty) restored = off;
+            }
+
             if (sched_setaffinity(0, CpuMaskSize, ref restored) != 0)
             {
                 // A cpuset changed at runtime to exclude the previous mask; the kernel narrows every CPU to the new cpuset.
@@ -243,7 +250,8 @@ internal static partial class PerformanceCores
             moved++;
 
             // The processing loop may have registered this thread and narrowed it onto the dedicated core since the
-            // check above; it would then run its block off that core, so it goes back.
+            // check above; it would then run its block off that core, so it goes back. A thread that finishes its block
+            // in between is left on the dedicated core until the next pass.
             if (threadId == Volatile.Read(ref _processingThreadId))
             {
                 CpuMask back = dedicated;
