@@ -239,7 +239,7 @@ def main():
     def submit(entry, index, sequence):
         result = {'sequence': sequence, 'name': entry['name'], 'mode': entry['mode'], 'nonce': entry['nonce'],
                   'transactionHash': entry['transactionHash'], 'ingressNode': index + 1,
-                  'offeredSeconds': time.monotonic() - started, 'accepted': False, 'validSubmissionOffered': False, 'negativeSubmissionOffered': False}
+                  'offeredSeconds': time.monotonic() - started, 'accepted': False, 'admissionUncertain': False, 'validSubmissionOffered': False, 'negativeSubmissionOffered': False}
         try:
             negative = read_json(args.manifest.parent / entry['negativeRequestFile'])
             if negative.get('method') != 'eth_sendProofWrapper':
@@ -280,6 +280,7 @@ def main():
                     raise RuntimeError('Valid wrapper did not admit expected transaction')
                 result.update(accepted=True, acceptedSeconds=time.monotonic() - started)
         except Exception as error:
+            result['admissionUncertain'] = result['validSubmissionOffered'] and not result['accepted'] and not isinstance(error, RpcError)
             result['error'] = str(error)[:512]
         result['finishedSeconds'] = time.monotonic() - started
         return result

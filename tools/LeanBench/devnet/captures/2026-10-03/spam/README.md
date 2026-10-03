@@ -1,6 +1,6 @@
 # Bounded SPHINCS load, failures and recovery
 
-Real two-EL/two-Lighthouse data captured at 2026-10-03 22:58 UTC. This is an exploratory small-cohort load test, not a maximum-capacity benchmark. The [driver guide](../../../README.md) covers fixture preparation, bounds and passive finality checks.
+Real two-EL/two-Lighthouse data captured at 2026-10-03 23:15 UTC. This is an exploratory small-cohort load test, not a maximum-capacity benchmark. The [driver guide](../../../README.md) covers fixture preparation, bounds and passive finality checks.
 
 | Original run | New accepted / intended | Receipt drain | Original outcome |
 | --- | ---: | --- | --- |
@@ -10,10 +10,10 @@ Real two-EL/two-Lighthouse data captured at 2026-10-03 22:58 UTC. This is an exp
 | Fresh 0.025 tx/s | 4 / 4 | 4 authenticated | Drain succeeded; later finality REST observer failed. |
 | Fresh 0.05 tx/s | 4 / 4 | 4 authenticated | Drain succeeded; later finality REST observer failed. |
 | Fresh 0.1 tx/s | 2 / 8 | 2 authenticated | Health REST timeout stopped offers. No complete rate point. |
-| Shared claim, 1 tx/s | 32 / 32 | 32 authenticated | Healthy drain; finality observation pending in this snapshot. |
+| Shared claim, 1 tx/s | 32 / 32 | 32 authenticated | Healthy drain; all 32 finalized on both CLs at checkpoint 73. |
 | Invalid-only | 0 valid offers | Sender nonces unchanged | 32 `proofRejected`, zero Busy/unexpected; eight negative templates repeated four times. |
 
-The original failures remain `completed=false`. Separate passive recovery observers authenticate canonical receipts, Core commitments, beacon bids and finalized checkpoints without new offers or combining timing windows. The first recovery's 300-second deadline expired; its later observation finalized both transactions. Post-deployment recovery authenticated all four accepted retry transactions with **zero replay submissions**. Its later passive finality observer and the 0.025 observer have completed; the 0.05 and partial 0.1 finality observers are pending in this snapshot. Recovery counts repeat original transactions and must not be summed.
+The original failures remain `completed=false`. Separate passive recovery observers authenticate canonical receipts, Core commitments, beacon bids and finalized checkpoints without new offers or combining timing windows. The first recovery's 300-second deadline expired; its later observation finalized both transactions. Post-deployment recovery authenticated all four accepted retry transactions with **zero replay submissions**. All four separate passive finality observers have completed, including the 0.05 and partial 0.1 cases. Recovery counts repeat original transactions and must not be summed.
 
 The initial OOM lost pending nonce 4; it was manually replayed exactly once, with nonce 3 never resubmitted. That replay is recovery, excluded from fresh-load throughput. An earlier launcher failed before submitting because sibling `drive.py` was missing; its overwritten startup log is not archived. Both ELs were subsequently raised to 5 GiB. Immutable old deployment and coherent `320950` hashes remain separate from final `d96ae0c9134a` managed hashes; the native library remained `d7c7edff…0a7e6`, ABI4. The fresh 0.025, 0.05, partial 0.1 and shared runs used both ELs on final `d96`.
 
@@ -33,7 +33,7 @@ Shared load reused already-authenticated claim 113 from nonce 11. All 32 signed 
 
 ![Actual canonical proof sizes](canonical-blocks.png)
 
-[Block CSV](blocks.csv) deduplicates recovery observations by canonical hash. Recovered nonces 8–10 share block 2130, slot 2191, with three distinct signature claims and a 327,016-byte proof. This is real block aggregation evidence, not a fresh-load rate point. EL1 produced it on `d96`; EL2 imported it before its upgrade. The log records a 72.51 ms candidate, which does not isolate native proving or prove a cache hit; an already verified parent may contribute. The timeout diagnostic records bounded REST failures without establishing an exact scheduler, lock or prover cause.
+[Block CSV](blocks.csv) deduplicates recovery observations by canonical hash. Recovered nonces 8–10 share block 2130, slot 2191, with three distinct signature claims and a 327,016-byte proof. This is real block aggregation evidence, not a fresh-load rate point. EL1 produced it on `d96`; EL2 imported it before its upgrade. The log records a 72.51 ms candidate, which does not isolate native proving or prove a cache hit; an already verified parent may contribute. The timeout diagnostic records bounded REST failures without establishing an exact scheduler, lock or prover cause. A corrected CPU sample found an intermittent EL2 worker peak; a later quiet eight-second all-thread profile does not explain it. The initial apparent idle sample was invalid, and no persistent native idle-spin defect was established.
 
 ## Data and reproduction
 

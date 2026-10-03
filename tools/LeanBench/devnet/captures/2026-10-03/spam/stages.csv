@@ -7,10 +7,10 @@ spam-baseline-retry,False,False,failed,False,False,0.1,False,5,4,historical acce
 spam-postfix-recovery,True,False,failed,True,False,0.1,False,0,0,historical accepted/proof-rejected probe evidence; Busy probes excluded,0,4,,,4,0.6672787331044674,fresh signature claims,beacon observer node1 /eth/v1/beacon/states/head/finality_checkpoints: timed out
 spam-slow-baseline,False,False,failed,True,False,0.025,False,4,4,explicit,4,4,,0.030735154615857484,4,130.14413136988878,fresh signature claims,beacon observer node1 /eth/v1/beacon/states/head/finality_checkpoints: timed out
 spam-postcache-01,False,False,failed,True,False,0.05,False,4,4,explicit,4,4,,0.05145312671663729,4,77.74065941665322,fresh signature claims,beacon observer node1 /eth/v1/beacon/states/head/finality_checkpoints: timed out
-spam-stage2,False,False,failed,True,False,0.1,False,2,2,explicit,2,2,,,2,42.45436425227672,fresh signature claims,beacon observer node2 /eth/v1/node/syncing: timed out
+spam-stage2,False,False,failed,True,True,0.1,False,2,2,explicit,2,2,,,2,42.45436425227672,fresh signature claims,beacon observer node2 /eth/v1/node/syncing: timed out
 spam-invalid,False,True,complete,False,False,8.0,False,32,0,explicit,0,0,,,0,4.59718912281096,fresh signature claims,
 spam-finality-postfix-recovery,True,True,complete,True,True,0.1,False,0,0,historical accepted/proof-rejected probe evidence; Busy probes excluded,0,4,,,4,0.722855088301003,fresh signature claims,
 spam-finality-slow-baseline,True,True,complete,True,True,0.025,False,0,0,explicit,0,4,,,4,1.1009629014879465,fresh signature claims,
-spam-finality-stage2,True,False,finality pending,True,False,0.1,False,0,0,explicit,0,2,,,2,0.6501407707110047,fresh signature claims,
-spam-finality-postcache-01,True,False,finality pending,True,False,0.05,False,0,0,explicit,0,4,,,4,1.0028844233602285,fresh signature claims,
-spam-shared,False,False,finality pending,True,False,1.0,True,32,32,explicit,32,32,,0.745452981603934,32,42.92691932246089,shared verified dependency; transport/pool/EVM,
+spam-finality-stage2,True,True,complete,True,True,0.1,False,0,0,explicit,0,2,,,2,0.6501407707110047,fresh signature claims,
+spam-finality-postcache-01,True,True,complete,True,True,0.05,False,0,0,explicit,0,4,,,4,1.0028844233602285,fresh signature claims,
+spam-shared,False,True,complete,True,True,1.0,True,32,32,explicit,32,32,0.745452981603934,0.745452981603934,32,42.92691932246089,shared verified dependency; transport/pool/EVM,

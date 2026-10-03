@@ -63,7 +63,7 @@ def export(root):
             "negative", "gossipObservedSeconds", "gossipSeenBeforeReceipt", "includedSeconds",
             "recoveryReceiptObservedSeconds", "receipts", "preexistingTransaction",
             "validSubmissionOffered", "negativeSubmissionOffered", "deferredByBackpressure",
-            "validOfferedSeconds", "negativeOfferedSeconds",
+            "validOfferedSeconds", "negativeOfferedSeconds", "admissionUncertain",
         )) for item in report.get("admissions", [])]
         summary["blocks"] = []
         for block in report.get("blocks", []):
@@ -193,6 +193,15 @@ def export(root):
         } for item in value.get("observers", [])[:16]]
         data["beaconLogs"] = {name: [line[:512] for line in lines[:64]]
                               for name, lines in value.get("beaconLogs", {}).items()}
+        if "cpuDiagnostic" in value:
+            cpu = value["cpuDiagnostic"]
+            data["cpuDiagnostic"] = select(cpu, ("capturedUtc", "method", "invalidEarlySample", "nativeSourceAudit", "limits"))
+            data["cpuDiagnostic"]["intermittentPeak"] = select(cpu.get("intermittentPeak", {}), (
+                "observedUtc", "el1PercentApprox", "el2PercentApprox", "threadType",
+            ))
+            data["cpuDiagnostic"]["simultaneousAllThreadProfile"] = select(cpu.get("simultaneousAllThreadProfile", {}), (
+                "finishedUtc", "seconds", "frequencyHz", "el1CpuPercent", "el2CpuPercent", "sampleCount", "symbols",
+            ))
         data["causeScope"] = "Recorded bounded REST timeouts; exact scheduler, lock, or native-prover cause not established"
         result["diagnostics"][path.name] = {"sha256": sha, "data": data}
     path = root / "spam-production-cache-recovery-replay.json"

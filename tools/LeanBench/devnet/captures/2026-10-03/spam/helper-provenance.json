@@ -1,11 +1,11 @@
 {
-  "workingTreeChanges": "bounded spam helpers; not yet committed",
+  "workingTreeChanges": "Bounded spam tooling identified by exact committed file hashes; capture drivers are archived separately.",
   "files": {
     "tools/LeanBench/Program.cs": "9bf5bf34308bcff18d632f6b0d16564a3fd1034f49c925ec6c1949e019fd2deb",
     "tools/LeanBench/DevnetHelper.cs": "99961cd5067d50b82055383d3bb62692c965c19fa71bd411baf4437e1b65d844",
     "tools/LeanBench/DevnetBlockHelper.cs": "d039511285f91516988be3828952754b73f00b92afcad955a4b45b5df10d95bc",
-    "tools/LeanBench/devnet/spam.py": "ee659503ec09f7b871d84f671ad82d36ad12f5cd7cb2c03a5b96ce3a770dcfc9",
-    "tools/LeanBench/devnet/test_spam.py": "864d7169c209815c9f5b7b5067dcd8596a028fa4e1ff9ba1c434e19f51f6bf8d"
+    "tools/LeanBench/devnet/spam.py": "510cc2de083ef5d571f5518e0ca407c80a16449e33eb152f0f35764c0b61a80e",
+    "tools/LeanBench/devnet/test_spam.py": "ce9194587805c1113beff2d3530e5ae678e41fdc02b197af504071e31aa17a90"
   },
   "helperDllSha256": "376ad49c7cfef46448d41ae3c8d861307c85c007afd960254bb2711660c65f54",
   "priorStage1DriverSha256": "c8949e2f314d1598b0fe11a87f0b331b8c43799323705ee17c57c4950126f265",
@@ -13,7 +13,7 @@
     "trackedSourceDiffSha256": "710c286e7c3a05cee9dd0900446472f7c706786ab91a12abab99061b0fce0b83",
     "newInspectorSourceSha256": "d039511285f91516988be3828952754b73f00b92afcad955a4b45b5df10d95bc"
   },
-  "captureNote": "Historical c894/B7 driver versions were not archived; reports retain exact hashes. Failed coherent320 retry ran5ba; all later actual runs ran frozenf600. Archived f600 interarrival values are pre-negative-probe cycle spacing, not actual valid-RPC starts. Current tracked driver adds actual RPC timestamps; that fix was not used to measure these runs. Helper DLL was built from093ce80 plus recorded helper changes before parent merges. Later runtime fixes are not retroactively attributed to historical results.",
+  "captureNote": "Historical c894/B7 driver versions were not archived; reports retain exact hashes. Failed coherent320 retry ran 5ba; all later actual runs ran frozen f600. Archived f600 interarrival values are pre-negative-probe cycle spacing, not actual valid-RPC starts. Current tracked driver adds actual RPC timestamps; that fix was not used to measure these runs. Helper DLL was built from 093ce80 plus recorded helper changes before parent merges. Later runtime fixes are not retroactively attributed to historical results.",
   "builtHelperSourceBase": "093ce80cd35bbb81aac803518a80d5f127259177",
   "currentChildBase": "d62683954aea3d2012d6712d21d78aee4757878a",
   "freshLoadDriverSha256": "5ba2764820c2e76d6f6cfdb7bbd3fbb0d890b8ef6d4137411ba3d06226ac291b",
@@ -22,7 +22,7 @@
   "correctedBoundedDriverSha256": "f6006117d70b7bd7455ca77179bd91949b9b523a0b07b97052cf43b090a2ba99",
   "correctedDriverArchive": "bounded-driver-f600.py.gz",
   "capturedDriverSha256": "f6006117d70b7bd7455ca77179bd91949b9b523a0b07b97052cf43b090a2ba99",
-  "postCaptureTimestampFixDriverSha256": "ee659503ec09f7b871d84f671ad82d36ad12f5cd7cb2c03a5b96ce3a770dcfc9",
-  "captureExporterSha256": "c8b0f7062221fbce92bf5cbedd7726eb894bd32de0ffc8832aa6c23ac7853685",
+  "postCaptureTimestampFixDriverSha256": "510cc2de083ef5d571f5518e0ca407c80a16449e33eb152f0f35764c0b61a80e",
+  "captureExporterSha256": "a8011ba396e4407f702f215db008f4872fa323ecfcabf5ca8bf95020cffececa",
   "capturePlotterSha256": "48641f1c61b906365bd32bb3f9ada6fd6dc50c8fea78576fe0ffe37b30e62d12"
 }

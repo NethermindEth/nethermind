@@ -18,6 +18,7 @@ class CaptureChecks(unittest.TestCase):
             run.mkdir()
             report = {"completed": True, "measurementScope": "recovery only",
                       "rawTransaction": "never-export", "jwt": "never-export",
+                      "admissions": [{"admissionUncertain": True, "rawTransaction": "never-export"}],
                       "blocks": [{"blockHash": "0x1234", "transactionCount": 2,
                                   "proof": {"proofBytes": 100, "proofSha256": "public-hash", "proof": "never-export"},
                                   "aggregation": {"signatures": 2, "privateKey": "never-export"},
@@ -39,8 +40,16 @@ class CaptureChecks(unittest.TestCase):
                 "nodes": [{"hashes": {"libnethermind_lean.so": "actual-binary", "jwt": "never-export"}}],
                 "health": {"hostAvailableBytes": 123, "jwt": "never-export"},
             }))
+            (root / "spam-beacon-timeout-diagnostic.json").write_text(json.dumps({
+                "cpuDiagnostic": {"invalidEarlySample": "discarded", "rawPerf": "never-export",
+                                  "simultaneousAllThreadProfile": {"sampleCount": 5, "file": "never-export"}},
+            }))
             exported = capture_spam.export(root)
             saved = exported["runs"]["spam-stage1-finalized"]
+            self.assertTrue(saved["admissions"][0]["admissionUncertain"])
+            cpu = exported["diagnostics"]["spam-beacon-timeout-diagnostic.json"]["data"]["cpuDiagnostic"]
+            self.assertEqual(cpu["invalidEarlySample"], "discarded")
+            self.assertEqual(cpu["simultaneousAllThreadProfile"]["sampleCount"], 5)
             self.assertEqual(saved["reportSha256"], hashlib.sha256(raw).hexdigest())
             self.assertEqual(saved["blocks"][0]["proof"]["proofBytes"], 100)
             self.assertEqual(saved["proofMetadataSource"]["capturedUtc"], "earlier")

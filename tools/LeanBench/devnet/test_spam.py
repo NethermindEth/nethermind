@@ -82,6 +82,8 @@ class SpamChecks(unittest.TestCase):
                                 raise spam.RpcError(method, {'code': -32000, 'message': 'Proof admission is busy; retry later.'})
                             raise spam.RpcError(method, {'code': -32000, 'message': spam.PROOF_ERROR})
                         accepted.add(params[0])
+                        if state.get('positiveTimeout'):
+                            raise TimeoutError('Valid RPC timed out after node admission')
                         return [params[0]]
                     if method == 'eth_getTransactionByHash':
                         if state['transportFailure'] and len(accepted) == 2:
@@ -169,6 +171,22 @@ class SpamChecks(unittest.TestCase):
             self.assertFalse(accepted)
             self.assertTrue(busy['stopEvents'])
             state['busyProbe'] = False
+            accepted.clear()
+            state['positiveTimeout'] = True
+            timeout_arguments = [arg for arg in arguments if not arg.startswith('--limit=')] + ['--limit=1']
+            with patch.object(sys, 'argv', timeout_arguments), patch.object(spam, 'Rpc', OfflineRpc), patch.object(spam, 'beacon', offline_beacon), contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(RuntimeError, 'Sender nonces differ'):
+                    spam.main()
+            uncertain = json.loads((root / 'out/report.json').read_text())
+            self.assertFalse(uncertain['completed'])
+            self.assertEqual(len(accepted), 1)
+            self.assertEqual(len(uncertain['admissions']), 1)
+            admission = uncertain['admissions'][0]
+            self.assertTrue(admission['validSubmissionOffered'])
+            self.assertTrue(admission['admissionUncertain'])
+            self.assertFalse(admission['accepted'])
+            self.assertEqual(uncertain['acceptedTransactions'], 0)
+            state['positiveTimeout'] = False
             accepted.clear()
             state['advanceDuringFinality'] = True
             (root / 'out/report.json').unlink()
