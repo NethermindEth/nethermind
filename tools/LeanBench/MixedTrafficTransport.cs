@@ -101,7 +101,7 @@ internal sealed class MixedTrafficTransport : IAsyncDisposable
     public async Task<byte[]> TransferAsync(byte[] payload, CancellationToken token)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        if (Volatile.Read(ref _receiveFailure) is { } previous) ExceptionDispatchInfo.Throw(previous);
+        ThrowIfReceiveFailed();
         try
         {
             _delivered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -134,6 +134,11 @@ internal sealed class MixedTrafficTransport : IAsyncDisposable
             if (Volatile.Read(ref _receiveFailure) is { } failure) ExceptionDispatchInfo.Throw(failure);
             throw;
         }
+    }
+
+    public void ThrowIfReceiveFailed()
+    {
+        if (Volatile.Read(ref _receiveFailure) is { } failure) ExceptionDispatchInfo.Throw(failure);
     }
 
     public bool Probe(ulong sequence, long scheduled, int kind)

@@ -26,12 +26,13 @@ internal static class TransportChecks
             Require(received.AsSpan().SequenceEqual(payload), "Mixed traffic changed the payload");
             Require(transport.WriteDrops == 0, "Mixed traffic unexpectedly dropped a write");
         }
+        foreach (int chunkSize in chunkSizes) await FinalControlDrainPreservesReceiveFailure(chunkSize);
         await MixedReceiveFailureStillCleansUp();
         await LoopbackReceiveFailureIsImmediate();
         string[] malformedChunks = ["packet-type", "short-header", "geometry"];
         foreach (string malformed in malformedChunks)
             await MalformedChunkFailsBeforeCallback(malformed);
-        Console.WriteLine("Transport checks passed: declined probes, whole/chunk delivery, receive failures, cleanup and malformed chunks");
+        Console.WriteLine("Transport checks passed: declined probes, whole/chunk delivery, receive/drain failures, cleanup and malformed chunks");
     }
 
     private static async Task DeclinedProbesDoNotShiftAcceptedSamples()
@@ -54,6 +55,34 @@ internal static class TransportChecks
             "A declined ping shifted the next accepted sample");
         Require(Field<System.Collections.Concurrent.ConcurrentDictionary<ulong, long>>(transport, "_headerStarts").IsEmpty,
             "Declined header probes retained timestamps");
+    }
+
+    private static async Task FinalControlDrainPreservesReceiveFailure(int chunkSize)
+    {
+        MixedTrafficTransport transport = new(chunkSize, 100);
+        Socket sender = Field<Socket>(transport, "_sender");
+        Socket receiver = Field<Socket>(transport, "_receiver");
+        try
+        {
+            byte[] payload = RandomNumberGenerator.GetBytes(96 * 1024);
+            await transport.TransferAsync(payload, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+            transport.ThrowIfReceiveFailed();
+            sender.Shutdown(SocketShutdown.Send);
+            Task reader = Field<Task>(transport, "_reading");
+            await ExpectFailure<EndOfStreamException>(reader);
+            bool observed = false;
+            try { transport.ThrowIfReceiveFailed(); }
+            catch (EndOfStreamException failure)
+            {
+                observed = ReferenceEquals(failure, reader.Exception!.GetBaseException());
+            }
+            Require(observed, "Final control drain did not preserve the receive EOF");
+        }
+        finally
+        {
+            await ExpectFailure<EndOfStreamException>(transport.DisposeAsync().AsTask());
+            Require(sender.SafeHandle.IsClosed && receiver.SafeHandle.IsClosed, "Final control drain leaked sockets");
+        }
     }
 
     private static async Task MixedReceiveFailureStillCleansUp()

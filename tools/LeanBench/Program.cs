@@ -418,7 +418,7 @@ public static partial class Program
         List<BatchSample> samples = prepared.Select(p => p.Sample).ToList();
         long replaced = samples.Count(s => !s.ProofVerified);
         foreach (BatchSample sample in samples)
-            if (!sample.ProofVerified) sample.RejectionReason = "Local ingress capacity or pending-wrapper drop";
+            if (!sample.ProofVerified) sample.RejectionReason = "Local ingress, pending-wrapper or scheduler capacity/deadline drop";
             else if (sample.AcceptedUniqueTransactions != sample.TransactionCount) sample.RejectionReason = "Local pool admission decline";
         Rows.Add(Summarize("protocol-preproved", scenario, samples, rate, seconds, duration,
             count * scenario.TransactionsPerBatch, count, replaced * scenario.TransactionsPerBatch, replaced,
@@ -482,7 +482,6 @@ public static partial class Program
         double offeredDuration, double duration, long offeredTransactions, long offeredObjects, long droppedTransactions, long droppedObjects, double cpu, double preparationSeconds = 0, double actualSendDuration = 0)
     {
         double[] latency = samples.Where(s => kind != "protocol-preproved" || s.AcceptedUniqueTransactions > 0).Select(s => s.LatencyMs).Order().ToArray();
-        double Percentile(double percentile) => latency.Length == 0 ? 0 : latency[(int)Math.Ceiling(latency.Length * percentile) - 1];
         return new()
         {
             Kind = kind,
@@ -510,8 +509,8 @@ public static partial class Program
             WireBytes = samples.Sum(s => (long)s.WireBytes),
             ProofBytesMean = samples.Count == 0 ? 0 : samples.Average(s => s.ProofBytes),
             WrapperBytesMean = samples.Count == 0 ? 0 : samples.Average(s => s.WrapperBytes),
-            P50LatencyMs = Percentile(.50),
-            P95LatencyMs = Percentile(.95),
+            P50LatencyMs = NearestRank(latency, .50),
+            P95LatencyMs = NearestRank(latency, .95),
             ProveWallMs = samples.Sum(s => s.ProveWallMs),
             VerifyWallMs = samples.Sum(s => s.VerifyWallMs),
             EncodeWallMs = samples.Sum(s => s.EncodeWallMs),
@@ -524,6 +523,9 @@ public static partial class Program
             RejectionReasons = samples.Where(s => s.RejectionReason is not null).GroupBy(s => s.RejectionReason!).ToDictionary(g => g.Key, g => g.Count())
         };
     }
+
+    private static double NearestRank(double[] ordered, double percentile)
+        => ordered.Length == 0 ? 0 : ordered[(int)Math.Ceiling(ordered.Length * percentile) - 1];
 
     private static async Task WaitUntil(long timestamp, CancellationToken token)
     {

@@ -122,22 +122,24 @@ public static partial class Program
                 await controls;
                 while (transport.Controls.Length < offered - controlDrops)
                 {
+                    transport.ThrowIfReceiveFailed();
                     if (transport.WriteDrops != 0) throw new IOException("Paced TCP queue overflow; run is incomplete");
                     await Task.Delay(1, timeout.Token);
                 }
+                transport.ThrowIfReceiveFailed();
                 double seconds = Stopwatch.GetElapsedTime(started).TotalSeconds;
                 ControlSample[] delivered = transport.Controls;
                 double[] latencies = delivered.Select(s => s.LatencyMs).Order().ToArray();
-                double Percentile(double p) => latencies.Length == 0 ? 0 : latencies[(int)Math.Ceiling(p * latencies.Length) - 1];
                 MixedRow row = new("mixed-traffic", payload.Name, payload.Bytes.Length, chunk, repetitions,
                     wireMbps, probeMs, seconds, objectSeconds, (long)payload.Bytes.Length * repetitions, transport.WireBytes,
                     payload.Bytes.Length * repetitions * 8.0 / objectSeconds / 1_000_000,
-                    Percentile(.5), Percentile(.95), latencies.Length == 0 ? 0 : latencies[^1], offered,
+                    NearestRank(latencies, .5), NearestRank(latencies, .95), latencies.Length == 0 ? 0 : latencies[^1], offered,
                     delivered.Length, controlDrops, transport.WriteDrops, MeasuredVerifier.CpuMilliseconds() - cpu,
                     payload.Claims, payload.ProofBytes, payload.ProveMs, payload.VerifyMs);
                 rows.Add(row);
                 samples.Add(new { payload.Name, chunkBytes = chunk, objects, controls = delivered });
                 Console.WriteLine($"Mixed {payload.Name} chunk {chunk / 1024}KiB: {row.GoodputMbps:F2}Mbit/s control p95 {row.ControlP95Ms:F2}ms max {row.ControlMaxMs:F2}ms drops {row.ControlDrops}/{row.WriteDrops}");
+                transport.ThrowIfReceiveFailed();
                 Save();
             }
         void Save()
