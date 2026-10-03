@@ -10,7 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 
 namespace Nethermind.Tools.LeanBench;
 

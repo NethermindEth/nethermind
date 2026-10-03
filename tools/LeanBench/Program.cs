@@ -9,7 +9,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Channels;
 using Autofac;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;

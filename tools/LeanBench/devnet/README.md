@@ -75,5 +75,5 @@ Open `http://127.0.0.1:19480/` on that host, or `http://<runner-host>:19480/` wh
 Offline helper checks:
 
 ```sh
-python3 tools/LeanBench/devnet/test_devnet.py
+python3 -m unittest discover -s tools/LeanBench/devnet -p 'test_*.py'
 ```

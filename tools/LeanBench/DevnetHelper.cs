@@ -3,7 +3,7 @@
 
 using System.Globalization;
 using System.Text.Json;
-using Nethermind.Consensus.Eip8288;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

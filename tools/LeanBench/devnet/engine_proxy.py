@@ -16,6 +16,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+SOCKET_TIMEOUT = 65
 MAX_PROOF = 8 * 1024 * 1024
 MAX_BODY = 32 * 1024 * 1024
 MAX_CACHE_BYTES = 64 * 1024 * 1024
@@ -174,6 +175,56 @@ def handle(request, endpoint, authorization, cache, send=forward):
     return result
 
 
+def handler(endpoint, secret, cache, capacity):
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.connection.settimeout(SOCKET_TIMEOUT)
+            request_id = None
+            leased = False
+            try:
+                try:
+                    authorization = self.headers.get("Authorization", "")
+                    if len(authorization) > 4096 or not authenticate(authorization, secret):
+                        self.send_error(401)
+                        return
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if not 0 < length <= MAX_BODY or self.headers.get("Transfer-Encoding"):
+                        self.send_error(413)
+                        return
+                    if not capacity.acquire(blocking=False):
+                        self.send_error(503, "Proxy at bounded capacity")
+                        return
+                    leased = True
+                    body = self.rfile.read(length)
+                    if len(body) != length:
+                        raise ProxyError("Incomplete request body")
+                    request = json.loads(body)
+                    if isinstance(request, dict):
+                        request_id = request.get("id")
+                    response = handle(request, endpoint, authorization, cache)
+                    encoded = json.dumps(response, separators=(",", ":")).encode()
+                except (ProxyError, ValueError, OSError, urllib.error.URLError) as error:
+                    message = str(error) if isinstance(error, ProxyError) else "Engine proxy request failed"
+                    print(json.dumps({"event": "proxy_error", "error": message}), flush=True)
+                    encoded = json.dumps({"jsonrpc": "2.0", "id": request_id,
+                        "error": {"code": -32000, "message": message}}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(encoded)))
+                self.end_headers()
+                self.wfile.write(encoded)
+            except OSError:
+                print(json.dumps({"event": "proxy_error", "error": "Engine proxy response failed"}), flush=True)
+            finally:
+                # Response objects and encoded bytes remain owned until the bounded socket write finishes.
+                if leased:
+                    capacity.release()
+
+        def log_message(self, *_):
+            pass
+    return Handler
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jwt", type=Path, required=True)
@@ -194,54 +245,11 @@ def main():
     cache = ProofCache(args.cache)
     capacity = threading.BoundedSemaphore(2)
 
-    def handler(endpoint):
-        class Handler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                self.connection.settimeout(65)
-                request_id = None
-                try:
-                    authorization = self.headers.get("Authorization", "")
-                    if len(authorization) > 4096 or not authenticate(authorization, secret):
-                        self.send_error(401)
-                        return
-                    length = int(self.headers.get("Content-Length", "0"))
-                    if not 0 < length <= MAX_BODY or self.headers.get("Transfer-Encoding"):
-                        self.send_error(413)
-                        return
-                    if not capacity.acquire(blocking=False):
-                        self.send_error(503, "Proxy at bounded capacity")
-                        return
-                    try:
-                        body = self.rfile.read(length)
-                        if len(body) != length:
-                            raise ProxyError("Incomplete request body")
-                        request = json.loads(body)
-                        if isinstance(request, dict):
-                            request_id = request.get("id")
-                        response = handle(request, endpoint, authorization, cache)
-                    finally:
-                        capacity.release()
-                    encoded = json.dumps(response, separators=(",", ":")).encode()
-                except (ProxyError, ValueError, OSError, urllib.error.URLError) as error:
-                    message = str(error) if isinstance(error, ProxyError) else "Engine proxy request failed"
-                    print(json.dumps({"event": "proxy_error", "error": message}), flush=True)
-                    encoded = json.dumps({"jsonrpc": "2.0", "id": request_id,
-                        "error": {"code": -32000, "message": message}}).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(encoded)))
-                self.end_headers()
-                self.wfile.write(encoded)
-
-            def log_message(self, *_):
-                pass
-        return Handler
-
     endpoints = (args.upstream_url1 or f"http://127.0.0.1:{args.upstream1}",
         args.upstream_url2 or f"http://127.0.0.1:{args.upstream2}")
     if any(not endpoint.startswith("http://") for endpoint in endpoints):
         parser.error("Upstream endpoints must use HTTP on the private devnet network")
-    servers = [ThreadingHTTPServer((args.bind, listen), handler(endpoint))
+    servers = [ThreadingHTTPServer((args.bind, listen), handler(endpoint, secret, cache, capacity))
         for listen, endpoint in zip((args.listen1, args.listen2), endpoints)]
     threads = [threading.Thread(target=server.serve_forever, daemon=True) for server in servers]
     for thread in threads:
