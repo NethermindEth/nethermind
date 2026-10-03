@@ -183,8 +183,11 @@ Managed proving folds at most four direct witnesses or two recursive children pe
 4 MiB is the direct-leaf batching target, not a block-wide witness limit. Native inputs are bounded
 to 18 MiB, output proofs to 8 MiB, and selected plus discarded coverage to 4096 dependencies.
 
-Required witness storage is bounded to 64 MiB / 32768 records, allowing record slots for the
-default 2048-transaction pool with 16 independent signatures each. Each direct dependency has its own
+Required witness storage is bounded to 64 MiB / 32768 records. The record ceiling does not
+guarantee coverage for a full transaction pool: the byte bound fits about 10.6k distinct
+6208-byte SPHINCS witnesses plus their 96-byte dependency records, about 665 transactions
+with 16 distinct witnesses each. Shared dependencies and larger proofs change that capacity.
+Each direct dependency has its own
 record, so rejected entries release their reserved witnesses. Recursive proofs are indivisible:
 the complete proof and declared dependency metadata count toward both the global bound and a
 12 MiB / 256-record pinned quota per sender. Shared records count once per sender. Admission reserves
@@ -205,7 +208,10 @@ proof gossip use the same verification, pool insertion and witness-retention rul
 
 When the prototype fork is active at the node's head, it advertises only `lean/1`
 alongside normal Ethereum capabilities. This unpublished prototype uses application chunks
-as its initial wire format; no whole-object fallback is registered. The existing protocol registry
+as its current wire format; no whole-object fallback is registered. Earlier unpublished
+whole-wrapper `lean/1` nodes are incompatible and devnets must upgrade together. The same
+capability version is retained deliberately; mixed revisions must not exchange this transport.
+The existing protocol registry
 shares negotiation and shutdown with Ethereum handlers, using the Consensus proof
 admission service and background scheduler.
 
@@ -265,7 +271,9 @@ remains uninterruptible; shutdown cancels peer work and joins the worker.
 
 During channel backpressure, the shared sender retains up to 64 non-bulk messages
 within 12 MiB and drains them before bulk writes; exceeding the control queue closes the
-channel explicitly. Control codecs run independently of bulk serialization, preserving their
+entire RLPx session, including its ETH and SNAP protocols, rather than silently dropping
+control responses. This policy applies to sessions with Lean bulk transport enabled.
+Control codecs run independently of bulk serialization, preserving their
 synchronous message ownership. Control responses wait for the current
 chunk's compressed frame to drain. The RLPx merger still accepts one fragmented context
 at a time; application chunks are complete independent messages rather than interleaved

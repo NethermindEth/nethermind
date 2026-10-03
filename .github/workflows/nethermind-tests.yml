@@ -62,7 +62,32 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             git fetch --no-tags --depth=1 origin "$BASE_SHA"
             git diff --name-only "$BASE_SHA" HEAD > "$RUNNER_TEMP/lean-changed-paths"
-            if ! grep -qE '^(tools/lean-ffi/|src/Nethermind/(Nethermind\.(Core|Crypto|Consensus|Blockchain|Evm|TxPool|Network|Synchronization|Init|Specs|Merge|State|Trie|Serialization|Runner|Stateless)([./])|tests\.props)|build/|global\.json$|\.gitmodules$|\.github/(workflows/nethermind-tests\.yml|actions/fetch-submodules/))|(^|/)(Directory\.(Build|Packages)\.(props|targets)|[Nn]u[Gg]et\.[Cc]onfig)$' "$RUNNER_TEMP/lean-changed-paths"; then
+            # Lean/Frame changes and shared paths exercised by the live native fixtures.
+            # Other projects remain covered by the ordinary build/test matrix.
+            cat > "$RUNNER_TEMP/lean-native-patterns" <<'PATHS'
+          ^tools/lean-ffi/
+          ^src/Nethermind/Nethermind\.Crypto\.LeanFfi\.Test/
+          ^src/Nethermind/.*(/|^)([^/]*Eip8288[^/]*|I?Lean[^/]*|NativeLean[^/]*|[^/]*FrameTx[^/]*)(/|\.cs$)
+          ^src/Nethermind/Nethermind\.Core/(Block(Header|Body)?|Transaction[^/]*|TxFrame|FrameMode|FrameFlags|PayloadAttributes|RecursiveStark)\.cs$
+          ^src/Nethermind/Nethermind\.Core/(Crypto/(AggregationInput|Keccak|ValueHash256)|Specs/IReleaseSpec)\.cs$
+          ^src/Nethermind/Nethermind\.Crypto/(NativeLeanProofVerifier|Keccak|EthereumEcdsa)\.cs$
+          ^src/Nethermind/Nethermind\.Consensus/(Processing|Producers|Transactions|Validators|Scheduler)/
+          ^src/Nethermind/Nethermind\.Consensus/(Decoders/InclusionListDecoder|Stateless/StatelessExecutor)\.cs$
+          ^src/Nethermind/Nethermind\.Evm/(TransactionProcessing/|VirtualMachine[^/]*\.cs$|VmState[^/]*\.cs$)
+          ^src/Nethermind/Nethermind\.TxPool/(Filters/|Collections/|TxPool[^/]*\.cs$|TxFilteringState\.cs$|PendingTransactionsView\.cs$|.*PrefixSimulator.*\.cs$)
+          ^src/Nethermind/Nethermind\.Blockchain/(BlockTree[^/]*|BlockStore|HeaderStore)\.cs$
+          ^src/Nethermind/Nethermind\.Network/(Rlpx/|P2P/(PacketSender|Session|ILeanBulkSession|ProtocolManager)\.cs$|P2P/ProtocolHandlers/|P2P/Subprotocols/(ProtocolValidator|Capability)\.cs$|ProtocolsManager\.cs$)
+          ^src/Nethermind/Nethermind\.Serialization\.Rlp/(Block[^/]*Decoder|HeaderDecoder|Tx[^/]*Decoder|Rlp[^/]*|ValueDecoderContext|RlpStream)\.cs$
+          ^src/Nethermind/Nethermind\.Serialization\.Rlp/TxDecoders/
+          ^src/Nethermind/Nethermind\.Specs/(ReleaseSpec\.cs$|SpecProvider\.cs$|ChainSpecStyle/)
+          ^src/Nethermind/Nethermind\.Init/(Modules/(Nethermind|Network|BlockProcessing|BlockTree|BuiltInSteps)Module|Steps/InitializeLeanBackend)\.cs$
+          ^src/Nethermind/Nethermind\.Core\.Test/(Blockchain/|Modules/|Builders/(FrameTxTestFrames|TransactionBuilder)\.cs$)
+          ^src/Nethermind/Nethermind\.Merge\.Plugin/(Handlers/(NewPayload|ForkchoiceUpdated|GetPayload)|Data/ExecutionPayload|.*InclusionList)
+          ^src/Nethermind/.*\.(csproj|props|targets)$
+          ^(build/|global\.json$|\.gitmodules$|\.github/(workflows/(nethermind-tests|build-test-artifacts)\.yml|actions/fetch-submodules/))
+          (^|/)(Directory\.(Build|Packages)\.(props|targets)|[Nn]u[Gg]et\.[Cc]onfig)$
+          PATHS
+            if ! grep -qEf "$RUNNER_TEMP/lean-native-patterns" "$RUNNER_TEMP/lean-changed-paths"; then
               relevant=false
             fi
           fi

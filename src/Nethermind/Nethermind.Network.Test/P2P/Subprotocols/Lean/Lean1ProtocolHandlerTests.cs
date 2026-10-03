@@ -133,8 +133,10 @@ public class Lean1ProtocolHandlerTests
         context.Handshake();
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(TestItem.KeccakB)], Deps = [],
-            Mode = MempoolWrapper.ModeDirect, Proofs = []
+            Transactions = [new WrapperTransaction(TestItem.KeccakB)],
+            Deps = [],
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = []
         }).Bytes;
         context.Receive(new LeanProofChunkMessage(ValueKeccak.Compute(wrapper), wrapper.Length, 0, 1,
             LeanProofChunkMessage.DefaultChunkSize, wrapper), new LeanProofChunkMessageSerializer());
