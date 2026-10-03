@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Container;
 using Nethermind.Core.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -46,6 +47,39 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
+    [Test]
+    public async Task Forkchoice_preserves_a_valid_head_when_the_producer_cannot_start_a_payload()
+    {
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(),
+                Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Block?>(null));
+        IBlockImprovementContextFactory factory = Substitute.For<IBlockImprovementContextFactory>();
+        using PayloadPreparationService service = new(producer, Substitute.For<ITxPool>(), factory,
+            Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimeSpan.FromSeconds(12));
+        using MergeTestBlockchain chain = await CreateBlockchain(mockedPayloadService: service);
+        Hash256 head = chain.BlockTree.HeadHash!;
+        ForkchoiceStateV1 forkchoice = new(head, Keccak.Zero, head);
+        PayloadAttributes attributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 12,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero
+        };
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(forkchoice, attributes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.PayloadStatus.LatestValidHash, Is.EqualTo(head));
+            Assert.That(result.Data.PayloadId, Is.Null);
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(head));
+        }
+        factory.DidNotReceiveWithAnyArgs().StartBlockImprovementContext(default!, default!, default!, default, default, default!);
+    }
+
     [Test]
     public async Task getPayloadV1_should_allow_asking_multiple_times_by_same_payload_id()
     {

@@ -609,6 +609,13 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     if input.len() > MAX_INPUT_BYTES {
         return Err(());
     }
+    if input == [0; 12] {
+        return if *hash == commitment(&[]) {
+            Ok([MAGIC.as_slice(), &[0; 12]].concat())
+        } else {
+            Err(())
+        };
+    }
     let _guard = PROVER
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -934,6 +941,37 @@ pub fn prove_stark(source: &str, hash: &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]),
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn exact_empty_proof_bypasses_an_occupied_prover() {
+        let hash = commitment(&[]);
+        let guard = PROVER
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (send, receive) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let valid = prove_aggregate(&hash, &[0; 12]);
+            let mut wrong_hash = hash;
+            wrong_hash[0] ^= 1;
+            let invalid = prove_aggregate(&wrong_hash, &[0; 12]);
+            send.send((valid, invalid)).unwrap();
+        });
+        let result = receive.recv_timeout(std::time::Duration::from_secs(3));
+        // Release before joining even if the fast path regresses to taking the lock.
+        drop(guard);
+        worker.join().unwrap();
+        let (proof, invalid) = result.expect("empty proof must not wait for the prover");
+        let proof = proof.unwrap();
+        assert_eq!(proof, [MAGIC.as_slice(), &[0; 12]].concat());
+        assert!(decode_aggregate_with_hash(&proof, Some(&hash)).is_ok());
+        assert!(invalid.is_err());
+        let mut wrong_hash = hash;
+        wrong_hash[0] ^= 1;
+        assert!(decode_aggregate_with_hash(&proof, Some(&wrong_hash)).is_err());
+        for malformed in [&[0; 11][..], &[0; 13][..]] {
+            assert!(prove_aggregate(&hash, malformed).is_err());
+        }
+    }
+
     #[test]
     fn public_input_packing_preserves_every_bit() {
         for bit in 0..256 {

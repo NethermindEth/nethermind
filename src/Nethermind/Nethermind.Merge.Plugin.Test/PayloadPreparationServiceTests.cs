@@ -34,6 +34,43 @@ public class PayloadPreparationServiceTests
     };
 
     [Test]
+    public async Task A_busy_producer_starts_no_payload_and_allows_retry([Values] bool trace)
+    {
+        Block emptyBlock = Build.A.Block.TestObject;
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(),
+                Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Block?>(null), Task.FromResult<Block?>(emptyBlock));
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        logger.IsTrace.Returns(trace);
+        OneLoggerLogManager logManager = new(new ILogger(logger));
+        RecordingBlockImprovementContextFactory factory = new();
+        using TestPayloadPreparationService service = CreateService(factory, producer, logManager);
+        string expectedPayloadId = Attributes.GetPayloadId(ParentHeader);
+
+        string? busyPayloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(busyPayloadId, Is.Null);
+            Assert.That(factory.Contexts, Is.Empty);
+            Assert.That(service.Stored(expectedPayloadId), Is.Null);
+            Assert.That(await service.GetPayload(expectedPayloadId), Is.Null);
+        }
+
+        string? retriedPayloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        IBlockProductionContext? payload = await service.GetPayload(expectedPayloadId);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retriedPayloadId, Is.EqualTo(expectedPayloadId));
+            Assert.That(payload?.CurrentBestBlock, Is.SameAs(emptyBlock));
+            Assert.That(factory.Contexts, Is.Not.Empty);
+        }
+        await producer.Received(2).BuildBlock(ParentHeader, payloadAttributes: Attributes,
+            flags: IBlockProducer.Flags.PrepareEmptyBlock);
+    }
+
+    [Test]
     [CancelAfter(30000)]
     public void GetPayload_disposes_the_replacement_published_after_it_cancelled()
     {
@@ -192,12 +229,16 @@ public class PayloadPreparationServiceTests
     private static void Retrieve(PayloadPreparationService service, string payloadId) =>
         service.GetPayload(payloadId).AsTask().GetAwaiter().GetResult();
 
-    private static TestPayloadPreparationService CreateService(IBlockImprovementContextFactory factory)
+    private static TestPayloadPreparationService CreateService(IBlockImprovementContextFactory factory,
+        IBlockProducer? producer = null, ILogManager? logManager = null)
     {
-        IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
-        blockProducer
-            .BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<Block?>(Build.A.Block.TestObject));
+        IBlockProducer blockProducer = producer ?? Substitute.For<IBlockProducer>();
+        if (producer is null)
+        {
+            blockProducer
+                .BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<Block?>(Build.A.Block.TestObject));
+        }
 
         ITxPool txPool = Substitute.For<ITxPool>();
         // The improvement loop only rebuilds once new transactions have arrived.
@@ -208,7 +249,7 @@ public class PayloadPreparationServiceTests
             txPool,
             factory,
             Substitute.For<ITimerFactory>(),
-            LimboLogs.Instance,
+            logManager ?? LimboLogs.Instance,
             TimePerSlot,
             TimeSpan.FromMilliseconds(1));
     }
