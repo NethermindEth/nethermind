@@ -2848,17 +2848,7 @@ jobs:
 
       - name: Require an idle benchmark environment
         shell: bash
-        run: |
-          set -euo pipefail
-          for filter in name=expb label=expb name=rpcbench- name=nethermind-rpcbench name=ethcallchaos-bench name=jsonbench-; do
-            remaining="$(docker ps -aq --filter "${filter}")"
-            [[ -z "${remaining}" ]] || { echo 'Existing benchmark containers: preserve ownership and stop this diagnostic'; exit 1; }
-          done
-          mounts="$(findmnt -rn -t overlay -o TARGET || true)"
-          if printf '%s\n' "${mounts}" | grep -Eq '/expb-data/work/|/expb-overlay/'; then
-            echo 'Existing benchmark overlay mount: preserve ownership and stop this diagnostic'
-            exit 1
-          fi
+        run: python3 "${GITHUB_WORKSPACE}/scripts/expb/require_idle.py"
 
       - name: Check benchmark disk space
         shell: bash
