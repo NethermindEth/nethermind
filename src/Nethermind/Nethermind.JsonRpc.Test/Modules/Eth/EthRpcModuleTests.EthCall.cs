@@ -26,11 +26,13 @@ using Nethermind.Specs.Test;
 using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Newtonsoft.Json.Linq;
 using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 using Nethermind.Abi;
 using Nethermind.Core.Messages;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -691,6 +693,52 @@ public partial class EthRpcModuleTests
             Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
             Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
         }
+    }
+
+    [Test]
+    public async Task Eth_call_with_repeated_override_code_text_returns_what_freshly_decoded_code_returns()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        const string contract = "0xc200000000000000000000000000000000000000";
+        const string other = "0xc300000000000000000000000000000000000000";
+        // Each contract returns its own code. The bytes after RETURN make the text unique to the run, and the
+        // second contract gets the same bytes in upper case, a different text.
+        byte[] code = [.. Prepare.EvmCode.Op(Instruction.CODESIZE).PushData(0).PushData(0).Op(Instruction.CODECOPY)
+            .Op(Instruction.CODESIZE).PushData(0).Op(Instruction.RETURN).Done, .. Guid.NewGuid().ToByteArray()];
+        string text = code.ToHexString(true);
+        string upperText = "0x" + text[2..].ToUpperInvariant();
+        string stateOverrideJson = $$$"""{"{{{contract}}}":{"code":"{{{text}}}"},"{{{other}}}":{"code":"{{{upperText}}}"}}""";
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+
+        foreach (string to in new[] { contract, other })
+        {
+            string transactionJson = $$"""{"from":"{{TestItem.AddressA}}","to":"{{to}}"}""";
+            object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+
+            // The first request marks the text as seen, the second shares its array, the third reads the shared one.
+            List<string> viaJson = [];
+            for (int i = 0; i < 3; i++) viaJson.Add(await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride));
+
+            SignableTransactionForRpc call = JsonSerializer.Deserialize<SignableTransactionForRpc>(transactionJson, EthereumJsonSerializer.JsonRpcRequestOptions)!;
+            Dictionary<Address, AccountOverride> freshlyDecoded = new()
+            {
+                [new Address(contract)] = new() { Code = Bytes.FromHexString(text) },
+                [new Address(other)] = new() { Code = Bytes.FromHexString(text) },
+            };
+            ResultWrapper<HexBytes> direct = ctx.Test.EthRpcModule.eth_call(call, BlockParameter.Latest, freshlyDecoded);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(viaJson, Has.All.EqualTo($$"""{"jsonrpc":"2.0","result":"{{text}}","id":67}"""), to);
+                Assert.That(direct.Result.ResultType, Is.EqualTo(ResultType.Success), to);
+                Assert.That(direct.Data.Bytes.ToArray(), Is.EqualTo(code), to);
+            }
+        }
+
+        // Shared by the requests above: reading the text again gets one array.
+        Dictionary<Address, AccountOverride>? again = JsonSerializer.Deserialize<Dictionary<Address, AccountOverride>>(stateOverrideJson, EthereumJsonSerializer.JsonRpcRequestOptions);
+        Dictionary<Address, AccountOverride>? andAgain = JsonSerializer.Deserialize<Dictionary<Address, AccountOverride>>(stateOverrideJson, EthereumJsonSerializer.JsonRpcRequestOptions);
+        Assert.That(andAgain![new Address(contract)].Code, Is.SameAs(again![new Address(contract)].Code));
     }
 
     [Test]
