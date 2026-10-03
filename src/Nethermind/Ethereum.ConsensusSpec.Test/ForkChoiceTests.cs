@@ -162,27 +162,12 @@ public class ForkChoiceTests
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
-    private static IEnumerable<TestCaseData> MainnetCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled)
-            yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet))
-            yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
-    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
-    {
-        string? forkChoiceRoot = ConsensusSpecArchive.SuitePath(preset, "fulu", "fork_choice");
-        if (forkChoiceRoot is null)
-            yield break;
-
-        foreach (string caseDir in ConsensusSpecArchive.LeafDirs(forkChoiceRoot, "manifest.yaml"))
-        {
-            string vectorName = $"{preset}/fulu/fork_choice/{Path.GetRelativePath(forkChoiceRoot, caseDir).Replace('\\', '/')}";
-            ForkChoiceCase testCase = new(preset.ToString(), caseDir, vectorName);
-            yield return new TestCaseData(testCase).SetName(vectorName);
-        }
-    }
+    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset) =>
+        FuluDriverSupport.RelativeCases(preset, ["fulu"], "fork_choice", "manifest.yaml",
+            static (p, fork, path, name) => new ForkChoiceCase(p.ToString(), path, name));
 }
 
 public readonly record struct ForkChoiceCase(string Preset, string CasePath, string VectorName)

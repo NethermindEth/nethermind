@@ -135,25 +135,12 @@ public class TransitionTests
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
-    private static IEnumerable<TestCaseData> MainnetCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled) yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet)) yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
-    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
-    {
-        foreach (string fork in ConsensusSpecArchive.TransitionForks)
-        {
-            string? transitionRoot = ConsensusSpecArchive.SuitePath(preset, fork, "transition");
-            foreach (string caseDir in ConsensusSpecArchive.LeafDirs(transitionRoot, "meta.yaml"))
-            {
-                string vectorName = $"{preset}/{fork}/transition/{Path.GetRelativePath(transitionRoot!, caseDir).Replace('\\', '/')}";
-                TransitionCase testCase = new(preset.ToString(), fork, caseDir, vectorName);
-                yield return new TestCaseData(testCase).SetName(vectorName);
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset) =>
+        FuluDriverSupport.RelativeCases(preset, ConsensusSpecArchive.TransitionForks, "transition", "meta.yaml",
+            static (p, fork, path, name) => new TransitionCase(p.ToString(), fork, path, name));
 }
 
 public readonly record struct TransitionCase(string Preset, string Fork, string CasePath, string VectorName)

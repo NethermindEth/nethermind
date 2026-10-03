@@ -167,35 +167,15 @@ public class SanityTests
     private static IEnumerable<TestCaseData> MinimalBlockCases() => Cases(ConsensusPreset.Minimal, BlocksSubSuite, "meta.yaml");
     private static IEnumerable<TestCaseData> MinimalSlotCases() => Cases(ConsensusPreset.Minimal, SlotsSubSuite, "slots.yaml");
 
-    private static IEnumerable<TestCaseData> MainnetBlockCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled) yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet, BlocksSubSuite, "meta.yaml")) yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetBlockCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet, BlocksSubSuite, "meta.yaml") : [];
 
-    private static IEnumerable<TestCaseData> MainnetSlotCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled) yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet, SlotsSubSuite, "slots.yaml")) yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetSlotCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet, SlotsSubSuite, "slots.yaml") : [];
 
-    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset, string subSuite, string marker)
-    {
-        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-        {
-            string? sanityRoot = ConsensusSpecArchive.SuitePath(preset, fork, "sanity");
-            if (sanityRoot is null)
-                continue;
-
-            string subDir = Path.Combine(sanityRoot, subSuite);
-            foreach (string caseDir in ConsensusSpecArchive.LeafDirs(subDir, marker))
-            {
-                string vectorName = $"{preset}/{fork}/sanity/{subSuite}/{Path.GetFileName(caseDir)}";
-                SanityCase testCase = new(preset.ToString(), fork, caseDir, vectorName);
-                yield return new TestCaseData(testCase).SetName(vectorName);
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset, string subSuite, string marker) =>
+        FuluDriverSupport.HandlerCases(preset, ConsensusSpecArchive.StateTransitionForks, "sanity", marker,
+            static (p, fork, _, path, name) => new SanityCase(p.ToString(), fork, path, name), [subSuite]);
 }
 
 public readonly record struct SanityCase(string Preset, string Fork, string CasePath, string VectorName)

@@ -147,29 +147,12 @@ public class RewardsTests
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
-    private static IEnumerable<TestCaseData> MainnetCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled)
-            yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet))
-            yield return data;
-    }
+    private static IEnumerable<TestCaseData> MainnetCases() =>
+        ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
-    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
-    {
-        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-        {
-            foreach (string handlerDir in ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, fork, "rewards")))
-            {
-                string handler = Path.GetFileName(handlerDir);
-                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(handlerDir, "pre.ssz_snappy"))
-                {
-                    string vectorName = $"{preset}/{fork}/rewards/{handler}/{Path.GetFileName(caseDir)}";
-                    yield return new TestCaseData(new RewardsCase(preset.ToString(), fork, handler, caseDir, vectorName)).SetName(vectorName);
-                }
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset) =>
+        FuluDriverSupport.HandlerCases(preset, ConsensusSpecArchive.StateTransitionForks, "rewards", "pre.ssz_snappy",
+            static (p, fork, handler, path, name) => new RewardsCase(p.ToString(), fork, handler, path, name));
 }
 
 public readonly record struct RewardsCase(string Preset, string Fork, string Handler, string CasePath, string VectorName)
