@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,7 +51,7 @@ public partial class EngineModuleTests
             Assert.That(fcuResult.Data.PayloadId, Is.Not.Null);
         }
 
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcuResult.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcuResult.Data.PayloadId!));
         Assert.That(payloadResult.Data, Is.Not.Null);
         ExecutionPayloadV4 executionPayload = payloadResult.Data!.ExecutionPayload;
         Assert.That(executionPayload.Transactions, Is.Empty);
@@ -60,7 +61,7 @@ public partial class EngineModuleTests
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
-            inclusionListTransactions: []);
+            inclusionListTransactions: [], inclusionListMembership: Membership([]));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(newPayload.Result.ResultType, Is.EqualTo(ResultType.Success), newPayload.Result.Error);
@@ -93,7 +94,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(build.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
 
         // Deliver the empty block with a censoring IL → newPayloadV6 retains inclusionListSatisfied=false.
@@ -101,7 +102,7 @@ public partial class EngineModuleTests
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         ResultWrapper<PayloadStatusV2> np = await rpc.engine_newPayloadV6(
-            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [Rlp.Encode(censoredTx).Bytes]);
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [Rlp.Encode(censoredTx).Bytes], inclusionListMembership: Membership([Rlp.Encode(censoredTx).Bytes]));
         Assert.That(np.Data.InclusionListSatisfied, Is.False);
 
         // FCU V5 to that VALID head reports the retained compliance.
@@ -126,7 +127,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> baselineFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> baselinePayload = await rpc.engine_getPayloadV6(Bytes.FromHexString(baselineFcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> baselinePayload = await rpc.engine_getPayloadV7(Bytes.FromHexString(baselineFcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = baselinePayload.Data!.ExecutionPayload;
 
         // Censored tx: a normal transfer that fits in the empty payload → IL unsatisfied.
@@ -145,7 +146,7 @@ public partial class EngineModuleTests
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: baselinePayload.Data!.ExecutionRequests,
-            inclusionListTransactions: inclusionList);
+            inclusionListTransactions: inclusionList, inclusionListMembership: Membership(inclusionList));
 
         // execution-apis#609: a censoring payload stays VALID and reports inclusionListSatisfied=false.
         using (Assert.EnterMultipleScope())
@@ -168,7 +169,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
         byte[][] censoringList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
 
@@ -177,7 +178,7 @@ public partial class EngineModuleTests
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
-            inclusionListTransactions: censoringListLast ? [] : censoringList);
+            inclusionListTransactions: censoringListLast ? [] : censoringList, inclusionListMembership: Membership(censoringListLast ? [] : censoringList));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -190,7 +191,7 @@ public partial class EngineModuleTests
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
-            inclusionListTransactions: censoringListLast ? censoringList : []);
+            inclusionListTransactions: censoringListLast ? censoringList : [], inclusionListMembership: Membership(censoringListLast ? censoringList : []));
         ResultWrapper<ForkchoiceUpdatedV2Result> toBlock = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(emptyPayload.BlockHash, startingHead, startingHead), payloadAttributes: null);
         using (Assert.EnterMultipleScope())
@@ -212,7 +213,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
 
         // The flattened aggregate can exceed the per-member cap; newPayloadV6 must not reject it.
         byte[] member = new byte[Eip7805Constants.MaxBytesPerInclusionList * 3 / 4];
@@ -221,7 +222,7 @@ public partial class EngineModuleTests
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
-            inclusionListTransactions: [member, member]);
+            inclusionListTransactions: [member, member], inclusionListMembership: Membership([member, member]));
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
     }
@@ -236,13 +237,13 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
 
         byte[][] aggregate = new byte[Eip7805Constants.MaxAggregateInclusionListBytes / 2][];
         for (int i = 0; i < aggregate.Length; i++) aggregate[i] = [(byte)(i >> 8), (byte)i];
 
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
-            payloadResult.Data!.ExecutionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, aggregate);
+            payloadResult.Data!.ExecutionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, aggregate, inclusionListMembership: Membership(aggregate));
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
     }
@@ -257,30 +258,31 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
 
-        // At the aggregate limit (IL_COMMITTEE_SIZE * MAX_BYTES_PER_INCLUSION_LIST): accepted.
+        // At the aggregate limit (IL_COMMITTEE_SIZE * MAX_BYTES_PER_INCLUSION_LIST), one full list per member: accepted.
+        byte[][] atLimitList = [.. Enumerable.Range(0, Eip7805Constants.InclusionListCommitteeSize).Select(static _ => new byte[Eip7805Constants.MaxBytesPerInclusionList])];
         ResultWrapper<PayloadStatusV2> atLimit = await rpc.engine_newPayloadV6(
-            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests,
-            [new byte[Eip7805Constants.MaxAggregateInclusionListBytes]]);
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, atLimitList, inclusionListMembership: Membership(atLimitList));
         Assert.That(atLimit.Result.ResultType, Is.EqualTo(ResultType.Success), atLimit.Result.Error);
 
-        // One byte over the limit: rejected before decode.
+        // One byte over: some member's list must overrun its cap, so it is rejected before decode.
+        byte[][] overLimitList = [.. atLimitList.SkipLast(1), new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]];
         ResultWrapper<PayloadStatusV2> overLimit = await rpc.engine_newPayloadV6(
-            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests,
-            [new byte[Eip7805Constants.MaxAggregateInclusionListBytes + 1]]);
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, overLimitList, inclusionListMembership: Membership(overLimitList));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(overLimit.Result.ResultType, Is.EqualTo(ResultType.Failure));
-            Assert.That(overLimit.Result.Error, Does.Contain("exceeds the maximum aggregate size"));
+            Assert.That(overLimit.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(overLimit.Result.Error, Does.Contain("exceeds the maximum"));
         }
 
         // Entry count is bounded independently of bytes — empty entries cost no bytes but still allocate.
         byte[][] tooManyEmpty = new byte[Eip7805Constants.MaxAggregateInclusionListTransactions + 1][];
         for (int i = 0; i < tooManyEmpty.Length; i++) tooManyEmpty[i] = [];
         ResultWrapper<PayloadStatusV2> tooManyEntries = await rpc.engine_newPayloadV6(
-            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, tooManyEmpty);
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, tooManyEmpty, inclusionListMembership: Membership(tooManyEmpty));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tooManyEntries.Result.ResultType, Is.EqualTo(ResultType.Failure));
@@ -298,7 +300,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
 
         // execution-apis#609: at/after Bogota, engine_newPayloadV5 must be rejected with -38005.
         ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV5(
@@ -322,14 +324,14 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 executionPayload = payloadResult.Data!.ExecutionPayload;
         byte[][]? executionRequests = payloadResult.Data!.ExecutionRequests;
 
         using ResultWrapper<NewPayloadWithWitnessV1Result> v5 = await rpc.engine_newPayloadWithWitnessV5(
             executionPayload, [], Keccak.Zero, executionRequests);
         using ResultWrapper<NewPayloadWithWitnessV1Result> v6 = await rpc.engine_newPayloadWithWitnessV6(
-            executionPayload, [], Keccak.Zero, executionRequests, []);
+            executionPayload, [], Keccak.Zero, executionRequests, [], inclusionListMembership: Membership([]));
 
         using (Assert.EnterMultipleScope())
         {
@@ -355,7 +357,7 @@ public partial class EngineModuleTests
 
         // execution-apis#609: before Bogota, engine_newPayloadV6 must be rejected with -38005.
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
-            payloadResult.Data!.ExecutionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
+            payloadResult.Data!.ExecutionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [], inclusionListMembership: Membership([]));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
@@ -415,7 +417,7 @@ public partial class EngineModuleTests
         }
 
         // Even the producer's EmptyBlock fast path carries the IL, so the first getPayload is populated.
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         Assert.That(payloadResult.Data, Is.Not.Null);
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
         using (Assert.EnterMultipleScope())
@@ -430,7 +432,7 @@ public partial class EngineModuleTests
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: [],
-            inclusionListTransactions: [txBytes]);
+            inclusionListTransactions: [txBytes], inclusionListMembership: Membership([txBytes]));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verify.Result.ResultType, Is.EqualTo(ResultType.Success), verify.Result.Error);
@@ -455,11 +457,11 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: inclusionList));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
 
         ResultWrapper<PayloadStatusV2> first = await rpc.engine_newPayloadV6(
-            payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
+            payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList, inclusionListMembership: Membership(inclusionList));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -473,7 +475,7 @@ public partial class EngineModuleTests
 
         // A cached result can only be reused while the state that established compliance is available.
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
+            payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList, inclusionListMembership: Membership(inclusionList));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(resend.Data.Status, Is.EqualTo(statePruned ? PayloadStatus.Syncing : PayloadStatus.Valid));
@@ -501,7 +503,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: inclusionList));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
 
         // Both IL txs must be produced, in ascending-nonce order.
@@ -670,7 +672,7 @@ public partial class EngineModuleTests
         int processed = 0;
         chain.BranchProcessor.BlockProcessing += (_, _) => Interlocked.Increment(ref processed);
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            first, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
+            first, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes], inclusionListMembership: Membership([Rlp.Encode(censoredTx).Bytes]));
 
         using (Assert.EnterMultipleScope())
         {
@@ -705,10 +707,10 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(genesisHash, Keccak.Zero, Keccak.Zero),
             BuildBogotaPayloadAttributes(inclusionList: [], timestamp: Timestamper.UnixTime.Seconds + 2, slotNumber: 2));
-        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> built = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 block = built.Data!.ExecutionPayload;
         byte[][] requests = built.Data!.ExecutionRequests!;
-        Assert.That((await rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [])).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That((await rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [], inclusionListMembership: Membership([]))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
         await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(block.BlockHash, Keccak.Zero, Keccak.Zero), payloadAttributes: null);
 
         // The Hive shape: the head moves back, the block's state is pruned, and the block is sent again and re-executed.
@@ -722,7 +724,7 @@ public partial class EngineModuleTests
             if (e.BlockHash == block.BlockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
         };
 
-        Assert.That((await rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [])).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That((await rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [], inclusionListMembership: Membership([]))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
         using (Assert.EnterMultipleScope())
         {
             ResultWrapper<ForkchoiceUpdatedV2Result> toBlock = await rpc.engine_forkchoiceUpdatedV5(
@@ -736,7 +738,7 @@ public partial class EngineModuleTests
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         probe.Watch(block.BlockHash);
-        Task<ResultWrapper<PayloadStatusV2>> resent = rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [Rlp.Encode(censoredTx).Bytes]);
+        Task<ResultWrapper<PayloadStatusV2>> resent = rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [Rlp.Encode(censoredTx).Bytes], inclusionListMembership: Membership([Rlp.Encode(censoredTx).Bytes]));
         await Task.WhenAny(probe.WaitEntered.Task, resent, Task.Delay(TimeSpan.FromSeconds(20)));
         bool waitedForCommit = probe.WaitEntered.Task.IsCompleted;
         commit.SetResult();
@@ -779,7 +781,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent.Hash!, Keccak.Zero, parent.Hash!),
             BuildBogotaPayloadAttributes(inclusionList: satisfied ? inclusionList : []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(build.Data.PayloadId!));
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
         Assert.That(payload.Transactions, Has.Length.EqualTo(satisfied ? 1 : 0));
 
@@ -795,7 +797,7 @@ public partial class EngineModuleTests
             else newPayloadHandler.Status = newPayloadStatus;
 
             ResultWrapper<PayloadStatusV2> newPayload = await rpc.engine_newPayloadV6(
-                payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
+                payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList, inclusionListMembership: Membership(inclusionList));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(newPayload.Data.Status, Is.EqualTo(newPayloadStatus));
@@ -912,7 +914,7 @@ public partial class EngineModuleTests
 
         if (parentAnswered)
         {
-            ResultWrapper<PayloadStatusV2> censored = await rpc.engine_newPayloadV6(parent, [], Keccak.Zero, [], inclusionList);
+            ResultWrapper<PayloadStatusV2> censored = await rpc.engine_newPayloadV6(parent, [], Keccak.Zero, [], inclusionList, inclusionListMembership: Membership(inclusionList));
             Assert.That(censored.Data.InclusionListSatisfied, Is.False);
         }
         else
@@ -930,7 +932,7 @@ public partial class EngineModuleTests
         else
         {
             newPayloadHandler.Status = childStatus == PayloadStatus.Accepted ? childStatus : null;
-            ResultWrapper<PayloadStatusV2> childResend = await rpc.engine_newPayloadV6(child, [], Keccak.Zero, [], inclusionList);
+            ResultWrapper<PayloadStatusV2> childResend = await rpc.engine_newPayloadV6(child, [], Keccak.Zero, [], inclusionList, inclusionListMembership: Membership(inclusionList));
             newPayloadHandler.Status = null;
             using (Assert.EnterMultipleScope())
             {
@@ -964,7 +966,7 @@ public partial class EngineModuleTests
         byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
         await RetainInclusionListByPrunedResend(rpc, headState, first, inclusionList);
         await RetainInclusionListByPrunedResend(rpc, headState, second, inclusionList);
-        ResultWrapper<PayloadStatusV2> thirdResend = await rpc.engine_newPayloadV6(third, [], Keccak.Zero, [], []);
+        ResultWrapper<PayloadStatusV2> thirdResend = await rpc.engine_newPayloadV6(third, [], Keccak.Zero, [], [], inclusionListMembership: Membership([]));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1160,7 +1162,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 payload, byte[][] inclusionList)
     {
         headState.PrunedBlock = payload.BlockHash;
-        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, [], inclusionList);
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, [], inclusionList, inclusionListMembership: Membership(inclusionList));
         headState.PrunedBlock = null;
         using (Assert.EnterMultipleScope())
         {
@@ -1302,10 +1304,10 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(chain.BlockTree.HeadHash, Keccak.Zero, chain.BlockTree.HeadHash),
             BuildBogotaPayloadAttributes(firstList, targetGasLimit: gasLimit, timestamp: Timestamper.UnixTime.Seconds + 2, slotNumber: 2));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 first = payloadResult.Data!.ExecutionPayload;
 
-        await rpc.engine_newPayloadV6(first, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, firstList);
+        await rpc.engine_newPayloadV6(first, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, firstList, inclusionListMembership: Membership(firstList));
         await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3, finalize: !resendHead);
 
         Block executed = chain.BlockTree.FindBlock(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
@@ -1346,7 +1348,8 @@ public partial class EngineModuleTests
         accountReader.TrackedBlockHash = first.BlockHash;
 
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            first, [], Keccak.Zero, [], entry == InclusionListEntry.Included ? firstList : [Rlp.Encode(censored).Bytes]);
+            first, [], Keccak.Zero, [], entry == InclusionListEntry.Included ? firstList : [Rlp.Encode(censored).Bytes],
+            inclusionListMembership: Membership(entry == InclusionListEntry.Included ? firstList : [Rlp.Encode(censored).Bytes]));
 
         if (dimensionsLost && resendHead && entry == InclusionListEntry.Boundary)
         {
@@ -1411,10 +1414,10 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent, Keccak.Zero, finalizedHash ?? parent),
             BuildBogotaPayloadAttributes(inclusionList: [], timestamp: Timestamper.UnixTime.Seconds + slot, slotNumber: slot));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
 
-        await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
+        await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [], inclusionListMembership: Membership([]));
         Hash256 checkpoint = finalize ? payload.BlockHash : finalizedHash ?? parent;
         await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(payload.BlockHash, checkpoint, checkpoint), payloadAttributes: null);
@@ -1432,5 +1435,31 @@ public partial class EngineModuleTests
         // V4 attributes require TargetGasLimit.
         TargetGasLimit = targetGasLimit,
         InclusionListTransactions = inclusionList,
+        InclusionListMembership = Membership(inclusionList),
     };
+
+    /// <summary>The membership bogota.md requires beside a list: entries packed into committee positions in order,
+    /// each position filled up to <c>MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST</c> before the next.</summary>
+    [return: NotNullIfNotNull(nameof(inclusionList))]
+    private static byte[][]? Membership(byte[][]? inclusionList)
+    {
+        if (inclusionList is null) return null;
+
+        byte[][] membership = new byte[inclusionList.Length][];
+        int position = 0;
+        long bytes = 0;
+        for (int i = 0; i < membership.Length; i++)
+        {
+            int length = inclusionList[i]?.Length ?? 0;
+            if (bytes + length > Eip7805Constants.MaxBytesPerInclusionList && position < Eip7805Constants.InclusionListCommitteeSize - 1)
+            {
+                position++;
+                bytes = 0;
+            }
+            bytes += length;
+            ushort mask = (ushort)(1 << position);
+            membership[i] = [(byte)mask, (byte)(mask >> 8)];
+        }
+        return membership;
+    }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -32,6 +33,30 @@ public class InclusionListDecoder(
         Transaction[] txs = TxsDecoder.DecodeTxs(txBytes, skipErrors: true).Transactions;
         _recoverSignatures.RecoverData(txs, spec, skipErrors: true);
         return txs;
+    }
+
+    /// <inheritdoc cref="DecodeAndRecover(byte[][], IReleaseSpec)"/>
+    /// <param name="membership">One well-formed <see cref="InclusionListMembership"/> entry per transaction.</param>
+    public (Transaction[] Transactions, ushort[] Masks) DecodeAndRecover(byte[][] txBytes, byte[][] membership, IReleaseSpec spec)
+    {
+        (Transaction[] txs, ushort[] masks) = DecodeWithMembership(txBytes, membership);
+        _recoverSignatures.RecoverData(txs, spec, skipErrors: true);
+        return (txs, masks);
+    }
+
+    /// <summary>Decodes the list beside its membership, dropping an undecodable entry's mask with it so the two stay aligned.</summary>
+    /// <param name="membership">One well-formed <see cref="InclusionListMembership"/> entry per transaction.</param>
+    public static (Transaction[] Transactions, ushort[] Masks) DecodeWithMembership(byte[][] txBytes, byte[][] membership)
+    {
+        List<Transaction> txs = new(txBytes.Length);
+        List<ushort> masks = new(txBytes.Length);
+        for (int i = 0; i < txBytes.Length; i++)
+        {
+            if (TxsDecoder.DecodeTxs([txBytes[i]], skipErrors: true).Transactions is not [Transaction tx]) continue;
+            txs.Add(tx);
+            masks.Add(InclusionListMembership.ToMask(membership[i]));
+        }
+        return ([.. txs], [.. masks]);
     }
 
     private static byte[] Encode(Transaction transaction)

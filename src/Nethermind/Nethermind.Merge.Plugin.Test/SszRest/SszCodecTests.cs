@@ -777,6 +777,22 @@ public class SszCodecTests
         AssertPragueBuiltPayloadOffsets(w.WrittenSpan, blockValue, expectedShouldOverrideBuilder: 0, version: "V6");
     }
 
+    /// <summary>getPayloadV7 over SSZ is the V6 container plus the claims, which round-trip intact.</summary>
+    [Test]
+    public void EncodeGetPayloadV7Response_round_trips_the_claims()
+    {
+        ExecutionPayloadV4 ep = SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 42UL);
+        Block block = (Block)ep.TryGetBlock();
+        InclusionListClaim[] claims = [new(TestItem.KeccakA, 0), new(TestItem.KeccakB, 5)];
+        block.InclusionListClaims = claims;
+
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeGetPayloadV7Response(new GetPayloadV7Result(block, UInt256.One, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false), w);
+        GetPayloadResponseV7Wire.Decode(new ReadOnlySequence<byte>(w.WrittenMemory), out GetPayloadResponseV7Wire decoded);
+
+        Assert.That(decoded.InclusionListClaims.ToClaims(), Is.EqualTo(claims));
+    }
+
     // Shared assertion for the Prague+ BuiltPayload fixed section: identical for V4/V5/V6 since
     // BlobsBundleV{1,2} and ExecutionPayloadV{3,4} are all variable-size (4-byte offsets).
     private static void AssertPragueBuiltPayloadOffsets(
