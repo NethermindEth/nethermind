@@ -58,6 +58,9 @@ public static class ExperimentKnobs
     /// <summary>Each discovery candidate warms its own new cells as soon as its run ends, not at the round's barrier.</summary>
     public static readonly bool DiscoveryWarmPerCandidate = On("NETHERMIND_EXP_DISCOVERY_WARM_PER_CANDIDATE");
 
+    /// <summary>ProcessingCores=Dedicated also works on a CPU with one kind of core, treating every core as a performance core.</summary>
+    public static readonly bool DedicatedNonHybrid = On("NETHERMIND_EXP_DEDICATED_NONHYBRID");
+
     /// <summary>The background blooms use at most this many workers and the receipts root is built serially; 0 = off.</summary>
     public static readonly int ReceiptsDegree = Int("NETHERMIND_EXP_RECEIPTS_DOP", 0);
 

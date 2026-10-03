@@ -139,6 +139,20 @@ internal static partial class PerformanceCores
             try
             {
                 string? performanceCpus = ReadOrNull("/sys/devices/cpu_core/cpus");
+                bool nonHybrid = false;
+                if (performanceCpus is null && Core.Diagnostics.ExperimentKnobs.DedicatedNonHybrid && TryReadAffinity(out CpuMask everyAllowed))
+                {
+                    // Experiment: treat every core of a CPU with one kind of core as a performance core.
+                    List<int> all = [];
+                    for (int cpu = 0; cpu < MaxCpus; cpu++)
+                    {
+                        if (everyAllowed.Contains(cpu)) all.Add(cpu);
+                    }
+
+                    performanceCpus = string.Join(",", all);
+                    nonHybrid = true;
+                }
+
                 if (performanceCpus is null || !TryReadAffinity(out CpuMask allowedMask)) return;
 
                 HashSet<int> allowed = [];
@@ -151,6 +165,19 @@ internal static partial class PerformanceCores
                 {
                     if (TryBuildMask(cores, performanceCpus, allowed, ReadSiblings, out CpuMask mask, out int[] cpus))
                         Selections[(int)cores] = new Selection(mask, cpus);
+                }
+
+                if (nonHybrid && Selections[(int)ProcessingCores.Dedicated] is { } dedicatedCore)
+                {
+                    int[] every = [.. allowed];
+                    Array.Sort(every);
+                    if (TryExclude(every, dedicatedCore.Cpus, out CpuMask restMask, out int[] restCpus))
+                    {
+                        // Every prewarm worker, near and far, stays off the processing thread's core.
+                        Selection rest = new(restMask, restCpus);
+                        PrewarmDedicated = new PrewarmSplit(rest, rest, restCpus.Length);
+                        Console.Out.WriteLine($"EXP-DEDICATED processing on CPUs {string.Join(",", dedicatedCore.Cpus)}, prewarm on {string.Join(",", restCpus)}");
+                    }
                 }
 
                 if (Selections[(int)ProcessingCores.Performance] is { } near
