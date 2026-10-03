@@ -44,7 +44,7 @@ public class ManagedPeerEnvelopeTests
             await client.StartAsync(token);
 
             PeerManager peerManager = new(client, clientConfig, clientStatus, LimboLogs.Instance);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server), token), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(PeerSessionNodes.LoopbackAddressText(server), token), Is.True);
             IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
 
             IReadOnlyList<SignedExecutionPayloadEnvelope> byRange = await peer.RequestExecutionPayloadEnvelopesByRangeAsync(AnchorSlot, 8, token);
@@ -56,17 +56,6 @@ public class ManagedPeerEnvelopeTests
                 Assert.That(byRoot.Select(e => e.Message!.BeaconBlockRoot), Is.EqualTo(new[] { secondRoot }), "by root serves only the requested root");
             }
         }
-    }
-
-    private static string LoopbackAddress(BeaconP2P node)
-    {
-        string address = node.ListenAddresses.First().ToString().Replace("0.0.0.0", "127.0.0.1");
-        if (!address.Contains("/p2p/"))
-        {
-            address += $"/p2p/{node.LocalPeerId}";
-        }
-
-        return address;
     }
 
     private static (BeaconP2P P2P, BeaconChainStatusHolder StatusHolder, BeaconChainConfig Config) CreateNode(ExecutionPayloadEnvelopePool envelopePool, BeaconChainStore store)

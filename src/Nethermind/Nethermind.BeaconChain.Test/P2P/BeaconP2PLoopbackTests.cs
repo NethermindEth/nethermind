@@ -343,7 +343,7 @@ public class BeaconP2PLoopbackTests
             }
 
             // Peer manager: one maintenance round over a static peer entry connects and records its status.
-            client.Config.StaticPeers = LoopbackAddress(server.P2P).ToString();
+            client.Config.StaticPeers = PeerSessionNodes.LoopbackAddress(server.P2P).ToString();
             PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
             await peerManager.RunMaintenanceRoundAsync(token);
             IBeaconSyncPeer syncPeer = peerManager.GetBestPeers(AnchorSlot + 4).Single();
@@ -388,7 +388,7 @@ public class BeaconP2PLoopbackTests
             await server.P2P.StartAsync(token);
             await client.P2P.StartAsync(token);
 
-            client.Config.StaticPeers = LoopbackAddress(server.P2P).ToString();
+            client.Config.StaticPeers = PeerSessionNodes.LoopbackAddress(server.P2P).ToString();
             PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
             await peerManager.RunMaintenanceRoundAsync(token);
             IBeaconSyncPeer peer = peerManager.GetBestPeers(gloasSlot).Single();
@@ -522,17 +522,6 @@ public class BeaconP2PLoopbackTests
             Assert.That(actual.HeadSlot, Is.EqualTo(expected.HeadSlot), "head slot");
             Assert.That(actual.EarliestAvailableSlot, Is.EqualTo(expected.EarliestAvailableSlot), "earliest available slot");
         }
-    }
-
-    private static Multiaddress LoopbackAddress(BeaconP2P node)
-    {
-        string address = node.ListenAddresses.First().ToString().Replace("0.0.0.0", "127.0.0.1");
-        if (!address.Contains("/p2p/"))
-        {
-            address += $"/p2p/{node.LocalPeerId}";
-        }
-
-        return Multiaddress.Decode(address);
     }
 
     private record Node(BeaconP2P P2P, BeaconChainStore Store, BeaconChainStatusHolder StatusHolder, LocalMetadataSource MetadataSource, BeaconChainConfig Config, DataColumnSidecarPool Pool);

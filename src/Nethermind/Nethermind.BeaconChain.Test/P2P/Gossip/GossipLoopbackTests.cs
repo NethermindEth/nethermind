@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -449,16 +448,5 @@ public class GossipLoopbackTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         return new BeaconP2P(config, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default) { CurrentStatus = PeerSessionNodes.Status }, new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance,
             validator);
-    }
-
-    private static Multiaddress LoopbackAddress(BeaconP2P node)
-    {
-        string address = node.ListenAddresses.First().ToString().Replace("0.0.0.0", "127.0.0.1");
-        if (!address.Contains("/p2p/"))
-        {
-            address += $"/p2p/{node.LocalPeerId}";
-        }
-
-        return Multiaddress.Decode(address);
     }
 }
