@@ -383,7 +383,10 @@ public class FrameTxValidationPrefixSimulationTests
             yield return new TestCaseData((byte)op, 1).SetName($"banned {op}");
         }
 
-        yield return new TestCaseData((byte)Instruction.SSTORE, 2).SetName("banned SSTORE");
+        foreach (Instruction op in new[] { Instruction.SSTORE, Instruction.PAY })
+        {
+            yield return new TestCaseData((byte)op, 2).SetName($"banned {op}");
+        }
 
         yield return new TestCaseData((byte)Instruction.CREATE, 3).SetName("banned CREATE");
         yield return new TestCaseData((byte)Instruction.CREATE2, 4).SetName("banned CREATE2");

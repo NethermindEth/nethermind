@@ -488,6 +488,12 @@ namespace Nethermind.Core.Specs
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
+        /// EIP-5920: PAY opcode (<c>0xfc</c>), transferring ether to an address without executing its code.
+        /// </summary>
+        /// <remarks>Requires EIP-2929 and EIP-7523; the opcode's access and new-account rules assume both.</remarks>
+        public bool IsEip5920Enabled { get; }
+
+        /// <summary>
         /// EIP-7805: Inclusion lists
         /// </summary>
         bool IsEip7805Enabled { get; }

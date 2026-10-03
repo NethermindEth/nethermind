@@ -187,6 +187,7 @@ public enum Instruction : byte
     DELEGATECALL = 0xf4,
     CREATE2 = 0xf5,
     STATICCALL = 0xfa,
+    PAY = 0xfc, // EIP-5920
     REVERT = 0xfd,
     INVALID = 0xfe,
     SELFDESTRUCT = 0xff
