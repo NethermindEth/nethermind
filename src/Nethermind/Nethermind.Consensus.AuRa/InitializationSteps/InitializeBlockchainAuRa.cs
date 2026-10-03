@@ -13,6 +13,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -108,7 +109,8 @@ public class InitializeBlockchainAuRa(
             _txGossipPolicy,
             [new TxFilterAdapter(api.BlockTree, txPoolFilter, api.LogManager, api.SpecProvider)],
             txPriorityContract is not null || localDataSource is not null,
-            frameTxPrefixSimulator: api.Context.ResolveOptional<IFrameTxPrefixSimulator>());
+            frameTxPrefixSimulator: api.Context.ResolveOptional<IFrameTxPrefixSimulator>(),
+            leanProofStore: api.Context.Resolve<LeanProofStore>());
         api.DisposeStack.Push(txPool);
         return txPool;
     }

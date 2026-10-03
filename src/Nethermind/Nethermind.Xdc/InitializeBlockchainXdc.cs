@@ -5,6 +5,7 @@ using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
@@ -52,7 +53,8 @@ internal class InitializeBlockchainXdc(
                     new MinGasPriceFilter(chainHeadInfoProvider, XdcSpecProvider, _api.LogManager)
                 ],
                 true,
-                frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>()
+                frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>(),
+                leanProofStore: _api.Context.Resolve<LeanProofStore>()
             );
 
         _api.DisposeStack.Push(txPool);
