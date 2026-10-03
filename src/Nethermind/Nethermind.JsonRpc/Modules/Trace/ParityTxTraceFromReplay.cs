@@ -76,8 +76,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             ParityTraceActionConverter.Instance.Write(writer, value, options);
 
             // A failed action keeps its result only when it produced output, as a reverted frame does; a failed root
-            // built without an action keeps an empty one, which is not written.
-            if (value.Error is null || value.Result?.Output is not null)
+            // built without an action keeps an empty one, which is not written. A selfdestruct has no result, as in
+            // Geth's flatCallTracer and the stored traces of trace_block and trace_transaction.
+            if ((value.Error is null && value.Type != "suicide") || value.Result?.Output is not null)
             {
                 writer.WritePropertyName("result"u8);
                 JsonSerializer.Serialize(writer, value.Result, options);
