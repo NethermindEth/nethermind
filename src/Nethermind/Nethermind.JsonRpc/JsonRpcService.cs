@@ -889,13 +889,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             : JsonSerializer.Deserialize(providedParameterUtf8, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
     }
 
-    private static object? DeserializeTypedParameter(ref Utf8JsonReader reader, ExpectedParameter expectedParameter)
-    {
-        JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
-        return typeInfo is not null
-            ? JsonSerializer.Deserialize(ref reader, typeInfo)
+    private static object? DeserializeTypedParameter(ref Utf8JsonReader reader, ExpectedParameter expectedParameter) =>
+        expectedParameter.ValueReader is { } valueReader
+            ? valueReader(ref reader)
             : JsonSerializer.Deserialize(ref reader, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
-    }
 
     private static object? DeserializeReparsedString(string? json, ExpectedParameter expectedParameter)
     {
