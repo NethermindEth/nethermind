@@ -57,11 +57,14 @@ public static class BeaconStateAccessors
 
     /// <summary>Returns the block root at a recent <paramref name="slot"/> (spec <c>get_block_root_at_slot</c>).</summary>
     /// <exception cref="BeaconStateException">The slot is not within the last <c>SLOTS_PER_HISTORICAL_ROOT</c> slots.</exception>
-    public static Hash256 GetBlockRootAtSlot(this BeaconStateFulu state, ulong slot)
+    public static Hash256 GetBlockRootAtSlot(this BeaconStateFulu state, ulong slot) =>
+        GetBlockRootAtSlot(state.Slot, state.BlockRoots!, slot);
+
+    internal static Hash256 GetBlockRootAtSlot(ulong stateSlot, Hash256[] blockRoots, ulong slot)
     {
-        if (!(slot < state.Slot && state.Slot <= slot + Presets.SlotsPerHistoricalRoot))
-            throw new BeaconStateException($"Block root for slot {slot} is not available at state slot {state.Slot}");
-        return state.BlockRoots![(int)(slot % Presets.SlotsPerHistoricalRoot)];
+        if (!(slot < stateSlot && stateSlot <= slot + Presets.SlotsPerHistoricalRoot))
+            throw new BeaconStateException($"Block root for slot {slot} is not available at state slot {stateSlot}");
+        return blockRoots[(int)(slot % Presets.SlotsPerHistoricalRoot)];
     }
 
     /// <summary>Spec <c>get_randao_mix</c>: returns the randao mix recorded for <paramref name="epoch"/>.</summary>
