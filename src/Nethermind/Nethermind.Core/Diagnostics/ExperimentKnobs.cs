@@ -84,4 +84,10 @@ public static class ExperimentKnobs
 
     /// <summary>When at least this many of the root's children are dirty, hash two nibbles down (up to 256 units); 0 = off.</summary>
     public static readonly int HashTwoLevels = Int("NETHERMIND_EXP_HASH_TWO_LEVELS", 0);
+
+    /// <summary>A cancelled prewarm run stops at its next backing-store read, not at the EVM's next cancellation poll.</summary>
+    public static readonly bool PrewarmCancelAtReads = On("NETHERMIND_EXP_PREWARM_CANCEL_AT_READS");
+
+    /// <summary>Bulk set and subtree hashing fan out on pool workers of their own, outside the block's worker group.</summary>
+    public static readonly bool MerkleDetached = On("NETHERMIND_EXP_MERKLE_DETACHED");
 }

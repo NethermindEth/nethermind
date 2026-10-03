@@ -219,6 +219,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void DiscoverAndWarmStorageSafely(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery, CancellationToken cancellationToken)
     {
+        Core.Diagnostics.PrewarmActivity.Enter();
         try
         {
             DiscoverAndWarmStorage(candidates, block, spec, recovery, cancellationToken);
@@ -226,6 +227,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         catch (Exception ex)
         {
             _logger.DebugWarn($"Error discovering storage reads for block {block.Number}. {ex}");
+        }
+        finally
+        {
+            Core.Diagnostics.PrewarmActivity.Exit(cancellationToken.IsCancellationRequested);
         }
     }
 
@@ -1280,6 +1285,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 PrewarmMissWatch.Arm(missThreshold, () => blockState.PreWarmer.EscalateToDiscovery(txIndex, tx, blockState, cancellationToken));
 
             TransactionResult result;
+            if (Core.Diagnostics.ExperimentKnobs.PrewarmCancelAtReads) PrewarmMissWatch.CancelAt(cancellationToken);
             try
             {
                 result = scope.TransactionProcessor.Warmup(tx, tracer);
@@ -1287,6 +1293,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             finally
             {
                 if (missThreshold > 0) PrewarmMissWatch.Disarm();
+                PrewarmMissWatch.ClearCancel();
             }
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
@@ -2193,7 +2200,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             foreach ((int txIndex, Transaction tx) in transactions)
             {
                 if (token.IsCancellationRequested) return;
-                WarmupSingleTransaction(scope, tx, txIndex, blockState, tracer, token);
+                Core.Diagnostics.PrewarmActivity.Enter();
+                try
+                {
+                    WarmupSingleTransaction(scope, tx, txIndex, blockState, tracer, token);
+                }
+                finally
+                {
+                    Core.Diagnostics.PrewarmActivity.Exit(token.IsCancellationRequested);
+                }
             }
         }
 

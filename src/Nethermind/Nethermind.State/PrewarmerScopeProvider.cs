@@ -271,6 +271,7 @@ public class PrewarmerScopeProvider(
             }
             else
             {
+                if (isPrewarmer) PrewarmMissWatch.ThrowIfCancelled();
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);

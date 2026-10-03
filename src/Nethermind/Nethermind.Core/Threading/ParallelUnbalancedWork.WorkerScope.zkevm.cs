@@ -7,6 +7,10 @@ public partial class ParallelUnbalancedWork
 {
     internal static partial WorkerGroup? GetCurrentGroup() => null;
 
+    public static partial WorkerScope BeginDetachedWorkerScope(int maxDegreeOfParallelism) => new(1);
+
+    internal static partial (int Reserved, int Unstarted, int Pending) CurrentLoad() => (0, 0, 0);
+
     internal sealed partial class WorkerGroup
     {
         private partial void Initialize() { }

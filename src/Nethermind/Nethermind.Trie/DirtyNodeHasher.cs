@@ -135,7 +135,9 @@ internal static class DirtyNodeHasher
             return true;
         }
 
-        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
+        using ParallelUnbalancedWork.WorkerScope workers = Core.Diagnostics.ExperimentKnobs.MerkleDetached
+            ? ParallelUnbalancedWork.BeginDetachedWorkerScope(RuntimeInformation.ProcessorCount)
+            : ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
         Core.Diagnostics.FanOutTrace? fan = Core.Diagnostics.FanOutTrace.Begin(count);
         ParallelUnbalancedWork.For(0, count, RuntimeInformation.ParallelOptionsLogicalCores,
             (childIndexes, root, resolver, pool, maxCollectedNodes, fan),
@@ -171,7 +173,9 @@ internal static class DirtyNodeHasher
         }
 
         (int Child, int Grandchild)[] work = units.AsSpan().ToArray();
-        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
+        using ParallelUnbalancedWork.WorkerScope workers = Core.Diagnostics.ExperimentKnobs.MerkleDetached
+            ? ParallelUnbalancedWork.BeginDetachedWorkerScope(RuntimeInformation.ProcessorCount)
+            : ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
         ParallelUnbalancedWork.For(0, work.Length, RuntimeInformation.ParallelOptionsLogicalCores,
             (work, root, resolver, pool, maxCollectedNodes),
             static (i, state) =>

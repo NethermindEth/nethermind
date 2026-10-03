@@ -22,6 +22,15 @@ public partial class ParallelUnbalancedWork
 
     internal static partial WorkerGroup? GetCurrentGroup() => WorkerScheduler.Current?.Group;
 
+    public static partial WorkerScope BeginDetachedWorkerScope(int maxDegreeOfParallelism)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
+        return new(new WorkerScheduler(maxDegreeOfParallelism));
+    }
+
+    internal static partial (int Reserved, int Unstarted, int Pending) CurrentLoad() =>
+        WorkerScheduler.Current is { } scheduler ? scheduler.Load() : (0, 0, 0);
+
     internal sealed partial class WorkerGroup
     {
         private WorkerScheduler _scheduler = null!;

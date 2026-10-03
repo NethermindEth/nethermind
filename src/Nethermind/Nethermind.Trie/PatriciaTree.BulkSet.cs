@@ -66,7 +66,9 @@ public partial class PatriciaTree
 
         using ParallelUnbalancedWork.WorkerScope? workers = !Core.Cpu.RuntimeInformation.IsSingleProcessor
             && entries.Count >= MinEntriesToParallelizeThreshold && (flags & Flags.DoNotParallelize) == 0
-            ? ParallelUnbalancedWork.BeginWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount)
+            ? Core.Diagnostics.ExperimentKnobs.MerkleDetached
+                ? ParallelUnbalancedWork.BeginDetachedWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount)
+                : ParallelUnbalancedWork.BeginWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount)
             : null;
 
         TraverseStack traverseStack = GetTraverseStack();

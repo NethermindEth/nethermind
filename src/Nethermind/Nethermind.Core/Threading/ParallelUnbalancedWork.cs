@@ -54,6 +54,12 @@ public partial class ParallelUnbalancedWork
         return new(maxDegreeOfParallelism);
     }
 
+    /// <summary>A worker budget of its own, outside any group or scope the calling thread is in.</summary>
+    public static partial WorkerScope BeginDetachedWorkerScope(int maxDegreeOfParallelism);
+
+    /// <summary>Runners reserved, runners not yet started and callbacks pending in the calling thread's scheduler.</summary>
+    internal static partial (int Reserved, int Unstarted, int Pending) CurrentLoad();
+
     /// <summary>Caps nested work while dispatching its helpers through the enclosing worker budget.</summary>
     internal static WorkerScope BeginLimitedWorkerScope(int maxDegreeOfParallelism)
     {
