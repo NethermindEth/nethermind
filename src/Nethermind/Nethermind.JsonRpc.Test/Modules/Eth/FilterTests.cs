@@ -87,6 +87,43 @@ public class FilterTests
                     ]
                 });
 
+            // Non-canonical spellings that must keep binding: uppercase, no prefix, JSON escapes, odd length.
+            yield return new TestCaseData(
+                """
+                {
+                    "address": [
+                        "0xC2D77D118326C33BBE36EBEABF4F7ED6BC2DDA5C",
+                        "b7705ae4c6f81b66cdb323c65f4e8133690fc099",
+                        "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
+                        "0x2d77d118326c33bbe36ebeabf4f7ed6bc2dda5c"
+                    ],
+                    "topics": [
+                        "e194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7",
+                        ["0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001", "0x194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7"]
+                    ]
+                }
+                """,
+                new Filter
+                {
+                    Address =
+                    [
+                        new Address("0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5c"),
+                        new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"),
+                        new Address("0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358"),
+                        new Address("0x02d77d118326c33bbe36ebeabf4f7ed6bc2dda5c")
+                    ],
+                    FromBlock = BlockParameter.Earliest,
+                    ToBlock = BlockParameter.Latest,
+                    Topics =
+                    [
+                        [new("0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7")],
+                        [
+                            new Hash256("0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001"),
+                            new Hash256("0x0194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7")
+                        ]
+                    ]
+                });
+
             string blockHash = "0x892a8b3ccc78359e059e67ec44c83bfed496721d48c2d1dd929d6e4cd6559d35";
             BlockParameter blockParam = BlockParameterConverter.GetBlockParameter(blockHash);
 
@@ -110,6 +147,22 @@ public class FilterTests
         Assert.That(filter.FromBlock, Is.EqualTo(expectation.FromBlock));
         Assert.That(filter.ToBlock, Is.EqualTo(expectation.ToBlock));
         Assert.That(filter.Topics, Is.EqualTo(expectation.Topics));
+    }
+
+    [TestCase("""{"address":"0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5g"}""", typeof(FormatException))]
+    [TestCase("""{"address":["0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda"]}""", typeof(ArgumentException))]
+    [TestCase("""{"address":["0XC2D77D118326C33BBE36EBEABF4F7ED6BC2DDA5C"]}""", typeof(FormatException))]
+    [TestCase("""{"address":[123]}""", typeof(ArgumentException))]
+    [TestCase("""{"address":[null]}""", typeof(ArgumentException))]
+    [TestCase("""{"address":"0x"}""", typeof(ArgumentException))]
+    [TestCase("""{"topics":["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fz7"]}""", typeof(FormatException))]
+    [TestCase("""{"topics":[["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7aa"]]}""", typeof(ArgumentException))]
+    [TestCase("""{"topics":[[true]]}""", typeof(FormatException))]
+    public void ReadJson_rejects_invalid_address_or_topic(string json, Type expectedException)
+    {
+        Filter filter = new();
+        using JsonDocument doc = JsonDocument.Parse(json);
+        Assert.That(() => filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions), Throws.TypeOf(expectedException));
     }
 
     [Test]
