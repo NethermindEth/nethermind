@@ -3,7 +3,7 @@
 
 namespace Nethermind.Config;
 
-/// <summary>The logical processors block processing runs on, on an Intel hybrid CPU.</summary>
+/// <summary>The logical processors block processing runs on: on an Intel hybrid CPU, and for <see cref="Dedicated"/> on any CPU.</summary>
 public enum ProcessingCores
 {
     /// <summary>Any the process may run on.</summary>
@@ -17,7 +17,7 @@ public enum ProcessingCores
 
     /// <summary>
     /// One performance core to itself: the first that does not hold CPU 0, which takes more interrupts, with prewarm
-    /// kept clear of it.
+    /// kept clear of it. On a CPU with one kind of core, every core counts as a performance core.
     /// </summary>
     Dedicated,
 }
