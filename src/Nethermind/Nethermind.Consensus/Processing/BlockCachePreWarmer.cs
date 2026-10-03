@@ -725,18 +725,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, ISenderRecoveryProgress? recovery, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists, bool handColdChainsToDiscovery)
     {
+        // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
+        // directly off the block's access list.
+        ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? block.BlockAccessList : null;
         BlockState blockState = new(this, block, spec, speculativelyWarmed, recovery)
         {
-            // A block access list already enumerates the block's reads; discovery adds nothing.
-            HandsColdChainsToDiscovery = handColdChainsToDiscovery && !IsBalReadWarmingEnabled(spec),
+            // A block access list already enumerates the block's reads, so discovery adds nothing; a block without one,
+            // such as a block being produced, is warmed by executing its transactions and hands off like any other.
+            HandsColdChainsToDiscovery = handColdChainsToDiscovery && bal is null,
             Token = token
         };
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
         Volatile.Write(ref _mainThreadTxIndex, -1);
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
-        // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
-        // directly off the block's access list.
-        ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? block.BlockAccessList : null;
         AddressWarmer addressWarmer = new(parallelOptions, block, spec, warmSystemAccessLists, this, bal);
         return (blockState, parallelOptions, addressWarmer);
     }

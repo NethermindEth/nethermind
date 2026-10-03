@@ -1518,6 +1518,25 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public async Task PreWarmCaches_HandsOffWhenTheSpecHasAccessListsButTheBlockCarriesNone()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        Assert.That(preWarmer.IsBalReadWarmingEnabled(Amsterdam.Instance), Is.True);
+
+        // A block being produced has no access list yet, so its warms execute its transactions.
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(
+                Build.A.Transaction.WithGasLimit(1_000_000).WithTo(PackedLoopContract).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.EqualTo(1), "the warm reading a chain of cold slots is handed off");
+    }
+
+    [Test]
     public async Task PreWarmCaches_LeavesAnUpFrontDiscoveryCandidateToTheUpFrontDiscovery()
     {
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
