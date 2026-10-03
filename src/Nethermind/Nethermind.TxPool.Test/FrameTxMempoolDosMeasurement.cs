@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -836,6 +837,7 @@ public class FrameTxMempoolDosMeasurement
             new SpecChangeTxValidator(_specProvider.ChainId),
             _logManager,
             new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
+            TestFrameTxWidthLedger.For(txPoolConfig),
             ShouldGossip.Instance,
             incomingTxFilters: null,
             thereIsPriorityContract: false,

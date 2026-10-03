@@ -171,6 +171,7 @@ namespace Nethermind.TxPool
         /// <param name="specChangeTxValidator">Validates transactions against the new fork rules, including light blob transactions.</param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
+        /// <param name="frameTxWidthLedger">The MATCHA width ledger shared with the finalization source.</param>
         /// <param name="transactionsGossipPolicy"></param>
         /// <param name="incomingTxFilters"></param>
         /// <param name="thereIsPriorityContract"></param>
@@ -183,14 +184,14 @@ namespace Nethermind.TxPool
             [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator,
             ILogManager? logManager,
             IComparer<Transaction> comparer,
+            FrameTxWidthLedger frameTxWidthLedger,
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter[]? incomingTxFilters = null,
             bool thereIsPriorityContract = false,
-            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null,
-            FrameTxWidthLedger? frameTxWidthLedger = null)
+            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
-            _senderWidth = (frameTxWidthLedger ?? new FrameTxWidthLedger(txPoolConfig, logManager)).SenderWidth;
+            _senderWidth = frameTxWidthLedger.SenderWidth;
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));

@@ -105,11 +105,11 @@ public class InitializeBlockchainAuRa(
             _specChangeTxValidator,
             api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
+            api.Context.Resolve<FrameTxWidthLedger>(),
             _txGossipPolicy,
             [new TxFilterAdapter(api.BlockTree, txPoolFilter, api.LogManager, api.SpecProvider)],
             txPriorityContract is not null || localDataSource is not null,
-            frameTxPrefixSimulator: api.Context.ResolveOptional<IFrameTxPrefixSimulator>(),
-            frameTxWidthLedger: api.Context.Resolve<FrameTxWidthLedger>());
+            frameTxPrefixSimulator: api.Context.ResolveOptional<IFrameTxPrefixSimulator>());
         api.DisposeStack.Push(txPool);
         return txPool;
     }

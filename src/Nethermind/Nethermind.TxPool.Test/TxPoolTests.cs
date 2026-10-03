@@ -17,6 +17,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -313,7 +314,7 @@ namespace Nethermind.TxPool.Test
         private sealed class RetainingTxPool(IEthereumEcdsa ecdsa, IChainHeadInfoProvider headInfo, ILogManager logManager)
             : TxPool(ecdsa, new BlobTxStorage(), headInfo, new TxPoolConfig(),
                 new TxValidator(TestBlockchainIds.ChainId), new SpecChangeTxValidator(TestBlockchainIds.ChainId),
-                logManager, Comparer<Transaction>.Create(static (_, _) => 0)), ITxPool
+                logManager, Comparer<Transaction>.Create(static (_, _) => 0), TestFrameTxWidthLedger.For(new TxPoolConfig())), ITxPool
         {
             public Transaction Retained;
 
@@ -6796,7 +6797,7 @@ namespace Nethermind.TxPool.Test
             txStorage ??= new BlobTxStorage();
 
             config ??= new TxPoolConfig() { GasLimit = TxGasLimit };
-            _frameTxWidthLedger = new FrameTxWidthLedger(config, _logManager);
+            _frameTxWidthLedger = TestFrameTxWidthLedger.For(config);
             _headInfo = chainHeadInfoProvider;
             _headInfo ??= new ChainHeadInfoProvider(
                 new ChainHeadSpecProvider(specProvider, _blockTree),
@@ -6812,11 +6813,11 @@ namespace Nethermind.TxPool.Test
                 specChangeTxValidator ?? new SpecChangeTxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
+                _frameTxWidthLedger,
                 ShouldGossip.Instance,
                 incomingTxFilter is null ? null : [incomingTxFilter],
                 thereIsPriorityContract,
-                frameTxPrefixSimulator,
-                _frameTxWidthLedger);
+                frameTxPrefixSimulator);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)

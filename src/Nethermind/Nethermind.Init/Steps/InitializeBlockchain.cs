@@ -69,9 +69,9 @@ namespace Nethermind.Init.Steps
                 _specChangeTxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
+                _api.Context.Resolve<FrameTxWidthLedger>(),
                 _txGossipPolicy,
-                frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>(),
-                frameTxWidthLedger: _api.Context.Resolve<FrameTxWidthLedger>()
+                frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>()
             );
 
             _api.DisposeStack.Push(txPool);
