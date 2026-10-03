@@ -441,6 +441,68 @@ public class ReqRespLimitsTests
         await drain.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task Metadata_dial_sends_only_eof_before_reading_the_response(CancellationToken token)
+    {
+        LocalMetadataSource source = new();
+        ISessionProtocol<ulong, MetaDataV3> protocol = new MetaDataProtocolV3(source);
+        Channel channel = new();
+        Task reply = ReplyAsync();
+        try
+        {
+            MetaDataV3 response = await protocol.DialAsync(channel, FakeSessionContext.ForNewPeer(), 0).WaitAsync(token);
+            Assert.That(MetaDataV3.Encode(response), Is.EqualTo(MetaDataV3.Encode(source.Current)));
+            await reply;
+        }
+        finally
+        {
+            await channel.CloseAsync();
+            await reply;
+        }
+
+        async Task ReplyAsync()
+        {
+            ReadResult request = await channel.Reverse.ReadAsync(1, ReadBlockingMode.WaitAny, token);
+            Assert.That(request.Result, Is.EqualTo(IOResult.Ended), "metadata carries no framing or request bytes");
+            using ChannelStreamAdapter stream = new(channel.Reverse);
+            await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, MetaDataV3.Encode(source.Current), token);
+        }
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task Goodbye_dial_returns_without_waiting_for_a_response([Values(1ul, ulong.MaxValue)] ulong reason, CancellationToken token)
+    {
+        ISessionProtocol<ulong, ulong> protocol = new GoodbyeProtocol();
+        Channel channel = new();
+        Task<ulong> read = ReadAsync();
+        try
+        {
+            ulong response = await protocol.DialAsync(channel, FakeSessionContext.ForNewPeer(), reason).WaitAsync(token);
+            ulong request = await read;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Is.EqualTo(reason));
+                Assert.That(request, Is.EqualTo(reason));
+            }
+        }
+        finally
+        {
+            await channel.CloseAsync();
+            await read;
+        }
+
+        async Task<ulong> ReadAsync()
+        {
+            using ChannelStreamAdapter stream = new(channel.Reverse);
+            ulong request = Eth2PingProtocol.DecodeUint64(await ReqRespFraming.ReadRequestAsync(stream, sizeof(ulong), token));
+            ReadResult eof = await channel.Reverse.ReadAsync(1, ReadBlockingMode.WaitAny, token);
+            Assert.That(eof.Result, Is.EqualTo(IOResult.Ended), "the request is half-closed before disconnecting");
+            return request;
+        }
+    }
+
     public enum ResponseKind { Blocks, FuluColumns, GloasColumns, Envelopes }
 
     [Test]
