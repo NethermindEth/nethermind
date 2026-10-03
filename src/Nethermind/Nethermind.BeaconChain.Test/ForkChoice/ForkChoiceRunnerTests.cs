@@ -292,13 +292,7 @@ public class ForkChoiceRunnerTests
         states.States[blockRoot] = blockState;
         ForkChoiceRunner runner = new(chain.Spec, blockState, block, states, chain.Pubkeys);
         IBeaconStateHasher defaultHasher = runner.CheckpointStateHasher();
-        List<CountingHasher> made = [];
-        runner.CheckpointStateHasher = () =>
-        {
-            CountingHasher hasher = new(new CachedBeaconStateHasher());
-            made.Add(hasher);
-            return hasher;
-        };
+        List<CountingHasher> made = CountCheckpointHashes(runner);
         Hash256 blockStateRoot = SszRoots.HashTreeRoot(blockState);
         CheckpointRef checkpoint = new(1, blockRoot);
         BeaconStateFulu expected = blockState.Clone();
@@ -326,20 +320,13 @@ public class ForkChoiceRunnerTests
     [Test]
     public void Checkpoint_advance_takes_its_slot_roots_from_a_later_block_of_the_same_chain([Values(2, 32)] int distance, [Values] bool blockInsideTheAdvance)
     {
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         TickToSlot(runner, Presets.SlotsPerEpoch + 2);
         ulong checkpointSlot = Presets.SlotsPerEpoch - (ulong)distance;
         UnsignedChain.ChainBlock? checkpointBlock = checkpointSlot == 0 ? null : ImportLine(chain, runner, chain.AnchorRoot, checkpointSlot)[0];
         Hash256 checkpointRoot = checkpointBlock?.Root ?? chain.AnchorRoot;
         ImportLine(chain, runner, checkpointRoot, blockInsideTheAdvance ? [Presets.SlotsPerEpoch - 1, Presets.SlotsPerEpoch + 1] : [Presets.SlotsPerEpoch + 1]);
-        List<CountingHasher> made = [];
-        runner.CheckpointStateHasher = () =>
-        {
-            CountingHasher hasher = new(new CachedBeaconStateHasher());
-            made.Add(hasher);
-            return hasher;
-        };
+        List<CountingHasher> made = CountCheckpointHashes(runner);
         BeaconStateFulu expected = (checkpointBlock?.PostState ?? chain.Anchor.AnchorState).Clone();
         SlotProcessing.ProcessSlots(expected, Presets.SlotsPerEpoch, new EpochCache());
 
@@ -409,10 +396,7 @@ public class ForkChoiceRunnerTests
     public void Body_vote_reads_the_last_block_state_only_while_it_is_that_blocks_own([Values] bool advancedInPlace)
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, (targetEpoch + 1) * Presets.SlotsPerEpoch);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt((targetEpoch + 1) * Presets.SlotsPerEpoch);
         UnsignedChain.ChainBlock target = ImportLine(chain, runner, chain.AnchorRoot, 40)[0];
         UnsignedChain.ChainBlock including = ImportLine(chain, runner, target.Root, 70)[0];
         if (advancedInPlace)
@@ -439,11 +423,8 @@ public class ForkChoiceRunnerTests
     public void Body_votes_for_targets_of_another_shuffling_verify_their_signature_and_build_two_states_an_epoch()
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
         ulong now = (targetEpoch + 1) * Presets.SlotsPerEpoch + 4;
-        TickToSlot(runner, now);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(now);
         UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
         // A at the decision slot 31 decides the epoch-2 shuffling of its chain; the others' chain decides on their parent.
         UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
@@ -495,11 +476,8 @@ public class ForkChoiceRunnerTests
     {
         const ulong targetEpoch = 2;
         const int waiting = 64;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
         ulong now = (targetEpoch + 1) * Presets.SlotsPerEpoch;
-        TickToSlot(runner, now);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(now);
         UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
         UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
         UnsignedChain.ChainBlock other = ImportLine(chain, runner, parent.Root, 32)[0];
@@ -537,17 +515,14 @@ public class ForkChoiceRunnerTests
     public void Signed_body_vote_past_the_build_budget_counts_after_the_tick()
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
         ulong now = (targetEpoch + 1) * Presets.SlotsPerEpoch;
-        TickToSlot(runner, now);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(now);
         UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
         UnsignedChain.ChainBlock[] siblings = [.. Enumerable.Range(0, 4).Select(i => ImportWith(parent.Root, 31, (byte)(0xc0 + i)))];
         UnsignedChain.ChainBlock including = ImportLine(chain, runner, siblings[0].Root, 65)[0];
 
         for (int i = 1; i < siblings.Length; i++)
-            runner.OnBodyAttestation(SignedBodyVote(siblings[i], skip: i), including.Root);
+            runner.OnBodyAttestation(BodyVote(chain, siblings[i], targetEpoch, skip: i, sign: true), including.Root);
         ulong[] weightsBeforeTick = [.. siblings.Skip(1).Select(s => Weight(runner, s.Root))];
         int buildsBeforeTick = builds.Count;
         TickToSlot(runner, now + 1);
@@ -565,19 +540,6 @@ public class ForkChoiceRunnerTests
             UnsignedChain.ChainBlock block = chain.Extend(parentRoot, slot, payloadHashByte);
             ImportWithBodyReplay(runner, block);
             return block;
-        }
-
-        Attestation SignedBodyVote(UnsignedChain.ChainBlock target, int skip)
-        {
-            (BeaconStateFulu signingState, ulong slot, int member) = FirstCommitteeMember(target, targetEpoch, skip);
-            AttestationData data = VoteData(chain, slot, target.Root, targetEpoch);
-            return new Attestation
-            {
-                AggregationBits = new BitArray(1, true),
-                Data = data,
-                Signature = ImportableBlobBlock.SignAs((ulong)member, SszRoots.HashTreeRoot(data), signingState.GetDomain(DomainType.BeaconAttester, targetEpoch)),
-                CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
-            };
         }
     }
 
@@ -681,11 +643,8 @@ public class ForkChoiceRunnerTests
     public void Unsigned_aggregates_on_distinct_targets_of_one_shuffling_build_one_state_and_cache_none()
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
         ulong epochStart = targetEpoch * Presets.SlotsPerEpoch;
-        TickToSlot(runner, epochStart + 6);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(epochStart + 6);
         // All past the decision slot 31, so the anchor fixes the epoch-2 shuffling of every one of them.
         List<UnsignedChain.ChainBlock> targets = ImportLine(chain, runner, chain.AnchorRoot, 33, 41, 50, 60, 63);
         runner.GetHead();
@@ -731,10 +690,7 @@ public class ForkChoiceRunnerTests
     public void Unsigned_gossip_aggregate_for_another_shuffling_builds_only_the_head_target_state()
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
         UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
         UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
         UnsignedChain.ChainBlock b = ImportLine(chain, runner, parent.Root, 32)[0];
@@ -762,10 +718,7 @@ public class ForkChoiceRunnerTests
     public void Gossip_aggregate_for_a_held_target_of_another_shuffling_is_checked_against_the_head_state()
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, (targetEpoch + 1) * Presets.SlotsPerEpoch - 1);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt((targetEpoch + 1) * Presets.SlotsPerEpoch - 1);
         UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
         UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
         UnsignedChain.ChainBlock b = ImportLine(chain, runner, parent.Root, 32)[0];
@@ -859,10 +812,7 @@ public class ForkChoiceRunnerTests
     public void Gossip_targets_of_other_shufflings_cost_at_most_two_states_an_epoch_and_one_an_aggregator([Values] bool oneAggregator)
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 30);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 30);
         List<UnsignedChain.ChainBlock> siblings = [];
         foreach (ulong slot in (ulong[])[28, 29, 30, 31])
         {
@@ -910,10 +860,7 @@ public class ForkChoiceRunnerTests
     public void Gossip_aggregate_for_an_ancestor_of_the_head_with_another_shuffling_is_ignored_without_a_build()
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
         List<UnsignedChain.ChainBlock> line = ImportLine(chain, runner, chain.AnchorRoot, 30, 31, 40);
         (BeaconStateFulu signingState, ulong voteSlot, int member) = FirstCommitteeMember(line[^1], targetEpoch);
 
@@ -934,8 +881,7 @@ public class ForkChoiceRunnerTests
     public void Gossip_aggregate_for_an_ancestor_of_the_head_in_the_first_two_epochs_counts()
     {
         const ulong targetEpoch = 1;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         TickToSlot(runner, 2 * Presets.SlotsPerEpoch - 1);
         List<UnsignedChain.ChainBlock> line = ImportLine(chain, runner, chain.AnchorRoot, 30, 32, 40);
         (BeaconStateFulu signingState, ulong voteSlot, int member) = FirstCommitteeMember(line[^1], targetEpoch);
@@ -954,8 +900,7 @@ public class ForkChoiceRunnerTests
     public void Off_head_build_allowance_is_one_per_aggregator_and_target_epoch()
     {
         const ulong currentEpoch = 3;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         TickToSlot(runner, (currentEpoch + 1) * Presets.SlotsPerEpoch - 1);
         List<UnsignedChain.ChainBlock> siblings = [];
         foreach (ulong slot in (ulong[])[29, 30, 31])
@@ -988,10 +933,7 @@ public class ForkChoiceRunnerTests
     public void Gossip_aggregate_right_after_the_head_moves_without_a_tick_is_checked_against_the_new_head([Values] bool invalidPayload)
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
         UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
         UnsignedChain.ChainBlock a = chain.Extend(parent.Root, 31, payloadHashByte: 31);
         UnsignedChain.ChainBlock b = chain.Extend(parent.Root, 32, payloadHashByte: 32);
@@ -1034,10 +976,7 @@ public class ForkChoiceRunnerTests
     public void Vote_state_is_held_only_once_a_vote_verifies_against_it()
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
         List<UnsignedChain.ChainBlock> targets = ImportLine(chain, runner, chain.AnchorRoot, 33, 41, 50, 60);
         List<int> buildCounts = [];
 
@@ -1069,10 +1008,7 @@ public class ForkChoiceRunnerTests
     {
         const ulong targetEpoch = 2;
         const int MaxVoteStates = 8;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
         List<UnsignedChain.ChainBlock> siblings = [];
         for (ulong slot = 1; slot <= MaxVoteStates + 1; slot++)
         {
@@ -1109,10 +1045,7 @@ public class ForkChoiceRunnerTests
     public void Vote_states_of_epochs_before_the_previous_one_are_dropped_on_the_tick()
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
         List<UnsignedChain.ChainBlock> targets = ImportLine(chain, runner, chain.AnchorRoot, 33, 41, 50);
         runner.OnAttestation(BodyVote(chain, targets[0], targetEpoch), isFromBlock: true, verifySignature: false);
         TickToSlot(runner, (targetEpoch + 1) * Presets.SlotsPerEpoch);
@@ -1180,10 +1113,7 @@ public class ForkChoiceRunnerTests
     public void Targets_share_a_vote_state_exactly_when_the_decision_slot_gives_them_one_block()
     {
         const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
         UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
         UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
         List<UnsignedChain.ChainBlock> xy = ImportLine(chain, runner, parent.Root, 32, 40);
@@ -1768,8 +1698,7 @@ public class ForkChoiceRunnerTests
     [Test]
     public void Timely_block_with_an_inconsistent_execution_status_is_refused_before_any_store_update()
     {
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         TickToSlot(runner, 1);
         UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xc1);
         int nodesBefore = runner.Snapshot().Nodes.Count;
@@ -1800,8 +1729,7 @@ public class ForkChoiceRunnerTests
         [Values] bool justified,
         [Values(1ul, LastEpochWithAStartSlot, ulong.MaxValue)] ulong epoch)
     {
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         TickToSlot(runner, 1);
         UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xc1);
         BeaconStateFulu doctored = block.PostState.Clone();
@@ -1829,8 +1757,7 @@ public class ForkChoiceRunnerTests
         [Values] StateCheckpoint field,
         [ValueSource(nameof(EpochsAfterTheBlockEpoch))] ulong epoch)
     {
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         TickToSlot(runner, 3 * Presets.SlotsPerEpoch + 1);
         UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: 2 * Presets.SlotsPerEpoch + 1, payloadHashByte: 0xc1);
         BeaconStateFulu doctored = block.PostState.Clone();
@@ -1865,8 +1792,7 @@ public class ForkChoiceRunnerTests
     [Test]
     public void Prior_epoch_block_whose_pulled_up_finalized_epoch_is_after_its_own_is_refused_before_any_store_update()
     {
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         TickToSlot(runner, 3 * Presets.SlotsPerEpoch + 1);
         UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: 2 * Presets.SlotsPerEpoch + 1, payloadHashByte: 0xc1);
         BeaconStateFulu doctored = block.PostState.Clone();
@@ -1905,8 +1831,7 @@ public class ForkChoiceRunnerTests
     {
         const ulong FinalizedEpoch = 9;
         const ulong FinalizedSlot = FinalizedEpoch * Presets.SlotsPerEpoch;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         TickToSlot(runner, FinalizedSlot + 2);
 
         Hash256 parentRoot = chain.AnchorRoot;
@@ -2007,8 +1932,7 @@ public class ForkChoiceRunnerTests
     private static (ForkChoiceRunner Runner, Action ImportChild, ulong DoctoredEpoch) TimelyChildOfInvalidFuluParent()
     {
         const ulong DoctoredEpoch = 1;
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         TickToSlot(runner, 2);
         UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xc1);
         runner.OnBlock(parent.Block, parent.PostState, ExecutionStatus.Optimistic, (IReadOnlyList<DataColumnSidecar>?)null);
@@ -2127,8 +2051,7 @@ public class ForkChoiceRunnerTests
     /// </summary>
     private static (ForkChoiceRunner Runner, UnsignedChain.ChainBlock Voted, UnsignedChain.ChainBlock B, UnsignedChain.ChainBlock Slashing) EquivocationScenario()
     {
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         runner.OnTick(runner.GenesisTime + 8 * chain.Spec.SecondsPerSlot);
         UnsignedChain.Equivocation scenario = chain.BuildEquivocation();
 
@@ -2156,6 +2079,21 @@ public class ForkChoiceRunnerTests
         {
             runner.OnAttesterSlashing(slashing, verifySignatures: false);
         }
+    }
+
+    private static (UnsignedChain Chain, ForkChoiceRunner Runner) CreateRunner()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        return (chain, runner);
+    }
+
+    private static (UnsignedChain Chain, ForkChoiceRunner Runner, BuildCounter Builds) CountedRunnerAt(ulong slot)
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        BuildCounter builds = new(runner);
+        TickToSlot(runner, slot);
+        return (chain, runner, builds);
     }
 
     /// <summary>A runner rooted at the fixture's anchor, ticked to the block's slot, with the block's real post-state computed.</summary>
@@ -2268,15 +2206,18 @@ public class ForkChoiceRunnerTests
         return (atEpochStart, slot, committee[0]);
     }
 
-    /// <summary>The unsigned vote of <paramref name="target"/>'s first committee of <paramref name="epoch"/> for that block as head and target.</summary>
-    private static Attestation BodyVote(UnsignedChain chain, UnsignedChain.ChainBlock target, ulong epoch, int skip = 0)
+    /// <summary>The vote of <paramref name="target"/>'s first committee of <paramref name="epoch"/> for that block as head and target.</summary>
+    private static Attestation BodyVote(UnsignedChain chain, UnsignedChain.ChainBlock target, ulong epoch, int skip = 0, bool sign = false)
     {
-        (_, ulong slot, _) = FirstCommitteeMember(target, epoch, skip);
+        (BeaconStateFulu signingState, ulong slot, int member) = FirstCommitteeMember(target, epoch, skip);
+        AttestationData data = VoteData(chain, slot, target.Root, epoch);
         return new Attestation
         {
             AggregationBits = new BitArray(1, true),
-            Data = VoteData(chain, slot, target.Root, epoch),
-            Signature = new BlsSignature(SignatureSets.G2PointAtInfinity),
+            Data = data,
+            Signature = sign
+                ? ImportableBlobBlock.SignAs((ulong)member, SszRoots.HashTreeRoot(data), signingState.GetDomain(DomainType.BeaconAttester, epoch))
+                : new BlsSignature(SignatureSets.G2PointAtInfinity),
             CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
         };
     }
@@ -2335,6 +2276,18 @@ public class ForkChoiceRunnerTests
             };
 
         public int Count { get; private set; }
+    }
+
+    private static List<CountingHasher> CountCheckpointHashes(ForkChoiceRunner runner)
+    {
+        List<CountingHasher> made = [];
+        runner.CheckpointStateHasher = () =>
+        {
+            CountingHasher hasher = new(new CachedBeaconStateHasher());
+            made.Add(hasher);
+            return hasher;
+        };
+        return made;
     }
 
     private sealed class CountingHasher(IBeaconStateHasher inner) : IBeaconStateHasher
