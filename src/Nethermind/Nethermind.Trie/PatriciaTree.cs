@@ -745,6 +745,7 @@ namespace Nethermind.Trie
             return node;
         }
 
+        [MethodImpl(ShouldUpdateChildInlining)]
         internal bool ShouldUpdateChild(TrieNode? parent, TrieNode? oldChild, TrieNode? newChild)
         {
             if (parent is null) return true;
