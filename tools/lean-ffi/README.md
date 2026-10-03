@@ -182,6 +182,10 @@ produced header proof. Selection reserves proof gas from both execution and stat
 Managed proving folds at most four direct witnesses or two recursive children per native call;
 4 MiB is the direct-leaf batching target, not a block-wide witness limit. Native inputs are bounded
 to 18 MiB, output proofs to 8 MiB, and selected plus discarded coverage to 4096 dependencies.
+Shortest generic-witness normalization verifies and prunes each parent carrying a longer
+duplicate before folding. This adds one native proving call per such parent; fresh-claim
+throughput curves do not measure that cost. Targeted measurements belong in the stacked
+[benchmark PR](https://github.com/NethermindEth/nethermind/pull/14220).
 
 Required witness storage is bounded to 64 MiB / 32768 records. The record ceiling does not
 guarantee coverage for a full transaction pool: the byte bound fits about 10.6k distinct
