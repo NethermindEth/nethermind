@@ -177,6 +177,7 @@ namespace Nethermind.Trie
 
                 node.Key = value;
                 Keccak = null;
+                OnKeyChanged();
 
                 [DoesNotReturn, StackTraceHidden]
                 void ThrowDoesNotSupportKey() => throw new InvalidOperationException(
