@@ -289,7 +289,9 @@ class SchedulerCollector:
         self.metadata["enable_before"] = clock_origin()
         os.write(self.ctl_write, b"enable\n")
         ready, _, _ = select.select([self.ack_read], [], [], 5)
-        if not ready or os.read(self.ack_read, 64) != b"ack\n":
+        reply = os.read(self.ack_read, 64) if ready else b""
+        self.metadata["enable_reply"] = {"ready": bool(ready), "length": len(reply), "hex": reply.hex()}
+        if not ready or reply not in (b"ack\n", b"ack\n\0"):
             raise CaptureError("perf enable acknowledgement missing")
         if self.child.process.poll() is not None:
             raise CaptureError("perf exited before replay")
