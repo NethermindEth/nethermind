@@ -47,8 +47,8 @@ public class ColumnGossipRouterTests
     {
         DataColumnSidecarPool pool = new();
         ColumnGossipRouter router = CreateRouter(pool);
-        Dictionary<string, FakeTopic> topics = [];
-        router.Start(id => topics[id] = new FakeTopic(), ForkDigest.Compute(Spec, 419_072), [SubnetId]);
+        Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
+        router.Start(id => topics[id] = new GossipDigestWindowTests.RecordingTopic(), ForkDigest.Compute(Spec, 419_072), [SubnetId]);
         DataColumnSidecar received = null!;
         router.DataColumnSidecarReceived += s => received = s;
 
@@ -69,9 +69,9 @@ public class ColumnGossipRouterTests
         ulong[] subscribedSubnets = [.. Enumerable.Range(0, 128).Select(i => (ulong)i)];
         DataColumnSidecarPool pool = new();
         ColumnGossipRouter router = CreateRouter(pool);
-        Dictionary<string, FakeTopic> topics = [];
+        Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
         byte[] digest = ForkDigest.Compute(Spec, 419_072);
-        router.Start(id => topics[id] = new FakeTopic(), digest, subscribedSubnets);
+        router.Start(id => topics[id] = new GossipDigestWindowTests.RecordingTopic(), digest, subscribedSubnets);
 
         System.Collections.Concurrent.ConcurrentBag<DataColumnSidecar> receivedEvents = [];
         router.DataColumnSidecarReceived += s => receivedEvents.Add(s);
@@ -109,9 +109,9 @@ public class ColumnGossipRouterTests
         }
 
         ColumnGossipRouter router = CreateRouter(pool, store: store);
-        Dictionary<string, FakeTopic> topics = [];
+        Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
         byte[] digest = ForkDigest.Compute(Spec, 419_072);
-        router.Start(id => topics[id] = new FakeTopic(), digest, subscribedSubnets);
+        router.Start(id => topics[id] = new GossipDigestWindowTests.RecordingTopic(), digest, subscribedSubnets);
 
         List<DataColumnSidecar> receivedEvents = [];
         router.DataColumnSidecarReceived += receivedEvents.Add;
@@ -170,8 +170,8 @@ public class ColumnGossipRouterTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
         DataColumnSidecarTestFixture.StoreAsImported(store, DataColumnSidecarTestFixture.BuildValidSidecar(0, CurrentSlot));
         ColumnGossipRouter router = CreateRouter(pool, store: store);
-        Dictionary<string, FakeTopic> topics = [];
-        router.Start(id => topics[id] = new FakeTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static i => (ulong)i)]);
+        Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
+        router.Start(id => topics[id] = new GossipDigestWindowTests.RecordingTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static i => (ulong)i)]);
         DataColumnSidecar forged = DataColumnSidecarTestFixture.BuildValidSidecar(0, CurrentSlot);
         forged.SignedBlockHeader!.Signature = new BlsSignature(Enumerable.Repeat((byte)0xAB, BlsSignature.Length).ToArray());
         pool.Add(SszRoots.HashTreeRoot(forged.SignedBlockHeader.Message!), CurrentSlot, forged);
@@ -195,9 +195,9 @@ public class ColumnGossipRouterTests
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
         ColumnGossipRouter router = CreateRouter(new DataColumnSidecarPool(), store: store);
-        Dictionary<string, FakeTopic> topics = [];
+        Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
         byte[] digest = ForkDigest.Compute(Spec, 419_072);
-        router.Start(id => topics[id] = new FakeTopic(), digest, [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static i => (ulong)i)]);
+        router.Start(id => topics[id] = new GossipDigestWindowTests.RecordingTopic(), digest, [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static i => (ulong)i)]);
         DataColumnSidecar first = DataColumnSidecarTestFixture.BuildValidSidecar(required, CurrentSlot);
         DataColumnSidecarTestFixture.StoreAsImported(store, first);
         DataColumnSidecarTestFixture.StoreAsImported(store, Equivocation(0));
@@ -235,8 +235,8 @@ public class ColumnGossipRouterTests
         string otherDigest = Convert.ToHexStringLower(ForkDigest.Compute(Spec, 412_672));
         TaskCompletionSource subscribing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using ManualResetEventSlim release = new();
-        System.Collections.Concurrent.ConcurrentDictionary<string, FakeTopic> topics = [];
-        router.Start(id => id.Contains(otherDigest) ? new GatedTopic(subscribing, release) : topics[id] = new FakeTopic(), digest, [.. Enumerable.Range(0, required + 1).Select(static i => (ulong)i)]);
+        System.Collections.Concurrent.ConcurrentDictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
+        router.Start(id => id.Contains(otherDigest) ? new GatedTopic(subscribing, release) : topics[id] = new GossipDigestWindowTests.RecordingTopic(), digest, [.. Enumerable.Range(0, required + 1).Select(static i => (ulong)i)]);
 
         Task subscribe = Task.Run(() => router.SubscribeDigest(ForkDigest.Compute(Spec, 412_672)), token);
         await subscribing.Task.WaitAsync(token);
@@ -265,7 +265,7 @@ public class ColumnGossipRouterTests
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         DataColumnSidecarPool pool = new();
         ColumnGossipRouter router = CreateRouter(pool);
-        router.Start(id => new FakeTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, required).Select(i => (ulong)i)]);
+        router.Start(id => new GossipDigestWindowTests.RecordingTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, required).Select(i => (ulong)i)]);
         List<DataColumnSidecar> received = [];
         router.DataColumnSidecarReceived += received.Add;
 
@@ -302,7 +302,7 @@ public class ColumnGossipRouterTests
 
         DataColumnSidecarPool pool = new(store: store);
         ColumnGossipRouter router = CreateRouter(pool);
-        router.Start(id => new FakeTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, required).Select(i => (ulong)i)]);
+        router.Start(id => new GossipDigestWindowTests.RecordingTopic(), ForkDigest.Compute(Spec, 419_072), [.. Enumerable.Range(0, required).Select(i => (ulong)i)]);
 
         router.Handle(required - 1, gloasTopic: false, Message(last));
 
@@ -367,9 +367,9 @@ public class ColumnGossipRouterTests
     public void Invalid_sidecars_are_dropped_for_the_expected_reason_and_never_raise_the_event(Func<DataColumnSidecar> build, ColumnGossipDropReason reason)
     {
         ColumnGossipRouter router = CreateRouter();
-        Dictionary<string, FakeTopic> topics = [];
+        Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
         byte[] digest = ForkDigest.Compute(Spec, 419_072);
-        router.Start(id => topics[id] = new FakeTopic(), digest, [SubnetId]);
+        router.Start(id => topics[id] = new GossipDigestWindowTests.RecordingTopic(), digest, [SubnetId]);
         int received = 0;
         router.DataColumnSidecarReceived += _ => received++;
 
@@ -386,9 +386,9 @@ public class ColumnGossipRouterTests
     public void Duplicate_sidecar_for_the_same_slot_proposer_and_index_is_dropped_and_counted()
     {
         ColumnGossipRouter router = CreateRouter();
-        Dictionary<string, FakeTopic> topics = [];
+        Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
         byte[] digest = ForkDigest.Compute(Spec, 419_072);
-        router.Start(id => topics[id] = new FakeTopic(), digest, [SubnetId]);
+        router.Start(id => topics[id] = new GossipDigestWindowTests.RecordingTopic(), digest, [SubnetId]);
         int received = 0;
         router.DataColumnSidecarReceived += _ => received++;
         byte[] message = Message(DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex, CurrentSlot));
@@ -419,23 +419,6 @@ public class ColumnGossipRouterTests
         public void Unsubscribe() { }
 
         public void Publish(byte[] value) { }
-
-        public void Publish(IMessage value) { }
-    }
-
-    private sealed class FakeTopic : ITopic
-    {
-        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
-        public bool IsSubscribed { get; private set; }
-
-        public List<byte[]> Published { get; } = [];
-
-        public void Subscribe() => IsSubscribed = true;
-
-        public void Unsubscribe() => IsSubscribed = false;
-
-        public void Publish(byte[] value) => Published.Add(value);
 
         public void Publish(IMessage value) { }
     }

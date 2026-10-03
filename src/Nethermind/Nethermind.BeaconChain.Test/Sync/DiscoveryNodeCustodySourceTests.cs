@@ -3,19 +3,18 @@
 
 using System.Linq;
 using System.Net;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Network.Enr;
 using NUnit.Framework;
 
@@ -87,11 +86,5 @@ public class DiscoveryNodeCustodySourceTests
         Assert.That(new DiscoveryNodeCustodySource(null).Current, Is.Null);
 
     private static BeaconDiscovery NewDiscovery(BeaconChainStore store) =>
-        new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
-
-    private sealed class FixedIPResolver(IPAddress ip) : IIPResolver
-    {
-        public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
-            new(new IIPResolver.NethermindIp(ip, ip));
-    }
+        new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store, new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
 }

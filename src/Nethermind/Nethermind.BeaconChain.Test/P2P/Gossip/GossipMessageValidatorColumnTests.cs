@@ -17,7 +17,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
@@ -137,7 +136,7 @@ public class GossipMessageValidatorColumnTests
         DataColumnSidecarPool pool = new();
         ColumnGossipRouter columns = new(Sepolia, clock, LimboLogs.Instance, pool, store);
         byte[] digest = ForkDigest.Compute(Sepolia, Sepolia.GloasForkEpoch);
-        columns.Start(_ => new SilentTopic(), digest, [Subnet]);
+        columns.Start(_ => new GossipDigestWindowTests.SilentTopic(), digest, [Subnet]);
         GossipMessageValidator validator = new(new GossipRouter(Sepolia, clock, LimboLogs.Instance), columns, Sepolia, clock);
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(Subnet, FirstGloasSlot + 1, root);
 
@@ -161,7 +160,7 @@ public class GossipMessageValidatorColumnTests
         };
         DataColumnSidecarPool pool = new();
         ColumnGossipRouter columns = new(Mainnet, clock, LimboLogs.Instance, pool, status: status);
-        columns.Start(_ => new SilentTopic(), MainnetDigest, [Subnet]);
+        columns.Start(_ => new GossipDigestWindowTests.SilentTopic(), MainnetDigest, [Subnet]);
         GossipRouter gossip = new(Mainnet, clock, LimboLogs.Instance, status: status);
         return (new GossipMessageValidator(gossip, columns, Mainnet, clock), gossip, columns, pool);
     }
@@ -186,19 +185,4 @@ public class GossipMessageValidatorColumnTests
 
     private static TestCaseData Fulu(string name, DataColumnSidecar sidecar, ulong finalizedEpoch, MessageValidity expected, bool consumed, ColumnGossipDropReason? reason) =>
         new TestCaseData(sidecar, finalizedEpoch, expected, consumed, reason).SetName(name);
-
-    private sealed class SilentTopic : ITopic
-    {
-        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
-        public bool IsSubscribed => true;
-
-        public void Subscribe() { }
-
-        public void Unsubscribe() { }
-
-        public void Publish(byte[] value) { }
-
-        public void Publish(IMessage value) { }
-    }
 }
