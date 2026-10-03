@@ -7,7 +7,6 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -17,14 +16,13 @@ using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
-using Nethermind.BeaconChain.Storage;
-using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using NUnit.Framework;
+
+using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
@@ -42,27 +40,15 @@ public class BeaconApiErrorMappingTests
     // Text that must never reach the wire: an unrelated layer's exception message.
     private const string UnrelatedInternalDetail = "internal detail from an unrelated layer";
 
-    private BeaconApiHost _host = null!;
-    private BeaconChainStatusHolder _statusHolder = null!;
-    private BeaconChainStore _store = null!;
-    private HttpClient _client = null!;
+    private BeaconApiTestHost _host = null!;
     private WebApplication _pipeline = null!;
     private HttpClient _pipelineClient = null!;
 
     [OneTimeSetUp]
     public async Task StartHost()
     {
-        ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
-        _statusHolder = new BeaconChainStatusHolder(Spec, timestamper);
-        SlotClock slotClock = new(Spec, timestamper);
-        _store = new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>());
-
-        BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
-        _host = new BeaconApiHost(apiConfig, new BeaconChainConfig(), Spec, _statusHolder, slotClock, _store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), new NoOpProcessExitSource(), LimboLogs.Instance);
-
-        await _host.StartAsync(CancellationToken.None);
-        _client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{_host.Port}"), Timeout = TimeSpan.FromSeconds(5) };
+        _host = await BeaconApiTestHost.StartAsync(Spec, forkAwareStore: false);
+        _host.Client.Timeout = TimeSpan.FromSeconds(5);
 
         // The real endpoint pipeline (MapAll, with its error middleware) plus routes it does not own,
         // so exceptions no real endpoint raises can still be pushed through the real error mapping.
@@ -70,7 +56,7 @@ public class BeaconApiErrorMappingTests
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         _pipeline = builder.Build();
-        BeaconApiEndpoints.MapAll(_pipeline, new BeaconApiContext(new BeaconChainConfig(), Spec, _statusHolder, slotClock, _store,
+        BeaconApiEndpoints.MapAll(_pipeline, new BeaconApiContext(new BeaconChainConfig(), Spec, _host.StatusHolder, _host.Clock, _host.Store,
             new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null));
         _pipeline.MapGet("/test/not-supported", (HttpContext _) => { throw new NotSupportedException(UnrelatedInternalDetail); });
         _pipeline.MapGet("/test/unsupported-fork", (HttpContext _) => { throw new UnsupportedForkException(new NotSupportedException(UnrelatedInternalDetail)); });
@@ -82,10 +68,11 @@ public class BeaconApiErrorMappingTests
     [OneTimeTearDown]
     public async Task StopHost()
     {
-        _client.Dispose();
+        _host.Client.Dispose();
         _pipelineClient.Dispose();
-        await _host.DisposeAsync();
+        await _host.Host.DisposeAsync();
         await _pipeline.DisposeAsync();
+        _host.Db.Dispose();
     }
 
     [Test]
@@ -162,10 +149,10 @@ public class BeaconApiErrorMappingTests
     {
         ulong preElectraSlot = (Spec.ElectraForkEpoch - 1) * Presets.SlotsPerEpoch;
         Hash256 root = TestRoot(21);
-        _store.PutState(root, StateBytesForSlot(preElectraSlot));
-        _store.SetCanonicalRoot(preElectraSlot, root);
+        _host.Store.PutState(root, StateBytesForSlot(preElectraSlot));
+        _host.Store.SetCanonicalRoot(preElectraSlot, root);
 
-        HttpResponseMessage response = await _client.GetAsync(string.Format(routeTemplate, preElectraSlot));
+        HttpResponseMessage response = await _host.Client.GetAsync(string.Format(routeTemplate, preElectraSlot));
         string raw = await response.Content.ReadAsStringAsync();
 
         // Only ApiStateDecoding turns the codec's refusal into the API-owned UnsupportedForkException the
@@ -186,11 +173,11 @@ public class BeaconApiErrorMappingTests
         // A Fulu-fork slot: these requests must fail on content negotiation, not on fork support.
         ulong fuluSlot = (Spec.GloasForkEpoch - 1) * Presets.SlotsPerEpoch;
         Hash256 root = TestRoot(22);
-        _store.PutState(root, MinimalFuluState(fuluSlot));
+        _host.Store.PutState(root, MinimalFuluState(fuluSlot));
 
         HttpRequestMessage request = new(HttpMethod.Get, string.Format(routeTemplate, root));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
-        HttpResponseMessage response = await _client.SendAsync(request);
+        HttpResponseMessage response = await _host.Client.SendAsync(request);
 
         Assert.That((int)response.StatusCode, Is.EqualTo(406),
             "these endpoints serve JSON only (no octet-stream variant in the beacon-api spec for validators/validator_balances/committees); " +
@@ -234,10 +221,4 @@ public class BeaconApiErrorMappingTests
         return BeaconStateFulu.Encode(state);
     }
 
-    private static Hash256 TestRoot(byte marker)
-    {
-        byte[] bytes = new byte[32];
-        bytes[31] = marker;
-        return new Hash256(bytes);
-    }
 }
