@@ -443,6 +443,8 @@ class SszType
         }
     }
 
+    internal static IEnumerable<IPropertySymbol> GetOrderedPublicProperties(ITypeSymbol type) => GetPublicProperties(type);
+
     private static IEnumerable<IPropertySymbol> GetPublicProperties(ITypeSymbol type)
     {
         List<ITypeSymbol> typeChain = [];

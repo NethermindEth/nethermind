@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Remove="StateTransition/*.forks.cs" />
     <AdditionalFiles Include="StateTransition/*.forks.cs" />
+    <AdditionalFiles Include="Api/Common/*.beacon-json" />
   </ItemGroup>
 
   <PropertyGroup>
