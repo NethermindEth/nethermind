@@ -3518,7 +3518,7 @@ namespace Nethermind.TxPool.Test
 
         [TestCase(RecentRootSlot, true, true, 1, false, TestName = "recent_root_frame_is_retained_while_its_entry_verifies")]
         [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 2, true, true, 1, false, TestName = "recent_root_frame_is_retained_at_the_window_edge")]
-        [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 1, true, true, 0, false, TestName = "recent_root_frame_is_evicted_for_good_once_its_slot_ages_out")]
+        [TestCase(RecentRootSlot + Eip8272Constants.RecentRootLength - 1, true, true, 0, true, TestName = "recent_root_frame_is_evicted_resubmittably_once_its_slot_ages_out")]
         [TestCase(RecentRootSlot, false, true, 0, true, TestName = "recent_root_frame_is_evicted_resubmittably_when_its_entry_is_missing")]
         [TestCase(RecentRootSlot, true, false, 0, true, TestName = "recent_root_frame_is_evicted_resubmittably_when_the_predeploy_code_differs")]
         public async Task Recent_root_frame_transaction_is_rechecked_on_new_head(ulong headSlot, bool committed, bool recentRootCode, int expectedPending, bool resubmittable)
@@ -3561,8 +3561,26 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending));
-                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.Not.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast) == AcceptTxResult.Accepted, Is.EqualTo(expectedPending == 0));
             }
+        }
+
+        [Test]
+        public async Task Recent_root_frame_transaction_aged_out_is_readmitted_after_a_rollback_to_an_earlier_slot()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            _stateProvider.InsertCode(Eip8272Constants.RecentRootCode.ToArray(), Eip8272Constants.RecentRootAddress);
+            _stateProvider.Set(RecentRootStore.ReferenceCell(RecentRootTuple.SourceId, RecentRootSlot),
+                RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
+            Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Block agedOutHead = Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot + Eip8272Constants.RecentRootLength - 1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(agedOutHead);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject, agedOutHead);
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
         [Test]

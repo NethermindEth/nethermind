@@ -1170,14 +1170,14 @@ namespace Nethermind.TxPool
         /// is not <c>RECENT_ROOT_CODE</c>. A head extending the previous one only ages tuples out: its block writes the
         /// ring-buffer cells of its own slot, and a pending tuple naming that slot was admitted against the same write,
         /// while any other tuple aliasing those cells is already out of the window. Any other head rereads every recorded
-        /// entry, which covers a rollback on the abandoned branch as well as a write on the new one. An aged-out tuple
-        /// never verifies again, so its hash stays cached; any other failure can reverse with a reorg.</remarks>
+        /// entry, which covers a rollback on the abandoned branch as well as a write on the new one. Every failure,
+        /// age included, can reverse with a reorg to an earlier slot, so the hash is released for resubmission.</remarks>
         private void RemoveUnreferenceableRecentRootTransactions(Block block, bool extendsPreviousHead)
         {
             if (_recentRootDependencies.Count == 0) return;
 
             IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
-            List<(Hash256 Hash, bool Final)> unreferenceable = [];
+            List<Hash256> unreferenceable = [];
             if (block.Header.SlotNumber is not ulong headSlot
                 || !_specProvider.GetSpec(block.Header).IsEip8272Enabled
                 || state.GetCodeHash(Eip8272Constants.RecentRootAddress) != Eip8272Constants.RecentRootCodeHash)
@@ -1193,12 +1193,12 @@ namespace Nethermind.TxPool
                 _recentRootDependencies.CollectInvalid(state, headSlot + 1, unreferenceable);
             }
 
-            foreach ((Hash256 hash, bool final) in unreferenceable)
+            foreach (Hash256 hash in unreferenceable)
             {
                 if (!RemoveTransaction(hash, out Transaction? pooled)) continue;
 
                 EvictedPending?.Invoke(this, new TxEventArgs(pooled));
-                if (!final) _hashCache.DeleteFromLongTerm(hash);
+                _hashCache.DeleteFromLongTerm(hash);
                 Metrics.PendingTransactionsEvicted++;
                 if (_logger.IsTrace) _logger.Trace($"Evicted frame transaction {hash}, its recent roots do not verify at head {block.Number}.");
             }
