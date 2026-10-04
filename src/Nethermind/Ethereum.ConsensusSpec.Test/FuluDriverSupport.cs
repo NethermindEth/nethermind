@@ -180,6 +180,28 @@ public static class FuluDriverSupport
             Assert.Fail($"expected {subject} to be rejected by a spec assertion, but the pipeline threw {thrown.GetType().Name} on the way: {thrown}");
     }
 
+    /// <summary>Applies a vector action, requiring its post-state root or the pipeline's rejection when no post state exists.</summary>
+    internal static void AssertTransition<TState>(ForkDriver<TState> driver, string postPath, TState state, EpochCache cache,
+        Action apply, string subject, string successFailure) where TState : class
+    {
+        bool expectSuccess = File.Exists(postPath);
+        Exception? thrown = null;
+        try { apply(); }
+        catch (Exception ex) { thrown = ex; }
+
+        if (expectSuccess)
+        {
+            if (thrown is not null)
+                Assert.Fail($"{successFailure}: {thrown}");
+
+            AssertPostStateRoot(driver, postPath, state, cache);
+        }
+        else
+        {
+            AssertRejected(thrown, subject);
+        }
+    }
+
     public static PubkeyCache BuildPubkeyCache(Validator[] validators)
     {
         PubkeyCache pubkeys = new();

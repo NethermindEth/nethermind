@@ -118,23 +118,9 @@ public class OperationsTests
 
         byte[] operand = operandPath is null ? [] : SszConsensusTestLoader.ReadSszSnappy(operandPath);
         string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
-        bool expectSuccess = File.Exists(postPath);
-
-        Exception? thrown = null;
-        try { handler.Apply(ctx, operand, null); }
-        catch (Exception ex) { thrown = ex; }
-
-        if (expectSuccess)
-        {
-            if (thrown is not null)
-                Assert.Fail($"expected the operation to be accepted, but it threw: {thrown}");
-
-            FuluDriverSupport.AssertPostStateRoot(driver, postPath, ctx.State, cache);
-        }
-        else
-        {
-            FuluDriverSupport.AssertRejected(thrown, "the operation");
-        }
+        FuluDriverSupport.AssertTransition(driver, postPath, ctx.State, cache,
+            () => handler.Apply(ctx, operand, null), "the operation",
+            "expected the operation to be accepted, but it threw");
     }
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
