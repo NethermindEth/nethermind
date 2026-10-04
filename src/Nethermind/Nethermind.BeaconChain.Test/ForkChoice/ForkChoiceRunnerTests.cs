@@ -968,100 +968,139 @@ public class ForkChoiceRunnerTests
         }
     }
 
-    /// <summary>
-    /// A held vote state stands in for every target of its shuffling, so only a vote that verified may leave one: two unsigned
-    /// votes each build and leave no checkpoint state behind, a trusted body vote builds once and is held, and a later body
-    /// vote of that shuffling builds nothing.
-    /// </summary>
-    [Test]
-    public void Vote_state_is_held_only_once_a_vote_verifies_against_it()
+    private enum VoteStateAnchor
     {
-        const ulong targetEpoch = 2;
-        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
-        List<UnsignedChain.ChainBlock> targets = ImportLine(chain, runner, chain.AnchorRoot, 33, 41, 50, 60);
-        List<int> buildCounts = [];
-
-        foreach (UnsignedChain.ChainBlock target in targets.Take(2))
-        {
-            Assert.That(() => runner.OnAttestation(BodyVote(chain, target, targetEpoch)), Throws.TypeOf<ForkChoiceException>(), "fixture: the vote is unsigned");
-            buildCounts.Add(builds.Count);
-        }
-
-        // A refused vote's state is not its target's checkpoint state either, so asking for that builds again.
-        runner.GetCheckpointState(new CheckpointRef(targetEpoch, targets[0].Root));
-        buildCounts.Add(builds.Count);
-        foreach (UnsignedChain.ChainBlock target in targets.Skip(2))
-        {
-            runner.OnAttestation(BodyVote(chain, target, targetEpoch), isFromBlock: true, verifySignature: false);
-            buildCounts.Add(builds.Count);
-        }
-
-        Assert.That(buildCounts, Is.EqualTo((int[])[1, 2, 3, 4, 4]));
+        Genesis,
+        PastDecisionSlot,
+        GloasJustified,
+    }
+    private abstract record VoteStateStep;
+    private sealed record ImportTarget(int Id, int Parent, ulong Slot) : VoteStateStep;
+    private sealed record TargetVote(int Id, bool Unsigned = false) : VoteStateStep;
+    private sealed record LookupTarget(int Id) : VoteStateStep;
+    private sealed record AdvanceVoteClock(ulong Slot) : VoteStateStep;
+    private sealed record ObserveBuilds(int Expected) : VoteStateStep;
+    private sealed record VoteStateCase(string Name, VoteStateStep[] Steps, VoteStateAnchor Anchor = VoteStateAnchor.Genesis);
+    private static readonly VoteStateCase[] VoteStateScenarios =
+    [
+        new("Vote_state_is_held_only_once_a_vote_verifies_against_it",
+            [new ImportTarget(1, 0, 33), new ImportTarget(2, 1, 41), new ImportTarget(3, 2, 50), new ImportTarget(4, 3, 60),
+             new TargetVote(1, Unsigned: true), new ObserveBuilds(1), new TargetVote(2, Unsigned: true), new ObserveBuilds(2), new LookupTarget(1), new ObserveBuilds(3),
+             new TargetVote(3), new ObserveBuilds(4), new TargetVote(4), new ObserveBuilds(4)]),
+        new("Vote_states_are_bounded_and_the_least_recently_used_shuffling_goes_first",
+            [.. Enumerable.Range(1, 9).Select(i => new ImportTarget(i, 0, (ulong)i)), new ImportTarget(10, 1, 40), new ImportTarget(11, 2, 41),
+             .. Enumerable.Range(1, 8).Select(i => new TargetVote(i)), new TargetVote(1), new TargetVote(9), new ObserveBuilds(9), new TargetVote(10), new ObserveBuilds(9), new TargetVote(11), new ObserveBuilds(10)]),
+        new("Vote_states_of_epochs_before_the_previous_one_are_dropped_on_the_tick",
+            [new ImportTarget(1, 0, 33), new ImportTarget(2, 1, 41), new ImportTarget(3, 2, 50), new TargetVote(1), new AdvanceVoteClock(96), new TargetVote(2), new ObserveBuilds(1),
+             new AdvanceVoteClock(128), new TargetVote(3), new ObserveBuilds(2)]),
+        new("Targets_share_a_vote_state_exactly_when_the_decision_slot_gives_them_one_block",
+            [new ImportTarget(1, 0, 30), new ImportTarget(2, 1, 31), new ImportTarget(3, 1, 32), new ImportTarget(4, 3, 40), new TargetVote(2), new TargetVote(3), new ObserveBuilds(2), new TargetVote(4), new ObserveBuilds(2)]),
+        new("Targets_whose_decision_slot_is_below_the_tree_root_share_one_vote_state",
+            [new ImportTarget(1, 0, 50), new ImportTarget(2, 1, 60), new TargetVote(1), new TargetVote(2), new ObserveBuilds(1)], VoteStateAnchor.PastDecisionSlot),
+        new("Gloas_targets_of_one_shuffling_share_one_vote_state",
+            [new TargetVote(1), new TargetVote(2), new ObserveBuilds(1)], VoteStateAnchor.GloasJustified),
+    ];
+    private static IEnumerable<TestCaseData> VoteStateCases()
+    {
+        for (int i = 0; i < VoteStateScenarios.Length; i++) yield return new TestCaseData(i).SetName(VoteStateScenarios[i].Name);
     }
 
-    /// <summary>
-    /// Each held vote state is a whole checkpoint state, so at most eight are kept: of nine shufflings (nine siblings at or before
-    /// the decision slot, each its own decision block) the least recently used goes. The first is used again through its own
-    /// cached checkpoint state before the ninth arrives, so the second is the one evicted and a later target of it builds again.
-    /// </summary>
-    [Test]
-    public void Vote_states_are_bounded_and_the_least_recently_used_shuffling_goes_first()
+    /// <summary>Checks verified-state retention, LRU eviction, epoch expiry and decision-block sharing.</summary>
+    /// <remarks>
+    /// Epoch 2 uses the last block at or before slot 31; targets after the tree root share its decision ancestor.
+    /// The eight-state LRU refreshes a hit, and the next tick drops states older than the previous epoch.
+    /// </remarks>
+    [TestCaseSource(nameof(VoteStateCases))]
+    public void Vote_states_follow_verified_votes_clock_and_decision_roots(int index)
     {
-        const ulong targetEpoch = 2;
-        const int MaxVoteStates = 8;
-        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
-        List<UnsignedChain.ChainBlock> siblings = [];
-        for (ulong slot = 1; slot <= MaxVoteStates + 1; slot++)
+        VoteStateCase test = VoteStateScenarios[index];
+        ForkChoiceRunner runner;
+        BuildCounter builds;
+        UnsignedChain? fulu = null;
+        Dictionary<int, UnsignedChain.ChainBlock> blocks = [];
+        Dictionary<int, Hash256> roots = [];
+        ulong targetEpoch = test.Anchor == VoteStateAnchor.GloasJustified ? 3UL : 2UL;
+        int committeeSize = 0;
+        ForkCrossingChain? gloas = null;
+        if (test.Anchor == VoteStateAnchor.GloasJustified)
         {
-            siblings.Add(ImportLine(chain, runner, chain.AnchorRoot, slot)[0]);
+            gloas = ForkCrossingChain.Instance;
+            runner = JustifiedOnFirstGloasBlock(gloas);
+            builds = new(runner);
+            BeaconStateGloas atEpochStart = gloas.Voting[^1].PostState.Clone();
+            GloasSlotProcessing.ProcessSlots(atEpochStart, targetEpoch * Presets.SlotsPerEpoch, new EpochCache { Hasher = new CachedBeaconStateHasher() });
+            committeeSize = new EpochCache().GetCommitteeCache(atEpochStart, targetEpoch).GetBeaconCommittee(targetEpoch * Presets.SlotsPerEpoch, 0).Length;
+            roots[1] = gloas.Voting[0].Root;
+            roots[2] = gloas.Voting[^1].Root;
+        }
+        else if (test.Anchor == VoteStateAnchor.PastDecisionSlot)
+        {
+            fulu = UnsignedChain.Create();
+            UnsignedChain.ChainBlock root = fulu.Extend(fulu.AnchorRoot, Presets.SlotsPerEpoch, payloadHashByte: 32);
+            runner = new(fulu.Spec, root.PostState, root.Block.Message!, fulu, fulu.Anchor.Pubkeys);
+            builds = new(runner);
+            TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
+            roots[0] = root.Root;
+        }
+        else
+        {
+            (fulu, runner, builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
+            roots[0] = fulu.AnchorRoot;
         }
 
-        UnsignedChain.ChainBlock firstChild = ImportLine(chain, runner, siblings[0].Root, 40)[0];
-        UnsignedChain.ChainBlock secondChild = ImportLine(chain, runner, siblings[1].Root, 41)[0];
-        foreach (UnsignedChain.ChainBlock sibling in siblings.Take(MaxVoteStates))
+        List<int> observed = [];
+        List<int> expected = [];
+        foreach (VoteStateStep step in test.Steps)
         {
-            runner.OnAttestation(BodyVote(chain, sibling, targetEpoch), isFromBlock: true, verifySignature: false);
+            switch (step)
+            {
+                case ImportTarget import:
+                    blocks[import.Id] = ImportLine(fulu!, runner, roots[import.Parent], import.Slot)[0];
+                    roots[import.Id] = blocks[import.Id].Root;
+                    break;
+                case TargetVote vote when gloas is null:
+                    Attestation attestation = BodyVote(fulu!, blocks[vote.Id], targetEpoch);
+                    if (vote.Unsigned) Assert.That(() => runner.OnAttestation(attestation), Throws.TypeOf<ForkChoiceException>(), "fixture: the vote is unsigned");
+                    else runner.OnAttestation(attestation, isFromBlock: true, verifySignature: false);
+                    break;
+                case TargetVote vote:
+                    if (vote.Unsigned) throw new InvalidOperationException("The Gloas lifetime scenario requires a trusted body vote");
+                    AttestationGloas attestationGloas = new()
+                    {
+                        AggregationBits = new BitArray(committeeSize, true),
+                        Data = new AttestationData
+                        {
+                            Slot = targetEpoch * Presets.SlotsPerEpoch,
+                            Index = 0,
+                            BeaconBlockRoot = roots[vote.Id],
+                            Source = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = gloas!.First.Root },
+                            Target = new Checkpoint { Epoch = targetEpoch, Root = roots[vote.Id] },
+                        },
+                        Signature = new BlsSignature(SignatureSets.G2PointAtInfinity),
+                        CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
+                    };
+                    runner.OnAttestation(attestationGloas, isFromBlock: true, verifySignature: false);
+                    break;
+                case LookupTarget lookup:
+                    runner.GetCheckpointState(new CheckpointRef(targetEpoch, roots[lookup.Id]));
+                    break;
+                case AdvanceVoteClock tick:
+                    TickToSlot(runner, tick.Slot);
+                    break;
+                case ObserveBuilds observation:
+                    observed.Add(builds.Count);
+                    expected.Add(observation.Expected);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(step));
+            }
         }
-
-        runner.OnAttestation(BodyVote(chain, siblings[0], targetEpoch), isFromBlock: true, verifySignature: false);
-        runner.OnAttestation(BodyVote(chain, siblings[^1], targetEpoch), isFromBlock: true, verifySignature: false);
-        int afterSiblings = builds.Count;
-        runner.OnAttestation(BodyVote(chain, firstChild, targetEpoch), isFromBlock: true, verifySignature: false);
-        int afterFirstChild = builds.Count;
-        runner.OnAttestation(BodyVote(chain, secondChild, targetEpoch), isFromBlock: true, verifySignature: false);
-
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(afterSiblings, Is.EqualTo(MaxVoteStates + 1), "every sibling is its own shuffling, and the repeat is cached");
-            Assert.That(afterFirstChild, Is.EqualTo(afterSiblings), "the first shuffling, used again, is still held");
-            Assert.That(builds.Count, Is.EqualTo(afterSiblings + 1), "the second shuffling was the least recently used and was evicted");
+            if (gloas is not null) Assert.That(committeeSize, Is.Positive, "fixture bug: slot 96 must have a committee");
+            Assert.That(observed, Is.EqualTo(expected));
         }
     }
-
-    /// <summary>
-    /// No block from an epoch before the previous one can be imported with a vote for it, so its held state is dropped on the
-    /// tick into the epoch after next: a body vote for another target of that shuffling then builds again.
-    /// </summary>
-    [Test]
-    public void Vote_states_of_epochs_before_the_previous_one_are_dropped_on_the_tick()
-    {
-        const ulong targetEpoch = 2;
-        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
-        List<UnsignedChain.ChainBlock> targets = ImportLine(chain, runner, chain.AnchorRoot, 33, 41, 50);
-        runner.OnAttestation(BodyVote(chain, targets[0], targetEpoch), isFromBlock: true, verifySignature: false);
-        TickToSlot(runner, (targetEpoch + 1) * Presets.SlotsPerEpoch);
-        runner.OnAttestation(BodyVote(chain, targets[1], targetEpoch), isFromBlock: true, verifySignature: false);
-        int afterPreviousEpochVote = builds.Count;
-        TickToSlot(runner, (targetEpoch + 2) * Presets.SlotsPerEpoch);
-        runner.OnAttestation(BodyVote(chain, targets[2], targetEpoch), isFromBlock: true, verifySignature: false);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(afterPreviousEpochVote, Is.EqualTo(1), "a shuffling of the previous epoch is still held");
-            Assert.That(builds.Count, Is.EqualTo(2), "the epoch-2 shuffling was dropped two epochs on");
-        }
-    }
-
     /// <summary>ethereum/consensus-specs electra/p2p-interface.md checks aggregator membership before finalized ancestry.</summary>
     [Test]
     public void Gossip_aggregate_membership_reject_precedes_finalized_ancestry_ignore()
@@ -1102,94 +1141,6 @@ public class ForkChoiceRunnerTests
             Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)), "fixture bug: the first Gloas block must be finalized");
             Assert.That(refusal.Message, Does.Contain("not a member"));
             Assert.That(refusal.RejectGossip, Is.True, "a provable membership failure precedes the later ancestry ignore");
-        }
-    }
-
-    /// <summary>
-    /// The epoch-2 shuffling is fixed by the last block at or before slot 31. A at slot 31 is its own decision block and its
-    /// sibling B at slot 32 has their parent, so they never share a state; X at slot 32 and its child Y both have X's parent
-    /// at slot 30, so they do. A decision slot off by one either way merges the first pair or splits the second.
-    /// </summary>
-    [Test]
-    public void Targets_share_a_vote_state_exactly_when_the_decision_slot_gives_them_one_block()
-    {
-        const ulong targetEpoch = 2;
-        (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt(targetEpoch * Presets.SlotsPerEpoch + 6);
-        UnsignedChain.ChainBlock parent = ImportLine(chain, runner, chain.AnchorRoot, 30)[0];
-        UnsignedChain.ChainBlock a = ImportLine(chain, runner, parent.Root, 31)[0];
-        List<UnsignedChain.ChainBlock> xy = ImportLine(chain, runner, parent.Root, 32, 40);
-
-        runner.OnAttestation(BodyVote(chain, a, targetEpoch), isFromBlock: true, verifySignature: false);
-        runner.OnAttestation(BodyVote(chain, xy[0], targetEpoch), isFromBlock: true, verifySignature: false);
-        int afterSiblings = builds.Count;
-        runner.OnAttestation(BodyVote(chain, xy[1], targetEpoch), isFromBlock: true, verifySignature: false);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(afterSiblings, Is.EqualTo(2), "the slot-31 block and its slot-32 sibling have two shufflings");
-            Assert.That(builds.Count, Is.EqualTo(2), "the slot-40 child shares the slot-32 block's shuffling");
-        }
-    }
-
-    /// <summary>
-    /// A tree rooted after the decision slot holds none of the decision blocks, but every block in it descends from the root,
-    /// so they all share the root's own ancestor there and one state serves every target of that epoch.
-    /// </summary>
-    [Test]
-    public void Targets_whose_decision_slot_is_below_the_tree_root_share_one_vote_state()
-    {
-        const ulong targetEpoch = 2;
-        UnsignedChain chain = UnsignedChain.Create();
-        UnsignedChain.ChainBlock root = chain.Extend(chain.AnchorRoot, Presets.SlotsPerEpoch, payloadHashByte: 32);
-        ForkChoiceRunner runner = new(chain.Spec, root.PostState, root.Block.Message!, chain, chain.Anchor.Pubkeys);
-        BuildCounter builds = new(runner);
-        TickToSlot(runner, targetEpoch * Presets.SlotsPerEpoch + 6);
-        List<UnsignedChain.ChainBlock> targets = ImportLine(chain, runner, root.Root, 50, 60);
-
-        foreach (UnsignedChain.ChainBlock target in targets)
-        {
-            runner.OnAttestation(BodyVote(chain, target, targetEpoch), isFromBlock: true, verifySignature: false);
-        }
-
-        Assert.That(builds.Count, Is.EqualTo(1));
-    }
-
-    /// <summary>A Gloas checkpoint state names its decision block from its own block roots too, so two Gloas targets of one shuffling share a state.</summary>
-    [Test]
-    public void Gloas_targets_of_one_shuffling_share_one_vote_state()
-    {
-        const ulong targetEpoch = 3;
-        ForkCrossingChain chain = ForkCrossingChain.Instance;
-        ForkChoiceRunner runner = JustifiedOnFirstGloasBlock(chain);
-        BuildCounter builds = new(runner);
-        ulong epochStart = targetEpoch * Presets.SlotsPerEpoch;
-        BeaconStateGloas atEpochStart = chain.Voting[^1].PostState.Clone();
-        GloasSlotProcessing.ProcessSlots(atEpochStart, epochStart, new EpochCache { Hasher = new CachedBeaconStateHasher() });
-        int committeeSize = new EpochCache().GetCommitteeCache(atEpochStart, targetEpoch).GetBeaconCommittee(epochStart, 0).Length;
-
-        foreach (ForkCrossingChain.ChainBlock target in (ForkCrossingChain.ChainBlock[])[chain.Voting[0], chain.Voting[^1]])
-        {
-            AttestationGloas vote = new()
-            {
-                AggregationBits = new BitArray(committeeSize, true),
-                Data = new AttestationData
-                {
-                    Slot = epochStart,
-                    Index = 0,
-                    BeaconBlockRoot = target.Root,
-                    Source = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = chain.First.Root },
-                    Target = new Checkpoint { Epoch = targetEpoch, Root = target.Root },
-                },
-                Signature = new BlsSignature(SignatureSets.G2PointAtInfinity),
-                CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
-            };
-            runner.OnAttestation(vote, isFromBlock: true, verifySignature: false);
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(committeeSize, Is.Positive, "fixture bug: slot 96 must have a committee");
-            Assert.That(builds.Count, Is.EqualTo(1), "both blocks have the first Gloas block at slot 32 as their decision block for epoch 3");
         }
     }
 
