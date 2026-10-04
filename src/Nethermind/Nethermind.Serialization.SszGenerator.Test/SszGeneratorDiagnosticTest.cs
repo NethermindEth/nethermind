@@ -458,6 +458,78 @@ public class SszGeneratorDiagnosticTest
         return string.Empty;
     }
 
+    /// <summary>Checks field binding rejection, nested loops, JSON order and partial declaration metadata.</summary>
+    [Test]
+    public void Json_shapes_preserve_field_order_and_original_partial_declaration_position([Values] bool reversed)
+    {
+        const string source = """
+            using System.Text.Json;
+            namespace Nethermind.Core.Crypto
+            {
+                public class Hash256 { public byte[] Bytes { get; set; } = [1]; }
+            }
+            namespace Nethermind.BeaconChain.Types
+            {
+                public class Deposit { public Nethermind.Core.Crypto.Hash256[] Proof { get; set; } = [new()]; }
+                public class Item
+                {
+                    public ulong First { get; set; }
+                    public ulong Second { get; set; }
+                    public Deposit[] Deposits { get; set; } = [new()];
+                }
+            }
+            namespace Nethermind.BeaconChain.Api.Common
+            {
+                internal static partial class BeaconJsonWriter
+                {
+                    public static void Before() { }
+                    public static partial void WriteItem(Utf8JsonWriter w, Nethermind.BeaconChain.Types.Item item);
+                    private static partial void WriteDeposits(Utf8JsonWriter w, Nethermind.BeaconChain.Types.Deposit[] deposits);
+                    public static void After() { }
+                    private static void WriteHexValue(Utf8JsonWriter w, byte[] value) => w.WriteStringValue(System.Convert.ToHexString(value));
+                    private static void WriteUInt(Utf8JsonWriter w, string name, ulong value) => w.WriteString(name, value.ToString());
+                }
+            }
+            """;
+        string fields = reversed ? "Second=second First=first Deposits=deposits" : "First=first Second=second Deposits=deposits";
+        CSharpCompilation input = CSharpCompilation.Create("JsonShapeContract", [CSharpSyntaxTree.ParseText(source)],
+            BuildMetadataReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        GeneratorDriver driver = CSharpGeneratorDriver.Create([CreateSszGenerator("BeaconJsonShapeGenerator").AsSourceGenerator()],
+            additionalTexts: [new JsonSchema("Deposit Proof=proof\nItem " + fields + "\nmethod public WriteItem Item item - object\nmethod private WriteDeposits Deposit deposits deposits array")]);
+        driver = driver.RunGeneratorsAndUpdateCompilation(input, out Compilation output, out _);
+        string generated = driver.GetRunResult().Results[0].GeneratedSources[0].SourceText.ToString();
+        if (reversed)
+        {
+            Assert.That(generated, Does.Contain("#error Beacon JSON generation failed: Unknown or reordered property"));
+            return;
+        }
+
+        using MemoryStream image = new();
+        Microsoft.CodeAnalysis.Emit.EmitResult result = output.Emit(image);
+        Assert.That(result.Success, Is.True, string.Join(Environment.NewLine, result.Diagnostics));
+        Assembly assembly = Assembly.Load(image.ToArray());
+        MethodInfo[] methods = assembly.GetType("Nethermind.BeaconChain.Api.Common.BeaconJsonWriter")!
+            .GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+        Array.Sort(methods, static (a, b) => a.MetadataToken.CompareTo(b.MetadataToken));
+        Assert.That(Array.ConvertAll(methods, static m => m.Name), Is.EqualTo(new[] { "Before", "WriteItem", "WriteDeposits", "After", "WriteHexValue", "WriteUInt" }));
+        using MemoryStream json = new();
+        using (System.Text.Json.Utf8JsonWriter writer = new(json))
+        {
+            object item = Activator.CreateInstance(assembly.GetType("Nethermind.BeaconChain.Types.Item")!)!;
+            item.GetType().GetProperty("First")!.SetValue(item, 7UL);
+            item.GetType().GetProperty("Second")!.SetValue(item, 9UL);
+            methods[1].Invoke(null, [writer, item]);
+        }
+        Assert.That(Encoding.UTF8.GetString(json.ToArray()), Is.EqualTo("{\"first\":\"7\",\"second\":\"9\",\"deposits\":[{\"proof\":[\"01\"]}]}"));
+    }
+
+    private sealed class JsonSchema(string text) : AdditionalText
+    {
+        public override string Path => "Contract.beacon-json";
+        public override Microsoft.CodeAnalysis.Text.SourceText GetText(System.Threading.CancellationToken cancellationToken = default) =>
+            Microsoft.CodeAnalysis.Text.SourceText.From(text);
+    }
+
     private static GeneratorDriverRunResult RunGenerator(string source, CSharpParseOptions parseOptions, string assemblyName)
         => RunGenerator(source, parseOptions, assemblyName, out _);
 
@@ -477,7 +549,7 @@ public class SszGeneratorDiagnosticTest
         return driver.GetRunResult();
     }
 
-    private static IIncrementalGenerator CreateSszGenerator()
+    private static IIncrementalGenerator CreateSszGenerator(string name = "SszGenerator")
     {
         DirectoryInfo configurationDirectory = new(AppContext.BaseDirectory);
         DirectoryInfo artifactsBinDirectory = configurationDirectory.Parent?.Parent
@@ -489,7 +561,7 @@ public class SszGeneratorDiagnosticTest
             "Nethermind.Serialization.SszGenerator.dll");
 
         Assembly assembly = Assembly.LoadFrom(generatorAssemblyPath);
-        Type generatorType = assembly.GetType("SszGenerator", throwOnError: true)!;
+        Type generatorType = assembly.GetType(name, throwOnError: true)!;
         return (IIncrementalGenerator)Activator.CreateInstance(generatorType)!;
     }
 
