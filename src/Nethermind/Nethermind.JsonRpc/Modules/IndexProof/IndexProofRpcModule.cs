@@ -95,22 +95,18 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree? blockTree =
 
     private IReadOnlyList<IndexEntry>? GetCanonicalTableEntries(int level, long firstBlock)
     {
-        if (blockTree is not null)
-        {
-            long lookupBlockNumber = level == 0
-                ? firstBlock
-                : IndexTableMergeScheduler.PublicationBlock(level, firstBlock);
+        if (blockTree is null)
+            return store.Get(level, firstBlock);
 
-            Hash256? canonicalHash = blockTree.FindCanonicalBlockInfo((ulong)lookupBlockNumber)?.BlockHash
-                ?? blockTree.FindHeader((ulong)lookupBlockNumber, BlockTreeLookupOptions.RequireCanonical)?.Hash;
+        long lookupBlockNumber = level == 0
+            ? firstBlock
+            : IndexTableMergeScheduler.PublicationBlock(level, firstBlock);
 
-            if (canonicalHash is not null)
-            {
-                return store.Get(level, firstBlock, canonicalHash);
-            }
-        }
+        Hash256? canonicalHash = blockTree.FindCanonicalBlockInfo((ulong)lookupBlockNumber)?.BlockHash
+            ?? blockTree.FindHeader((ulong)lookupBlockNumber, BlockTreeLookupOptions.RequireCanonical)?.Hash;
 
-        return store.Get(level, firstBlock);
+        // The store also holds tables of side branches and locally produced blocks, so only the canonical variant may be served.
+        return canonicalHash is null ? null : store.Get(level, firstBlock, canonicalHash);
     }
 
     /// <summary>

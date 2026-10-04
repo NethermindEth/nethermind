@@ -175,6 +175,25 @@ public class IndexEntryTests
         }
     }
 
+    [Test]
+    public void Frame_index_is_encoded_between_transaction_and_log_index([Values] bool topic)
+    {
+        IndexEntry entry = topic
+            ? IndexEntry.CreateLogTopic(0, TestItem.KeccakC, 42, 3, 1, frameIndex: 0x0102)
+            : IndexEntry.CreateLogAddress(TestItem.AddressA, 42, 3, 1, frameIndex: 0x0102);
+        int positionOffset = topic ? 42 : 30;
+
+        byte[] buffer = new byte[IndexEntry.MaxEncodedLength];
+        int written = entry.Encode(buffer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.EqualTo(topic ? 52 : 40));
+            Assert.That(entry.EncodedLength, Is.EqualTo(written));
+            Assert.That(buffer[positionOffset..(positionOffset + 10)], Is.EqualTo(new byte[] { 0, 0, 0, 3, 0x01, 0x02, 0, 0, 0, 1 }));
+        }
+    }
+
     [TestCase(-1)]
     [TestCase(4)]
     [TestCase(5)]
@@ -213,6 +232,11 @@ public class IndexEntryTests
             IndexEntry.CreateTransaction(TestItem.KeccakB, 10, 0, 0),
             IndexEntry.CreateLogAddress(TestItem.AddressA, 10, 0, 0),
             IndexEntry.CreateLogTopic(0, TestItem.KeccakC, 10, 0, 0),
+            // EIP-8141 activated at block 11: the frame index sits between the transaction and log index.
+            IndexEntry.CreateLogAddress(TestItem.AddressA, 11, 0, 1, frameIndex: 0),
+            IndexEntry.CreateLogAddress(TestItem.AddressA, 11, 0, 0, frameIndex: 1),
+            IndexEntry.CreateLogAddress(TestItem.AddressA, 11, 0, 0, frameIndex: 0),
+            IndexEntry.CreateLogTopic(0, TestItem.KeccakC, 11, 0, 0, frameIndex: 256),
         ];
 
         // Sort by CompareTo

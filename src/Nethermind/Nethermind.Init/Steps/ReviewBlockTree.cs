@@ -36,36 +36,36 @@ namespace Nethermind.Init.Steps
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
 
-        public Task Execute(CancellationToken cancellationToken)
+        public async Task Execute(CancellationToken cancellationToken)
         {
-            ValidateEip8304History();
+            ValidateEip8304Config();
             HealCanonicalChainIfEnabled();
-            return initConfig.ProcessingEnabled
-                ? RunBlockTreeInitTasks(cancellationToken)
-                : Task.CompletedTask;
+            if (initConfig.ProcessingEnabled)
+            {
+                await RunBlockTreeInitTasks(cancellationToken);
+            }
+
+            // Runs after the init tasks, whose reprocessing may restore the receipts checked here.
+            ValidateEip8304History();
         }
 
-        private void ValidateEip8304History()
+        private void ValidateEip8304Config()
         {
-            if (chainSpec?.Parameters.Eip8304TransitionTimestamp is null)
-                return;
-
-            if (receiptConfig is not null && !receiptConfig.StoreReceipts)
+            if (chainSpec?.Parameters.Eip8304TransitionTimestamp is not null && receiptConfig is not null && !receiptConfig.StoreReceipts)
             {
                 throw new InvalidConfigurationException(
                     $"EIP-8304 is configured (eip8304TransitionTimestamp={chainSpec.Parameters.Eip8304TransitionTimestamp}) but " +
                     $"Receipt.{nameof(IReceiptConfig.StoreReceipts)} is disabled. Historical receipts must be stored to compute index tables.", -1);
             }
+        }
 
-            if (blockTree.Head is null)
+        private void ValidateEip8304History()
+        {
+            if (chainSpec?.Parameters.Eip8304TransitionTimestamp is not ulong transitionTimestamp || blockTree.Head is null)
                 return;
 
             long headNumber = (long)blockTree.Head.Number;
-            int requiredBlocks = Math.Min((int)headNumber, Eip8304Constants.SyncRecoveryBlocks);
-            if (requiredBlocks <= 0)
-                return;
-
-            long startBlock = headNumber - requiredBlocks + 1;
+            long startBlock = FirstBlockOfPendingTables(headNumber, transitionTimestamp);
             for (long n = startBlock; n <= headNumber; n++)
             {
                 Block block = blockTree.FindBlock((ulong)n, BlockTreeLookupOptions.None)
@@ -84,6 +84,37 @@ namespace Nethermind.Init.Steps
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Returns the first block of the earliest eligible table still to be published after <paramref name="headNumber"/>,
+        /// or the block after the head when there is none.
+        /// </summary>
+        /// <remarks>
+        /// Index tables live in memory, so such a table is rebuilt from the bodies and receipts of its blocks up to the head.
+        /// A table whose first block precedes activation is never generated, so its history is not needed.
+        /// </remarks>
+        private long FirstBlockOfPendingTables(long headNumber, ulong transitionTimestamp)
+        {
+            long startBlock = headNumber + 1;
+            for (int level = 1; level < Eip8304Constants.TableSizes.Length; level++)
+            {
+                int tableSize = Eip8304Constants.TableSizes[level];
+                long firstBlock = Math.Max(0, headNumber - tableSize + 2 - (tableSize / 4));
+                firstBlock += (tableSize - (firstBlock % tableSize)) % tableSize;
+
+                for (; firstBlock <= headNumber && firstBlock < startBlock; firstBlock += tableSize)
+                {
+                    BlockHeader? header = blockTree.FindHeader((ulong)firstBlock, BlockTreeLookupOptions.RequireCanonical);
+                    if (header is null || header.Timestamp >= transitionTimestamp)
+                    {
+                        startBlock = firstBlock;
+                        break;
+                    }
+                }
+            }
+
+            return startBlock;
         }
 
         private void HealCanonicalChainIfEnabled()

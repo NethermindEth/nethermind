@@ -37,6 +37,8 @@ public static class IndexEntryGenerator
     ///         log count (total logs in the block before this transaction).</item>
     ///   <item>For each log in each receipt, a log address entry and up to 4 log topic
     ///         entries are created. Log indices are relative to the transaction beginning.</item>
+    ///   <item>Under EIP-8141 log entries also carry the frame index, and log indices are relative
+    ///         to the frame beginning. Logs of a transaction without frames belong to frame 0.</item>
     /// </list>
     /// </remarks>
     /// <param name="header">The block header being processed.</param>
@@ -44,6 +46,7 @@ public static class IndexEntryGenerator
     /// <param name="receipts">The block's transaction receipts (parallel with transactions).</param>
     /// <param name="parentBlockHash">The hash of the parent block (block N−1). May be null for genesis.</param>
     /// <param name="entries">The list to which generated entries are appended.</param>
+    /// <param name="indexFrames">Whether EIP-8141 is active for <paramref name="header"/>, adding the frame index to log entries.</param>
     /// <exception cref="ArgumentException">
     /// If <paramref name="receipts"/> is not parallel with <paramref name="transactions"/>.
     /// </exception>
@@ -52,7 +55,8 @@ public static class IndexEntryGenerator
         Transaction[] transactions,
         TxReceipt[] receipts,
         Hash256? parentBlockHash,
-        IList<IndexEntry> entries)
+        IList<IndexEntry> entries,
+        bool indexFrames = false)
     {
         if (receipts.Length != transactions.Length)
             throw new ArgumentException(
@@ -83,24 +87,39 @@ public static class IndexEntryGenerator
             TxReceipt receipt = receipts[txIdx];
             LogEntry[]? logs = receipt.Logs;
 
+            if (indexFrames && receipt.FrameReceipts is { } frameReceipts)
+            {
+                for (int frameIdx = 0; frameIdx < frameReceipts.Length; frameIdx++)
+                {
+                    AddLogEntries(header.Number, (uint)txIdx, (ushort)frameIdx, frameReceipts[frameIdx].Logs, entries);
+                }
+            }
+            else if (logs is not null)
+            {
+                AddLogEntries(header.Number, (uint)txIdx, indexFrames ? (ushort)0 : null, logs, entries);
+            }
+
             if (logs is not null)
             {
-                for (int logIdx = 0; logIdx < logs.Length; logIdx++)
-                {
-                    LogEntry log = logs[logIdx];
-                    entries.Add(IndexEntry.CreateLogAddress(log.Address, header.Number, (uint)txIdx, (uint)logIdx));
-
-                    // Log topic entries (up to 4 topics per log, type IDs 3–6). The EVM cannot emit
-                    // more than 4, but a malformed receipt payload can; extra topics are not indexable.
-                    Hash256[] topics = log.Topics;
-                    int topicCount = Math.Min(topics.Length, MaxIndexedTopics);
-                    for (int topicIdx = 0; topicIdx < topicCount; topicIdx++)
-                    {
-                        entries.Add(IndexEntry.CreateLogTopic(topicIdx, topics[topicIdx], header.Number, (uint)txIdx, (uint)logIdx));
-                    }
-                }
-
                 cumulativeLogCount += (uint)logs.Length;
+            }
+        }
+    }
+
+    private static void AddLogEntries(ulong blockNumber, uint txIndex, ushort? frameIndex, LogEntry[] logs, IList<IndexEntry> entries)
+    {
+        for (int logIdx = 0; logIdx < logs.Length; logIdx++)
+        {
+            LogEntry log = logs[logIdx];
+            entries.Add(IndexEntry.CreateLogAddress(log.Address, blockNumber, txIndex, (uint)logIdx, frameIndex));
+
+            // Log topic entries (up to 4 topics per log, type IDs 3–6). The EVM cannot emit
+            // more than 4, but a malformed receipt payload can; extra topics are not indexable.
+            Hash256[] topics = log.Topics;
+            int topicCount = Math.Min(topics.Length, MaxIndexedTopics);
+            for (int topicIdx = 0; topicIdx < topicCount; topicIdx++)
+            {
+                entries.Add(IndexEntry.CreateLogTopic(topicIdx, topics[topicIdx], blockNumber, txIndex, (uint)logIdx, frameIndex));
             }
         }
     }

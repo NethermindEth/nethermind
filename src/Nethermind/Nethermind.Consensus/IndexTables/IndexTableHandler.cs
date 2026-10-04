@@ -71,7 +71,8 @@ public class IndexTableHandler(
             block.Transactions,
             receipts,
             block.Header.ParentHash,
-            entries);
+            entries,
+            spec.IsEip8141Enabled);
 
         entries.Sort();
         _lastCommittedEntries = entries;
@@ -290,7 +291,8 @@ public class IndexTableHandler(
             histBlock.Transactions,
             histReceipts ?? [],
             histBlock.Header.ParentHash,
-            entries);
+            entries,
+            specProvider.GetSpec(histBlock.Header).IsEip8141Enabled);
 
         entries.Sort();
         store.Store(0, blockNumber, entries, histBlock.Hash);

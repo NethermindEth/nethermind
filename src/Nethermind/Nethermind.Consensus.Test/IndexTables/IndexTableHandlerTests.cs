@@ -11,10 +11,15 @@ using Nethermind.Consensus.IndexTables;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -68,10 +73,7 @@ public class IndexTableHandlerTests
         IndexTableStore store = new();
         (IndexTableHandler handler, ITransactionProcessor processor) = BuildHandler(store);
 
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsEip8304Enabled.Returns(false);
-
-        handler.CommitIndexTableRoots(BuildBlock(Level2PublicationBlock), [], spec, NullTxTracer.Instance);
+        handler.CommitIndexTableRoots(BuildBlock(Level2PublicationBlock), [], BuildSpec(enabled: false), NullTxTracer.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -84,24 +86,12 @@ public class IndexTableHandlerTests
     public void Activation_boundary_transition_skips_pre_activation_tables()
     {
         IndexTableStore store = new();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-
+        IReleaseSpec activeSpec = BuildSpec();
         // Fork activates at block 100
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(callInfo =>
-        {
-            ForkActivation fa = callInfo.ArgAt<ForkActivation>(0);
-            IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-            spec.IsEip8304Enabled.Returns(fa.BlockNumber >= 100);
-            spec.Eip8304ContractAddress.Returns(TestItem.AddressA);
-            return spec;
-        });
+        CustomSpecProvider specProvider = new(((ForkActivation)0, BuildSpec(enabled: false)), ((ForkActivation)100, activeSpec));
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
         IndexTableHandler handler = new(processor, store, specProvider);
-
-        IReleaseSpec activeSpec = Substitute.For<IReleaseSpec>();
-        activeSpec.IsEip8304Enabled.Returns(true);
-        activeSpec.Eip8304ContractAddress.Returns(TestItem.AddressA);
 
         // Block 100: candidate level-1 table covers 96-99 (firstBlock = 96), which was pre-activation
         Block block100 = BuildBlock(100);
@@ -135,25 +125,13 @@ public class IndexTableHandlerTests
     public void Historical_recovery_reconstructs_entries_from_block_tree_and_receipts()
     {
         IndexTableStore store = new();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-
-        // Historical blocks 0 to 15 are in blockTree and receipts in receiptStorage
-        for (ulong b = 0; b < 16; b++)
-        {
-            Block histBlock = BuildBlock(b);
-            blockTree.FindBlock(b, BlockTreeLookupOptions.None).Returns(histBlock);
-            blockTree.FindBlock(histBlock.Hash!, BlockTreeLookupOptions.None, b).Returns(histBlock);
-            receiptStorage.Get(histBlock).Returns([]);
-        }
+        // Historical blocks 0 to 19 are in the block tree; none has transactions, so no receipts are stored.
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)Level2PublicationBlock + 1).TestObject;
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IReleaseSpec histSpec = BuildSpec();
-        ISpecProvider histSpecProvider = Substitute.For<ISpecProvider>();
-        histSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(histSpec);
-        IndexTableHandler handler = new(processor, store, histSpecProvider, blockTree: blockTree, receiptStorage: receiptStorage);
+        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), blockTree: blockTree, receiptStorage: new InMemoryReceiptStorage());
 
-        handler.CommitIndexTableRoots(BuildBlock(Level2PublicationBlock), [], BuildSpec(), NullTxTracer.Instance);
+        handler.CommitIndexTableRoots(blockTree.FindBlock(Level2PublicationBlock, BlockTreeLookupOptions.None)!, [], BuildSpec(), NullTxTracer.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -171,26 +149,22 @@ public class IndexTableHandlerTests
     public void Historical_recovery_does_not_fall_back_to_canonical_block_when_branch_block_is_missing()
     {
         IndexTableStore store = new();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength(4).TestObject;
 
-        Hash256 parentHash = TestItem.KeccakA;
-        for (ulong b = 0; b < 4; b++)
+        // Only the canonical blocks at heights 1-3 have bodies; the branch blocks are known by header alone.
+        BlockHeader parent = blockTree.Genesis!;
+        for (ulong b = 1; b < 4; b++)
         {
-            BlockHeader branchHeader = Build.A.BlockHeader.WithNumber(b).WithHash(TestItem.Keccaks[(int)b]).WithParentHash(parentHash).TestObject;
-            blockTree.FindHeader(branchHeader.Hash!, BlockTreeLookupOptions.None).Returns(branchHeader);
-            // Only the canonical block at this height has a body; the branch block does not.
-            Block canonicalBlock = BuildBlock(b);
-            blockTree.FindBlock(b, BlockTreeLookupOptions.None).Returns(canonicalBlock);
-            receiptStorage.Get(canonicalBlock).Returns([]);
-            parentHash = branchHeader.Hash!;
+            BlockHeader branchHeader = Build.A.BlockHeader.WithNumber(b).WithParent(parent).WithExtraData([1]).TestObject;
+            blockTree.Insert(branchHeader, BlockTreeInsertHeaderOptions.NotOnMainChain | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+            parent = branchHeader;
         }
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), blockTree: blockTree, receiptStorage: receiptStorage);
+        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), blockTree: blockTree, receiptStorage: new InMemoryReceiptStorage());
 
         // Block 4 publishes the level-1 table covering blocks 0-3 of its own branch.
-        Block block4 = Build.A.Block.WithNumber(4).WithParentHash(parentHash).TestObject;
+        Block block4 = Build.A.Block.WithNumber(4).WithParent(parent).TestObject;
 
         Assert.Throws<InvalidOperationException>(() =>
             handler.CommitIndexTableRoots(block4, [], BuildSpec(), NullTxTracer.Instance));
@@ -217,42 +191,36 @@ public class IndexTableHandlerTests
     public void Branch_isolation_ensures_rejected_sibling_entries_are_not_used_in_canonical_chain()
     {
         IndexTableStore store = new();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        // Canonical blocks 0-7; block 8 publishes the level-1 table covering blocks 4-7.
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength(8).TestObject;
+        IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
 
-        Hash256 canonicalHash0 = TestItem.KeccakA;
-        Hash256 siblingHash0 = TestItem.KeccakB;
+        BlockHeader canonicalHeader4 = blockTree.FindHeader(4, BlockTreeLookupOptions.None)!;
+        BlockHeader siblingHeader4 = Build.A.BlockHeader.WithNumber(4).WithParent(blockTree.FindHeader(3, BlockTreeLookupOptions.None)!).WithExtraData([1]).TestObject;
+        Hash256 canonicalHash4 = canonicalHeader4.Hash!;
+        Hash256 siblingHash4 = siblingHeader4.Hash!;
 
-        BlockHeader canonicalHeader0 = Build.A.BlockHeader.WithNumber(0).WithHash(canonicalHash0).TestObject;
-        BlockHeader siblingHeader0 = Build.A.BlockHeader.WithNumber(0).WithHash(siblingHash0).TestObject;
+        IndexEntry canonicalEntry4 = IndexEntry.CreateTransaction(TestItem.KeccakC, 4, 0, 0);
+        IndexEntry siblingEntry4 = IndexEntry.CreateTransaction(TestItem.KeccakD, 4, 0, 0);
 
-        IndexEntry canonicalEntry0 = IndexEntry.CreateTransaction(TestItem.KeccakC, 0, 0, 0);
-        IndexEntry siblingEntry0 = IndexEntry.CreateTransaction(TestItem.KeccakD, 0, 0, 0);
+        store.Store(0, 4, [canonicalEntry4], canonicalHash4);
+        store.Store(0, 4, [siblingEntry4], siblingHash4);
 
-        store.Store(0, 0, [canonicalEntry0], canonicalHash0);
-        store.Store(0, 0, [siblingEntry0], siblingHash0);
-
-        Hash256 prevHash = canonicalHash0;
-        for (ulong b = 1; b <= 3; b++)
+        for (ulong b = 5; b <= 7; b++)
         {
-            Hash256 h = TestItem.Keccaks[(int)b];
-            BlockHeader header = Build.A.BlockHeader.WithNumber(b).WithHash(h).WithParentHash(prevHash).TestObject;
-            blockTree.FindHeader(h, BlockTreeLookupOptions.None).Returns(header);
+            Hash256 h = blockTree.FindHeader(b, BlockTreeLookupOptions.None)!.Hash!;
             store.Store(0, (long)b, [IndexEntry.CreateBlock(h, b)], h);
-            prevHash = h;
         }
-        blockTree.FindHeader(canonicalHash0, BlockTreeLookupOptions.None).Returns(canonicalHeader0);
 
-        Block block4 = Build.A.Block.WithNumber(4).WithParentHash(prevHash).TestObject;
+        Block block8 = Build.A.Block.WithNumber(8).WithParent(blockTree.Head!).TestObject;
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IReleaseSpec branchSpec = BuildSpec();
-        ISpecProvider branchSpecProvider = Substitute.For<ISpecProvider>();
-        branchSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(branchSpec);
-        IndexTableHandler handler = new(processor, store, branchSpecProvider, blockTree: blockTree);
+        ISpecProvider specProvider = BuildSpecProvider();
+        IndexTableHandler handler = new(processor, store, specProvider, blockTree: blockTree, receiptStorage: receiptStorage);
 
-        handler.CommitIndexTableRoots(block4, [], BuildSpec(), NullTxTracer.Instance);
+        handler.CommitIndexTableRoots(block8, [], BuildSpec(), NullTxTracer.Instance);
 
-        IReadOnlyList<IndexEntry>? level1Table = store.Get(1, 0, block4.Hash);
+        IReadOnlyList<IndexEntry>? level1Table = store.Get(1, 4, block8.Hash);
         Assert.That(level1Table, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
@@ -260,11 +228,11 @@ public class IndexTableHandlerTests
             bool containsCanonical = false;
             foreach (IndexEntry entry in level1Table!)
             {
-                if (entry.CompareTo(siblingEntry0) == 0)
+                if (entry.CompareTo(siblingEntry4) == 0)
                 {
                     containsSibling = true;
                 }
-                if (entry.CompareTo(canonicalEntry0) == 0)
+                if (entry.CompareTo(canonicalEntry4) == 0)
                 {
                     containsCanonical = true;
                 }
@@ -273,17 +241,46 @@ public class IndexTableHandlerTests
             Assert.That(containsCanonical, Is.True);
         }
 
-        siblingHeader0.Hash = siblingHash0;
-        Block siblingBlock0 = new(siblingHeader0);
-        IndexTableHandler siblingHandler = new(processor, store, branchSpecProvider, blockTree: blockTree);
-        siblingHandler.CommitIndexTableRoots(siblingBlock0, [], BuildSpec(), NullTxTracer.Instance);
-        siblingHandler.RollbackBlock(siblingBlock0);
+        Block siblingBlock4 = new(siblingHeader4);
+        IndexTableHandler siblingHandler = new(processor, store, specProvider, blockTree: blockTree, receiptStorage: receiptStorage);
+        siblingHandler.CommitIndexTableRoots(siblingBlock4, [], BuildSpec(), NullTxTracer.Instance);
+        siblingHandler.RollbackBlock(siblingBlock4);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.Get(0, 0, siblingHash0), Is.Null);
-            Assert.That(store.Get(0, 0, canonicalHash0), Is.Not.Null);
+            Assert.That(store.Get(0, 4, siblingHash4), Is.Null);
+            Assert.That(store.Get(0, 4, canonicalHash4), Is.Not.Null);
         }
+    }
+
+    [Test]
+    public void Recovered_tables_spanning_eip8141_activation_encode_frame_index_by_each_block_fork()
+    {
+        IndexTableStore store = new();
+        InMemoryReceiptStorage receiptStorage = new();
+        // Blocks 1, 4 and 7 carry transactions with one log each; block 8 publishes the level-1 table over blocks 4-7.
+        BlockTree blockTree = Build.A.BlockTree()
+            .WithTransactions(receiptStorage, static (_, _) => [Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics().TestObject])
+            .OfChainLength(8)
+            .TestObject;
+
+        IReleaseSpec framesSpec = BuildSpec(frames: true);
+        CustomSpecProvider specProvider = new(((ForkActivation)0, BuildSpec()), ((ForkActivation)5, framesSpec));
+        IndexTableHandler handler = new(Substitute.For<ITransactionProcessor>(), store, specProvider, blockTree: blockTree, receiptStorage: receiptStorage);
+
+        Block block8 = Build.A.Block.WithNumber(8).WithParent(blockTree.Head!).TestObject;
+        handler.CommitIndexTableRoots(block8, [], framesSpec, NullTxTracer.Instance);
+
+        Dictionary<ulong, int> logAddressLengths = [];
+        foreach (IndexEntry entry in store.Get(1, 4, block8.Hash)!)
+        {
+            if (entry.Type == IndexEntryType.LogAddress)
+            {
+                logAddressLengths[entry.BlockNumber] = entry.EncodedLength;
+            }
+        }
+
+        Assert.That(logAddressLengths, Is.EqualTo(new Dictionary<ulong, int> { [4] = 38, [7] = 40 }));
     }
 
     private static (IndexTableHandler, ITransactionProcessor) BuildHandler(IIndexTableStore store)
@@ -292,21 +289,15 @@ public class IndexTableHandlerTests
         return (new IndexTableHandler(processor, store, BuildSpecProvider()), processor);
     }
 
-    private static ISpecProvider BuildSpecProvider()
-    {
-        IReleaseSpec spec = BuildSpec();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
-        return specProvider;
-    }
+    private static ISpecProvider BuildSpecProvider() => new TestSpecProvider(BuildSpec());
 
-    private static IReleaseSpec BuildSpec()
-    {
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsEip8304Enabled.Returns(true);
-        spec.Eip8304ContractAddress.Returns(TestItem.AddressA);
-        return spec;
-    }
+    private static IReleaseSpec BuildSpec(bool enabled = true, bool withContractAddress = true, bool frames = false) =>
+        new OverridableReleaseSpec(Amsterdam.Instance)
+        {
+            IsEip8304Enabled = enabled,
+            Eip8304ContractAddress = withContractAddress ? TestItem.AddressA : null,
+            IsEip8141Enabled = frames,
+        };
 
     private static Block BuildBlock(ulong number) =>
         Build.A.Block.WithNumber(number).WithParentHash(TestItem.KeccakA).TestObject;
@@ -327,33 +318,20 @@ public class IndexTableHandlerTests
         // Only store block 16 onward — blocks 0–15 are missing (post-sync scenario)
         StoreLevel0Tables(store, 16, 4);
 
-        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IReleaseSpec spec = BuildSpec();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
-        IndexTableHandler handler = new(processor, store, specProvider);
+        (IndexTableHandler handler, _) = BuildHandler(store);
 
         // Block 19 triggers level-2 publication for blocks 0–15. When those cannot be built,
         // it must throw InvalidOperationException rather than silently skipping the state-mutating system call.
         Assert.Throws<InvalidOperationException>(() =>
-            handler.CommitIndexTableRoots(BuildBlock(Level2PublicationBlock), [], spec, NullTxTracer.Instance));
+            handler.CommitIndexTableRoots(BuildBlock(Level2PublicationBlock), [], BuildSpec(), NullTxTracer.Instance));
     }
 
     [Test]
     public void Higher_level_table_uses_cached_sub_tables_keyed_by_publication_block_hash()
     {
         IndexTableStore store = new();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-
-        // Build header chain from block 0 to 19 so FindAncestorHeader resolves publication blocks
-        BlockHeader[] headers = new BlockHeader[20];
-        Hash256 parentHash = TestItem.KeccakA;
-        for (ulong b = 0; b < 20; b++)
-        {
-            headers[b] = Build.A.BlockHeader.WithNumber(b).WithParentHash(parentHash).TestObject;
-            parentHash = headers[b].Hash!;
-            blockTree.FindHeader(headers[b].Hash!, BlockTreeLookupOptions.None).Returns(headers[b]);
-        }
+        // Header chain from block 0 to 19 so FindAncestorHeader resolves publication blocks
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)Level2PublicationBlock + 1).TestObject;
 
         // Store level 1 tables covering 0..3, 4..7, 8..11, 12..15 at their publication block hashes (blocks 4, 8, 12, 16)
         for (int i = 0; i < 4; i++)
@@ -361,23 +339,20 @@ public class IndexTableHandlerTests
             long firstBlock = i * 4;
             long pubBlock = IndexTableMergeScheduler.PublicationBlock(1, firstBlock);
             List<IndexEntry> entries = [IndexEntry.CreateBlock(TestItem.Keccaks[i], (ulong)firstBlock)];
-            store.Store(1, firstBlock, entries, headers[pubBlock].Hash);
+            store.Store(1, firstBlock, entries, blockTree.FindHeader((ulong)pubBlock, BlockTreeLookupOptions.None)!.Hash);
         }
 
-        // Level-0 tables are absent from store!
+        // Level-0 tables are absent from store, and without receipt storage they cannot be recovered.
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IReleaseSpec spec = BuildSpec();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
-        IndexTableHandler handler = new(processor, store, specProvider, blockTree: blockTree);
+        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), blockTree: blockTree);
 
-        Block block19 = Build.A.Block.WithHeader(headers[19]).TestObject;
+        Block block19 = blockTree.FindBlock(Level2PublicationBlock, BlockTreeLookupOptions.None)!;
 
         // Block 19 publishes level-2 covering blocks 0–15.
         // It must read the 4 level-1 sub-tables from store (keyed by publication block hash)
         // rather than missing the cache and trying to rebuild from absent level-0 tables.
         Assert.DoesNotThrow(() =>
-            handler.CommitIndexTableRoots(block19, [], spec, NullTxTracer.Instance));
+            handler.CommitIndexTableRoots(block19, [], BuildSpec(), NullTxTracer.Instance));
 
         using (Assert.EnterMultipleScope())
         {
@@ -390,18 +365,10 @@ public class IndexTableHandlerTests
     public void Enabled_without_contract_address_throws()
     {
         IndexTableStore store = new();
-        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IReleaseSpec goodSpec = BuildSpec();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(goodSpec);
-        IndexTableHandler handler = new(processor, store, specProvider);
-
-        IReleaseSpec badSpec = Substitute.For<IReleaseSpec>();
-        badSpec.IsEip8304Enabled.Returns(true);
-        badSpec.Eip8304ContractAddress.Returns((Address?)null);
+        (IndexTableHandler handler, _) = BuildHandler(store);
 
         Assert.Throws<InvalidOperationException>(() =>
-            handler.CommitIndexTableRoots(BuildBlock(1), [], badSpec, NullTxTracer.Instance));
+            handler.CommitIndexTableRoots(BuildBlock(1), [], BuildSpec(withContractAddress: false), NullTxTracer.Instance));
     }
 
     [Test]
@@ -409,15 +376,12 @@ public class IndexTableHandlerTests
     {
         IndexTableStore store = new();
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IWorldState worldState = Substitute.For<IWorldState>();
-        worldState.IsContract(TestItem.AddressA).Returns(false);
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
 
-        IReleaseSpec spec = BuildSpec();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
-        IndexTableHandler handler = new(processor, store, specProvider, worldState);
+        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), worldState);
 
-        handler.CommitIndexTableRoots(BuildBlock(1), [], spec, NullTxTracer.Instance);
+        handler.CommitIndexTableRoots(BuildBlock(1), [], BuildSpec(), NullTxTracer.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -433,17 +397,11 @@ public class IndexTableHandlerTests
     {
         IndexTableStore store = new();
 
-        ITransactionProcessor processorA = Substitute.For<ITransactionProcessor>();
-        ITransactionProcessor processorB = Substitute.For<ITransactionProcessor>();
-        IReleaseSpec spec = BuildSpec();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
-
-        IndexTableHandler handlerA = new(processorA, store, specProvider);
-        IndexTableHandler handlerB = new(processorB, store, specProvider);
+        (IndexTableHandler handlerA, _) = BuildHandler(store);
+        (IndexTableHandler handlerB, _) = BuildHandler(store);
 
         Block blockA = BuildBlock(1);
-        handlerA.CommitIndexTableRoots(blockA, [], spec, NullTxTracer.Instance);
+        handlerA.CommitIndexTableRoots(blockA, [], BuildSpec(), NullTxTracer.Instance);
         Assert.That(store.Get(0, 1, blockA.Hash), Is.Not.Null);
 
         // Handler B never committed block 1, so rolling it back should be a no-op

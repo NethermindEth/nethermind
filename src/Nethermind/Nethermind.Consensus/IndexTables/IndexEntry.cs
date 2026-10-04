@@ -41,14 +41,15 @@ public enum IndexEntryType : ushort
 /// </remarks>
 public readonly struct IndexEntry : IComparable<IndexEntry>
 {
-    /// <summary>Maximum encoded length across all entry types (transaction and log topic entries).</summary>
-    public const int MaxEncodedLength = 50;
+    /// <summary>Maximum encoded length across all entry types (log topic entries carrying a frame index).</summary>
+    public const int MaxEncodedLength = 52;
 
     private const int TypeIdLength = 2;
     private const int HashLength = 32;
     private const int AddressLength = 20;
     private const int BlockNumberLength = 8;
     private const int UInt32Length = 4;
+    private const int FrameIndexLength = 2;
 
     private const int BlockEncodedLength = TypeIdLength + HashLength + BlockNumberLength; // 42
     private const int TransactionEncodedLength = TypeIdLength + HashLength + BlockNumberLength + UInt32Length + UInt32Length; // 50
@@ -61,8 +62,10 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
     private readonly ulong _blockNumber;
     private readonly uint _field1; // tx index (for tx/log entries) or 0
     private readonly uint _field2; // cumulative log count (tx) or log index (log entries) or 0
+    private readonly ushort _frameIndex;
+    private readonly bool _hasFrameIndex;
 
-    private IndexEntry(IndexEntryType type, Hash256? hashContent, Address? addressContent, ulong blockNumber, uint field1, uint field2)
+    private IndexEntry(IndexEntryType type, Hash256? hashContent, Address? addressContent, ulong blockNumber, uint field1, uint field2, ushort? frameIndex = null)
     {
         _type = type;
         _hashContent = hashContent;
@@ -70,6 +73,8 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
         _blockNumber = blockNumber;
         _field1 = field1;
         _field2 = field2;
+        _frameIndex = frameIndex.GetValueOrDefault();
+        _hasFrameIndex = frameIndex.HasValue;
     }
 
     /// <summary>The entry type.</summary>
@@ -92,7 +97,7 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
         IndexEntryType.Transaction => TransactionEncodedLength,
         IndexEntryType.LogAddress => LogAddressEncodedLength,
         _ => LogTopicEncodedLength,
-    };
+    } + (_hasFrameIndex ? FrameIndexLength : 0);
 
     /// <summary>
     /// Creates a block index entry.
@@ -122,9 +127,10 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
     /// <param name="address">The address that emitted the log.</param>
     /// <param name="blockNumber">The block number containing the log.</param>
     /// <param name="txIndex">The transaction index within the block.</param>
-    /// <param name="logIndex">The log index relative to the transaction beginning.</param>
-    public static IndexEntry CreateLogAddress(Address address, ulong blockNumber, uint txIndex, uint logIndex) =>
-        new(IndexEntryType.LogAddress, null, address, blockNumber, txIndex, logIndex);
+    /// <param name="logIndex">The log index relative to the transaction beginning, or to the frame beginning when <paramref name="frameIndex"/> is set.</param>
+    /// <param name="frameIndex">The EIP-8141 frame index, encoded between the transaction and log index; <c>null</c> before EIP-8141.</param>
+    public static IndexEntry CreateLogAddress(Address address, ulong blockNumber, uint txIndex, uint logIndex, ushort? frameIndex = null) =>
+        new(IndexEntryType.LogAddress, null, address, blockNumber, txIndex, logIndex, frameIndex);
 
     /// <summary>
     /// Creates a log topic index entry.
@@ -133,15 +139,16 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
     /// <param name="topic">The topic value.</param>
     /// <param name="blockNumber">The block number containing the log.</param>
     /// <param name="txIndex">The transaction index within the block.</param>
-    /// <param name="logIndex">The log index relative to the transaction beginning.</param>
+    /// <param name="logIndex">The log index relative to the transaction beginning, or to the frame beginning when <paramref name="frameIndex"/> is set.</param>
+    /// <param name="frameIndex">The EIP-8141 frame index, encoded between the transaction and log index; <c>null</c> before EIP-8141.</param>
     /// <exception cref="ArgumentOutOfRangeException">If <paramref name="topicIndex"/> is not 0–3.</exception>
-    public static IndexEntry CreateLogTopic(int topicIndex, Hash256 topic, ulong blockNumber, uint txIndex, uint logIndex)
+    public static IndexEntry CreateLogTopic(int topicIndex, Hash256 topic, ulong blockNumber, uint txIndex, uint logIndex, ushort? frameIndex = null)
     {
         if ((uint)topicIndex > 3)
             throw new ArgumentOutOfRangeException(nameof(topicIndex), topicIndex, "Topic index must be 0–3.");
 
         IndexEntryType type = (IndexEntryType)(3 + topicIndex);
-        return new IndexEntry(type, topic, null, blockNumber, txIndex, logIndex);
+        return new IndexEntry(type, topic, null, blockNumber, txIndex, logIndex, frameIndex);
     }
 
     /// <summary>
@@ -155,24 +162,26 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
         int length = EncodedLength;
         int offset = 0;
 
-        // Type ID (2 bytes, big-endian)
         BinaryPrimitives.WriteUInt16BigEndian(destination[offset..], (ushort)_type);
         offset += TypeIdLength;
 
-        // Content (hash or address bytes)
         ReadOnlySpan<byte> content = ContentBytes;
         content.CopyTo(destination[offset..]);
         offset += content.Length;
 
-        // Block number (8 bytes, big-endian)
         BinaryPrimitives.WriteUInt64BigEndian(destination[offset..], _blockNumber);
         offset += BlockNumberLength;
 
-        // Position fields (only for non-block entries)
         if (_type is not IndexEntryType.Block)
         {
             BinaryPrimitives.WriteUInt32BigEndian(destination[offset..], _field1);
             offset += UInt32Length;
+
+            if (_hasFrameIndex)
+            {
+                BinaryPrimitives.WriteUInt16BigEndian(destination[offset..], _frameIndex);
+                offset += FrameIndexLength;
+            }
 
             BinaryPrimitives.WriteUInt32BigEndian(destination[offset..], _field2);
             offset += UInt32Length;
@@ -187,7 +196,9 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
     /// <remarks>
     /// EIP-8304 specifies that entries are ordered by their binary representation.
     /// Big-endian encoding ensures that numeric comparison matches byte comparison,
-    /// so we compare type → content → position fields sequentially.
+    /// so we compare type → content → position fields sequentially. Whether a frame index is
+    /// encoded depends only on the block's fork, so two entries that tie up to the block number
+    /// always share one position layout.
     /// </remarks>
     public int CompareTo(IndexEntry other)
     {
@@ -203,6 +214,9 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
         if (_type is not IndexEntryType.Block)
         {
             cmp = _field1.CompareTo(other._field1);
+            if (cmp != 0) return cmp;
+
+            cmp = _frameIndex.CompareTo(other._frameIndex);
             if (cmp != 0) return cmp;
 
             cmp = _field2.CompareTo(other._field2);

@@ -29,9 +29,12 @@ public class IndexTableMergerTests
 
         List<IndexEntry> result = IndexTableMerger.Merge([source]);
 
-        Assert.That(result.Count, Is.EqualTo(2));
-        Assert.That(result[0].CompareTo(source[0]), Is.EqualTo(0));
-        Assert.That(result[1].CompareTo(source[1]), Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(2));
+            Assert.That(result[0].CompareTo(source[0]), Is.EqualTo(0));
+            Assert.That(result[1].CompareTo(source[1]), Is.EqualTo(0));
+        }
     }
 
     [Test]

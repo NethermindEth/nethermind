@@ -19,12 +19,8 @@ public class IndexTableRootCalculatorTests
     /// <c>Merkle</c>, so that a byte order applied consistently on both the write and the
     /// verification path cannot pass. A reversed leaf chunk would not match another client's root.
     /// </summary>
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(5)]
-    [TestCase(8)]
-    public void ComputeRoot_matches_ssz_list_root_computed_over_raw_bytes(int entryCount)
+    [Test]
+    public void ComputeRoot_matches_ssz_list_root_computed_over_raw_bytes([Values(1, 2, 3, 5, 8)] int entryCount)
     {
         List<IndexEntry> entries = new(entryCount);
         for (int i = 0; i < entryCount; i++)

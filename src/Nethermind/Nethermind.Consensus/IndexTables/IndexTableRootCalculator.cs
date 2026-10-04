@@ -28,11 +28,10 @@ public static class IndexTableRootCalculator
     /// Computes the SSZ table root from a list of index entries.
     /// </summary>
     /// <remarks>
-    /// Entries are sorted, SHA-256 hashed individually, then merkleized as
+    /// Entries are SHA-256 hashed individually, then merkleized as
     /// <c>List[Hash32, entry_count]</c> with length mix-in per SSZ list semantics.
-    /// The input list is sorted in-place.
     /// </remarks>
-    /// <param name="entries">The entries to include in the table.</param>
+    /// <param name="entries">The entries to include in the table, already in sorted order.</param>
     /// <returns>The 32-byte SSZ table root.</returns>
     public static UInt256 ComputeRoot(IReadOnlyList<IndexEntry> entries)
     {

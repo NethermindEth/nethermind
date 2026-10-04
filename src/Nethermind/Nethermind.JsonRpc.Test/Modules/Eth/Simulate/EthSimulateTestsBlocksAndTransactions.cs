@@ -9,6 +9,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -333,6 +334,35 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(second.Result.ResultType, Is.EqualTo(Core.ResultType.Success), second.Result.Error);
         Assert.That(second.Data![0].ParentHash, Is.EqualTo(realHead.Hash));
         Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(realHead.Hash));
+    }
+
+    /// <summary>
+    /// Block 4 publishes the EIP-8304 level-1 table over blocks 0-3, which the simulation can only merge from the node's history.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_merges_index_tables_from_node_history_without_writing_to_it()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(new GenesisOnlyRpcBlockchain())
+            .Build((builder) => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(
+                new OverridableReleaseSpec(London.Instance) { IsEip8304Enabled = true, Eip8304ContractAddress = TestItem.AddressF })));
+
+        for (int i = 0; i < 3; i++)
+        {
+            ulong nonce = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+            await chain.AddBlock(GetTransferTxData(nonce, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1));
+        }
+
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [new()] };
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+            Assert.That(result.Data?[0].Number, Is.EqualTo(4));
+            Assert.That(chain.Container.Resolve<IIndexTableStore>().Get(0, 4), Is.Null);
+        }
     }
 
     private sealed class PausedDeferredBlockDataWriter : IDeferredBlockDataWriter

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Core;
@@ -259,15 +258,24 @@ public class IndexProofRpcModuleTests
         }
     }
 
-    private static IIndexProofRpcModule CreateModule(IIndexTableStore store, IBlockTree? blockTree = null)
+    [Test]
+    public void ProofEndpoints_return_not_found_when_the_publication_block_is_not_canonical()
     {
-        ContainerBuilder builder = new();
-        builder.AddSingleton(store);
-        if (blockTree is not null)
+        IndexTableStore store = new();
+        Hash256 txHash = TestItem.KeccakC;
+        store.Store(0, 100, [IndexEntry.CreateTransaction(txHash, 100, 0, 0)], TestItem.KeccakB);
+
+        IIndexProofRpcModule module = CreateModule(store, Substitute.For<IBlockTree>());
+
+        ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(txHash, 100);
+
+        using (Assert.EnterMultipleScope())
         {
-            builder.AddSingleton(blockTree);
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(result.Data, Is.Null);
         }
-        builder.AddScoped<IIndexProofRpcModule, IndexProofRpcModule>();
-        return builder.Build().Resolve<IIndexProofRpcModule>();
     }
+
+    private static IIndexProofRpcModule CreateModule(IIndexTableStore store, IBlockTree? blockTree = null) =>
+        new IndexProofRpcModule(store, blockTree);
 }

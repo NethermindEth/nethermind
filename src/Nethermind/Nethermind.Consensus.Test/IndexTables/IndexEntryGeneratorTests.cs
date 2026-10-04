@@ -339,4 +339,57 @@ public class IndexEntryGeneratorTests
 
         Assert.That(tx.Hash, Is.Not.Null);
     }
+    [Test]
+    public void Log_entries_carry_the_frame_index_and_frame_relative_log_index_once_frames_are_indexed([Values] bool indexFrames)
+    {
+        LogEntry frame0Log = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakC).TestObject;
+        LogEntry frame1Log = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics().TestObject;
+        TxReceipt frameTxReceipt = Build.A.Receipt.WithLogs(frame0Log, frame1Log).TestObject;
+        frameTxReceipt.FrameReceipts =
+        [
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 0, 0, [frame0Log]),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 0, 0, [frame1Log]),
+        ];
+        TxReceipt plainReceipt = Build.A.Receipt.WithLogs(frame1Log).TestObject;
+
+        List<IndexEntry> entries = [];
+        IndexEntryGenerator.GenerateEntries(
+            Build.A.BlockHeader.WithNumber(10).TestObject,
+            [Build.A.Transaction.WithHash(TestItem.KeccakD).TestObject, Build.A.Transaction.WithHash(TestItem.KeccakE).TestObject],
+            [frameTxReceipt, plainReceipt],
+            TestItem.KeccakA,
+            entries,
+            indexFrames);
+
+        IndexEntry[] expected = indexFrames
+            ?
+            [
+                IndexEntry.CreateLogAddress(TestItem.AddressA, 10, 0, 0, frameIndex: 0),
+                IndexEntry.CreateLogTopic(0, TestItem.KeccakC, 10, 0, 0, frameIndex: 0),
+                IndexEntry.CreateLogAddress(TestItem.AddressB, 10, 0, 0, frameIndex: 1),
+                IndexEntry.CreateLogAddress(TestItem.AddressB, 10, 1, 0, frameIndex: 0),
+            ]
+            :
+            [
+                IndexEntry.CreateLogAddress(TestItem.AddressA, 10, 0, 0),
+                IndexEntry.CreateLogTopic(0, TestItem.KeccakC, 10, 0, 0),
+                IndexEntry.CreateLogAddress(TestItem.AddressB, 10, 0, 1),
+                IndexEntry.CreateLogAddress(TestItem.AddressB, 10, 1, 0),
+            ];
+
+        Assert.That(EncodeAll(entries.FindAll(static e => e.Type >= IndexEntryType.LogAddress)), Is.EqualTo(EncodeAll(expected)));
+    }
+
+    private static List<byte[]> EncodeAll(IEnumerable<IndexEntry> entries)
+    {
+        List<byte[]> encoded = [];
+        foreach (IndexEntry entry in entries)
+        {
+            byte[] buffer = new byte[entry.EncodedLength];
+            entry.Encode(buffer);
+            encoded.Add(buffer);
+        }
+
+        return encoded;
+    }
 }
