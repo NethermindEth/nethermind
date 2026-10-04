@@ -30,6 +30,14 @@ public static class RecursiveStarkAggregator
         return size;
     }
 
+    private static long DirectInputSize(IReadOnlyList<ReadOnlyMemory<byte>> witnesses)
+    {
+        long size = 12;
+        foreach (ReadOnlyMemory<byte> witness in witnesses)
+            size += Eip8288Constants.DependencyTripleLength + 4L + witness.Length;
+        return size;
+    }
+
     /// <summary>Combines selected witnesses, pruning recursive dependencies absent from the final transaction set.</summary>
     public static AggregationInput Combine(IReadOnlyList<AggregationInput> inputs, IReadOnlyList<FrameDependency> required)
     {
@@ -91,6 +99,7 @@ public static class RecursiveStarkAggregator
         }
         if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize
             && input.Discards.Count <= Eip8288Constants.MaxProofDependencies
+            && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
             && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)
         {
             byte[] result = verifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, input);
@@ -99,32 +108,15 @@ public static class RecursiveStarkAggregator
         }
 
         HashSet<FrameDependency> discarded = [.. input.Discards];
-        Dictionary<FrameDependency, (int Source, int Bytes)> genericSources = [];
-        for (int i = 0; i < input.Deps.Count; i++)
-            if (input.Deps[i].Scheme == Eip8288Constants.LeanStarkScheme)
-                Consider(input.Deps[i], input.RecursiveProofs.Count + i, input.Witnesses[i].Length);
-        for (int i = 0; i < input.RecursiveProofs.Count; i++)
-        {
-            RecursiveProofInput child = input.RecursiveProofs[i];
-            bool generic = false;
-            foreach (FrameDependency dependency in child.InnerDeps)
-                if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) { generic = true; break; }
-            if (!generic) continue;
-            Dictionary<FrameDependency, int> lengths = [];
-            if (!LeanProofCapacity.TryReadGenericWitnessLengths(child.Proof.Span, lengths))
-                throw new ArgumentException("Invalid verified proof envelope", nameof(input));
-            foreach ((FrameDependency dependency, int bytes) in lengths) Consider(dependency, i, bytes);
-        }
+        HashSet<FrameDependency> recursiveCoverage = [];
+        foreach (RecursiveProofInput child in input.RecursiveProofs) recursiveCoverage.UnionWith(child.InnerDeps);
         List<RecursiveProofInput> children = [];
         for (int i = 0; i < input.RecursiveProofs.Count; i++)
         {
             RecursiveProofInput child = input.RecursiveProofs[i];
             HashSet<FrameDependency> removed = [];
             foreach (FrameDependency dependency in child.InnerDeps)
-                if (discarded.Contains(dependency)
-                    || genericSources.TryGetValue(dependency, out (int Source, int Bytes) source) && source.Source != i)
-                    removed.Add(dependency);
-            // Verify and prune the original parent before any merge can carry a longer duplicate.
+                if (discarded.Contains(dependency)) removed.Add(dependency);
             children.Add(removed.Count != 0
                 ? ProveChild(new() { RecursiveProofs = [child] }, child.InnerDeps, removed) : child);
         }
@@ -136,12 +128,16 @@ public static class RecursiveStarkAggregator
             do
             {
                 FrameDependency dependency = input.Deps[offset];
-                if (genericSources.TryGetValue(dependency, out (int Source, int Bytes) source)
-                    && source.Source != input.RecursiveProofs.Count + offset)
+                if (recursiveCoverage.Contains(dependency))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (!verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span))
-                        throw new InvalidOperationException("Invalid generic STARK dependency witness.");
+                    bool valid = dependency.Scheme switch
+                    {
+                        Eip8288Constants.LeanSphincsScheme => verifier.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span),
+                        Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span),
+                        _ => false
+                    };
+                    if (!valid) throw new InvalidOperationException("Invalid direct dependency witness.");
                     cancellationToken.ThrowIfCancellationRequested();
                     offset++;
                     continue;
@@ -185,13 +181,6 @@ public static class RecursiveStarkAggregator
             new AggregationInput { RecursiveProofs = children });
         cancellationToken.ThrowIfCancellationRequested();
         return proof;
-
-        void Consider(FrameDependency dependency, int source, int bytes)
-        {
-            if (!genericSources.TryGetValue(dependency, out (int Source, int Bytes) previous) || bytes < previous.Bytes
-                || bytes == previous.Bytes && source < input.RecursiveProofs.Count && previous.Source >= input.RecursiveProofs.Count)
-                genericSources[dependency] = (source, bytes);
-        }
 
         RecursiveProofInput ProveChild(AggregationInput childInput, IReadOnlyList<FrameDependency> dependencies,
             IReadOnlySet<FrameDependency>? localDiscards = null)

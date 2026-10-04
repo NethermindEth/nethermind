@@ -123,13 +123,16 @@ public class NativeLeanProtocolTests
     [TestCase("chain")]
     [TestCase("genesis")]
     [TestCase("guest")]
+    [TestCase("old-guest")]
     public async Task Handshake_mismatch_disables_lean_without_dropping_other_protocols(string mismatch)
     {
         using Context context = await Create();
         LeanStatusMessage valid = Status(context);
         LeanStatusMessage status = new(mismatch == "chain" ? valid.ChainId + 1 : valid.ChainId,
             mismatch == "genesis" ? TestItem.KeccakA : valid.GenesisHash,
-            mismatch == "guest" ? new byte[32] : valid.VerificationKey);
+            mismatch == "guest" ? new byte[32]
+                : mismatch == "old-guest" ? Convert.FromHexString("23305f2492843c52dfc0cf62ce46827b776071fcc6486504781ab8c8cf8ed387")
+                : valid.VerificationKey);
         context.Handler.Init();
         Receive(context, status, new LeanStatusMessageSerializer());
         Receive(context, new LeanProofWrapperMessage([0]), new LeanProofWrapperMessageSerializer());
@@ -212,6 +215,19 @@ public class NativeLeanProtocolTests
             Assert.That(target.Chain.Container.Resolve<LeanProofStore>().Covers(transaction), Is.True);
             Assert.That(target.Chain.TxPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _), Is.True);
             target.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+        LeanProofStore targetProofs = target.Chain.Container.Resolve<LeanProofStore>();
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        Assert.That(targetProofs.TryGetInput(dependencies, out AggregationInput admitted), Is.True);
+        Assert.That(admitted.RecursiveProofs, Has.Count.EqualTo(1));
+        NativeLeanProofVerifierTests.AssertMixedEnvelope(admitted.RecursiveProofs[0].Proof.ToArray(), dependencies);
+        Block block = await target.Chain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(1));
+            Assert.That(block.Transactions[0].Hash, Is.EqualTo(transaction.Hash));
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(Eip8288Dependencies.ComputeBlockDepsHash(block),
+                Eip8288Constants.AggregatedVk, block.Header.RecursiveStark!.StarkProof), Is.True);
         }
     }
 

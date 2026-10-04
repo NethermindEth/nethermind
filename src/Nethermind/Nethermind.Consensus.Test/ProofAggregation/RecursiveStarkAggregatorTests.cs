@@ -262,32 +262,10 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
-    public void Longer_duplicate_is_pruned_before_an_intermediate_union_exceeds_output_capacity()
-    {
-        FrameDependency a = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("shortest-a"), default);
-        FrameDependency b = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("large-b"), default);
-        byte[] longProof = LeanProofTestEnvelope.Create([a], new Dictionary<FrameDependency, int> { [a] = 4 * 1024 * 1024 });
-        byte[] otherProof = LeanProofTestEnvelope.Create([b], new Dictionary<FrameDependency, int> { [b] = 5 * 1024 * 1024 });
-        byte[] shortProof = LeanProofTestEnvelope.Create([a]);
-        EnvelopeBoundedVerifier verifier = new();
-        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([a, b]);
-        byte[] result = RecursiveStarkAggregator.Prove(new()
-        {
-            RecursiveProofs = [new([a], longProof), new([b], otherProof), new([a], shortProof)]
-        }, verifier, hash);
-        Dictionary<FrameDependency, int> lengths = [];
-        Assert.That(LeanProofCapacity.TryReadGenericWitnessLengths(result, lengths), Is.True);
-        Assert.That(lengths[a], Is.EqualTo(1));
-        Assert.That(lengths[b], Is.EqualTo(5 * 1024 * 1024));
-        Assert.That(verifier.VerifiedProofs, Does.Contain(ValueKeccak.Compute(longProof)), "pruning still authenticates the original parent");
-        Assert.That(verifier.VerifiedProofs, Does.Contain(ValueKeccak.Compute(shortProof)), "the selected shortest parent remains in the final statement");
-    }
-
-    [Test]
-    public void Recursive_generic_source_wins_direct_ties_without_extra_proving([Values(1, 2, 3)] int directWitnessBytes)
+    public void Recursive_generic_coverage_avoids_direct_reproving([Values(1, 2, 3)] int directWitnessBytes)
     {
         FrameDependency dependency = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("generic-source-tie"), default);
-        byte[] parent = LeanProofTestEnvelope.Create([dependency], new Dictionary<FrameDependency, int> { [dependency] = 2 });
+        byte[] parent = LeanProofTestEnvelope.Create([dependency], 2);
         byte[] directWitness = new byte[directWitnessBytes];
         AggregationInput input = new()
         {
@@ -300,6 +278,7 @@ public class RecursiveStarkAggregatorTests
 
         byte[] result = RecursiveStarkAggregator.Prove(input, verifier, hash);
 
+        Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, result), Is.True);
         int directProves = 0;
         int parentPrunes = 0;
         foreach (AggregationInput provingInput in verifier.ProvingInputs)
@@ -307,16 +286,44 @@ public class RecursiveStarkAggregatorTests
             if (provingInput.Deps.Count != 0) directProves++;
             if (provingInput.Discards.Count != 0) parentPrunes++;
         }
-        Dictionary<FrameDependency, int> lengths = [];
-        Assert.That(LeanProofCapacity.TryReadGenericWitnessLengths(result, lengths), Is.True);
-        bool shorterDirect = directWitnessBytes < 2;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(lengths[dependency], Is.EqualTo(Math.Min(directWitnessBytes, 2)));
-            Assert.That(directProves, Is.EqualTo(shorterDirect ? 1 : 0));
-            Assert.That(parentPrunes, Is.EqualTo(shorterDirect ? 1 : 0));
+            Assert.That(directProves, Is.EqualTo(0));
+            Assert.That(parentPrunes, Is.EqualTo(0));
             Assert.That(verifier.DirectStarkVerifications, Is.EqualTo(input.Deps.Count), "omitted direct witnesses still require authentication");
             Assert.That(verifier.VerifiedProofs, Does.Contain(ValueKeccak.Compute(parent)));
+        }
+    }
+
+    [Test]
+    public void Large_generic_witnesses_use_separate_leaves_before_recursive_union()
+    {
+        FrameDependency a = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("large-a"), default);
+        FrameDependency b = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("large-b"), default);
+        byte[] witness = new byte[3 * 1024 * 1024];
+        AggregationInput input = new() { Deps = [a, b], Witnesses = [witness, witness] };
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([a, b]);
+        EnvelopeBoundedVerifier verifier = new();
+
+        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, hash);
+
+        Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
+        int directLeaves = 0;
+        foreach (AggregationInput batch in verifier.ProvingInputs)
+        {
+            if (batch.Deps.Count == 0) continue;
+            directLeaves++;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(batch.Deps, Has.Count.EqualTo(1));
+                Assert.That(RecursiveStarkAggregator.InputSize(batch), Is.LessThanOrEqualTo(RecursiveStarkAggregator.MaxProductionWitnessBytes));
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(directLeaves, Is.EqualTo(2));
+            Assert.That(verifier.DirectStarkVerifications, Is.EqualTo(2));
+            Assert.That(verifier.ProvingInputs[^1].RecursiveProofs, Has.Count.EqualTo(2));
         }
     }
 
@@ -331,7 +338,7 @@ public class RecursiveStarkAggregatorTests
                 ? [new byte[] { 9, 0 }, new byte[] { 1, 0 }, new byte[] { 1, 0 }, new byte[] { 1, 0 }, new byte[] { 1, 0 }]
                 : [new byte[] { 9, 0 }, new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }],
             RecursiveProofs = tiedRecursiveSource
-                ? [new([a], LeanProofTestEnvelope.Create([a], new Dictionary<FrameDependency, int> { [a] = 2 }))]
+                ? [new([a], LeanProofTestEnvelope.Create([a], 2))]
                 : []
         };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(input.Deps);
@@ -353,23 +360,21 @@ public class RecursiveStarkAggregatorTests
         public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof)
         {
             VerifiedProofs.Add(ValueKeccak.Compute(proof));
-            if (!LeanProofCapacity.TryReadGenericWitnessLengths(proof, new Dictionary<FrameDependency, int>())) return false;
+            if (proof.Length < 8 || !proof[..4].SequenceEqual("NLTF"u8)) return false;
             int count = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(proof[4..]);
+            if (count < 0 || count > Eip8288Constants.MaxProofDependencies
+                || count > (proof.Length - 8) / Eip8288Constants.DependencyTripleLength) return false;
             return ValueKeccak.Compute(proof.Slice(8, count * Eip8288Constants.DependencyTripleLength)) == hash;
         }
         public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
         {
             ProvingInputs.Add(input);
-            Assert.That(RecursiveStarkAggregator.TryAggregate(input, this, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
+            if (!RecursiveStarkAggregator.TryAggregate(input, this, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual))
+                throw new InvalidOperationException("Invalid dependency input");
             Assert.That(actual, Is.EqualTo(hash));
-            Dictionary<FrameDependency, int> lengths = [];
-            foreach (RecursiveProofInput child in input.RecursiveProofs)
-                Assert.That(LeanProofCapacity.TryReadGenericWitnessLengths(child.Proof.Span, lengths), Is.True);
-            for (int i = 0; i < input.Deps.Count; i++)
-                if (input.Deps[i].Scheme == Eip8288Constants.LeanStarkScheme)
-                    LeanProofCapacity.AddWitnessLength(lengths, input.Deps[i], input.Witnesses[i].Length);
-            Assert.That(LeanProofCapacity.CapacityError(new HashSet<FrameDependency>(dependencies), lengths), Is.Null);
-            return LeanProofTestEnvelope.Create(dependencies, lengths);
+            HashSet<FrameDependency> required = [.. dependencies];
+            Assert.That(LeanProofCapacity.CapacityError(required), Is.Null);
+            return LeanProofTestEnvelope.Create(dependencies);
         }
     }
 

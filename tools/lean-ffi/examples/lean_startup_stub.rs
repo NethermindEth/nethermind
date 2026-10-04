@@ -5,9 +5,9 @@
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
     if std::env::var("NETHERMIND_LEAN_STARTUP_PROBE").as_deref() == Ok("abi") {
-        3
-    } else {
         4
+    } else {
+        5
     }
 }
 
@@ -18,14 +18,17 @@ pub unsafe extern "C" fn nlean_aggregated_vk(out: *mut u8) -> i32 {
     if out.is_null() {
         return 0;
     }
-    let key = if std::env::var("NETHERMIND_LEAN_STARTUP_PROBE").as_deref() == Ok("key") {
+    let mode = std::env::var("NETHERMIND_LEAN_STARTUP_PROBE");
+    let key = if mode.as_deref() == Ok("key") {
         [0; 32]
-    } else {
+    } else if mode.as_deref() == Ok("old-key") {
         [
             0x23, 0x30, 0x5f, 0x24, 0x92, 0x84, 0x3c, 0x52, 0xdf, 0xc0, 0xcf, 0x62, 0xce, 0x46,
             0x82, 0x7b, 0x77, 0x60, 0x71, 0xfc, 0xc6, 0x48, 0x65, 0x04, 0x78, 0x1a, 0xb8, 0xc8,
             0xcf, 0x8e, 0xd3, 0x87,
         ]
+    } else {
+        rec_aggregation::eip8288_mixed::mixed_guest_key()
     };
     unsafe {
         std::ptr::copy_nonoverlapping(key.as_ptr(), out, key.len());

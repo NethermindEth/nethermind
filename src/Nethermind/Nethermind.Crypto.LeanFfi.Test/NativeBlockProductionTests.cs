@@ -48,6 +48,7 @@ public class NativeBlockProductionTests
         Assert.That(block.Transactions, Has.Length.EqualTo(1));
         Assert.That(block.Header.RecursiveStark, Is.Not.Null);
         Assert.That(block.Header.GasUsedPerDimension, Is.Not.Null);
+        NativeLeanProofVerifierTests.AssertMixedEnvelope(block.Header.RecursiveStark!.StarkProof, Eip8288Dependencies.ForBlock(block));
         (ulong Execution, ulong State) dimensions = block.Header.GasUsedPerDimension!.Value;
         using (Assert.EnterMultipleScope())
         {

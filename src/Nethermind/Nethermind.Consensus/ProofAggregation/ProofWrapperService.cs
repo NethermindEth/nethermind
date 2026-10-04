@@ -294,8 +294,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                     continue;
                 }
                 if (!leanProofStore.TryGetInput(combined, out AggregationInput candidateInput)
-                    || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies
-                    || RecursiveStarkAggregator.InputSize(candidateInput) > RecursiveStarkAggregator.MaxProductionWitnessBytes) continue;
+                    || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies) continue;
                 deps = combined;
                 selectedInput = candidateInput;
                 covered.UnionWith(transactionDeps);

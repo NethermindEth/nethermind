@@ -313,13 +313,63 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
+    public void Retained_large_mixed_roots_remain_eligible_for_gossip([Values] bool sameParent)
+    {
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([
+            new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("large-root-signature"), default),
+            new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("large-root-stark"), default)]);
+        byte[] proof = new byte[5 * 1024 * 1024];
+        LeanProofStore store = new();
+        if (sameParent) store.AddVerified(dependencies, null, proof);
+        else
+        {
+            for (int i = 0; i < dependencies.Count; i++)
+            {
+                proof[^1] = (byte)i;
+                store.AddVerified([dependencies[i]], null, proof);
+            }
+        }
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
+                Eip8288Constants.LeanSphincsVerificationGas + Eip8288Constants.LeanStarkVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))]
+        };
+        transaction.Hash = transaction.CalculateHash();
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService([transaction], store, verifier);
+        Assert.That(store.TryGetInput(dependencies, out AggregationInput input), Is.True);
+        Assert.That(RecursiveStarkAggregator.InputSize(input), Is.GreaterThan(RecursiveStarkAggregator.MaxProductionWitnessBytes));
+        Assert.That(RecursiveStarkAggregator.InputSize(input), Is.LessThan(Eip8288Constants.MaxAggregationInputBytes));
+
+        Result<byte[]> result = service.BuildWrapper();
+
+        Assert.That(result.IsSuccess, Is.True, result.Error);
+        MempoolWrapper wrapper = Decode(result.Data!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapper.Transactions, Has.Count.EqualTo(1));
+            Assert.That(wrapper.Transactions[0].Full!.Hash, Is.EqualTo(transaction.Hash));
+            Assert.That(wrapper.Deps, Is.EqualTo(dependencies));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(sameParent ? 0 : 1));
+            Assert.That(result.Data!.Length, Is.LessThanOrEqualTo(LeanProofStore.MaxWrapperBytes));
+            Assert.That(store.TryGetInput(dependencies, out _), Is.True);
+        }
+        if (sameParent) Assert.That(wrapper.RecursiveStark!.StarkProof, Is.EqualTo(proof));
+    }
+
+    [Test]
     public void Large_discarded_parent_coverage_is_skipped_before_proving()
     {
         LeanProofStore store = new();
         Transaction[] transactions = new Transaction[2];
         for (int i = 0; i < transactions.Length; i++)
         {
-            FrameDependency[] parent = Enumerable.Range(0, 2200).Select(index => new FrameDependency(
+            FrameDependency[] parent = Enumerable.Range(0, Eip8288Constants.MaxProofDependencies / 2 + 1).Select(index => new FrameDependency(
                 Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"{i}:{index}"), default)).ToArray();
             store.AddVerified(parent, null, [(byte)i]);
             transactions[i] = new Transaction

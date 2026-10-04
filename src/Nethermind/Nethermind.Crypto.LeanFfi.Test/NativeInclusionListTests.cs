@@ -54,6 +54,8 @@ public class NativeInclusionListTests
         ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(dependencies);
         byte[] proofBytes = NativeLeanProofVerifier.Instance.ProveRecursiveStark(commitment, Eip8288Constants.AggregatedVk,
             new AggregationInput { Deps = dependencies, Witnesses = [NativeLeanProofVerifierTests.Witness("sphincs"), NativeLeanProofVerifierTests.Witness("stark")] });
+        NativeLeanProofVerifierTests.AssertMixedEnvelope(proofBytes, dependencies);
+        Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proofBytes), Is.True);
         if (scenario == "bad-proof") proofBytes[^1] ^= 1;
         RecursiveStark proof = new(proofBytes, new Hash256(commitment));
         byte[] metadata = Eip8288Dependencies.Serialize(dependencies);

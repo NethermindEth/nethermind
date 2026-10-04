@@ -22,15 +22,16 @@ public static class Eip8288Constants
     public const int MaxDependenciesPerFrame = 256;
 
     /// <summary>Maximum distinct dependencies covered by the prototype native proof envelope.</summary>
-    public const int MaxProofDependencies = 4096;
+    public const int MaxProofDependencies = 256;
     public const int MaxGenericStarkProofs = 16;
+    public const int MaxLeanStarkInstructions = 2048;
     public const int MaxInclusionListDependencyBytes = MaxProofDependencies * DependencyTripleLength;
 
     /// <summary>Maximum encoded native witness or recursive proof size.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
 
-    /// <summary>Prototype acceptance bound for the serialized SPHINCS guest proof, reserved in aggregate capacity.</summary>
-    public const int MaxSphincsGuestProofBytes = 2 * 1024 * 1024;
+    /// <summary>Prototype acceptance bound for the single serialized mixed guest proof, reserved in aggregate capacity.</summary>
+    public const int MaxMixedGuestProofBytes = MaxProofBytes - 12 - MaxProofDependencies * DependencyTripleLength;
 
     /// <summary>Maximum native aggregation input, including two maximum-sized child proofs and metadata.</summary>
     public const int MaxAggregationInputBytes = 18 * 1024 * 1024;
@@ -59,5 +60,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("23305f2492843c52dfc0cf62ce46827b776071fcc6486504781ab8c8cf8ed387");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace");
 }

@@ -50,6 +50,7 @@ public class NativeBackendStartupTests
     [TestCase("missing", "DllNotFoundException")]
     [TestCase("abi", "Lean verification key unavailable")]
     [TestCase("key", "recursive guest key does not match")]
+    [TestCase("old-key", "recursive guest key does not match")]
     [TestCase("bounds", "acceptance bounds do not match")]
     public async Task Actual_backend_startup_fails_closed_in_a_fresh_process(string mode, string expected)
     {
