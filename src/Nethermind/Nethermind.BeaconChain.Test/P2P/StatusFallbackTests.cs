@@ -139,8 +139,7 @@ public class StatusFallbackTests
     // The listener side answers any request with one success chunk carrying the given payload.
     private static async Task<StatusMessageV2> DialStatusV2AnsweredWithAsync(byte[] payload, CancellationToken token)
     {
-        ISessionContext context = Substitute.For<ISessionContext>();
-        context.State.Returns(new Nethermind.Libp2p.Core.State());
+        ISessionContext context = ReqRespTestChannel.Context();
         Channel channel = new();
         Task answering = Task.Run(async () =>
         {

@@ -8,7 +8,6 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -310,17 +309,10 @@ public class InboundRequestWatchTests
         TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IChannel server = HoldSecondWrite(channel.Reverse, entered, release);
-        Task listening = Task.Run(async () =>
+        Task listening = ReqRespTestChannel.StartListenerAsync(channel.Reverse, async () =>
         {
-            try
-            {
-                if (columns) await new DataColumnSidecarsByRangeProtocol(spec, pool, store).ListenAsync(server, Context());
-                else await new BeaconBlocksByRangeProtocolV2(spec, store).ListenAsync(server, Context());
-            }
-            finally
-            {
-                await channel.Reverse.WriteEofAsync(token);
-            }
+            if (columns) await new DataColumnSidecarsByRangeProtocol(spec, pool, store).ListenAsync(server, Context());
+            else await new BeaconBlocksByRangeProtocolV2(spec, store).ListenAsync(server, Context());
         }, token);
         ChannelStreamAdapter input = new(channel);
         byte[] request = columns
@@ -378,17 +370,10 @@ public class InboundRequestWatchTests
         db.OnRead = () => store.ApplyCanonicalIndexChanges([(start + 1, replacementRoot), (start + 2, nextRoot)], start + 2);
 
         Channel channel = new();
-        Task listening = Task.Run(async () =>
+        Task listening = ReqRespTestChannel.StartListenerAsync(channel.Reverse, async () =>
         {
-            try
-            {
-                if (columns) await new DataColumnSidecarsByRangeProtocol(spec, pool, store).ListenAsync(channel.Reverse, Context());
-                else await new BeaconBlocksByRangeProtocolV2(spec, store).ListenAsync(channel.Reverse, Context());
-            }
-            finally
-            {
-                await channel.Reverse.WriteEofAsync(token);
-            }
+            if (columns) await new DataColumnSidecarsByRangeProtocol(spec, pool, store).ListenAsync(channel.Reverse, Context());
+            else await new BeaconBlocksByRangeProtocolV2(spec, store).ListenAsync(channel.Reverse, Context());
         }, token);
         ChannelStreamAdapter input = new(channel);
         byte[] request = columns
@@ -430,17 +415,8 @@ public class InboundRequestWatchTests
         }
 
         Channel channel = new();
-        Task listening = Task.Run(async () =>
-        {
-            try
-            {
-                await new DataColumnSidecarsByRangeProtocol(spec, pool, store).ListenAsync(channel.Reverse, Context());
-            }
-            finally
-            {
-                await channel.Reverse.WriteEofAsync(token);
-            }
-        }, token);
+        Task listening = ReqRespTestChannel.StartListenerAsync(channel.Reverse,
+            () => new DataColumnSidecarsByRangeProtocol(spec, pool, store).ListenAsync(channel.Reverse, Context()), token);
         ChannelStreamAdapter input = new(channel);
         await ReqRespFraming.WriteRequestAsync(input, DataColumnSidecarsByRangeRequest.Encode(
             new DataColumnSidecarsByRangeRequest { StartSlot = start, Count = (ulong)blockCount + 2, Columns = columns }), token);
@@ -460,21 +436,9 @@ public class InboundRequestWatchTests
     private static long InvalidMessageCount() =>
         Metrics.BeaconChainReqRespFailures.TryGetValue(new ReqRespFailureKey(ProbeId, ReqRespFailureReason.InvalidMessage), out long count) ? count : 0;
 
-    private static ISessionContext Context()
-    {
-        ISessionContext context = Substitute.For<ISessionContext>();
-        Nethermind.Libp2p.Core.State state = new();
-        state.RemoteAddress = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/4001/p2p/{Requester}");
-        context.State.Returns(state);
-        return context;
-    }
+    private static ISessionContext Context() => ReqRespTestChannel.Context(Requester);
 
-    private static ISessionContext ContextWithoutPeer()
-    {
-        ISessionContext context = Substitute.For<ISessionContext>();
-        context.State.Returns(new Nethermind.Libp2p.Core.State());
-        return context;
-    }
+    private static ISessionContext ContextWithoutPeer() => ReqRespTestChannel.Context();
 
     private static async Task<byte[]> RequestBytesAsync(CancellationToken token)
     {
