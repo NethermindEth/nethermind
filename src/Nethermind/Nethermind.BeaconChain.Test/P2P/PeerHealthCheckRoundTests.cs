@@ -296,7 +296,6 @@ public class PeerHealthCheckRoundTests
         public DateTime UtcNow => _clock.UtcNow + _elapsed.Elapsed;
         public DateTimeOffset UtcNowOffset => new(UtcNow);
         public UnixTime UnixTime => new(UtcNow);
-        public void Add(TimeSpan offset) => _clock.Add(offset);
     }
 
     internal static async Task DisposeAsync(Node client, Node[] servers)
