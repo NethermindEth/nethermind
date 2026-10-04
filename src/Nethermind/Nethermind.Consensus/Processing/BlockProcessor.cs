@@ -272,6 +272,7 @@ public partial class BlockProcessor(
     private void CommitStateAndStorageRoots(IReleaseSpec spec)
     {
         NewPayloadTrace.StampProcessing(NewPayloadTrace.MerkleStart);
+        NewPayloadTrace.SchedMid();
         using MetricsTimer<StorageMerkleTimeSink> _ = new();
         _stateProvider.Commit(spec, commitRoots: true);
     }

@@ -63,6 +63,8 @@ public static class NewPayloadTrace
         public long RunStart, WaitStart, RunNs = -1, WaitNs = -1, Slices = -1, SlicesStart;
         // Whole-process CPU time (all threads) from the HTTP request and from ProcessOne's start, to ProcessOne's end.
         public long ProcCpuRequestStart, ProcCpuP1Start, ProcCpuRequestNs = -1, ProcCpuP1Ns = -1;
+        // The same at the merkle start, splitting execution from the block-end state work.
+        public long RunExecNs = -1, WaitExecNs = -1, ProcCpuExecNs = -1;
         // Collections and GC pause time between the HTTP request's start and its response being written.
         public int Gc0Start, Gc1Start, Gc2Start, Gc0 = -1, Gc1 = -1, Gc2 = -1;
         public long PauseStartTicks, PauseUs = -1;
@@ -87,6 +89,18 @@ public static class NewPayloadTrace
         {
             record.RunStart = run; record.WaitStart = wait; record.SlicesStart = slices;
             record.ProcCpuP1Start = ProcessCpuNs();
+        }
+    }
+
+    /// <summary>Reads it at the merkle start, on the processing thread, splitting execution from the state work.</summary>
+    public static void SchedMid()
+    {
+        if (Enabled && Threading.ProcessingThread.IsBlockProcessingThread && Volatile.Read(ref s_active) is { } record && record.RunStart != 0
+            && record.RunExecNs < 0 && ReadSchedStat(out long run, out long wait, out _))
+        {
+            record.RunExecNs = run - record.RunStart; record.WaitExecNs = wait - record.WaitStart;
+            long cpu = ProcessCpuNs();
+            if (cpu > 0 && record.ProcCpuP1Start > 0) record.ProcCpuExecNs = cpu - record.ProcCpuP1Start;
         }
     }
 
@@ -253,7 +267,10 @@ public static class NewPayloadTrace
             .Append(" gc2=").Append(record.Gc2 < 0 ? "na" : record.Gc2.ToString())
             .Append(" gcpause=").Append(record.PauseUs < 0 ? "na" : record.PauseUs.ToString())
             .Append(" pcpu=").Append(record.ProcCpuP1Ns < 0 ? "na" : (record.ProcCpuP1Ns / 1000).ToString())
-            .Append(" pcpureq=").Append(record.ProcCpuRequestNs < 0 ? "na" : (record.ProcCpuRequestNs / 1000).ToString());
+            .Append(" pcpureq=").Append(record.ProcCpuRequestNs < 0 ? "na" : (record.ProcCpuRequestNs / 1000).ToString())
+            .Append(" xrun=").Append(record.RunExecNs < 0 ? "na" : (record.RunExecNs / 1000).ToString())
+            .Append(" xwait=").Append(record.WaitExecNs < 0 ? "na" : (record.WaitExecNs / 1000).ToString())
+            .Append(" xpcpu=").Append(record.ProcCpuExecNs < 0 ? "na" : (record.ProcCpuExecNs / 1000).ToString());
         for (int i = 0; i < CounterCount; i++)
             line.Append(' ').Append(CounterNames[i]).Append('=').Append(record.Counters[i] < 0 ? "na" : record.Counters[i].ToString());
 
