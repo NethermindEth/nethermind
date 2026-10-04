@@ -28,12 +28,11 @@ namespace Nethermind.Consensus.Test.ProofAggregation;
 public class ProofInclusionListEnforcementTests
 {
     [TestCase("valid", false)]
-    [TestCase("large-proof", false)]
+    [TestCase("bounded-proof", false)]
     [TestCase("generic-full", true)]
     [TestCase("generic-space", false)]
-    [TestCase("generic-size-full", true)]
-    [TestCase("generic-size-space", false)]
-    [TestCase("generic-size-shorter", false)]
+    [TestCase("generic-compressed-union", false)]
+    [TestCase("generic-covered-and-new", false)]
     [TestCase("included", true)]
     [TestCase("nonce", true)]
     [TestCase("revert", true)]
@@ -80,11 +79,11 @@ public class ProofInclusionListEnforcementTests
         state.Commit(spec);
 
         byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
-        bool generic = scenario == "large-proof" || scenario.StartsWith("generic-", System.StringComparison.Ordinal);
+        bool generic = scenario == "bounded-proof" || scenario.StartsWith("generic-", System.StringComparison.Ordinal);
         dependency[31] = generic ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme;
         if (generic) dependency[32] = 255;
-        bool shorter = scenario == "generic-size-shorter";
-        if (shorter)
+        bool coveredAndNew = scenario == "generic-covered-and-new";
+        if (coveredAndNew)
         {
             dependency = new byte[2 * Eip8288Constants.DependencyTripleLength];
             dependency[31] = Eip8288Constants.LeanSphincsScheme;
@@ -92,7 +91,7 @@ public class ProofInclusionListEnforcementTests
             dependency[Eip8288Constants.DependencyTripleLength + 32] = 255;
         }
         TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-            new(FrameMode.DepVerify, FrameFlags.None, null, shorter ? Eip8288Constants.LeanStarkVerificationGas + Eip8288Constants.LeanSphincsVerificationGas
+            new(FrameMode.DepVerify, FrameFlags.None, null, coveredAndNew ? Eip8288Constants.LeanStarkVerificationGas + Eip8288Constants.LeanSphincsVerificationGas
                 : generic ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependency)];
         if (mixed) frames = [.. frames, new(FrameMode.PostTx, FrameFlags.None, TestItem.AddressD, 10_000, UInt256.Zero, default)];
         Transaction transaction = new()
@@ -123,14 +122,14 @@ public class ProofInclusionListEnforcementTests
             .WithTransactions(includedTransactions).TestObject;
         if (scenario.StartsWith("generic-", System.StringComparison.Ordinal))
         {
-            int count = scenario == "generic-full" ? 16 : scenario == "generic-space" ? 15 : shorter ? 2 : 1;
+            int count = scenario == "generic-full" ? 16 : scenario == "generic-space" ? 15 : coveredAndNew ? 2 : 1;
             byte[] existing = new byte[count * Eip8288Constants.DependencyTripleLength];
             for (int i = 0; i < count; i++)
             {
                 existing[i * Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanStarkScheme;
                 existing[i * Eip8288Constants.DependencyTripleLength + 32] = (byte)i;
             }
-            if (shorter) existing[Eip8288Constants.DependencyTripleLength + 32] = 255;
+            if (coveredAndNew) existing[Eip8288Constants.DependencyTripleLength + 32] = 255;
             Transaction includedGeneric = new()
             {
                 Type = TxType.FrameTx,
@@ -138,11 +137,8 @@ public class ProofInclusionListEnforcementTests
             };
             block = block.WithReplacedBody(new([includedGeneric], block.Uncles, block.Withdrawals));
             List<FrameDependency> existingDependencies = Eip8288Dependencies.ForTransaction(includedGeneric);
-            Dictionary<FrameDependency, int> existingLengths = [];
-            if (scenario.StartsWith("generic-size", System.StringComparison.Ordinal))
-                existingLengths[existingDependencies[0]] = (scenario == "generic-size-full" ? 4 : 3) * 1024 * 1024;
-            if (shorter) existingLengths[existingDependencies[1]] = 4 * 1024 * 1024;
-            block.Header.RecursiveStark = new(LeanProofTestEnvelope.Create(existingDependencies, existingLengths),
+            int proofPadding = scenario == "generic-compressed-union" ? Eip8288Constants.MaxMixedGuestProofBytes : 0;
+            block.Header.RecursiveStark = new(LeanProofTestEnvelope.Create(existingDependencies, proofPadding),
                 new Hash256(Eip8288Dependencies.ComputeDepsHash(existingDependencies)));
         }
         block.Header.GasUsedPerDimension = (0, 0);
@@ -187,11 +183,10 @@ public class ProofInclusionListEnforcementTests
                 [new Withdrawal { Address = sender, AmountInGwei = 1_000_000_000 }]));
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction));
         List<FrameDependency> inclusionDependencies = Eip8288Dependencies.ForTransaction(transaction);
-        Dictionary<FrameDependency, int> inclusionLengths = [];
-        if (scenario == "large-proof" || !shorter && scenario.StartsWith("generic-size", System.StringComparison.Ordinal))
-            inclusionLengths[inclusionDependencies[0]] = (scenario == "large-proof" ? 5 : 4) * 1024 * 1024;
+        int inclusionPadding = scenario is "bounded-proof" or "generic-compressed-union"
+            ? Eip8288Constants.MaxMixedGuestProofBytes : 0;
         block.InclusionListRecursiveStark = scenario == "missing-proof" ? null
-            : new RecursiveStark(generic ? LeanProofTestEnvelope.Create(inclusionDependencies, inclusionLengths) : [1], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash));
+            : new RecursiveStark(generic ? LeanProofTestEnvelope.Create(inclusionDependencies, inclusionPadding) : [1], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash));
         block.InclusionListProvenDependencies = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(transaction));
         (ulong, ulong)? originalDimensions = block.Header.GasUsedPerDimension;
         ulong originalGasUsed = block.GasUsed;

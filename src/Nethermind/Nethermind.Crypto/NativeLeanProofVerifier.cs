@@ -16,7 +16,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 4;
+    private const uint ExpectedAbiVersion = 5;
     private const int MaxRecursiveInputs = 16;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
@@ -34,7 +34,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             Span<uint> limits = stackalloc uint[9];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
                 MaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes,
-                Eip8288Constants.MaxGenericStarkProofs, 16384, 65535, Eip8288Constants.MaxAggregationInputBytes, Eip8288Constants.MaxSphincsGuestProofBytes];
+                Eip8288Constants.MaxGenericStarkProofs, Eip8288Constants.MaxLeanStarkInstructions, 65535, Eip8288Constants.MaxAggregationInputBytes, Eip8288Constants.MaxMixedGuestProofBytes];
             fixed (uint* p = limits)
                 if (nlean_limits(p, (nuint)limits.Length) != 1 ||
                     !limits.SequenceEqual(expectedLimits))
@@ -81,7 +81,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     /// <inheritdoc/>
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
     {
-        if (witness.IsEmpty || witness.Length > MaxProofBytes - 212) return false;
+        if (witness.IsEmpty || witness.Length > MaxProofBytes) return false;
         try
         {
             fixed (byte* d = dataHash.Bytes)

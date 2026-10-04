@@ -1,15 +1,18 @@
 # EIP-8288 native Lean integration
 
-This library pins official [leanVM](https://github.com/leanEthereum/leanVM/tree/f33f31bf7c1191667e29a68a3acae63b9164c1c6)
-`block-deps-hash` revision `f33f31bf7c1191667e29a68a3acae63b9164c1c6`, atop the
-NiceTry/Daisugi branch (distinct from upstream `main`). It verifies real Keccak SPHINCS
-signatures and binary-field leanVM proofs. No hash-based proof substitute is accepted.
+This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/854997bd156f47f1b1ce2192c4499741f29bd0df),
+based on the Daisugi-compatible `f33f31bf7c1191667e29a68a3acae63b9164c1c6` revision.
+The fork adds one recursive guest for Keccak SPHINCS claims and generic leanVM programs;
+`Cargo.lock` pins the exact dependency revision. Upstream replacement belongs behind the
+existing `ILeanProofVerifier` interface and thin C ABI. Proofs, guest key and native bounds
+must change together when the guest changes. No hash-based proof substitute is accepted.
 
 ## Build and test
 
 Rust 1.99+ is required for the pinned upstream APIs.
 
 ```sh
+export LEANVM_NUM_THREADS=1
 cargo test --release --locked --manifest-path tools/lean-ffi/Cargo.toml -- --test-threads=1
 dotnet run --project src/Nethermind/Nethermind.Crypto.LeanFfi.Test/Nethermind.Crypto.LeanFfi.Test.csproj -c release -p:BuildLeanFfi=true
 dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -c release -p:BuildLeanFfi=true
@@ -29,10 +32,10 @@ The main solution compiles the test project without requiring Rust. Without the 
 the native suite is explicitly skipped. With it, the backend and fixtures are required and
 missing libraries fail the run.
 
-The C ABI is version 4, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
+The C ABI is version 5, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
 `nlean_limits` writes nine u32 values (proof bytes, dependencies, recursive children,
 SPHINCS witness bytes, generic STARK count, instructions, operand offset, aggregation input bytes,
-SPHINCS guest proof bytes); startup
+mixed guest proof bytes); startup
 checks these against the managed protocol bounds before accepting work.
 Verification/proving return 1 on success and 0 on failure. Callers initialize proof output
 pointers to null; successful proof allocations must be released once with `nlean_free`
@@ -47,20 +50,19 @@ dispatcher, where the ABI catches them.
 All framing integers are unsigned 32-bit little-endian. Proofs and individual witnesses
 are bounded to 8 MiB; aggregation input to 18 MiB so two maximum-sized child proofs and
 their dependency/discard metadata fit a recursive step. This is an input-buffer limit,
-not a process memory bound. Dependency lists are bounded to 4096; recursive children and carried generic
-STARKs to 16 each. This format and the
+not a process memory bound. Dependency lists are bounded to 256; recursive children and distinct generic
+STARK claims to 16 each. This format and the
 pinned key are prototype protocol choices, pending finalized EIP-8288 encodings.
 
-The serialized SPHINCS guest proof has an explicit 2 MiB acceptance bound. Every accepted
-aggregate reserves `16 + 96*dependencies + 100*generic_claims + generic_witness_bytes`
-plus 2 MiB when SPHINCS claims are present, and this total must fit 8 MiB. Verification
-and proving enforce the same rule; a standalone generic witness must fit its 212-byte
-single-claim envelope overhead. The 2 MiB cap is a prototype consensus choice, not a
-proven maximum of upstream proof sizes or a memory guarantee. Larger upstream proofs
-fall outside this profile and fail closed.
+The single serialized mixed guest proof has an explicit 8,364,020-byte acceptance bound. Every
+nonempty aggregate reserves `12 + 96*dependencies + MaxMixedGuestProofBytes`; an empty aggregate requires
+12 bytes. This total must fit 8 MiB. Verification and proving enforce the same bounds;
+standalone generic witnesses may be up to 8 MiB and are verified before recursive coverage
+can replace them. These are prototype consensus limits, not proven maxima of upstream
+proof sizes or process memory guarantees. Larger proofs fail closed.
 
 The [EIP](https://eips.ethereum.org/EIPS/eip-8288#recursive-stark-header-entry) requires the proof in the block header, so the header database and caches retain it.
-Generic STARK witnesses can make each header approach 8 MiB. On proof-bearing chains,
+The recursive guest compresses both proof schemes into one blob; the protocol still permits headers up to the 8 MiB proof bound. On proof-bearing chains,
 header serving loads full headers incrementally and stops at a 9 MiB response budget
 before loading the next header. Headers with proofs above 64 KiB use a separate
 32 MiB / 128-header LRU with owned proof snapshots; repeated reads avoid DB decoding
@@ -78,7 +80,7 @@ proofs and inclusion-list proof/dependency buffers and returning owned copies.
   serialization of the upstream CPU proof (no trailing bytes). The dependency key is
   Keccak-256 of that canonical bytecode. `data_hash` is the VM's 32-byte public commitment,
   packed into two 128-bit field cells; the guest must constrain the relation it represents.
-  At most 16384 instructions and operand offsets through 65535 are accepted; the offset
+  At most 2048 instructions and operand offsets through 65535 are accepted; the offset
   limit bounds upstream assembly's g-power table. Each instruction is a 45-byte record: opcode
   byte, four u32 operands, three u64 immediate limbs, then u32 BLAKE2s metadata operand.
   Opcodes 0–6 are XOR, MUL, SET, DEREF, JUMP, BLAKE2s, SHA3. Unused fields are zero. SHA3 packs its four extra message offsets
@@ -86,25 +88,25 @@ proofs and inclusion-list proof/dependency buffers and returning owned copies.
   in the metadata field.
 * **aggregation input:** direct count then `(96-byte dependency, witness blob)` pairs;
   child count then `(dependency count/triples, proof blob)` pairs; discard count/triples.
-* **aggregate:** `NLR2`, canonical dependency count/triples, upstream EthereumProof blob
-  (empty when there are no SPHINCS claims), generic-STARK count then `(dependency, witness blob)`
-  pairs in canonical dependency order. A blob is its length followed by bytes.
+* **aggregate:** `NLR3`, canonical dependency count/triples, then one mixed guest proof
+  blob. A blob is its length followed by bytes. There is no generic-witness trailer or
+  raw program carried in the header. Empty dependencies have exactly the 12-byte envelope
+  with zero dependency count and zero blob length.
 
-The recursive key is the actual upstream guest's Fiat-Shamir seed, pinned in
-`Eip8288Constants.AggregatedVk`. Root verification compares full dependency triples against
-cryptographically verified SPHINCS claims, verifies every generic STARK, and recomputes the
-canonical Keccak dependency commitment. Proving verifies every direct witness and child,
-then applies union, deduplication and discard selection. Caller-supplied dependency metadata
-cannot create a claim absent from the verified witnesses.
+The recursive key is the actual mixed guest's Fiat-Shamir seed, pinned in
+`Eip8288Constants.AggregatedVk`. The guest authenticates signature claims, generic program
+commitments and public inputs, verifies child mixed proofs, and applies union, deduplication
+and discard selection. The adapter requires exact canonical EIP dependency triples and
+recomputes their Keccak commitment; caller metadata cannot create an unproved claim.
+Every supplied raw witness and child proof is authenticated even when another input already
+covers the same claim. An unchanged verified statement can reuse its parent proof without
+executing another recursive proving step.
 
-Upstream `sphincs_deps_hash` is BLAKE2s over sorted distinct `message || raw_public_key`
-(64-byte claims); it is not the EIP adapter's Keccak commitment over 96-byte triples.
-The adapter verifies that native statement with `verify_sphincs_deps`, reconstructs
-`Keccak(public_key)` from the verified claim preimages, and requires exact equality
-with the EIP dependency set. Neither digest is substituted for the other. With no
-SPHINCS claims the guest blob must be empty; an empty dependency set has exactly the
-16-byte canonical `NLR2` envelope and no guest proof. Generic-only envelopes still
-verify every generic witness. The guest key is pinned, not trusted dynamically at startup.
+This profile is incompatible with the earlier `NLR2` carried-generic prototype and its
+SPHINCS-only guest key. Startup checks ABI 5, the new key and all nine bounds together;
+lean status checks the pinned key before proof transfer. New devnets require fresh chain
+and database namespaces. Historical `NLR2` captures retain their original source/profile
+and do not validate this mixed profile.
 
 ## Proving resources
 
@@ -118,27 +120,24 @@ Rust toolchain is selected from this directory, including MSBuild's Cargo invoca
 CI compiles for its host CPU and restores compiled artifacts only when CPU features,
 architecture, toolchain and locked dependencies match.
 
-## Recursive compression limit
+## Proof verification limits
 
-The upstream recursive guest compresses SPHINCS claims recursively. Its bytecode is fixed;
-it cannot recursively verify arbitrary leanSTARK programs. Generic STARK witnesses are
-therefore carried in the aggregate envelope and cryptographically reverified at the root.
-Their size is not compressed. Extending the guest to recursively verify arbitrary bytecode
-is separate work; this implementation does not claim that functionality.
+Before decoding, a zero-allocation pass checks proof vector lengths and transcript geometry
+against available bytes and the selected guest profile. Generic admission uses the same
+supported recursion geometry as proving, so a standalone-valid witness that cannot enter
+the mixed guest is rejected before pool coverage is retained. Program and decoding bounds
+are prototype acceptance choices beyond the unrestricted EIP; interoperating nodes must
+share the pinned guest, format and bounds.
 
-Before serde decoding, a zero-allocation pass checks every pinned wire vector length,
-claims count and nested Merkle row against available bytes. It caps opening phases at
-128, rows per phase at 4096, and estimated decoded allocations at 32 MiB. The upstream
-CPU verifier bounds transcript instance dimensions before reductions; it does not
-allocate the claimed execution trace. Each generic proof is still verified separately,
-so the 16-proof aggregate bound limits their accumulated validation cost.
+The mixed profile uses PCS inverse-rate log 1. Generic CPU proofs require committed-polynomial
+log size at most 22 and bus log size at most 22; mixed child proofs permit 27 and 26 respectively.
+The host and guest enforce these geometry bounds, in addition to instruction, dependency and
+serialized-byte limits. A valid unrestricted upstream proof outside this profile is not admitted.
 
-The dependency, generic-proof, program and decoding limits are prototype
-backend acceptance bounds beyond the unrestricted EIP. Block/proof interoperability
-requires peers to share these bounds.
-
-The upstream project remains experimental and unaudited. This integration is a prototype,
-with a pinned backend and explicit wire choices, rather than a finalized network protocol.
+The upstream project and temporary guest remain experimental and unaudited. The output
+cap and bounded native inputs do not bound native workspace or RSS. The adapter's
+four-direct/two-child fold policy reduces individual work without guaranteeing that every
+256-claim workload fits available RAM or a slot deadline.
 
 ## Running an EIP-8288 node
 
@@ -181,13 +180,15 @@ selected witnesses, discard dependencies outside the selected transaction set, a
 produced header proof. Selection reserves proof gas from both execution and state gas budgets.
 Managed proving folds at most four direct witnesses or two recursive children per native call;
 4 MiB is the direct-leaf batching target, not a block-wide witness limit. Native inputs are bounded
-to 18 MiB, output proofs to 8 MiB, and selected plus discarded coverage to 4096 dependencies.
-Shortest generic-witness normalization verifies and prunes each parent carrying a
-nonselected duplicate, including equal-length ties, before folding. This adds one native
-proving call per such parent. Equal-length direct duplicates defer to a recursive
-source and are verified without reproving; shorter direct witnesses still win. Fresh-claim
-throughput curves do not measure pruning cost. Targeted measurements belong in the stacked
-[benchmark PR](https://github.com/NethermindEth/nethermind/pull/14220).
+to 18 MiB and output proofs to 8 MiB. Each encoded dependency list and the selected
+output are bounded to 256 dependencies; inputs may jointly cover more claims when
+the discarded subset brings the output within that bound.
+A verified recursive source covers duplicate generic claims without retaining or selecting
+raw witness lengths for the output. Supplied raw duplicates still require authentication;
+coverage is not a shortcut around witness validation. Fresh-claim throughput and process
+memory measurements belong in the stacked
+[benchmark PR](https://github.com/NethermindEth/nethermind/pull/14220), with the source guest
+profile recorded for each capture.
 
 Required witness storage is bounded to 64 MiB / 32768 records. The record ceiling does not
 guarantee coverage for a full transaction pool: the byte bound fits about 10.6k distinct
@@ -268,7 +269,7 @@ a cadence never cancels an active object. Chunk sends await actual channel write
 yield between chunks so control and ETH traffic can interleave. A whole transfer is
 memoized only after every write succeeds. Unchanged wrappers refresh every 30–35 seconds
 with per-peer jitter, recovering dropped queued work without admission acknowledgements.
-Generic STARK witnesses remain carried and verified. Each peer remembers at most 64
+Mixed wrappers carry one recursive guest proof, with no raw generic witnesses in recursive mode. Each peer remembers at most 64
 recent delivered hashes. Only admitted transactions retain witness coverage.
 `eth_getProofWrapper` returns a copy of the background-produced wrapper without invoking
 the prover. Managed aggregation folds at most four direct witnesses or two children
@@ -279,7 +280,7 @@ Each producing block processor retains up to 64 verified aggregation steps withi
 32 MiB, keyed by their complete inputs and expected statement. Work completed after
 an improvement deadline remains reusable, while the expired caller still cancels
 before publishing a block. This cache is a bounded optimization: a folding working
-set larger than its capacity can still repeat work, so the backend's 4096-dependency
+set larger than its capacity can still repeat work, so the backend's 256-dependency
 acceptance limit does not guarantee production within a normal slot budget.
 
 During channel backpressure, the shared sender retains up to 64 non-bulk messages
@@ -297,7 +298,7 @@ fragments of one RLPx object.
 With both EIP-8288 and EIP-7805 active, FCUv5 payload attributes and newPayloadV6's
 execution payload accept `inclusionListRecursiveStark: {starkProof, blockDepsHash}` and
 `inclusionListProvenDependencies`, a hex string concatenating sorted, deduplicated 96-byte
-triples (at most 4096 / 384 KiB). The explicit metadata hashes exactly to the proof's public
+triples (at most 256 / 24 KiB). The explicit metadata hashes exactly to the proof's public
 commitment and is required for dependency-bearing entries. Proof-bearing FOCIL RLP is
 `[transactions, [stark_proof, deps_hash, proven_dependencies]]`; this prototype extension
 makes membership independently checkable when a committee contributes a bad entry.

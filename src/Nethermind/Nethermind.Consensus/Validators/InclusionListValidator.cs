@@ -44,7 +44,7 @@ public static class InclusionListValidator
         {
             Span<bool> included = rented is null ? stackalloc bool[il.Length] : rented.AsSpan(0, il.Length);
             included.Clear();
-            return IsSatisfied(block, il, included, state, spec, txValidator, proof, frameCanInclude);
+            return IsSatisfied(block, il, included, state, spec, txValidator, frameCanInclude);
         }
         finally
         {
@@ -58,7 +58,7 @@ public static class InclusionListValidator
         return block.GasUsed > block.GasLimit || minIntrinsicGas > block.GasLimit - block.GasUsed;
     }
 
-    private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, RecursiveStark? proof, Func<Transaction, bool>? frameCanInclude)
+    private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, Func<Transaction, bool>? frameCanInclude)
     {
         // Duplicate IL entries stay unmarked but fail the appendability check (nonce advanced).
         Dictionary<Hash256, int> ilByHash = new(il.Length);
@@ -75,16 +75,7 @@ public static class InclusionListValidator
         }
 
         HashSet<FrameDependency> dependencies = spec.IsEip8288Enabled ? [.. Eip8288Dependencies.ForBlock(block)] : [];
-        int genericProofs = 0;
-        foreach (FrameDependency dependency in dependencies)
-            if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) genericProofs++;
-        Dictionary<FrameDependency, int> genericLengths = [];
-        bool publicSizesValid = genericProofs == 0 || block.Header.RecursiveStark?.StarkProof is { } blockProof
-            && LeanProofCapacity.TryReadGenericWitnessLengths(blockProof, genericLengths);
-        if (spec.IsEip8288Enabled && HasGenericDependencies(il))
-            publicSizesValid &= proof?.StarkProof is { } inclusionProof
-                && LeanProofCapacity.TryReadGenericWitnessLengths(inclusionProof, genericLengths);
-        LeanProofCapacity.AppendBudget capacity = LeanProofCapacity.CreateAppendBudget(dependencies, genericLengths);
+        LeanProofCapacity.AppendBudget capacity = LeanProofCapacity.CreateAppendBudget(dependencies);
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
@@ -93,23 +84,13 @@ public static class InclusionListValidator
             {
                 if (!spec.IsEip8288Enabled || !CouldIncludeFrameTx(il[i], block, spec, txValidator)) continue;
                 List<FrameDependency> appended = Eip8288Dependencies.ForTransaction(il[i]);
-                if ((appended.Count == 0 || publicSizesValid) && capacity.CapacityError(appended) is null
+                if (capacity.CapacityError(appended) is null
                     && (frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
                 continue;
             }
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
         }
         return true;
-    }
-
-    private static bool HasGenericDependencies(Transaction[] transactions)
-    {
-        foreach (Transaction transaction in transactions)
-            foreach (TxFrame frame in transaction.Frames ?? [])
-                if (Eip8288Dependencies.IsDependencyFrame(frame))
-                    for (int offset = 31; offset < frame.Data.Length; offset += Eip8288Constants.DependencyTripleLength)
-                        if (frame.Data.Span[offset] == Eip8288Constants.LeanStarkScheme) return true;
-        return false;
     }
 
     private static bool CouldIncludeFrameTx(Transaction tx, Block block, IReleaseSpec spec, ITxValidator validator)

@@ -13,7 +13,6 @@ internal sealed class LeanProofBudget
     private readonly HashSet<FrameDependency> _required = [];
     private readonly HashSet<FrameDependency> _coverage = [];
     private readonly HashSet<ValueHash256> _parents = [];
-    private readonly Dictionary<FrameDependency, int> _genericLengths = [];
     private int _genericProofs;
     private AggregationInput? _inclusionListInput;
     private HashSet<FrameDependency>? _inclusionListCoverage;
@@ -73,38 +72,14 @@ internal sealed class LeanProofBudget
             if (!_coverage.Contains(dependency) && !addedCoverage.Contains(dependency))
             { error = "Missing verified dependency witnesses"; return false; }
         contribution = new() { Deps = direct, Witnesses = witnesses, RecursiveProofs = parents };
-        Dictionary<FrameDependency, int> lengths = new(_genericLengths);
-        if (!AddWitnessLengths(contribution, lengths)) { error = "Invalid verified proof envelope"; return false; }
-        HashSet<FrameDependency> union = [.. _required, .. required];
-        error = LeanProofCapacity.CapacityError(union, lengths);
-        if (error is not null) return false;
-        return true;
-    }
-
-    private static bool AddWitnessLengths(AggregationInput input, Dictionary<FrameDependency, int> lengths)
-    {
-        for (int i = 0; i < input.Deps.Count; i++)
-            if (input.Deps[i].Scheme == Eip8288Constants.LeanStarkScheme)
-                LeanProofCapacity.AddWitnessLength(lengths, input.Deps[i], input.Witnesses[i].Length);
-        foreach (RecursiveProofInput parent in input.RecursiveProofs)
-        {
-            bool generic = false;
-            foreach (FrameDependency dependency in parent.InnerDeps)
-                if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) { generic = true; break; }
-            if (generic && !LeanProofCapacity.TryReadGenericWitnessLengths(parent.Proof.Span, lengths)) return false;
-        }
         return true;
     }
 
     public void Commit(AggregationInput contribution, IReadOnlyList<FrameDependency> required)
     {
-        AddWitnessLengths(contribution, _genericLengths);
         foreach (FrameDependency dependency in required)
             if (_required.Add(dependency) && dependency.Scheme == Eip8288Constants.LeanStarkScheme) _genericProofs++;
-        for (int i = 0; i < contribution.Deps.Count; i++)
-        {
-            _coverage.Add(contribution.Deps[i]);
-        }
+        for (int i = 0; i < contribution.Deps.Count; i++) _coverage.Add(contribution.Deps[i]);
         foreach (RecursiveProofInput parent in contribution.RecursiveProofs)
         {
             _parents.Add(parent.ProofHash);
@@ -123,7 +98,6 @@ internal sealed class LeanProofBudget
         clone._required.UnionWith(_required);
         clone._coverage.UnionWith(_coverage);
         clone._parents.UnionWith(_parents);
-        foreach ((FrameDependency dependency, int length) in _genericLengths) clone._genericLengths.Add(dependency, length);
         return clone;
     }
 }

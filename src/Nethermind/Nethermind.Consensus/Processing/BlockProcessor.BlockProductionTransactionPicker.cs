@@ -147,7 +147,7 @@ namespace Nethermind.Consensus.Processing
                     LeanProofBudget budget = producing?.LeanProofBudget ?? new();
                     List<FrameDependency> missing = budget.Missing(required);
                     AggregationInput candidateInput = new();
-                    if (!budget.TryUseInclusionList(producing?.InclusionListProofInput, required, out candidateInput) && missing.Count != 0
+                    if (missing.Count != 0 && !budget.TryUseInclusionList(producing?.InclusionListProofInput, missing, out candidateInput)
                         && (leanProofStore is null || !leanProofStore.TryGetInput(missing, out candidateInput)))
                         return args.Set(TxAction.Skip, "Missing verified dependency witnesses");
                     if (!budget.TryPrepare(candidateInput, required, out AggregationInput contribution, out string? proofError))

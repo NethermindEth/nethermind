@@ -43,6 +43,7 @@ jobs:
     env:
       NATIVE_TEST_PROJECT: Nethermind.Crypto.LeanFfi.Test
       RUSTFLAGS: -C target-cpu=native
+      LEANVM_NUM_THREADS: 1
     strategy:
       fail-fast: false
       matrix:

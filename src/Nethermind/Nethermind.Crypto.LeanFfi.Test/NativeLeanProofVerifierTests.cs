@@ -3,6 +3,8 @@
 
 using System;
 using System.IO;
+using System.Buffers.Binary;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -22,7 +24,7 @@ public class NativeLeanProofVerifierTests
     public void EnsureNativeLibraryLoads()
     {
         NativeLeanProofVerifier.Instance.EnsureAvailable();
-        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(4u));
+        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(5u));
         Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
     }
 
@@ -94,31 +96,94 @@ public class NativeLeanProofVerifierTests
     }
 
     [Test]
-    public void Recursive_proof_compresses_sphincs_and_carries_verified_starks()
+    public void Mixed_recursive_proof_verifies_generic_leaf_then_union_and_discard()
     {
         FrameDependency sphincs = Dependency("sphincs");
         FrameDependency stark = Dependency("stark");
-        AggregationInput leafInput = new() { Deps = [sphincs], Witnesses = [Witness("sphincs")] };
-        ValueHash256 leafHash = Eip8288Dependencies.ComputeDepsHash([sphincs]);
-        byte[] leaf = Native.ProveRecursiveStark(leafHash, Eip8288Constants.AggregatedVk, leafInput);
-        Assert.That(Native.VerifyRecursiveStark(leafHash, Eip8288Constants.AggregatedVk, leaf), Is.True);
+        ValueHash256 genericHash = Eip8288Dependencies.ComputeDepsHash([stark]);
+        byte[] genericLeaf = Native.ProveRecursiveStark(genericHash, Eip8288Constants.AggregatedVk,
+            new() { Deps = [stark], Witnesses = [Witness("stark")] });
+        Assert.That(Native.VerifyRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, genericLeaf), Is.True);
+        AssertMixedEnvelope(genericLeaf, [stark]);
         AggregationInput mixedInput = new()
         {
-            Deps = [stark],
-            Witnesses = [Witness("stark")],
-            RecursiveProofs = [new RecursiveProofInput([sphincs], leaf)]
+            Deps = [sphincs],
+            Witnesses = [Witness("sphincs")],
+            RecursiveProofs = [new RecursiveProofInput([stark], genericLeaf)]
         };
         ValueHash256 mixedHash = Eip8288Dependencies.ComputeDepsHash([stark, sphincs]);
         byte[] mixed = Native.ProveRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixedInput);
         Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixed), Is.True);
+        AssertMixedEnvelope(mixed, [stark, sphincs]);
+        byte[] selected = Native.ProveRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, new()
+        {
+            RecursiveProofs = [new([stark, sphincs], mixed)],
+            Discards = [sphincs]
+        });
+        Assert.That(Native.VerifyRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, selected), Is.True);
+        AssertMixedEnvelope(selected, [stark]);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Native.VerifyRecursiveStark(leafHash, Eip8288Constants.AggregatedVk, mixed), Is.False);
+            Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, selected), Is.False);
+            Assert.That(Native.VerifyRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, mixed), Is.False);
             Assert.That(Native.VerifyRecursiveStark(mixedHash, new byte[32], mixed), Is.False);
             Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, [.. mixed, 0]), Is.False);
+            Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixed[..^1]), Is.False);
         }
+        AggregationInput missing = new() { RecursiveProofs = [new([stark, sphincs], genericLeaf)] };
+        Assert.Throws<InvalidOperationException>(() => Native.ProveRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, missing));
         mixed[^1] ^= 1;
         Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixed), Is.False);
+    }
+
+    [Test]
+    public void Empty_proof_uses_current_profile_and_rejects_the_carried_witness_profile()
+    {
+        ValueHash256 emptyHash = Eip8288Dependencies.ComputeDepsHash([]);
+        byte[] empty = Native.ProveRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, new());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(empty, Is.EqualTo(new byte[] { (byte)'N', (byte)'L', (byte)'R', (byte)'3', 0, 0, 0, 0, 0, 0, 0, 0 }));
+            Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, empty), Is.True);
+            Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk,
+                [(byte)'N', (byte)'L', (byte)'R', (byte)'2', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), Is.False);
+            Assert.That(Native.VerifyRecursiveStark(emptyHash,
+                Convert.FromHexString("23305f2492843c52dfc0cf62ce46827b776071fcc6486504781ab8c8cf8ed387"), empty), Is.False);
+        }
+    }
+
+    [TestCase("sphincs")]
+    [TestCase("stark")]
+    public void Invalid_raw_witness_cannot_be_hidden_by_a_valid_recursive_parent(string scheme)
+    {
+        FrameDependency dependency = Dependency(scheme);
+        byte[] witness = Witness(scheme);
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
+        byte[] parent = Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk,
+            new() { Deps = [dependency], Witnesses = [witness] });
+        witness[^1] ^= 1;
+        AggregationInput duplicate = new()
+        {
+            Deps = [dependency], Witnesses = [witness], RecursiveProofs = [new([dependency], parent)]
+        };
+        Assert.Throws<InvalidOperationException>(() => Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, duplicate));
+    }
+
+    internal static void AssertMixedEnvelope(byte[] proof, IReadOnlyList<FrameDependency> dependencies)
+    {
+        List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(dependencies);
+        Assert.That(proof.Length, Is.GreaterThanOrEqualTo(12 + canonical.Count * Eip8288Constants.DependencyTripleLength));
+        int payloadOffset = 8 + canonical.Count * Eip8288Constants.DependencyTripleLength;
+        int payloadBytes = BinaryPrimitives.ReadInt32LittleEndian(proof.AsSpan(payloadOffset, 4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof.AsSpan(0, 4).ToArray(), Is.EqualTo("NLR3"u8.ToArray()));
+            Assert.That(BinaryPrimitives.ReadInt32LittleEndian(proof.AsSpan(4, 4)), Is.EqualTo(canonical.Count));
+            Assert.That(proof.AsSpan(8, canonical.Count * Eip8288Constants.DependencyTripleLength).ToArray(),
+                Is.EqualTo(Eip8288Dependencies.Serialize(canonical)));
+            Assert.That(payloadBytes, Is.InRange(canonical.Count == 0 ? 0 : 1, Eip8288Constants.MaxMixedGuestProofBytes));
+            Assert.That(proof.Length, Is.EqualTo(payloadOffset + 4 + payloadBytes), "one guest proof has no carried-witness trailer");
+        }
     }
 
     [Test]
