@@ -386,10 +386,13 @@ public sealed class BlockImporter : IBlockImporter
 
         if (checkpointBlock != finalized.Root)
         {
-            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The current finalized checkpoint is an ancestor of the block".
-            rejectGossip = true;
-            failedValidation = true;
-            return $"the block does not descend from the finalized checkpoint {finalized}";
+            if (checkpointBlock is not null || !_runner.IsBootstrapCheckpointDescendant(parentRoot, finalized))
+            {
+                // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The current finalized checkpoint is an ancestor of the block".
+                rejectGossip = true;
+                failedValidation = true;
+                return $"the block does not descend from the finalized checkpoint {finalized}";
+            }
         }
 
         ulong parentSlot = _runner.GetBlockSlot(parentRoot)!.Value;
