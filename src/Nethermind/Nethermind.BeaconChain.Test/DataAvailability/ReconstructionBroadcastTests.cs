@@ -15,7 +15,8 @@ public class ReconstructionBroadcastTests
     private const ulong Slot = 42;
     private const ulong ProposerIndex = 7;
 
-    private static SignedBeaconBlockHeader Header() => new()
+    /// <summary>Creates a fresh signed header for a synthetic reconstruction matrix.</summary>
+    internal static SignedBeaconBlockHeader Header() => new()
     {
         Message = new BeaconBlockHeader
         {
@@ -105,19 +106,9 @@ public class ReconstructionBroadcastTests
         DataColumnSidecar foreignColumn = new()
         {
             Index = 1,
-            SignedBlockHeader = new SignedBeaconBlockHeader
-            {
-                Message = new BeaconBlockHeader
-                {
-                    Slot = Slot,
-                    ProposerIndex = ProposerIndex,
-                    ParentRoot = Hash256.Zero,
-                    StateRoot = Hash256.Zero,
-                    BodyRoot = new Hash256([.. Enumerable.Repeat((byte)0x99, 32)]),
-                },
-                Signature = new BlsSignature(new byte[BlsSignature.Length]),
-            },
+            SignedBlockHeader = Header(),
         };
+        foreignColumn.SignedBlockHeader!.Message!.BodyRoot = new Hash256([.. Enumerable.Repeat((byte)0x99, 32)]);
         DataColumnSidecar[] held = [fullMatrix[0], foreignColumn];
 
         IReadOnlyList<ReconstructedSidecarToPublish> newlyReconstructed = ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix);
