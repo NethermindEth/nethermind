@@ -69,6 +69,23 @@ public class IndexTableHandlerTests
     }
 
     [Test]
+    public void Publication_block_with_unknown_ancestry_throws_without_committing_the_higher_level_table()
+    {
+        IndexTableStore store = new();
+        (IndexTableHandler handler, ITransactionProcessor processor) = BuildHandler(store, BuildChain(0));
+
+        // Block 4 publishes the level-1 table over blocks 0-3, but its parent is not in the block tree.
+        Assert.Throws<InvalidOperationException>(() =>
+            handler.CommitIndexTableRoots(BuildBlock(4), [], BuildSpec(), NullTxTracer.Instance));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(1, 0), Is.Null);
+            processor.Received(1).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        }
+    }
+
+    [Test]
     public void Nothing_is_committed_when_the_fork_is_not_active()
     {
         IndexTableStore store = new();
