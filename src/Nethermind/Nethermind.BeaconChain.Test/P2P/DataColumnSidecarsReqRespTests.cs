@@ -43,44 +43,22 @@ public class DataColumnSidecarsReqRespTests
         Assert.That(FailureCount(TestDataColumnSidecarsProtocol.ProtocolId, ReqRespFailureReason.InvalidMessage), Is.EqualTo(before + 1));
     }
 
-    [Test]
-    public async Task Response_exceeding_the_chunk_limit_is_rejected_and_the_stream_closed()
+    [TestCase(true, TestName = "Response_exceeding_the_chunk_limit_is_rejected_and_the_stream_closed")]
+    [TestCase(false, TestName = "Response_at_exactly_the_chunk_limit_is_accepted")]
+    public async Task Response_chunk_count_is_bounded(bool exceeds)
     {
         const int maxSidecars = 3;
         TestDataColumnSidecarsProtocol protocol = new(Spec);
-
         using MemoryStream stream = new();
-        for (int i = 0; i < maxSidecars + 2; i++)
+        for (int i = 0; i < maxSidecars + (exceeds ? 2 : 0); i++)
         {
-            await WriteSidecarChunkAsync(stream, DataColumnSidecarTestFixture.BuildValidSidecar(5, slot: 1_000 + (ulong)i, seed: (byte)(0x40 + i)));
+            await WriteSidecarChunkAsync(stream, DataColumnSidecarTestFixture.BuildValidSidecar(5,
+                slot: (exceeds ? 1_000UL : 2_000UL) + (ulong)i, seed: (byte)((exceeds ? 0x40 : 0x50) + i)));
         }
 
-        stream.Position = 0;
-
-        long before = FailureCount(TestDataColumnSidecarsProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded);
-
-        Eth2ReqRespException? thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.ReadSidecarsAsync(stream, maxSidecars));
-        Assert.That(thrown!.Message, Does.Contain(maxSidecars.ToString()));
-        Assert.That(FailureCount(TestDataColumnSidecarsProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded), Is.EqualTo(before + 1), "limit violation recorded");
-        Assert.That(stream.Position, Is.LessThan(stream.Length), "stream was closed to the peer before it was fully drained");
-    }
-
-    [Test]
-    public async Task Response_at_exactly_the_chunk_limit_is_accepted()
-    {
-        const int maxSidecars = 3;
-        TestDataColumnSidecarsProtocol protocol = new(Spec);
-
-        using MemoryStream stream = new();
-        for (int i = 0; i < maxSidecars; i++)
-        {
-            await WriteSidecarChunkAsync(stream, DataColumnSidecarTestFixture.BuildValidSidecar(5, slot: 2_000 + (ulong)i, seed: (byte)(0x50 + i)));
-        }
-
-        stream.Position = 0;
-
-        IReadOnlyList<DataColumnSidecar> sidecars = await protocol.ReadSidecarsAsync(stream, maxSidecars);
-        Assert.That(sidecars, Has.Count.EqualTo(maxSidecars));
+        await ReqRespTestChannel.AssertChunkLimitAsync(stream, maxSidecars, exceeds,
+            () => protocol.ReadSidecarsAsync(stream, maxSidecars),
+            () => FailureCount(TestDataColumnSidecarsProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded));
     }
 
     [Test]
