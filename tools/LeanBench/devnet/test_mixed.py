@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import struct
 import subprocess
@@ -51,7 +52,66 @@ class MixedObserverChecks(unittest.TestCase):
     def test_optimistic_finality_is_rejected(self):
         self.run_recovery(optimistic=True)
 
-    def run_recovery(self, native_failure=False, final_sync_timeout=False, optimistic=False):
+    def test_ambiguous_offer_is_preserved_without_confirmed_rpc_admission(self):
+        for result in [TimeoutError('response lost'), ['unexpected hash'], mixed.RpcError('eth_sendProofWrapper', {'message': 'rejected'})]:
+            with self.subTest(result=result):
+                class OfferRpc:
+                    def call(self, method, params):
+                        self.method = method
+                        if isinstance(result, Exception):
+                            raise result
+                        return result
+                admission = {'transactionHash': 'signed-hash', 'accepted': False}
+                node = OfferRpc()
+                with self.assertRaises((RuntimeError, TimeoutError)):
+                    mixed.submit_wrapper(node, {'method': 'eth_sendProofWrapper', 'params': ['signed-wrapper']}, admission)
+                self.assertEqual(node.method, 'eth_sendProofWrapper')
+                self.assertFalse(admission['accepted'])
+                self.assertEqual(admission['admissionUncertain'], not isinstance(result, mixed.RpcError))
+
+    def test_uncertain_offer_with_canonical_receipts_recovers_without_resubmission(self):
+        self.run_recovery(uncertain=True)
+
+    def test_absent_uncertain_offer_has_explicit_bounded_failure(self):
+        self.run_recovery(uncertain=True, missing_uncertain=True)
+
+    def test_capture_eviction_has_clear_error_and_preserves_cause(self):
+        self.run_recovery(capture_missing=True)
+
+    def test_execution_finalized_tag_must_cover_a_canonical_ancestor(self):
+        anchored = {'number': '0x10', 'hash': '0x' + '11' * 32}
+        finalized = {'number': '0x20', 'hash': '0x' + '22' * 32}
+        class FinalizedRpc:
+            def __init__(self, tag):
+                self.tag = tag
+                self.requests = []
+            def call(self, method, params):
+                self.requests.append(params[0])
+                if params[0] == 'finalized': return self.tag
+                return finalized if params[0] == '0x20' else anchored
+        node = FinalizedRpc(finalized)
+        mixed.ensure_el_finalized([node], anchored)
+        self.assertEqual(node.requests, ['finalized', '0x20', '0x10'])
+        for tag in [None, {'number': '0xf', 'hash': anchored['hash']}, {'number': '0x20', 'hash': anchored['hash']}]:
+            with self.subTest(tag=tag), self.assertRaises(mixed.ObservationMoved):
+                mixed.ensure_el_finalized([FinalizedRpc(tag)], anchored)
+        with self.assertRaisesRegex(RuntimeError, 'Malformed execution finalized block'):
+            mixed.ensure_el_finalized([FinalizedRpc({'number': 'invalid', 'hash': finalized['hash']})], anchored)
+
+    def test_health_gate_remains_enabled_in_optimized_python(self):
+        sample = {'capturedEpoch': time.time(), 'hostAvailableBytes': 5 * 1024**3,
+                  'hostAvailableFloorBytes': 6 * 1024**3, 'hostCpuPercent': 10,
+                  'elMemoryBytes': [100, 100], 'elMemoryLimits': [1000, 1000],
+                  'elOomKilled': [False, False], 'elRestarts': [0, 0]}
+        result = subprocess.run([sys.executable, '-O', '-c',
+            'import json, mixed, sys; mixed.validate_health(json.loads(sys.argv[1]))', json.dumps(sample)],
+            cwd=Path(__file__).resolve().parent, capture_output=True, text=True,
+            env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'}, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('RuntimeError: Host available memory is below the safety floor', result.stderr)
+
+    def run_recovery(self, native_failure=False, final_sync_timeout=False, optimistic=False,
+                     uncertain=False, missing_uncertain=False, capture_missing=False):
         old_hash, new_hash = '0x' + '11' * 32, '0x' + '22' * 32
         hashes = ['0x' + '33' * 32, '0x' + '44' * 32]
         claims = [{'scheme': hex(scheme), 'dataHash': '0x' + value * 32, 'verificationKey': '0x' + '77' * 32}
@@ -73,9 +133,13 @@ class MixedObserverChecks(unittest.TestCase):
                 if method == 'eth_getTransactionCount': return '0x3'
                 if method == 'txpool_status': return {'pending': '0x0', 'queued': '0x0'}
                 if method == 'eth_getTransactionReceipt':
+                    if missing_uncertain and params[0] == hashes[1]:
+                        state['deadlineExpired'] = True
+                        return None
                     return {'transactionHash': params[0], 'blockHash': old_hash if state['orphan'] else new_hash,
                             'blockNumber': '0x10', 'status': '0x1', 'gasUsed': '0x10000'}
                 if method == 'eth_getBlockByNumber':
+                    if params[0] == 'finalized': return block
                     if params[0] == 'latest': raise AssertionError('Recovery must skip the pre-offer head wait')
                     state['orphan'] = False
                     return block
@@ -106,6 +170,7 @@ class MixedObserverChecks(unittest.TestCase):
         def subprocess_run(command, **kwargs):
             if command[:2] == ['docker', 'cp']:
                 self.assertIn(new_hash[2:], command[2])
+                if capture_missing: raise subprocess.CalledProcessError(1, command, stderr=b'capture does not exist')
                 proof = b'NLR3' + struct.pack('<I', 2) + b''.join(sorted(triples)) + struct.pack('<I', 1) + b'x'
                 Path(command[-1]).write_text(json.dumps({'method': 'engine_newPayloadV5',
                     'params': [{'blockHash': new_hash, 'recursiveStarkProof': '0x' + proof.hex()}]}))
@@ -128,7 +193,7 @@ class MixedObserverChecks(unittest.TestCase):
             original = root / 'original.json'
             original.write_text(json.dumps({'mode': 'merge', 'nativeProfile': {'abi': 5}, 'peerPoolPropagationObserved': False,
                 'manifests': [hashlib.sha256(path.read_bytes()).hexdigest() for path in manifests], 'blocks': [],
-                'admissions': [{'accepted': True, 'transactionHash': h, 'nonce': i + 1,
+                'admissions': [{'accepted': not (uncertain and i == 1), 'admissionUncertain': uncertain and i == 1, 'transactionHash': h, 'nonce': i + 1,
                     'receipts': [{'blockHash': old_hash}, {'blockHash': old_hash}]} for i, h in enumerate(hashes)]}))
             original_bytes = original.read_bytes()
             health = root / 'health.json'
@@ -142,20 +207,27 @@ class MixedObserverChecks(unittest.TestCase):
             with patch.object(sys, 'argv', argv), patch.object(mixed, 'Rpc', ObserverRpc), \
                     patch.object(mixed, 'beacon', read_beacon), patch.object(mixed.subprocess, 'run', subprocess_run), \
                     patch.object(mixed.time, 'sleep'), \
-                    patch.object(mixed.time, 'monotonic', lambda: 100 if state['deadlineExpired'] else 0), contextlib.redirect_stdout(io.StringIO()):
-                if native_failure:
+                    patch.object(mixed.time, 'monotonic', lambda: 10000 if state['deadlineExpired'] else 0), contextlib.redirect_stdout(io.StringIO()):
+                if missing_uncertain:
+                    with self.assertRaisesRegex(TimeoutError, 'Uncertain admission has no receipt on both nodes'):
+                        mixed.main()
+                elif capture_missing:
+                    with self.assertRaisesRegex(RuntimeError, 'Capture unavailable or evicted') as failure:
+                        mixed.main()
+                    self.assertIsInstance(failure.exception.__cause__, subprocess.CalledProcessError)
+                elif native_failure:
                     with self.assertRaises(subprocess.CalledProcessError): mixed.main()
                 elif final_sync_timeout:
                     with self.assertRaises(SystemExit): mixed.main()
                 elif optimistic:
-                    with self.assertRaises(AssertionError): mixed.main()
+                    with self.assertRaisesRegex(RuntimeError, 'Finality response must not be execution optimistic'): mixed.main()
                 else:
                     mixed.main()
             report = json.loads((output / 'report.json').read_text())
             self.assertEqual(original.read_bytes(), original_bytes)
             self.assertEqual(report['originalReportSha256'], hashlib.sha256(original_bytes).hexdigest())
-            self.assertEqual(state['nativeCalls'], 1)
-            if native_failure or optimistic or final_sync_timeout:
+            self.assertEqual(state['nativeCalls'], 0 if capture_missing or missing_uncertain else 1)
+            if native_failure or optimistic or final_sync_timeout or capture_missing or missing_uncertain:
                 self.assertFalse(report['completed'])
                 self.assertFalse(report['completedFinality'])
                 if native_failure: self.assertFalse(report['nativeProofsVerified'])
@@ -168,6 +240,10 @@ class MixedObserverChecks(unittest.TestCase):
                 self.assertEqual(len(report['canonicalObservations']), 2)
                 self.assertGreaterEqual(report['readRetries'], 4)
                 self.assertEqual(state['finalityReads'], 5)
+                if uncertain:
+                    self.assertFalse(report['admissions'][1]['accepted'])
+                    self.assertTrue(report['admissions'][1]['admissionUncertain'])
+                    self.assertEqual(len(report['admissions'][1]['receipts']), 2)
 
 
 if __name__ == '__main__':
