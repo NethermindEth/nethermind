@@ -40,73 +40,44 @@ public class BeaconChainStoreBlockSummaryTests
     [TearDown]
     public void DisposeStore() => _db.Dispose();
 
-    /// <summary>Checks that the stored fields match the block used by gloas/p2p-interface.md validation.</summary>
-    [Test]
-    public void A_stored_gloas_block_has_a_summary_of_its_slot_and_bid_commitments()
+    /// <summary>The summary keeps its fork, slot and commitments across persistence and restart.</summary>
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Stored_summary_preserves_its_fork_fields(bool gloas, bool restart)
     {
-        SignedBeaconBlockGloas block = BlockWithBlobs();
-        _store.PutForkedBlock(GloasRoot, new ForkedSignedBeaconBlock.OfGloas(block));
-
-        bool found = _store.TryGetBlockSummary(GloasRoot, out StoredBlockSummary summary);
-
+        ForkedSignedBeaconBlock block = gloas
+            ? new ForkedSignedBeaconBlock.OfGloas(BlockWithBlobs())
+            : new ForkedSignedBeaconBlock.OfFulu(CreateMinimalBlock(FirstGloasSlot - 1));
+        Hash256 root = gloas ? GloasRoot : FuluRoot;
+        _store.PutForkedBlock(root, block);
+        BeaconChainStore reader = restart ? new(_db, Sepolia) : _store;
+        Assert.That(reader.TryGetBlockSummary(root, out StoredBlockSummary summary), Is.True);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(found, Is.True);
-        Assert.That(summary.IsGloas, Is.True);
-        Assert.That(summary.Slot, Is.EqualTo(block.Message!.Slot));
-        Assert.That(summary.Commitments.Select(static c => c.AsSpan().ToArray()),
-            Is.EqualTo(DataColumnSidecarGloasTestFixture.Commitments().Select(static c => c.AsSpan().ToArray())));
+        Assert.That(summary.IsGloas, Is.EqualTo(gloas));
+        Assert.That(summary.Slot, Is.EqualTo(block.Slot));
+        if (gloas)
+        {
+            Assert.That(summary.Commitments.Select(static commitment => commitment.AsSpan().ToArray()),
+                Is.EqualTo(DataColumnSidecarGloasTestFixture.Commitments().Select(static commitment => commitment.AsSpan().ToArray())));
+        }
+        else
+        {
+            Assert.That(summary.Commitments, Is.Empty);
+        }
     }
 
-    /// <summary>Checks that a pre-Gloas summary cannot supply a bid for gloas/p2p-interface.md validation.</summary>
+    /// <summary>Deleting the block removes its summary and prevents a late backfill from restoring it.</summary>
     [Test]
-    public void A_stored_fulu_block_has_a_summary_that_is_not_gloas()
-    {
-        SignedBeaconBlock block = CreateMinimalBlock(FirstGloasSlot - 1);
-        _store.PutForkedBlock(FuluRoot, new ForkedSignedBeaconBlock.OfFulu(block));
-
-        bool found = _store.TryGetBlockSummary(FuluRoot, out StoredBlockSummary summary);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(found, Is.True);
-        Assert.That(summary.IsGloas, Is.False);
-        Assert.That(summary.Slot, Is.EqualTo(FirstGloasSlot - 1));
-        Assert.That(summary.Commitments, Is.Empty);
-    }
-
-    /// <summary>Checks that gloas/p2p-interface.md validation retains its block fields across restarts.</summary>
-    [Test]
-    public void The_summary_survives_a_restart()
-    {
-        SignedBeaconBlockGloas block = BlockWithBlobs();
-        _store.PutForkedBlock(GloasRoot, new ForkedSignedBeaconBlock.OfGloas(block));
-
-        BeaconChainStore reopened = new(_db, Sepolia);
-
-        Assert.That(reopened.TryGetBlockSummary(GloasRoot, out StoredBlockSummary summary), Is.True);
-        Assert.That((summary.Slot, summary.Commitments.Length), Is.EqualTo((block.Message!.Slot, DataColumnSidecarGloasTestFixture.Commitments().Length)));
-    }
-
-    /// <summary>Checks that deletion removes the block fields used by gloas/p2p-interface.md validation.</summary>
-    [Test]
-    public void Deleting_a_block_deletes_its_summary()
-    {
-        _store.PutForkedBlock(GloasRoot, new ForkedSignedBeaconBlock.OfGloas(BlockWithBlobs()));
-
-        _store.DeleteBlock(GloasRoot);
-
-        Assert.That(_store.TryGetBlockSummary(GloasRoot, out _), Is.False);
-    }
-
-    /// <summary>Checks that a late backfill cannot resurrect a block summary for gloas/p2p-interface.md validation.</summary>
-    [Test]
-    public void Backfilling_a_deleted_block_does_not_restore_its_summary()
+    public void Deleted_blocks_have_no_summary([Values] bool backfillAfterDeletion)
     {
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfGloas(BlockWithBlobs());
         _store.PutForkedBlock(GloasRoot, block);
         _store.DeleteBlock(GloasRoot);
-
-        _store.PutBlockSummary(GloasRoot, block);
-
+        if (backfillAfterDeletion)
+        {
+            _store.PutBlockSummary(GloasRoot, block);
+        }
         Assert.That(_store.TryGetBlockSummary(GloasRoot, out _), Is.False);
     }
 
