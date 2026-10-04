@@ -158,7 +158,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Fill_transaction_is_outside_the_fork_rule()
+    public async Task Fill_transaction_rejects_dynamic_fees_before_london()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Berlin.Instance));
         using JsonDocument request = JsonDocument.Parse(
@@ -166,7 +166,8 @@ public partial class EthRpcModuleTests
 
         string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request.RootElement);
 
-        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+        // No transaction before London carries dynamic fees, so there is nothing to fill, as in Geth's eth_fillTransaction.
+        Assert.That(JToken.Parse(response)["error"]?["message"]?.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(Berlin.Instance.Name)), response);
     }
 
     [Test]

@@ -147,11 +147,15 @@ public partial class EthRpcModuleTests
         JsonRpcResponse<ParsedSignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<ParsedSignTransactionResult>>(serialized)!;
         Assert.That(response.Result, Is.Not.Null, "precondition: signing must succeed for valid input");
 
-        Assert.That(response.Result!.Tx, Is.TypeOf(expectedEchoType),
-            "no-type input must auto-promote to EIP-1559; explicit type must be preserved");
         // The echo is read back through the converter, which picks the class from the fields, so check the raw type too.
-        Assert.That(JsonDocument.Parse(serialized).RootElement.GetProperty("result").GetProperty("tx").GetProperty("type").GetString(),
-            Is.EqualTo(expectedJsonType));
+        using JsonDocument echo = JsonDocument.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result!.Tx, Is.TypeOf(expectedEchoType),
+                "no-type input must auto-promote to EIP-1559; explicit type must be preserved");
+            Assert.That(echo.RootElement.GetProperty("result").GetProperty("tx").GetProperty("type").GetString(),
+                Is.EqualTo(expectedJsonType));
+        }
     }
 
     [TestCase(TxType.Legacy, typeof(LegacyTransactionForRpc), TestName = "Legacy")]

@@ -165,6 +165,23 @@ public class TransactionForRpcDeserializationTests
         }
     }
 
+    [Test]
+    public void Requested_type_applies_to_a_copy()
+    {
+        TransactionForRpc request = _serializer.Deserialize<TransactionForRpc>("""{"type":"0x0"}""")!;
+
+        Result<TransactionForRpc> first = request.WithRequestedType();
+        Result<TransactionForRpc> second = request.WithRequestedType();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Data, Is.TypeOf<LegacyTransactionForRpc>(), first.Error);
+            Assert.That(second.Data, Is.TypeOf<LegacyTransactionForRpc>(), second.Error);
+            Assert.That(request, Is.TypeOf<EIP1559TransactionForRpc>());
+            Assert.That(request.ToTransaction(spec: Istanbul.Instance).Data?.Type, Is.EqualTo(TxType.Legacy));
+        }
+    }
+
     // A field its fork lacks names a type the fork doesn't enable, even when empty or zero.
     [TestCase("""{"accessList":[]}""", TestName = "Access list before Berlin")]
     [TestCase("""{"gasPrice":"0x1","accessList":[]}""", TestName = "Priced access list before Berlin")]

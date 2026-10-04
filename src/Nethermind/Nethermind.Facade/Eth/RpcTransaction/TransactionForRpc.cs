@@ -62,10 +62,6 @@ public abstract class TransactionForRpc
     [JsonIgnore]
     internal TxType? RequestedType { get; set; }
 
-    // True once WithRequestedType made this a transaction to build or sign rather than a call.
-    [JsonIgnore]
-    internal bool IsSigningRequest { get; set; }
-
     /// <summary>
     /// This request as the explicit type it named, for the methods that build or sign a transaction. For the
     /// Ethereum types the fields pick the class during deserialization, so a call never takes a requirement
@@ -75,14 +71,11 @@ public abstract class TransactionForRpc
     /// </summary>
     public Result<TransactionForRpc> WithRequestedType()
     {
-        IsSigningRequest = true;
-        if (RequestedType is not { } requested) return this;
-        bool defaulted = IsTypeDefaulted;
-        IsTypeDefaulted = false;
-        if (requested == Type) return this;
+        if (RequestedType is not { } requested || (requested == Type && !IsTypeDefaulted)) return this;
 
+        // The copy is never defaulted, so the requested type survives later defaulting by spec.
         Type? requestedClass = TransactionJsonConverter.ClassOf(requested);
-        if (requestedClass is null || !(defaulted || GetType().IsAssignableFrom(requestedClass)))
+        if (requestedClass is null || !(IsTypeDefaulted || GetType().IsAssignableFrom(requestedClass)))
             return Result<TransactionForRpc>.Fail($"type {(byte)requested} conflicts with the fields present, which need type {(byte?)Type}");
 
         TransactionForRpc promoted = (TransactionForRpc)Activator.CreateInstance(requestedClass)!;
@@ -101,7 +94,6 @@ public abstract class TransactionForRpc
         }
 
         promoted.RequestedType = requested;
-        promoted.IsSigningRequest = true;
         return promoted;
     }
 
@@ -120,10 +112,11 @@ public abstract class TransactionForRpc
     public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         TxType type = ResolveType(spec);
-        // A call's fields chose this type, so a field the fork of the call's block lacks names a type it doesn't
-        // enable, even when its value is zero or empty. A defaulted type names no field, and a transaction to build
-        // or sign keeps the type it asked for.
-        return spec is not null && !IsTypeDefaulted && !IsSigningRequest && !spec.IsTxTypeEnabled(type)
+        // A field the fork of the given spec lacks names a type it doesn't enable, even when its value is zero or
+        // empty, so no transaction there can carry it. A defaulted type names no field. Calls pass the spec of the
+        // block they run in; of the build and sign methods only eth_fillTransaction passes one, and it rejects such
+        // a field too, as Geth's fill does.
+        return spec is not null && !IsTypeDefaulted && !spec.IsTxTypeEnabled(type)
             ? TxErrorMessages.InvalidTxType(spec.Name)
             : new Transaction { Type = type };
     }
