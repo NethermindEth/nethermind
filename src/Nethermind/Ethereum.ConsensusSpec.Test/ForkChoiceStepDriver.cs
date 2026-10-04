@@ -170,11 +170,8 @@ internal static class ForkChoiceStepDriver
         PayloadInfo? payloadInfo = payloadInfos.GetValueOrDefault(block.Body!.ExecutionPayload!.BlockHash!);
         ExecutionStatus executionStatus = payloadInfo?.ExecutionStatus ?? (executionValid ? ExecutionStatus.Valid : ExecutionStatus.Invalid);
 
-        bool accepted;
-        string? rejectionReason = null;
-        Exception? rejection = null;
         BeaconStateFulu? postState = null;
-        try
+        Exception? rejection = Attempt(() =>
         {
             // on_block asserts the parent is known before any state transition, so a block with no parent
             // state goes to fork choice with the anchor state standing in for the post-state it cannot have.
@@ -185,24 +182,13 @@ internal static class ForkChoiceStepDriver
             }
 
             runner.OnBlock(signedBlock, postState ?? stateProvider.Anchor, payloadInfo is null ? ExecutionStatus.Valid : executionStatus, dataColumns);
-            accepted = true;
-        }
-        catch (Exception ex)
-        {
-            accepted = false;
-            rejection = ex;
-            rejectionReason = ex.Message;
-        }
+        });
 
-        if (accepted && !expectedValid)
-            Assert.Fail($"step {stepIndex}: block {blockKey} (slot {block.Slot}) was expected to be REJECTED but the driver accepted it");
-        if (!accepted && expectedValid)
-            Assert.Fail($"step {stepIndex}: block {blockKey} (slot {block.Slot}) was expected to be accepted but the driver rejected it: {rejectionReason}");
-        AssertRejectedForASpecReason(rejection, $"step {stepIndex}: block {blockKey} (slot {block.Slot})");
+        AssertVerdict($"step {stepIndex}: block {blockKey} (slot {block.Slot})", expectedValid, rejection);
 
         if (payloadInfo is { IsInvalid: true })
             InvalidateBackToLatestValidHash(runner, block.ParentRoot!, payloadInfo.LatestValidHash);
-        else if (!accepted)
+        else if (rejection is not null)
             return rejection;
         else
             stateProvider.States[blockRoot] = postState ?? throw new InvalidOperationException($"step {stepIndex}: block {blockKey} was accepted without a parent state");
@@ -259,16 +245,8 @@ internal static class ForkChoiceStepDriver
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, key + ".ssz_snappy"));
         Attestation.Decode(ssz, out Attestation attestation);
 
-        bool accepted = true;
-        Exception? rejection = null;
-        try { runner.OnAttestation(attestation, isFromBlock: false, verifySignature: true); }
-        catch (Exception ex) { accepted = false; rejection = ex; }
-
-        if (accepted && !expectedValid)
-            Assert.Fail($"step {stepIndex}: attestation {key} was expected to be REJECTED but the driver accepted it");
-        if (!accepted && expectedValid)
-            Assert.Fail($"step {stepIndex}: attestation {key} was expected to be accepted but the driver rejected it: {rejection!.Message}");
-        AssertRejectedForASpecReason(rejection, $"step {stepIndex}: attestation {key}");
+        AssertVerdict($"step {stepIndex}: attestation {key}", expectedValid,
+            Attempt(() => runner.OnAttestation(attestation, isFromBlock: false, verifySignature: true)));
     }
 
     private static void RunAttesterSlashingStep(string casePath, string key, bool expectedValid, ForkChoiceRunner runner, int stepIndex)
@@ -276,21 +254,30 @@ internal static class ForkChoiceStepDriver
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, key + ".ssz_snappy"));
         AttesterSlashing.Decode(ssz, out AttesterSlashing slashing);
 
-        bool accepted = true;
-        Exception? rejection = null;
-        try { runner.OnAttesterSlashing(slashing, verifySignatures: true); }
-        catch (Exception ex) { accepted = false; rejection = ex; }
+        AssertVerdict($"step {stepIndex}: attester_slashing {key}", expectedValid,
+            Attempt(() => runner.OnAttesterSlashing(slashing, verifySignatures: true)));
+    }
 
-        if (accepted && !expectedValid)
-            Assert.Fail($"step {stepIndex}: attester_slashing {key} was expected to be REJECTED but the driver accepted it");
-        if (!accepted && expectedValid)
-            Assert.Fail($"step {stepIndex}: attester_slashing {key} was expected to be accepted but the driver rejected it: {rejection!.Message}");
-        AssertRejectedForASpecReason(rejection, $"step {stepIndex}: attester_slashing {key}");
+    internal static Exception? Attempt(Action action)
+    {
+        try
+        {
+            action();
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
     }
 
     /// <summary>An expected rejection that came from anything but a spec assertion is a crash the vector happened to want, not a pass.</summary>
-    private static void AssertRejectedForASpecReason(Exception? rejection, string subject)
+    internal static void AssertVerdict(string subject, bool expectedValid, Exception? rejection)
     {
+        if (rejection is null && !expectedValid)
+            Assert.Fail($"{subject} was expected to be REJECTED but the driver accepted it");
+        if (rejection is not null && expectedValid)
+            Assert.Fail($"{subject} was expected to be accepted but the driver rejected it: {rejection.Message}");
         if (rejection is not null && !FuluDriverSupport.IsSpecRejection(rejection))
             Assert.Fail($"{subject} was rejected by {rejection.GetType().Name} rather than a spec assertion: {rejection}");
     }
@@ -298,27 +285,13 @@ internal static class ForkChoiceStepDriver
     private static void RunChecksStep(YamlMappingNode checks, ForkChoiceRunner runner, int stepIndex)
     {
         if (TryGetScalar(checks, "get_proposer_head", out string? proposerHeadRoot))
-        {
-            Hash256 expected = new(proposerHeadRoot!);
-            Hash256 actual = runner.GetProposerHead(runner.GetHead(), runner.CurrentSlot);
-            if (actual != expected)
-                Assert.Fail($"step {stepIndex}: checks.get_proposer_head expected {expected}, actual {actual}");
-        }
+            AssertEqual(stepIndex, "get_proposer_head", new Hash256(proposerHeadRoot!), runner.GetProposerHead(runner.GetHead(), runner.CurrentSlot));
 
         if (TryGetScalar(checks, "time", out string? time))
-        {
-            ulong expected = ulong.Parse(time!);
-            ulong actual = runner.Time - runner.GenesisTime;
-            if (actual != expected)
-                Assert.Fail($"step {stepIndex}: checks.time expected {expected}, actual {actual}");
-        }
+            AssertEqual(stepIndex, "time", ulong.Parse(time!), runner.Time - runner.GenesisTime);
 
         if (TryGetScalar(checks, "genesis_time", out string? genesisTime))
-        {
-            ulong expected = ulong.Parse(genesisTime!);
-            if (runner.GenesisTime != expected)
-                Assert.Fail($"step {stepIndex}: checks.genesis_time expected {expected}, actual {runner.GenesisTime}");
-        }
+            AssertEqual(stepIndex, "genesis_time", ulong.Parse(genesisTime!), runner.GenesisTime);
 
         if (TryGetChild(checks, "head", out YamlNode? headNode))
         {
@@ -327,8 +300,7 @@ internal static class ForkChoiceStepDriver
             ulong expectedSlot = ulong.Parse(GetScalar(head, "slot"));
             Hash256 actualHead = runner.GetHead();
             ulong? actualSlot = runner.GetBlockSlot(actualHead);
-            if (actualHead != expectedRoot)
-                Assert.Fail($"step {stepIndex}: checks.head.root expected {expectedRoot}, actual {actualHead}");
+            AssertEqual(stepIndex, "head.root", expectedRoot, actualHead);
             if (actualSlot != expectedSlot)
                 Assert.Fail($"step {stepIndex}: checks.head.slot expected {expectedSlot}, actual {(actualSlot.HasValue ? actualSlot.Value.ToString() : "null")}");
         }
@@ -340,21 +312,21 @@ internal static class ForkChoiceStepDriver
             AssertCheckpoint("finalized_checkpoint", (YamlMappingNode)finalizedNode!, runner.FinalizedCheckpoint, stepIndex);
 
         if (TryGetScalar(checks, "proposer_boost_root", out string? boostRoot))
-        {
-            Hash256 expected = new(boostRoot!);
-            if (runner.ProposerBoostRoot != expected)
-                Assert.Fail($"step {stepIndex}: checks.proposer_boost_root expected {expected}, actual {runner.ProposerBoostRoot}");
-        }
+            AssertEqual(stepIndex, "proposer_boost_root", new Hash256(boostRoot!), runner.ProposerBoostRoot);
     }
 
     internal static void AssertCheckpoint(string name, YamlMappingNode node, CheckpointRef actual, int stepIndex)
     {
         ulong expectedEpoch = ulong.Parse(GetScalar(node, "epoch"));
         Hash256 expectedRoot = new(GetScalar(node, "root"));
-        if (actual.Epoch != expectedEpoch)
-            Assert.Fail($"step {stepIndex}: checks.{name}.epoch expected {expectedEpoch}, actual {actual.Epoch}");
-        if (actual.Root != expectedRoot)
-            Assert.Fail($"step {stepIndex}: checks.{name}.root expected {expectedRoot}, actual {actual.Root}");
+        AssertEqual(stepIndex, $"{name}.epoch", expectedEpoch, actual.Epoch);
+        AssertEqual(stepIndex, $"{name}.root", expectedRoot, actual.Root);
+    }
+
+    internal static void AssertEqual<T>(int stepIndex, string check, T expected, T actual)
+    {
+        if (!EqualityComparer<T>.Default.Equals(expected, actual))
+            Assert.Fail($"step {stepIndex}: checks.{check} expected {expected}, actual {actual}");
     }
 
     // --- Minimal, dependency-free YAML mapping helpers (mirrors FuluDriverSupport.ParseFlowMap's
