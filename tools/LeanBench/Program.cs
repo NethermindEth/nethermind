@@ -39,6 +39,11 @@ public static partial class Program
     public static async Task Main(string[] args)
     {
         string Value(string name, string fallback) => args.FirstOrDefault(a => a.StartsWith("--" + name + "=", StringComparison.Ordinal))?.Split('=', 2)[1] ?? fallback;
+        if (Value("scheduling-checks", "false") == "true")
+        {
+            await SchedulingChecks.RunAsync(args);
+            return;
+        }
         if (args.Any(argument => argument == "--duplicate-normalization"
             || argument.StartsWith("--duplicate-normalization=", StringComparison.Ordinal)))
             throw new ArgumentException("Duplicate-witness normalization is archived; use the capture's recorded source revision.");

@@ -2,6 +2,11 @@
 
 [Daisugi load, aggregation and mobile graphs](results/2026-10-03/daisugi/README.md) retain the measured source revision, binary hashes and raw samples. The [earlier baseline](results/2026-10-02/README.md) remains available with its original provenance.
 
+[Aggregation scheduling decisions and mobile chart](results/2026-10-04/scheduling/README.md)
+compare client proof reuse, cached-work delivery during proving, and stale-selection
+suppression. These use a controlled proof backend and virtual clock;
+[reproduction commands](scheduling.md) do not start services or measure Lean speed.
+
 This standalone tool measures the pinned native leanVM/SPHINCS backend and production RLPx Snappy/AES/MAC codecs over localhost TCP. It uses a real production transaction pool through the test node's DI setup. Session secrets are preset; capability exchange, Internet latency and TCP/IP headers are outside the wire-byte measurement.
 
 Current builds use the mixed-recursion profile at temporary LeanVM fork commit `854997bd156f47f1b1ce2192c4499741f29bd0df`: ABI 5, guest key `9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace`, Daisugi/Keccak signatures and one recursive proof for both schemes. The profile accepts 256 dependencies, 16 generic claims, 2048 instructions and inverse-rate log 1. Earlier captures retain their original profiles and binary hashes; they do not measure this guest. Large signature batches use small native leaves and recursive combinations inside the timed proving call, including the entire tree's work. Raw generic proving requires substantial memory; use the bounded, preproved [fresh-devnet plan](devnet/consensus/README.md) before live testing.
@@ -68,7 +73,7 @@ measures that historical policy; it does not describe the current single mixed-r
 Large captured JSON files are stored as deterministic `.json.gz`; decompression preserves every
 byte of their original metadata and samples. [Archive checksums](results/archive-integrity.json)
 record both compressed and original SHA-256 values. CSVs, provenance and mobile PNGs remain
-readable. Generated SVGs are omitted from version control; regenerate them with:
+readable. Large archived plot SVGs are omitted from version control; regenerate them with:
 
 ```sh
 python3 tools/LeanBench/plot.py tools/LeanBench/results/2026-10-03/daisugi/full/results.json.gz --svg --output=/tmp/lean-daisugi-plots

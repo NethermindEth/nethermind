@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="640" viewBox="0 0 440 640" role="img" aria-labelledby="title desc">
+<title id="title">Nethermind aggregation scheduling decision counts</title>
+<desc id="desc">Before and after counts from a controlled proof backend and virtual clock. No native timing or throughput is measured.</desc>
+<rect width="440" height="640" fill="#f5f7fb"/>
+<g font-family="system-ui, sans-serif" fill="#182435">
+<text x="24" y="34" font-size="21" font-weight="700">Aggregation scheduling</text>
+<text x="24" y="58" font-size="12">Controlled backend · virtual one-second ticks</text>
+<rect x="16" y="78" width="408" height="155" rx="12" fill="white"/>
+<text x="30" y="104" font-size="17" font-weight="650">Extra builder proving calls</text>
+<text x="30" y="123" font-size="12" fill="#526277">after background work completes</text>
+<text x="30" y="158" font-size="13">Before</text>
+<rect x="92" y="143" width="230" height="20" rx="3" fill="#edf1f7"/>
+<rect x="92" y="143" width="230.00" height="20" rx="3" fill="#9c4e0a"/>
+<text x="339" y="158" font-size="16" font-weight="700">1</text>
+<text x="30" y="188" font-size="13">After</text>
+<rect x="92" y="173" width="230" height="20" rx="3" fill="#edf1f7"/>
+<rect x="92" y="173" width="0.00" height="20" rx="3" fill="#087f6e"/>
+<text x="339" y="188" font-size="16" font-weight="700">0</text>
+<text x="30" y="215" font-size="12" fill="#526277">Fewer calls avoid repeating proof work.</text>
+<rect x="16" y="245" width="408" height="155" rx="12" fill="white"/>
+<text x="30" y="271" font-size="17" font-weight="650">Eligible completed deliveries</text>
+<text x="30" y="290" font-size="12" fill="#526277">while a new proof is blocked</text>
+<text x="30" y="325" font-size="13">Before</text>
+<rect x="92" y="310" width="230" height="20" rx="3" fill="#edf1f7"/>
+<rect x="92" y="310" width="0.00" height="20" rx="3" fill="#9c4e0a"/>
+<text x="339" y="325" font-size="16" font-weight="700">0</text>
+<text x="30" y="355" font-size="13">After</text>
+<rect x="92" y="340" width="230" height="20" rx="3" fill="#edf1f7"/>
+<rect x="92" y="340" width="230.00" height="20" rx="3" fill="#087f6e"/>
+<text x="339" y="355" font-size="16" font-weight="700">1</text>
+<text x="30" y="382" font-size="12" fill="#526277">Delivery can proceed during proving.</text>
+<rect x="16" y="412" width="408" height="155" rx="12" fill="white"/>
+<text x="30" y="438" font-size="17" font-weight="650">Removed selection delivered</text>
+<text x="30" y="457" font-size="12" fill="#526277">after old proof completes · 0=no, 1=yes</text>
+<text x="30" y="492" font-size="13">Before</text>
+<rect x="92" y="477" width="230" height="20" rx="3" fill="#edf1f7"/>
+<rect x="92" y="477" width="230.00" height="20" rx="3" fill="#9c4e0a"/>
+<text x="339" y="492" font-size="16" font-weight="700">1</text>
+<text x="30" y="522" font-size="13">After</text>
+<rect x="92" y="507" width="230" height="20" rx="3" fill="#edf1f7"/>
+<rect x="92" y="507" width="0.00" height="20" rx="3" fill="#087f6e"/>
+<text x="339" y="522" font-size="16" font-weight="700">0</text>
+<text x="30" y="549" font-size="12" fill="#526277">Zero keeps removed bodies out of gossip.</text>
+<text x="24" y="603" font-size="12">Counts from recorded scheduling checks.</text>
+<text x="24" y="623" font-size="12">No native proof speed or throughput claim.</text>
+</g></svg>
