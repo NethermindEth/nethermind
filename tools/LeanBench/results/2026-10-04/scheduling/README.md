@@ -32,7 +32,10 @@ checkout with the same two revised harness files used for [the after capture](af
 The latter uses benchmark source `b61aa36458ea3ef09b064ca789f17a277aa708b0`,
 which includes the final production merge `0d33ebadf13143f4af767ff558fa625c3fc622cf`
 and main review fixes `4a17b571f4`. The overlaid harness changes are identified by
-the source hashes below. Both runs passed seven rows; after additionally enabled
+the source hashes below. Commit `7b6541653d30f41101750ae50e03ccb45e2f8fd8`
+is the first committed revision containing that exact harness and can reproduce
+the after run directly; its production sources are unchanged from `b61aa36458`.
+Both runs passed seven rows; after additionally enabled
 `--require-fresh=true`. The temporary baseline checkout was removed afterward.
 
 ![Recorded scheduling decision counts](decisions.svg)

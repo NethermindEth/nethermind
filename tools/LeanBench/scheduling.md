@@ -89,8 +89,9 @@ Captured results and the count chart live in
 
 ## Reproduce the baseline with the identical harness
 
-Run this from a committed benchmark checkout containing the revised files whose
-hashes appear below. Resolve that checkout to an immutable commit first. Both
+Commit `7b6541653d30f41101750ae50e03ccb45e2f8fd8` is the first committed
+revision containing the exact revised harness. Run this from a benchmark checkout
+that contains that commit; the script resolves it to an immutable source revision. Both
 `SchedulingChecks.cs` **and** `Program.cs` must be overlaid: the historical
 baseline lacks the scheduling dispatch, so running its original entry point
 would start the full benchmark instead. The hash checks fail before building if
@@ -98,7 +99,7 @@ the chosen benchmark commit does not contain this exact harness.
 
 ```sh
 set -e
-benchmark_source=$(git rev-parse HEAD)
+benchmark_source=$(git rev-parse 7b6541653d30f41101750ae50e03ccb45e2f8fd8)
 baseline_checkout=/tmp/lean-scheduling-baseline
 harness_sha=dd9fce48cc9973ae7e271794c5b2862007600a5ea51af853458af53bfc505a24
 dispatch_sha=211e47f4773444789bfcf4d5c4fcc169ed8655af21e9d001de03d92e40459813
