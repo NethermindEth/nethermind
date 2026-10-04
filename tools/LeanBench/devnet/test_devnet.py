@@ -152,6 +152,65 @@ class DevnetChecks(unittest.TestCase):
                     status.main()
                     self.assertEqual(server.call_args.args[0], (expected, 19480))
 
+    def test_viewer_selects_real_mixed_phase_and_sanitizes_payload_inputs(self):
+        status = load('status')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / 'runtime/mixed-reuse'
+            base.mkdir(parents=True)
+            block_hash = '0x' + '33' * 32
+            hashes = ['0x' + '44' * 32, '0x' + '55' * 32]
+            data = {'mode': 'reuse', 'completed': True, 'nativeProofsVerified': True,
+                    'completedFinality': True, 'peerPoolPropagationObserved': True,
+                    'freshMixedParentInOneBlock': False, 'params': ['raw Engine parameters'],
+                    'admissions': [{'transactionHash': tx, 'receipts': [
+                        {'blockHash': block_hash, 'status': '0x1'}] * 2} for tx in hashes],
+                    'blocks': [{'number': '0x32', 'blockHash': block_hash, 'proofBytes': 325548,
+                        'beaconAnchoredBoth': True, 'finalizedBoth': True, 'rawProof': 'full proof bytes',
+                        'nativeInspection': {'transactionHashes': hashes, 'signatures': 1, 'starks': 1,
+                            'originalNativeProofValid': True, 'blockDepsHash': '0x' + '66' * 32,
+                            'inputs': ['raw native witness'], 'authorization': 'never retained'}}]}
+            (base / 'report.json').write_text(json.dumps(data))
+            (base / 'payload-000.json').write_text('must not be opened')
+            evidence = status.combined_report(root)
+            self.assertTrue(evidence['realConsensus'])
+            self.assertEqual(evidence['phase'], 'Mixed root reuse')
+            self.assertEqual(len(evidence['phases']), 1)
+            self.assertTrue(evidence['nativeProofsVerified'] and evidence['completedFinality'])
+            self.assertTrue(evidence['peerPoolPropagationObserved'])
+            block = evidence['blocks'][0]
+            self.assertEqual(block['blockNumber'], '0x32')
+            self.assertEqual(block['transactionCount'], 2)
+            self.assertEqual(block['receiptStatus'], '0x1 (both ELs)')
+            self.assertTrue(block['beaconAnchoredBoth'] and block['finalizedBoth'])
+            self.assertEqual(block['nativeInspection'], {'signatures': 1, 'starks': 1, 'originalNativeProofValid': True})
+            encoded = json.dumps(evidence)
+            for omitted in ('raw Engine parameters', 'full proof bytes', 'raw native witness', 'never retained', 'must not be opened'):
+                self.assertNotIn(omitted, encoded)
+
+    def test_viewer_preserves_archived_failures_and_selects_started_mixed_merge(self):
+        status = load('status')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, data in [('driver', {'completed': True, 'blocks': [{'name': 'old case', 'blockNumber': '0x1'}]}),
+                               ('driver-sphincs64', {'completed': False, 'error': 'Unknown payload', 'blocks': []})]:
+                base = root / 'runtime' / name
+                base.mkdir(parents=True)
+                (base / 'report.json').write_text(json.dumps(data))
+            archived = status.combined_report(root)
+            self.assertFalse(archived['realConsensus'])
+            self.assertEqual(archived['phase'], 'SPHINCS 64')
+            self.assertEqual(archived['error'], 'Unknown payload')
+            self.assertEqual(archived['blocks'][0]['blockNumber'], '0x1')
+            (root / 'runtime/mixed-merge').mkdir()
+            combined = status.combined_report(root)
+            self.assertTrue(combined['realConsensus'])
+            self.assertEqual(combined['phase'], 'Mixed parent merge')
+            self.assertFalse(combined['completed'])
+            self.assertEqual(combined['phases'][1]['error'], 'Unknown payload')
+            self.assertEqual(combined['phases'][2]['state'], 'Waiting for the driver report')
+            self.assertEqual(status.LOG_NAMES[-2:], ('mixed-reuse', 'mixed-merge'))
+
     def test_prepare_uses_separate_identities_shared_genesis_without_local_jwt(self):
         prepare = load('prepare')
         with tempfile.TemporaryDirectory() as directory:

@@ -100,7 +100,7 @@ From the repository root, submit only the preproved Stage 1 request. Replace the
 ```sh
 python3 tools/LeanBench/devnet/mixed.py --mode=reuse \
   --manifest=/root/eip8288-mixed-devnet/requests/stage1/manifest.json \
-  --out=/root/eip8288-mixed-devnet/runtime/stage1 --relay=PROOF_RELAY_CONTAINER_ID \
+  --out=/root/eip8288-mixed-devnet/runtime/mixed-reuse --relay=PROOF_RELAY_CONTAINER_ID \
   --helper=/root/eip8288-mixed-devnet/helper/LeanBench.dll --source=DEPLOYED_RUNNER_COMMIT \
   --health-file=/root/eip8288-mixed-devnet/runtime/resources/health.json
 ```
@@ -111,12 +111,21 @@ Only after Stage 1 reports `completed: true` and the separately measured memory 
 python3 tools/LeanBench/devnet/mixed.py --mode=merge \
   --manifest=/root/eip8288-mixed-devnet/requests/stage2-sphincs/manifest.json \
   --manifest=/root/eip8288-mixed-devnet/requests/stage2-generic/manifest.json \
-  --out=/root/eip8288-mixed-devnet/runtime/stage2 --relay=PROOF_RELAY_CONTAINER_ID \
+  --out=/root/eip8288-mixed-devnet/runtime/mixed-merge --relay=PROOF_RELAY_CONTAINER_ID \
   --helper=/root/eip8288-mixed-devnet/helper/LeanBench.dll --source=DEPLOYED_RUNNER_COMMIT \
   --health-file=/root/eip8288-mixed-devnet/runtime/resources/health.json
 ```
 
 The driver uses real CL block production; it sends no Engine forkchoice/getPayload requests and never resubmits a wrapper. It requires healthy peers and empty pools before offering, observed pending gossip on node 2, successful matching receipts, exact body dependencies, native verification of the captured complete Engine payload, canonical beacon bids and finality on both CLs. A merge succeeds only if the two distinct claims land in one block; separate inclusion is retained as a failed aggregation result. Default receipt/finality deadlines are 180/1200 seconds. Optional `--rpc-port1/2` and `--beacon-port1/2` change localhost ports. Keep full payload copies private and untracked; preserve failure reports. Stop the sampler after validation and shut down the owned enclave when testing finishes.
+
+For the optional read-only viewer, use output directories `runtime/mixed-reuse` and `runtime/mixed-merge` for those driver commands, and log names `logs/mixed-reuse.log` and `logs/mixed-merge.log`:
+
+```sh
+python3 tools/LeanBench/devnet/status.py --root=/root/eip8288-mixed-devnet --port=19480 \
+  --node1-port=19445 --node2-port=19545
+```
+
+Open `http://127.0.0.1:19480`. Public binding requires explicit `--bind=0.0.0.0`. The viewer serves only selected report fields and fixed filtered log tails, never captured Engine parameters, full proofs or credentials. Mixed phases identify real beacon production; archived Engine-driver phases keep their original wording and outcomes.
 
 The configuration caps each execution node at two CPU cores and 5120 MB, each beacon node at one core and 1536 MB, and each validator client at half a core and 768 MB. These are memory limits, not reservations; the combined limits, Dora and the relay can exceed a 15 GiB host. Kurtosis expresses these values in decimal MB. The recovered test containers were instead updated to exactly 5 GiB each, without additional swap.
 
