@@ -19,6 +19,7 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
     internal const int RefreshJitterMilliseconds = 5000;
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly Lock _lock = new();
+    private readonly Lock _publicationLock = new();
     private sealed record Wrapper(ReadOnlyMemory<byte> Bytes, ValueHash256 Hash);
     private sealed class Peer(Func<ReadOnlyMemory<byte>, ValueHash256, CancellationToken, ValueTask<bool>> send)
     {
@@ -104,8 +105,8 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
     {
         try
         {
-            Result<byte[]> result = wrappers.BuildWrapper(skipEmpty: true, cancellationToken: _stop.Token);
-            if (result.IsSuccess) PublishLatest();
+            Result result = wrappers.RefreshWrapper(_stop.Token);
+            if (result) PublishLatest();
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
         catch (Exception exception) { if (_logger.IsWarn) _logger.Warn($"Lean proof aggregation failed: {exception.Message}"); }
@@ -122,27 +123,39 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
 
     private void PublishLatest()
     {
-        Result<byte[]> result = wrappers.GetLatestWrapper();
-        if (!result.IsSuccess)
+        lock (_publicationLock)
         {
+            ValueHash256? knownHash;
+            lock (_lock) knownHash = _lastWrapper?.Hash;
+            Result<byte[]> result = wrappers.GetLatestWrapper(knownHash, out ValueHash256 hash);
+            if (!result.IsSuccess)
+            {
+                lock (_lock)
+                {
+                    _lastWrapper = null;
+                    foreach (Peer peer in _peers.Values) peer.Pending = null;
+                }
+                return;
+            }
+            Wrapper wrapper;
+            Peer[] peers;
             lock (_lock)
             {
-                _lastWrapper = null;
-                foreach (Peer peer in _peers.Values) peer.Pending = null;
+                if (_disposed) return;
+                if (result.Data.Length == 0)
+                {
+                    if (_lastWrapper is not { } last || last.Hash != hash) return;
+                    wrapper = last;
+                }
+                else
+                {
+                    wrapper = new(result.Data, hash);
+                    _lastWrapper = wrapper;
+                }
+                peers = [.. _peers.Values];
             }
-            return;
+            foreach (Peer peer in peers) TrySend(peer, wrapper);
         }
-        byte[] encoded = result.Data!;
-        Wrapper wrapper = new(encoded, ValueKeccak.Compute(encoded));
-        Peer[] peers;
-        lock (_lock)
-        {
-            if (_disposed) return;
-            if (_lastWrapper is { } last && last.Hash == wrapper.Hash) wrapper = last;
-            else _lastWrapper = wrapper;
-            peers = [.. _peers.Values];
-        }
-        foreach (Peer peer in peers) TrySend(peer, wrapper);
     }
 
     private void TrySend(Peer peer, Wrapper wrapper)

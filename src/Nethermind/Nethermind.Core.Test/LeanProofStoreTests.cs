@@ -62,6 +62,31 @@ public class LeanProofStoreTests
         Assert.That(store.PinPending(next), Is.True);
     }
 
+    [Test]
+    public void Rejected_cache_removal_preserves_newer_entries_and_required_witnesses()
+    {
+        LeanProofStore store = new();
+        FrameDependency dependency = Dependency(1), unrelated = Dependency(2);
+        store.AddVerified([dependency], [[1]], null);
+        store.AddCachedRecursive([dependency], [2]);
+        store.AddCachedRecursive([unrelated], [3]);
+        Assert.That(store.TryGetRecursiveProof([dependency], out byte[]? rejected), Is.True);
+        Assert.That(store.RemoveCachedRecursive([dependency], rejected!), Is.True);
+        store.AddCachedRecursive([dependency], [4]);
+
+        Assert.That(store.RemoveCachedRecursive([dependency], rejected!), Is.False);
+        Assert.That(store.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
+        byte[] expectedReplacement = [4];
+        Assert.That(replacement, Is.EqualTo(expectedReplacement));
+        Assert.That(store.TryGetRecursiveProof([unrelated], out byte[]? other), Is.True);
+        byte[] expectedOther = [3];
+        Assert.That(other, Is.EqualTo(expectedOther));
+        Assert.That(store.TryGetInput([dependency], out AggregationInput input), Is.True);
+        Assert.That(input.Deps, Has.Count.EqualTo(1));
+        byte[] expectedWitness = [1];
+        Assert.That(input.Witnesses[0].Span.ToArray(), Is.EqualTo(expectedWitness));
+    }
+
     private static FrameDependency Dependency(int index) => new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(index.ToString()), default);
 
     private static Address Sender(int index)
