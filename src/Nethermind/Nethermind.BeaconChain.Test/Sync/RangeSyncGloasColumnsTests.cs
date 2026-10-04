@@ -12,6 +12,8 @@ using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P.ReqResp;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -389,79 +391,84 @@ public class RangeSyncGloasColumnsTests
             firstSlotComplete ? "round 0 covers the Gloas blocks, the next round only the slot still lacking the column" : null);
     }
 
-    /// <summary>The advertised supernode is preferred by custody, so without the per-peer bound it takes every sampled column while the floor custodians idle.</summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task An_advertised_supernode_is_asked_for_no_more_than_its_share_while_other_custodians_serve_the_rest(CancellationToken token)
+    public enum CustodianReply
     {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        RangeSyncTests.StubPeer[] peers =
-        [
-            chain.HonestPeer("supernode", RangeSyncTests.StubPeer.AllColumns),
-            .. Enumerable.Range(0, 3).Select(i => chain.HonestPeer($"floor-{i}", new PeerColumnCustody([.. sampled.Where((_, c) => c % 3 == i)], isAdvertised: false))),
-        ];
-        DataColumnSidecarPool pool = new();
-
-        List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, GloasSlot, token, peers);
-
-        int share = Math.Max(2, (sampled.Length + 3) / 4);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Has.Count.EqualTo(2));
-            Assert.That(peers[0].RequestedGloasColumns, Is.Not.Empty, "the advertised supernode is used");
-            Assert.That(peers[0].RequestedGloasColumns.SelectMany(static c => c).Count(), Is.LessThanOrEqualTo(share), "one supernode does not take the batch");
-            Assert.That(peers.Skip(1).Sum(static p => p.RequestedGloasColumns.Count), Is.GreaterThan(0), "the other custodians are used");
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-        }
+        Failed,
+        Partial,
+        Supernode,
     }
 
-    /// <summary>A supernode that fails its request used to leave the batch's columns missing; they must come from a custodian that has not failed.</summary>
     [Test]
     [CancelAfter(30_000)]
-    public async Task A_custodian_that_failed_a_range_request_is_not_asked_again_and_another_serves_the_columns(CancellationToken token)
+    public async Task Range_columns_retain_partial_replies_and_share_custody_without_reusing_failed_peers(
+        [Values] bool gloas, [Values] CustodianReply reply, CancellationToken token)
     {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        RangeSyncTests.StubPeer failing = chain.CreatePeer(static (_, _, _) => throw new IOException("connection reset"), id: "failing");
-        RangeSyncTests.StubPeer good = chain.HonestPeer("good");
-        DataColumnSidecarPool pool = new();
-
-        List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, GloasSlot, token, failing, good);
-
+        await using RangeSyncColumnCustodyTests.Fixture? fulu = gloas ? null : RangeSyncColumnCustodyTests.Fixture.Create();
+        await using BeaconDiscovery? gloasDiscovery = gloas ? CreateDiscovery() : null;
+        StraddlingChain? chain = gloas ? StraddlingChain.Create() : null;
+        ulong[] sampled = gloas ? [.. SampledColumns(gloasDiscovery!)] : fulu!.Sampled;
+        DataColumnSidecarPool pool = gloas ? new() : fulu!.SidecarPool;
+        RangeSyncTests.StubPeer first = reply switch
+        {
+            CustodianReply.Supernode => gloas ? chain!.HonestPeer("supernode", RangeSyncTests.StubPeer.AllColumns) : fulu!.Peer("supernode", custody: RangeSyncTests.StubPeer.AllColumns),
+            CustodianReply.Failed => gloas
+                ? chain!.CreatePeer(static (_, _, _) => throw new IOException("connection reset"), id: "failing")
+                : fulu!.FailingColumnPeer("failing", static _ => throw new Eth2ReqRespException("Truncated response chunk: Unable to read beyond the end of the stream.")),
+            _ => gloas
+                ? chain!.CreatePeer((_, _, columns) => [.. columns[1..].Select(chain!.GloasSidecar)], id: "short")
+                : fulu!.FailingColumnPeer("cut-short", columns => throw new PartialSidecarsException(
+                    new Eth2ReqRespException("Truncated response chunk: Unable to read beyond the end of the stream."), fulu!.ServeColumns(columns[..1]))),
+        };
+        RangeSyncTests.StubPeer[] others = reply == CustodianReply.Supernode
+            ? [.. Enumerable.Range(0, 3).Select(i =>
+            {
+                PeerColumnCustody custody = new([.. sampled.Where((_, c) => c % 3 == i)], isAdvertised: false);
+                return gloas ? chain!.HonestPeer($"floor-{i}", custody) : fulu!.Peer($"floor-{i}", custody: custody);
+            })]
+            : [gloas ? chain!.HonestPeer("good") : fulu!.Peer("good", custody: RangeSyncTests.StubPeer.AllColumns)];
+        RangeSyncTests.StubPeer[] peers = [first, .. others];
+        IReadOnlyList<ForkedSignedBeaconBlock> yielded = gloas
+            ? await RunAsync(pool, gloasDiscovery!, clock: null, chain!, GloasSlot, token, peers)
+            : await fulu!.RunOneRoundAsync(peers, token);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(yielded, Has.Count.EqualTo(2));
-            Assert.That(failing.RequestedGloasColumns, Has.Count.EqualTo(1), "a custodian that failed this batch is not picked again in it");
-            Assert.That(failing.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
-            Assert.That(good.RequestedGloasColumns, Has.Count.EqualTo(2), "a second round asks for what the failed request left missing");
-            Assert.That(good.RequestedGloasColumns.SelectMany(static c => c), Is.EquivalentTo(sampled).And.Unique);
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-        }
-    }
-
-    /// <summary>A reply that omits a requested column keeps the sidecars it did deliver; the rest is asked of another peer and the short peer is not asked again.</summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_custodian_that_leaves_a_column_unserved_keeps_its_partial_reply_and_is_not_asked_again(CancellationToken token)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        RangeSyncTests.StubPeer shortPeer = chain.CreatePeer((_, _, columns) => [.. columns[1..].Select(c => chain.GloasSidecar(c))], id: "short");
-        RangeSyncTests.StubPeer good = chain.HonestPeer("good");
-        DataColumnSidecarPool pool = new();
-
-        await RunAsync(pool, discovery, clock: null, chain, GloasSlot, token, shortPeer, good);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(shortPeer.RequestedGloasColumns, Has.Count.EqualTo(1), "a peer that left a column unserved is not asked again");
-            Assert.That(good.RequestedGloasColumns.SelectMany(static c => c), Is.EquivalentTo(sampled.Except(shortPeer.RequestedGloasColumns[0][1..])), "only what the short reply did not deliver is asked of the other peer");
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-            Assert.That(shortPeer.Failures + good.Failures, Is.Zero);
+            if (gloas)
+            {
+                if (reply != CustodianReply.Partial) Assert.That(yielded, Has.Count.EqualTo(2));
+                Assert.That(sampled.All(c => pool.TryGetGloas(chain!.GloasRoot, c, out _)), Is.True);
+            }
+            else
+                Assert.That(yielded.Select(b => fulu!.Importer.Import(b, fulu!.Chain.BlockRoot, verifySignatures: true)), Is.EqualTo(new[] { BlockImportResult.Imported }));
+            if (reply == CustodianReply.Supernode)
+            {
+                int share = Math.Max(2, (sampled.Length + 3) / 4);
+                ulong[][] firstColumns = gloas ? [.. first.RequestedGloasColumns] : [.. first.RequestedColumns];
+                Assert.That(firstColumns.SelectMany(static c => c).Count(), Is.LessThanOrEqualTo(share));
+                Assert.That(others.Sum(p => gloas ? p.RequestedGloasColumns.Count : p.ColumnRequests), Is.GreaterThan(0));
+                if (gloas) Assert.That(first.RequestedGloasColumns, Is.Not.Empty);
+            }
+            else if (reply == CustodianReply.Failed)
+            {
+                Assert.That(gloas ? first.RequestedGloasColumns.Count : first.ColumnRequests, Is.EqualTo(1));
+                Assert.That(first.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
+                if (gloas)
+                {
+                    Assert.That(others[0].RequestedGloasColumns, Has.Count.EqualTo(2));
+                    Assert.That(others[0].RequestedGloasColumns.SelectMany(static c => c), Is.EquivalentTo(sampled).And.Unique);
+                }
+            }
+            else if (gloas)
+            {
+                Assert.That(first.RequestedGloasColumns, Has.Count.EqualTo(1));
+                Assert.That(others[0].RequestedGloasColumns.SelectMany(static c => c), Is.EquivalentTo(sampled.Except(first.RequestedGloasColumns[0][1..])));
+                Assert.That(first.Failures + others[0].Failures, Is.Zero);
+            }
+            else
+            {
+                ulong[] asked = first.RequestedColumns.Single();
+                Assert.That(others[0].RequestedColumns.Skip(1).SelectMany(static c => c), Is.EquivalentTo(asked[1..]));
+                Assert.That(others[0].RequestedColumns.SelectMany(static c => c), Has.None.EqualTo(asked[0]));
+            }
         }
     }
 
