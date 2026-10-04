@@ -19,7 +19,7 @@
 <text x="30" y="215" font-size="12" fill="#526277">Fewer calls avoid repeating proof work.</text>
 <rect x="16" y="245" width="408" height="155" rx="12" fill="white"/>
 <text x="30" y="271" font-size="17" font-weight="650">Eligible completed deliveries</text>
-<text x="30" y="290" font-size="12" fill="#526277">while a new proof is blocked</text>
+<text x="30" y="290" font-size="12" fill="#526277">held proof · five-second event wait</text>
 <text x="30" y="325" font-size="13">Before</text>
 <rect x="92" y="310" width="230" height="20" rx="3" fill="#edf1f7"/>
 <rect x="92" y="310" width="0.00" height="20" rx="3" fill="#9c4e0a"/>
@@ -28,7 +28,7 @@
 <rect x="92" y="340" width="230" height="20" rx="3" fill="#edf1f7"/>
 <rect x="92" y="340" width="230.00" height="20" rx="3" fill="#087f6e"/>
 <text x="339" y="355" font-size="16" font-weight="700">1</text>
-<text x="30" y="382" font-size="12" fill="#526277">Delivery can proceed during proving.</text>
+<text x="30" y="382" font-size="12" fill="#526277">Delivery observed before proof release.</text>
 <rect x="16" y="412" width="408" height="155" rx="12" fill="white"/>
 <text x="30" y="438" font-size="17" font-weight="650">Removed selection delivered</text>
 <text x="30" y="457" font-size="12" fill="#526277">after old proof completes · 0=no, 1=yes</text>

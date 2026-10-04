@@ -6,6 +6,8 @@
 compare client proof reuse, cached-work delivery during proving, and stale-selection
 suppression. These use a controlled proof backend and virtual clock;
 [reproduction commands](scheduling.md) do not start services or measure Lean speed.
+The three decision changes originate in main commit `234fd20d11`; the final
+capture validates later review fixes, rather than crediting them as the origin.
 
 This standalone tool measures the pinned native leanVM/SPHINCS backend and production RLPx Snappy/AES/MAC codecs over localhost TCP. It uses a real production transaction pool through the test node's DI setup. Session secrets are preset; capability exchange, Internet latency and TCP/IP headers are outside the wire-byte measurement.
 

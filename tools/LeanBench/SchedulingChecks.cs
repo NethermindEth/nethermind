@@ -27,6 +27,8 @@ namespace Nethermind.Tools.LeanBench;
 internal static class SchedulingChecks
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan DeliveryObservationWindow = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ProofGateWatchdog = TimeSpan.FromSeconds(30);
 
     public static async Task RunAsync(string[] args)
     {
@@ -50,12 +52,15 @@ internal static class SchedulingChecks
                 commandLine = Environment.CommandLine,
                 utc = DateTimeOffset.UtcNow,
                 sourceRevision = Value("source-revision", "working tree; see assembly hashes"),
+                sourceHarnessSha256 = Value("harness-sha256", "Unrecorded; retain the SchedulingChecks.cs source hash separately"),
+                sourceDispatchSha256 = Value("dispatch-sha256", "Unrecorded; retain the Program.cs source hash separately"),
                 assemblySha256 = new[] { typeof(SchedulingChecks).Assembly.Location, typeof(LeanProofGossip).Assembly.Location,
                     typeof(ProofWrapperService).Assembly.Location }.ToDictionary(file => Path.GetFileName(file)!,
                     file => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file)))),
                 backend = "Synthetic statement-checked scheduling backend; no native cryptography or performance measurements",
                 pool = "Timer rows use controlled synthetic pool snapshots; the background-to-block row admits a real signed FrameTx to the production pool",
                 clock = "Manual monotonic clock, one-second timer notifications; busyTicks is virtual elapsed time, not native proving duration",
+                deliveryObservation = "Exclude the first cached-A offer regardless of when it executes; wait up to five wall-clock seconds for a subsequent eligible delivery while holding the proof, offering additional virtual ticks every 100ms if needed; baseline zero means no event in this finite window",
                 scope = "Actual wrapper selection/store, gossip scheduler and exact-parent builder reuse; no network, services or Lean prover changes"
             },
             results = rows
@@ -89,16 +94,19 @@ internal static class SchedulingChecks
         int completedSends = 0;
         int changedSends = 0;
         int warmupDeclines = 0;
+        int completedOffers = 0;
+        TaskCompletionSource completedDelivery = new(TaskCreationOptions.RunContinuationsAsynchronously);
         gossip.AddPeer((_, hash, _) =>
         {
             if (hash == completedHash)
             {
-                if (!verifier.IsBlocked)
+                if (Interlocked.Increment(ref completedOffers) == 1 || !verifier.IsBlocked)
                 {
                     Interlocked.Increment(ref warmupDeclines);
                     return new(false);
                 }
                 Interlocked.Increment(ref completedSends);
+                completedDelivery.TrySetResult();
             }
             else Interlocked.Increment(ref changedSends);
             return new(true);
@@ -109,12 +117,26 @@ internal static class SchedulingChecks
             await time.TimerCreated.WaitAsync(Timeout);
             notifications.Add(Task.Run(() => time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1))));
             await verifier.Entered.Task.WaitAsync(Timeout);
+            long observationStarted = Stopwatch.GetTimestamp();
             const int busyTicks = 3;
             for (int i = 0; i < busyTicks; i++)
             {
                 notifications.Add(Task.Run(() => time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1))));
                 await Task.Delay(10);
             }
+            long deliveryWaitStarted = Stopwatch.GetTimestamp();
+            while (!completedDelivery.Task.IsCompleted && Stopwatch.GetElapsedTime(deliveryWaitStarted) < DeliveryObservationWindow)
+            {
+                TimeSpan remaining = DeliveryObservationWindow - Stopwatch.GetElapsedTime(deliveryWaitStarted);
+                if (remaining <= TimeSpan.Zero) break;
+                await Task.WhenAny(completedDelivery.Task, Task.Delay(remaining < TimeSpan.FromMilliseconds(100)
+                    ? remaining : TimeSpan.FromMilliseconds(100)));
+                if (!completedDelivery.Task.IsCompleted && Stopwatch.GetElapsedTime(deliveryWaitStarted) < DeliveryObservationWindow)
+                    notifications.Add(Task.Run(() => time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1))));
+            }
+            bool deliveryObserved = completedDelivery.Task.IsCompleted;
+            double observationMilliseconds = Stopwatch.GetElapsedTime(observationStarted).TotalMilliseconds;
+            Require(verifier.IsBlocked, "The proof gate expired before the delivery observation finished");
             int completedSendsWhileBlocked = Volatile.Read(ref completedSends);
             int changedSendsWhileBlocked = Volatile.Read(ref changedSends);
             Require(changedSendsWhileBlocked == 0, "Incomplete work was published before proving returned");
@@ -131,9 +153,16 @@ internal static class SchedulingChecks
             return new()
             {
                 ["scenario"] = "eligible-completed-wrapper-during-new-proof",
-                ["virtualBusySeconds"] = busyTicks,
+                ["virtualBusySeconds"] = notifications.Count - 1,
+                ["initialCadenceNotificationsWhileBlocked"] = busyTicks,
+                ["retryCadenceNotificationsWhileBlocked"] = notifications.Count - 1 - busyTicks,
+                ["timerNotificationsOfferedWhileBlocked"] = notifications.Count,
+                ["deliveryObservedWhileBlocked"] = deliveryObserved,
+                ["deliveryWaitLimitMilliseconds"] = DeliveryObservationWindow.TotalMilliseconds,
+                ["heldProofObservationWallMilliseconds"] = observationMilliseconds,
+                ["observationPolicy"] = "Three initial virtual cadence notifications, then await a subsequent eligible delivery for up to five wall-clock seconds, offering retry ticks every 100ms; proof released only after observation",
                 ["bothTransactionsRemainPending"] = true,
-                ["peer"] = "Declines warmup A before proving is blocked; writable while blocked, so early AddPeer delivery cannot count as cadence progress",
+                ["peer"] = "Declines the first cached-A offer regardless of execution phase, excluding any late AddPeer callback; counts only subsequent offers while proving remains blocked",
                 ["declinedWarmupDeliveries"] = warmupDeclines,
                 ["eligibleCompletedWrapperSendsWhileBlocked"] = completedSendsWhileBlocked,
                 ["incompleteWrapperSendsWhileBlocked"] = changedSendsWhileBlocked,
@@ -280,6 +309,7 @@ internal static class SchedulingChecks
             await time.TimerCreated.WaitAsync(Timeout);
             notifications.Add(Task.Run(() => time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1))));
             await verifier.Entered.Task.WaitAsync(Timeout);
+            long blockedObservationStarted = Stopwatch.GetTimestamp();
             if (removeWhileBusy) pool.Set();
             for (int i = 0; i < busyTicks; i++)
             {
@@ -288,6 +318,7 @@ internal static class SchedulingChecks
             }
             int callsWhileBlocked = verifier.ProofCalls;
             int sendsWhileBlocked = Volatile.Read(ref sends);
+            double blockedObservationMilliseconds = Stopwatch.GetElapsedTime(blockedObservationStarted).TotalMilliseconds;
             verifier.Release();
             await verifier.Completed.Task.WaitAsync(Timeout).ConfigureAwait(false);
             await Task.WhenAll(notifications).WaitAsync(Timeout);
@@ -314,6 +345,8 @@ internal static class SchedulingChecks
                 ["timerNotificationsWhileBlocked"] = busyTicks,
                 ["proofCallsWhileBlocked"] = callsWhileBlocked,
                 ["sendsWhileBlocked"] = sendsWhileBlocked,
+                ["blockedCounterObservationWallMilliseconds"] = blockedObservationMilliseconds,
+                ["blockedCounterObservationPolicy"] = "Informational counter snapshot after offered timer notifications and brief yields; not a delivery latency or capacity assertion",
                 ["proofCallsAfterCompletion"] = verifier.ProofCalls,
                 ["maxConcurrentProofCalls"] = verifier.MaxActive,
                 ["completedProofCalls"] = verifier.CompletedCalls,
@@ -423,7 +456,7 @@ internal static class SchedulingChecks
             Entered.TrySetResult();
             try
             {
-                if (!_release.Wait(Timeout)) throw new TimeoutException("Controlled prover was not released");
+                if (!_release.Wait(ProofGateWatchdog)) throw new TimeoutException("Controlled prover was not released");
                 Interlocked.Increment(ref _completed);
                 Completed.TrySetResult();
                 return depsHash.ToByteArray();

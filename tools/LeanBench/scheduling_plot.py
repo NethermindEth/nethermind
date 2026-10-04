@@ -23,17 +23,20 @@ def counts(path):
     values = [
         row("background-proof-to-production-blockprocessor")["builderAdditionalProofCalls"],
         row("eligible-completed-wrapper-during-new-proof")["eligibleCompletedWrapperSendsWhileBlocked"],
-        int(row("removed-selection-during-proof")["staleDelivery"]),
     ]
-    if any(not isinstance(value, int) or value < 0 for value in values):
+    if any(type(value) is not int or value < 0 for value in values):
         raise ValueError(f"Invalid count in {path}")
+    stale_delivery = row("removed-selection-during-proof")["staleDelivery"]
+    if type(stale_delivery) is not bool:
+        raise ValueError(f"Invalid stale-delivery flag in {path}")
+    values.append(int(stale_delivery))
     return values
 
 
 def render(before, after):
     titles = [
         ("Extra builder proving calls", "after background work completes", "Fewer calls avoid repeating proof work."),
-        ("Eligible completed deliveries", "while a new proof is blocked", "Delivery can proceed during proving."),
+        ("Eligible completed deliveries", "held proof · five-second event wait", "Delivery observed before proof release."),
         ("Removed selection delivered", "after old proof completes · 0=no, 1=yes", "Zero keeps removed bodies out of gossip."),
     ]
     parts = [

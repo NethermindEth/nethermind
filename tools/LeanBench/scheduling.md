@@ -23,8 +23,12 @@ a new selection is blocked in proving.
 The default records this behavior so an earlier scheduler can be measured without disguising it as
 an optimized result.
 
-Each JSON capture records its command, source label and actual tool/network/
-consensus assembly SHA256 hashes. Keep before and after captures separate.
+Each JSON capture records its command, production source label, reported hashes
+of the two overlaid harness files, and actual tool/network/consensus assembly
+SHA256 hashes. Assembly hashes identify a particular build: SourceLink, checkout
+paths and build flags can change them even when the source is identical. Use the
+Git revision plus the two source hashes to identify source content. Keep before
+and after captures separate.
 
 The scenarios check:
 
@@ -47,12 +51,25 @@ The scenarios check:
   completing old work broadcasts the removed transaction.
 - Prebuild wrapper A, retain A's transaction, add transaction B and block the
   new A+B proof. Fire one-second virtual ticks and record whether completed A
-  is delivered while A+B is incomplete. The controlled peer declines an early
-  A warmup send, becomes writable while proving is actively blocked, and counts
-  only deliveries during that blocked phase. Require zero incomplete deliveries
-  and exactly one A+B delivery after release.
+  is delivered while A+B is incomplete. The controlled peer declines the
+  first cached-A offer regardless of when it executes, so a late AddPeer callback
+  cannot count as cadence progress. Only subsequent offers while the new proof
+  remains blocked can signal delivery. After three virtual tick notifications,
+  await an actual completed-A delivery event for at most five wall-clock seconds.
+  Offer additional one-second virtual retry ticks at 100ms wall intervals while
+  waiting. Hold the proof gate until the event or timeout; record elapsed
+  observation time and offered notifications. Virtual retry counts can therefore
+  differ between runs using this identical event-driven policy. A baseline zero means no delivery was observed in
+  that finite window, not an unbounded absence claim. Require zero incomplete
+  deliveries and exactly one A+B delivery after release.
 
 `virtualBusySeconds` and timer counts describe the manually advanced clock.
+The `sendsWhileBlocked` values in the coalescing/removal rows are informational
+counter snapshots after offered ticks and brief yields; their elapsed observation
+windows are recorded. They are not delivery deadlines or capacity measurements.
+The separate completed-wrapper row awaits a delivery event with a five-second
+limit; that test budget is not a production latency guarantee.
+
 `harnessWallMilliseconds` includes fixture setup synchronization, brief yields
 and teardown; it is not a native proving latency. A one-second cadence does not
 imply that native proofs finish within one second. These checks also do not
@@ -68,3 +85,40 @@ deterministic scheduling check.
 
 Captured results and the count chart live in
 [results/2026-10-04/scheduling](results/2026-10-04/scheduling/README.md).
+
+
+## Reproduce the baseline with the identical harness
+
+Run this from a committed benchmark checkout containing the revised files whose
+hashes appear below. Resolve that checkout to an immutable commit first. Both
+`SchedulingChecks.cs` **and** `Program.cs` must be overlaid: the historical
+baseline lacks the scheduling dispatch, so running its original entry point
+would start the full benchmark instead. The hash checks fail before building if
+the chosen benchmark commit does not contain this exact harness.
+
+```sh
+set -e
+benchmark_source=$(git rev-parse HEAD)
+baseline_checkout=/tmp/lean-scheduling-baseline
+harness_sha=dd9fce48cc9973ae7e271794c5b2862007600a5ea51af853458af53bfc505a24
+dispatch_sha=211e47f4773444789bfcf4d5c4fcc169ed8655af21e9d001de03d92e40459813
+git worktree add --detach "$baseline_checkout" c574cbb16a576c5121c1b0f9017920b776ab33a8
+git show "$benchmark_source:tools/LeanBench/SchedulingChecks.cs" > "$baseline_checkout/tools/LeanBench/SchedulingChecks.cs"
+git show "$benchmark_source:tools/LeanBench/Program.cs" > "$baseline_checkout/tools/LeanBench/Program.cs"
+cd "$baseline_checkout"
+shasum -a 256 -c <<EOF
+$harness_sha  tools/LeanBench/SchedulingChecks.cs
+$dispatch_sha  tools/LeanBench/Program.cs
+EOF
+dotnet build tools/LeanBench/LeanBench.csproj -c Release --disable-build-servers -m:1 -p:CheckForOverflowUnderflow=false
+dotnet tools/artifacts/bin/LeanBench/release/LeanBench.dll \
+  --scheduling-checks=true --out=/tmp/lean-scheduling-before \
+  --source-revision=c574cbb16a576c5121c1b0f9017920b776ab33a8 \
+  --harness-sha256="$harness_sha" --dispatch-sha256="$dispatch_sha"
+```
+
+Preserve the capture before removing the task-owned worktree. For the after run,
+return to the same benchmark checkout, verify the same two source hashes, rebuild,
+and use its immutable Git revision, a fresh output directory and
+`--require-fresh=true`, passing both source-hash arguments again. No native
+library, fixtures, services or Lean build are required for this mode.

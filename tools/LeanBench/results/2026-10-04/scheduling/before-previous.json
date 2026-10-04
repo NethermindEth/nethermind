@@ -1,19 +1,16 @@
 {
   "metadata": {
-    "commandLine": "/private/tmp/eip8288-scheduling-event-baseline/tools/artifacts/bin/LeanBench/release/LeanBench.dll --scheduling-checks=true --out=/tmp/eip8288-scheduling-before-event-v2 --source-revision=c574cbb16a576c5121c1b0f9017920b776ab33a8 --harness-sha256=dd9fce48cc9973ae7e271794c5b2862007600a5ea51af853458af53bfc505a24 --dispatch-sha256=211e47f4773444789bfcf4d5c4fcc169ed8655af21e9d001de03d92e40459813",
-    "utc": "2026-10-04T10:46:55.335242+00:00",
+    "commandLine": "/private/tmp/eip8288-scheduling-baseline/tools/artifacts/bin/LeanBench/release/LeanBench.dll --scheduling-checks=true --out=/tmp/eip8288-scheduling-before-v4 --source-revision=c574cbb16a576c5121c1b0f9017920b776ab33a8",
+    "utc": "2026-10-04T09:54:07.986573+00:00",
     "sourceRevision": "c574cbb16a576c5121c1b0f9017920b776ab33a8",
-    "sourceHarnessSha256": "dd9fce48cc9973ae7e271794c5b2862007600a5ea51af853458af53bfc505a24",
-    "sourceDispatchSha256": "211e47f4773444789bfcf4d5c4fcc169ed8655af21e9d001de03d92e40459813",
     "assemblySha256": {
-      "LeanBench.dll": "E6057FF2F62B6F042AC6A7BC12E4E3EA28EEC18239E40F6538F521F4D5A42D02",
-      "Nethermind.Network.dll": "C91AF2CC3A45CC36C1404C9A773BF665064062897E7C92FE7C5F6148733995A3",
-      "Nethermind.Consensus.dll": "F24AB5CB1D7023A05F4B6BCBB5E725ABAC8CDFD52A61F182A0F11DBE0B77FE97"
+      "LeanBench.dll": "51E1CF556DD5FC02B6C5E694B25E3DB916BF6049D247E1B7B1ED78FB15B1D13B",
+      "Nethermind.Network.dll": "3B369B76EA30A4F1D5B82B48B2909057A3BD094D753E14B55ED1DFC8F52F25D5",
+      "Nethermind.Consensus.dll": "687D0A6CD757DEF52DCE2E7E62279ADF6E12A198BAA4434B3E2DE47397D3CD94"
     },
     "backend": "Synthetic statement-checked scheduling backend; no native cryptography or performance measurements",
     "pool": "Timer rows use controlled synthetic pool snapshots; the background-to-block row admits a real signed FrameTx to the production pool",
     "clock": "Manual monotonic clock, one-second timer notifications; busyTicks is virtual elapsed time, not native proving duration",
-    "deliveryObservation": "Exclude the first cached-A offer regardless of when it executes; wait up to five wall-clock seconds for a subsequent eligible delivery while holding the proof, offering additional virtual ticks every 100ms if needed; baseline zero means no event in this finite window",
     "scope": "Actual wrapper selection/store, gossip scheduler and exact-parent builder reuse; no network, services or Lean prover changes"
   },
   "results": [
@@ -39,16 +36,9 @@
     },
     {
       "scenario": "eligible-completed-wrapper-during-new-proof",
-      "virtualBusySeconds": 52,
-      "initialCadenceNotificationsWhileBlocked": 3,
-      "retryCadenceNotificationsWhileBlocked": 49,
-      "timerNotificationsOfferedWhileBlocked": 53,
-      "deliveryObservedWhileBlocked": false,
-      "deliveryWaitLimitMilliseconds": 5000,
-      "heldProofObservationWallMilliseconds": 5037.4701,
-      "observationPolicy": "Three initial virtual cadence notifications, then await a subsequent eligible delivery for up to five wall-clock seconds, offering retry ticks every 100ms; proof released only after observation",
+      "virtualBusySeconds": 3,
       "bothTransactionsRemainPending": true,
-      "peer": "Declines the first cached-A offer regardless of execution phase, excluding any late AddPeer callback; counts only subsequent offers while proving remains blocked",
+      "peer": "Declines warmup A before proving is blocked; writable while blocked, so early AddPeer delivery cannot count as cadence progress",
       "declinedWarmupDeliveries": 0,
       "eligibleCompletedWrapperSendsWhileBlocked": 0,
       "incompleteWrapperSendsWhileBlocked": 0,
@@ -62,15 +52,13 @@
       "timerNotificationsWhileBlocked": 1,
       "proofCallsWhileBlocked": 1,
       "sendsWhileBlocked": 0,
-      "blockedCounterObservationWallMilliseconds": 12.0452,
-      "blockedCounterObservationPolicy": "Informational counter snapshot after offered timer notifications and brief yields; not a delivery latency or capacity assertion",
       "proofCallsAfterCompletion": 1,
       "maxConcurrentProofCalls": 1,
       "completedProofCalls": 1,
       "sendsAfterCompletion": 1,
       "refreshSends": 1,
       "staleDelivery": false,
-      "harnessWallMilliseconds": 24.1832
+      "harnessWallMilliseconds": 25.1596
     },
     {
       "scenario": "slow-proof-coalescing",
@@ -78,15 +66,13 @@
       "timerNotificationsWhileBlocked": 3,
       "proofCallsWhileBlocked": 1,
       "sendsWhileBlocked": 0,
-      "blockedCounterObservationWallMilliseconds": 35.1227,
-      "blockedCounterObservationPolicy": "Informational counter snapshot after offered timer notifications and brief yields; not a delivery latency or capacity assertion",
       "proofCallsAfterCompletion": 1,
       "maxConcurrentProofCalls": 1,
       "completedProofCalls": 1,
       "sendsAfterCompletion": 1,
       "refreshSends": 1,
       "staleDelivery": false,
-      "harnessWallMilliseconds": 47.5171
+      "harnessWallMilliseconds": 47.9765
     },
     {
       "scenario": "slow-proof-coalescing",
@@ -94,15 +80,13 @@
       "timerNotificationsWhileBlocked": 10,
       "proofCallsWhileBlocked": 1,
       "sendsWhileBlocked": 0,
-      "blockedCounterObservationWallMilliseconds": 119.1935,
-      "blockedCounterObservationPolicy": "Informational counter snapshot after offered timer notifications and brief yields; not a delivery latency or capacity assertion",
       "proofCallsAfterCompletion": 1,
       "maxConcurrentProofCalls": 1,
       "completedProofCalls": 1,
       "sendsAfterCompletion": 1,
       "refreshSends": 1,
       "staleDelivery": false,
-      "harnessWallMilliseconds": 130.7017
+      "harnessWallMilliseconds": 132.6467
     },
     {
       "scenario": "removed-selection-during-proof",
@@ -110,15 +94,13 @@
       "timerNotificationsWhileBlocked": 3,
       "proofCallsWhileBlocked": 1,
       "sendsWhileBlocked": 0,
-      "blockedCounterObservationWallMilliseconds": 36.0668,
-      "blockedCounterObservationPolicy": "Informational counter snapshot after offered timer notifications and brief yields; not a delivery latency or capacity assertion",
       "proofCallsAfterCompletion": 1,
       "maxConcurrentProofCalls": 1,
       "completedProofCalls": 1,
       "sendsAfterCompletion": 1,
       "refreshSends": 0,
       "staleDelivery": true,
-      "harnessWallMilliseconds": 36.4948
+      "harnessWallMilliseconds": 36.6804
     }
   ]
 }
