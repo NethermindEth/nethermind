@@ -22,47 +22,18 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// Gloas <c>process_block</c> (EIP-7732's ePBS split) over <see cref="BeaconStateGloas"/>.
 /// </summary>
 /// <remarks>
-/// Ported from ethereum/consensus-specs <c>v1.7.0-beta.2</c> (<c>specs/gloas/beacon-chain.md</c>,
-/// cross-referenced against <c>specs/gloas/fork-choice.md</c> at the same tag for
-/// <c>on_execution_payload_envelope</c>). The spec is explicitly work in progress; this file
-/// documents every place its text was ambiguous or (as found for the block-processing step order)
-/// inconsistent with a paraphrase, and the reading taken, rather than picking silently.
+/// Follows ethereum/consensus-specs <c>v1.7.0-beta.2</c>, <c>specs/gloas/beacon-chain.md</c> and
+/// <c>specs/gloas/fork-choice.md</c> at the same tag.
 /// <para/>
-/// <b>Block-processing step order.</b> A short prose summary of this task described the order as
-/// header, RANDAO, Eth1 data, operations, bid, withdrawals. The pinned spec's actual
-/// <c>process_block</c> body, and its own prose note on <c>process_withdrawals</c> ("must be
-/// called after <c>process_parent_execution_payload</c> ... and before
-/// <c>process_execution_payload_bid</c> as the latter function affects validator balances"), both
-/// give a different, more specific order:
+/// <b>Block-processing step order.</b> Withdrawals run after the parent payload and before the
+/// current bid, because bid processing affects validator balances. The pinned <c>process_block</c> order is
 /// <c>process_parent_execution_payload, process_block_header, process_withdrawals,
 /// process_execution_payload_bid, process_randao, process_eth1_data, process_operations,
-/// process_sync_aggregate</c>. This file follows the pinned spec text over the paraphrase, since
-/// the paraphrase is not itself a source of truth and the spec text is internally self-consistent
-/// (the withdrawals/bid ordering note only makes sense under this order) and would otherwise
-/// silently produce the wrong post-state root.
+/// process_sync_aggregate</c>.
 /// <para/>
-/// <b>Envelope processing timing.</b> The task described envelope processing as verifying an
-/// envelope against its committed bid "then applying the payload to state" as one step. The pinned
-/// fork-choice spec's <c>on_execution_payload_envelope</c> calls only
-/// <c>verify_execution_payload_envelope</c> - a pure verification with no state mutation - and
-/// records the envelope in the fork-choice store; the payload is applied to state one block later,
-/// inside the child block's own <c>process_parent_execution_payload</c>. This file follows that
-/// split: <see cref="VerifyExecutionPayloadEnvelope"/> is the separate, non-mutating entry point
-/// the task asked for, and application happens through <see cref="ProcessBlock"/> processing the
-/// next block, matching the task's own framing ("applied to state one block later") more precisely
-/// than a same-step read would.
-/// <para/>
-/// <b>Scope.</b> The whole of <c>process_block</c>: block header and RANDAO, bid processing,
-/// envelope verification, withdrawals computed from state, the builder payment/deposit/exit
-/// machinery - including a parent payload whose execution requests are non-empty, via the full
-/// deposit/withdrawal/consolidation/builder-deposit/builder-exit request pipeline in
-/// <see cref="ApplyParentExecutionPayload"/> - with the payment window addressed exactly as the
-/// spec does now that <see cref="GloasEpochProcessing"/> rotates it at every epoch boundary, and
-/// every block-body operation (<see cref="ProcessOperations"/>), attestations with their builder
-/// payment weight and PTC payload attestations included. The operations inherited unchanged from
-/// Electra are ported to the Gloas state type rather than shared with <see cref="BlockProcessing"/>,
-/// for the reason given on <see cref="GloasStateAccessors"/>; their signature checks live in
-/// <see cref="GloasSignatureSets"/>.
+/// <b>Envelope processing timing.</b> <see cref="VerifyExecutionPayloadEnvelope"/> verifies without mutating
+/// beacon state; fork choice records the envelope. The payload is applied to state one block later,
+/// through the child block's <c>process_parent_execution_payload</c> and <see cref="ApplyParentExecutionPayload"/>.
 /// </remarks>
 public static partial class GloasBlockProcessing
 {

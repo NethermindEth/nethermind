@@ -13,14 +13,8 @@ namespace Nethermind.BeaconChain.StateTransition;
 
 /// <summary>
 /// Read-only accessors and mutators over <see cref="BeaconStateGloas"/> needed by
-/// <see cref="GloasBlockProcessing"/>: the subset of <see cref="BeaconStateAccessors"/> and
-/// <see cref="BeaconStateMutators"/> whose field reads (slot, randao mixes, proposer lookahead,
-/// balances, fork) are identical between <see cref="BeaconStateFulu"/> and
-/// <see cref="BeaconStateGloas"/> (see the field-by-field comparison in
-/// <see cref="GloasForkTransition.UpgradeToGloas"/>). Duplicated rather than shared through a
-/// common base or interface for the same reason <see cref="ForkedBeaconState"/> wraps two concrete
-/// types instead of introducing one: the two state classes are deliberately not related by
-/// inheritance (see the remarks on <see cref="BeaconStateGloas"/>).
+/// <see cref="GloasBlockProcessing"/>. Common operations are generated as concrete partial methods;
+/// Gloas-specific operations use its builder and payload fields.
 /// </summary>
 public static partial class GloasStateAccessors
 {
