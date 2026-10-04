@@ -18,7 +18,8 @@ public sealed class CumulativeTraceWriter
     private readonly string _sessionId;
     private readonly JsonSerializerOptions _serializerOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        TypeInfoResolver = TraceOutputJsonContext.Default
     };
 
     private readonly string _filePath;

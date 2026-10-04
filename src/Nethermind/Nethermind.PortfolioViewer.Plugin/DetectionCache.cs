@@ -33,7 +33,7 @@ public interface IDetectionCache
 /// <inheritdoc cref="IDetectionCache"/>
 public sealed class DetectionCache : IDetectionCache
 {
-    private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, TypeInfoResolver = PortfolioViewerJsonContext.Default };
 
     // Bounds the on-disk cache: LRU eviction by last update, and a per-entry contract cap.
     private const int DefaultMaxEntries = 10_000;

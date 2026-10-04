@@ -15,7 +15,8 @@ public sealed class TraceOutputWriter(ILogManager logManager)
     private readonly ILogger _logger = logManager?.GetClassLogger<TraceOutputWriter>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly JsonSerializerOptions _serializerOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        TypeInfoResolver = TraceOutputJsonContext.Default
     };
 
     /// <summary>

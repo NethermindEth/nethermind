@@ -28,7 +28,7 @@ public interface IPinnedCidStore
 /// <inheritdoc cref="IPinnedCidStore"/>
 public sealed class PinnedCidStore : IPinnedCidStore
 {
-    private static readonly JsonSerializerOptions Json = new();
+    private static readonly JsonSerializerOptions Json = new() { TypeInfoResolver = PortfolioViewerJsonContext.Default };
 
     private readonly ConcurrentDictionary<string, byte> _cids = new();
     private readonly string _path;

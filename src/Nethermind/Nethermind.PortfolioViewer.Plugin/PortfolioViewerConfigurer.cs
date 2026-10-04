@@ -82,7 +82,7 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
     };
 
     private static readonly JsonSerializerOptions JsonOpts =
-        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
+        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true, TypeInfoResolver = PortfolioViewerJsonContext.Default };
 
     private static readonly ManifestEmbeddedFileProvider FileProvider =
         new(typeof(PortfolioViewerMiddleware).Assembly, "wwwroot");
@@ -365,7 +365,7 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
         await TypeInfoJsonSerializer.SerializeAsync(context.Response.Body, detection.Get(post.ChainId, post.Address), JsonOpts, context.RequestAborted);
     }
 
-    private sealed record DetectPost(long ChainId, string Address);
+    internal sealed record DetectPost(long ChainId, string Address);
 
-    private readonly record struct NodeInfo(int Port, string ChainId);
+    internal readonly record struct NodeInfo(int Port, string ChainId);
 }

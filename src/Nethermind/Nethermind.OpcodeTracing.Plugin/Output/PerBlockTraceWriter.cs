@@ -16,7 +16,8 @@ public sealed class PerBlockTraceWriter(ILogManager logManager)
     private readonly ILogger _logger = logManager?.GetClassLogger<PerBlockTraceWriter>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly JsonSerializerOptions _serializerOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        TypeInfoResolver = TraceOutputJsonContext.Default
     };
 
     /// <summary>
