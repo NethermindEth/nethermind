@@ -54,6 +54,7 @@ public class ShutterBlockImprovementContextTests
         }).ToArray();
 
         await Task.WhenAll(improvements.Select(static i => i.ImprovementTask));
+        foreach (ShutterBlockImprovementContext improvement in improvements) improvement.Dispose();
 
         Assert.That(Metrics.ShutterKeysMissed - missedBefore, Is.EqualTo((ulong)contexts));
     }
