@@ -118,7 +118,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         return validator;
     }
 
-    private class StepDurationJsonConverter : JsonConverter<SortedDictionary<ulong, long>>
+    internal class StepDurationJsonConverter : JsonConverter<SortedDictionary<ulong, long>>
     {
         public override void Write(Utf8JsonWriter writer, SortedDictionary<ulong, long> value, JsonSerializerOptions options) => throw new NotSupportedException();
 

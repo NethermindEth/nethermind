@@ -10,7 +10,9 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -30,6 +32,8 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSerializable(typeof(NativePrestateTracerAccount))]
 [JsonSerializable(typeof(NativePrestateTracerConfig))]
 [JsonSerializable(typeof(NativePrestateTracerDiffMode))]
+[JsonSerializable(typeof(Dictionary<AddressAsKey, NativePrestateTracerAccount>))]
+[JsonSerializable(typeof(StateGasTrace))]
 [JsonSerializable(typeof(ParityVmOperationTrace))]
 [JsonSerializable(typeof(IReadOnlyList<ParityVmOperationTrace>))]
 [JsonSerializable(typeof(RenderedJson))]

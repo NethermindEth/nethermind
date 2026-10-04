@@ -8,10 +8,16 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Consensus.AuRa;
 
-/// <summary>Metadata for the AuRa block results, which RPC methods return as their facade base types.</summary>
+/// <summary>
+/// Metadata for the AuRa block results, which RPC methods return as their facade base types, and for the chain specification
+/// and local files AuRa reads.
+/// </summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(AuRaBlockForRpc))]
 [JsonSerializable(typeof(AuRaBlockHeaderForRpc))]
+[JsonSerializable(typeof(AuRaChainSpecLoader.AuRaGenesisSealJson))]
+[JsonSerializable(typeof(Config.AuRaChainSpecEngineParameters))]
+[JsonSerializable(typeof(Contracts.TxPriorityContract.LocalData))]
 internal partial class AuRaJsonContext : JsonSerializerContext
 {
     [ModuleInitializer]
