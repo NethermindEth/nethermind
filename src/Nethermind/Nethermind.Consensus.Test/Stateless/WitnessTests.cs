@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -74,6 +75,7 @@ public class WitnessTests
         };
         ExecutionWitness.Decode(ExecutionWitness.Encode(ExecutionWitness.From(original)), out ExecutionWitness decoded);
 
+        Assert.That(Unsafe.SizeOf<SszWitnessState>(), Is.EqualTo(Unsafe.SizeOf<byte[]>()));
         using Witness witness = decoded.ToWitness();
 
         using (Assert.EnterMultipleScope())
