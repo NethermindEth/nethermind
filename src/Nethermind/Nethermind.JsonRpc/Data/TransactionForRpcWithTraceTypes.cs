@@ -15,7 +15,7 @@ public class TransactionForRpcWithTraceTypes
     public TransactionForRpc Transaction { get; set; }
     public string[] TraceTypes { get; set; }
 
-    private class TransactionForRpcWithTraceTypesConverter : JsonConverter<TransactionForRpcWithTraceTypes>
+    internal class TransactionForRpcWithTraceTypesConverter : JsonConverter<TransactionForRpcWithTraceTypes>
     {
         public override TransactionForRpcWithTraceTypes? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {

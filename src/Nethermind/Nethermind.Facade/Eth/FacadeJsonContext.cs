@@ -18,6 +18,12 @@ namespace Nethermind.Facade.Eth;
 [JsonSerializable(typeof(BlockForRpc))]
 [JsonSerializable(typeof(FilterLog))]
 [JsonSerializable(typeof(TransactionForRpc))]
+[JsonSerializable(typeof(LegacyTransactionForRpc))]
+[JsonSerializable(typeof(AccessListTransactionForRpc))]
+[JsonSerializable(typeof(EIP1559TransactionForRpc))]
+[JsonSerializable(typeof(BlobTransactionForRpc))]
+[JsonSerializable(typeof(SetCodeTransactionForRpc))]
+[JsonSerializable(typeof(FrameTransactionForRpc))]
 [JsonSerializable(typeof(SyncingResult))]
 public partial class FacadeJsonContext : JsonSerializerContext
 {

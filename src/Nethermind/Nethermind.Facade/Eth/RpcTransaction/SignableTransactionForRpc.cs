@@ -29,7 +29,7 @@ public abstract class SignableTransactionForRpc : TransactionForRpc
     protected SignableTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData) { }
 
-    internal sealed class SignableTransactionJsonConverter : JsonConverter<SignableTransactionForRpc>
+    public sealed class SignableTransactionJsonConverter : JsonConverter<SignableTransactionForRpc>
     {
         public override SignableTransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
             // The base converter matches only TransactionForRpc, so its concrete-type deserialization never re-enters this one.

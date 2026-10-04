@@ -151,7 +151,7 @@ public abstract class TransactionForRpc
 
     public abstract bool ShouldSetBaseFee();
 
-    internal class TransactionJsonConverter : JsonConverter<TransactionForRpc>
+    public class TransactionJsonConverter : JsonConverter<TransactionForRpc>
     {
         private static readonly List<TxTypeInfo> _txTypes = [];
         private static readonly TxTypeInfo?[] _txTypesByType = new TxTypeInfo?[byte.MaxValue + 1];

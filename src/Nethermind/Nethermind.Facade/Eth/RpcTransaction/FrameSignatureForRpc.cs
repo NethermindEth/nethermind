@@ -68,7 +68,7 @@ public class FrameSignatureForRpc
 
     /// <summary>Reads <c>"0x"</c> as an absent signer (execution-apis#907) and otherwise defers to the
     /// <see cref="Address"/> converter registered on the options, so its strict hex setting still applies.</summary>
-    private sealed class FrameSignerConverter : JsonConverter<Address>
+    internal sealed class FrameSignerConverter : JsonConverter<Address>
     {
         public override Address? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
             reader.TokenType == JsonTokenType.String && reader.ValueTextEquals("0x"u8)

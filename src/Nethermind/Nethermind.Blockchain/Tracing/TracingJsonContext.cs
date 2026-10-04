@@ -1,0 +1,35 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Serialization.Json;
+
+namespace Nethermind.Blockchain.Tracing;
+
+/// <summary>
+/// Metadata for tracer output that RPC signatures expose only as <see cref="object"/>, so no generated RPC context roots it.
+/// </summary>
+[JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(GethLikeCustomTrace))]
+[JsonSerializable(typeof(GethLikeTxTraceCollection))]
+[JsonSerializable(typeof(NativeCallTracerCallFrame))]
+[JsonSerializable(typeof(NativeCallTracerConfig))]
+[JsonSerializable(typeof(NativeCallTracerLogEntry))]
+[JsonSerializable(typeof(NativePrestateTracerAccount))]
+[JsonSerializable(typeof(NativePrestateTracerConfig))]
+[JsonSerializable(typeof(NativePrestateTracerDiffMode))]
+[JsonSerializable(typeof(ParityVmOperationTrace))]
+[JsonSerializable(typeof(RenderedJson))]
+internal partial class TracingJsonContext : JsonSerializerContext
+{
+    [ModuleInitializer]
+    [SuppressMessage("Usage", "CA2255", Justification = "Registers the metadata before any code in this assembly serializes.")]
+    internal static void Register() => EthereumJsonSerializer.AddTypeInfoResolver(Default, JsonTypeInfoResolverPriority.EthRpc);
+}

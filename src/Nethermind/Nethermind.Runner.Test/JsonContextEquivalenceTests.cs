@@ -128,8 +128,10 @@ public class JsonContextEquivalenceTests
     {
         // A peer's client identity: absent fields stay empty instead of claiming Nethermind's; the engine API already read it so.
         [typeof(Nethermind.Merge.Plugin.Data.ClientVersionV1)] = "peer identity",
-        // An eth_getAccountInfo result, never deserialized.
+        // RPC results, never deserialized.
         [typeof(Nethermind.JsonRpc.Data.AccountInfoForRpc)] = "response only",
+        [typeof(Nethermind.Xdc.RPC.XdcAccountInfo)] = "response only",
+        [typeof(Nethermind.Xdc.RPC.XdcTransactionAndReceiptProof)] = "response only",
     };
 
     /// <remarks>
