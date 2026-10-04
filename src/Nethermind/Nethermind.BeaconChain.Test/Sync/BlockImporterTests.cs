@@ -1520,6 +1520,99 @@ public class BlockImporterTests
     }
 
     [Test]
+    public void A_persisted_anchor_imports_its_child_after_resuming(
+        [Values] bool gloas, [Values(0UL, 1UL, 31UL)] ulong slotInEpoch)
+    {
+        BeaconChainSpec spec;
+        ForkedSignedBeaconBlock anchor;
+        ForkedSignedBeaconBlock child;
+        byte[] stateSsz;
+        PubkeyCache pubkeys = new();
+        if (gloas)
+        {
+            SignedGloasChain chain = new();
+            SignedGloasChain.Block first = chain.Next(null, chain.Spec.SlotsPerEpoch + slotInEpoch, full: false, 0xa1);
+            spec = chain.Spec;
+            anchor = first.Forked;
+            child = chain.Next(first, first.Signed.Message!.Slot + 2, full: false, 0xa2).Forked;
+            stateSsz = BeaconStateGloas.Encode(first.PostState);
+            pubkeys.Build(first.PostState.Validators!);
+        }
+        else
+        {
+            UnsignedChain chain = UnsignedChain.Create();
+            UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, chain.Spec.SlotsPerEpoch + slotInEpoch, 0xa1);
+            spec = chain.Spec;
+            anchor = new ForkedSignedBeaconBlock.OfFulu(first.Block);
+            child = new ForkedSignedBeaconBlock.OfFulu(chain.Extend(first.Root, first.Block.Message!.Slot + 2, 0xa2).Block);
+            stateSsz = BeaconStateFulu.Encode(first.PostState);
+            pubkeys.Build(first.PostState.Validators!);
+        }
+
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db, spec);
+        Hash256 anchorRoot = anchor.ComputeMessageRoot();
+        store.PutForkedBlock(anchorRoot, anchor);
+        store.PutState(anchorRoot, stateSsz);
+        store.SetAnchor(anchorRoot, anchor.Slot);
+        BeaconChainStore resumedStore = new(db, spec);
+        Assert.That(resumedStore.TryGetAnchor(out Hash256? resumedRoot, out ulong resumedSlot), Is.True);
+        Assert.That(resumedStore.TryGetForkedBlock(resumedRoot!, out ForkedSignedBeaconBlock? resumedBlock), Is.True);
+        Assert.That(resumedStore.TryGetState(resumedRoot!, out byte[]? resumedSsz), Is.True);
+        ForkedBeaconState resumedState = BeaconStateCodec.DecodeForked(resumedSsz!, spec);
+        SlotClock clock = new(spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(spec.GenesisTime + child.Slot * spec.SecondsPerSlot)).UtcDateTime));
+        BlockImporter importer = new(spec, resumedStore, pubkeys, new SignedGloasChain.EnvelopeEngine(), new BeaconChainConfig(),
+            LimboLogs.Instance, ReplayedBlockAvailability.Instance, static (_, _) => true, clock, resumedState, resumedBlock!, resumedRoot!);
+        Hash256 childRoot = child.ComputeMessageRoot();
+
+        importer.OnSlotTick(clock.CurrentSlot);
+        BlockImportResult result = importer.Import(child, childRoot, verifySignatures: gloas);
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        HeadView head = importer.ComputeHead();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumedSlot, Is.EqualTo(anchor.Slot));
+            Assert.That(resumedRoot, Is.EqualTo(anchorRoot));
+            Assert.That(resumedBlock!.ComputeMessageRoot(), Is.EqualTo(anchorRoot));
+            Assert.That(head.HeadRoot, Is.EqualTo(childRoot));
+            Assert.That(head.HeadSlot, Is.EqualTo(child.Slot));
+            Assert.That(importer.IsKnown(childRoot), Is.True);
+            Assert.That(((IBlockImporter)importer).RejectGossip, Is.False);
+        }
+
+        ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        ProtoArrayForkChoice forkChoice = (ProtoArrayForkChoice)typeof(ForkChoiceRunner).GetField("_protoArray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(runner)!;
+        CheckpointRef bootstrap = runner.FinalizedCheckpoint;
+        Hash256 unknown = Keccak.Compute("unknown bootstrap descendant");
+        Func<Hash256, ulong, Hash256> checkpointBlock = typeof(ForkChoiceRunner).GetMethod("GetCheckpointBlock", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .CreateDelegate<Func<Hash256, ulong, Hash256>>(runner);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkChoice.GetAncestor(anchorRoot, bootstrap.Epoch * spec.SlotsPerEpoch), Is.EqualTo(slotInEpoch == 0 ? anchorRoot : null));
+            Assert.That(checkpointBlock(childRoot, bootstrap.Epoch), Is.EqualTo(anchorRoot));
+            Assert.That(() => checkpointBlock(unknown, bootstrap.Epoch), Throws.TypeOf<ForkChoiceException>());
+            Assert.That(() => checkpointBlock(childRoot, bootstrap.Epoch - 1), Throws.TypeOf<ForkChoiceException>());
+            Assert.That(runner.IsBootstrapCheckpointDescendant(childRoot, bootstrap), Is.EqualTo(slotInEpoch != 0));
+            Assert.That(runner.IsBootstrapCheckpointDescendant(unknown, bootstrap), Is.False);
+            Assert.That(runner.IsBootstrapCheckpointDescendant(childRoot, new CheckpointRef(bootstrap.Epoch, childRoot)), Is.False);
+            Assert.That(runner.IsBootstrapCheckpointDescendant(childRoot, new CheckpointRef(bootstrap.Epoch, unknown)), Is.False);
+        }
+
+        ForkChoiceStore forkChoiceStore = (ForkChoiceStore)typeof(ForkChoiceRunner).GetField("_store", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(runner)!;
+        CheckpointRef later = new(bootstrap.Epoch + 1, childRoot);
+        forkChoiceStore.UpdateCheckpoints(later, later);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(later));
+        Assert.That(runner.IsBootstrapCheckpointDescendant(childRoot, bootstrap), Is.False);
+        Assert.That(runner.IsBootstrapCheckpointDescendant(childRoot, later), Is.False);
+        if (slotInEpoch == 0)
+            Assert.That(checkpointBlock(childRoot, bootstrap.Epoch), Is.EqualTo(anchorRoot));
+        else
+            Assert.That(() => checkpointBlock(childRoot, bootstrap.Epoch), Throws.TypeOf<ForkChoiceException>());
+    }
+
+    [Test]
     public void Finalization_forgets_failed_blocks_at_or_below_the_finalized_slot()
     {
         SignedGloasChain chain = new();

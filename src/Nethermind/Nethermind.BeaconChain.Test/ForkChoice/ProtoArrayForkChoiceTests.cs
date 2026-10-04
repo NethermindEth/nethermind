@@ -28,6 +28,39 @@ public class ProtoArrayForkChoiceTests
     public void Runs_lighthouse_fork_choice_suite(ForkChoiceTestDefinition definition) => definition.Run();
 
     [Test]
+    public void Mid_epoch_bootstrap_finality_matches_only_the_anchor_checkpoint()
+    {
+        CheckpointRef bootstrap = new(1, GetRoot(0));
+        CheckpointRef older = new(0, GetRoot(9));
+        ProtoArray tree = new(slotsPerEpoch: 32, proposerScoreBoostPercent: 40);
+        tree.OnBlock(CreateProtoBlock(33, GetRoot(0), null, bootstrap, bootstrap, ExecutionStatus.Optimistic, GetRoot(0)), 35, bootstrap, bootstrap);
+        tree.OnBlock(CreateProtoBlock(35, GetRoot(1), GetRoot(0), older, older, ExecutionStatus.Optimistic, GetRoot(1)), 35, bootstrap, bootstrap);
+        tree.OnBlock(CreateProtoBlock(34, GetRoot(2), GetRoot(8), older, older, ExecutionStatus.Optimistic, GetRoot(2)), 35, bootstrap, bootstrap);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(tree.IsFinalizedCheckpointOrDescendant(GetRoot(1), bootstrap), Is.True);
+        Assert.That(tree.IsFinalizedCheckpointOrDescendant(GetRoot(9), bootstrap), Is.False);
+        Assert.That(tree.IsFinalizedCheckpointOrDescendant(GetRoot(2), bootstrap), Is.False);
+        Assert.That(tree.IsFinalizedCheckpointOrDescendant(GetRoot(1), new CheckpointRef(1, GetRoot(1))), Is.False);
+        Assert.That(tree.IsFinalizedCheckpointOrDescendant(GetRoot(1), new CheckpointRef(2, GetRoot(0))), Is.False);
+    }
+
+    [Test]
+    public void Pruning_does_not_make_a_mid_epoch_node_its_own_bootstrap_checkpoint()
+    {
+        CheckpointRef anchor = new(0, GetRoot(0));
+        ProtoArray tree = new(slotsPerEpoch: 32, proposerScoreBoostPercent: 40) { PruneThreshold = 0 };
+        tree.OnBlock(CreateProtoBlock(0, GetRoot(0), null, anchor, anchor, ExecutionStatus.Optimistic, GetRoot(0)), 35, anchor, anchor);
+        tree.OnBlock(CreateProtoBlock(33, GetRoot(1), GetRoot(0), anchor, anchor, ExecutionStatus.Optimistic, GetRoot(1)), 35, anchor, anchor);
+        tree.Prune(GetRoot(1));
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(tree.Nodes, Has.Count.EqualTo(1));
+        Assert.That(tree.Nodes[0].Parent, Is.Null);
+        Assert.That(tree.IsFinalizedCheckpointOrDescendant(GetRoot(1), new CheckpointRef(1, GetRoot(1))), Is.False);
+    }
+
+    [Test]
     public void Attester_slashing_removes_the_vote_once_and_keeps_the_validator_out()
     {
         // The Lighthouse vectors never exercise equivocation, so cover it here: build
