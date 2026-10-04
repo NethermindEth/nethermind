@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
@@ -384,6 +385,15 @@ internal static class GloasTestFixtures
         return new BlsSignature(corrupted);
     }
 
+    /// <summary>Checks that a refused operation reports the expected reason and leaves its state unchanged.</summary>
+    public static void AssertRefusedWithoutMutation(BeaconStateGloas state, Action process, string expectedMessage, string mutationMessage)
+    {
+        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
+        BeaconStateException exception = Assert.Throws<BeaconStateException>(() => process())!;
+        Assert.That(exception.Message, Does.Contain(expectedMessage));
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), mutationMessage);
+    }
+
     /// <summary>A builder-signed bid over <c>DOMAIN_BEACON_BUILDER</c>, valid against <paramref name="state"/> as it stands.</summary>
     public static SignedExecutionPayloadBid ValidBuilderBid(BeaconStateGloas state, Bls.SecretKey builderSk, ulong builderIndex, ulong value, byte blockHashFill = 0x88)
     {
@@ -523,13 +533,19 @@ internal static class GloasTestFixtures
     /// </summary>
     public static PendingDeposit NewValidatorDeposit(int keyIndex, ulong amount, ulong slot, int? signerKeyIndex = null)
     {
-        BlsPublicKey pubkey = new(new Bls.P1(DeriveKey(keyIndex)).Compress());
         Hash256 withdrawalCredentials = EthWithdrawalCredentials(0xEE);
+        (BlsPublicKey pubkey, BlsSignature signature) = SignDeposit(DeriveKey(keyIndex), withdrawalCredentials, amount, signerKeyIndex);
+        return new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount, Signature = signature, Slot = slot };
+    }
+
+    /// <summary>Signs a deposit over the genesis deposit domain, optionally with a different key than the deposited pubkey.</summary>
+    public static (BlsPublicKey Pubkey, BlsSignature Signature) SignDeposit(Bls.SecretKey key, Hash256 withdrawalCredentials, ulong amount, int? signerKeyIndex = null)
+    {
+        BlsPublicKey pubkey = new(new Bls.P1(key).Compress());
         DepositMessage.Merkleize(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount }, out UInt256 root);
         Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, BeaconChainSpec.Mainnet.GenesisForkVersion, Hash256.Zero);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
-        BlsSignature signature = new(BlsSigner.Sign(DeriveKey(signerKeyIndex ?? keyIndex), signingRoot.Bytes).Bytes);
-        return new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount, Signature = signature, Slot = slot };
+        return (pubkey, Sign(signerKeyIndex is int index ? DeriveKey(index) : key, signingRoot));
     }
 
     public static Hash256 EthWithdrawalCredentials(byte fill)

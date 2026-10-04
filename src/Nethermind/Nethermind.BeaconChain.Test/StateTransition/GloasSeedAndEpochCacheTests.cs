@@ -39,22 +39,7 @@ public class GloasSeedAndEpochCacheTests
         ulong currentEpoch = Presets.EpochsPerHistoricalVector + 100;
         BeaconStateGloas state = CreateGloasState(currentEpoch, validatorCount: 4);
 
-        byte[] domain = [1, 2, 3, 4];
-        Span<byte> preimage = stackalloc byte[4 + 8 + 32];
-        domain.CopyTo(preimage);
-
-        foreach (ulong epoch in new[] { currentEpoch - 1, currentEpoch, currentEpoch + 1 })
-        {
-            ulong mixEpoch = epoch - Presets.MinSeedLookahead - 1;
-            Hash256 mix = Hash((byte)(mixEpoch % 251));
-            state.RandaoMixes![(int)(mixEpoch % Presets.EpochsPerHistoricalVector)] = mix;
-
-            Hash256 seed = state.GetSeed(epoch, domain);
-
-            BinaryPrimitives.WriteUInt64LittleEndian(preimage[4..], epoch);
-            mix.Bytes.CopyTo(preimage[12..]);
-            Assert.That(seed, Is.EqualTo(new Hash256(SHA256.HashData(preimage))), $"seed for epoch {epoch} must use mix epoch {mixEpoch}'s randao mix");
-        }
+        RandaoMixAndEpochCacheTests.AssertSeedMatchesReference(currentEpoch, state.RandaoMixes!, (epoch, domain) => state.GetSeed(epoch, domain));
     }
 
     [Test]
@@ -341,29 +326,17 @@ public class GloasSeedAndEpochCacheTests
 
     private static BeaconStateGloas CreateGloasState(ulong currentEpoch, int validatorCount)
     {
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        Array.Fill(randaoMixes, Hash(0x01));
-        Hash256[] blockRoots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
-        Array.Fill(blockRoots, Hash(0x02));
-
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
-        for (int i = 0; i < validatorCount; i++)
-        {
-            validators[i] = GloasTestFixtures.CreateActiveValidator(default);
-            balances[i] = 32 * Gwei;
-        }
-
+        BeaconStateFulu state = RandaoMixAndEpochCacheTests.CreateState(currentEpoch, validatorCount);
         return new BeaconStateGloas
         {
-            Slot = BeaconStateAccessors.ComputeStartSlotAtEpoch(currentEpoch),
-            Validators = validators,
-            Balances = balances,
-            RandaoMixes = randaoMixes,
-            BlockRoots = blockRoots,
-            Slashings = new ulong[(int)Presets.EpochsPerSlashingsVector],
-            ProposerLookahead = new ulong[(int)Presets.ProposerLookaheadSlots],
-            FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
+            Slot = state.Slot,
+            Validators = state.Validators,
+            Balances = state.Balances,
+            RandaoMixes = state.RandaoMixes,
+            BlockRoots = state.BlockRoots,
+            Slashings = state.Slashings,
+            ProposerLookahead = state.ProposerLookahead,
+            FinalizedCheckpoint = state.FinalizedCheckpoint,
         };
     }
 
