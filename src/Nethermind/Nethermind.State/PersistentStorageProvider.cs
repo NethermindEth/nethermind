@@ -999,17 +999,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _dictionary = large;
         }
 
-        public ref StorageChangeTrace GetValueRefOrNullRef(in UInt256 storageCellIndex)
-            => ref _dictionary.GetValueRefOrNullRef(storageCellIndex);
-
         public StorageChangeTrace this[SlotKey key]
         {
             set => _dictionary[key] = value;
         }
 
         public OptimizedDictionary<SlotKey, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
-
-        public OptimizedDictionary<SlotKey, StorageChangeTrace>.KeyCollection Keys => _dictionary.Keys;
 
         public void UnmarkClear()
         {

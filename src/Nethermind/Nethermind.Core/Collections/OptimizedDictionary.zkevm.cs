@@ -388,6 +388,13 @@ public sealed class OptimizedDictionary<TKey, TValue> : IEnumerable<KeyValuePair
             }
         }
 
+        /// <summary>The current entry's key, read in place.</summary>
+        public readonly ref readonly TKey CurrentKey => ref CurrentEntry.Key;
+
+        /// <summary>The current entry's value, writable in place.</summary>
+        /// <remarks>Writing it never adds or removes an entry, so it is safe while enumerating.</remarks>
+        public readonly ref TValue CurrentValue => ref CurrentEntry.Value;
+
         public bool MoveNext()
         {
             while (_index < _dictionary._count)
