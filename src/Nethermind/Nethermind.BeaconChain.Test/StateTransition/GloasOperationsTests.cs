@@ -55,17 +55,15 @@ public class GloasOperationsTests
 
         Validator slashed = state.Validators![proposer];
         const ulong effectiveBalance = 32 * Gwei;
-        Assert.Multiple(() =>
-        {
-            Assert.That(slashed.Slashed, Is.True);
-            Assert.That(slashed.ExitEpoch, Is.Not.EqualTo(Presets.FarFutureEpoch), "slashing must initiate the exit");
-            Assert.That(slashed.WithdrawableEpoch, Is.EqualTo(state.GetCurrentEpoch() + Presets.EpochsPerSlashingsVector));
-            Assert.That(state.Slashings![(int)state.GetCurrentEpoch()], Is.EqualTo(effectiveBalance));
-            Assert.That(state.Balances[proposer], Is.EqualTo(proposerBalanceBefore - effectiveBalance / Presets.MinSlashingPenaltyQuotientElectra));
-            Assert.That(state.Balances[whistleblower], Is.EqualTo(whistleblowerBalanceBefore + effectiveBalance / Presets.WhistleblowerRewardQuotientElectra));
-            Assert.That(state.BuilderPendingPayments[32].Withdrawal!.Amount, Is.EqualTo(0ul), "the equivocating proposer's payment must be cleared");
-            Assert.That(state.BuilderPendingPayments[32].ProposerIndex, Is.EqualTo(0ul));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(slashed.Slashed, Is.True);
+        Assert.That(slashed.ExitEpoch, Is.Not.EqualTo(Presets.FarFutureEpoch), "slashing must initiate the exit");
+        Assert.That(slashed.WithdrawableEpoch, Is.EqualTo(state.GetCurrentEpoch() + Presets.EpochsPerSlashingsVector));
+        Assert.That(state.Slashings![(int)state.GetCurrentEpoch()], Is.EqualTo(effectiveBalance));
+        Assert.That(state.Balances[proposer], Is.EqualTo(proposerBalanceBefore - effectiveBalance / Presets.MinSlashingPenaltyQuotientElectra));
+        Assert.That(state.Balances[whistleblower], Is.EqualTo(whistleblowerBalanceBefore + effectiveBalance / Presets.WhistleblowerRewardQuotientElectra));
+        Assert.That(state.BuilderPendingPayments[32].Withdrawal!.Amount, Is.EqualTo(0ul), "the equivocating proposer's payment must be cleared");
+        Assert.That(state.BuilderPendingPayments[32].ProposerIndex, Is.EqualTo(0ul));
     }
 
     [Test]
@@ -83,11 +81,9 @@ public class GloasOperationsTests
 
         GloasBlockProcessing.ProcessProposerSlashing(state, Equivocation(state, slot: 32, proposer), cache, pubkeys, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Validators![proposer].Slashed, Is.True);
-            Assert.That(state.BuilderPendingPayments[0].Withdrawal!.Amount, Is.EqualTo(0ul), "the previous-epoch payment must be cleared through its rotated address");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Validators![proposer].Slashed, Is.True);
+        Assert.That(state.BuilderPendingPayments[0].Withdrawal!.Amount, Is.EqualTo(0ul), "the previous-epoch payment must be cleared through its rotated address");
     }
 
     [Test]
@@ -107,12 +103,10 @@ public class GloasOperationsTests
         Assert.That(proposer, Is.Not.EqualTo(bystander), "fixture bug");
         GloasBlockProcessing.ProcessProposerSlashing(state, Equivocation(state, slot: 32, bystander), cache, pubkeys, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Validators![bystander].Slashed, Is.True);
-            Assert.That(state.BuilderPendingPayments![32].Withdrawal!.Amount, Is.EqualTo(bidValue), "an unrelated equivocation must not grief the honest proposer's payment");
-            Assert.That(state.BuilderPendingPayments[32].ProposerIndex, Is.EqualTo((ulong)proposer));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Validators![bystander].Slashed, Is.True);
+        Assert.That(state.BuilderPendingPayments![32].Withdrawal!.Amount, Is.EqualTo(bidValue), "an unrelated equivocation must not grief the honest proposer's payment");
+        Assert.That(state.BuilderPendingPayments[32].ProposerIndex, Is.EqualTo((ulong)proposer));
     }
 
     [TestCase("identical headers", "identical")]
@@ -173,12 +167,10 @@ public class GloasOperationsTests
 
         GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Validators!.Select(v => v.Slashed).Take(6), Is.EqualTo(new[] { false, false, true, true, false, false }).AsCollection);
-            Assert.That(state.Balances[2], Is.EqualTo(balanceBefore - 32 * Gwei / Presets.MinSlashingPenaltyQuotientElectra));
-            Assert.That(state.Slashings![1], Is.EqualTo(2 * 32 * Gwei));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Validators!.Select(v => v.Slashed).Take(6), Is.EqualTo(new[] { false, false, true, true, false, false }).AsCollection);
+        Assert.That(state.Balances[2], Is.EqualTo(balanceBefore - 32 * Gwei / Presets.MinSlashingPenaltyQuotientElectra));
+        Assert.That(state.Slashings![1], Is.EqualTo(2 * 32 * Gwei));
     }
 
     [Test]
@@ -201,12 +193,10 @@ public class GloasOperationsTests
 
         GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Validators![stillSlashable].Slashed, Is.True);
-            Assert.That(state.Balances[alreadySlashed], Is.EqualTo(slashedBalanceBefore), "a validator slashed once must not be penalized again");
-            Assert.That(state.Slashings[1], Is.EqualTo(slashingsBefore + 32 * Gwei), "only the newly slashed validator's balance joins the slashings accounting");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Validators![stillSlashable].Slashed, Is.True);
+        Assert.That(state.Balances[alreadySlashed], Is.EqualTo(slashedBalanceBefore), "a validator slashed once must not be penalized again");
+        Assert.That(state.Slashings[1], Is.EqualTo(slashingsBefore + 32 * Gwei), "only the newly slashed validator's balance joins the slashings accounting");
     }
 
     [TestCase("no intersection", "slashed no validator")]
@@ -249,11 +239,9 @@ public class GloasOperationsTests
             Data = Vote(slot: 0, sourceEpoch: 0, targetEpoch: 0, fill: 0xA0),
         };
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound), new PubkeyCache(), verifySignature: false), Is.True);
-            Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound + 1), new PubkeyCache(), verifySignature: false), Is.False);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound), new PubkeyCache(), verifySignature: false), Is.True);
+        Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound + 1), new PubkeyCache(), verifySignature: false), Is.False);
     }
 
     // ---- Attestations ----
@@ -284,14 +272,12 @@ public class GloasOperationsTests
         BlockProcessing.ProcessAttestation(fulu, ToFuluAttestation(attestation), new EpochCache(), new PubkeyCache(), verifySignature: false);
 
         ulong[] attesters = gloas.GetAttestingIndices(attestation, committees);
-        Assert.Multiple(() =>
-        {
-            Assert.That(attesters, Has.Length.GreaterThan(1), "fixture bug");
-            Assert.That(attesters.Select(i => gloas.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111), "a timely same-slot vote earns all three flags");
-            Assert.That(gloas.CurrentEpochParticipation, Is.EqualTo(fulu.CurrentEpochParticipation).AsCollection);
-            Assert.That(gloas.Balances![proposer], Is.GreaterThan(32 * Gwei), "the proposer must actually have been rewarded");
-            Assert.That(gloas.Balances, Is.EqualTo(fulu.Balances).AsCollection);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(attesters, Has.Length.GreaterThan(1), "fixture bug");
+        Assert.That(attesters.Select(i => gloas.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111), "a timely same-slot vote earns all three flags");
+        Assert.That(gloas.CurrentEpochParticipation, Is.EqualTo(fulu.CurrentEpochParticipation).AsCollection);
+        Assert.That(gloas.Balances![proposer], Is.GreaterThan(32 * Gwei), "the proposer must actually have been rewarded");
+        Assert.That(gloas.Balances, Is.EqualTo(fulu.Balances).AsCollection);
     }
 
     [TestCase(0UL, true, 0b011)]
@@ -418,11 +404,9 @@ public class GloasOperationsTests
         Assert.That(state.IsAttestationSameSlot(sameSlot.Data!), Is.True, "fixture bug");
         GloasBlockProcessing.ProcessAttestation(state, sameSlot, parentSlot: 32, cache, new PubkeyCache(), verifySignature: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111), "fixture bug: the head flag must have been newly set");
-            Assert.That(state.BuilderPendingPayments[paymentIndex].Weight, Is.EqualTo(0ul), "only a validator's first participation in the epoch weighs the payment");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111), "fixture bug: the head flag must have been newly set");
+        Assert.That(state.BuilderPendingPayments[paymentIndex].Weight, Is.EqualTo(0ul), "only a validator's first participation in the epoch weighs the payment");
     }
 
     [Test]
@@ -444,14 +428,12 @@ public class GloasOperationsTests
 
         GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, pubkeys, verifySignature: true);
 
-        Assert.Multiple(() =>
-        {
-            // Included 32 slots late: the target flag alone is still earned.
-            Assert.That(attesters.Select(i => state.PreviousEpochParticipation![i]), Has.All.EqualTo(0b010));
-            Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
-            Assert.That(state.BuilderPendingPayments[0].Weight, Is.EqualTo(expectedWeight));
-            Assert.That(state.BuilderPendingPayments[32].Weight, Is.EqualTo(0ul));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        // Included 32 slots late: the target flag alone is still earned.
+        Assert.That(attesters.Select(i => state.PreviousEpochParticipation![i]), Has.All.EqualTo(0b010));
+        Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+        Assert.That(state.BuilderPendingPayments[0].Weight, Is.EqualTo(expectedWeight));
+        Assert.That(state.BuilderPendingPayments[32].Weight, Is.EqualTo(0ul));
     }
 
     [Test]
@@ -502,11 +484,9 @@ public class GloasOperationsTests
 
         ulong[] ptc = state.GetPtc(32, UpgradeEpochSpec()).Indices!;
         IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation, UpgradeEpochSpec());
-        Assert.Multiple(() =>
-        {
-            Assert.That(indexed.AttestingIndices, Is.EqualTo(positions.Select(p => ptc[p]).Order()).AsCollection);
-            Assert.That(indexed.AttestingIndices!.Distinct().Count(), Is.GreaterThan(1), "fixture bug: the vote must carry several real committee members");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(indexed.AttestingIndices, Is.EqualTo(positions.Select(p => ptc[p]).Order()).AsCollection);
+        Assert.That(indexed.AttestingIndices!.Distinct().Count(), Is.GreaterThan(1), "fixture bug: the vote must carry several real committee members");
     }
 
     [TestCase("wrong block root", "not for the parent beacon block")]
@@ -620,16 +600,14 @@ public class GloasOperationsTests
         GloasSlotProcessing.ProcessSlots(state, 2 * SlotsPerEpoch);
         PayloadTimelinessCommittee[] window = state.PtcWindow!;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.GetPtc(63, UpgradeEpochSpec()), Is.SameAs(window[31]), "previous epoch: the first SLOTS_PER_EPOCH entries");
-            Assert.That(state.GetPtc(64, UpgradeEpochSpec()), Is.SameAs(window[32]), "current epoch");
-            Assert.That(state.GetPtc(96, UpgradeEpochSpec()), Is.SameAs(window[64]), "one epoch of lookahead");
-            Assert.That(() => state.GetPtc(31, UpgradeEpochSpec()), Throws.TypeOf<BeaconStateException>(), "two epochs back is outside the window");
-            Assert.That(() => state.GetPtc(128, UpgradeEpochSpec()), Throws.TypeOf<BeaconStateException>(), "beyond MIN_SEED_LOOKAHEAD is outside the window");
-            Assert.That(() => state.GetPtc(63, SyntheticSpec(gloasForkEpoch: 2)), Throws.TypeOf<BeaconStateException>().With.Message.Contains("GLOAS_FORK_EPOCH"),
-                "a slot before GLOAS_FORK_EPOCH has no PTC even inside the window");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.GetPtc(63, UpgradeEpochSpec()), Is.SameAs(window[31]), "previous epoch: the first SLOTS_PER_EPOCH entries");
+        Assert.That(state.GetPtc(64, UpgradeEpochSpec()), Is.SameAs(window[32]), "current epoch");
+        Assert.That(state.GetPtc(96, UpgradeEpochSpec()), Is.SameAs(window[64]), "one epoch of lookahead");
+        Assert.That(() => state.GetPtc(31, UpgradeEpochSpec()), Throws.TypeOf<BeaconStateException>(), "two epochs back is outside the window");
+        Assert.That(() => state.GetPtc(128, UpgradeEpochSpec()), Throws.TypeOf<BeaconStateException>(), "beyond MIN_SEED_LOOKAHEAD is outside the window");
+        Assert.That(() => state.GetPtc(63, SyntheticSpec(gloasForkEpoch: 2)), Throws.TypeOf<BeaconStateException>().With.Message.Contains("GLOAS_FORK_EPOCH"),
+            "a slot before GLOAS_FORK_EPOCH has no PTC even inside the window");
     }
 
     // ---- The block-level wiring: every operation kind the body carries is applied ----
@@ -661,12 +639,10 @@ public class GloasOperationsTests
         ApplyBlock(state, block, cache);
 
         ulong[] attesters = state.GetAttestingIndices(attestation, committees);
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Validators[slashedProposer].Slashed, Is.True);
-            Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111));
-            Assert.That(state.Validators[credentialsChanger].WithdrawalCredentials!.Bytes[0], Is.EqualTo(Presets.EthWithdrawalPrefix));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Validators[slashedProposer].Slashed, Is.True);
+        Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111));
+        Assert.That(state.Validators[credentialsChanger].WithdrawalCredentials!.Bytes[0], Is.EqualTo(Presets.EthWithdrawalPrefix));
     }
 
     // ---- Voluntary exits ----
@@ -690,14 +666,12 @@ public class GloasOperationsTests
         // The Fulu twin still carries placeholder pubkeys; only the queueing is compared, not the signature.
         BlockProcessing.ProcessVoluntaryExit(fulu, exit, new EpochCache(), new PubkeyCache(), verifySignature: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(gloas.Validators![exiting].ExitEpoch, Is.EqualTo(BeaconStateAccessors.ComputeActivationExitEpoch(Presets.ShardCommitteePeriod + 1)));
-            Assert.That(gloas.Validators[exiting].ExitEpoch, Is.EqualTo(fulu.Validators![exiting].ExitEpoch));
-            Assert.That(gloas.Validators[exiting].WithdrawableEpoch, Is.EqualTo(fulu.Validators[exiting].WithdrawableEpoch));
-            Assert.That(gloas.EarliestExitEpoch, Is.EqualTo(fulu.EarliestExitEpoch));
-            Assert.That(gloas.ExitBalanceToConsume, Is.EqualTo(fulu.ExitBalanceToConsume));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(gloas.Validators![exiting].ExitEpoch, Is.EqualTo(BeaconStateAccessors.ComputeActivationExitEpoch(Presets.ShardCommitteePeriod + 1)));
+        Assert.That(gloas.Validators[exiting].ExitEpoch, Is.EqualTo(fulu.Validators![exiting].ExitEpoch));
+        Assert.That(gloas.Validators[exiting].WithdrawableEpoch, Is.EqualTo(fulu.Validators[exiting].WithdrawableEpoch));
+        Assert.That(gloas.EarliestExitEpoch, Is.EqualTo(fulu.EarliestExitEpoch));
+        Assert.That(gloas.ExitBalanceToConsume, Is.EqualTo(fulu.ExitBalanceToConsume));
     }
 
     [TestCase("bad signature", "Invalid voluntary exit signature")]
@@ -781,11 +755,9 @@ public class GloasOperationsTests
         expectedBytes[0] = Presets.EthWithdrawalPrefix;
         toAddress.Bytes.CopyTo(expectedBytes.AsSpan(12));
         Hash256 expected = new(expectedBytes);
-        Assert.Multiple(() =>
-        {
-            Assert.That(gloas.Validators![changing].WithdrawalCredentials, Is.EqualTo(expected));
-            Assert.That(gloas.Validators[changing].WithdrawalCredentials, Is.EqualTo(fulu.Validators![changing].WithdrawalCredentials));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(gloas.Validators![changing].WithdrawalCredentials, Is.EqualTo(expected));
+        Assert.That(gloas.Validators[changing].WithdrawalCredentials, Is.EqualTo(fulu.Validators![changing].WithdrawalCredentials));
     }
 
     [TestCase("bad signature", "Invalid BLS to execution change signature")]
@@ -828,17 +800,15 @@ public class GloasOperationsTests
         fulu.SlashValidator(slashed, new EpochCache());
         gloas.SlashValidator(slashed, new EpochCache());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(gloas.Validators![slashed].Slashed, Is.True);
-            Assert.That(gloas.Validators[slashed].ExitEpoch, Is.EqualTo(fulu.Validators![slashed].ExitEpoch));
-            Assert.That(gloas.Validators[slashed].WithdrawableEpoch, Is.EqualTo(fulu.Validators[slashed].WithdrawableEpoch));
-            Assert.That(gloas.Balances, Is.EqualTo(fulu.Balances).AsCollection);
-            Assert.That(gloas.Balances![slashed], Is.LessThan(32 * Gwei), "fixture bug: the penalty must actually have been applied");
-            Assert.That(gloas.Balances[proposer], Is.GreaterThan(32 * Gwei), "fixture bug: the reward must actually have been credited");
-            Assert.That(gloas.Slashings, Is.EqualTo(fulu.Slashings).AsCollection);
-            Assert.That(gloas.EarliestExitEpoch, Is.EqualTo(fulu.EarliestExitEpoch));
-            Assert.That(gloas.ExitBalanceToConsume, Is.EqualTo(fulu.ExitBalanceToConsume));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(gloas.Validators![slashed].Slashed, Is.True);
+        Assert.That(gloas.Validators[slashed].ExitEpoch, Is.EqualTo(fulu.Validators![slashed].ExitEpoch));
+        Assert.That(gloas.Validators[slashed].WithdrawableEpoch, Is.EqualTo(fulu.Validators[slashed].WithdrawableEpoch));
+        Assert.That(gloas.Balances, Is.EqualTo(fulu.Balances).AsCollection);
+        Assert.That(gloas.Balances![slashed], Is.LessThan(32 * Gwei), "fixture bug: the penalty must actually have been applied");
+        Assert.That(gloas.Balances[proposer], Is.GreaterThan(32 * Gwei), "fixture bug: the reward must actually have been credited");
+        Assert.That(gloas.Slashings, Is.EqualTo(fulu.Slashings).AsCollection);
+        Assert.That(gloas.EarliestExitEpoch, Is.EqualTo(fulu.EarliestExitEpoch));
+        Assert.That(gloas.ExitBalanceToConsume, Is.EqualTo(fulu.ExitBalanceToConsume));
     }
 }

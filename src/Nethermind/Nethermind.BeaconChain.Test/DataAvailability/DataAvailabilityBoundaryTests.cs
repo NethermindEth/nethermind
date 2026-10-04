@@ -50,12 +50,10 @@ public class DataAvailabilityBoundaryTests
     {
         BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(DataAvailabilityBoundary.Compute(0, mainnet), Is.EqualTo(mainnet.FuluForkEpoch));
-            Assert.That(DataAvailabilityBoundary.Compute(mainnet.FuluForkEpoch + Window, mainnet), Is.EqualTo(mainnet.FuluForkEpoch));
-            Assert.That(DataAvailabilityBoundary.Compute(mainnet.FuluForkEpoch + Window + 1, mainnet), Is.EqualTo(mainnet.FuluForkEpoch + 1));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataAvailabilityBoundary.Compute(0, mainnet), Is.EqualTo(mainnet.FuluForkEpoch));
+        Assert.That(DataAvailabilityBoundary.Compute(mainnet.FuluForkEpoch + Window, mainnet), Is.EqualTo(mainnet.FuluForkEpoch));
+        Assert.That(DataAvailabilityBoundary.Compute(mainnet.FuluForkEpoch + Window + 1, mainnet), Is.EqualTo(mainnet.FuluForkEpoch + 1));
     }
 
     private static BeaconChainSpec SpecWithFulu(ulong fuluForkEpoch) => new()

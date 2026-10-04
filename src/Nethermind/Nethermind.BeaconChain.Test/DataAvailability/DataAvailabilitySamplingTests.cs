@@ -26,14 +26,12 @@ public class DataAvailabilitySamplingTests
     {
         ulong[] columns = DataAvailabilitySampling.GetColumnsToSample(NodeId(0x42), Eip7594DasConstants.CustodyRequirement);
 
-        Assert.Multiple(() =>
-        {
-            // Mainnet: columns-per-group == 1, so the column count equals sampling_size (max(8, 4) = 8).
-            Assert.That(columns, Has.Length.EqualTo(8));
-            Assert.That(columns.Distinct().Count(), Is.EqualTo(columns.Length));
-            Assert.That(columns, Is.All.LessThan(Eip7594DasConstants.NumberOfColumns));
-            Assert.That(columns, Is.Ordered);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        // Mainnet: columns-per-group == 1, so the column count equals sampling_size (max(8, 4) = 8).
+        Assert.That(columns, Has.Length.EqualTo(8));
+        Assert.That(columns.Distinct().Count(), Is.EqualTo(columns.Length));
+        Assert.That(columns, Is.All.LessThan(Eip7594DasConstants.NumberOfColumns));
+        Assert.That(columns, Is.Ordered);
     }
 
     /// <summary>
@@ -53,12 +51,10 @@ public class DataAvailabilitySamplingTests
             .SelectMany(CustodyGroups.ComputeColumnsForCustodyGroup)];
         ulong[] sampledColumns = DataAvailabilitySampling.GetColumnsToSample(nodeId, Eip7594DasConstants.CustodyRequirement);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(custodyColumns, Is.EqualTo(expectedCustodyColumns));
-            Assert.That(sampledColumns, Is.EqualTo(expectedSample));
-            Assert.That(expectedCustodyColumns, Is.SubsetOf(expectedSample));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(custodyColumns, Is.EqualTo(expectedCustodyColumns));
+        Assert.That(sampledColumns, Is.EqualTo(expectedSample));
+        Assert.That(expectedCustodyColumns, Is.SubsetOf(expectedSample));
     }
 
     [Test]

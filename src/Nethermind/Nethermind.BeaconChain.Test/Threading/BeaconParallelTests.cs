@@ -27,12 +27,10 @@ public class BeaconParallelTests
             Thread.Sleep(1);
         }));
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(bodies, Has.Count.EqualTo(64));
-            Assert.That(bodies.Where(static body => body.Pool), Is.Empty, "a loop body ran on a thread-pool thread");
-            Assert.That(bodies.Select(static body => body.Thread).Distinct().Count(), Is.GreaterThan(1), "the loop did not fan out");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(bodies, Has.Count.EqualTo(64));
+        Assert.That(bodies.Where(static body => body.Pool), Is.Empty, "a loop body ran on a thread-pool thread");
+        Assert.That(bodies.Select(static body => body.Thread).Distinct().Count(), Is.GreaterThan(1), "the loop did not fan out");
     }
 
     [Test]

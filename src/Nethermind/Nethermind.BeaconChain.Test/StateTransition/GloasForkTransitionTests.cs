@@ -46,36 +46,34 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(post.GenesisTime, Is.EqualTo(pre.GenesisTime));
-            Assert.That(post.GenesisValidatorsRoot, Is.EqualTo(pre.GenesisValidatorsRoot));
-            Assert.That(post.Slot, Is.EqualTo(pre.Slot));
-            Assert.That(post.LatestBlockHeader, Is.SameAs(pre.LatestBlockHeader));
-            Assert.That(post.BlockRoots, Is.SameAs(pre.BlockRoots));
-            Assert.That(post.StateRoots, Is.SameAs(pre.StateRoots));
-            Assert.That(post.Eth1Data, Is.SameAs(pre.Eth1Data));
-            Assert.That(post.Eth1DepositIndex, Is.EqualTo(pre.Eth1DepositIndex));
-            Assert.That(post.Validators, Is.SameAs(pre.Validators));
-            Assert.That(post.Balances, Is.SameAs(pre.Balances));
-            Assert.That(post.RandaoMixes, Is.SameAs(pre.RandaoMixes));
-            Assert.That(post.Slashings, Is.SameAs(pre.Slashings));
-            Assert.That(post.JustificationBits, Is.SameAs(pre.JustificationBits));
-            Assert.That(post.PreviousJustifiedCheckpoint, Is.SameAs(pre.PreviousJustifiedCheckpoint));
-            Assert.That(post.CurrentJustifiedCheckpoint, Is.SameAs(pre.CurrentJustifiedCheckpoint));
-            Assert.That(post.FinalizedCheckpoint, Is.SameAs(pre.FinalizedCheckpoint));
-            Assert.That(post.InactivityScores, Is.SameAs(pre.InactivityScores));
-            Assert.That(post.CurrentSyncCommittee, Is.SameAs(pre.CurrentSyncCommittee));
-            Assert.That(post.NextSyncCommittee, Is.SameAs(pre.NextSyncCommittee));
-            Assert.That(post.NextWithdrawalIndex, Is.EqualTo(pre.NextWithdrawalIndex));
-            Assert.That(post.NextWithdrawalValidatorIndex, Is.EqualTo(pre.NextWithdrawalValidatorIndex));
-            Assert.That(post.PendingPartialWithdrawals, Is.SameAs(pre.PendingPartialWithdrawals));
-            Assert.That(post.PendingConsolidations, Is.SameAs(pre.PendingConsolidations));
-            Assert.That(post.ProposerLookahead, Is.SameAs(pre.ProposerLookahead));
-            Assert.That(post.DepositRequestsStartIndex, Is.EqualTo(pre.DepositRequestsStartIndex));
-            Assert.That(post.EarliestExitEpoch, Is.EqualTo(pre.EarliestExitEpoch));
-            Assert.That(post.EarliestConsolidationEpoch, Is.EqualTo(pre.EarliestConsolidationEpoch));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.GenesisTime, Is.EqualTo(pre.GenesisTime));
+        Assert.That(post.GenesisValidatorsRoot, Is.EqualTo(pre.GenesisValidatorsRoot));
+        Assert.That(post.Slot, Is.EqualTo(pre.Slot));
+        Assert.That(post.LatestBlockHeader, Is.SameAs(pre.LatestBlockHeader));
+        Assert.That(post.BlockRoots, Is.SameAs(pre.BlockRoots));
+        Assert.That(post.StateRoots, Is.SameAs(pre.StateRoots));
+        Assert.That(post.Eth1Data, Is.SameAs(pre.Eth1Data));
+        Assert.That(post.Eth1DepositIndex, Is.EqualTo(pre.Eth1DepositIndex));
+        Assert.That(post.Validators, Is.SameAs(pre.Validators));
+        Assert.That(post.Balances, Is.SameAs(pre.Balances));
+        Assert.That(post.RandaoMixes, Is.SameAs(pre.RandaoMixes));
+        Assert.That(post.Slashings, Is.SameAs(pre.Slashings));
+        Assert.That(post.JustificationBits, Is.SameAs(pre.JustificationBits));
+        Assert.That(post.PreviousJustifiedCheckpoint, Is.SameAs(pre.PreviousJustifiedCheckpoint));
+        Assert.That(post.CurrentJustifiedCheckpoint, Is.SameAs(pre.CurrentJustifiedCheckpoint));
+        Assert.That(post.FinalizedCheckpoint, Is.SameAs(pre.FinalizedCheckpoint));
+        Assert.That(post.InactivityScores, Is.SameAs(pre.InactivityScores));
+        Assert.That(post.CurrentSyncCommittee, Is.SameAs(pre.CurrentSyncCommittee));
+        Assert.That(post.NextSyncCommittee, Is.SameAs(pre.NextSyncCommittee));
+        Assert.That(post.NextWithdrawalIndex, Is.EqualTo(pre.NextWithdrawalIndex));
+        Assert.That(post.NextWithdrawalValidatorIndex, Is.EqualTo(pre.NextWithdrawalValidatorIndex));
+        Assert.That(post.PendingPartialWithdrawals, Is.SameAs(pre.PendingPartialWithdrawals));
+        Assert.That(post.PendingConsolidations, Is.SameAs(pre.PendingConsolidations));
+        Assert.That(post.ProposerLookahead, Is.SameAs(pre.ProposerLookahead));
+        Assert.That(post.DepositRequestsStartIndex, Is.EqualTo(pre.DepositRequestsStartIndex));
+        Assert.That(post.EarliestExitEpoch, Is.EqualTo(pre.EarliestExitEpoch));
+        Assert.That(post.EarliestConsolidationEpoch, Is.EqualTo(pre.EarliestConsolidationEpoch));
     }
 
     [Test]
@@ -87,12 +85,10 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(post.Fork!.PreviousVersion, Is.EqualTo(pre.Fork.CurrentVersion));
-            Assert.That(post.Fork.CurrentVersion, Is.EqualTo(spec.GloasForkVersion));
-            Assert.That(post.Fork.Epoch, Is.EqualTo(pre.GetCurrentEpoch()));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.Fork!.PreviousVersion, Is.EqualTo(pre.Fork.CurrentVersion));
+        Assert.That(post.Fork.CurrentVersion, Is.EqualTo(spec.GloasForkVersion));
+        Assert.That(post.Fork.Epoch, Is.EqualTo(pre.GetCurrentEpoch()));
     }
 
     [Test]
@@ -119,32 +115,30 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(post.LatestBlockHash, Is.EqualTo(pre.LatestExecutionPayloadHeader.BlockHash));
-            Assert.That(post.Builders, Is.Empty);
-            Assert.That(post.NextWithdrawalBuilderIndex, Is.EqualTo(0ul));
-            Assert.That(post.BuilderPendingWithdrawals, Is.Empty);
-            Assert.That(post.PayloadExpectedWithdrawals, Is.Empty);
-            Assert.That(post.BuilderPendingPayments, Has.Length.EqualTo((int)Presets.BuilderPendingPaymentsLength));
-            Assert.That(post.BuilderPendingPayments!.All(static p => p.Weight == 0 && p.ProposerIndex == 0), Is.True);
-            Assert.That(post.PtcWindow, Has.Length.EqualTo((int)Presets.PtcWindowLength));
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.LatestBlockHash, Is.EqualTo(pre.LatestExecutionPayloadHeader.BlockHash));
+        Assert.That(post.Builders, Is.Empty);
+        Assert.That(post.NextWithdrawalBuilderIndex, Is.EqualTo(0ul));
+        Assert.That(post.BuilderPendingWithdrawals, Is.Empty);
+        Assert.That(post.PayloadExpectedWithdrawals, Is.Empty);
+        Assert.That(post.BuilderPendingPayments, Has.Length.EqualTo((int)Presets.BuilderPendingPaymentsLength));
+        Assert.That(post.BuilderPendingPayments!.All(static p => p.Weight == 0 && p.ProposerIndex == 0), Is.True);
+        Assert.That(post.PtcWindow, Has.Length.EqualTo((int)Presets.PtcWindowLength));
 
-            BitArrayAllTrue(post.ExecutionPayloadAvailability!, (int)Presets.SlotsPerHistoricalRoot);
+        BitArrayAllTrue(post.ExecutionPayloadAvailability!, (int)Presets.SlotsPerHistoricalRoot);
 
-            ExecutionPayloadBid bid = post.LatestExecutionPayloadBid!;
-            Assert.That(bid.ParentBlockHash, Is.EqualTo(pre.LatestExecutionPayloadHeader.ParentHash));
-            Assert.That(bid.ParentBlockRoot, Is.EqualTo(pre.LatestBlockHeader.ParentRoot));
-            Assert.That(bid.BlockHash, Is.EqualTo(pre.LatestExecutionPayloadHeader.BlockHash));
-            Assert.That(bid.PrevRandao, Is.EqualTo(pre.LatestExecutionPayloadHeader.PrevRandao));
-            Assert.That(bid.GasLimit, Is.EqualTo(pre.LatestExecutionPayloadHeader.GasLimit));
-            Assert.That(bid.BuilderIndex, Is.EqualTo(Presets.BuilderIndexSelfBuild));
-            Assert.That(bid.FeeRecipient, Is.EqualTo(Address.Zero));
-            Assert.That(bid.Slot, Is.EqualTo(62ul), "the bid's slot is latest_block_header.slot, not the state slot");
-            Assert.That(bid.Value, Is.EqualTo(0ul));
-            Assert.That(bid.ExecutionPayment, Is.EqualTo(0ul));
-            Assert.That(bid.BlobKzgCommitments, Is.Empty);
-        });
+        ExecutionPayloadBid bid = post.LatestExecutionPayloadBid!;
+        Assert.That(bid.ParentBlockHash, Is.EqualTo(pre.LatestExecutionPayloadHeader.ParentHash));
+        Assert.That(bid.ParentBlockRoot, Is.EqualTo(pre.LatestBlockHeader.ParentRoot));
+        Assert.That(bid.BlockHash, Is.EqualTo(pre.LatestExecutionPayloadHeader.BlockHash));
+        Assert.That(bid.PrevRandao, Is.EqualTo(pre.LatestExecutionPayloadHeader.PrevRandao));
+        Assert.That(bid.GasLimit, Is.EqualTo(pre.LatestExecutionPayloadHeader.GasLimit));
+        Assert.That(bid.BuilderIndex, Is.EqualTo(Presets.BuilderIndexSelfBuild));
+        Assert.That(bid.FeeRecipient, Is.EqualTo(Address.Zero));
+        Assert.That(bid.Slot, Is.EqualTo(62ul), "the bid's slot is latest_block_header.slot, not the state slot");
+        Assert.That(bid.Value, Is.EqualTo(0ul));
+        Assert.That(bid.ExecutionPayment, Is.EqualTo(0ul));
+        Assert.That(bid.BlobKzgCommitments, Is.Empty);
     }
 
     [Test]
@@ -155,20 +149,18 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
 
-        Assert.Multiple(() =>
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.PtcWindow, Has.Length.EqualTo((int)Presets.PtcWindowLength));
+        for (int i = 0; i < (int)Presets.SlotsPerEpoch; i++)
         {
-            Assert.That(post.PtcWindow, Has.Length.EqualTo((int)Presets.PtcWindowLength));
-            for (int i = 0; i < (int)Presets.SlotsPerEpoch; i++)
-            {
-                // A null Indices array is the SSZ null-defaults-to-zero-vector convention (see
-                // GloasForkTransition.EmptyPtcWindow), not a missing value.
-                Assert.That((post.PtcWindow![i].Indices ?? []).All(static idx => idx == 0), Is.True,
-                    $"empty-previous-epoch committee {i} must be all-zero, matching the spec's placeholder history");
-            }
-            // At least one real (post-lookahead) committee must contain a nonzero, in-range index -
-            // otherwise ComputePtc silently produced nothing and this test would not be able to fail.
-            Assert.That(post.PtcWindow!.Skip((int)Presets.SlotsPerEpoch).SelectMany(static c => c.Indices!).Any(static idx => idx != 0), Is.True);
-        });
+            // A null Indices array is the SSZ null-defaults-to-zero-vector convention (see
+            // GloasForkTransition.EmptyPtcWindow), not a missing value.
+            Assert.That((post.PtcWindow![i].Indices ?? []).All(static idx => idx == 0), Is.True,
+                $"empty-previous-epoch committee {i} must be all-zero, matching the spec's placeholder history");
+        }
+        // At least one real (post-lookahead) committee must contain a nonzero, in-range index -
+        // otherwise ComputePtc silently produced nothing and this test would not be able to fail.
+        Assert.That(post.PtcWindow!.Skip((int)Presets.SlotsPerEpoch).SelectMany(static c => c.Indices!).Any(static idx => idx != 0), Is.True);
     }
 
     // initialize_ptc_window's empty previous epoch is explicit zero vectors (specs/gloas/fork.md); the
@@ -222,17 +214,15 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(post.PendingDeposits, Is.Empty, "the deposit that onboarded a builder must leave the pending queue");
-            Assert.That(post.Builders, Has.Length.EqualTo(1));
-            Assert.That(post.Builders![0].Pubkey, Is.EqualTo(pubkey));
-            Assert.That(post.Builders[0].Version, Is.EqualTo(PayloadBuilderVersion));
-            Assert.That(post.Builders[0].Balance, Is.EqualTo(32 * Gwei));
-            Assert.That(post.Builders[0].ExecutionAddress, Is.EqualTo(new Address("0xb6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9")), "credentials[12:] of 0xB0 followed by bytes 0xAB..0xC9");
-            Assert.That(post.Builders[0].WithdrawableEpoch, Is.EqualTo(Presets.FarFutureEpoch));
-            Assert.That(post.Builders[0].DepositEpoch, Is.EqualTo(1ul), "add_builder_to_registry takes the deposit's epoch, not the state's");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.PendingDeposits, Is.Empty, "the deposit that onboarded a builder must leave the pending queue");
+        Assert.That(post.Builders, Has.Length.EqualTo(1));
+        Assert.That(post.Builders![0].Pubkey, Is.EqualTo(pubkey));
+        Assert.That(post.Builders[0].Version, Is.EqualTo(PayloadBuilderVersion));
+        Assert.That(post.Builders[0].Balance, Is.EqualTo(32 * Gwei));
+        Assert.That(post.Builders[0].ExecutionAddress, Is.EqualTo(new Address("0xb6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9")), "credentials[12:] of 0xB0 followed by bytes 0xAB..0xC9");
+        Assert.That(post.Builders[0].WithdrawableEpoch, Is.EqualTo(Presets.FarFutureEpoch));
+        Assert.That(post.Builders[0].DepositEpoch, Is.EqualTo(1ul), "add_builder_to_registry takes the deposit's epoch, not the state's");
     }
 
     // onboard_builders_from_pending_deposits (specs/gloas/fork.md): a later deposit for a builder already
@@ -261,18 +251,16 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(post.PendingDeposits, Is.Empty);
-            Assert.That(post.Builders!.Select(static b => b.Pubkey), Is.EqualTo(new[] { otherPubkey, pubkey, lastPubkey }).AsCollection);
-            Assert.That(post.Builders!.Select(static b => b.Balance), Is.EqualTo(new[] { 32 * Gwei, 37 * Gwei, 32 * Gwei }).AsCollection);
-            Builder builder = post.Builders![1];
-            Assert.That(builder.Pubkey, Is.EqualTo(pubkey));
-            Assert.That(builder.Version, Is.EqualTo(PayloadBuilderVersion));
-            Assert.That(builder.ExecutionAddress, Is.EqualTo(new Address(withdrawalCredentials.Bytes[12..])));
-            Assert.That(builder.DepositEpoch, Is.EqualTo(1ul), "slot 40 of the onboarding deposit, not slot 10 of the top-up");
-            Assert.That(builder.WithdrawableEpoch, Is.EqualTo(Presets.FarFutureEpoch));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.PendingDeposits, Is.Empty);
+        Assert.That(post.Builders!.Select(static b => b.Pubkey), Is.EqualTo(new[] { otherPubkey, pubkey, lastPubkey }).AsCollection);
+        Assert.That(post.Builders!.Select(static b => b.Balance), Is.EqualTo(new[] { 32 * Gwei, 37 * Gwei, 32 * Gwei }).AsCollection);
+        Builder builder = post.Builders![1];
+        Assert.That(builder.Pubkey, Is.EqualTo(pubkey));
+        Assert.That(builder.Version, Is.EqualTo(PayloadBuilderVersion));
+        Assert.That(builder.ExecutionAddress, Is.EqualTo(new Address(withdrawalCredentials.Bytes[12..])));
+        Assert.That(builder.DepositEpoch, Is.EqualTo(1ul), "slot 40 of the onboarding deposit, not slot 10 of the top-up");
+        Assert.That(builder.WithdrawableEpoch, Is.EqualTo(Presets.FarFutureEpoch));
     }
 
     /// <summary>
@@ -305,12 +293,10 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(post.Builders!.Select(static b => b.Pubkey), Is.EqualTo(expectBuilder ? new[] { builderPubkey } : []).AsCollection);
-            Assert.That(post.PendingDeposits!.Select(static d => d.Signature), Is.EqualTo(expectBuilder ? validatorSignatures : [.. validatorSignatures, builderSignature]).AsCollection,
-                "the validator deposits always stay; the builder deposit stays only while a validator is pending");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.Builders!.Select(static b => b.Pubkey), Is.EqualTo(expectBuilder ? new[] { builderPubkey } : []).AsCollection);
+        Assert.That(post.PendingDeposits!.Select(static d => d.Signature), Is.EqualTo(expectBuilder ? validatorSignatures : [.. validatorSignatures, builderSignature]).AsCollection,
+            "the validator deposits always stay; the builder deposit stays only while a validator is pending");
     }
 
     // onboard_builders_from_pending_deposits (specs/gloas/fork.md) checks the builder registry before the credentials,
@@ -332,12 +318,10 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(post.PendingDeposits, Is.Empty);
-            Assert.That(post.Builders, Has.Length.EqualTo(1));
-            Assert.That(post.Builders![0].Balance, Is.EqualTo(35 * Gwei));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.PendingDeposits, Is.Empty);
+        Assert.That(post.Builders, Has.Length.EqualTo(1));
+        Assert.That(post.Builders![0].Balance, Is.EqualTo(35 * Gwei));
     }
 
     /// <summary>
@@ -431,12 +415,10 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(post.Builders, Is.Empty);
-            Assert.That(post.PendingDeposits, Has.Length.EqualTo(1));
-            Assert.That(post.PendingDeposits![0].Pubkey, Is.EqualTo(existingValidatorPubkey));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.Builders, Is.Empty);
+        Assert.That(post.PendingDeposits, Has.Length.EqualTo(1));
+        Assert.That(post.PendingDeposits![0].Pubkey, Is.EqualTo(existingValidatorPubkey));
     }
 
     [Test]
@@ -448,11 +430,9 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(post.Builders, Is.Empty, "an invalid-signature deposit must not create a builder");
-            Assert.That(post.PendingDeposits, Is.Empty, "the spec drops it outright rather than re-queuing it");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.Builders, Is.Empty, "an invalid-signature deposit must not create a builder");
+        Assert.That(post.PendingDeposits, Is.Empty, "the spec drops it outright rather than re-queuing it");
     }
 
     // Validly signed, so only is_builder_withdrawal_credential keeps the deposit away from the builder registry.
@@ -467,11 +447,9 @@ public class GloasForkTransitionTests
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(post.Builders, Is.Empty);
-            Assert.That(post.PendingDeposits, Has.Length.EqualTo(1), "a 0x00/0x01/0x02-prefixed deposit for an unknown pubkey is a future-validator deposit, not a builder one");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(post.Builders, Is.Empty);
+        Assert.That(post.PendingDeposits, Has.Length.EqualTo(1), "a 0x00/0x01/0x02-prefixed deposit for an unknown pubkey is a future-validator deposit, not a builder one");
     }
 
     private static void BitArrayAllTrue(System.Collections.BitArray bits, int length)

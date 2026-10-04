@@ -53,11 +53,9 @@ public class BatchSignatureVerifierTests
     {
         List<BlsSignatureSet> sets = [.. Enumerable.Range(0, 6).Select(i => MakeSet(i, Msg((byte)i)))];
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(BatchSignatureVerifier.VerifyBatch(sets), Is.True);
-            Assert.That(BatchSignatureVerifier.FindInvalid(sets), Is.EqualTo(-1));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(BatchSignatureVerifier.VerifyBatch(sets), Is.True);
+        Assert.That(BatchSignatureVerifier.FindInvalid(sets), Is.EqualTo(-1));
     }
 
     [TestCase(0)]
@@ -68,11 +66,9 @@ public class BatchSignatureVerifierTests
         List<BlsSignatureSet> sets = [.. Enumerable.Range(0, 5).Select(i => MakeSet(i, Msg((byte)(i + 10))))];
         sets[badPosition] = MakeMismatchedSet(badPosition, Msg((byte)(badPosition + 10)), badPosition + 100);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(BatchSignatureVerifier.VerifyBatch(sets), Is.False, $"batch must reject with the bad set at position {badPosition}");
-            Assert.That(BatchSignatureVerifier.FindInvalid(sets), Is.EqualTo(badPosition));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(BatchSignatureVerifier.VerifyBatch(sets), Is.False, $"batch must reject with the bad set at position {badPosition}");
+        Assert.That(BatchSignatureVerifier.FindInvalid(sets), Is.EqualTo(badPosition));
     }
 
     [Test]
@@ -104,11 +100,9 @@ public class BatchSignatureVerifierTests
         naive.Commit();
         Assert.That(naive.FinalVerify(), Is.True, "the crafted pair must cancel exactly when unrandomized");
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(BatchSignatureVerifier.VerifyBatch(sets), Is.False, "randomization must defeat the cancellation");
-            Assert.That(BatchSignatureVerifier.FindInvalid(sets), Is.EqualTo(0));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(BatchSignatureVerifier.VerifyBatch(sets), Is.False, "randomization must defeat the cancellation");
+        Assert.That(BatchSignatureVerifier.FindInvalid(sets), Is.EqualTo(0));
     }
 
     [Test]

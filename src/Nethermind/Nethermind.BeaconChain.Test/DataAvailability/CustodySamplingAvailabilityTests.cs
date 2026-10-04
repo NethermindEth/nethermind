@@ -44,11 +44,9 @@ public class CustodySamplingAvailabilityTests
 
         bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(available, Is.True);
-            Assert.That(columns.Requested, Is.Empty, "nothing to retrieve for a block that committed to no blobs");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.True);
+        Assert.That(columns.Requested, Is.Empty, "nothing to retrieve for a block that committed to no blobs");
     }
 
     [Test]
@@ -70,14 +68,12 @@ public class CustodySamplingAvailabilityTests
 
         bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(available, Is.True);
-            Assert.That(columns.Requested.Select(r => r.Column).Distinct(), Is.EquivalentTo(custody.SampledColumns),
-                "the rule demands this node's own sample (which contains its custody), never the whole matrix");
-            Assert.That(columns.Requested.Select(r => r.BlockRoot), Is.All.EqualTo(chain.BlockRoot), "columns are looked up for this block, not by index alone");
-            Assert.That(columns.Requested, Has.Count.EqualTo(custody.SampledColumns.Count), "each column is retrieved and verified once, although it may sit in both sets");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.True);
+        Assert.That(columns.Requested.Select(r => r.Column).Distinct(), Is.EquivalentTo(custody.SampledColumns),
+            "the rule demands this node's own sample (which contains its custody), never the whole matrix");
+        Assert.That(columns.Requested.Select(r => r.BlockRoot), Is.All.EqualTo(chain.BlockRoot), "columns are looked up for this block, not by index alone");
+        Assert.That(columns.Requested, Has.Count.EqualTo(custody.SampledColumns.Count), "each column is retrieved and verified once, although it may sit in both sets");
     }
 
     [TestCase(false, TestName = "Unavailable_when_one_custody_column_is_missing")]
@@ -130,11 +126,9 @@ public class CustodySamplingAvailabilityTests
 
         bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(available, Is.True, "the network no longer guarantees to serve this epoch's columns, so none can be demanded");
-            Assert.That(columns.Requested, Is.Empty, "the window is decided before any column is looked up");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.True, "the network no longer guarantees to serve this epoch's columns, so none can be demanded");
+        Assert.That(columns.Requested, Is.Empty, "the window is decided before any column is looked up");
     }
 
     /// <summary>
@@ -156,12 +150,10 @@ public class CustodySamplingAvailabilityTests
         timestamper.Add(epoch);
         bool oneEpochPast = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(atGenesis, Is.False, "inside the window, with no identity, the rule fails closed");
-            Assert.That(atTheWindowEdge, Is.False, "epoch 0 is the window's first epoch when the clock reads exactly the window width");
-            Assert.That(oneEpochPast, Is.True, "one epoch later the same instance sees the block leave the window");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(atGenesis, Is.False, "inside the window, with no identity, the rule fails closed");
+        Assert.That(atTheWindowEdge, Is.False, "epoch 0 is the window's first epoch when the clock reads exactly the window width");
+        Assert.That(oneEpochPast, Is.True, "one epoch later the same instance sees the block leave the window");
     }
 
     /// <summary>

@@ -26,16 +26,14 @@ public class GloasForkOverrideTests
     {
         BeaconChainSpec spec = BeaconChainSpec.Mainnet.WithGloasForkOverride(OverrideEpoch, "0x07000000");
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(BeaconChainSpec.Mainnet.ForkAtEpoch(OverrideEpoch), Is.EqualTo(BeaconFork.Fulu), "the built-in mainnet spec is not mutated");
-            Assert.That(spec.ForkAtEpoch(OverrideEpoch - 1), Is.EqualTo(BeaconFork.Fulu));
-            Assert.That(spec.ForkAtEpoch(OverrideEpoch), Is.EqualTo(BeaconFork.Gloas));
-            Assert.That(spec.GloasForkEpoch, Is.EqualTo(OverrideEpoch));
-            Assert.That(ForkDigest.Compute(spec, OverrideEpoch - 1), Is.EqualTo(ForkDigest.Compute(BeaconChainSpec.Mainnet, OverrideEpoch - 1)));
-            // Same independently computed digest as the synthetic Gloas spec in GloasForkScheduleTests.
-            Assert.That(ForkDigest.Compute(spec, OverrideEpoch), Is.EqualTo(Bytes.FromHexString("0xce2153ed")));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(BeaconChainSpec.Mainnet.ForkAtEpoch(OverrideEpoch), Is.EqualTo(BeaconFork.Fulu), "the built-in mainnet spec is not mutated");
+        Assert.That(spec.ForkAtEpoch(OverrideEpoch - 1), Is.EqualTo(BeaconFork.Fulu));
+        Assert.That(spec.ForkAtEpoch(OverrideEpoch), Is.EqualTo(BeaconFork.Gloas));
+        Assert.That(spec.GloasForkEpoch, Is.EqualTo(OverrideEpoch));
+        Assert.That(ForkDigest.Compute(spec, OverrideEpoch - 1), Is.EqualTo(ForkDigest.Compute(BeaconChainSpec.Mainnet, OverrideEpoch - 1)));
+        // Same independently computed digest as the synthetic Gloas spec in GloasForkScheduleTests.
+        Assert.That(ForkDigest.Compute(spec, OverrideEpoch), Is.EqualTo(Bytes.FromHexString("0xce2153ed")));
     }
 
     [Test]
@@ -43,13 +41,11 @@ public class GloasForkOverrideTests
     {
         BeaconChainSpec spec = BeaconChainSpec.Sepolia.WithGloasForkOverride(400_000, null);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(spec.Forks, Has.Length.EqualTo(BeaconChainSpec.Sepolia.Forks.Length));
-            Assert.That(spec.ForkAtEpoch(353_024), Is.EqualTo(BeaconFork.Fulu), "the built-in epoch no longer activates Gloas");
-            Assert.That(spec.VersionForEpoch(400_000), Is.EqualTo(BeaconChainSpec.Sepolia.GloasForkVersion), "the built-in version is kept");
-            Assert.That(ForkDigest.Compute(spec, 353_024), Is.EqualTo(ForkDigest.Compute(spec, 353_023)));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(spec.Forks, Has.Length.EqualTo(BeaconChainSpec.Sepolia.Forks.Length));
+        Assert.That(spec.ForkAtEpoch(353_024), Is.EqualTo(BeaconFork.Fulu), "the built-in epoch no longer activates Gloas");
+        Assert.That(spec.VersionForEpoch(400_000), Is.EqualTo(BeaconChainSpec.Sepolia.GloasForkVersion), "the built-in version is kept");
+        Assert.That(ForkDigest.Compute(spec, 353_024), Is.EqualTo(ForkDigest.Compute(spec, 353_023)));
     }
 
     [Test]
@@ -57,12 +53,10 @@ public class GloasForkOverrideTests
     {
         BeaconChainSpec spec = BeaconChainSpec.Sepolia.WithGloasForkOverride(null, "0x90000099");
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(spec.GloasForkVersion, Is.EqualTo(Bytes.FromHexString("0x90000099")));
-            Assert.That(spec.VersionForEpoch(353_024), Is.EqualTo(spec.GloasForkVersion));
-            Assert.That(ForkDigest.Compute(spec, 353_024), Is.Not.EqualTo(ForkDigest.Compute(BeaconChainSpec.Sepolia, 353_024)));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(spec.GloasForkVersion, Is.EqualTo(Bytes.FromHexString("0x90000099")));
+        Assert.That(spec.VersionForEpoch(353_024), Is.EqualTo(spec.GloasForkVersion));
+        Assert.That(ForkDigest.Compute(spec, 353_024), Is.Not.EqualTo(ForkDigest.Compute(BeaconChainSpec.Sepolia, 353_024)));
     }
 
     [Test]
@@ -70,11 +64,9 @@ public class GloasForkOverrideTests
     {
         BeaconChainSpec spec = BeaconChainSpec.Sepolia.WithGloasForkOverride(Presets.FarFutureEpoch, null);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(spec.ForkAtEpoch(10_000_000), Is.EqualTo(BeaconFork.Fulu));
-            Assert.That(spec.Forks, Has.Length.EqualTo(BeaconChainSpec.Sepolia.Forks.Length - 1));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(spec.ForkAtEpoch(10_000_000), Is.EqualTo(BeaconFork.Fulu));
+        Assert.That(spec.Forks, Has.Length.EqualTo(BeaconChainSpec.Sepolia.Forks.Length - 1));
     }
 
     [Test]
@@ -84,11 +76,9 @@ public class GloasForkOverrideTests
 
         BeaconChainSpec spec = BeaconChainSpec.Sepolia.WithGloasForkOverride(fulu, "0x90000099");
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(spec.ForkAtEpoch(fulu - 1), Is.EqualTo(BeaconFork.Electra));
-            Assert.That(spec.ForkAtEpoch(fulu), Is.EqualTo(BeaconFork.Gloas));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(spec.ForkAtEpoch(fulu - 1), Is.EqualTo(BeaconFork.Electra));
+        Assert.That(spec.ForkAtEpoch(fulu), Is.EqualTo(BeaconFork.Gloas));
     }
 
     [Test]
@@ -134,11 +124,9 @@ public class GloasForkOverrideTests
         InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(
             () => BeaconChainSpec.Sepolia.WithGloasForkOverride(epoch, version))!;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(ex.Message, Does.Contain("BeaconChain.GloasFork"));
-            Assert.That(ex.Message, Does.Contain(expected));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ex.Message, Does.Contain("BeaconChain.GloasFork"));
+        Assert.That(ex.Message, Does.Contain(expected));
     }
 
     [Test]
@@ -168,12 +156,10 @@ public class GloasForkOverrideTests
 
         BeaconChainSpec spec = container.Resolve<BeaconChainSpec>();
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(spec.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
-            Assert.That(spec.ForkAtEpoch(OverrideEpoch), Is.EqualTo(BeaconFork.Gloas));
-            Assert.That(spec.GloasForkVersion, Is.EqualTo(Bytes.FromHexString("0x80000910")));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(spec.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
+        Assert.That(spec.ForkAtEpoch(OverrideEpoch), Is.EqualTo(BeaconFork.Gloas));
+        Assert.That(spec.GloasForkVersion, Is.EqualTo(Bytes.FromHexString("0x80000910")));
     }
 
     [Test]

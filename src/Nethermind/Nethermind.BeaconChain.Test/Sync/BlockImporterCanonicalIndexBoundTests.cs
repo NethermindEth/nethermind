@@ -29,12 +29,10 @@ public class BlockImporterCanonicalIndexBoundTests
         Task<Hash256> head = Task.Run(restarted.ComputeHead);
 
         Assert.That(head.Wait(TimeSpan.FromSeconds(30)), Is.True, "the head change is still walking toward the corrupted top slot");
-        Assert.Multiple(() =>
-        {
-            Assert.That(head.Result, Is.EqualTo(restarted.Chain.AnchorRoot));
-            Assert.That(restarted.CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { restarted.Chain.AnchorRoot, null, null, null }));
-            Assert.That(restarted.Store.GetCanonicalIndexTopSlot(), Is.EqualTo(0UL), "the recorded top slot is repaired to the head's");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head.Result, Is.EqualTo(restarted.Chain.AnchorRoot));
+        Assert.That(restarted.CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { restarted.Chain.AnchorRoot, null, null, null }));
+        Assert.That(restarted.Store.GetCanonicalIndexTopSlot(), Is.EqualTo(0UL), "the recorded top slot is repaired to the head's");
     }
 
     /// <summary>
@@ -53,10 +51,8 @@ public class BlockImporterCanonicalIndexBoundTests
 
         restarted.ComputeHead();
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(restarted.Store.TryGetCanonicalRoot(staleSlot, out _), Is.False, "the entry above the new head is still marked canonical");
-            Assert.That(restarted.CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { restarted.Chain.AnchorRoot, null, null, null }));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(restarted.Store.TryGetCanonicalRoot(staleSlot, out _), Is.False, "the entry above the new head is still marked canonical");
+        Assert.That(restarted.CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { restarted.Chain.AnchorRoot, null, null, null }));
     }
 }

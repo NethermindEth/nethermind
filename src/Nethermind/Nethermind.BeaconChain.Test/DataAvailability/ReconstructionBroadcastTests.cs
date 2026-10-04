@@ -40,14 +40,12 @@ public class ReconstructionBroadcastTests
 
         IReadOnlyList<ReconstructedSidecarToPublish> newlyReconstructed = ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(newlyReconstructed, Has.Count.EqualTo(Eip7594DasConstants.NumberOfColumns - 3));
-            Assert.That(newlyReconstructed.Select(e => e.Sidecar.Index), Does.Not.Contain(0ul));
-            Assert.That(newlyReconstructed.Select(e => e.Sidecar.Index), Does.Not.Contain(3ul));
-            Assert.That(newlyReconstructed.Select(e => e.Sidecar.Index), Does.Not.Contain(126ul));
-            Assert.That(newlyReconstructed.Select(e => e.Sidecar.Index), Does.Contain(1ul));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(newlyReconstructed, Has.Count.EqualTo(Eip7594DasConstants.NumberOfColumns - 3));
+        Assert.That(newlyReconstructed.Select(e => e.Sidecar.Index), Does.Not.Contain(0ul));
+        Assert.That(newlyReconstructed.Select(e => e.Sidecar.Index), Does.Not.Contain(3ul));
+        Assert.That(newlyReconstructed.Select(e => e.Sidecar.Index), Does.Not.Contain(126ul));
+        Assert.That(newlyReconstructed.Select(e => e.Sidecar.Index), Does.Contain(1ul));
     }
 
     [Test]
@@ -60,16 +58,14 @@ public class ReconstructionBroadcastTests
         Assert.That(newlyReconstructed, Has.Count.EqualTo(Eip7594DasConstants.NumberOfColumns));
         // fulu/p2p-interface.md compute_subnet_for_data_column_sidecar: column_index % 128 subnets, so column i goes to subnet i.
         (ulong Column, ulong Subnet)[] expectedSubnets = [.. Enumerable.Range(0, 128).Select(static i => ((ulong)i, (ulong)i))];
-        Assert.Multiple(() =>
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        foreach (ReconstructedSidecarToPublish entry in newlyReconstructed)
         {
-            foreach (ReconstructedSidecarToPublish entry in newlyReconstructed)
-            {
-                Assert.That(entry.Slot, Is.EqualTo(Slot));
-                Assert.That(entry.ProposerIndex, Is.EqualTo(ProposerIndex));
-            }
+            Assert.That(entry.Slot, Is.EqualTo(Slot));
+            Assert.That(entry.ProposerIndex, Is.EqualTo(ProposerIndex));
+        }
 
-            Assert.That(newlyReconstructed.Select(static e => (e.Sidecar.Index, e.Subnet)), Is.EquivalentTo(expectedSubnets));
-        });
+        Assert.That(newlyReconstructed.Select(static e => (e.Sidecar.Index, e.Subnet)), Is.EquivalentTo(expectedSubnets));
     }
 
     [Test]
