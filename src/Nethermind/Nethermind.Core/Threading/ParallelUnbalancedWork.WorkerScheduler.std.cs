@@ -33,7 +33,7 @@ public partial class ParallelUnbalancedWork
             Concurrency = concurrency;
             Parent = parent;
             Group = group ?? parent?.Group;
-            _schedule = parent is null ? schedule ?? QueueToThreadPool : parent.ScheduleChildRunner;
+            _schedule = parent is null ? schedule ?? (DirectRunnerPool.Count > 0 ? DirectRunnerPool.Queue : QueueToThreadPool) : parent.ScheduleChildRunner;
         }
 
         private static long s_lingerUntil;

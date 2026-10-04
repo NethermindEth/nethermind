@@ -309,6 +309,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 finally
                 {
+                    Core.Diagnostics.NewPayloadTrace.Stamp(Core.Diagnostics.NewPayloadTrace.RecoveryDone);
                     lock (_gate)
                     {
                         _completed = true;

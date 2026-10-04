@@ -25,6 +25,9 @@ public static class ExperimentKnobs
     /// <summary>Trie warmer processors allowed while the block's transactions execute (0 = no cap); all of them after.</summary>
     public static readonly int TrieWarmExecutionCap = Int("NETHERMIND_EXP_TRIE_WARM_EXEC_CAP", 0);
 
+    /// <summary>Parked threads that fan-outs wake directly instead of through the thread pool (0 = off).</summary>
+    public static readonly int DirectRunners = Int("NETHERMIND_EXP_DIRECT_RUNNERS", 0);
+
     /// <summary>RocksDB compaction threads (background compactions and the low-priority pool); 0 keeps ProcessorCount.</summary>
     public static readonly int RocksCompactionThreads = Int("NETHERMIND_EXP_ROCKS_COMPACTION_THREADS", 0);
 

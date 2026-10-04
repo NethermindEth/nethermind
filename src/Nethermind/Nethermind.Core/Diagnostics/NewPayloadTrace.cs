@@ -26,16 +26,19 @@ public static class NewPayloadTrace
         // Block-end state work on the processing thread: commit with roots, then the state root.
         MerkleStart = 25, JournalDone = 26, StorageRootsDone = 27, AccountsFlushed = 28, AccountsInserted = 29, StateRootDone = 30,
         // Request-thread checkpoints between the decoded block and its suggestion.
-        HashChecked = 31, ParentFound = 32, ParentReady = 33, ShouldProcess = 34, Validated = 35;
+        HashChecked = 31, ParentFound = 32, ParentReady = 33, ShouldProcess = 34, Validated = 35,
+        // Early sender recovery finished.
+        RecoveryDone = 36;
 
-    private const int Count = 36;
+    private const int Count = 37;
     private static readonly string[] Names =
     [
         "http", "body", "entry", "locked", "gcregion", "handle", "decoded", "presuggest", "suggested", "enqueue", "dequeued",
         "branch", "p1start", "txsdone", "p1end", "verdict", "resumed", "handleend", "response", "commit", "branchend",
         "recdecoded", "recstarted", "txsdecoded", "txrootjoined",
         "mstart", "mjournal", "mstorage", "mflush", "minsert", "mroot",
-        "hashok", "parent", "parentok", "shouldok", "validated"
+        "hashok", "parent", "parentok", "shouldok", "validated",
+        "recdone"
     ];
 
     public const int StorageTries = 0, StorageSlots = 1, AccountsWritten = 2;
