@@ -201,30 +201,6 @@ internal static class GloasForkChoiceStepDriver
             Attempt(() => context.Runner.OnAttesterSlashing(slashing, verifySignatures: true)));
     }
 
-    private static Exception? Attempt(Action action)
-    {
-        try
-        {
-            action();
-            return null;
-        }
-        catch (Exception ex)
-        {
-            return ex;
-        }
-    }
-
-    /// <summary>An expected rejection that came from anything but a spec assertion is a crash the vector happened to want, not a pass.</summary>
-    private static void AssertVerdict(string subject, bool expectedValid, Exception? rejection)
-    {
-        if (rejection is null && !expectedValid)
-            Assert.Fail($"{subject} was expected to be REJECTED but the driver accepted it");
-        if (rejection is not null && expectedValid)
-            Assert.Fail($"{subject} was expected to be accepted but the driver rejected it: {rejection.Message}");
-        if (rejection is not null && !FuluDriverSupport.IsSpecRejection(rejection))
-            Assert.Fail($"{subject} was rejected by {rejection.GetType().Name} rather than a spec assertion: {rejection}");
-    }
-
     private static void RunChecksStep(Context context, YamlMappingNode checks, int stepIndex)
     {
         ForkChoiceRunner runner = context.Runner;
@@ -280,11 +256,5 @@ internal static class GloasForkChoiceStepDriver
         IReadOnlyList<bool?> actual = key == "payload_timeliness_vote" ? votes.Timeliness : votes.DataAvailability;
         string[] actualText = [.. actual.Select(static v => v is bool b ? (b ? "true" : "false") : "null")];
         Assert.That(actualText, Is.EqualTo(expected), $"step {stepIndex}: checks.{key} for {root}");
-    }
-
-    private static void AssertEqual<T>(int stepIndex, string check, T expected, T actual)
-    {
-        if (!EqualityComparer<T>.Default.Equals(expected, actual))
-            Assert.Fail($"step {stepIndex}: checks.{check} expected {expected}, actual {actual}");
     }
 }
