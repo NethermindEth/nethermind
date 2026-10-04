@@ -41,7 +41,7 @@ public class DepositSignatureVerifierTests
         BlsPublicKey pubkey = kind switch
         {
             DepositKey.Valid => new BlsPublicKey(new Bls.P1(key).Compress()),
-            DepositKey.InfinityWithInfinitySignature or DepositKey.InfinityWithRealSignature => new BlsPublicKey(G1PointAtInfinity()),
+            DepositKey.InfinityWithInfinitySignature or DepositKey.InfinityWithRealSignature => new BlsPublicKey(GloasTestFixtures.G1PointAtInfinity()),
             // The compression flag is clear, so these bytes never decode as a G1 point.
             DepositKey.Undecodable => GloasTestFixtures.Pubkey(0x57),
             _ => GloasTestFixtures.Pubkey(0xff),
@@ -94,12 +94,5 @@ public class DepositSignatureVerifierTests
         DepositMessage.Merkleize(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = credentials, Amount = Amount }, out UInt256 root);
         Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, BeaconChainSpec.Mainnet.GenesisForkVersion, Hash256.Zero);
         return Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
-    }
-
-    private static byte[] G1PointAtInfinity()
-    {
-        byte[] bytes = new byte[BlsPublicKey.Length];
-        bytes[0] = 0xc0;
-        return bytes;
     }
 }
