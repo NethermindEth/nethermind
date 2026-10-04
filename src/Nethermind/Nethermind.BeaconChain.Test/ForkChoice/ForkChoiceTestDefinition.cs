@@ -100,6 +100,14 @@ public sealed class ForkChoiceTestDefinition
     public required CheckpointRef FinalizedCheckpoint { get; init; }
     public required IReadOnlyList<Operation> Operations { get; init; }
 
+    internal static ForkChoiceTestDefinition Create(CheckpointRef anchor, IReadOnlyList<Operation> operations) => new()
+    {
+        FinalizedBlockSlot = 0,
+        JustifiedCheckpoint = anchor,
+        FinalizedCheckpoint = anchor,
+        Operations = operations,
+    };
+
     public void Run()
     {
         ProtoArrayForkChoice forkChoice = new(

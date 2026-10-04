@@ -104,12 +104,6 @@ public static class VotesTestDefinition
             new FindHead(justified5, justified5, twoValidators, GetRoot(11)),
         ];
 
-        return new ForkChoiceTestDefinition
-        {
-            FinalizedBlockSlot = 0,
-            JustifiedCheckpoint = anchor,
-            FinalizedCheckpoint = anchor,
-            Operations = operations,
-        };
+        return ForkChoiceTestDefinition.Create(anchor, operations);
     }
 }

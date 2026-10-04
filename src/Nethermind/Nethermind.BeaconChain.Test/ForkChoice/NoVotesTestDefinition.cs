@@ -51,12 +51,6 @@ public static class NoVotesTestDefinition
             new FindHead(GetCheckpoint(2), genesis, balances, GetRoot(6)),
         ];
 
-        return new ForkChoiceTestDefinition
-        {
-            FinalizedBlockSlot = 0,
-            JustifiedCheckpoint = genesis,
-            FinalizedCheckpoint = genesis,
-            Operations = operations,
-        };
+        return ForkChoiceTestDefinition.Create(genesis, operations);
     }
 }

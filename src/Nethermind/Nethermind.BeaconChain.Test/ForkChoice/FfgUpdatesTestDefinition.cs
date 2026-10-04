@@ -31,13 +31,7 @@ public static class FfgUpdatesTestDefinition
             new FindHead(GetCheckpoint(2), GetCheckpoint(1), balances, GetRoot(3)),
         ];
 
-        return new ForkChoiceTestDefinition
-        {
-            FinalizedBlockSlot = 0,
-            JustifiedCheckpoint = GetCheckpoint(0),
-            FinalizedCheckpoint = GetCheckpoint(0),
-            Operations = operations,
-        };
+        return ForkChoiceTestDefinition.Create(GetCheckpoint(0), operations);
     }
 
     public static ForkChoiceTestDefinition GetCase02()
@@ -94,12 +88,6 @@ public static class FfgUpdatesTestDefinition
             new FindHead(new(3, GetRoot(6)), GetCheckpoint(0), balances, GetRoot(10)),
         ];
 
-        return new ForkChoiceTestDefinition
-        {
-            FinalizedBlockSlot = 0,
-            JustifiedCheckpoint = GetCheckpoint(0),
-            FinalizedCheckpoint = GetCheckpoint(0),
-            Operations = operations,
-        };
+        return ForkChoiceTestDefinition.Create(GetCheckpoint(0), operations);
     }
 }
