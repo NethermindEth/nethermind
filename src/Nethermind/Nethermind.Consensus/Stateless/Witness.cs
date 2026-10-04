@@ -78,7 +78,8 @@ public static class WitnessExtensions
 
                     if (i + 1 < headersSpan.Length)
                     {
-                        previousHeaderHash = ValueKeccak.Compute(headers[i]);
+                        // The decoder hashes the header's own RLP, which is the whole of headers[i] once CheckEnd passed.
+                        previousHeaderHash = decodedHeaders[i].Hash?.ValueHash256 ?? ValueKeccak.Compute(headers[i]);
                     }
                 }
 
