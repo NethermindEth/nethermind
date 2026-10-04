@@ -57,6 +57,12 @@ namespace Nethermind.Trie
             return ref nodeData![i];
         }
 
+        /// <summary>Whether this node awaits its hash, dirty, with <paramref name="child"/>, also unhashed, in slot <paramref name="i"/>.</summary>
+        /// <remarks>Such a node gains nothing from <see cref="SetChild"/> with that child: the slot and hash stay as they are.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool IsPendingWith(int i, TrieNode child) =>
+            Keccak is null && child.Keccak is null && IsDirty && ReferenceEquals(DataItem(i), child);
+
         public long GetMemorySize(bool recursive)
         {
             int keccakSize = Keccak is null ? MemorySizes.RefSize : MemorySizes.RefSize + Hash256.MemorySize;

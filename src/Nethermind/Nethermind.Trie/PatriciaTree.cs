@@ -691,6 +691,13 @@ namespace Nethermind.Trie
                 TrieNode? child = node;
                 node = cStack.Node;
 
+                if (IsUnchangedPendingLevel(node, cStack.ChildIdx, cStack.OriginalChild, child))
+                {
+                    path.TruncateMut(originalPathLength);
+                    traverseStack.Clear();
+                    return originalNode;
+                }
+
                 if (node.IsExtension)
                 {
                     if (TracksPath) path.TruncateMut(path.Length - node.Key!.Length);
