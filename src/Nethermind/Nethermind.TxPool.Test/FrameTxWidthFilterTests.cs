@@ -251,22 +251,14 @@ public class FrameTxWidthFilterTests
         Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)50_000), "earned width never rises above the cap");
     }
 
-    [Test]
-    public void SenderWidthCache_FirstEarnClampsToTheCap()
+    [TestCase(50_000ul, 50_000ul, TestName = "a single earn above the cap is held at it")]
+    [TestCase(0ul, 90_000ul, TestName = "a zero cap lifts the ceiling")]
+    public void SenderWidthCache_FirstEarnHonoursTheCap(ulong widthCap, ulong expected)
     {
         SenderWidthCache cache = new();
-        cache.Earn(Sender, 90_000, widthCap: 50_000);
+        cache.Earn(Sender, 90_000, widthCap: widthCap);
 
-        Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)50_000), "a single earn above the cap is held at it");
-    }
-
-    [Test]
-    public void SenderWidthCache_ZeroCapLiftsTheCeiling()
-    {
-        SenderWidthCache cache = new();
-        cache.Earn(Sender, 90_000, widthCap: 0);
-
-        Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)90_000), "a zero cap lifts the ceiling");
+        Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)expected));
     }
 
     [Test]
