@@ -66,12 +66,10 @@ public class StatusFallbackTests
         (Exception? thrown, StatusMessageV2? answer, ISession session) = await RequestStatusAsync(v2Error, caller.Token);
 
         int v1Dials = session.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(ISession.DialAsync) && c.GetMethodInfo().GetGenericArguments()[0] == typeof(StatusProtocolV1));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(v1Dials, Is.EqualTo(fallsBack ? 1 : 0), "v1 dials");
-            Assert.That(answer?.HeadSlot, Is.EqualTo(fallsBack ? V1Answer.HeadSlot : null), "the v1 answer is returned when v1 is tried");
-            Assert.That(thrown, fallsBack ? Is.Null : Is.SameAs(v2Error), "a failure that is no reason to try v1 reaches the caller unchanged");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(v1Dials, Is.EqualTo(fallsBack ? 1 : 0), "v1 dials");
+        Assert.That(answer?.HeadSlot, Is.EqualTo(fallsBack ? V1Answer.HeadSlot : null), "the v1 answer is returned when v1 is tried");
+        Assert.That(thrown, fallsBack ? Is.Null : Is.SameAs(v2Error), "a failure that is no reason to try v1 reaches the caller unchanged");
     }
 
     [Test]
@@ -83,11 +81,9 @@ public class StatusFallbackTests
 
         (Exception? thrown, StatusMessageV2? answer, _) = await RequestStatusAsync(new AggregateException(decodeFailure), token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(thrown, Is.Null);
-            Assert.That(answer?.HeadSlot, Is.EqualTo(V1Answer.HeadSlot));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(thrown, Is.Null);
+        Assert.That(answer?.HeadSlot, Is.EqualTo(V1Answer.HeadSlot));
     }
 
     [Test]
@@ -110,14 +106,12 @@ public class StatusFallbackTests
         if (earliestSource) holder.EarliestAvailableSlotSource = () => 11;
         Assert.That(holder.CurrentStatus.ForkDigest, Is.EqualTo(ForkDigest.Compute(spec, epoch - 1)));
         time.Set(DateTime.UnixEpoch.AddSeconds(seconds));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(holder.CurrentStatus.ForkDigest, Is.EqualTo(ForkDigest.Compute(spec, epoch)));
-            Assert.That(holder.CurrentHead.Status.ForkDigest, Is.EqualTo(ForkDigest.Compute(spec, epoch)));
-            Assert.That(holder.CurrentHead.FullHeadRoot, Is.EqualTo(head));
-            Assert.That(holder.CurrentStatus.HeadSlot, Is.EqualTo(42));
-            Assert.That(holder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(earliestSource ? 11 : 10));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(holder.CurrentStatus.ForkDigest, Is.EqualTo(ForkDigest.Compute(spec, epoch)));
+        Assert.That(holder.CurrentHead.Status.ForkDigest, Is.EqualTo(ForkDigest.Compute(spec, epoch)));
+        Assert.That(holder.CurrentHead.FullHeadRoot, Is.EqualTo(head));
+        Assert.That(holder.CurrentStatus.HeadSlot, Is.EqualTo(42));
+        Assert.That(holder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(earliestSource ? 11 : 10));
     }
 
     private static async Task<(Exception? Thrown, StatusMessageV2? Answer, ISession Session)> RequestStatusAsync(Exception v2Error, CancellationToken token)

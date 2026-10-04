@@ -55,16 +55,14 @@ public partial class BeaconSyncOrchestratorTests
 
         await harness.Orchestrator.ProcessQueuedAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(waiting, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
-            Assert.That(queuedForUnrelatedRoot, Is.Zero);
-            Assert.That(importsBeforeColumns, Is.EqualTo(1));
-            Assert.That(harness.Importer.Envelopes, Has.Count.EqualTo(2), "retried once the columns were held");
-            Assert.That(harness.EnvelopePool.TryGet(root, out _), Is.True, "the retry recorded the payload");
-            Assert.That(harness.Importer.Ticks, Has.Count.EqualTo(ticksBeforeColumns), "no slot tick ran");
-            Assert.That(sidecars.WatchCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(waiting, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
+        Assert.That(queuedForUnrelatedRoot, Is.Zero);
+        Assert.That(importsBeforeColumns, Is.EqualTo(1));
+        Assert.That(harness.Importer.Envelopes, Has.Count.EqualTo(2), "retried once the columns were held");
+        Assert.That(harness.EnvelopePool.TryGet(root, out _), Is.True, "the retry recorded the payload");
+        Assert.That(harness.Importer.Ticks, Has.Count.EqualTo(ticksBeforeColumns), "no slot tick ran");
+        Assert.That(sidecars.WatchCount, Is.Zero);
     }
 
     /// <summary>A parked candidate for a column the availability check never reached stays pending across the deferral, so it counts as held when the wait starts.</summary>
@@ -87,12 +85,10 @@ public partial class BeaconSyncOrchestratorTests
         int queued = harness.Orchestrator.QueuedWorkCount;
         await harness.Orchestrator.ProcessQueuedAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(waiting, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
-            Assert.That(queued, Is.EqualTo(1), "the parked column is not waited for again");
-            Assert.That(harness.Importer.Envelopes, Has.Count.EqualTo(2), "retried with no tick");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(waiting, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
+        Assert.That(queued, Is.EqualTo(1), "the parked column is not waited for again");
+        Assert.That(harness.Importer.Envelopes, Has.Count.EqualTo(2), "retried with no tick");
     }
 
     /// <summary>An envelope that ages out of parking must free the pool's watch, or one is kept per expired root for the process lifetime.</summary>
@@ -106,11 +102,9 @@ public partial class BeaconSyncOrchestratorTests
 
         await TickAtAgeAsync(harness, RetryAgeSlots + 1, () => 0);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(whileParked, Is.EqualTo(1));
-            Assert.That(sidecars.WatchCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(whileParked, Is.EqualTo(1));
+        Assert.That(sidecars.WatchCount, Is.Zero);
     }
 
     private async Task<(Harness Harness, DataColumnSidecarPool Sidecars, Hash256 Root, IReadOnlyList<ulong> Sampled, ExecutionPayloadEnvelopeImportResult? Waiting)> DeferGloasEnvelopeAsync(

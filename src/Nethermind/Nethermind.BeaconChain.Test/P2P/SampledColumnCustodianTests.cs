@@ -69,16 +69,14 @@ public class SampledColumnCustodianTests
         bool bystanderAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(bystander.P2P), token, Enr(partialKey, bystander, Eip7594DasConstants.CustodyRequirement));
         bool supernodeAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(supernode.P2P), token, Enr(supernodeKey, supernode, Eip7594DasConstants.NumberOfCustodyGroups));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(uncustodied, Is.Not.Empty, "a CUSTODY_REQUIREMENT peer custodies fewer columns than this node samples");
-            Assert.That(wantedWithOnePeer, Is.EqualTo(uncustodied), "discovery is asked for exactly the sampled columns no connected peer custodies");
-            Assert.That(admission.IsCompletedSuccessfully, Is.True, "at the target, a missing custodian still opens room for a dial");
-            Assert.That(bystanderAdmitted, Is.False, "past the target, a candidate custodying no wanted column is not dialed");
-            Assert.That(supernodeAdmitted, Is.True, "past the target, a candidate custodying a wanted column is dialed");
-            Assert.That(peerManager.PeerCount, Is.EqualTo(2));
-            Assert.That(discovery.WantedColumns, Is.Empty, "the supernode custodies every column");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(uncustodied, Is.Not.Empty, "a CUSTODY_REQUIREMENT peer custodies fewer columns than this node samples");
+        Assert.That(wantedWithOnePeer, Is.EqualTo(uncustodied), "discovery is asked for exactly the sampled columns no connected peer custodies");
+        Assert.That(admission.IsCompletedSuccessfully, Is.True, "at the target, a missing custodian still opens room for a dial");
+        Assert.That(bystanderAdmitted, Is.False, "past the target, a candidate custodying no wanted column is not dialed");
+        Assert.That(supernodeAdmitted, Is.True, "past the target, a candidate custodying a wanted column is dialed");
+        Assert.That(peerManager.PeerCount, Is.EqualTo(2));
+        Assert.That(discovery.WantedColumns, Is.Empty, "the supernode custodies every column");
     }
 
     /// <summary>fulu/p2p-interface.md: the ENR's <c>cgc</c> tells a peer's custody before its metadata does, so it stands until metadata answers.</summary>
@@ -105,11 +103,9 @@ public class SampledColumnCustodianTests
 
         bool admitted = await peerManager.TryAddPeerAsync(address, token, Enr(supernodeKey, PortOf(address), Eip7594DasConstants.NumberOfCustodyGroups));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(admitted, Is.True);
-            Assert.That(discovery.WantedColumns, Is.Empty, "the ENR advertises custody of every column");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(admitted, Is.True);
+        Assert.That(discovery.WantedColumns, Is.Empty, "the ENR advertises custody of every column");
     }
 
     [Test]
@@ -181,12 +177,10 @@ public class SampledColumnCustodianTests
         await peerManager.RunMaintenanceRoundAsync(token);
 
         string[] drops = [.. logger.Messages.Where(static l => l.StartsWith("Dropping beacon chain peer", StringComparison.Ordinal))];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(peerManager.PeerCount, Is.Zero, "the failed health check that makes eight consecutive failures drops the peer");
-            Assert.That(drops, Has.Length.EqualTo(1));
-            Assert.That(drops.Single(), Does.Match(@"repeated failures, last: .+"), "the drop names the failure that caused it");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(peerManager.PeerCount, Is.Zero, "the failed health check that makes eight consecutive failures drops the peer");
+        Assert.That(drops, Has.Length.EqualTo(1));
+        Assert.That(drops.Single(), Does.Match(@"repeated failures, last: .+"), "the drop names the failure that caused it");
     }
 
     [Test]
@@ -228,15 +222,13 @@ public class SampledColumnCustodianTests
         PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
         ulong[] onlySupernodeCustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(wantedWhileHealthy, Is.Empty, "the supernode custodies every sampled column");
-            Assert.That(parkedWhileHealthy, Is.True, "at the target with every sampled column custodied, no room is opened");
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a peer failing its health checks cannot serve columns, so being the last custodian does not keep it");
-            Assert.That(onlySupernodeCustodied, Is.Not.Empty);
-            Assert.That(discovery.WantedColumns, Is.EqualTo(onlySupernodeCustodied), "the columns only the dropped peer custodied are sought through discovery");
-            Assert.That(wokenByShortfall, Is.True, "the parked admission wait wakes once a sampled column loses its custodian");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(wantedWhileHealthy, Is.Empty, "the supernode custodies every sampled column");
+        Assert.That(parkedWhileHealthy, Is.True, "at the target with every sampled column custodied, no room is opened");
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a peer failing its health checks cannot serve columns, so being the last custodian does not keep it");
+        Assert.That(onlySupernodeCustodied, Is.Not.Empty);
+        Assert.That(discovery.WantedColumns, Is.EqualTo(onlySupernodeCustodied), "the columns only the dropped peer custodied are sought through discovery");
+        Assert.That(wokenByShortfall, Is.True, "the parked admission wait wakes once a sampled column loses its custodian");
     }
 
     /// <summary>
@@ -274,16 +266,14 @@ public class SampledColumnCustodianTests
         bool replacementAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(replacement.P2P), token, Enr(replacementKey, replacement, Eip7594DasConstants.NumberOfCustodyGroups));
         await peerManager.RunMaintenanceRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(uncustodiedWhileHealthy, Is.Empty);
-            Assert.That(onlyFailingCustodied, Is.Not.Empty);
-            Assert.That(picked, Is.EqualTo(new[] { LoopbackAddress(partial.P2P) }), "a peer at the failure limit is not picked for requests");
-            Assert.That(connected, Is.EqualTo(2), "the last custodian of a sampled column stays connected");
-            Assert.That(uncustodied, Is.EqualTo(onlyFailingCustodied), "the columns only the failing peer custodies are sought");
-            Assert.That(replacementAdmitted, Is.True, "at the target, a custodian of those columns is admitted");
-            Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Does.Not.Contain(LoopbackAddress(failing.P2P)), "a passing health check does not make the peer selectable again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(uncustodiedWhileHealthy, Is.Empty);
+        Assert.That(onlyFailingCustodied, Is.Not.Empty);
+        Assert.That(picked, Is.EqualTo(new[] { LoopbackAddress(partial.P2P) }), "a peer at the failure limit is not picked for requests");
+        Assert.That(connected, Is.EqualTo(2), "the last custodian of a sampled column stays connected");
+        Assert.That(uncustodied, Is.EqualTo(onlyFailingCustodied), "the columns only the failing peer custodies are sought");
+        Assert.That(replacementAdmitted, Is.True, "at the target, a custodian of those columns is admitted");
+        Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Does.Not.Contain(LoopbackAddress(failing.P2P)), "a passing health check does not make the peer selectable again");
     }
 
     /// <summary>
@@ -382,18 +372,16 @@ public class SampledColumnCustodianTests
         bool candidateAdmitted = await peerManager.TryAddPeerAsync(candidateAddress, token, candidateEnr);
         bool replaces = ceilingCase == CeilingCase.ConnectedCustodiesNoSampledColumn;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(admissionOpened, Is.True, "at the ceiling, a sampled column without a custodian still opens room for a dial");
-            Assert.That(candidateAdmitted, Is.EqualTo(replaces));
-            Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Is.EqualTo(new[] { replaces ? candidateAddress : LoopbackAddress(connected.P2P) }),
-                ceilingCase switch
-                {
-                    CeilingCase.ConnectedIsLastCustodian => "the last custodian of a sampled column is not dropped to make room",
-                    CeilingCase.CandidateUnreachable => "a candidate that cannot be reached takes no connected peer's place",
-                    _ => "the peer custodying no sampled column made room for the candidate",
-                });
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(admissionOpened, Is.True, "at the ceiling, a sampled column without a custodian still opens room for a dial");
+        Assert.That(candidateAdmitted, Is.EqualTo(replaces));
+        Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Is.EqualTo(new[] { replaces ? candidateAddress : LoopbackAddress(connected.P2P) }),
+            ceilingCase switch
+            {
+                CeilingCase.ConnectedIsLastCustodian => "the last custodian of a sampled column is not dropped to make room",
+                CeilingCase.CandidateUnreachable => "a candidate that cannot be reached takes no connected peer's place",
+                _ => "the peer custodying no sampled column made room for the candidate",
+            });
     }
 
     /// <summary>
@@ -424,12 +412,10 @@ public class SampledColumnCustodianTests
         int afterLanding = peerManager.PeerCount;
         await peerManager.RunMaintenanceRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(lateAdmitted, Is.True);
-            Assert.That(afterLanding, Is.EqualTo(2), "a dial that replaces no peer drops none");
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "the trim brings the pool back to the ceiling");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(lateAdmitted, Is.True);
+        Assert.That(afterLanding, Is.EqualTo(2), "a dial that replaces no peer drops none");
+        Assert.That(peerManager.PeerCount, Is.EqualTo(1), "the trim brings the pool back to the ceiling");
     }
 
     private static Task<bool> AdmitAsync(PeerManager peerManager, Node node, CancellationToken token) =>

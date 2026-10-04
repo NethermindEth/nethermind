@@ -88,28 +88,26 @@ public class CheckpointSyncRetryTests
         Task<CheckpointAnchor> run = sync.RunAsync(CancellationToken.None);
         CheckpointAnchor anchor = failure == DownloadFailure.ServerError ? await run : await run.WaitAsync(RunBound);
         (string Level, string Text)[] retries = [.. logs.Lines.Where(static l => l.Text.Contains("failed on attempt"))];
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(provider.StateRequests, Is.EqualTo(anchorFailure ? 1 : 2));
+        if (anchorFailure)
         {
-            Assert.That(provider.StateRequests, Is.EqualTo(anchorFailure ? 1 : 2));
-            if (anchorFailure)
+            Assert.That(anchor.Block, Is.Not.Null);
+            Assert.That(provider.BlockRequests, Is.EqualTo(2));
+            Assert.That(logs.Lines.Where(static l => l.Text.Contains("anchor block download failed on attempt 1")), Has.Exactly(1).Items);
+        }
+        else if (failure != DownloadFailure.ServerError)
+        {
+            Assert.That(anchor.BlockRoot, Is.EqualTo(ForkCrossingChain.Instance.First.Root));
+            Assert.That(retries, Has.Length.EqualTo(1));
+            if (failure == DownloadFailure.HeadersStall)
+                Assert.That(retries[0].Text, Is.EqualTo("Checkpoint state download failed on attempt 1 of 5: No response headers arrived for 2 s; retrying in 0 s."));
+            else
             {
-                Assert.That(anchor.Block, Is.Not.Null);
-                Assert.That(provider.BlockRequests, Is.EqualTo(2));
-                Assert.That(logs.Lines.Where(static l => l.Text.Contains("anchor block download failed on attempt 1")), Has.Exactly(1).Items);
-            }
-            else if (failure != DownloadFailure.ServerError)
-            {
-                Assert.That(anchor.BlockRoot, Is.EqualTo(ForkCrossingChain.Instance.First.Root));
-                Assert.That(retries, Has.Length.EqualTo(1));
-                if (failure == DownloadFailure.HeadersStall)
-                    Assert.That(retries[0].Text, Is.EqualTo("Checkpoint state download failed on attempt 1 of 5: No response headers arrived for 2 s; retrying in 0 s."));
-                else
-                {
-                    Assert.That(store.TryGetAnchor(out _, out _), Is.True);
-                    Assert.That(retries[0].Level, Is.EqualTo("Info"));
-                    Assert.That(retries[0].Text, Does.Not.Contain("Exception").And.Not.Contain("\n").And.Not.Contain(" at "));
-                    if (failure == DownloadFailure.StateStall) Assert.That(retries[0].Text, Does.Contain("No data arrived for 10 s"));
-                }
+                Assert.That(store.TryGetAnchor(out _, out _), Is.True);
+                Assert.That(retries[0].Level, Is.EqualTo("Info"));
+                Assert.That(retries[0].Text, Does.Not.Contain("Exception").And.Not.Contain("\n").And.Not.Contain(" at "));
+                if (failure == DownloadFailure.StateStall) Assert.That(retries[0].Text, Does.Contain("No data arrived for 10 s"));
             }
         }
     }
@@ -125,12 +123,10 @@ public class CheckpointSyncRetryTests
 
         CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None).WaitAsync(RunBound);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(anchor.BlockRoot, Is.EqualTo(ForkCrossingChain.Instance.First.Root));
-            Assert.That(provider.StateRequests, Is.EqualTo(1), "a slow but steady state is read in one request");
-            Assert.That(logs.Lines.Where(static l => l.Text.Contains("failed on attempt")), Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(anchor.BlockRoot, Is.EqualTo(ForkCrossingChain.Instance.First.Root));
+        Assert.That(provider.StateRequests, Is.EqualTo(1), "a slow but steady state is read in one request");
+        Assert.That(logs.Lines.Where(static l => l.Text.Contains("failed on attempt")), Is.Empty);
     }
 
     [Test]
@@ -174,12 +170,10 @@ public class CheckpointSyncRetryTests
         await stop.CancelAsync();
 
         await Assert.ThatAsync(() => run.WaitAsync(TimeSpan.FromSeconds(10), token), Throws.InstanceOf<OperationCanceledException>(), "the waiting read ends on the stop");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(logs.Lines.Where(static l => l.Text.Contains("failed on attempt")), Is.Empty, "a stop is not retried");
-            Assert.That(pool.Rented, Is.Positive);
-            Assert.That(pool.Outstanding, Is.Zero, "a stopped read returns its buffer");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(logs.Lines.Where(static l => l.Text.Contains("failed on attempt")), Is.Empty, "a stop is not retried");
+        Assert.That(pool.Rented, Is.Positive);
+        Assert.That(pool.Outstanding, Is.Zero, "a stopped read returns its buffer");
     }
 
     [TestCase(typeof(IOException), null, true)]
@@ -252,11 +246,9 @@ public class CheckpointSyncRetryTests
 
         await sync.RunAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.Rented, Is.GreaterThanOrEqualTo(2), "each attempt reads into the pool");
-            Assert.That(pool.Outstanding, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.Rented, Is.GreaterThanOrEqualTo(2), "each attempt reads into the pool");
+        Assert.That(pool.Outstanding, Is.Zero);
     }
 
     [Test]
@@ -316,11 +308,9 @@ public class CheckpointSyncRetryTests
         };
 
         IOException refusal = Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None).WaitAsync(RunBound))!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal.Message, Does.Contain("download deadline"));
-            Assert.That(pool.Outstanding, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal.Message, Does.Contain("download deadline"));
+        Assert.That(pool.Outstanding, Is.Zero);
     }
 
     [Test]
@@ -378,11 +368,9 @@ public class CheckpointSyncRetryTests
             Assert.That(length, Is.EqualTo(17));
             pool.Return(buffer);
         }
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.Outstanding, Is.Zero);
-            Assert.That(pool.LargestRequest, Is.LessThanOrEqualTo(17));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.Outstanding, Is.Zero);
+        Assert.That(pool.LargestRequest, Is.LessThanOrEqualTo(17));
     }
 
     private static CheckpointSync NewSync(FlakyCheckpointProvider provider, BeaconChainStore store, TestLogRecorder logs, int maxDownloadAttempts = 5, TimeSpan? retryBaseDelay = null, ArrayPool<byte>? bufferPool = null, TimeSpan? readStallTimeout = null, TimeSpan? responseHeadersTimeout = null) =>

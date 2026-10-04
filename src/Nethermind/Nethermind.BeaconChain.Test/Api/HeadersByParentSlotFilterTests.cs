@@ -74,12 +74,10 @@ public class HeadersByParentSlotFilterTests
 
         List<string> roots = await ListedRootsAsync(filterToBrokenSlot ? $"&slot={Slot + 2}" : "");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(roots, Does.Not.Contain(Broken.ToString()));
-            Assert.That(roots.Contains(Kept.ToString()), Is.EqualTo(!filterToBrokenSlot));
-            Assert.That(_log.LogList.Any(entry => entry.Contains(Broken.ToString())), Is.EqualTo(record != BrokenRecord.Missing));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(roots, Does.Not.Contain(Broken.ToString()));
+        Assert.That(roots.Contains(Kept.ToString()), Is.EqualTo(!filterToBrokenSlot));
+        Assert.That(_log.LogList.Any(entry => entry.Contains(Broken.ToString())), Is.EqualTo(record != BrokenRecord.Missing));
     }
 
     // A record whose slot prefix is valid but whose body is noise must fail as unreadable, whatever the noise.

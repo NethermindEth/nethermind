@@ -85,12 +85,10 @@ public class RangeSyncFailureReportingTests
 
         List<ForkedSignedBeaconBlock> imported = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(imported.Select(static b => b.Slot), Is.EqualTo(chain.Select(static b => b.Message!.Slot)));
-            Assert.That(requests, Is.EqualTo(new[] { (11UL, 2UL), (12UL, 1UL) }), "the retry starts after the kept block");
-            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(imported.Select(static b => b.Slot), Is.EqualTo(chain.Select(static b => b.Message!.Slot)));
+        Assert.That(requests, Is.EqualTo(new[] { (11UL, 2UL), (12UL, 1UL) }), "the retry starts after the kept block");
+        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
     }
 
     private static RangeSyncTests.StubPeer CreatePeer(string id, ulong headSlot, Func<ulong, ulong, SignedBeaconBlock[]> handler) =>

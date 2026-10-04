@@ -36,12 +36,10 @@ public class PeerRequestCooldownTests
         string[] justBeforeTheEnd = fixture.Listed;
         fixture.Time.Add(TimeSpan.FromSeconds(1));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(duringCooldown, Is.EqualTo(new[] { fixture.Behind.Id, fixture.Ahead.Id }), "the next batch does not pick the peer that just failed while another peer can serve");
-            Assert.That(justBeforeTheEnd, Is.EqualTo(duringCooldown));
-            Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id, fixture.Behind.Id }), "the cooldown is not a ban");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(duringCooldown, Is.EqualTo(new[] { fixture.Behind.Id, fixture.Ahead.Id }), "the next batch does not pick the peer that just failed while another peer can serve");
+        Assert.That(justBeforeTheEnd, Is.EqualTo(duringCooldown));
+        Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id, fixture.Behind.Id }), "the cooldown is not a ban");
     }
 
     // The window is short enough that a peer that recovered is used again within a few batches, and long enough to outlast the batch that failed.
@@ -56,11 +54,9 @@ public class PeerRequestCooldownTests
         string[] at29 = fixture.Listed;
         fixture.Time.Add(TimeSpan.FromSeconds(1));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(at29, Is.EqualTo(new[] { fixture.Behind.Id, fixture.Ahead.Id }));
-            Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id, fixture.Behind.Id }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(at29, Is.EqualTo(new[] { fixture.Behind.Id, fixture.Ahead.Id }));
+        Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id, fixture.Behind.Id }));
     }
 
     [Test]

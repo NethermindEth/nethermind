@@ -60,16 +60,14 @@ public class RangeSyncColumnCustodyTests
 
         await fixture.RunOneRoundAsync(peers, token);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        foreach (StubPeer peer in peers)
         {
-            foreach (StubPeer peer in peers)
-            {
-                Assert.That(peer.RequestedColumns.SelectMany(static c => c), Is.All.Matches<ulong>(peer.Custody.Custodies), $"{peer.Id} is asked only for columns it custodies");
-            }
-
-            Assert.That(peers.SelectMany(static p => p.RequestedColumns).SelectMany(static c => c), Is.EquivalentTo(sampled), "every sampled column is asked of exactly one custodian");
-            Assert.That(peers[2].ColumnRequests + peers[3].ColumnRequests, Is.Zero, "a peer custodying no missing column gets no request");
+            Assert.That(peer.RequestedColumns.SelectMany(static c => c), Is.All.Matches<ulong>(peer.Custody.Custodies), $"{peer.Id} is asked only for columns it custodies");
         }
+
+        Assert.That(peers.SelectMany(static p => p.RequestedColumns).SelectMany(static c => c), Is.EquivalentTo(sampled), "every sampled column is asked of exactly one custodian");
+        Assert.That(peers[2].ColumnRequests + peers[3].ColumnRequests, Is.Zero, "a peer custodying no missing column gets no request");
     }
 
     [Test]
@@ -138,14 +136,12 @@ public class RangeSyncColumnCustodyTests
         await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
         await orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((first, sameSlot), Is.EqualTo((BlockImportResult.DataUnavailable, BlockImportResult.DataUnavailable)));
-            Assert.That(requestsBeforeTick, Is.EqualTo(1), "the second deferral in the same slot does not fetch again");
-            Assert.That(custodian.RootColumnRequests, Is.EqualTo(2), "the slot tick's retry fetches again");
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the retry imports the block once its columns arrived");
-            Assert.That(bystander.RootColumnRequests, Is.Zero, "a peer custodying no sampled column is never asked");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((first, sameSlot), Is.EqualTo((BlockImportResult.DataUnavailable, BlockImportResult.DataUnavailable)));
+        Assert.That(requestsBeforeTick, Is.EqualTo(1), "the second deferral in the same slot does not fetch again");
+        Assert.That(custodian.RootColumnRequests, Is.EqualTo(2), "the slot tick's retry fetches again");
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the retry imports the block once its columns arrived");
+        Assert.That(bystander.RootColumnRequests, Is.Zero, "a peer custodying no sampled column is never asked");
     }
 
     /// <summary>An empty custodian set is a custody shortfall, not an earliest_available_slot problem, so the log names the columns and zero custodians.</summary>
@@ -167,13 +163,11 @@ public class RangeSyncColumnCustodyTests
             await DrainAsync(sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(log.Messages, Has.Some.Contains("0 custodians").And.Contains(fixture.Sampled[0].ToString()), "the shortfall names the missing columns");
-            Assert.That(log.Messages, Has.None.Contains("serve from"), "the earliest available slot is not what is wrong");
-            Assert.That(log.Messages, Has.None.Contains("Exception"));
-            Assert.That(bystander.ColumnRequests + bystander.RootColumnRequests, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(log.Messages, Has.Some.Contains("0 custodians").And.Contains(fixture.Sampled[0].ToString()), "the shortfall names the missing columns");
+        Assert.That(log.Messages, Has.None.Contains("serve from"), "the earliest available slot is not what is wrong");
+        Assert.That(log.Messages, Has.None.Contains("Exception"));
+        Assert.That(bystander.ColumnRequests + bystander.RootColumnRequests, Is.Zero);
     }
 
     /// <summary>A reply cut short keeps the reason it failed: a closed session must not read as a failed request, or the peer stays on a failure budget it can never work off.</summary>
@@ -204,12 +198,10 @@ public class RangeSyncColumnCustodyTests
 
         IReadOnlyList<ForkedSignedBeaconBlock> yielded = await fixture.RunOneRoundAsync([failing], token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded.Select(static b => b.Slot), Is.EqualTo(new[] { fixture.Chain.Block.Message!.Slot }));
-            Assert.That(failing.ColumnRequests, Is.EqualTo(1), "the lone custodian is not asked again");
-            Assert.That(fixture.Importer.Import(yielded[0], fixture.Chain.BlockRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.DataUnavailable));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded.Select(static b => b.Slot), Is.EqualTo(new[] { fixture.Chain.Block.Message!.Slot }));
+        Assert.That(failing.ColumnRequests, Is.EqualTo(1), "the lone custodian is not asked again");
+        Assert.That(fixture.Importer.Import(yielded[0], fixture.Chain.BlockRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.DataUnavailable));
     }
 
     /// <summary>A failed column request is logged for the operator, who searches logs for exceptions: the line names the cause's text, never a type name.</summary>
@@ -224,11 +216,9 @@ public class RangeSyncColumnCustodyTests
 
         await DrainAsync(sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(log.Messages, Has.Some.Matches<string>(static line => line.Contains("cut-short failed after") && line.Contains("keeping 1 sidecars read")));
-            Assert.That(log.Messages, Has.None.Contains("Exception"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(log.Messages, Has.Some.Matches<string>(static line => line.Contains("cut-short failed after") && line.Contains("keeping 1 sidecars read")));
+        Assert.That(log.Messages, Has.None.Contains("Exception"));
     }
 
     /// <summary>A later round must ask only for the slots still lacking a column, not the whole batch window again.</summary>
@@ -302,12 +292,10 @@ public class RangeSyncColumnCustodyTests
 
         await DrainAsync(fixture.CreateRangeSync(peers).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Message.Slot, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(unserving.ColumnRequests, Is.EqualTo(1), "fixture: round 0 asked the advertised custodian listed first");
-            Assert.That((stale.ColumnRequests, reaching.ColumnRequests), Is.EqualTo(custodianReachingTheSlot ? (0, 1) : (1, 0)));
-            Assert.That(fixture.SidecarPool.TryGet(secondRoot, lackingColumn, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(unserving.ColumnRequests, Is.EqualTo(1), "fixture: round 0 asked the advertised custodian listed first");
+        Assert.That((stale.ColumnRequests, reaching.ColumnRequests), Is.EqualTo(custodianReachingTheSlot ? (0, 1) : (1, 0)));
+        Assert.That(fixture.SidecarPool.TryGet(secondRoot, lackingColumn, out _), Is.True);
     }
 
     /// <summary>
@@ -347,14 +335,12 @@ public class RangeSyncColumnCustodyTests
 
         await DrainAsync(fixture.CreateRangeSync([blockSource, unserving, reaching, stale]).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Message.Slot, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(unserving.ColumnRequests, Is.EqualTo(1), "fixture: round 0 asked the advertised custodian for both columns");
-            Assert.That((reaching.ColumnRequests, stale.ColumnRequests), Is.EqualTo((1, 1)));
-            // Replies are pooled once the whole round has answered, so a column still missing shows the two were asked in one round.
-            Assert.That(reachedColumnHeldWhenStaleAsked, Is.False);
-            Assert.That(fixture.SidecarPool.TryGet(secondRoot, reachedColumn, out _) && fixture.SidecarPool.TryGet(secondRoot, behindColumn, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(unserving.ColumnRequests, Is.EqualTo(1), "fixture: round 0 asked the advertised custodian for both columns");
+        Assert.That((reaching.ColumnRequests, stale.ColumnRequests), Is.EqualTo((1, 1)));
+        // Replies are pooled once the whole round has answered, so a column still missing shows the two were asked in one round.
+        Assert.That(reachedColumnHeldWhenStaleAsked, Is.False);
+        Assert.That(fixture.SidecarPool.TryGet(secondRoot, reachedColumn, out _) && fixture.SidecarPool.TryGet(secondRoot, behindColumn, out _), Is.True);
     }
 
     /// <summary>A reply repeating one invalid (root, index) is verified and penalized once, not once per copy: each copy would cost a KZG verification.</summary>
@@ -391,11 +377,9 @@ public class RangeSyncColumnCustodyTests
 
         await fixture.RunOneRoundAsync([peer], token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-            Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, firstColumn!.Value, out _), Is.False, "a KZG failure hides later copies in this reply");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+        Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, firstColumn!.Value, out _), Is.False, "a KZG failure hides later copies in this reply");
     }
 
     /// <summary>Only a KZG failure shadows later copies; fulu/p2p-interface.md (v1.7.0-beta.2) separates structure, inclusion and KZG verification.</summary>
@@ -423,11 +407,9 @@ public class RangeSyncColumnCustodyTests
 
         await fixture.RunOneRoundAsync([peer], token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, firstColumn!.Value, out _), Is.True, "the valid copy behind the malformed one is pooled");
-            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the malformed copies are penalized once");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, firstColumn!.Value, out _), Is.True, "the valid copy behind the malformed one is pooled");
+        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the malformed copies are penalized once");
     }
 
     /// <summary>Columns must obey their epoch blob limit (v1.7.0-beta.2 fulu/p2p-interface.md, verify_data_column_sidecar).</summary>
@@ -464,12 +446,10 @@ public class RangeSyncColumnCustodyTests
 
         await DrainAsync(sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(served, Is.Not.Empty, "fixture: the peer was asked for columns");
-            Assert.That(served, Is.All.Matches<ulong>(column => !fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, column, out _)), "no column over the blob limit is pooled");
-            Assert.That(peer.Reports, Is.EqualTo(Enumerable.Repeat(PeerFailureReason.ProtocolViolation, served.Length)), "each (root, index) is penalized once, not once per copy");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(served, Is.Not.Empty, "fixture: the peer was asked for columns");
+        Assert.That(served, Is.All.Matches<ulong>(column => !fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, column, out _)), "no column over the blob limit is pooled");
+        Assert.That(peer.Reports, Is.EqualTo(Enumerable.Repeat(PeerFailureReason.ProtocolViolation, served.Length)), "each (root, index) is penalized once, not once per copy");
     }
 
     /// <summary>An unrequested sidecar earns one penalty per key and cannot hide requested data (v1.7.0-beta.2 fulu/p2p-interface.md, DataColumnSidecarsByRange).</summary>
@@ -497,11 +477,9 @@ public class RangeSyncColumnCustodyTests
 
         await fixture.RunOneRoundAsync([peer], token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, firstColumn!.Value, out _), Is.True, "the requested block's column is pooled");
-            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the repeated unrequested sidecar is penalized once");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, firstColumn!.Value, out _), Is.True, "the requested block's column is pooled");
+        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the repeated unrequested sidecar is penalized once");
     }
 
     /// <summary>One supernode must not take a whole batch while other custodians can serve columns: it is asked for at most the per-peer bound, the rest wait for the next round.</summary>

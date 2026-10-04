@@ -124,12 +124,10 @@ public class BeaconChainStoreBlockSlotTests
         }
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(error is null, Is.EqualTo(read), error?.Message);
-            Assert.That(found && slot == Slot, Is.EqualTo(read));
-            Assert.That(allocated, Is.LessThan(claimed / 4), "the slot read must not decompress the whole record");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(error is null, Is.EqualTo(read), error?.Message);
+        Assert.That(found && slot == Slot, Is.EqualTo(read));
+        Assert.That(allocated, Is.LessThan(claimed / 4), "the slot read must not decompress the whole record");
     }
 
     [TestCaseSource(nameof(OverLargeClaims))]

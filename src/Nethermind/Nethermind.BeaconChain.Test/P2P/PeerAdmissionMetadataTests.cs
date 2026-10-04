@@ -46,13 +46,11 @@ public class PeerAdmissionMetadataTests
 
         bool admitted = await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(admitted, Is.True);
-            Assert.That(announced, Has.Count.EqualTo(1));
-            Assert.That(announced[0].InPool, Is.True);
-            Assert.That(announced[0].CustodyKnown, Is.True, "the peer's MetaData was read before the announcement");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(admitted, Is.True);
+        Assert.That(announced, Has.Count.EqualTo(1));
+        Assert.That(announced[0].InPool, Is.True);
+        Assert.That(announced[0].CustodyKnown, Is.True, "the peer's MetaData was read before the announcement");
     }
 
     [Test]
@@ -84,14 +82,12 @@ public class PeerAdmissionMetadataTests
         Task both = Task.WhenAll(silentAdmission, otherAdmission);
         bool inTime = await Task.WhenAny(both, Task.Delay(Within, token)) == both;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(usableWhileMetadataPends, Is.True, "the peer is in the pool while its metadata is awaited");
-            Assert.That(inTime, Is.True, "the admission ends within the metadata timeout, so the next dial gets the slot");
-            Assert.That(inTime && silentAdmission.Result, Is.True);
-            Assert.That(inTime && otherAdmission.Result, Is.True);
-            Assert.That(peerManager.PeerCount, Is.EqualTo(2));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(usableWhileMetadataPends, Is.True, "the peer is in the pool while its metadata is awaited");
+        Assert.That(inTime, Is.True, "the admission ends within the metadata timeout, so the next dial gets the slot");
+        Assert.That(inTime && silentAdmission.Result, Is.True);
+        Assert.That(inTime && otherAdmission.Result, Is.True);
+        Assert.That(peerManager.PeerCount, Is.EqualTo(2));
     }
 
     /// <summary>A peer is usable while its admission metadata is awaited, so it can break the protocol and close its session before its dial ends.</summary>
@@ -124,10 +120,8 @@ public class PeerAdmissionMetadataTests
 
         bool admitted = await admission.WaitAsync(Within, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(admitted, Is.False, "the session closed before the admission ended");
-            Assert.That(discovery.DialHistory.Quality(silentAddress), Is.EqualTo(-1), "the address stays backed off, one step for one failed dial");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(admitted, Is.False, "the session closed before the admission ended");
+        Assert.That(discovery.DialHistory.Quality(silentAddress), Is.EqualTo(-1), "the address stays backed off, one step for one failed dial");
     }
 }

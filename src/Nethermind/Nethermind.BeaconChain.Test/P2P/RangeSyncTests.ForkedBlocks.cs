@@ -53,11 +53,9 @@ public partial class RangeSyncTests
 
         List<ForkedSignedBeaconBlock> yielded = await CollectAsync(sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => gloasChild.Slot, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded.Select(static b => b.GetType()), Is.EqualTo(new[] { typeof(ForkedSignedBeaconBlock.OfFulu), typeof(ForkedSignedBeaconBlock.OfGloas) }), "both blocks are yielded, linked across the fork");
-            Assert.That(columnWindows, Is.EqualTo(new[] { (fuluSlot, 1UL) }), "the Fulu column window covers only the Fulu block");
-            Assert.That(peer.Failures, Is.Zero, "the Gloas block costs the peer nothing");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded.Select(static b => b.GetType()), Is.EqualTo(new[] { typeof(ForkedSignedBeaconBlock.OfFulu), typeof(ForkedSignedBeaconBlock.OfGloas) }), "both blocks are yielded, linked across the fork");
+        Assert.That(columnWindows, Is.EqualTo(new[] { (fuluSlot, 1UL) }), "the Fulu column window covers only the Fulu block");
+        Assert.That(peer.Failures, Is.Zero, "the Gloas block costs the peer nothing");
     }
 }

@@ -232,13 +232,11 @@ public partial class ColumnBackfillTests
         Task run = p.Start(token, flooder, honest);
         await p.UntilFloor(0, token);
         await run.WaitAsync(token);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(p.Store.HasBlock(forgedRoot), Is.False);
-            Assert.That(p.ChainRoots.Take(3).All(p.Store.HasBlock), Is.True);
-            Assert.That(flooder.Reports, Does.Contain(PeerFailureReason.ProtocolViolation));
-            Assert.That(honest.Requests, Is.GreaterThan(0), "oversized replies are rejected before any block is stored");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(p.Store.HasBlock(forgedRoot), Is.False);
+        Assert.That(p.ChainRoots.Take(3).All(p.Store.HasBlock), Is.True);
+        Assert.That(flooder.Reports, Does.Contain(PeerFailureReason.ProtocolViolation));
+        Assert.That(honest.Requests, Is.GreaterThan(0), "oversized replies are rejected before any block is stored");
     }
 
     [Test]
@@ -261,13 +259,11 @@ public partial class ColumnBackfillTests
         await run.WaitAsync(token);
         string[] lines = log.Messages;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(run.IsCompletedSuccessfully, Is.True);
-            Assert.That(lines, Has.None.Contains("Exception"));
-            Assert.That(bad.Calls, Is.GreaterThan(0));
-            Assert.That(bad.Details, Has.None.Contains("Exception"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(run.IsCompletedSuccessfully, Is.True);
+        Assert.That(lines, Has.None.Contains("Exception"));
+        Assert.That(bad.Calls, Is.GreaterThan(0));
+        Assert.That(bad.Details, Has.None.Contains("Exception"));
     }
 
     [Test]
@@ -340,12 +336,10 @@ public partial class ColumnBackfillTests
         Task run = p.Start(token, p.Honest("honest"));
         await run.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(p.Backfill.CompleteFrom, Is.EqualTo(p.Spec.SlotsPerEpoch));
-            Assert.That(p.Store.HasBlock(p.ChainRoots[1]), Is.False);
-            Assert.That(p.Sampled.All(c => p.Store.HasDataColumnRecord(p.ChainRoots[3], c)), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(p.Backfill.CompleteFrom, Is.EqualTo(p.Spec.SlotsPerEpoch));
+        Assert.That(p.Store.HasBlock(p.ChainRoots[1]), Is.False);
+        Assert.That(p.Sampled.All(c => p.Store.HasDataColumnRecord(p.ChainRoots[3], c)), Is.True);
     }
 
     [Test]
@@ -397,15 +391,13 @@ public partial class ColumnBackfillTests
         await p.UntilFloor(0, token);
         await run.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(forger.RequestedRanges[0], Is.EqualTo((0UL, 5UL)));
-            Assert.That(empty.RequestedRanges[0], Is.EqualTo((3UL, 2UL)), "only the empty slots above the forged block");
-            Assert.That(next.RequestedRanges[0], Is.EqualTo((0UL, 5UL)), "then the whole range again");
-            Assert.That(forger.RootBlockRequests + empty.RootBlockRequests + next.RootBlockRequests, Is.Zero, "nothing is fetched by root");
-            Assert.That(forger.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed, PeerFailureReason.ProtocolViolation }));
-            Assert.That(empty.Reports.Concat(next.Reports), Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forger.RequestedRanges[0], Is.EqualTo((0UL, 5UL)));
+        Assert.That(empty.RequestedRanges[0], Is.EqualTo((3UL, 2UL)), "only the empty slots above the forged block");
+        Assert.That(next.RequestedRanges[0], Is.EqualTo((0UL, 5UL)), "then the whole range again");
+        Assert.That(forger.RootBlockRequests + empty.RootBlockRequests + next.RootBlockRequests, Is.Zero, "nothing is fetched by root");
+        Assert.That(forger.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed, PeerFailureReason.ProtocolViolation }));
+        Assert.That(empty.Reports.Concat(next.Reports), Is.Empty);
     }
 
     [Test]

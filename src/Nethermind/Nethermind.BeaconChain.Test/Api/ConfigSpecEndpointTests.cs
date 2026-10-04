@@ -52,19 +52,17 @@ public class ConfigSpecEndpointTests
         Assert.That(pinned.Count, Is.GreaterThan(150), "the embedded files must parse into every preset and config key");
 
         Dictionary<string, JsonElement> data = served.EnumerateObject().ToDictionary(p => p.Name, p => p.Value);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pinned.Keys.Except(data.Keys), Is.Empty, "keys of the pinned files that are not served");
-            Assert.That(data.Keys.Except(pinned.Keys).Except(ServedBeyondPinnedFiles).Except(["BLOB_SCHEDULE", "GAS_LIMIT_SCHEDULE"]).Except(PinnedSpecConstants.All.Select(c => c.Name)), Is.Empty, "served keys that no pinned file has");
-            Assert.That(pinned.Where(entry => data.TryGetValue(entry.Key, out JsonElement actual) && (actual.ValueKind != JsonValueKind.String || actual.GetString() != entry.Value))
-                .Select(entry => $"{entry.Key}={(data.TryGetValue(entry.Key, out JsonElement actual) ? actual.ToString() : "missing")} (pinned {entry.Value})"), Is.Empty);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pinned.Keys.Except(data.Keys), Is.Empty, "keys of the pinned files that are not served");
+        Assert.That(data.Keys.Except(pinned.Keys).Except(ServedBeyondPinnedFiles).Except(["BLOB_SCHEDULE", "GAS_LIMIT_SCHEDULE"]).Except(PinnedSpecConstants.All.Select(c => c.Name)), Is.Empty, "served keys that no pinned file has");
+        Assert.That(pinned.Where(entry => data.TryGetValue(entry.Key, out JsonElement actual) && (actual.ValueKind != JsonValueKind.String || actual.GetString() != entry.Value))
+            .Select(entry => $"{entry.Key}={(data.TryGetValue(entry.Key, out JsonElement actual) ? actual.ToString() : "missing")} (pinned {entry.Value})"), Is.Empty);
 
-            MatchCollection schedule = ScheduleEntry.Matches(PinnedMainnetSpec.Yaml);
-            Assert.That(schedule, Is.Not.Empty);
-            Assert.That(data["BLOB_SCHEDULE"].EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("MAX_BLOBS_PER_BLOCK").GetString())),
-                Is.EqualTo(schedule.Select(m => (m.Groups["epoch"].Value, m.Groups["blobs"].Value))));
-            Assert.That(data["GAS_LIMIT_SCHEDULE"].GetArrayLength(), Is.Zero);
-        }
+        MatchCollection schedule = ScheduleEntry.Matches(PinnedMainnetSpec.Yaml);
+        Assert.That(schedule, Is.Not.Empty);
+        Assert.That(data["BLOB_SCHEDULE"].EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("MAX_BLOBS_PER_BLOCK").GetString())),
+            Is.EqualTo(schedule.Select(m => (m.Groups["epoch"].Value, m.Groups["blobs"].Value))));
+        Assert.That(data["GAS_LIMIT_SCHEDULE"].GetArrayLength(), Is.Zero);
     }
 
     private const string ArrayConstant = "PARTICIPATION_FLAG_WEIGHTS";
@@ -85,11 +83,9 @@ public class ConfigSpecEndpointTests
     {
         JsonElement served = await ServedSpecAsync(BeaconChainSpec.Mainnet);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PinnedSpecConstants.All.Length, Is.GreaterThan(80));
-            Assert.That(ConstantMismatches(served), Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(PinnedSpecConstants.All.Length, Is.GreaterThan(80));
+        Assert.That(ConstantMismatches(served), Is.Empty);
     }
 
     [TestCase("DOMAIN_BEACON_PROPOSER", "0x00000000")]
@@ -187,12 +183,10 @@ public class ConfigSpecEndpointTests
         BeaconChainSpec spec = network == "hoodi" ? BeaconChainSpec.Hoodi : BeaconChainSpec.Sepolia;
         JsonElement served = await ServedSpecAsync(spec);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PinnedScalars().Keys.Except(served.EnumerateObject().Select(p => p.Name)), Is.Empty);
-            Assert.That(ConstantMismatches(served), Is.Empty);
-            Assert.That(served.GetProperty("BLOB_SCHEDULE").EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("MAX_BLOBS_PER_BLOCK").GetString())),
-                Is.EqualTo(spec.BlobSchedule.Select(e => (e.Epoch.ToString(), e.MaxBlobsPerBlock.ToString()))));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(PinnedScalars().Keys.Except(served.EnumerateObject().Select(p => p.Name)), Is.Empty);
+        Assert.That(ConstantMismatches(served), Is.Empty);
+        Assert.That(served.GetProperty("BLOB_SCHEDULE").EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("MAX_BLOBS_PER_BLOCK").GetString())),
+            Is.EqualTo(spec.BlobSchedule.Select(e => (e.Epoch.ToString(), e.MaxBlobsPerBlock.ToString()))));
     }
 }

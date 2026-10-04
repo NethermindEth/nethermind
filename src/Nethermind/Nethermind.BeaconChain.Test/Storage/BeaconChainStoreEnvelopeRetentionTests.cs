@@ -71,18 +71,16 @@ public class BeaconChainStoreEnvelopeRetentionTests
         // A checkpoint whose state is not retained leaves the persisted anchor where it was.
         importer.OnFinalized(finalizedStateRetained ? new CheckpointRef(2, finalized.Root) : new CheckpointRef(2, Keccak.Compute("state not retained")));
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetAnchor(out _, out ulong anchorSlot), Is.EqualTo(checkpoint != FinalizedCheckpoint.UnknownWithNoAnchor));
+        if (checkpoint != FinalizedCheckpoint.UnknownWithNoAnchor)
         {
-            Assert.That(store.TryGetAnchor(out _, out ulong anchorSlot), Is.EqualTo(checkpoint != FinalizedCheckpoint.UnknownWithNoAnchor));
-            if (checkpoint != FinalizedCheckpoint.UnknownWithNoAnchor)
-            {
-                Assert.That(anchorSlot, Is.EqualTo(finalizedStateRetained ? ForkSlot + 2 : chain.AnchorBlock.Message!.Slot), "fixture: where replay starts after a restart");
-            }
-
-            Assert.That(store.TryGetExecutionPayloadEnvelope(first.Root, out _), Is.EqualTo(!finalizedStateRetained), "below the window, kept only while replay starts below it");
-            Assert.That(store.TryGetExecutionPayloadEnvelope(finalized.Root, out _), Is.True, "the finalized block's envelope is below the window but replay needs it");
-            Assert.That(store.TryGetExecutionPayloadEnvelope(inWindow.Message!.BeaconBlockRoot!, out _), Is.True, "in the window");
+            Assert.That(anchorSlot, Is.EqualTo(finalizedStateRetained ? ForkSlot + 2 : chain.AnchorBlock.Message!.Slot), "fixture: where replay starts after a restart");
         }
+
+        Assert.That(store.TryGetExecutionPayloadEnvelope(first.Root, out _), Is.EqualTo(!finalizedStateRetained), "below the window, kept only while replay starts below it");
+        Assert.That(store.TryGetExecutionPayloadEnvelope(finalized.Root, out _), Is.True, "the finalized block's envelope is below the window but replay needs it");
+        Assert.That(store.TryGetExecutionPayloadEnvelope(inWindow.Message!.BeaconBlockRoot!, out _), Is.True, "in the window");
     }
 
     /// <summary>phase0/p2p-interface.md <c>MAX_PAYLOAD_SIZE</c>: every read refuses a longer record, so none is written.</summary>
@@ -182,14 +180,12 @@ public class BeaconChainStoreEnvelopeRetentionTests
         BeaconChainStore reopened = new(db, Sepolia);
         reopened.EnsureSchemaVersion();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reopened.TryGetSchemaVersion(out uint version), Is.True);
-            Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion).And.GreaterThan(childrenIndexVersion), "a build that stamps the children index version must refuse a database this build wrote");
-            Assert.That(reopened.TryGetChildren(unindexedRoot, out _, out _), Is.False, "the children index is not rebuilt");
-            Assert.That(reopened.TryGetExecutionPayloadEnvelope(envelope.Message.BeaconBlockRoot!, out _), Is.True);
-            Assert.That(reopened.HasBlock(blockRoot), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reopened.TryGetSchemaVersion(out uint version), Is.True);
+        Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion).And.GreaterThan(childrenIndexVersion), "a build that stamps the children index version must refuse a database this build wrote");
+        Assert.That(reopened.TryGetChildren(unindexedRoot, out _, out _), Is.False, "the children index is not rebuilt");
+        Assert.That(reopened.TryGetExecutionPayloadEnvelope(envelope.Message.BeaconBlockRoot!, out _), Is.True);
+        Assert.That(reopened.HasBlock(blockRoot), Is.True);
     }
 
     private static byte[] DamagedBounds(BoundsDamage damage) => damage switch

@@ -179,12 +179,10 @@ public class ColumnGossipRouterTests
         MessageValidity[] received = [.. Enumerable.Range(1, required).Select(column =>
             router.Handle((ulong)column, gloasTopic: false, Message(DataColumnSidecarTestFixture.BuildValidSidecar((ulong)column, CurrentSlot))))];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(received, Is.All.EqualTo(MessageValidity.Accepted), "the gossip columns pass every check under the imported header");
-            Assert.That(pool.TryGet(SszRoots.HashTreeRoot(forged.SignedBlockHeader.Message!), (ulong)required + 1, out _), Is.True, "fixture: the block was reconstructed");
-            Assert.That(topics.Values.SelectMany(static t => t.Published), Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(received, Is.All.EqualTo(MessageValidity.Accepted), "the gossip columns pass every check under the imported header");
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(forged.SignedBlockHeader.Message!), (ulong)required + 1, out _), Is.True, "fixture: the block was reconstructed");
+        Assert.That(topics.Values.SelectMany(static t => t.Published), Is.Empty);
     }
 
     /// <summary>A reconstructed column of an equivocating block is not published for a (slot, proposer_index, index) already forwarded for another block.</summary>
@@ -251,11 +249,9 @@ public class ColumnGossipRouterTests
         release.Set();
         await subscribe;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(finished, Is.True, "reconstruction and its publication finished while a subscription held the router's subscription lock");
-            Assert.That(topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(required))].Published, Has.Count.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(finished, Is.True, "reconstruction and its publication finished while a subscription held the router's subscription lock");
+        Assert.That(topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(required))].Published, Has.Count.EqualTo(1));
     }
 
     // das-core.md: reconstruction works from every column the node holds, however it got them; range sync adds to the pool without gossip.
@@ -278,11 +274,9 @@ public class ColumnGossipRouterTests
 
         router.Handle(required - 1, gloasTopic: false, Message(last));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.TryGet(blockRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True, "the 64th held column, the only one gossip delivered, completes the matrix");
-            Assert.That(received.Select(s => s.Index), Is.EquivalentTo(Enumerable.Range(required - 1, required + 1).Select(i => (ulong)i)), "the gossip column plus the 64 reconstructed ones");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.TryGet(blockRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True, "the 64th held column, the only one gossip delivered, completes the matrix");
+        Assert.That(received.Select(s => s.Index), Is.EquivalentTo(Enumerable.Range(required - 1, required + 1).Select(i => (ulong)i)), "the gossip column plus the 64 reconstructed ones");
     }
 
     // das-core.md: a node SHOULD reconstruct once it holds half the columns, including ones an earlier run verified and stored.
@@ -375,11 +369,9 @@ public class ColumnGossipRouterTests
 
         router.Handle(SubnetId, gloasTopic: false, Message(build()));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(received, Is.Zero, "no event for a dropped sidecar");
-            Assert.That(router.GetDropCount(reason), Is.EqualTo(1), "the drop is counted under its reason");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(received, Is.Zero, "no event for a dropped sidecar");
+        Assert.That(router.GetDropCount(reason), Is.EqualTo(1), "the drop is counted under its reason");
     }
 
     [Test]
@@ -396,11 +388,9 @@ public class ColumnGossipRouterTests
         router.Handle(SubnetId, gloasTopic: false, message);
         router.Handle(SubnetId, gloasTopic: false, message);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(received, Is.EqualTo(1), "only the first copy raises the event");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(received, Is.EqualTo(1), "only the first copy raises the event");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(1));
     }
 
     /// <summary>A topic whose <see cref="Subscribe"/> waits for <paramref name="release"/>, as one would while another thread holds the pubsub router's monitor.</summary>

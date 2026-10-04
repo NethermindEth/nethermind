@@ -31,11 +31,9 @@ public class ForkChoiceRunnerPtcVoteTests
         for (int seat = 0; seat < votes.Length; seat++)
             votes[seat] = seat < matching ? true : restVotedOtherwise ? false : null;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PtcVotes.HasQuorum(votes, true), Is.EqualTo(matching > 256));
-            Assert.That(PtcVotes.HasQuorum(votes, false), Is.False);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(PtcVotes.HasQuorum(votes, true), Is.EqualTo(matching > 256));
+        Assert.That(PtcVotes.HasQuorum(votes, false), Is.False);
     }
 
     /// <summary>
@@ -59,12 +57,10 @@ public class ForkChoiceRunnerPtcVoteTests
         harness.Runner.OnPayloadAttestationMessage(harness.PtcMessage(first, member, payloadPresent: true, blobDataAvailable: false, sign: true));
 
         (IReadOnlyList<bool?> timeliness, IReadOnlyList<bool?> availability) = harness.Runner.GetPtcVotes(first.Root)!.Value;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Enumerable.Range(0, ptc.Length).Where(seat => timeliness[seat] is not null), Is.EqualTo(seats));
-            Assert.That(seats.Select(seat => (timeliness[seat], availability[seat])), Is.All.EqualTo(((bool?)true, (bool?)false)));
-            Assert.That(availability.Count(static v => v is not null), Is.EqualTo(seats.Length));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Enumerable.Range(0, ptc.Length).Where(seat => timeliness[seat] is not null), Is.EqualTo(seats));
+        Assert.That(seats.Select(seat => (timeliness[seat], availability[seat])), Is.All.EqualTo(((bool?)true, (bool?)false)));
+        Assert.That(availability.Count(static v => v is not null), Is.EqualTo(seats.Length));
     }
 
     /// <summary>specs/gloas/fork-choice.md <c>on_payload_attestation_message</c>: a vote whose slot is not its block's returns early, before the current-slot check, and writes nothing.</summary>
@@ -92,12 +88,10 @@ public class ForkChoiceRunnerPtcVoteTests
 
         ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => harness.Runner.OnPayloadAttestationMessage(message))!;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal.RejectGossip, Is.False, "a missing local head must not penalize the relay");
-            Assert.That(refusal.Message, Does.Contain("No cached head"));
-            Assert.That(harness.Runner.GetPtcVotes(first.Root)!.Value.Timeliness, Is.All.Null);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal.RejectGossip, Is.False, "a missing local head must not penalize the relay");
+        Assert.That(refusal.Message, Does.Contain("No cached head"));
+        Assert.That(harness.Runner.GetPtcVotes(first.Root)!.Value.Timeliness, Is.All.Null);
     }
 
     public enum RefusedVote { NotInPtc, WireVoteNotForTheCurrentSlot, BadSignature, UnknownBlock, PreGloasBlock, MissingData, MissingBlockRoot }
@@ -203,11 +197,9 @@ public class ForkChoiceRunnerPtcVoteTests
 
         Assert.That(() => harness.Import(child), Throws.TypeOf<ForkChoiceException>());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Runner.ContainsBlock(child.Root), Is.False);
-            Assert.That(harness.Runner.GetPtcVotes(first.Root)!.Value.Timeliness, Is.All.Null);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Runner.ContainsBlock(child.Root), Is.False);
+        Assert.That(harness.Runner.GetPtcVotes(first.Root)!.Value.Timeliness, Is.All.Null);
     }
 
     private static PayloadAttestationData VoteData(GloasForkChoiceHarness.Block block, bool payloadPresent) =>

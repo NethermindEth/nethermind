@@ -59,11 +59,9 @@ public partial class GossipRouterTests
             : slotOffset < 0 ? GossipDropReason.StaleSlot
             : slotOffset > 0 ? GossipDropReason.FutureSlot
             : GossipDropReason.InvalidField;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(received, Is.Zero, "failed blocks are refused before a vote can reach signature validation");
-            Assert.That(router.GetDropCount(reason), Is.EqualTo(1), "a failed root proves the block was seen even when it was never stored");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(received, Is.Zero, "failed blocks are refused before a vote can reach signature validation");
+        Assert.That(router.GetDropCount(reason), Is.EqualTo(1), "a failed root proves the block was seen even when it was never stored");
     }
 
     public enum PtcCase
@@ -165,12 +163,10 @@ public partial class GossipRouterTests
             verdicts[i] = router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(root, PtcSlot))));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(router.GetDropCount(GossipDropReason.InvalidField), Is.EqualTo(GossipRouter.PtcBlockSlotReadsPerSlot), "within the budget");
-            Assert.That(received, Is.EqualTo(1), "past the budget the vote is consumed for fork choice, which checks the slot again");
-            Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(router.GetDropCount(GossipDropReason.InvalidField), Is.EqualTo(GossipRouter.PtcBlockSlotReadsPerSlot), "within the budget");
+        Assert.That(received, Is.EqualTo(1), "past the budget the vote is consumed for fork choice, which checks the slot again");
+        Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored));
     }
 
     /// <summary>Each raised vote costs fork choice a BLS verify, so a pair is raised at most the attempt limit of times while none has verified.</summary>
@@ -188,11 +184,9 @@ public partial class GossipRouterTests
                 Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: seed))));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(received, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts));
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(repeats + 1 - GossipRouter.PayloadAttestationVerifyAttempts));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(received, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts));
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(repeats + 1 - GossipRouter.PayloadAttestationVerifyAttempts));
     }
 
     /// <summary>gloas/p2p-interface.md IGNOREs a repeat only after the first valid message: a forgery that failed its verify must not hide the genuine vote.</summary>
@@ -210,11 +204,9 @@ public partial class GossipRouterTests
         router.MarkPayloadAttestationVerified(genuine);
         Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 101));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(raised, Is.EqualTo(Enumerable.Range(1, forgeriesFirst).Select(static i => (byte)i).Append((byte)100)), "the genuine vote is raised after the forgeries");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1), "a vote after the verified one is dropped");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(raised, Is.EqualTo(Enumerable.Range(1, forgeriesFirst).Select(static i => (byte)i).Append((byte)100)), "the genuine vote is raised after the forgeries");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1), "a vote after the verified one is dropped");
     }
 
     /// <summary>A vote the vote queue refused must give back its attempt and its message id, or a later copy is dropped unverified.</summary>
@@ -235,12 +227,10 @@ public partial class GossipRouterTests
         router.ReleasePayloadAttestation(refused);
         Handle(router, refused);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((beforeRelease, droppedBeforeRelease), Is.EqualTo((GossipRouter.PayloadAttestationVerifyAttempts, 1L)), "fixture: the attempts were spent");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(droppedBeforeRelease), "the identical copy is not dropped");
-            Assert.That(received, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts + 1), "the identical copy is raised again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((beforeRelease, droppedBeforeRelease), Is.EqualTo((GossipRouter.PayloadAttestationVerifyAttempts, 1L)), "fixture: the attempts were spent");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(droppedBeforeRelease), "the identical copy is not dropped");
+        Assert.That(received, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts + 1), "the identical copy is raised again");
     }
 
     /// <summary>Copies of one message racing must spend one attempt: the losers of the message-id race hand theirs back.</summary>
@@ -378,13 +368,11 @@ public partial class GossipRouterTests
         raised = 0;
         Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator + 1, signatureSeed: 3));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(floodRaised, Is.EqualTo(flood), "fixture: every flooded vote was new");
-            Assert.That(verifiedRaised, Is.Zero, "the verified pair is still closed");
-            Assert.That(raised, Is.EqualTo(1), "a validator's first vote after the flood is still raised");
-            Assert.That(router.IsPayloadAttestationVerified(genuine), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(floodRaised, Is.EqualTo(flood), "fixture: every flooded vote was new");
+        Assert.That(verifiedRaised, Is.Zero, "the verified pair is still closed");
+        Assert.That(raised, Is.EqualTo(1), "a validator's first vote after the flood is still raised");
+        Assert.That(router.IsPayloadAttestationVerified(genuine), Is.True);
     }
 
     /// <summary>
@@ -444,12 +432,10 @@ public partial class GossipRouterTests
         long duplicatesBefore = router.GetDropCount(GossipDropReason.Duplicate);
         Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, signatureSeed: 100));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Rejected));
-            Assert.That(raised, Is.Zero, "the spent pair stays spent");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(duplicatesBefore + 1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Rejected));
+        Assert.That(raised, Is.Zero, "the spent pair stays spent");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(duplicatesBefore + 1));
     }
 
     /// <summary>A member's repeats are raised up to the attempt limit and ignored after a vote verified, as for any pair.</summary>
@@ -492,12 +478,10 @@ public partial class GossipRouterTests
             Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: seed));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(unknown, Is.All.EqualTo(MessageValidity.Ignored));
-            Assert.That(whileUnknown, Is.Zero);
-            Assert.That(raised, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts), "the pair kept its full attempts");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(unknown, Is.All.EqualTo(MessageValidity.Ignored));
+        Assert.That(whileUnknown, Is.Zero);
+        Assert.That(raised, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts), "the pair kept its full attempts");
     }
 
     /// <summary>A head that can no longer tell the committee (null) is unknown, not empty: an honest member is IGNOREd, not REJECTed, and nothing is tracked.</summary>
@@ -588,13 +572,11 @@ public partial class GossipRouterTests
 
         MessageValidity replay = router.Handle(GossipTopics.AttesterSlashing, gloasTopic: false, slashing);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((first, replay), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored)));
-            Assert.That(votes, Is.EqualTo(2 * GossipRouter.SeenCacheSize), "fixture: every vote was new");
-            Assert.That(slashings, Is.EqualTo(1), "the replayed slashing is still known by its message id");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((first, replay), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored)));
+        Assert.That(votes, Is.EqualTo(2 * GossipRouter.SeenCacheSize), "fixture: every vote was new");
+        Assert.That(slashings, Is.EqualTo(1), "the replayed slashing is still known by its message id");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
     }
 
     private static MessageValidity Handle(GossipRouter router, PayloadAttestationMessage vote) =>

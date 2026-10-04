@@ -62,14 +62,12 @@ public class GloasBlockImporterTests
 
         BlockImportResult result = importer.Import(first.Forked, first.Root, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(importer.IsKnown(first.Root), Is.True);
-            Assert.That(store.TryGetForkedBlock(first.Root, out ForkedSignedBeaconBlock? stored) ? stored : null, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
-            Assert.That(SszRoots.HashTreeRoot(_chain.AnchorState), Is.EqualTo(_chain.AnchorBlock.Message!.StateRoot), "the Fulu lineage state is untouched by the crossing");
-            Assert.That(engine.HasAnsweredNewPayload, Is.False, "a Gloas block carries only a bid; its payload reaches the engine in the envelope");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(importer.IsKnown(first.Root), Is.True);
+        Assert.That(store.TryGetForkedBlock(first.Root, out ForkedSignedBeaconBlock? stored) ? stored : null, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
+        Assert.That(SszRoots.HashTreeRoot(_chain.AnchorState), Is.EqualTo(_chain.AnchorBlock.Message!.StateRoot), "the Fulu lineage state is untouched by the crossing");
+        Assert.That(engine.HasAnsweredNewPayload, Is.False, "a Gloas block carries only a bid; its payload reaches the engine in the envelope");
     }
 
     [Test]
@@ -81,11 +79,9 @@ public class GloasBlockImporterTests
 
         BlockImportResult result = importer.Import(new ForkedSignedBeaconBlock.OfFulu(fuluShaped), Hash(0x5A), verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(engine.HasAnsweredNewPayload, Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(engine.HasAnsweredNewPayload, Is.False);
     }
 
     /// <summary>
@@ -113,14 +109,12 @@ public class GloasBlockImporterTests
         ExecutionPayloadEnvelopeImportResult envelope = importer.ImportEnvelope(first.Envelope);
         BlockImportResult afterEnvelope = full ? importer.Import(child.Forked, child.Root, verifySignatures: true) : BlockImportResult.AlreadyKnown;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(beforeEnvelope, Is.EqualTo(full ? BlockImportResult.ParentPayloadUnverified : BlockImportResult.Imported));
-            Assert.That(knownBeforeEnvelope, Is.EqualTo(!full), "a deferred child is not in fork choice");
-            Assert.That(storedBeforeEnvelope, Is.EqualTo(!full), "a deferred child is not stored");
-            Assert.That(envelope, Is.EqualTo(envelopeVerdict == ExecutionStatus.Valid ? ExecutionPayloadEnvelopeImportResult.Valid : ExecutionPayloadEnvelopeImportResult.Optimistic));
-            Assert.That(afterEnvelope, Is.EqualTo(full ? BlockImportResult.Imported : BlockImportResult.AlreadyKnown), "an optimistic payload is recorded as an optimistic block is imported");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(beforeEnvelope, Is.EqualTo(full ? BlockImportResult.ParentPayloadUnverified : BlockImportResult.Imported));
+        Assert.That(knownBeforeEnvelope, Is.EqualTo(!full), "a deferred child is not in fork choice");
+        Assert.That(storedBeforeEnvelope, Is.EqualTo(!full), "a deferred child is not stored");
+        Assert.That(envelope, Is.EqualTo(envelopeVerdict == ExecutionStatus.Valid ? ExecutionPayloadEnvelopeImportResult.Valid : ExecutionPayloadEnvelopeImportResult.Optimistic));
+        Assert.That(afterEnvelope, Is.EqualTo(full ? BlockImportResult.Imported : BlockImportResult.AlreadyKnown), "an optimistic payload is recorded as an optimistic block is imported");
     }
 
     /// <summary>An envelope that is refused, or whose blob data is not held, records nothing, so the full child keeps waiting.</summary>
@@ -136,11 +130,9 @@ public class GloasBlockImporterTests
 
         ExecutionPayloadEnvelopeImportResult envelope = importer.ImportEnvelope(first.Envelope);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(envelope, Is.EqualTo(expected));
-            Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(envelope, Is.EqualTo(expected));
+        Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
     }
 
     /// <summary>A repeated envelope, and one for a block fork choice does not hold, are answered before any hashing or engine call.</summary>
@@ -157,13 +149,11 @@ public class GloasBlockImporterTests
         ExecutionPayloadEnvelopeImportResult secondTime = importer.ImportEnvelope(first.Envelope);
         ExecutionPayloadEnvelopeImportResult unknown = importer.ImportEnvelope(neverImported.Envelope);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstTime, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
-            Assert.That(secondTime, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.AlreadyKnown));
-            Assert.That(unknown, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock));
-            Assert.That(engine.EnvelopeCalls, Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(firstTime, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        Assert.That(secondTime, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.AlreadyKnown));
+        Assert.That(unknown, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock));
+        Assert.That(engine.EnvelopeCalls, Is.EqualTo(1));
     }
 
     /// <summary>
@@ -187,16 +177,14 @@ public class GloasBlockImporterTests
         HeadView afterEnvelope = importer.ComputeHead();
         Hash256 anchorPayloadHash = _chain.AnchorBlock.Message!.Body!.ExecutionPayload!.BlockHash!;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((beforeEnvelope.HeadRoot, afterEnvelope.HeadRoot), Is.EqualTo((first.Root, first.Root)), "fixture: the head does not move");
-            Assert.That((beforeEnvelope.HeadPayloadFull, afterEnvelope.HeadPayloadFull), Is.EqualTo((false, true)), "only a verified payload makes the head FULL");
-            Assert.That(beforeEnvelope.HeadExecutionHash, Is.EqualTo(first.Bid.ParentBlockHash));
-            Assert.That(afterEnvelope.HeadExecutionHash, Is.EqualTo(first.Bid.BlockHash));
-            Assert.That(afterEnvelope.FinalizedExecutionHash, Is.EqualTo(anchorPayloadHash), "a Fulu checkpoint keeps its own payload hash");
-            Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == first.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Valid));
-            Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == first.Root).PayloadValid, Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((beforeEnvelope.HeadRoot, afterEnvelope.HeadRoot), Is.EqualTo((first.Root, first.Root)), "fixture: the head does not move");
+        Assert.That((beforeEnvelope.HeadPayloadFull, afterEnvelope.HeadPayloadFull), Is.EqualTo((false, true)), "only a verified payload makes the head FULL");
+        Assert.That(beforeEnvelope.HeadExecutionHash, Is.EqualTo(first.Bid.ParentBlockHash));
+        Assert.That(afterEnvelope.HeadExecutionHash, Is.EqualTo(first.Bid.BlockHash));
+        Assert.That(afterEnvelope.FinalizedExecutionHash, Is.EqualTo(anchorPayloadHash), "a Fulu checkpoint keeps its own payload hash");
+        Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == first.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Valid));
+        Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == first.Root).PayloadValid, Is.True);
     }
 
     /// <summary>
@@ -229,12 +217,10 @@ public class GloasBlockImporterTests
 
         HeadView head = importer.ComputeHead();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the invalidated block leaves the tree");
-            Assert.That(head.HeadExecutionHash, Is.EqualTo(ptcVotedTimely ? first.Bid.BlockHash : first.Bid.ParentBlockHash));
-            Assert.That(head.HeadPayloadFull, Is.EqualTo(ptcVotedTimely), "the payload status the envelope server reads is the one get_head resolved");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the invalidated block leaves the tree");
+        Assert.That(head.HeadExecutionHash, Is.EqualTo(ptcVotedTimely ? first.Bid.BlockHash : first.Bid.ParentBlockHash));
+        Assert.That(head.HeadPayloadFull, Is.EqualTo(ptcVotedTimely), "the payload status the envelope server reads is the one get_head resolved");
     }
 
     /// <summary>
@@ -262,11 +248,9 @@ public class GloasBlockImporterTests
 
         HeadView head = importer.ComputeHead();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the invalidated block leaves the tree");
-            Assert.That(head.HeadExecutionHash, Is.EqualTo(inBody ? first.Bid.BlockHash : first.Bid.ParentBlockHash));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the invalidated block leaves the tree");
+        Assert.That(head.HeadExecutionHash, Is.EqualTo(inBody ? first.Bid.BlockHash : first.Bid.ParentBlockHash));
     }
 
     [Test]
@@ -453,12 +437,10 @@ public class GloasBlockImporterTests
             router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(forged)));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(RefusedByForkChoice("gossip_payload_attestation") - refusedBefore, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts), "the pair's verify attempts");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries - GossipRouter.PayloadAttestationVerifyAttempts));
-            Assert.That(importer.OnGossipPayloadAttestation(genuine), Is.True, "fixture: the genuine vote verifies when it reaches fork choice");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(RefusedByForkChoice("gossip_payload_attestation") - refusedBefore, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts), "the pair's verify attempts");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries - GossipRouter.PayloadAttestationVerifyAttempts));
+        Assert.That(importer.OnGossipPayloadAttestation(genuine), Is.True, "fixture: the genuine vote verifies when it reaches fork choice");
     }
 
     /// <summary>gloas/p2p-interface.md IGNOREs a PTC member's vote only after the first valid one, so a forgery that arrives first must not hide the genuine vote from fork choice.</summary>
@@ -500,12 +482,10 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, first);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(importer.GetPtc(first.Root, ForkSlot), Is.EqualTo(first.PostState.GetPtc(ForkSlot, _chain.Spec).Indices));
-            Assert.That(importer.GetPtc(Hash(0x5A), ForkSlot), Is.Null, "unknown head");
-            Assert.That(importer.GetPtc(first.Root, ForkSlot + 10 * Presets.SlotsPerEpoch), Is.Null, "outside the state's window");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(importer.GetPtc(first.Root, ForkSlot), Is.EqualTo(first.PostState.GetPtc(ForkSlot, _chain.Spec).Indices));
+        Assert.That(importer.GetPtc(Hash(0x5A), ForkSlot), Is.Null, "unknown head");
+        Assert.That(importer.GetPtc(first.Root, ForkSlot + 10 * Presets.SlotsPerEpoch), Is.Null, "outside the state's window");
     }
 
     [Test]
@@ -650,12 +630,10 @@ public class GloasBlockImporterTests
         HeadView head = importer.ComputeHead();
         ExecutionPayloadBid firstBid = fork.First.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head.Justified.Root, Is.EqualTo(fork.First.Root), "fixture: the epoch-3 pull-up justifies the first Gloas block");
-            Assert.That(head.JustifiedExecutionHash, Is.EqualTo(firstBid.ParentBlockHash));
-            Assert.That(head.JustifiedExecutionHash, Is.Not.EqualTo(firstBid.BlockHash));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head.Justified.Root, Is.EqualTo(fork.First.Root), "fixture: the epoch-3 pull-up justifies the first Gloas block");
+        Assert.That(head.JustifiedExecutionHash, Is.EqualTo(firstBid.ParentBlockHash));
+        Assert.That(head.JustifiedExecutionHash, Is.Not.EqualTo(firstBid.BlockHash));
     }
 
     /// <summary>
@@ -671,14 +649,12 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block child = _chain.Next(first, ForkSlot + 1, full: true, 0xA2);
         SignedGloasChain.Block grandchild = _chain.Next(child, ForkSlot + 2, full: true, 0xA3);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(importer.Import(first.Forked, first.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.AlreadyKnown), "the replayed child recorded its parent's payload");
-            Assert.That(importer.Import(grandchild.Forked, grandchild.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "the replayed tip's own payload is still unverified");
-            Assert.That(engine.EnvelopeCalls, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(importer.Import(first.Forked, first.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.AlreadyKnown), "the replayed child recorded its parent's payload");
+        Assert.That(importer.Import(grandchild.Forked, grandchild.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "the replayed tip's own payload is still unverified");
+        Assert.That(engine.EnvelopeCalls, Is.Zero);
     }
 
     /// <summary>
@@ -712,13 +688,11 @@ public class GloasBlockImporterTests
             }
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(importer.ImportEnvelope(epochStart.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "an epoch's first block");
-            Assert.That(importer.ImportEnvelope(lastBeforeSkip.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the checkpoint block of the epoch whose first slot was skipped");
-            Assert.That(importer.ImportEnvelope(middle.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "a block that is no checkpoint ages out");
-            Assert.That(importer.ImportEnvelope(lastOfEpoch!.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "the parent of the next epoch's first block is no checkpoint and ages out");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(importer.ImportEnvelope(epochStart.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "an epoch's first block");
+        Assert.That(importer.ImportEnvelope(lastBeforeSkip.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the checkpoint block of the epoch whose first slot was skipped");
+        Assert.That(importer.ImportEnvelope(middle.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "a block that is no checkpoint ages out");
+        Assert.That(importer.ImportEnvelope(lastOfEpoch!.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "the parent of the next epoch's first block is no checkpoint and ages out");
     }
 
     public enum EvictedParent
@@ -787,31 +761,29 @@ public class GloasBlockImporterTests
             afterEnvelope = importer.ImportRequested(sibling.Forked, sibling.Root);
         }
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldBefore, Is.Null, "fixture: the parent's state left every tier, and the gossip getter does not regenerate it");
+        if (parentKind == EvictedParent.FullUnverified)
         {
-            Assert.That(heldBefore, Is.Null, "fixture: the parent's state left every tier, and the gossip getter does not regenerate it");
-            if (parentKind == EvictedParent.FullUnverified)
-            {
-                Assert.That(result, Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
-                Assert.That(envelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the regenerated parent state verifies the parent's envelope");
-                Assert.That(afterEnvelope, Is.EqualTo(BlockImportResult.Imported));
-            }
-            else
-            {
-                Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-            }
-
-            if (heldBase == HeldBase.FuluAnchor)
-            {
-                Assert.That(SszRoots.HashTreeRoot(_chain.AnchorState), Is.EqualTo(anchorStateRoot), "the replay crosses the fork on a copy of the held Fulu state");
-            }
-            else
-            {
-                Assert.That(SszRoots.HashTreeRoot(states.GetGloasBlockState(first.Root)!), Is.EqualTo(first.Signed.Message!.StateRoot), "the replay runs on a copy of the held Gloas state");
-            }
-            Assert.That(logger.LogList, Has.None.Contains("no longer retained"));
-            Assert.That(logger.LogList, Has.None.Contains("Cannot regenerate"));
+            Assert.That(result, Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
+            Assert.That(envelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the regenerated parent state verifies the parent's envelope");
+            Assert.That(afterEnvelope, Is.EqualTo(BlockImportResult.Imported));
         }
+        else
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        }
+
+        if (heldBase == HeldBase.FuluAnchor)
+        {
+            Assert.That(SszRoots.HashTreeRoot(_chain.AnchorState), Is.EqualTo(anchorStateRoot), "the replay crosses the fork on a copy of the held Fulu state");
+        }
+        else
+        {
+            Assert.That(SszRoots.HashTreeRoot(states.GetGloasBlockState(first.Root)!), Is.EqualTo(first.Signed.Message!.StateRoot), "the replay runs on a copy of the held Gloas state");
+        }
+        Assert.That(logger.LogList, Has.None.Contains("no longer retained"));
+        Assert.That(logger.LogList, Has.None.Contains("Cannot regenerate"));
     }
 
     /// <summary>
@@ -856,12 +828,10 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block sibling = _chain.Next(parent, ForkSlot + 3, full: false, 0xE3);
         BlockImportResult result = importer.ImportRequested(sibling.Forked, sibling.Root);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(logger.LogList, Has.None.Contains("Cannot regenerate"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(logger.LogList, Has.None.Contains("Cannot regenerate"));
     }
 
     /// <summary>
@@ -885,11 +855,9 @@ public class GloasBlockImporterTests
         ];
         BlockImportResult result = importer.Import(sibling.Forked, sibling.Root, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
     }
 
     /// <summary>
@@ -939,14 +907,12 @@ public class GloasBlockImporterTests
         bool parentsEvicted = forged.All(f => states.GetGloasBlockState(f.Parent.Root) is null);
         BlockImportResult[] results = [.. forged.Select(f => importer.Import(f.Forged, f.Root, verifySignatures: true))];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(forged.Select(f => f.Parent.Root).Distinct().Count(), Is.GreaterThan(2 * (int)ForkSlot), "fixture: more forged parents than the per-block tier holds");
-            Assert.That(parentsEvicted, Is.True, "fixture: every forged child names a parent whose state left every tier");
-            Assert.That(results, Is.All.EqualTo(BlockImportResult.Invalid));
-            Assert.That(logger.LogList, Has.None.Contains("Regenerated the post-state"));
-            Assert.That(blocks.TakeLast(2 * (int)ForkSlot).Select(b => states.GetGloasBlockState(b.Root)), Is.All.Not.Null);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forged.Select(f => f.Parent.Root).Distinct().Count(), Is.GreaterThan(2 * (int)ForkSlot), "fixture: more forged parents than the per-block tier holds");
+        Assert.That(parentsEvicted, Is.True, "fixture: every forged child names a parent whose state left every tier");
+        Assert.That(results, Is.All.EqualTo(BlockImportResult.Invalid));
+        Assert.That(logger.LogList, Has.None.Contains("Regenerated the post-state"));
+        Assert.That(blocks.TakeLast(2 * (int)ForkSlot).Select(b => states.GetGloasBlockState(b.Root)), Is.All.Not.Null);
     }
 
     /// <summary>
@@ -984,18 +950,16 @@ public class GloasBlockImporterTests
         timestamper.Add(TimeSpan.FromSeconds(_chain.Spec.SecondsPerSlot));
         BlockImportResult nextSlot = Gossip(siblings[2].Forked, siblings[2].Root);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(sameSlot, Is.EqualTo(new[]
         {
-            Assert.That(sameSlot, Is.EqualTo(new[]
-            {
-                BlockImportResult.Imported,
-                BlockImportResult.UnknownParent,
-                BlockImportResult.Imported,
-                BlockImportResult.UnknownParent,
-            }));
-            Assert.That(nextSlot, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(spentRefusal, Is.EqualTo(ImportRefusal.RegenerationBudget));
-        }
+            BlockImportResult.Imported,
+            BlockImportResult.UnknownParent,
+            BlockImportResult.Imported,
+            BlockImportResult.UnknownParent,
+        }));
+        Assert.That(nextSlot, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(spentRefusal, Is.EqualTo(ImportRefusal.RegenerationBudget));
     }
 
     /// <summary>
@@ -1027,13 +991,11 @@ public class GloasBlockImporterTests
         timestamper.Add(TimeSpan.FromSeconds(1));
         BlockImportResult retry = importer.Import(early.Forked, early.Root, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(first, Is.EqualTo(BlockImportResult.FutureSlot), "fixture: the block waits for its slot");
-            Assert.That(churn, Is.All.EqualTo(BlockImportResult.Imported), "fixture");
-            Assert.That(parentChurned, Is.True, "fixture: the first regenerated state was pushed out");
-            Assert.That(retry, Is.EqualTo(BlockImportResult.Imported));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(first, Is.EqualTo(BlockImportResult.FutureSlot), "fixture: the block waits for its slot");
+        Assert.That(churn, Is.All.EqualTo(BlockImportResult.Imported), "fixture");
+        Assert.That(parentChurned, Is.True, "fixture: the first regenerated state was pushed out");
+        Assert.That(retry, Is.EqualTo(BlockImportResult.Imported));
     }
 
     /// <summary>
@@ -1063,21 +1025,19 @@ public class GloasBlockImporterTests
         timestamper.Add(TimeSpan.FromSeconds(_chain.Spec.SecondsPerSlot));
         BlockImportResult nextSlot = importer.ImportRequested(fetched[2].Forked, fetched[2].Root, fetchedByRoot: true);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(sameSlot, Is.EqualTo(new[]
         {
-            Assert.That(sameSlot, Is.EqualTo(new[]
-            {
-                BlockImportResult.Imported,
-                BlockImportResult.Imported,
-                BlockImportResult.UnknownParent,
-                BlockImportResult.UnknownParent,
-                BlockImportResult.UnknownParent,
-            }));
-            Assert.That(budgetRefusal, Is.EqualTo(ImportRefusal.RegenerationBudget));
-            Assert.That((keylessResult, keylessRefusal), Is.EqualTo((BlockImportResult.UnknownParent, ImportRefusal.None)));
-            Assert.That(gossipResult, Is.EqualTo(BlockImportResult.Imported), "the gossip budget is apart");
-            Assert.That(nextSlot, Is.EqualTo(BlockImportResult.Imported));
-        }
+            BlockImportResult.Imported,
+            BlockImportResult.Imported,
+            BlockImportResult.UnknownParent,
+            BlockImportResult.UnknownParent,
+            BlockImportResult.UnknownParent,
+        }));
+        Assert.That(budgetRefusal, Is.EqualTo(ImportRefusal.RegenerationBudget));
+        Assert.That((keylessResult, keylessRefusal), Is.EqualTo((BlockImportResult.UnknownParent, ImportRefusal.None)));
+        Assert.That(gossipResult, Is.EqualTo(BlockImportResult.Imported), "the gossip budget is apart");
+        Assert.That(nextSlot, Is.EqualTo(BlockImportResult.Imported));
     }
 
     /// <summary>
@@ -1119,14 +1079,12 @@ public class GloasBlockImporterTests
         double elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         if (!beyondBound) TestContext.Out.WriteLine($"Gloas regeneration across the fork: {count} blocks in {elapsedMs:F1} ms, {elapsedMs / count:F2} ms per block, {_chain.AnchorState.Validators!.Length} validators");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(regenerated is null ? null : SszRoots.HashTreeRoot(regenerated), Is.EqualTo(beyondBound ? null : blocks[^1].Signed.Message!.StateRoot));
-            Assert.That(states.GetGloasBlockState(blocks[^1].Root), Is.SameAs(regenerated), "a regenerated state is retained, so the next import naming it replays nothing");
-            Assert.That(SszRoots.HashTreeRoot(_chain.AnchorState), Is.EqualTo(anchorStateRoot));
-            Assert.That(live.Select(states.GetGloasBlockState), Is.All.Not.Null, "regenerated states are kept apart from the states of live blocks");
-            Assert.That(logger.LogList, beyondBound ? Has.One.Contains($"no ancestor state is held within {_chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(regenerated is null ? null : SszRoots.HashTreeRoot(regenerated), Is.EqualTo(beyondBound ? null : blocks[^1].Signed.Message!.StateRoot));
+        Assert.That(states.GetGloasBlockState(blocks[^1].Root), Is.SameAs(regenerated), "a regenerated state is retained, so the next import naming it replays nothing");
+        Assert.That(SszRoots.HashTreeRoot(_chain.AnchorState), Is.EqualTo(anchorStateRoot));
+        Assert.That(live.Select(states.GetGloasBlockState), Is.All.Not.Null, "regenerated states are kept apart from the states of live blocks");
+        Assert.That(logger.LogList, beyondBound ? Has.One.Contains($"no ancestor state is held within {_chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
     }
 
     /// <summary>
@@ -1172,11 +1130,9 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1, blobCommitments: [default]);
         importer.Import(first.Forked, first.Root, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
-            Assert.That(engine.EnvelopeCalls, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
+        Assert.That(engine.EnvelopeCalls, Is.Zero);
     }
 
     public enum HeldProposal
@@ -1268,14 +1224,12 @@ public class GloasBlockImporterTests
         ExecutionPayloadEnvelopeImportResult envelope = importer.ImportEnvelope(first.Envelope);
         BlockImportResult parkedAfterEnvelope = importer.Import(parked.Forked, parkedRoot, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(parkedBeforeEnvelope, Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture: only the proposer and signature are checked before the envelope");
-            Assert.That(childBeforeEnvelope, Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture: the child is deferred behind it");
-            Assert.That(envelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
-            Assert.That(parkedAfterEnvelope, Is.EqualTo(BlockImportResult.Invalid), "fixture: the state root does not match");
-            Assert.That(importer.Import(child.Forked, childRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.UnknownParent));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(parkedBeforeEnvelope, Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture: only the proposer and signature are checked before the envelope");
+        Assert.That(childBeforeEnvelope, Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture: the child is deferred behind it");
+        Assert.That(envelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        Assert.That(parkedAfterEnvelope, Is.EqualTo(BlockImportResult.Invalid), "fixture: the state root does not match");
+        Assert.That(importer.Import(child.Forked, childRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.UnknownParent));
     }
 
     /// <summary>
@@ -1304,11 +1258,9 @@ public class GloasBlockImporterTests
         Finalize(importer, new CheckpointRef(2, finalized.Root));
         importer.OnFinalized(new CheckpointRef(2, finalized.Root));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(deferredWhenFull, Is.EqualTo(maxDeferredBlocks));
-            Assert.That(DeferredCount(importer), Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(deferredWhenFull, Is.EqualTo(maxDeferredBlocks));
+        Assert.That(DeferredCount(importer), Is.Zero);
     }
 
     [Test]
@@ -1340,11 +1292,9 @@ public class GloasBlockImporterTests
 
         importer.Release(parked.Root);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(before, Is.EqualTo(1));
-            Assert.That(DeferredCount(importer), Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(before, Is.EqualTo(1));
+        Assert.That(DeferredCount(importer), Is.Zero);
     }
 
     internal static int DeferredCount(BlockImporter importer) =>
@@ -1523,12 +1473,10 @@ public class GloasBlockImporterTests
         MutateProposal(child.Signed, first.PostState, forgery);
 
         BlockImportResult result = importer.Import(child.Forked, SszRoots.HashTreeRoot(message), verifySignatures: true);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(expected));
-            Assert.That(((IBlockImporter)importer).RejectGossip, Is.EqualTo(forgery is not (Forgery.None or Forgery.OtherProposerSigned)),
-                "an unverified parent payload precedes expected-proposer rejection, but follows signature rejection");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(expected));
+        Assert.That(((IBlockImporter)importer).RejectGossip, Is.EqualTo(forgery is not (Forgery.None or Forgery.OtherProposerSigned)),
+            "an unverified parent payload precedes expected-proposer rejection, but follows signature rejection");
     }
 
     private static void MutateProposal(SignedBeaconBlockGloas block, BeaconStateGloas state, Forgery forgery)
@@ -1647,13 +1595,11 @@ public class GloasBlockImporterTests
         time.Set(slotStart);
         BlockImportResult onTime = importer.Import(block.Forked, block.Root, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(early, Is.EqualTo(BlockImportResult.FutureSlot));
-            Assert.That(knownEarly, Is.False);
-            Assert.That(voteAccepted, Is.True, "the previous slot's signed PTC vote still counts before the next slot starts");
-            Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(early, Is.EqualTo(BlockImportResult.FutureSlot));
+        Assert.That(knownEarly, Is.False);
+        Assert.That(voteAccepted, Is.True, "the previous slot's signed PTC vote still counts before the next slot starts");
+        Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));
     }
 
     /// <summary>
@@ -1696,12 +1642,10 @@ public class GloasBlockImporterTests
 
         BlockImportResult result = importer.Import(child.Forked, child.Root, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "fixture: fork choice refuses a child of an invalid payload");
-            Assert.That(store.HasBlock(child.Root), Is.False, "the refused block is not stored");
-            Assert.That(importer.IsKnown(child.Root), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "fixture: fork choice refuses a child of an invalid payload");
+        Assert.That(store.HasBlock(child.Root), Is.False, "the refused block is not stored");
+        Assert.That(importer.IsKnown(child.Root), Is.False);
     }
 
     /// <summary>
@@ -1723,11 +1667,9 @@ public class GloasBlockImporterTests
 
         ExecutionPayloadEnvelopeImportResult result = importer.ImportEnvelope(pruned.Envelope);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock));
-            Assert.That(engine.EnvelopeCalls, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock));
+        Assert.That(engine.EnvelopeCalls, Is.Zero);
     }
 
     /// <summary>
@@ -1761,11 +1703,9 @@ public class GloasBlockImporterTests
 
         HeadView head = importer.ComputeHead();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the Gloas block is the head");
-            Assert.That(logger.LogList, Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the Gloas block is the head");
+        Assert.That(logger.LogList, Is.Empty);
     }
 
     /// <summary>
@@ -1799,11 +1739,9 @@ public class GloasBlockImporterTests
 
         BlockImportResult result = importer.Import(new ForkedSignedBeaconBlock.OfGloas(block), root, verifySignatures: false);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the transition accepted the slashing, so fork choice's refusal must not sink the block");
-            Assert.That(RefusedByForkChoice("body_attester_slashing") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the transition accepted the slashing, so fork choice's refusal must not sink the block");
+        Assert.That(RefusedByForkChoice("body_attester_slashing") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
     }
 
     private static long RefusedByForkChoice(string operation) =>

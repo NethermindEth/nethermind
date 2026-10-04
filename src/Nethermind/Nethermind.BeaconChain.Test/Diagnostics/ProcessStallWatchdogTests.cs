@@ -89,12 +89,10 @@ public class ProcessStallWatchdogTests
             context.RunProbes();
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Info, Is.Empty);
-            Assert.That(context.Debug, Is.Empty);
-            Assert.That(context.Scheduled, Is.EqualTo(20));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(context.Info, Is.Empty);
+        Assert.That(context.Debug, Is.Empty);
+        Assert.That(context.Scheduled, Is.EqualTo(20));
     }
 
     [Test]
@@ -110,14 +108,12 @@ public class ProcessStallWatchdogTests
             context.RunProbes();
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Debug, Has.Count.EqualTo(2));
-            Assert.That(context.Debug[0], Does.StartWith("Process stall watchdog summary: max tick delay 1.000 s; max probe latency 0.200 s;"));
-            Assert.That(context.Debug[1], Does.StartWith("Process stall watchdog summary: max tick delay 1.000 s; max probe latency 0.100 s;"));
-            Assert.That(context.Debug, Has.All.Contains("GC pause 0.003 s; working set "));
-            Assert.That(context.Info, Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(context.Debug, Has.Count.EqualTo(2));
+        Assert.That(context.Debug[0], Does.StartWith("Process stall watchdog summary: max tick delay 1.000 s; max probe latency 0.200 s;"));
+        Assert.That(context.Debug[1], Does.StartWith("Process stall watchdog summary: max tick delay 1.000 s; max probe latency 0.100 s;"));
+        Assert.That(context.Debug, Has.All.Contains("GC pause 0.003 s; working set "));
+        Assert.That(context.Info, Is.Empty);
     }
 
     [Test]
@@ -157,12 +153,10 @@ public class ProcessStallWatchdogTests
         Assert.That(waiting.Wait(TimeSpan.FromSeconds(5)), Is.True);
         context.Watchdog.Dispose();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(attempts, Is.EqualTo(2));
-            Assert.That(context.Debug, Is.EqualTo(new[] { "Process stall watchdog tick failed." }));
-            Assert.That(context.Info, Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(attempts, Is.EqualTo(2));
+        Assert.That(context.Debug, Is.EqualTo(new[] { "Process stall watchdog tick failed." }));
+        Assert.That(context.Info, Is.Empty);
     }
 
     private sealed class Context : IDisposable

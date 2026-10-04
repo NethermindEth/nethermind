@@ -48,17 +48,15 @@ public class ColumnGossipRouterReconstructionTests
         bool gatedFinished = gated.Wait(Timeout);
         bool otherFinished = other.Wait(Timeout);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(entered, Is.True, "fixture: the first root's recovery started");
-            Assert.That(otherFinishedWhileGated, Is.True, "the other root's sidecar is validated while the first root recovers");
-            Assert.That(gatedStillRecovering, Is.True, "fixture: the first root was still recovering");
-            Assert.That(gatedFinished, Is.True);
-            Assert.That(otherFinished, Is.True);
-            Assert.That(pool.TryGet(otherRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True, "the other root was recovered too");
-            Assert.That(pool.TryGet(gatedRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
-            Assert.That(received.Count, Is.EqualTo(2 * Eip7594DasConstants.NumberOfColumns - 2 * (Required - 1)), "every missing column of both roots was raised once");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(entered, Is.True, "fixture: the first root's recovery started");
+        Assert.That(otherFinishedWhileGated, Is.True, "the other root's sidecar is validated while the first root recovers");
+        Assert.That(gatedStillRecovering, Is.True, "fixture: the first root was still recovering");
+        Assert.That(gatedFinished, Is.True);
+        Assert.That(otherFinished, Is.True);
+        Assert.That(pool.TryGet(otherRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True, "the other root was recovered too");
+        Assert.That(pool.TryGet(gatedRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
+        Assert.That(received.Count, Is.EqualTo(2 * Eip7594DasConstants.NumberOfColumns - 2 * (Required - 1)), "every missing column of both roots was raised once");
     }
 
     /// <summary>Checks that fulu/das-core.md recovery has one owner per root until publication completes.</summary>
@@ -80,17 +78,15 @@ public class ColumnGossipRouterReconstructionTests
         typeof(ColumnGossipRouter).GetMethod("TrackHeldColumnAndMaybeReconstruct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(router, [root, CurrentSlot]);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(entered, Is.True, "fixture: the recovery started");
-            Assert.That(anotherFinishedWhileGated, Is.True, "a sidecar of the recovering root does not wait for it");
-            Assert.That(callsWhileGated, Is.EqualTo(1), "the recovering root is not claimed again");
-            Assert.That(gatedFinished, Is.True);
-            Assert.That(anotherFinished, Is.True);
-            Assert.That(recovery.Calls, Is.EqualTo(1), "a recovered root is never recovered again");
-            Assert.That(pool.TryGet(root, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
-            Assert.That(received.Select(static s => s.Index), Is.Unique);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(entered, Is.True, "fixture: the recovery started");
+        Assert.That(anotherFinishedWhileGated, Is.True, "a sidecar of the recovering root does not wait for it");
+        Assert.That(callsWhileGated, Is.EqualTo(1), "the recovering root is not claimed again");
+        Assert.That(gatedFinished, Is.True);
+        Assert.That(anotherFinished, Is.True);
+        Assert.That(recovery.Calls, Is.EqualTo(1), "a recovered root is never recovered again");
+        Assert.That(pool.TryGet(root, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
+        Assert.That(received.Select(static s => s.Index), Is.Unique);
     }
 
     /// <summary>Checks that callbacks exposing fulu/das-core.md recovered columns can wait for unrelated gossip.</summary>
@@ -146,12 +142,10 @@ public class ColumnGossipRouterReconstructionTests
         bool recoveredEarly = pool.TryGet(root, Eip7594DasConstants.NumberOfColumns - 1, out _);
         router.Handle(Required, gloasTopic: false, Message(Required, CurrentSlot));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(recoveredEarly, Is.False, "fixture: the first recovery produced nothing");
-            Assert.That(calls, Is.EqualTo(2), "the next held column retries the root");
-            Assert.That(pool.TryGet(root, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(recoveredEarly, Is.False, "fixture: the first recovery produced nothing");
+        Assert.That(calls, Is.EqualTo(2), "the next held column retries the root");
+        Assert.That(pool.TryGet(root, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
     }
 
     private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, ConcurrentBag<DataColumnSidecar> Received) Create(ColumnGossipRouter.DataColumnReconstructor reconstruct)

@@ -28,16 +28,14 @@ public class GloasAnchorTests
 
         CheckpointRef anchor = new(ForkCrossingChain.ForkEpoch, chain.First.Root);
         ProtoNode node = runner.EnumerateAncestors(chain.First.Root).First();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(anchor));
-            Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(anchor));
-            Assert.That(runner.CurrentSlot, Is.EqualTo(chain.First.Block.Message!.Slot));
-            Assert.That(node.ExecutionStatus, Is.EqualTo(ExecutionStatus.Valid), "a finalized anchor must never be invalidated");
-            Assert.That(node.ExecutionBlockHash, Is.EqualTo(chain.First.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlockHash),
-                "the invalidation walk maps a latest valid hash to Gloas roots through the bid's block_hash");
-            Assert.That(runner.GetHead(), Is.EqualTo(chain.First.Root));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(anchor));
+        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(anchor));
+        Assert.That(runner.CurrentSlot, Is.EqualTo(chain.First.Block.Message!.Slot));
+        Assert.That(node.ExecutionStatus, Is.EqualTo(ExecutionStatus.Valid), "a finalized anchor must never be invalidated");
+        Assert.That(node.ExecutionBlockHash, Is.EqualTo(chain.First.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlockHash),
+            "the invalidation walk maps a latest valid hash to Gloas roots through the bid's block_hash");
+        Assert.That(runner.GetHead(), Is.EqualTo(chain.First.Root));
     }
 
     /// <summary>
@@ -62,11 +60,9 @@ public class GloasAnchorTests
 
         Hash256 head = runner.GetHead();
         ulong firstWeight = runner.Snapshot().Nodes.Single(n => n.Root == chain.First.Root).Weight;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head, Is.EqualTo(chain.Voting[^1].Root));
-            Assert.That(firstWeight, Is.EqualTo((ulong)(ForkCrossingChain.VotingSlotCount * chain.Committee32.Length) * chain.First.PostState.Validators![0].EffectiveBalance));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head, Is.EqualTo(chain.Voting[^1].Root));
+        Assert.That(firstWeight, Is.EqualTo((ulong)(ForkCrossingChain.VotingSlotCount * chain.Committee32.Length) * chain.First.PostState.Validators![0].EffectiveBalance));
     }
 
     [Test]

@@ -58,11 +58,9 @@ public class GossipMessageValidatorColumnTests
         long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(canonical);
         long suppliedBefore = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(supplied);
         validator.Validate(Message(GossipTopics.Topic(MainnetDigest, name), []), GossipVerdict.None);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(canonical), Is.EqualTo(before + 1));
-            Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(supplied), Is.EqualTo(suppliedBefore));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(canonical), Is.EqualTo(before + 1));
+        Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(supplied), Is.EqualTo(suppliedBefore));
     }
 
     [TestCaseSource(nameof(FuluCases))]
@@ -80,19 +78,17 @@ public class GossipMessageValidatorColumnTests
         long reasonBefore = Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(reasonKey);
         MessageValidity validity = validator.Validate(Message(GossipTopics.Topic(MainnetDigest, GossipTopics.DataColumnSidecarTopicName(Subnet)), Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar))), GossipVerdict.None);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key), Is.EqualTo(before + 1));
+        Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (consumed ? 1UL : 0UL)), "a consumed sidecar is accepted even when it is not forwarded");
+        Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(droppedBefore + (reason is null ? 0UL : 1UL)));
+        Assert.That(Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(reasonKey), Is.EqualTo(reasonBefore + (reason is null ? 0 : 1)));
+        Assert.That(validity, Is.EqualTo(expected));
+        Assert.That(raised, Is.EqualTo(consumed ? 1 : 0), "consumed");
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!), sidecar.Index, out _), Is.EqualTo(consumed), "pooled");
+        if (reason is { } dropReason)
         {
-            Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key), Is.EqualTo(before + 1));
-            Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (consumed ? 1UL : 0UL)), "a consumed sidecar is accepted even when it is not forwarded");
-            Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(droppedBefore + (reason is null ? 0UL : 1UL)));
-            Assert.That(Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(reasonKey), Is.EqualTo(reasonBefore + (reason is null ? 0 : 1)));
-            Assert.That(validity, Is.EqualTo(expected));
-            Assert.That(raised, Is.EqualTo(consumed ? 1 : 0), "consumed");
-            Assert.That(pool.TryGet(SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!), sidecar.Index, out _), Is.EqualTo(consumed), "pooled");
-            if (reason is { } dropReason)
-            {
-                Assert.That(columns.GetDropCount(dropReason), Is.EqualTo(1), "the drop is counted under its reason");
-            }
+            Assert.That(columns.GetDropCount(dropReason), Is.EqualTo(1), "the drop is counted under its reason");
         }
     }
 
@@ -142,12 +138,10 @@ public class GossipMessageValidatorColumnTests
 
         MessageValidity validity = validator.Validate(Message(GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(Subnet)), Snappy.CompressToArray(DataColumnSidecarGloas.Encode(sidecar))), GossipVerdict.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(expected));
-            Assert.That(pool.TryGetGloas(root, Subnet, out _), Is.EqualTo(blockHeld), "stored as verified");
-            Assert.That(pool.GetPendingGloas(root, Subnet), Has.Length.EqualTo(blockHeld ? 0 : 1), "parked as a pending candidate");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(expected));
+        Assert.That(pool.TryGetGloas(root, Subnet, out _), Is.EqualTo(blockHeld), "stored as verified");
+        Assert.That(pool.GetPendingGloas(root, Subnet), Has.Length.EqualTo(blockHeld ? 0 : 1), "parked as a pending candidate");
     }
 
     private static (GossipMessageValidator Validator, GossipRouter Gossip, ColumnGossipRouter Columns, DataColumnSidecarPool Pool) CreateMainnet(ulong finalizedEpoch = 0)

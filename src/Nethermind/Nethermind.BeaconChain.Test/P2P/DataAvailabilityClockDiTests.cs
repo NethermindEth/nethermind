@@ -38,11 +38,9 @@ public class DataAvailabilityClockDiTests
         container.Resolve<BeaconP2P>();
         SlotClock registered = container.Resolve<SlotClock>();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(handedOut.Select(static h => h.Consumer), Is.SupersetOf(new[] { typeof(RangeSync), typeof(BlockImporterFactory), typeof(BeaconP2P) }));
-            Assert.That(handedOut.Select(static h => h.Instance), Is.All.SameAs(registered));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(handedOut.Select(static h => h.Consumer), Is.SupersetOf(new[] { typeof(RangeSync), typeof(BlockImporterFactory), typeof(BeaconP2P) }));
+        Assert.That(handedOut.Select(static h => h.Instance), Is.All.SameAs(registered));
     }
 
     /// <summary>A missing registration must fail the container, not hand these a private clock or none at all.</summary>
@@ -63,10 +61,8 @@ public class DataAvailabilityClockDiTests
         if (registerClock) builder.RegisterInstance(new SlotClock(BeaconChainSpec.Mainnet, Timestamper.Default));
         using IContainer container = builder.Build();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => container.Resolve<RangeSync>(), registerClock ? Throws.Nothing : Throws.InstanceOf<DependencyResolutionException>());
-            Assert.That(() => container.Resolve<BlockImporterFactory>(), registerClock ? Throws.Nothing : Throws.InstanceOf<DependencyResolutionException>());
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(() => container.Resolve<RangeSync>(), registerClock ? Throws.Nothing : Throws.InstanceOf<DependencyResolutionException>());
+        Assert.That(() => container.Resolve<BlockImporterFactory>(), registerClock ? Throws.Nothing : Throws.InstanceOf<DependencyResolutionException>());
     }
 }

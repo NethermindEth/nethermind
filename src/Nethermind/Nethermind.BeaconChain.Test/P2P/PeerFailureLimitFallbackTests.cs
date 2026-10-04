@@ -179,11 +179,9 @@ public class PeerFailureLimitFallbackTests
             imported.Add(block.Slot);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(imported, Is.EqualTo(chain.Select(static b => b.Message!.Slot)));
-            Assert.That(served[AddressPrefix + "Violator"].Requests, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(imported, Is.EqualTo(chain.Select(static b => b.Message!.Slot)));
+        Assert.That(served[AddressPrefix + "Violator"].Requests, Is.Zero);
     }
 
     private static IBeaconSyncPeer AddPeer(PeerManager manager, string name, PeerFailureReason reason, int failures, StatusMessageV2? status = null, ISession? session = null)

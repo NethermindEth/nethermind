@@ -123,11 +123,9 @@ public class GossipMessageValidatorTests
 
         MessageValidity validity = validator.Validate(Message(Topic(GloasDigest, GossipTopics.ExecutionPayload), Encode(Envelope())), verdict);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((validity, given.SingleOrDefault()), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored)));
-            Assert.That(raised, Has.Count.EqualTo(1), "the envelope still reaches the import pipeline");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((validity, given.SingleOrDefault()), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored)));
+        Assert.That(raised, Has.Count.EqualTo(1), "the envelope still reaches the import pipeline");
     }
 
     [Test]
@@ -150,16 +148,14 @@ public class GossipMessageValidatorTests
         long before = Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key);
         MessageValidity validity = validator.Validate(Message(topic, data), GossipVerdict.None);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key), Is.EqualTo(before + 1));
+        Assert.That(validity, Is.EqualTo(expected), "validity");
+        Assert.That(raised.Select(static e => e.GetType()), consumedAs is null ? Is.Empty : Is.EqualTo(new[] { consumedAs }), "typed event");
+        Assert.That(Enum.GetValues<GossipDropReason>().Select(router.GetDropCount).Sum(), Is.EqualTo(reason is null ? 0 : 1), "one drop at most");
+        if (reason is { } expectedReason)
         {
-            Assert.That(Metrics.BeaconChainGossipReceivedByTopic.GetValueOrDefault(key), Is.EqualTo(before + 1));
-            Assert.That(validity, Is.EqualTo(expected), "validity");
-            Assert.That(raised.Select(static e => e.GetType()), consumedAs is null ? Is.Empty : Is.EqualTo(new[] { consumedAs }), "typed event");
-            Assert.That(Enum.GetValues<GossipDropReason>().Select(router.GetDropCount).Sum(), Is.EqualTo(reason is null ? 0 : 1), "one drop at most");
-            if (reason is { } expectedReason)
-            {
-                Assert.That(router.GetDropCount(expectedReason), Is.EqualTo(1), "drop reason");
-            }
+            Assert.That(router.GetDropCount(expectedReason), Is.EqualTo(1), "drop reason");
         }
     }
 
@@ -200,12 +196,10 @@ public class GossipMessageValidatorTests
 
         MessageValidity validity = validator.Validate(Message(Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock())), GossipVerdict.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
-            Assert.That(raised, Is.Empty, "the block is dropped, not consumed");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(raised, Is.Empty, "the block is dropped, not consumed");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
     }
 
     public enum SeenAggregateCase
@@ -260,12 +254,10 @@ public class GossipMessageValidatorTests
 
         MessageValidity validity = validator.Validate(Message(Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(candidate)), GossipVerdict.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
-            Assert.That(raised, Has.Count.EqualTo(ignored ? 0 : 1));
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(ignored ? 1 : 0));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(raised, Has.Count.EqualTo(ignored ? 0 : 1));
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(ignored ? 1 : 0));
     }
 
     [Test]

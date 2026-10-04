@@ -98,11 +98,9 @@ public class PeerHealthCheckRoundTests
             Assert.That(started, Is.EqualTo(4));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(active, Is.Zero, "the schedule returned while a dial was still running");
-            Assert.That(maximum, Is.EqualTo(2), "more dials ran at once than the configured limit");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(active, Is.Zero, "the schedule returned while a dial was still running");
+        Assert.That(maximum, Is.EqualTo(2), "more dials ran at once than the configured limit");
     }
 
     [Test]
@@ -136,11 +134,9 @@ public class PeerHealthCheckRoundTests
             return candidate.PeerId == "peer-0" ? Task.FromException(new InvalidOperationException("malformed record")) : Task.CompletedTask;
         }, (candidate, _) => { lock (failed) failed.Add(candidate.PeerId); }, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(dialled, Is.EqualTo(new[] { "peer-0", "peer-1" }), "the candidate after a failing one was never dialled");
-            Assert.That(failed, Is.EqualTo(new[] { "peer-0" }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(dialled, Is.EqualTo(new[] { "peer-0", "peer-1" }), "the candidate after a failing one was never dialled");
+        Assert.That(failed, Is.EqualTo(new[] { "peer-0" }));
     }
 
     private static async IAsyncEnumerable<BeaconPeerCandidate> Candidates(int count)

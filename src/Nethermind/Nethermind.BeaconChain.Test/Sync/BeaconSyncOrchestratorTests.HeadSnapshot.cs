@@ -22,14 +22,12 @@ public partial class BeaconSyncOrchestratorTests
         HeadSnapshot? published = snapshots.Current;
 
         Assert.That(published, Is.Not.Null);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(published!.Status.HeadRoot, Is.EqualTo(harness.StatusHolder.CurrentStatus.HeadRoot));
-            Assert.That(published.Status.FinalizedRoot, Is.EqualTo(published.Status.HeadRoot), "a node that has only its anchor has it as head and finalized");
-            Assert.That(published.JustifiedRoot, Is.EqualTo(Hash256.Zero), "no head step has named a justified checkpoint yet");
-            Assert.That(published.ExecutionInSync, Is.False);
-            Assert.That(published.FullHeadRoot, Is.Null);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(published!.Status.HeadRoot, Is.EqualTo(harness.StatusHolder.CurrentStatus.HeadRoot));
+        Assert.That(published.Status.FinalizedRoot, Is.EqualTo(published.Status.HeadRoot), "a node that has only its anchor has it as head and finalized");
+        Assert.That(published.JustifiedRoot, Is.EqualTo(Hash256.Zero), "no head step has named a justified checkpoint yet");
+        Assert.That(published.ExecutionInSync, Is.False);
+        Assert.That(published.FullHeadRoot, Is.Null);
     }
 
     [Test]
@@ -47,20 +45,18 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
         HeadSnapshot next = snapshots.Current!;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(next, Is.Not.SameAs(held));
-            Assert.That(held.FullHeadRoot, Is.EqualTo(fullPayload ? TestItem.KeccakA : null));
-            Assert.That(next.FullHeadRoot, Is.EqualTo(fullPayload ? null : TestItem.KeccakB));
-            Assert.That(held.Status.HeadRoot, Is.EqualTo(TestItem.KeccakA), "held head");
-            Assert.That(held.Status.FinalizedEpoch, Is.EqualTo(3UL), "held finality");
-            Assert.That(held.JustifiedRoot, Is.EqualTo(TestItem.KeccakC), "held justified root");
-            Assert.That(held.ExecutionInSync, Is.EqualTo(executionValid), "held execution flag");
-            Assert.That(next.Status.HeadRoot, Is.EqualTo(TestItem.KeccakB));
-            Assert.That(next.Status.FinalizedEpoch, Is.EqualTo(4UL));
-            Assert.That(next.ExecutionInSync, Is.EqualTo(!executionValid), "the flag follows the same step's forkchoiceUpdated verdict");
-            Assert.That(next.Status.HeadRoot, Is.EqualTo(harness.StatusHolder.CurrentStatus.HeadRoot), "peers and the API are told the same head");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(next, Is.Not.SameAs(held));
+        Assert.That(held.FullHeadRoot, Is.EqualTo(fullPayload ? TestItem.KeccakA : null));
+        Assert.That(next.FullHeadRoot, Is.EqualTo(fullPayload ? null : TestItem.KeccakB));
+        Assert.That(held.Status.HeadRoot, Is.EqualTo(TestItem.KeccakA), "held head");
+        Assert.That(held.Status.FinalizedEpoch, Is.EqualTo(3UL), "held finality");
+        Assert.That(held.JustifiedRoot, Is.EqualTo(TestItem.KeccakC), "held justified root");
+        Assert.That(held.ExecutionInSync, Is.EqualTo(executionValid), "held execution flag");
+        Assert.That(next.Status.HeadRoot, Is.EqualTo(TestItem.KeccakB));
+        Assert.That(next.Status.FinalizedEpoch, Is.EqualTo(4UL));
+        Assert.That(next.ExecutionInSync, Is.EqualTo(!executionValid), "the flag follows the same step's forkchoiceUpdated verdict");
+        Assert.That(next.Status.HeadRoot, Is.EqualTo(harness.StatusHolder.CurrentStatus.HeadRoot), "peers and the API are told the same head");
     }
 
 }

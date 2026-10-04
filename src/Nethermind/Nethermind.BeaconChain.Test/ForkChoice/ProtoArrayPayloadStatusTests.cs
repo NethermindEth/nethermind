@@ -53,14 +53,12 @@ public class ProtoArrayPayloadStatusTests
 
         ProtoNode block = Node(fc, GetRoot(1));
         ProtoNode anchor = Node(fc, GetRoot(0));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(block.Weight, Is.EqualTo(balance), "PENDING counts every supported node of the block");
-            Assert.That(block.EmptyWeight, Is.EqualTo(supported == ForkChoicePayloadStatus.Empty ? balance : 0));
-            Assert.That(block.FullWeight, Is.EqualTo(supported == ForkChoicePayloadStatus.Full ? balance : 0));
-            Assert.That(anchor.FullWeight, Is.EqualTo(balance), "a child of a pre-Gloas block builds on it full");
-            Assert.That(anchor.EmptyWeight, Is.Zero);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(block.Weight, Is.EqualTo(balance), "PENDING counts every supported node of the block");
+        Assert.That(block.EmptyWeight, Is.EqualTo(supported == ForkChoicePayloadStatus.Empty ? balance : 0));
+        Assert.That(block.FullWeight, Is.EqualTo(supported == ForkChoicePayloadStatus.Full ? balance : 0));
+        Assert.That(anchor.FullWeight, Is.EqualTo(balance), "a child of a pre-Gloas block builds on it full");
+        Assert.That(anchor.EmptyWeight, Is.Zero);
     }
 
     [Test]
@@ -76,12 +74,10 @@ public class ProtoArrayPayloadStatusTests
         Settle(fc, [1, 2, 4, 8], 3);
 
         ProtoNode block = Node(fc, GetRoot(1));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(block.FullWeight, Is.EqualTo(1ul));
-            Assert.That(block.EmptyWeight, Is.EqualTo(2ul));
-            Assert.That(block.Weight, Is.EqualTo(15ul));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(block.FullWeight, Is.EqualTo(1ul));
+        Assert.That(block.EmptyWeight, Is.EqualTo(2ul));
+        Assert.That(block.Weight, Is.EqualTo(15ul));
     }
 
     [TestCase(2ul, 3ul, true, true, TestName = "Gloas: a later slot in the same epoch replaces")]
@@ -100,11 +96,9 @@ public class ProtoArrayPayloadStatusTests
         fc.ProcessAttestation(0, GetRoot(2), secondSlot, secondSlot / SlotsPerEpoch, payloadPresent);
         Settle(fc, [5], 40);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Node(fc, GetRoot(2)).Weight, Is.EqualTo(replaced ? 5ul : 0ul));
-            Assert.That(Node(fc, GetRoot(1)).Weight, Is.EqualTo(replaced ? 0ul : 5ul));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Node(fc, GetRoot(2)).Weight, Is.EqualTo(replaced ? 5ul : 0ul));
+        Assert.That(Node(fc, GetRoot(1)).Weight, Is.EqualTo(replaced ? 0ul : 5ul));
     }
 
     [Test]
@@ -133,12 +127,10 @@ public class ProtoArrayPayloadStatusTests
         // Moving the vote to the other child moves the weight between the parent's nodes.
         fc.ProcessAttestation(0, GetRoot(3), 3, 0, payloadPresent: false);
         Settle(fc, [3, 11], 4);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(parent.FullWeight, Is.Zero);
-            Assert.That(parent.EmptyWeight, Is.EqualTo(14ul));
-            Assert.That(parent.Weight, Is.EqualTo(14ul));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(parent.FullWeight, Is.Zero);
+        Assert.That(parent.EmptyWeight, Is.EqualTo(14ul));
+        Assert.That(parent.Weight, Is.EqualTo(14ul));
     }
 
     [TestCase(false, ForkChoicePayloadStatus.Full, TestName = "Child of a pre-Gloas anchor builds on it full")]
@@ -176,12 +168,10 @@ public class ProtoArrayPayloadStatusTests
         }
 
         Settle(fc, balances, 3);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(boosted.Weight, Is.Zero, "the boost is removed on the next update");
-            Assert.That(parent.EmptyWeight, Is.Zero);
-            Assert.That(parent.Weight, Is.Zero);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(boosted.Weight, Is.Zero, "the boost is removed on the next update");
+        Assert.That(parent.EmptyWeight, Is.Zero);
+        Assert.That(parent.Weight, Is.Zero);
     }
 
     [Test]
@@ -202,12 +192,10 @@ public class ProtoArrayPayloadStatusTests
         }
 
         ProtoNode anchor = Node(fc, Hash256.Zero);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(anchor.Weight, Is.Zero);
-            Assert.That(anchor.EmptyWeight, Is.Zero);
-            Assert.That(anchor.FullWeight, Is.Zero);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(anchor.Weight, Is.Zero);
+        Assert.That(anchor.EmptyWeight, Is.Zero);
+        Assert.That(anchor.FullWeight, Is.Zero);
     }
 
     [Test]
@@ -222,12 +210,10 @@ public class ProtoArrayPayloadStatusTests
         Settle(fc, [9], 4);
 
         ProtoNode block = Node(fc, GetRoot(1));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(block.EmptyWeight, Is.Zero);
-            Assert.That(block.FullWeight, Is.EqualTo(9ul));
-            Assert.That(block.Weight, Is.EqualTo(9ul));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(block.EmptyWeight, Is.Zero);
+        Assert.That(block.FullWeight, Is.EqualTo(9ul));
+        Assert.That(block.Weight, Is.EqualTo(9ul));
     }
 
     [Test]
@@ -244,11 +230,9 @@ public class ProtoArrayPayloadStatusTests
         Settle(fc, [5, 6], 4);
 
         ProtoNode block = Node(fc, GetRoot(1));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(block.FullWeight, Is.EqualTo(6ul), "deducted exactly once");
-            Assert.That(block.Weight, Is.EqualTo(6ul));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(block.FullWeight, Is.EqualTo(6ul), "deducted exactly once");
+        Assert.That(block.Weight, Is.EqualTo(6ul));
     }
 
     [Test]
@@ -265,15 +249,13 @@ public class ProtoArrayPayloadStatusTests
         fc.ProcessExecutionPayloadInvalidation(InvalidationOperation.InvalidateOne(GetRoot(2)), Anchor);
         Settle(fc, [5, 6], 4);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Node(fc, GetRoot(2)).EmptyWeight, Is.Zero);
-            Assert.That(Node(fc, GetRoot(2)).FullWeight, Is.Zero);
-            Assert.That(Node(fc, GetRoot(2)).Weight, Is.Zero);
-            Assert.That(Node(fc, GetRoot(1)).FullWeight, Is.Zero, "the invalid child's weight leaves the parent's FULL node");
-            Assert.That(Node(fc, GetRoot(1)).EmptyWeight, Is.EqualTo(5ul));
-            Assert.That(Node(fc, GetRoot(1)).Weight, Is.EqualTo(5ul));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Node(fc, GetRoot(2)).EmptyWeight, Is.Zero);
+        Assert.That(Node(fc, GetRoot(2)).FullWeight, Is.Zero);
+        Assert.That(Node(fc, GetRoot(2)).Weight, Is.Zero);
+        Assert.That(Node(fc, GetRoot(1)).FullWeight, Is.Zero, "the invalid child's weight leaves the parent's FULL node");
+        Assert.That(Node(fc, GetRoot(1)).EmptyWeight, Is.EqualTo(5ul));
+        Assert.That(Node(fc, GetRoot(1)).Weight, Is.EqualTo(5ul));
     }
 
     [Test]
@@ -288,13 +270,11 @@ public class ProtoArrayPayloadStatusTests
 
         fc.MaybePrune(GetRoot(1));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fc.Nodes, Has.Count.EqualTo(4));
-            Assert.That(Node(fc, GetRoot(1)).Children.Select(i => fc.Nodes[i].Root), Is.EqualTo(new[] { GetRoot(2), GetRoot(3) }));
-            Assert.That(Node(fc, GetRoot(2)).Children.Select(i => fc.Nodes[i].Root), Is.EqualTo(new[] { GetRoot(4) }));
-            Assert.That(Node(fc, GetRoot(3)).Children, Is.Empty);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fc.Nodes, Has.Count.EqualTo(4));
+        Assert.That(Node(fc, GetRoot(1)).Children.Select(i => fc.Nodes[i].Root), Is.EqualTo(new[] { GetRoot(2), GetRoot(3) }));
+        Assert.That(Node(fc, GetRoot(2)).Children.Select(i => fc.Nodes[i].Root), Is.EqualTo(new[] { GetRoot(4) }));
+        Assert.That(Node(fc, GetRoot(3)).Children, Is.Empty);
     }
 
     [Test]
@@ -325,14 +305,12 @@ public class ProtoArrayPayloadStatusTests
         Assert.That(() => protoArray.OnBlock(refused, refused.Slot, Anchor, Anchor), Throws.InstanceOf<ProtoArrayException>());
         Assert.That(() => protoArray.OnBlock(refused, refused.Slot, Anchor, Anchor), Throws.InstanceOf<ProtoArrayException>(), "a replay is refused too");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(protoArray.Nodes, Has.Count.EqualTo(nodeCount));
-            Assert.That(protoArray.Indices, Has.Count.EqualTo(nodeCount));
-            Assert.That(protoArray.Indices.ContainsKey(GetRoot(5)), Is.False);
-            Assert.That(parent.BestChild, Is.EqualTo(parentBestChild));
-            Assert.That(parent.Children, Is.Empty);
-            Assert.That(protoArray.Nodes.Skip(3).Where(n => n.ExecutionStatus == ExecutionStatus.Valid), Is.Empty, "no ancestor is marked valid");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(protoArray.Nodes, Has.Count.EqualTo(nodeCount));
+        Assert.That(protoArray.Indices, Has.Count.EqualTo(nodeCount));
+        Assert.That(protoArray.Indices.ContainsKey(GetRoot(5)), Is.False);
+        Assert.That(parent.BestChild, Is.EqualTo(parentBestChild));
+        Assert.That(parent.Children, Is.Empty);
+        Assert.That(protoArray.Nodes.Skip(3).Where(n => n.ExecutionStatus == ExecutionStatus.Valid), Is.Empty, "no ancestor is marked valid");
     }
 }

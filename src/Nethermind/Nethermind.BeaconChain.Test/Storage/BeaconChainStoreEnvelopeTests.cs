@@ -37,12 +37,10 @@ public class BeaconChainStoreEnvelopeTests
         BeaconChainStore reopened = new(db, Sepolia);
 
         Assert.That(reopened.TryGetExecutionPayloadEnvelope(RootOf(envelope), out SignedExecutionPayloadEnvelope? read), Is.True);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(SignedExecutionPayloadEnvelope.Encode(read!), Is.EqualTo(SignedExecutionPayloadEnvelope.Encode(envelope)));
-            Assert.That(reopened.TryGetExecutionPayloadEnvelope(Keccak.Compute("missing"), out _), Is.False);
-            Assert.That(reopened.IsExecutionPayloadValid(RootOf(envelope)), Is.EqualTo(valid), "legacy envelopes have no EL verdict");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(SignedExecutionPayloadEnvelope.Encode(read!), Is.EqualTo(SignedExecutionPayloadEnvelope.Encode(envelope)));
+        Assert.That(reopened.TryGetExecutionPayloadEnvelope(Keccak.Compute("missing"), out _), Is.False);
+        Assert.That(reopened.IsExecutionPayloadValid(RootOf(envelope)), Is.EqualTo(valid), "legacy envelopes have no EL verdict");
     }
 
     [Test]
@@ -62,12 +60,10 @@ public class BeaconChainStoreEnvelopeTests
         BeaconChainStore reopened = new(db, Sepolia);
         Prune(reopened, pastEnvelope, ulong.MaxValue);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reopened.IsExecutionPayloadValid(RootOf(envelope)), Is.False, "late verdicts cannot outlive their envelope");
-            Assert.That(db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).GetAllKeys(), Is.Empty,
-                "a missing envelope has no slot index to prune an orphan marker");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reopened.IsExecutionPayloadValid(RootOf(envelope)), Is.False, "late verdicts cannot outlive their envelope");
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).GetAllKeys(), Is.Empty,
+            "a missing envelope has no slot index to prune an orphan marker");
     }
 
     [Test]
@@ -92,14 +88,12 @@ public class BeaconChainStoreEnvelopeTests
         long readsBefore = column.ReadsCount;
         Prune(store, currentEpoch, finalizedSlot);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(column.ReadsCount - readsBefore, Is.EqualTo(1), "a repeat prune reads the slot bounds and no pruned slot again");
-            Assert.That(kept.Select(e => store.TryGetExecutionPayloadEnvelope(RootOf(e), out _)), Is.All.True, "at or above the window start");
-            Assert.That(belowWindow.Select(e => store.TryGetExecutionPayloadEnvelope(RootOf(e), out _)), Is.All.EqualTo(finalityLags),
-                "below the window start, both forks of one slot, kept only from the finalized block on");
-            Assert.That(pruned.Select(e => store.TryGetExecutionPayloadEnvelope(RootOf(e), out _)), Is.All.False, "batches below both");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(column.ReadsCount - readsBefore, Is.EqualTo(1), "a repeat prune reads the slot bounds and no pruned slot again");
+        Assert.That(kept.Select(e => store.TryGetExecutionPayloadEnvelope(RootOf(e), out _)), Is.All.True, "at or above the window start");
+        Assert.That(belowWindow.Select(e => store.TryGetExecutionPayloadEnvelope(RootOf(e), out _)), Is.All.EqualTo(finalityLags),
+            "below the window start, both forks of one slot, kept only from the finalized block on");
+        Assert.That(pruned.Select(e => store.TryGetExecutionPayloadEnvelope(RootOf(e), out _)), Is.All.False, "batches below both");
     }
 
     [Test]
@@ -124,12 +118,10 @@ public class BeaconChainStoreEnvelopeTests
         // The window's start slot saturates rather than wrapping to a slot below the envelope.
         Prune(store, (1UL << 59) + BeaconChainStore.MinEpochsForBlockRequests, ulong.MaxValue);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(keptAtTheFork, Is.All.True, "a window that has not left the fork epoch, or a current epoch younger than the window");
-            Assert.That(keptPastEverything, Is.All.False, "the window starts above every stored slot, the highest included");
-            Assert.That(store.TryGetExecutionPayloadEnvelope(RootOf(later), out _), Is.False, "an envelope stored after the store was emptied is still indexed for pruning");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(keptAtTheFork, Is.All.True, "a window that has not left the fork epoch, or a current epoch younger than the window");
+        Assert.That(keptPastEverything, Is.All.False, "the window starts above every stored slot, the highest included");
+        Assert.That(store.TryGetExecutionPayloadEnvelope(RootOf(later), out _), Is.False, "an envelope stored after the store was emptied is still indexed for pruning");
     }
 
     [Test]
@@ -157,13 +149,11 @@ public class BeaconChainStoreEnvelopeTests
         long readsBefore = column.ReadsCount;
         Prune(store, windowAboveBoth + 1, ulong.MaxValue);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(belowKept, Is.False, "below the finalized block and the window");
-            Assert.That(finalizedKept, Is.True, "the finalized block is the highest stored slot");
-            Assert.That(keysLeft, Is.Zero, "no record, slot index entry or slot bounds survive pruning everything");
-            Assert.That(column.ReadsCount - readsBefore, Is.EqualTo(1), "a prune of an emptied store reads the slot bounds only");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(belowKept, Is.False, "below the finalized block and the window");
+        Assert.That(finalizedKept, Is.True, "the finalized block is the highest stored slot");
+        Assert.That(keysLeft, Is.Zero, "no record, slot index entry or slot bounds survive pruning everything");
+        Assert.That(column.ReadsCount - readsBefore, Is.EqualTo(1), "a prune of an emptied store reads the slot bounds only");
     }
 
     [Test]
@@ -191,12 +181,10 @@ public class BeaconChainStoreEnvelopeTests
         int afterSecond = column[slotKey]!.Length;
         Prune(store, Sepolia.GloasForkEpoch + BeaconChainStore.MinEpochsForBlockRequests + 2, ulong.MaxValue);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(afterRepeats, Is.EqualTo(Hash256.Size), "a repeated store of one envelope does not grow its slot entry");
-            Assert.That(afterSecond, Is.EqualTo(2 * Hash256.Size), "a second envelope at the slot is appended whole, after any partial root");
-            Assert.That(column.Count, Is.Zero, "every record the slot entry names is pruned");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(afterRepeats, Is.EqualTo(Hash256.Size), "a repeated store of one envelope does not grow its slot entry");
+        Assert.That(afterSecond, Is.EqualTo(2 * Hash256.Size), "a second envelope at the slot is appended whole, after any partial root");
+        Assert.That(column.Count, Is.Zero, "every record the slot entry names is pruned");
     }
 
     [Test]

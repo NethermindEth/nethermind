@@ -159,19 +159,17 @@ public class GossipLoopbackTests
         bool forwardedAfter = await Task.WhenAny(forwarded.Task, Task.Delay(verdict == MessageValidity.Accepted ? 30_000 : 3_000, token)) == forwarded.Task;
         await ((IRoutingStateContainer)relay.RoutingStateForTest!).Heartbeat();
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((forwardedEarly, pendingAtRelay), Is.EqualTo((false, 1)), "the relay holds the message while its verdict is pending");
+        Assert.That(applied, Is.True, "the router applied the verdict");
+        Assert.That(forwardedAfter, Is.EqualTo(verdict == MessageValidity.Accepted), "only an accepted message is forwarded");
+        if (forwardedAfter)
         {
-            Assert.That((forwardedEarly, pendingAtRelay), Is.EqualTo((false, 1)), "the relay holds the message while its verdict is pending");
-            Assert.That(applied, Is.True, "the router applied the verdict");
-            Assert.That(forwardedAfter, Is.EqualTo(verdict == MessageValidity.Accepted), "only an accepted message is forwarded");
-            if (forwardedAfter)
-            {
-                Assert.That(await forwarded.Task, Is.EqualTo(message));
-            }
-
-            Assert.That(IsMeshNeighbor(relay, blockTopic, sender.LocalPeerId!), Is.EqualTo(verdict != MessageValidity.Rejected), "only a rejected message's sender is pruned");
-            Assert.That(IsMeshNeighbor(relay, blockTopic, neighbor.LocalPeerId!), Is.True, "the neighbor that sent nothing keeps its place");
+            Assert.That(await forwarded.Task, Is.EqualTo(message));
         }
+
+        Assert.That(IsMeshNeighbor(relay, blockTopic, sender.LocalPeerId!), Is.EqualTo(verdict != MessageValidity.Rejected), "only a rejected message's sender is pruned");
+        Assert.That(IsMeshNeighbor(relay, blockTopic, neighbor.LocalPeerId!), Is.True, "the neighbor that sent nothing keeps its place");
     }
 
     /// <summary>A data column sidecar that passes every check on the relay, under an imported block's header, reaches the relay's other mesh neighbor.</summary>
@@ -340,11 +338,9 @@ public class GossipLoopbackTests
         remoteChannel.Cancel();
         await PeerSessionNodes.WaitUntilAsync(() => !node.HasGossipChannel(remote.LocalPeerId!), "closing the remote's channel did not end the node's", token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(await DeliversAsync(topic, 2, received[2].Task, token), Is.True, "gossip did not resume after the channel ended");
-            Assert.That(node.SessionCountForTest, Is.EqualTo(1), "the same session carries the new channel");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(await DeliversAsync(topic, 2, received[2].Task, token), Is.True, "gossip did not resume after the channel ended");
+        Assert.That(node.SessionCountForTest, Is.EqualTo(1), "the same session carries the new channel");
     }
 
     /// <summary>

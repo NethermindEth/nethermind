@@ -50,12 +50,10 @@ public class RangeSyncPeerSelectionTests
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
-            Assert.That(pruned.Requests, Is.EqualTo(served ? 1 : 0), "the peer is asked only when its earliest available slot is at or before the batch start");
-            Assert.That(full.Requests, Is.EqualTo(served ? 0 : 1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded, Has.Count.EqualTo(chain.Length));
+        Assert.That(pruned.Requests, Is.EqualTo(served ? 1 : 0), "the peer is asked only when its earliest available slot is at or before the batch start");
+        Assert.That(full.Requests, Is.EqualTo(served ? 0 : 1));
     }
 
     /// <summary>
@@ -81,11 +79,9 @@ public class RangeSyncPeerSelectionTests
 
         await batch.RunAsync(token, blocks, custodian);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(custodian.ColumnRequests, Is.EqualTo(asked ? 1 : 0));
-            Assert.That(batch.Sampled.All(c => batch.SidecarPool.TryGet(batch.Chain.BlockRoot, c, out _)), Is.EqualTo(asked), "the sampled columns arrive exactly when the custodian is asked");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(custodian.ColumnRequests, Is.EqualTo(asked ? 1 : 0));
+        Assert.That(batch.Sampled.All(c => batch.SidecarPool.TryGet(batch.Chain.BlockRoot, c, out _)), Is.EqualTo(asked), "the sampled columns arrive exactly when the custodian is asked");
     }
 
     /// <summary>BeaconBlocksByRange: skipped slots are accepted only when the retained block links to the anchor.</summary>
@@ -103,12 +99,10 @@ public class RangeSyncPeerSelectionTests
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => firstSlot + 1, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Is.EqualTo(chainBlocks));
-            Assert.That(starts.FirstOrDefault(), Is.EqualTo(firstSlot));
-            Assert.That(peer.Failures, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded, Is.EqualTo(chainBlocks));
+        Assert.That(starts.FirstOrDefault(), Is.EqualTo(firstSlot));
+        Assert.That(peer.Failures, Is.Zero);
     }
 
     /// <summary>BeaconBlocksByRange: limited replies do not make another supplier responsible for missing blocks.</summary>
@@ -138,12 +132,10 @@ public class RangeSyncPeerSelectionTests
         RangeSync sync = new(new StubPool(limited, honest), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => 43, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Is.EqualTo(blocks));
-            Assert.That(honest.Reports, Is.Empty);
-            Assert.That(starts[0], Is.EqualTo(empty ? 27UL : 12UL));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded, Is.EqualTo(blocks));
+        Assert.That(honest.Reports, Is.Empty);
+        Assert.That(starts[0], Is.EqualTo(empty ? 27UL : 12UL));
     }
 
     /// <summary>BeaconBlocksByRange: a reply that does not link to the previous one is held against its supplier only when that peer served the previous one too.</summary>
@@ -175,12 +167,10 @@ public class RangeSyncPeerSelectionTests
             await RangeSyncTests.DrainAsync(sync.Run(anchorRoot, AnchorSlot, () => 14, stop.Token));
         }, Throws.InstanceOf<OperationCanceledException>());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(other.Requests, Is.EqualTo(1), "fixture: the other peer was asked after the off-chain reply");
-            Assert.That(other.Reports, Is.Empty);
-            Assert.That(both.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(other.Requests, Is.EqualTo(1), "fixture: the other peer was asked after the off-chain reply");
+        Assert.That(other.Reports, Is.Empty);
+        Assert.That(both.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
     }
 
     /// <summary>The sync gate fails a job on any log line containing "Exception", so a failed batch is logged by its cause, not its exception type.</summary>
@@ -197,11 +187,9 @@ public class RangeSyncPeerSelectionTests
 
         await RangeSyncTests.DrainAsync(sync.Run(anchorRoot, AnchorSlot, () => 13, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(log.Messages, Has.Some.Contains("request timed out"), "the failed batch is logged");
-            Assert.That(log.Messages, Has.None.Contains("Exception"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(log.Messages, Has.Some.Contains("request timed out"), "the failed batch is logged");
+        Assert.That(log.Messages, Has.None.Contains("Exception"));
     }
 
     /// <summary>Sync components log from several threads at once; a lost or null line fails the log assertions with a false cause.</summary>
@@ -224,11 +212,9 @@ public class RangeSyncPeerSelectionTests
         });
 
         string[] lines = log.Messages;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(lines, Has.Length.EqualTo(Writers * LinesPerWriter));
-            Assert.That(lines, Has.None.Null);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(lines, Has.Length.EqualTo(Writers * LinesPerWriter));
+        Assert.That(lines, Has.None.Null);
     }
 
 
@@ -271,11 +257,9 @@ public class RangeSyncPeerSelectionTests
             await RangeSyncTests.DrainAsync(sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, stop.Token));
         });
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(peer.Requests, Is.Zero);
-            Assert.That(pool.Calls, Is.InRange(1, 2), "one peer lookup per retry delay, not a busy loop");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(peer.Requests, Is.Zero);
+        Assert.That(pool.Calls, Is.InRange(1, 2), "one peer lookup per retry delay, not a busy loop");
     }
 
     /// <summary>
@@ -310,13 +294,11 @@ public class RangeSyncPeerSelectionTests
 
         await batch.RunFromBelowTheBlobBlockAsync(token, coveringCustodian ? [blocks, late, covering] : [blocks, late]);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(late.ColumnRequests, Is.EqualTo(coveringCustodian ? 0 : 1));
-            Assert.That(covering.ColumnRequests, Is.EqualTo(coveringCustodian ? 1 : 0));
-            Assert.That(lateRequests, coveringCustodian ? (NUnit.Framework.Constraints.IResolveConstraint)Is.Empty : Is.EqualTo(new[] { (1UL, 1UL) }), "requested from its earliest slot, not from the batch start");
-            Assert.That(batch.Sampled.All(c => batch.SidecarPool.TryGet(batch.Chain.BlockRoot, c, out _)), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(late.ColumnRequests, Is.EqualTo(coveringCustodian ? 0 : 1));
+        Assert.That(covering.ColumnRequests, Is.EqualTo(coveringCustodian ? 1 : 0));
+        Assert.That(lateRequests, coveringCustodian ? (NUnit.Framework.Constraints.IResolveConstraint)Is.Empty : Is.EqualTo(new[] { (1UL, 1UL) }), "requested from its earliest slot, not from the batch start");
+        Assert.That(batch.Sampled.All(c => batch.SidecarPool.TryGet(batch.Chain.BlockRoot, c, out _)), Is.True);
     }
 
     /// <summary>
@@ -339,13 +321,11 @@ public class RangeSyncPeerSelectionTests
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => slots[^1], token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
-            Assert.That(behind.Requests, Is.EqualTo(1), "asked once in the round");
-            Assert.That(ahead.Failures, Is.Zero);
-            Assert.That(behind.Failures, Is.Zero, "an empty answer from a peer below the range is not a fault");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded, Has.Count.EqualTo(chain.Length));
+        Assert.That(behind.Requests, Is.EqualTo(1), "asked once in the round");
+        Assert.That(ahead.Failures, Is.Zero);
+        Assert.That(behind.Failures, Is.Zero, "an empty answer from a peer below the range is not a fault");
     }
 
     /// <summary>BeaconBlocksByRange (phase0/p2p-interface.md) leaves skipped slots out, so a peer below the range may answer a whole batch of them empty truthfully.</summary>
@@ -361,11 +341,9 @@ public class RangeSyncPeerSelectionTests
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => chain[^1].Message!.Slot, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
-            Assert.That(behind.Failures, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded, Has.Count.EqualTo(chain.Length));
+        Assert.That(behind.Failures, Is.Zero);
     }
 
     /// <summary>A sole peer whose empty answer the next batch contradicts is left out for the round, so the round ends rather than waiting for another peer; the next round asks it again.</summary>
@@ -384,13 +362,11 @@ public class RangeSyncPeerSelectionTests
         (bool firstEnded, int firstYielded) = await RunBoundedAsync(sync, anchorRoot, slots[^1], token);
         (bool secondEnded, int secondYielded) = await RunBoundedAsync(sync, anchorRoot, slots[^1], token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstEnded, Is.True, "the round waited for a peer instead of ending");
-            Assert.That(firstYielded, Is.Zero);
-            Assert.That((secondEnded, secondYielded), Is.EqualTo((true, chain.Length)));
-            Assert.That(catchingUp.Failures, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(firstEnded, Is.True, "the round waited for a peer instead of ending");
+        Assert.That(firstYielded, Is.Zero);
+        Assert.That((secondEnded, secondYielded), Is.EqualTo((true, chain.Length)));
+        Assert.That(catchingUp.Failures, Is.Zero);
     }
 
     /// <summary>A first block that does not link after an empty answer is put down to an unverified anchor before the peer that answered empty.</summary>
@@ -410,12 +386,10 @@ public class RangeSyncPeerSelectionTests
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(Keccak.Compute("a held block off the chain"), heldSlot, () => blockAfterGap, token, fallback));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rejected, Is.True);
-            Assert.That(yielded, Has.Count.EqualTo(chain.Length));
-            Assert.That(behind.Failures, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(rejected, Is.True);
+        Assert.That(yielded, Has.Count.EqualTo(chain.Length));
+        Assert.That(behind.Failures, Is.Zero);
     }
 
     /// <summary>
@@ -448,13 +422,11 @@ public class RangeSyncPeerSelectionTests
         {
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.Refreshes, refreshed ? (NUnit.Framework.Constraints.IResolveConstraint)Is.EqualTo(new[] { AnchorSlot + 1 }) : Is.Empty, "asked once, for the slot range sync waits on");
-            Assert.That(yielded, refreshed ? (NUnit.Framework.Constraints.IResolveConstraint)Is.EqualTo(chainBlocks) : Is.Empty);
-            Assert.That(pool.Lookups, Is.EqualTo(refreshed ? 2 : 3), "refreshed, the run ends after one wait; otherwise it is still waiting when stopped");
-            Assert.That(pool.ChainClaims, Is.Empty, "a slot behind the wall slot may be empty, so it is no evidence the chain reached it");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.Refreshes, refreshed ? (NUnit.Framework.Constraints.IResolveConstraint)Is.EqualTo(new[] { AnchorSlot + 1 }) : Is.Empty, "asked once, for the slot range sync waits on");
+        Assert.That(yielded, refreshed ? (NUnit.Framework.Constraints.IResolveConstraint)Is.EqualTo(chainBlocks) : Is.Empty);
+        Assert.That(pool.Lookups, Is.EqualTo(refreshed ? 2 : 3), "refreshed, the run ends after one wait; otherwise it is still waiting when stopped");
+        Assert.That(pool.ChainClaims, Is.Empty, "a slot behind the wall slot may be empty, so it is no evidence the chain reached it");
     }
 
     private static async Task<(bool Ended, int Yielded)> RunBoundedAsync(RangeSync sync, Hash256 anchorRoot, ulong target, CancellationToken token)

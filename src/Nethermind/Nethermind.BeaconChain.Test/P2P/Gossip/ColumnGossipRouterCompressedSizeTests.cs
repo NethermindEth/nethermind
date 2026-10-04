@@ -31,10 +31,8 @@ public class ColumnGossipRouterCompressedSizeTests
         // Zeros declare an empty payload, so below the bound the message fails as snappy or SSZ, never as oversized.
         MessageValidity validity = router.Handle(SubnetId, gloasTopic, new byte[compressedLength]);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.Oversized), Is.EqualTo(oversized));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.Oversized), Is.EqualTo(oversized));
     }
 }
