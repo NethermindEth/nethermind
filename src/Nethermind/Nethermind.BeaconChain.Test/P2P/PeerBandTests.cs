@@ -118,42 +118,71 @@ public class PeerBandTests
         Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(droppedBefore + 1));
     }
 
-    [Test]
-    public void A_single_fault_disconnect_below_the_threshold_does_not_ban()
+    /// <summary>Preserves ban streaks and deadlines across fault, silence and non-fault disconnects.</summary>
+    [TestCaseSource(nameof(BanTransitions))]
+    public void Disconnects_follow_the_ban_transition_policy(int threshold, Action<PeerManager, ManualTimestamper>[] stages)
     {
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 3);
-
-        manager.RecordDisconnect("peerA", messagesSent: 10, failuresReported: 1, GoodbyeReason.Fault, "repeated failures");
-
-        Assert.That(manager.IsBannedForTest("peerA"), Is.False);
+        ManualTimestamper time = new();
+        PeerManager manager = NewManagerWithoutSessions(threshold, time);
+        foreach (Action<PeerManager, ManualTimestamper> stage in stages)
+        {
+            stage(manager, time);
+        }
     }
 
-    [Test]
-    public void Consecutive_fault_disconnects_reaching_the_threshold_ban_the_peer_id()
+    private static IEnumerable<TestCaseData> BanTransitions()
     {
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 3);
-
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "repeated failures");
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "repeated failures");
-        Assert.That(manager.IsBannedForTest("peerA"), Is.False, "two of three should not ban yet");
-
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "repeated failures");
-        Assert.That(manager.IsBannedForTest("peerA"), Is.True, "the third consecutive fault must ban");
-    }
-
-    [Test]
-    public void A_non_fault_disconnect_resets_the_consecutive_fault_streak()
-    {
+        TimeSpan banTime = TimeSpan.FromMinutes(new BeaconChainConfig().PeerBanMinutes);
+        yield return BanCase("A_single_fault_disconnect_below_the_threshold_does_not_ban", 3,
+            Fault(messages: 10), Banned(false));
+        yield return BanCase("Consecutive_fault_disconnects_reaching_the_threshold_ban_the_peer_id", 3,
+            Fault(2), Banned(false, "two of three should not ban yet"),
+            Fault(), Banned(true, "the third consecutive fault must ban"));
         // A fork-digest mismatch near a BPO rotation is not misbehaviour: it must not count toward,
         // or survive as, a fault streak that a later unrelated fault could otherwise complete.
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 2);
-
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "repeated failures");
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.IrrelevantNetwork, "fork digest mismatch");
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "repeated failures");
-
-        Assert.That(manager.IsBannedForTest("peerA"), Is.False, "the reset streak is only one fault long, not two");
+        yield return BanCase("A_non_fault_disconnect_resets_the_consecutive_fault_streak", 2,
+            Fault(), (manager, _) => manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.IrrelevantNetwork, "fork digest mismatch"),
+            Fault(), Banned(false, "the reset streak is only one fault long, not two"));
+        // A slow peer is not a hostile one: banning it starves the pool while few peers are usable.
+        yield return BanCase("Drops_for_silence_alone_never_ban_a_peer_that_answered_before", 3,
+            Fault(10, "repeated failures, last: request timed out", unresponsive: true), (manager, _) =>
+            {
+                using IDisposable assertionScope = Assert.EnterMultipleScope();
+                Assert.That(manager.IsBannedForTest("peerA"), Is.False);
+                Assert.That(manager.GetPeerDiagnostics().Single(d => d.PeerId == "peerA").DisconnectCount, Is.EqualTo(10), "the drops stay in the diagnostics");
+            });
+        yield return BanCase("A_drop_for_silence_does_not_excuse_the_violations_around_it", 3,
+            Fault(detail: "invalid response"), Fault(detail: "repeated failures, last: request timed out", unresponsive: true),
+            Fault(detail: "invalid response"), Banned(false, "two violations are below the threshold"),
+            Fault(detail: "invalid response"), Banned(true, "three violations ban the peer however many timeouts sit between them"));
+        yield return BanCase("A_ban_ends_after_the_configured_time_and_the_peer_then_starts_from_a_clean_streak", 3,
+            Fault(3, "invalid response"), Banned(true, "test setup: three violations ban the peer"),
+            Advance(banTime - TimeSpan.FromSeconds(1)), Banned(true, "the ban holds until its time is up"), Advance(TimeSpan.FromSeconds(1)),
+            (manager, _) => Assert.That(manager.GetPeerDiagnostics().Single(d => d.PeerId == "peerA").Banned, Is.False, "the diagnostics must not report a ban that has run out"),
+            Banned(false, "the ban must end once its time is up"), Fault(detail: "invalid response"),
+            Banned(false, "the old streak must not carry over: one violation after the ban is not three"));
+        yield return BanCase("A_fault_during_a_ban_does_not_extend_it", 1,
+            Fault(detail: "invalid response", messages: 0, failures: 0), Advance(banTime / 2),
+            Fault(detail: "invalid response", messages: 0, failures: 0), Advance(banTime / 2),
+            Banned(false, "the ban ends when the first ban's time is up, a later fault must not restart it"));
     }
+
+    private static TestCaseData BanCase(string name, int threshold, params Action<PeerManager, ManualTimestamper>[] stages) =>
+        new TestCaseData(threshold, stages).SetName(name);
+
+    private static Action<PeerManager, ManualTimestamper> Fault(int count = 1, string detail = "repeated failures", int messages = 1, int failures = 1, bool unresponsive = false) =>
+        (manager, _) =>
+        {
+            for (int i = 0; i < count; i++)
+            {
+                manager.RecordDisconnect("peerA", messages, failures, GoodbyeReason.Fault, detail, unresponsive);
+            }
+        };
+
+    private static Action<PeerManager, ManualTimestamper> Banned(bool expected, string? message = null) =>
+        (manager, _) => Assert.That(manager.IsBannedForTest("peerA"), Is.EqualTo(expected), message);
+
+    private static Action<PeerManager, ManualTimestamper> Advance(TimeSpan elapsed) => (_, time) => time.Add(elapsed);
 
     [Test]
     public void Diagnostics_report_the_ban_and_disconnect_history_of_a_peer_that_is_not_connected()
@@ -639,58 +668,6 @@ public class PeerBandTests
     }
 
     [Test]
-    public void Drops_for_silence_alone_never_ban_a_peer_that_answered_before()
-    {
-        // A slow peer is not a hostile one: banning it starves the pool while few peers are usable.
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 3);
-
-        for (int i = 0; i < 10; i++)
-        {
-            manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "repeated failures, last: request timed out", unresponsive: true);
-        }
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(manager.IsBannedForTest("peerA"), Is.False);
-        Assert.That(manager.GetPeerDiagnostics().Single(d => d.PeerId == "peerA").DisconnectCount, Is.EqualTo(10), "the drops stay in the diagnostics");
-    }
-
-    [Test]
-    public void A_drop_for_silence_does_not_excuse_the_violations_around_it()
-    {
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 3);
-
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "invalid response");
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "repeated failures, last: request timed out", unresponsive: true);
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "invalid response");
-        Assert.That(manager.IsBannedForTest("peerA"), Is.False, "two violations are below the threshold");
-
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "invalid response");
-        Assert.That(manager.IsBannedForTest("peerA"), Is.True, "three violations ban the peer however many timeouts sit between them");
-    }
-
-    [Test]
-    public void A_ban_ends_after_the_configured_time_and_the_peer_then_starts_from_a_clean_streak()
-    {
-        ManualTimestamper time = new();
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 3, time);
-        for (int i = 0; i < 3; i++)
-        {
-            manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "invalid response");
-        }
-
-        Assert.That(manager.IsBannedForTest("peerA"), Is.True, "test setup: three violations ban the peer");
-        time.Add(TimeSpan.FromMinutes(new BeaconChainConfig().PeerBanMinutes) - TimeSpan.FromSeconds(1));
-        Assert.That(manager.IsBannedForTest("peerA"), Is.True, "the ban holds until its time is up");
-
-        time.Add(TimeSpan.FromSeconds(1));
-        Assert.That(manager.GetPeerDiagnostics().Single(d => d.PeerId == "peerA").Banned, Is.False, "the diagnostics must not report a ban that has run out");
-        Assert.That(manager.IsBannedForTest("peerA"), Is.False, "the ban must end once its time is up");
-
-        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "invalid response");
-        Assert.That(manager.IsBannedForTest("peerA"), Is.False, "the old streak must not carry over: one violation after the ban is not three");
-    }
-
-    [Test]
     [CancelAfter(60_000)]
     public async Task A_banned_static_peer_is_reconnected_once_its_ban_has_ended(CancellationToken token)
     {
@@ -769,21 +746,6 @@ public class PeerBandTests
         });
         Assert.That(remaining.Contains("peer-new"), Is.True);
         if (firstBanIsActive) Assert.That(manager.IsBannedForTest("peer-0"), Is.True, "a flood of new ids must not push an active ban out of the table");
-    }
-
-    [Test]
-    public void A_fault_during_a_ban_does_not_extend_it()
-    {
-        ManualTimestamper time = new();
-        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 1, time);
-        TimeSpan banTime = TimeSpan.FromMinutes(new BeaconChainConfig().PeerBanMinutes);
-        manager.RecordDisconnect("peerA", 0, 0, GoodbyeReason.Fault, "invalid response");
-        time.Add(banTime / 2);
-
-        manager.RecordDisconnect("peerA", 0, 0, GoodbyeReason.Fault, "invalid response");
-        time.Add(banTime / 2);
-
-        Assert.That(manager.IsBannedForTest("peerA"), Is.False, "the ban ends when the first ban's time is up, a later fault must not restart it");
     }
 
     [TestCase(int.MinValue, false)]
