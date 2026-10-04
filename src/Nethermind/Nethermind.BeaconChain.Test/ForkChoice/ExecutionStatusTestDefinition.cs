@@ -13,21 +13,9 @@ public static class ExecutionStatusTestDefinition
 {
     private static readonly CheckpointRef Anchor = new(1, GetRoot(0));
 
-    private static ForkChoiceTestDefinition Definition(List<Operation> operations) => new()
-    {
-        FinalizedBlockSlot = 0,
-        JustifiedCheckpoint = Anchor,
-        FinalizedCheckpoint = Anchor,
-        Operations = operations,
-    };
-
     private static FindHead Head(ulong[] balances, ulong expectedHead) => new(Anchor, Anchor, balances, GetRoot(expectedHead));
 
-    /// <summary>
-    /// The opening shared by scenarios 01 and 02: build 0 &lt;- (2 | 1 &lt;- 3) with a vote on each
-    /// fork, then move validator #0's vote from 1 to 3.
-    /// </summary>
-    private static List<Operation> CommonPrologue(ulong[] balances) =>
+    private static List<Operation> InitialForkAndVote(ulong[] balances) =>
     [
         // Ensure that the head starts at the finalized block.
         Head(balances, 0),
@@ -42,6 +30,15 @@ public static class ExecutionStatusTestDefinition
         // Add a vote to block 1; it becomes the head.
         new ProcessAttestation(0, GetRoot(1), 2),
         Head(balances, 1),
+    ];
+
+    /// <summary>
+    /// The opening shared by scenarios 01 and 02: build 0 &lt;- (2 | 1 &lt;- 3) with a vote on each
+    /// fork, then move validator #0's vote from 1 to 3.
+    /// </summary>
+    private static List<Operation> CommonPrologue(ulong[] balances) =>
+    [
+        .. InitialForkAndVote(balances),
         new AssertWeight(GetRoot(0), 1),
         new AssertWeight(GetRoot(1), 1),
         new AssertWeight(GetRoot(2), 0),
@@ -94,7 +91,7 @@ public static class ExecutionStatusTestDefinition
             new AssertWeight(GetRoot(3), 0),
         ]);
 
-        return Definition(operations);
+        return ForkChoiceTestDefinition.Create(Anchor, operations);
     }
 
     public static ForkChoiceTestDefinition Get02()
@@ -122,7 +119,7 @@ public static class ExecutionStatusTestDefinition
             new AssertWeight(GetRoot(3), 0),
         ]);
 
-        return Definition(operations);
+        return ForkChoiceTestDefinition.Create(Anchor, operations);
     }
 
     public static ForkChoiceTestDefinition Get03()
@@ -132,19 +129,7 @@ public static class ExecutionStatusTestDefinition
 
         List<Operation> operations =
         [
-            // Ensure that the head starts at the finalized block.
-            Head(balances, 0),
-            // Add block 2:  0 <- 2
-            new ProcessBlock(1, GetRoot(2), GetRoot(0), Anchor, Anchor),
-            // Ensure that the head is 2.
-            Head(balances, 2),
-            // Add block 1 forking from 0:  0 <- (2 | 1)
-            new ProcessBlock(1, GetRoot(1), GetRoot(0), Anchor, Anchor),
-            // Ensure that the head is still 2.
-            Head(balances, 2),
-            // Add a vote to block 1; it becomes the head.
-            new ProcessAttestation(0, GetRoot(1), 2),
-            Head(balances, 1),
+            .. InitialForkAndVote(balances),
             new AssertWeight(GetRoot(0), 1_000),
             new AssertWeight(GetRoot(1), 1_000),
             new AssertWeight(GetRoot(2), 0),
@@ -174,6 +159,6 @@ public static class ExecutionStatusTestDefinition
             new AssertWeight(GetRoot(3), 0),
         ];
 
-        return Definition(operations);
+        return ForkChoiceTestDefinition.Create(Anchor, operations);
     }
 }

@@ -119,6 +119,35 @@ internal static class GloasTestFixtures
         return state;
     }
 
+    /// <summary>A minimal epoch-zero state with independent registry arrays and the requested RANDAO mix and activation pattern.</summary>
+    internal static BeaconStateFulu CreateMinimalFuluState(int validatorCount, Hash256 randaoMix, ulong effectiveBalance = 32 * Gwei, int inactiveEvery = 0)
+    {
+        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
+        Array.Fill(randaoMixes, randaoMix);
+
+        Validator[] validators = new Validator[validatorCount];
+        ulong[] balances = new ulong[validatorCount];
+        for (int i = 0; i < validatorCount; i++)
+        {
+            bool inactive = inactiveEvery > 0 && i % inactiveEvery == 0;
+            validators[i] = CreateActiveValidator(default);
+            validators[i].EffectiveBalance = effectiveBalance;
+            validators[i].ActivationEpoch = inactive ? Presets.FarFutureEpoch : 0;
+            balances[i] = effectiveBalance;
+        }
+
+        return new BeaconStateFulu
+        {
+            Slot = 0,
+            Validators = validators,
+            Balances = balances,
+            RandaoMixes = randaoMixes,
+            Slashings = new ulong[(int)Presets.EpochsPerSlashingsVector],
+            ProposerLookahead = new ulong[(int)Presets.ProposerLookaheadSlots],
+            FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
+        };
+    }
+
     public static BeaconStateFulu CreateFuluState(int validatorCount)
     {
         Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
