@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -100,10 +99,7 @@ public class SanityTests
         int blocksCount = int.Parse(meta["blocks_count"]);
 
         string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
-        bool expectSuccess = File.Exists(postPath);
-
-        Exception? thrown = null;
-        try
+        FuluDriverSupport.AssertTransition(driver, postPath, state, cache, () =>
         {
             for (int i = 0; i < blocksCount; i++)
             {
@@ -111,23 +107,7 @@ public class SanityTests
                 FixedNewPayloadNotifier notifier = new(valid: true);
                 driver.ApplyBlock(state, ssz, spec, cache, pubkeys, notifier, verifySignatures);
             }
-        }
-        catch (Exception ex)
-        {
-            thrown = ex;
-        }
-
-        if (expectSuccess)
-        {
-            if (thrown is not null)
-                Assert.Fail($"expected all {blocksCount} block(s) to apply, but it threw: {thrown}");
-
-            FuluDriverSupport.AssertPostStateRoot(driver, postPath, state, cache);
-        }
-        else
-        {
-            FuluDriverSupport.AssertRejected(thrown, "the block sequence");
-        }
+        }, "the block sequence", $"expected all {blocksCount} block(s) to apply, but it threw");
     }
 
     private static void ExecuteSlots(SanityCase testCase) =>
