@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
@@ -9,6 +11,8 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing;
@@ -18,6 +22,7 @@ namespace Nethermind.Blockchain.Tracing;
 /// </summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(GethLikeCustomTrace))]
+[JsonSerializable(typeof(GethLikeCustomTrace.EmptyValue))]
 [JsonSerializable(typeof(GethLikeTxTraceCollection))]
 [JsonSerializable(typeof(NativeCallTracerCallFrame))]
 [JsonSerializable(typeof(NativeCallTracerConfig))]
@@ -26,7 +31,12 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSerializable(typeof(NativePrestateTracerConfig))]
 [JsonSerializable(typeof(NativePrestateTracerDiffMode))]
 [JsonSerializable(typeof(ParityVmOperationTrace))]
+[JsonSerializable(typeof(IReadOnlyList<ParityVmOperationTrace>))]
 [JsonSerializable(typeof(RenderedJson))]
+[JsonSerializable(typeof(Memory<NativeCallTracerLogEntry>))]
+[JsonSerializable(typeof(Dictionary<Hash256, byte[]>))]
+[JsonSerializable(typeof(Dictionary<string, int>))]
+[JsonSerializable(typeof(Dictionary<UInt256, UInt256>))]
 internal partial class TracingJsonContext : JsonSerializerContext
 {
     [ModuleInitializer]

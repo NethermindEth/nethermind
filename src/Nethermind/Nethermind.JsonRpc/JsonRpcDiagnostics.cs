@@ -168,5 +168,5 @@ internal sealed class JsonRpcDiagnostics
         return diagnosticResponse is not null;
     }
 
-    private readonly record struct DiagnosticJsonRpcResult(JsonElement Response, RpcReport Report);
+    internal readonly record struct DiagnosticJsonRpcResult(JsonElement Response, RpcReport Report);
 }

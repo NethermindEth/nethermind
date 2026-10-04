@@ -34,7 +34,7 @@ public class SyncingResultJsonConverter : JsonConverter<SyncingResult>
         }, options);
     }
 
-    private struct Result
+    internal struct Result
     {
         public ulong StartingBlock { get; set; }
         public ulong CurrentBlock { get; set; }

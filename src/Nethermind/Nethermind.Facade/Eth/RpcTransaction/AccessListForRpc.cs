@@ -25,7 +25,7 @@ public class AccessListForRpc
 
     private AccessListForRpc(AccessList accessList) : this() => _accessList = accessList;
 
-    private class Item
+    internal class Item
     {
         public Address Address { get; set; }
 
