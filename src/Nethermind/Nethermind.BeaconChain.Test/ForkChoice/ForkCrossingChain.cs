@@ -130,6 +130,14 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
 
     public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot) => _gloasStates.GetValueOrDefault(blockRoot);
 
+    /// <summary>A fresh anchor copy advanced with Fulu slots to the fork boundary, then upgraded to Gloas.</summary>
+    public BeaconStateGloas UpgradedAnchor()
+    {
+        BeaconStateFulu fulu = AnchorState.Clone();
+        SlotProcessing.ProcessSlots(fulu, BoundarySlot, new EpochCache());
+        return GloasForkTransition.UpgradeToGloas(fulu, Spec);
+    }
+
     /// <summary>
     /// The Fulu state of <see cref="CreateFuluState"/> made a genesis: real validator keys, finality at
     /// epoch 0, and a latest header that hashes to the returned anchor block once its state root is filled.

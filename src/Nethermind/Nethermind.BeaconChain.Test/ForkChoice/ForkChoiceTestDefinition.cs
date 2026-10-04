@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
+using static Nethermind.BeaconChain.Test.ForkChoice.ProtoArrayTestBlocks;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
@@ -30,6 +31,28 @@ public static class TestHashes
 
     /// <summary>A checkpoint at epoch <paramref name="i"/> with root <see cref="GetRoot"/>(<paramref name="i"/>); Lighthouse's <c>get_checkpoint</c>.</summary>
     public static CheckpointRef GetCheckpoint(ulong i) => new(i, GetRoot(i));
+}
+
+internal static class ProtoArrayTestBlocks
+{
+    /// <summary>A proto-array test block with no state root and explicit realized, unrealized and payload-status fields.</summary>
+    internal static ProtoBlock CreateProtoBlock(
+        ulong slot, Hash256 root, Hash256? parent, CheckpointRef justified, CheckpointRef finalized,
+        ExecutionStatus executionStatus, Hash256 executionBlockHash,
+        CheckpointRef? unrealizedJustified = null, CheckpointRef? unrealizedFinalized = null,
+        bool isGloas = false, Hash256? parentBlockHash = null) => new(
+            Slot: slot,
+            Root: root,
+            ParentRoot: parent,
+            StateRoot: Hash256.Zero,
+            JustifiedCheckpoint: justified,
+            FinalizedCheckpoint: finalized,
+            ExecutionStatus: executionStatus,
+            ExecutionBlockHash: executionBlockHash,
+            UnrealizedJustifiedCheckpoint: unrealizedJustified,
+            UnrealizedFinalizedCheckpoint: unrealizedFinalized,
+            IsGloas: isGloas,
+            ParentBlockHash: parentBlockHash);
 }
 
 public abstract record Operation;
@@ -125,17 +148,8 @@ public sealed class ForkChoiceTestDefinition
                 case ProcessBlock processBlock:
                     // All blocks are imported optimistically with an execution hash equal to their
                     // root (Lighthouse's ExecutionBlockHash::from_root).
-                    ProtoBlock block = new(
-                        Slot: processBlock.Slot,
-                        Root: processBlock.Root,
-                        ParentRoot: processBlock.ParentRoot,
-                        StateRoot: Hash256.Zero,
-                        JustifiedCheckpoint: processBlock.JustifiedCheckpoint,
-                        FinalizedCheckpoint: processBlock.FinalizedCheckpoint,
-                        ExecutionStatus: ExecutionStatus.Optimistic,
-                        ExecutionBlockHash: processBlock.Root,
-                        UnrealizedJustifiedCheckpoint: null,
-                        UnrealizedFinalizedCheckpoint: null);
+                    ProtoBlock block = CreateProtoBlock(processBlock.Slot, processBlock.Root, processBlock.ParentRoot,
+                        processBlock.JustifiedCheckpoint, processBlock.FinalizedCheckpoint, ExecutionStatus.Optimistic, processBlock.Root);
                     forkChoice.ProcessBlock(block, processBlock.Slot, JustifiedCheckpoint, FinalizedCheckpoint);
                     break;
 

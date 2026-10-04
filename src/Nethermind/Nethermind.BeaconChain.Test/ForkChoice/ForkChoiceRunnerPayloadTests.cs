@@ -75,7 +75,7 @@ public class ForkChoiceRunnerPayloadTests
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         ForkChoiceRunner runner = chain.CreateRunner();
         TickToSlot(runner, BoundarySlot);
-        BeaconStateGloas state = UpgradedAnchor(chain);
+        BeaconStateGloas state = chain.UpgradedAnchor();
         SignedBeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, runner.GetExecutionBlockHash(chain.AnchorRoot)!, Hash(0xE2)));
         Assert.That(runner.IsParentNodeFull(block.Message!), Is.True, "fixture bug: the block must build on the anchor's payload");
 
@@ -300,14 +300,6 @@ public class ForkChoiceRunnerPayloadTests
         };
     }
 
-    /// <summary>The anchor state taken across the fork: Fulu slot processing to the boundary, then the upgrade.</summary>
-    private static BeaconStateGloas UpgradedAnchor(ForkCrossingChain chain)
-    {
-        BeaconStateFulu fulu = chain.AnchorState.Clone();
-        SlotProcessing.ProcessSlots(fulu, BoundarySlot, new EpochCache());
-        return GloasForkTransition.UpgradeToGloas(fulu, chain.Spec);
-    }
-
     private static void TickToSlot(ForkChoiceRunner runner, ulong slot) =>
         runner.OnTick(runner.GenesisTime + slot * Presets.SecondsPerSlot);
 
@@ -439,7 +431,7 @@ public class ForkChoiceRunnerPayloadTests
         if (throughEmptyHead)
         {
             TickToSlot(runner, BoundarySlot);
-            BeaconStateGloas state = UpgradedAnchor(chain);
+            BeaconStateGloas state = chain.UpgradedAnchor();
             SignedBeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, payloadHash, Hash(0xE2)));
             runner.OnBlock(block, state);
             headRoot = SszRoots.HashTreeRoot(block.Message!);

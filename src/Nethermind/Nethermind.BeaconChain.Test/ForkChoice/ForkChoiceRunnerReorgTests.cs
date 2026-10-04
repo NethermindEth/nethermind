@@ -125,12 +125,12 @@ public class ForkChoiceRunnerReorgTests
     }
 
     /// <summary>
-    /// A block that <c>on_block</c> throws on leaves the store unchanged, so it cannot make a second proposal of its slot.
-    /// A failed invalidation (the execution layer calls a valid block invalid) leaves D optimistic under the invalid B,
-    /// so a valid block E on D is refused while its validity is propagated up to B.
+    /// A block that <c>on_block</c> refuses leaves no node or second proposal and cannot take the proposer boost.
+    /// A failed invalidation leaves D optimistic under invalid B, so valid E on D is refused as its validity propagates to B.
     /// </summary>
-    [Test]
-    public void Block_refused_by_on_block_leaves_no_node_and_is_not_a_second_proposal()
+    [TestCase(true, TestName = "Block_refused_by_on_block_leaves_no_node_and_is_not_a_second_proposal")]
+    [TestCase(false, TestName = "Timely_block_refused_by_on_block_does_not_take_the_proposer_boost")]
+    public void Refused_block_preserves_the_slot_proposal_and_boost(bool withAcceptedHead)
     {
         UnsignedChain chain = UnsignedChain.Create();
         ForkChoiceRunner runner = CreateRunner(chain);
@@ -138,7 +138,7 @@ public class ForkChoiceRunnerReorgTests
         UnsignedChain.ChainBlock b = chain.Extend(a.Root, slot: 2, payloadHashByte: 0xa2);
         UnsignedChain.ChainBlock c = chain.Extend(b.Root, slot: 3, payloadHashByte: 0xa3);
         UnsignedChain.ChainBlock d = chain.Extend(b.Root, slot: 3, payloadHashByte: 0xb3);
-        UnsignedChain.ChainBlock head = chain.Extend(a.Root, slot: 4, payloadHashByte: 0xa4);
+        UnsignedChain.ChainBlock? head = withAcceptedHead ? chain.Extend(a.Root, slot: 4, payloadHashByte: 0xa4) : null;
         UnsignedChain.ChainBlock refused = chain.Extend(d.Root, slot: 4, payloadHashByte: 0xb4);
         TickTo(runner, slot: 1);
         Import(runner, a);
@@ -148,42 +148,21 @@ public class ForkChoiceRunnerReorgTests
         Import(runner, c, ExecutionStatus.Optimistic);
         Import(runner, d, ExecutionStatus.Optimistic);
         Assert.That(() => runner.OnInvalidExecutionPayload(c.Root, runner.GetExecutionBlockHash(chain.AnchorRoot)),
-            Throws.TypeOf<ProtoArrayException>(), "fixture bug: the invalidation must stop at the valid A after invalidating B");
+            Throws.TypeOf<ProtoArrayException>(), withAcceptedHead ? "fixture bug: the invalidation must stop at the valid A after invalidating B" : null);
         TickTo(runner, slot: 4);
-        Import(runner, head);
-        Assert.That(() => Import(runner, refused), Throws.TypeOf<ProtoArrayException>(), "fixture bug: E must be refused");
-        Assert.That(runner.ContainsBlock(refused.Root), Is.False, "a refused block leaves no node");
-        TickTo(runner, slot: 5);
+        if (head is not null)
+            Import(runner, head);
 
-        Assert.That(runner.GetProposerHead(head.Root, proposalSlot: 5), Is.EqualTo(head.Root));
-    }
-
-    /// <summary>
-    /// update_proposer_boost_root runs only for a block on_block accepts: a timely first block of its slot that the
-    /// proto-array refuses must leave the boost free for the slot's real proposal.
-    /// </summary>
-    [Test]
-    public void Timely_block_refused_by_on_block_does_not_take_the_proposer_boost()
-    {
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = CreateRunner(chain);
-        UnsignedChain.ChainBlock a = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
-        UnsignedChain.ChainBlock b = chain.Extend(a.Root, slot: 2, payloadHashByte: 0xa2);
-        UnsignedChain.ChainBlock c = chain.Extend(b.Root, slot: 3, payloadHashByte: 0xa3);
-        UnsignedChain.ChainBlock d = chain.Extend(b.Root, slot: 3, payloadHashByte: 0xb3);
-        UnsignedChain.ChainBlock refused = chain.Extend(d.Root, slot: 4, payloadHashByte: 0xb4);
-        TickTo(runner, slot: 1);
-        Import(runner, a);
-        TickTo(runner, slot: 2);
-        Import(runner, b, ExecutionStatus.Optimistic);
-        TickTo(runner, slot: 3);
-        Import(runner, c, ExecutionStatus.Optimistic);
-        Import(runner, d, ExecutionStatus.Optimistic);
-        Assert.That(() => runner.OnInvalidExecutionPayload(c.Root, runner.GetExecutionBlockHash(chain.AnchorRoot)), Throws.TypeOf<ProtoArrayException>());
-        TickTo(runner, slot: 4);
-
-        Assert.That(() => Import(runner, refused), Throws.TypeOf<ProtoArrayException>(), "fixture: the proto-array refuses E");
-        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
+        Assert.That(() => Import(runner, refused), Throws.TypeOf<ProtoArrayException>(),
+            withAcceptedHead ? "fixture bug: E must be refused" : "fixture: the proto-array refuses E");
+        if (head is not null)
+        {
+            Assert.That(runner.ContainsBlock(refused.Root), Is.False, "a refused block leaves no node");
+            TickTo(runner, slot: 5);
+            Assert.That(runner.GetProposerHead(head.Root, proposalSlot: 5), Is.EqualTo(head.Root));
+        }
+        else
+            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
     }
 
     /// <summary>

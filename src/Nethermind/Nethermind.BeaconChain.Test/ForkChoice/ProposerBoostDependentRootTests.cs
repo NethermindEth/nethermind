@@ -246,7 +246,7 @@ public class ProposerBoostDependentRootTests
 
         (SignedBeaconBlockGloas block, Hash256 root, BeaconStateGloas postState) = onHeadBranch
             ? GloasBlock(chain.First.PostState.Clone(), GloasBoostSlot)
-            : GloasBlock(UpgradedAnchor(chain), GloasBoostSlot);
+            : GloasBlock(chain.UpgradedAnchor(), GloasBoostSlot);
         TickTo(runner, GloasBoostSlot);
         runner.OnBlock(block, postState);
 
@@ -262,13 +262,6 @@ public class ProposerBoostDependentRootTests
         GloasTestFixtures.ApplyBlock(state, block, cache);
         block.Message!.StateRoot = SszRoots.HashTreeRoot(state);
         return (block, SszRoots.HashTreeRoot(block.Message), state);
-    }
-
-    private static BeaconStateGloas UpgradedAnchor(ForkCrossingChain chain)
-    {
-        BeaconStateFulu state = chain.AnchorState.Clone();
-        SlotProcessing.ProcessSlots(state, GloasTestFixtures.BoundarySlot, new EpochCache());
-        return GloasForkTransition.UpgradeToGloas(state, chain.Spec);
     }
 
     private static void TickTo(ForkChoiceRunner runner, ulong slot) =>
