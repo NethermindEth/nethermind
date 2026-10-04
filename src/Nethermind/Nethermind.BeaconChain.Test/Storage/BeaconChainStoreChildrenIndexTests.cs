@@ -37,230 +37,83 @@ public class BeaconChainStoreChildrenIndexTests
     [TearDown]
     public void DisposeStore() => _db.Dispose();
 
-    [Test]
-    public void A_block_stored_through_the_index_starts_with_a_complete_empty_child_list()
+    private enum IndexAction
     {
-        Hash256 root = TestRoot(1);
-        _store.PutBlock(root, CreateBlock(100, parent: TestRoot(0)));
-
-        Assert.That(_store.TryGetChildren(root, out Hash256[] children, out bool complete), Is.True);
-        Assert.That(complete, Is.True, "nothing could have been stored under this block before it existed");
-        Assert.That(children, Is.Empty);
+        Store,
+        Legacy,
+        Delete,
+        Children,
+        Block,
+        SetCanonical,
+        Canonical,
+    }
+    private readonly record struct IndexStep(IndexAction Action, byte Root, byte Parent = 0, byte[]? Children = null, bool? Complete = null, bool Exists = true);
+    private sealed record IndexCase(string Name, IndexStep[] Steps);
+    private static IndexStep Put(byte root, byte parent = 0, bool legacy = false) => new(legacy ? IndexAction.Legacy : IndexAction.Store, root, parent);
+    private static IndexStep Delete(byte root) => new(IndexAction.Delete, root);
+    private static IndexStep Children(byte root, byte[]? children = null, bool? complete = null, bool exists = true) => new(IndexAction.Children, root, Children: children, Complete: complete, Exists: exists);
+    private static IndexStep Block(byte root, bool exists) => new(IndexAction.Block, root, Exists: exists);
+    private static IndexStep Canonical(byte root, bool set = false) => new(set ? IndexAction.SetCanonical : IndexAction.Canonical, root);
+    private static readonly IndexCase[] IndexScenarios =
+    [
+        new("A_block_stored_through_the_index_starts_with_a_complete_empty_child_list", [Put(1), Children(1, [], true)]),
+        new("Children_are_linked_to_their_parent_in_store_order_and_only_once", [Put(1), Put(2, 1), Put(3, 1), Put(2, 1), Children(1, [2, 3], true)]),
+        new("A_parent_never_stored_through_the_index_is_tracked_but_reported_incomplete", [Put(1, legacy: true), Put(2, 1), Block(1, true), Children(1, [2], false)]),
+        new("Re_storing_a_stored_block_whose_entry_is_pending_completes_it_with_its_children", [Put(1, legacy: true), Put(2, 1), Put(1), Children(1, [2], true)]),
+        new("Unknown_roots_have_no_entry", [Children(9, [], false, false)]),
+        new("Deleting_a_block_unlinks_it_from_its_parent_and_drops_its_own_entry", [Put(1), Put(2, 1), Put(3, 1), Delete(2), Block(2, false), Children(2, exists: false), Children(1, [3], true)]),
+        new("Deleting_a_block_whose_parent_root_is_zero_unlinks_it_like_any_other_child", [Put(2), Put(3), Delete(2), Children(0, [3])]),
+        new("A_block_stored_after_its_own_child_still_unlinks_from_its_parent_on_delete", [Put(1), Put(3, 2), Put(2, 1), Delete(2), Children(1, [])]),
+        new("Deleting_a_legacy_block_does_not_touch_its_parents_list", [Put(1, legacy: true), Put(2, 1, true), Put(3, 1), Delete(2), Block(2, false), Children(1, [3])]),
+        new("Deleting_a_block_that_still_has_stored_children_keeps_them_for_a_re_store", [Put(1), Put(2, 1), Delete(1), Children(1, [2], false), Put(1), Children(1, [2], true)]),
+        new("Deleting_the_last_child_of_a_deleted_block_drops_the_dangling_entry", [Put(1), Put(2, 1), Delete(1), Delete(2), Children(1, exists: false)]),
+        new("A_block_deleted_without_an_entry_is_complete_once_re_stored", [Put(1, legacy: true), Delete(1), Put(1), Block(1, true), Children(1, [], true)]),
+        new("A_block_with_a_pending_entry_stays_complete_through_a_delete_and_re_store", [Put(1, legacy: true), Put(2, 1), Delete(1), Put(1), Children(1, [2], true)]),
+        new("Deleting_an_unknown_root_leaves_no_trace_in_the_index", [Delete(9), Children(9, exists: false)]),
+        new("The_children_index_does_not_disturb_the_canonical_slot_index_in_the_same_column", [Canonical(1, true), Put(1), Put(2, 1), Canonical(2, true), Canonical(1), Canonical(2), Children(1, [2])]),
+    ];
+    private static IEnumerable<TestCaseData> IndexCases()
+    {
+        for (int i = 0; i < IndexScenarios.Length; i++) yield return new TestCaseData(i).SetName(IndexScenarios[i].Name);
     }
 
-    [Test]
-    public void Children_are_linked_to_their_parent_in_store_order_and_only_once()
+    [TestCaseSource(nameof(IndexCases))]
+    public void Children_index_preserves_order_completeness_and_deletion_lifecycle(int index)
     {
-        Hash256 parent = TestRoot(1);
-        Hash256 childA = TestRoot(2);
-        Hash256 childB = TestRoot(3);
-        _store.PutBlock(parent, CreateBlock(100, parent: TestRoot(0)));
-        _store.PutBlock(childA, CreateBlock(101, parent));
-        _store.PutBlock(childB, CreateBlock(102, parent));
-        _store.PutBlock(childA, CreateBlock(101, parent)); // a re-store must not duplicate the link
-
-        Assert.That(_store.TryGetChildren(parent, out Hash256[] children, out bool complete), Is.True);
-        Assert.That(complete, Is.True);
-        Assert.That(children, Is.EqualTo(new[] { childA, childB }));
-    }
-
-    [Test]
-    public void A_parent_never_stored_through_the_index_is_tracked_but_reported_incomplete()
-    {
-        Hash256 legacyParent = TestRoot(1);
-        WriteLegacyBlock(legacyParent, CreateBlock(100, parent: TestRoot(0)));
-        Hash256 child = TestRoot(2);
-        _store.PutBlock(child, CreateBlock(101, legacyParent));
-
-        Assert.That(_store.TryGetBlock(legacyParent, out _), Is.True, "the legacy block itself is readable");
-        Assert.That(_store.TryGetChildren(legacyParent, out Hash256[] children, out bool complete), Is.True);
-        Assert.That(children, Is.EqualTo(new[] { child }), "the child stored through the index is known");
-        Assert.That(complete, Is.False, "children stored before the index existed would be missing, so this list is not an answer");
-    }
-
-    [Test]
-    public void Re_storing_a_stored_block_whose_entry_is_pending_completes_it_with_its_children()
-    {
-        Hash256 stored = TestRoot(1);
-        Hash256 child = TestRoot(2);
-        SignedBeaconBlock block = CreateBlock(100, parent: TestRoot(0));
-        WriteLegacyBlock(stored, block);
-        _store.PutBlock(child, CreateBlock(101, stored));
-
-        _store.PutBlock(stored, block);
-
-        Assert.That(_store.TryGetChildren(stored, out Hash256[] children, out bool complete), Is.True);
-        Assert.That(complete, Is.True, "a stored block's list is complete: opening the database rebuilds the index, so no stored block lives outside it");
-        Assert.That(children, Is.EqualTo(new[] { child }));
-    }
-
-    [Test]
-    public void Unknown_roots_have_no_entry()
-    {
-        Assert.That(_store.TryGetChildren(TestRoot(9), out Hash256[] children, out bool complete), Is.False);
-        Assert.That(children, Is.Empty);
-        Assert.That(complete, Is.False);
-    }
-
-    [Test]
-    public void Deleting_a_block_unlinks_it_from_its_parent_and_drops_its_own_entry()
-    {
-        Hash256 parent = TestRoot(1);
-        Hash256 childA = TestRoot(2);
-        Hash256 childB = TestRoot(3);
-        _store.PutBlock(parent, CreateBlock(100, parent: TestRoot(0)));
-        _store.PutBlock(childA, CreateBlock(101, parent));
-        _store.PutBlock(childB, CreateBlock(102, parent));
-
-        _store.DeleteBlock(childA);
-
-        Assert.That(_store.TryGetBlock(childA, out _), Is.False);
-        Assert.That(_store.TryGetChildren(childA, out _, out _), Is.False, "a deleted block keeps no entry");
-        Assert.That(_store.TryGetChildren(parent, out Hash256[] children, out bool complete), Is.True);
-        Assert.That(complete, Is.True, "pruning a child does not make the parent's list incomplete: the pruned block is gone from this node entirely");
-        Assert.That(children, Is.EqualTo(new[] { childB }));
-    }
-
-    [Test]
-    public void Deleting_a_block_whose_parent_root_is_zero_unlinks_it_like_any_other_child()
-    {
-        Hash256 childA = TestRoot(2);
-        Hash256 childB = TestRoot(3);
-        _store.PutBlock(childA, CreateBlock(101, parent: Hash256.Zero));
-        _store.PutBlock(childB, CreateBlock(102, parent: Hash256.Zero));
-
-        _store.DeleteBlock(childA);
-
-        Assert.That(_store.TryGetChildren(Hash256.Zero, out Hash256[] children, out _), Is.True);
-        Assert.That(children, Is.EqualTo(new[] { childB }), "the zero root is a legal parent root, not a sentinel: its list must forget a deleted block like any other parent's");
-    }
-
-    [Test]
-    public void A_block_stored_after_its_own_child_still_unlinks_from_its_parent_on_delete()
-    {
-        Hash256 grandparent = TestRoot(1);
-        Hash256 parent = TestRoot(2);
-        Hash256 child = TestRoot(3);
-        _store.PutBlock(grandparent, CreateBlock(100, parent: TestRoot(0)));
-        _store.PutBlock(child, CreateBlock(102, parent)); // backfill order: the child's entry for its parent does not know the grandparent yet
-        _store.PutBlock(parent, CreateBlock(101, grandparent));
-
-        _store.DeleteBlock(parent);
-
-        Assert.That(_store.TryGetChildren(grandparent, out Hash256[] children, out _), Is.True);
-        Assert.That(children, Is.Empty, "the parent's own store must record the grandparent, or its later delete has nothing to unlink from");
-    }
-
-    [Test]
-    public void Deleting_a_legacy_block_does_not_touch_its_parents_list()
-    {
-        Hash256 legacyParent = TestRoot(1);
-        Hash256 legacyChild = TestRoot(2);
-        Hash256 indexedChild = TestRoot(3);
-        WriteLegacyBlock(legacyParent, CreateBlock(100, parent: TestRoot(0)));
-        WriteLegacyBlock(legacyChild, CreateBlock(101, legacyParent));
-        _store.PutBlock(indexedChild, CreateBlock(102, legacyParent));
-
-        _store.DeleteBlock(legacyChild);
-
-        Assert.That(_store.TryGetBlock(legacyChild, out _), Is.False);
-        Assert.That(_store.TryGetChildren(legacyParent, out Hash256[] children, out _), Is.True);
-        Assert.That(children, Is.EqualTo(new[] { indexedChild }), "a block that was never linked has nothing to unlink");
-    }
-
-    [Test]
-    public void Deleting_a_block_that_still_has_stored_children_keeps_them_for_a_re_store()
-    {
-        Hash256 parent = TestRoot(1);
-        Hash256 child = TestRoot(2);
-        SignedBeaconBlock parentBlock = CreateBlock(100, parent: TestRoot(0));
-        _store.PutBlock(parent, parentBlock);
-        _store.PutBlock(child, CreateBlock(101, parent));
-
-        _store.DeleteBlock(parent);
-
-        Assert.That(_store.TryGetChildren(parent, out Hash256[] orphaned, out bool completeWhileDeleted), Is.True);
-        Assert.That(orphaned, Is.EqualTo(new[] { child }), "the child is still stored, so the link must outlive its parent's deletion");
-        Assert.That(completeWhileDeleted, Is.False);
-
-        _store.PutBlock(parent, parentBlock);
-
-        Assert.That(_store.TryGetChildren(parent, out Hash256[] children, out bool complete), Is.True);
-        Assert.That(children, Is.EqualTo(new[] { child }), "a re-store that started an empty list would call it complete while a child sits in the store");
-        Assert.That(complete, Is.True, "every child ever stored is listed, so the re-stored parent can vouch for it again");
-    }
-
-    [Test]
-    public void Deleting_the_last_child_of_a_deleted_block_drops_the_dangling_entry()
-    {
-        Hash256 parent = TestRoot(1);
-        Hash256 child = TestRoot(2);
-        _store.PutBlock(parent, CreateBlock(100, parent: TestRoot(0)));
-        _store.PutBlock(child, CreateBlock(101, parent));
-
-        _store.DeleteBlock(parent);
-        _store.DeleteBlock(child);
-
-        Assert.That(_store.TryGetChildren(parent, out _, out _), Is.False, "nothing is stored under the parent any more, so there is nothing to remember");
-    }
-
-    [Test]
-    public void A_block_deleted_without_an_entry_is_complete_once_re_stored()
-    {
-        Hash256 root = TestRoot(1);
-        SignedBeaconBlock block = CreateBlock(100, parent: TestRoot(0));
-        WriteLegacyBlock(root, block);
-
-        _store.DeleteBlock(root);
-        _store.PutBlock(root, block);
-
-        Assert.That(_store.TryGetBlock(root, out _), Is.True);
-        Assert.That(_store.TryGetChildren(root, out Hash256[] children, out bool complete), Is.True);
-        Assert.That(children, Is.Empty);
-        Assert.That(complete, Is.True, "a delete must not leave a mark that keeps the re-stored block incomplete for good");
-    }
-
-    [Test]
-    public void A_block_with_a_pending_entry_stays_complete_through_a_delete_and_re_store()
-    {
-        Hash256 stored = TestRoot(1);
-        Hash256 indexedChild = TestRoot(2);
-        SignedBeaconBlock block = CreateBlock(100, parent: TestRoot(0));
-        WriteLegacyBlock(stored, block);
-        _store.PutBlock(indexedChild, CreateBlock(101, stored));
-
-        _store.DeleteBlock(stored);
-        _store.PutBlock(stored, block);
-
-        Assert.That(_store.TryGetChildren(stored, out Hash256[] children, out bool complete), Is.True);
-        Assert.That(children, Is.EqualTo(new[] { indexedChild }), "the indexed child stays linked");
-        Assert.That(complete, Is.True, "pruning a block must not pin its list incomplete: every child stored under it is listed");
-    }
-
-    [Test]
-    public void Deleting_an_unknown_root_leaves_no_trace_in_the_index()
-    {
-        _store.DeleteBlock(TestRoot(9));
-
-        Assert.That(_store.TryGetChildren(TestRoot(9), out _, out _), Is.False);
-    }
-
-    [Test]
-    public void The_children_index_does_not_disturb_the_canonical_slot_index_in_the_same_column()
-    {
-        Hash256 parent = TestRoot(1);
-        Hash256 child = TestRoot(2);
-        _store.SetCanonicalRoot(100, parent);
-        _store.PutBlock(parent, CreateBlock(100, parent: TestRoot(0)));
-        _store.PutBlock(child, CreateBlock(101, parent));
-        _store.SetCanonicalRoot(101, child);
-
-        Assert.That(_store.TryGetCanonicalRoot(100, out Hash256? at100), Is.True);
-        Assert.That(at100, Is.EqualTo(parent));
-        Assert.That(_store.TryGetCanonicalRoot(101, out Hash256? at101), Is.True);
-        Assert.That(at101, Is.EqualTo(child));
-        Assert.That(_store.TryGetChildren(parent, out Hash256[] children, out _), Is.True);
-        Assert.That(children, Is.EqualTo(new[] { child }));
+        foreach (IndexStep step in IndexScenarios[index].Steps)
+        {
+            Hash256 root = TestRoot(step.Root);
+            ulong slot = 99UL + step.Root;
+            switch (step.Action)
+            {
+                case IndexAction.Store:
+                    _store.PutBlock(root, CreateBlock(slot, TestRoot(step.Parent)));
+                    break;
+                case IndexAction.Legacy:
+                    WriteLegacyBlock(root, CreateBlock(slot, TestRoot(step.Parent)));
+                    break;
+                case IndexAction.Delete:
+                    _store.DeleteBlock(root);
+                    break;
+                case IndexAction.Block:
+                    Assert.That(_store.TryGetBlock(root, out _), Is.EqualTo(step.Exists));
+                    break;
+                case IndexAction.Children:
+                    Assert.That(_store.TryGetChildren(root, out Hash256[] children, out bool complete), Is.EqualTo(step.Exists));
+                    if (step.Children is not null) Assert.That(children, Is.EqualTo(step.Children.Select(TestRoot).ToArray()));
+                    if (step.Complete is { } expected) Assert.That(complete, Is.EqualTo(expected));
+                    break;
+                case IndexAction.SetCanonical:
+                    _store.SetCanonicalRoot(slot, root);
+                    break;
+                case IndexAction.Canonical:
+                    Assert.That(_store.TryGetCanonicalRoot(slot, out Hash256? canonical), Is.True);
+                    Assert.That(canonical, Is.EqualTo(root));
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(step));
+            }
+        }
     }
 
     [Test]
