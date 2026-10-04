@@ -126,7 +126,8 @@ public class JsonContextEquivalenceTests
     /// <summary>Init-only initializers whose loss was reviewed, with the reason it does not change behavior.</summary>
     private static readonly Dictionary<Type, string> ReviewedInitializerLosses = new()
     {
-        // A peer's client identity: absent fields stay empty instead of claiming Nethermind's; the engine API already read it so.
+        // A consensus client's identity: absent fields stay empty instead of claiming Nethermind's, as the JSON-RPC engine API has
+        // always read it; the SSZ identity endpoint used to fill them from Nethermind's own identity.
         [typeof(Nethermind.Merge.Plugin.Data.ClientVersionV1)] = "peer identity",
         // RPC results, never deserialized.
         [typeof(Nethermind.JsonRpc.Data.AccountInfoForRpc)] = "response only",

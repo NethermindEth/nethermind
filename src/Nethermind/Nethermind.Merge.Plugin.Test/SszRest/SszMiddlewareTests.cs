@@ -978,6 +978,25 @@ public class SszMiddlewareTests
     }
 
     [Test]
+    public async Task ClientVersion_header_omitting_fields_leaves_them_empty()
+    {
+        // As the JSON-RPC engine API reads it: Nethermind's own identity must not stand in for fields the consensus client omits.
+        _engineModule.engine_getClientVersionV1(default)
+            .ReturnsForAnyArgs(ResultWrapper<ClientVersionV1[]>.Success([new()]));
+
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/identity");
+        ctx.Request.Headers["X-Engine-Client-Version"] = """{"name":"Lighthouse"}""";
+
+        await _middleware.InvokeAsync(ctx);
+
+        ClientVersionV1 arg = (ClientVersionV1)_engineModule.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IEngineRpcModule.engine_getClientVersionV1))
+            .GetArguments()[0]!;
+        Assert.That(arg.Name, Is.EqualTo("Lighthouse"));
+        Assert.That(arg.Code, Is.Null);
+    }
+
+    [Test]
     public async Task Forkchoice_unsupported_fork_returns_400()
     {
         IReleaseSpec shanghaiSpec = Substitute.For<IReleaseSpec>();
