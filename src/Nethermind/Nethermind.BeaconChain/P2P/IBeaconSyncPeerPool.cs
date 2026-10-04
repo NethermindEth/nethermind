@@ -24,6 +24,9 @@ public enum PeerFailureReason
 
     /// <summary>The underlying session or channel is already gone; every further request would fail too.</summary>
     SessionClosed,
+
+    /// <summary>A request timed out while no request to any peer was answered, so it does not count against this peer.</summary>
+    RequestNotBlamed,
 }
 
 /// <summary>A connected, status-exchanged beacon chain peer usable by range sync.</summary>

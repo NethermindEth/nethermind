@@ -2153,7 +2153,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private readonly object _requestFailureLock = new();
         private readonly ConcurrentDictionary<string, SemaphoreSlim> _requestSlots = new(StringComparer.Ordinal);
         private int _requestsInFlight;
-        private int _unblamedFailures;
         private int _unblamedInARow;
         private volatile bool _heldOutOfSelection;
         private int _requestFailures;
@@ -2525,25 +2524,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
         }
 
-        /// <summary>Takes the note left by a failed sync request that is not to be counted against this peer; its <see cref="ReportFailure(PeerFailureReason, string?, bool)"/> then does not count.</summary>
-        /// <remarks>Sync reports a failure by its text only, so the note is per peer: with failures of the same peer reported out of order the count stays right but can land on the other failure.</remarks>
-        public bool TryTakeUnblamedFailure()
-        {
-            int unblamed = Volatile.Read(ref _unblamedFailures);
-            while (unblamed > 0)
-            {
-                int seen = Interlocked.CompareExchange(ref _unblamedFailures, unblamed - 1, unblamed);
-                if (seen == unblamed)
-                {
-                    return true;
-                }
-
-                unblamed = seen;
-            }
-
-            return false;
-        }
-
         private void FreeSlot(SemaphoreSlim slots)
         {
             slots.Release();
@@ -2553,17 +2533,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private async Task<T> Served<T>(string protocol, Func<RequestTiming, Task<T>> request, CancellationToken token)
         {
             RecordMessageSent();
-            T response;
-            try
-            {
-                response = await ExchangeAsync(protocol, request, token);
-            }
-            catch (Exception e) when (WithoutPartialReply(e) is ReqRespTimeoutException { NotBlamed: true })
-            {
-                Interlocked.Increment(ref _unblamedFailures);
-                throw;
-            }
-
+            T response = await ExchangeAsync(protocol, request, token);
             RecordRequestServed();
             return response;
         }
@@ -2612,7 +2582,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             if (ownRequest)
             {
                 Volatile.Write(ref _cooldownUntilTicks, (manager._timestamper.UtcNowOffset + RequestFailureCooldown).UtcTicks);
-                if (reason == PeerFailureReason.RequestFailed && TryTakeUnblamedFailure())
+                if (reason == PeerFailureReason.RequestNotBlamed)
                 {
                     if (manager._logger.IsDebug) manager._logger.Debug($"Beacon chain peer {Id} failed a request, not counted as no request of ours to any peer was answered meanwhile{(detail is null ? "" : $" ({detail})")}");
                     return;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 
 namespace Nethermind.BeaconChain.P2P;
 
@@ -12,8 +13,16 @@ namespace Nethermind.BeaconChain.P2P;
 /// </remarks>
 internal static class PeerFailureClassifier
 {
-    public static PeerFailureReason Classify(Exception e) =>
-        e.Message.Contains("Channel closed", StringComparison.OrdinalIgnoreCase) || e.Message.Contains("session", StringComparison.OrdinalIgnoreCase)
-            ? PeerFailureReason.SessionClosed
+    public static PeerFailureReason Classify(Exception e)
+    {
+        if (e.Message.Contains("Channel closed", StringComparison.OrdinalIgnoreCase) || e.Message.Contains("session", StringComparison.OrdinalIgnoreCase))
+        {
+            return PeerFailureReason.SessionClosed;
+        }
+
+        Exception cause = e is PartialBlocksException or PartialSidecarsException ? e.InnerException ?? e : e;
+        return cause is ReqRespTimeoutException { NotBlamed: true }
+            ? PeerFailureReason.RequestNotBlamed
             : PeerFailureReason.RequestFailed;
+    }
 }
