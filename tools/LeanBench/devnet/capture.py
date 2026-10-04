@@ -45,7 +45,10 @@ def export_mixed(root):
                             "originalReport", "observationOnly", "readRetries"))
         run["reportSha256"] = digest(path)
         profile = data.get("nativeProfile", {})
-        run["nativeProfile"] = select(profile, ("abi", "recursiveGuestKey", "bounds"))
+        run["nativeProfile"] = select(profile, ("abi", "recursiveGuestKey"))
+        run["nativeProfile"]["bounds"] = select(profile.get("bounds", {}),
+            ("proofBytes", "dependencies", "recursiveChildren", "sphincsWitnessBytes", "genericClaims",
+             "instructions", "operandOffset", "aggregationInputBytes", "mixedGuestProofBytes"))
         run["admissions"] = []
         for admission in data.get("admissions", []):
             item = select(admission, ("transactionHash", "nonce", "offeredUtc", "accepted", "acceptedUtc",

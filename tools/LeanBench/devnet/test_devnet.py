@@ -230,11 +230,12 @@ class DevnetChecks(unittest.TestCase):
                 (base / 'payload-000.json').write_text('not JSON: secret private payload')
                 (base / 'report.json').write_text(json.dumps({'completed': completed,
                     'error': 'preserved failure' if not completed else None,
+                    'nativeProfile': {'bounds': {'dependencies': 256, 'inputs': 'private profile witness'}},
                     'params': ['private Engine payload'], 'admissions': [],
                     'blocks': [{'blockHash': '0x33', 'rawProof': 'private proof',
                         'nativeInspection': {'originalNativeProofValid': True, 'inputs': ['private witness']}}]}))
             encoded = json.dumps(capture.export_mixed(root))
-            for omitted in ('secret private payload', 'private Engine payload', 'private proof', 'private witness'):
+            for omitted in ('secret private payload', 'private Engine payload', 'private proof', 'private witness', 'private profile witness'):
                 self.assertNotIn(omitted, encoded)
             runs = capture.export_mixed(root)['runs']
             self.assertFalse(runs['mixed-merge']['completed'])
