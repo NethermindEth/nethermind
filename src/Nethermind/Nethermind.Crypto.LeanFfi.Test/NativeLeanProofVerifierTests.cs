@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -15,6 +16,24 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 public class NativeLeanProofVerifierTests
 {
     private static readonly ILeanProofVerifier Native = NativeLeanProofVerifier.Instance;
+    private static readonly Lazy<byte[]> VerifiedMixedProof = new(CreateMixedProof);
+    internal static byte[] MixedProof() => (byte[])VerifiedMixedProof.Value.Clone();
+
+    private static byte[] CreateMixedProof()
+    {
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([Dependency("sphincs"), Dependency("stark")]);
+        AggregationInput input = new()
+        {
+            Deps = dependencies,
+            Witnesses = [Witness("sphincs"), Witness("stark")]
+        };
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
+        byte[] proof = RecursiveStarkAggregator.Prove(input, Native, in hash);
+        Assert.That(Native.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
+        AssertMixedEnvelope(proof, dependencies);
+        return proof;
+    }
+
     internal static byte[] Fixture(string name) => File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.TestDirectory, "lean-vectors", name + ".bin"));
     internal static FrameDependency Dependency(string scheme) => new(scheme == "sphincs" ? Eip8288Constants.LeanSphincsScheme : Eip8288Constants.LeanStarkScheme,
         new ValueHash256(Fixture(scheme + "-message")), new ValueHash256(Fixture(scheme + "-key")));
