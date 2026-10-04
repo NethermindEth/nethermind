@@ -11,6 +11,7 @@ from pathlib import Path
 import socket
 import struct
 import threading
+import tempfile
 import time
 import unittest
 from unittest.mock import patch
@@ -164,7 +165,7 @@ class ResponseOwnershipChecks(unittest.TestCase):
 
         large_response = {"jsonrpc": "2.0", "id": 1, "result": "x" * (8 * 1024 * 1024)}
 
-        def upstream(request, endpoint, *_):
+        def upstream(request, endpoint, *_, **__):
             return large_response if endpoint == "http://slow" else {"jsonrpc": "2.0", "id": 1, "result": "0x1"}
 
         clients = []
@@ -198,6 +199,98 @@ class ResponseOwnershipChecks(unittest.TestCase):
 
         with self.assertRaisesRegex(proxy.ProxyError, "Bogota newPayloadV6 is unsupported"):
             proxy.handle(request, "http://offline", "", None, send=unexpected_forward)
+
+
+class PayloadCaptureChecks(unittest.TestCase):
+    @staticmethod
+    def request(index=1, proof_bytes=13):
+        return {"jsonrpc": "2.0", "id": index, "method": "engine_newPayloadV5", "params": [
+            {"blockHash": "0x" + f"{index:064x}", proxy.PROOF: "0x" + "ab" * proof_bytes,
+             proxy.DEPS: "0x" + "cd" * 32, "transactions": ["0x7f01"], "blockAccessList": "0x1234"},
+            ["0x" + "ef" * 32], "0x" + "12" * 32, ["0x020304"]]}
+
+    def test_restored_complete_request_is_captured_without_credentials_or_verdict_changes(self):
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            cache = proxy.ProofCache(Path(directory) / "proofs")
+            capture = proxy.PayloadCapture(Path(directory) / "captures")
+            original = self.request()
+            cache.remember(original["params"][0])
+            request = json.loads(json.dumps(original))
+            del request["params"][0][proxy.PROOF]
+            del request["params"][0][proxy.DEPS]
+            secret = authorization()
+            request["Authorization"] = secret
+            verdict = {"jsonrpc": "2.0", "id": 1, "result": {"status": "INVALID"}}
+
+            def forward(_, actual, header):
+                self.assertEqual(header, secret)
+                self.assertEqual(actual["params"], original["params"])
+                self.assertEqual(json.loads(next(capture.directory.glob("*.json")).read_text()), original)
+                return verdict
+
+            self.assertIs(proxy.handle(request, "http://offline", secret, cache,
+                                       send=forward, capture=capture), verdict)
+            path = next(capture.directory.glob("*.json"))
+            self.assertNotIn(secret, path.read_text())
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            request["params"][3] = ["0xff"]
+            capture.remember(request)
+            self.assertEqual(json.loads(path.read_text()), original, "the first record for a block must be immutable")
+
+    def test_empty_proofs_do_not_evict_and_shared_capture_serializes_duplicate_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = proxy.PayloadCapture(Path(directory))
+            with patch.object(proxy, "MAX_CAPTURE_RECORDS", 1):
+                threads = [threading.Thread(target=capture.remember, args=(self.request(),)) for _ in range(8)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(timeout=2)
+                    self.assertFalse(thread.is_alive())
+                capture.remember(self.request(2, proof_bytes=12))
+                self.assertEqual(len(capture.records), 1)
+                self.assertEqual(len(list(capture.directory.glob("*.json"))), 1)
+                self.assertIn("0x" + f"{1:064x}", capture.records)
+
+    def test_count_byte_and_restart_bounds_remove_oldest_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            capture = proxy.PayloadCapture(path)
+            for index in range(1, 5):
+                capture.remember(self.request(index))
+            with patch.object(proxy, "MAX_CAPTURE_RECORDS", 3), \
+                    patch.object(proxy, "MAX_CAPTURE_BYTES", capture.bytes // 2):
+                restarted = proxy.PayloadCapture(path)
+                self.assertLessEqual(restarted.bytes, proxy.MAX_CAPTURE_BYTES)
+                self.assertLessEqual(len(restarted.records), proxy.MAX_CAPTURE_RECORDS)
+                self.assertEqual(len(restarted.records), 2)
+                restarted.remember(self.request(5))
+                self.assertEqual(list(restarted.records), ["0x" + f"{index:064x}" for index in (4, 5)])
+                self.assertEqual(sum(item.stat().st_size for item in path.glob("*.json")), restarted.bytes)
+
+    def test_oversize_or_failed_capture_preserves_forwarding(self):
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            capture = proxy.PayloadCapture(Path(directory))
+            request = self.request()
+            with patch.object(proxy, "MAX_BODY", 64):
+                capture.remember(request)
+                self.assertEqual(list(capture.directory.iterdir()), [])
+            verdict = {"jsonrpc": "2.0", "id": 1, "result": {"status": "VALID"}}
+            with patch.object(proxy.tempfile, "NamedTemporaryFile", side_effect=OSError("private disk path")):
+                self.assertIs(proxy.handle(request, "http://offline", "", proxy.ProofCache(Path(directory) / "proofs"),
+                                           send=lambda *_: verdict, capture=capture), verdict)
+            self.assertEqual(capture.records, {})
+
+    def test_startup_rejects_oversized_or_foreign_owned_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / (f"{1:064x}" + ".json")
+            path.write_text(json.dumps(self.request(2)))
+            with self.assertRaisesRegex(proxy.ProxyError, "Invalid persisted payload capture"):
+                proxy.PayloadCapture(Path(directory))
+            path.write_text("x" * 65)
+            with patch.object(proxy, "MAX_BODY", 64), \
+                    self.assertRaisesRegex(proxy.ProxyError, "Invalid persisted payload capture"):
+                proxy.PayloadCapture(Path(directory))
 
 
 if __name__ == "__main__":

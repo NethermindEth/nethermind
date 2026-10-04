@@ -10,6 +10,7 @@ import json
 import os
 import re
 import threading
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -21,6 +22,8 @@ MAX_PROOF = 8 * 1024 * 1024
 MAX_BODY = 32 * 1024 * 1024
 MAX_CACHE_BYTES = 64 * 1024 * 1024
 MAX_CACHE_RECORDS = 128
+MAX_CAPTURE_BYTES = 64 * 1024 * 1024
+MAX_CAPTURE_RECORDS = 16
 HASH = re.compile(r"0x[0-9a-fA-F]{64}\Z")
 PROOF = "recursiveStarkProof"
 DEPS = "recursiveStarkBlockDepsHash"
@@ -117,6 +120,93 @@ class ProofCache:
             return True
 
 
+class PayloadCapture:
+    """Bounded private request archive; capture failure never changes the Engine verdict."""
+    def __init__(self, directory):
+        self.directory = directory
+        self.lock = threading.Lock()
+        self.records = collections.OrderedDict()
+        self.bytes = 0
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if directory.is_symlink():
+            raise ProxyError("Capture directory must be owned storage")
+        for path in directory.iterdir():
+            if path.name.startswith(".capture-") and not path.is_dir():
+                path.unlink()
+            elif not re.fullmatch(r"[0-9a-f]{64}\.json", path.name):
+                raise ProxyError("Capture directory contains foreign entries")
+        for path in sorted(directory.glob("*.json"), key=lambda item: item.stat().st_mtime):
+            if not re.fullmatch(r"[0-9a-f]{64}\.json", path.name):
+                continue
+            if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_BODY:
+                raise ProxyError("Invalid persisted payload capture")
+            with path.open("rb") as source:
+                data = source.read(MAX_BODY + 1)
+            if len(data) > MAX_BODY:
+                raise ProxyError("Oversized persisted payload capture")
+            try:
+                key = self._key(json.loads(data))
+            except (ValueError, TypeError, AttributeError) as error:
+                raise ProxyError("Invalid persisted payload capture") from error
+            if key is None or key[2:] != path.stem:
+                raise ProxyError("Invalid persisted payload capture")
+            self.records[key] = len(data)
+            self.bytes += len(data)
+            self._trim()
+
+    @staticmethod
+    def _key(request):
+        if not isinstance(request, dict) or request.get("jsonrpc") != "2.0" \
+                or request.get("method") != "engine_newPayloadV5":
+            raise ProxyError("Invalid capture request")
+        params = request.get("params")
+        if not isinstance(params, list) or len(params) != 4 or not isinstance(params[0], dict):
+            raise ProxyError("Invalid capture parameters")
+        proof = decode_hex(params[0].get(PROOF), MAX_PROOF)
+        if len(decode_hex(params[0].get(DEPS), 32)) != 32:
+            raise ProxyError("Invalid capture dependency commitment")
+        return block_hash(params[0]) if len(proof) > 12 else None
+
+    def _trim(self, incoming_bytes=0, incoming_records=0):
+        while self.bytes + incoming_bytes > MAX_CAPTURE_BYTES \
+                or len(self.records) + incoming_records > MAX_CAPTURE_RECORDS:
+            removed, size = self.records.popitem(last=False)
+            self.bytes -= size
+            (self.directory / (removed[2:] + ".json")).unlink(missing_ok=True)
+
+    def remember(self, request):
+        try:
+            key = self._key(request)
+            if key is None:
+                return
+            with self.lock:
+                if key in self.records:
+                    return
+                # Only the JSON-RPC envelope is saved, never HTTP headers or credentials.
+                envelope = {name: request[name] for name in ("jsonrpc", "id", "method", "params") if name in request}
+                data = json.dumps(envelope, separators=(",", ":"), allow_nan=False).encode()
+                if len(data) > MAX_BODY or len(data) > MAX_CAPTURE_BYTES:
+                    raise ProxyError("Payload capture exceeds size bound")
+                self._trim(len(data), 1)
+                temporary = None
+                try:
+                    with tempfile.NamedTemporaryFile(dir=self.directory, prefix=".capture-", delete=False) as destination:
+                        temporary = Path(destination.name)
+                        destination.write(data)
+                        destination.flush()
+                        os.fsync(destination.fileno())
+                    temporary.replace(self.directory / (key[2:] + ".json"))
+                    temporary = None
+                    self.records[key] = len(data)
+                    self.bytes += len(data)
+                    self._trim()
+                finally:
+                    if temporary is not None:
+                        temporary.unlink(missing_ok=True)
+        except (OSError, ProxyError, ValueError, TypeError):
+            print(json.dumps({"event": "capture_error", "error": "Payload capture unavailable"}), flush=True)
+
+
 def authenticate(header, secret, now=None):
     if not header.startswith("Bearer "):
         return False
@@ -148,7 +238,7 @@ def forward(endpoint, request, authorization):
     return json.loads(data)
 
 
-def handle(request, endpoint, authorization, cache, send=forward):
+def handle(request, endpoint, authorization, cache, send=forward, capture=None):
     if not isinstance(request, dict) or request.get("jsonrpc") != "2.0":
         raise ProxyError("Single JSON-RPC request required")
     method = request.get("method")
@@ -164,6 +254,8 @@ def handle(request, endpoint, authorization, cache, send=forward):
         restored = cache.restore(params[0])
         if restored:
             print(json.dumps({"event": "proof_restored", "blockHash": block_hash(params[0])}), flush=True)
+        if capture is not None:
+            capture.remember(request)
     result = send(endpoint, request, authorization)
     if not isinstance(result, dict):
         raise ProxyError("Invalid Engine response")
@@ -180,7 +272,7 @@ def handle(request, endpoint, authorization, cache, send=forward):
     return result
 
 
-def handler(endpoint, secret, cache, capacity=None):
+def handler(endpoint, secret, cache, capacity=None, capture=None):
     if capacity is None:
         capacity = threading.BoundedSemaphore(2)
     class Handler(BaseHTTPRequestHandler):
@@ -208,7 +300,7 @@ def handler(endpoint, secret, cache, capacity=None):
                     request = json.loads(body)
                     if isinstance(request, dict):
                         request_id = request.get("id")
-                    response = handle(request, endpoint, authorization, cache)
+                    response = handle(request, endpoint, authorization, cache, capture=capture)
                     encoded = json.dumps(response, separators=(",", ":")).encode()
                 except (ProxyError, ValueError, OSError, urllib.error.URLError) as error:
                     message = str(error) if isinstance(error, ProxyError) else "Engine proxy request failed"
@@ -236,6 +328,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jwt", type=Path, required=True)
     parser.add_argument("--cache", type=Path, required=True)
+    parser.add_argument("--capture-dir", type=Path, help="Private bounded newPayloadV5 request archive")
     parser.add_argument("--listen1", type=int, default=19451)
     parser.add_argument("--listen2", type=int, default=19452)
     parser.add_argument("--upstream1", type=int, default=19151)
@@ -250,12 +343,13 @@ def main():
     if len(secret) != 32:
         parser.error("Engine JWT must contain exactly 32 bytes")
     cache = ProofCache(args.cache)
+    capture = PayloadCapture(args.capture_dir) if args.capture_dir is not None else None
 
     endpoints = (args.upstream_url1 or f"http://127.0.0.1:{args.upstream1}",
         args.upstream_url2 or f"http://127.0.0.1:{args.upstream2}")
     if any(not endpoint.startswith("http://") for endpoint in endpoints):
         parser.error("Upstream endpoints must use HTTP on the private devnet network")
-    servers = [ThreadingHTTPServer((args.bind, listen), handler(endpoint, secret, cache))
+    servers = [ThreadingHTTPServer((args.bind, listen), handler(endpoint, secret, cache, capture=capture))
         for listen, endpoint in zip((args.listen1, args.listen2), endpoints)]
     threads = [threading.Thread(target=server.serve_forever, daemon=True) for server in servers]
     for thread in threads:
