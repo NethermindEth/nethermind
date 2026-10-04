@@ -426,13 +426,6 @@ public class SyncAggregateSignatureTests
     private static BlsSignature HonestSignature(Hash256 signingRoot, int[] members, BitArray bits) =>
         AggregateSignature(signingRoot, [.. Enumerable.Range(0, members.Length).Where(i => bits[i]).Select(i => members[i])]);
 
-    private static byte[] G1PointAtInfinity()
-    {
-        byte[] bytes = new byte[BlsPublicKey.Length];
-        bytes[0] = 0xc0;
-        return bytes;
-    }
-
     private static BlsSignature NoParticipantSignature(bool infinity, Hash256 signingRoot) =>
         infinity ? new BlsSignature(G2PointAtInfinity()) : Sign(ValidatorKey(0), signingRoot);
 

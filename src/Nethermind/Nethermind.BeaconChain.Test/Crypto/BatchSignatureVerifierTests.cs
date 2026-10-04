@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using NUnit.Framework;
@@ -111,8 +112,7 @@ public class BatchSignatureVerifierTests
         byte[] message = Msg(0x11);
         byte[] sig = Sign(DeriveKey(3), message);
 
-        byte[] infinityPubkey = new byte[48];
-        infinityPubkey[0] = 0xc0; // compressed-point flag + infinity flag, zero body: the canonical G1 infinity encoding
+        byte[] infinityPubkey = GloasTestFixtures.G1PointAtInfinity();
 
         Assert.That(BlsSignatureSet.TryCreate(infinityPubkey, message, sig, out BlsSignatureSet? set), Is.False);
         Assert.That(set, Is.Null);

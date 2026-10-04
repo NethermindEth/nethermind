@@ -23,14 +23,7 @@ public class BlockSignatureBatchTests
     private static readonly byte[] NotInG1Pubkey = Bytes.FromHexString("0x8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     private static readonly byte[] NotInG2Signature = Bytes.FromHexString("0x8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
-    private static readonly byte[] G1Infinity = CreateG1Infinity();
-
-    private static byte[] CreateG1Infinity()
-    {
-        byte[] bytes = new byte[BlsPublicKey.Length];
-        bytes[0] = 0xc0;
-        return bytes;
-    }
+    private static readonly byte[] G1Infinity = G1PointAtInfinity();
 
     private static G1Affine PublicKey(int keyIndex) => new Bls.P1(DeriveKey(keyIndex)).ToAffine();
 

@@ -166,11 +166,4 @@ public class MessageKeyValidationTests
         Hash256 domain = Domains.ComputeDomain(DomainType.BuilderDeposit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).GenesisForkVersion, Hash256.Zero);
         return Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
     }
-
-    private static byte[] G1PointAtInfinity()
-    {
-        byte[] bytes = new byte[BlsPublicKey.Length];
-        bytes[0] = 0xc0;
-        return bytes;
-    }
 }
