@@ -283,7 +283,7 @@ public class BlockImporterTests
         ForkChoiceSnapshotHolder snapshots = new();
         ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + clockSlot * chain.Spec.SecondsPerSlot).AddMilliseconds(msIntoSlot));
         SlotClock clock = new(chain.Spec, timestamper);
-        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), engine: new SlowPayloadEngine(timestamper, TimeSpan.FromSeconds(newPayloadSeconds)), forkChoiceSnapshots: snapshots, importClock: clock);
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), engine: new ValidPayloadEngine(() => timestamper.Add(TimeSpan.FromSeconds(newPayloadSeconds))), forkChoiceSnapshots: snapshots, importClock: clock);
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
         importer.ComputeHead();
@@ -575,7 +575,7 @@ public class BlockImporterTests
         NodeColumnCustody custody = BaseCustody();
         DataColumnSidecarPool pool = new();
         Hold(pool, chain, custody.SampledColumns);
-        BlockImporter importer = CreateImporter(chain, custody, pool, engine: new UnavailableThenValidEngine());
+        BlockImporter importer = CreateImporter(chain, custody, pool, engine: UnavailableThenValidEngine());
 
         BlockImportResult deferred = importer.Import(chain.Block, chain.BlockRoot, verifySignatures);
         bool knownWhileDeferred = importer.IsKnown(chain.BlockRoot);
@@ -684,19 +684,8 @@ public class BlockImporterTests
     {
         UnsignedChain chain = UnsignedChain.Create();
         UnsignedChain.ChainBlock anchor = chain.Extend(chain.AnchorRoot, slot: 3 * Presets.SlotsPerEpoch, payloadHashByte: 0x60);
-        BlockImporter importer = new(
-            chain.Spec,
-            new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
-            chain.Anchor.Pubkeys,
-            new ValidPayloadEngine(),
-            new BeaconChainConfig(),
-            LimboLogs.Instance,
-            ReplayedBlockAvailability.Instance,
-            static (_, _) => false,
-            new SlotClock(chain.Spec, Timestamper.Default),
-            new ForkedBeaconState.OfFulu(anchor.PostState),
-            new ForkedSignedBeaconBlock.OfFulu(anchor.Block),
-            anchor.Root);
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(),
+            availability: ReplayedBlockAvailability.Instance, anchor: anchor);
         UnsignedChain.ChainBlock a = chain.Extend(anchor.Root, anchor.Block.Message!.Slot + 1, payloadHashByte: 0x61);
         UnsignedChain.ChainBlock b = chain.Extend(a.Root, a.Block.Message!.Slot + 1, payloadHashByte: 0x62);
         UnsignedChain.ChainBlock c = chain.Extend(b.Root, b.Block.Message!.Slot + 1, payloadHashByte: 0x63);
@@ -1193,19 +1182,8 @@ public class BlockImporterTests
         (SignedBeaconBlock lineage, Hash256 lineageRoot, _) = UnsignedChild(anchorState, anchorRoot, slot: 1, []);
         (SignedBeaconBlock block, Hash256 root, BeaconStateFulu postState) = UnsignedChild(anchorState, anchorRoot, slot: Presets.SlotsPerEpoch + 1, [slashing]);
         Assert.That(postState.Validators, Has.Length.EqualTo(anchorState.Validators.Length + 1), "fixture bug: the queued validator must be onboarded before the slashing block");
-        BlockImporter importer = new(
-            chain.Spec,
-            new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
-            chain.Anchor.Pubkeys,
-            new ValidPayloadEngine(),
-            new BeaconChainConfig(),
-            LimboLogs.Instance,
-            ReplayedBlockAvailability.Instance,
-            static (_, _) => false,
-            new SlotClock(chain.Spec, Timestamper.Default),
-            new ForkedBeaconState.OfFulu(anchorState),
-            new ForkedSignedBeaconBlock.OfFulu(anchorBlock),
-            anchorRoot);
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(),
+            availability: ReplayedBlockAvailability.Instance, anchor: new UnsignedChain.ChainBlock(anchorBlock, anchorRoot, anchorState));
         Assert.That(importer.Import(lineage, lineageRoot, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
         long refusedBefore = RefusedByForkChoice("body_attester_slashing");
 
@@ -1738,28 +1716,9 @@ public class BlockImporterTests
             AggregationBits = new BitArray(1, true),
             CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [outOfRange ? 1 : 0] = true },
         };
-        byte[] payload;
-        Func<GossipVerdict, BeaconSyncOrchestrator.WorkItem> work;
-        if (gloas)
-        {
-            SignedAggregateAndProofGloas aggregate = new()
-            {
-                Message = new AggregateAndProofGloas
-                {
-                    Aggregate = new AttestationGloas { Data = vote.Data, AggregationBits = vote.AggregationBits, CommitteeBits = vote.CommitteeBits },
-                }
-            };
-            payload = Snappy.CompressToArray(SignedAggregateAndProofGloas.Encode(aggregate));
-            work = verdict => new BeaconSyncOrchestrator.GossipGloasAggregateItem(aggregate, verdict);
-        }
-        else
-        {
-            SignedAggregateAndProof aggregate = new() { Message = new AggregateAndProof { Aggregate = vote } };
-            payload = Snappy.CompressToArray(SignedAggregateAndProof.Encode(aggregate));
-            work = verdict => new BeaconSyncOrchestrator.GossipAggregateItem(aggregate, verdict);
-        }
+        (Func<byte[]> Encode, Func<GossipVerdict, BeaconSyncOrchestrator.WorkItem> Work, Action<ForkChoiceRunner> Apply) aggregate = AggregateGossip(new AggregateAndProof { Aggregate = vote }, gloas);
 
-        await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, 0, GossipTopics.BeaconAggregateAndProof, payload, work,
+        await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, 0, GossipTopics.BeaconAggregateAndProof, aggregate.Encode(), aggregate.Work,
             knownBlock && outOfRange ? MessageValidity.Rejected : MessageValidity.Ignored, router, gloas);
     }
 
@@ -1807,29 +1766,11 @@ public class BlockImporterTests
         if (forgery == AggregatorForgery.WrongTargetEpoch) vote.Data!.Target!.Epoch++;
         MessageValidity expected = forgery == AggregatorForgery.None ? MessageValidity.Accepted
             : forgery is AggregatorForgery.MissingPublicKeys or AggregatorForgery.UnknownBlock ? MessageValidity.Ignored : MessageValidity.Rejected;
-        Func<GossipVerdict, BeaconSyncOrchestrator.WorkItem> work;
-        byte[] payload;
-        if (gloasContainer)
-        {
-            AggregateAndProofGloas message = new()
-            {
-                AggregatorIndex = (ulong)aggregator,
-                Aggregate = new AttestationGloas { AggregationBits = vote.AggregationBits, Data = vote.Data, Signature = vote.Signature, CommitteeBits = vote.CommitteeBits },
-                SelectionProof = selectionProof,
-            };
-            SignedAggregateAndProofGloas signed = new() { Message = message, Signature = SignAs(signer, SszRoots.HashTreeRoot(message), DomainType.AggregateAndProof) };
-            payload = Snappy.CompressToArray(SignedAggregateAndProofGloas.Encode(signed));
-            work = verdict => new BeaconSyncOrchestrator.GossipGloasAggregateItem(signed, verdict);
-        }
-        else
-        {
-            AggregateAndProof message = new() { AggregatorIndex = (ulong)aggregator, Aggregate = vote, SelectionProof = selectionProof };
-            SignedAggregateAndProof signed = new() { Message = message, Signature = SignAs(signer, SszRoots.HashTreeRoot(message), DomainType.AggregateAndProof) };
-            payload = Snappy.CompressToArray(SignedAggregateAndProof.Encode(signed));
-            work = verdict => new BeaconSyncOrchestrator.GossipAggregateItem(signed, verdict);
-        }
+        (Func<byte[]> Encode, Func<GossipVerdict, BeaconSyncOrchestrator.WorkItem> Work, Action<ForkChoiceRunner> Apply) aggregate = AggregateGossip(new AggregateAndProof { AggregatorIndex = (ulong)aggregator, Aggregate = vote, SelectionProof = selectionProof },
+            gloasContainer, root => SignAs(signer, root, DomainType.AggregateAndProof));
+        byte[] payload = aggregate.Encode();
         if (forgery == AggregatorForgery.MissingPublicKeys) chain.Anchor.Pubkeys.Build([]);
-        await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, slot + 1, GossipTopics.BeaconAggregateAndProof, payload, work, expected);
+        await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, slot + 1, GossipTopics.BeaconAggregateAndProof, payload, aggregate.Work, expected);
 
         BlsSignature SignAs(int validator, Hash256 root, ReadOnlySpan<byte> domainType) =>
             ImportableBlobBlock.Sign(ImportableBlobBlock.DeriveKey(validator), root, state.GetDomain(domainType, 0));
@@ -1875,30 +1816,37 @@ public class BlockImporterTests
                 Signature = Sign(SszRoots.HashTreeRoot(data), DomainType.BeaconAttester),
             },
         };
-        if (gloasContainer)
+        (Func<byte[]> Encode, Func<GossipVerdict, BeaconSyncOrchestrator.WorkItem> Work, Action<ForkChoiceRunner> Apply) aggregate = AggregateGossip(message, gloasContainer, root => Sign(root, DomainType.AggregateAndProof));
+        Assert.That(() => aggregate.Apply(runner),
+            Throws.TypeOf<ForkChoiceException>().With.Message.EqualTo("Attestation indices or aggregate signature are invalid"), "only target-state validation refuses this head-authenticated vote");
+        await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, currentSlot, GossipTopics.BeaconAggregateAndProof,
+            aggregate.Encode(), aggregate.Work, MessageValidity.Ignored);
+
+        BlsSignature Sign(Hash256 root, ReadOnlySpan<byte> domain) => ImportableBlobBlock.SignAs(member, root, headState.GetDomain(domain, epoch));
+    }
+
+    private static (Func<byte[]> Encode, Func<GossipVerdict, BeaconSyncOrchestrator.WorkItem> Work, Action<ForkChoiceRunner> Apply) AggregateGossip(
+        AggregateAndProof message, bool gloas, Func<Hash256, BlsSignature>? sign = null)
+    {
+        if (gloas)
         {
+            Attestation vote = message.Aggregate!;
             AggregateAndProofGloas converted = new()
             {
-                AggregatorIndex = member,
+                AggregatorIndex = message.AggregatorIndex,
                 SelectionProof = message.SelectionProof,
-                Aggregate = new AttestationGloas { Data = data, AggregationBits = message.Aggregate.AggregationBits, CommitteeBits = message.Aggregate.CommitteeBits, Signature = message.Aggregate.Signature },
+                Aggregate = new AttestationGloas { Data = vote.Data, AggregationBits = vote.AggregationBits, CommitteeBits = vote.CommitteeBits, Signature = vote.Signature },
             };
-            SignedAggregateAndProofGloas signed = new() { Message = converted, Signature = Sign(SszRoots.HashTreeRoot(converted), DomainType.AggregateAndProof) };
-            Assert.That(() => runner.OnAggregateAndProof(signed),
-                Throws.TypeOf<ForkChoiceException>().With.Message.EqualTo("Attestation indices or aggregate signature are invalid"), "only target-state validation refuses this head-authenticated vote");
-            await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, currentSlot, GossipTopics.BeaconAggregateAndProof,
-                Snappy.CompressToArray(SignedAggregateAndProofGloas.Encode(signed)), verdict => new BeaconSyncOrchestrator.GossipGloasAggregateItem(signed, verdict), MessageValidity.Ignored);
+            SignedAggregateAndProofGloas signed = new() { Message = converted, Signature = sign?.Invoke(SszRoots.HashTreeRoot(converted)) ?? default };
+            return (() => Snappy.CompressToArray(SignedAggregateAndProofGloas.Encode(signed)),
+                verdict => new BeaconSyncOrchestrator.GossipGloasAggregateItem(signed, verdict), runner => runner.OnAggregateAndProof(signed));
         }
         else
         {
-            SignedAggregateAndProof signed = new() { Message = message, Signature = Sign(SszRoots.HashTreeRoot(message), DomainType.AggregateAndProof) };
-            Assert.That(() => runner.OnAggregateAndProof(signed),
-                Throws.TypeOf<ForkChoiceException>().With.Message.EqualTo("Attestation indices or aggregate signature are invalid"), "only target-state validation refuses this head-authenticated vote");
-            await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, currentSlot, GossipTopics.BeaconAggregateAndProof,
-                Snappy.CompressToArray(SignedAggregateAndProof.Encode(signed)), verdict => new BeaconSyncOrchestrator.GossipAggregateItem(signed, verdict), MessageValidity.Ignored);
+            SignedAggregateAndProof signed = new() { Message = message, Signature = sign?.Invoke(SszRoots.HashTreeRoot(message)) ?? default };
+            return (() => Snappy.CompressToArray(SignedAggregateAndProof.Encode(signed)),
+                verdict => new BeaconSyncOrchestrator.GossipAggregateItem(signed, verdict), runner => runner.OnAggregateAndProof(signed));
         }
-
-        BlsSignature Sign(Hash256 root, ReadOnlySpan<byte> domain) => ImportableBlobBlock.SignAs(member, root, headState.GetDomain(domain, epoch));
     }
 
     // validator.md is_aggregator: the little-endian first 8 bytes of sha256(proof) modulo max(1, committee size // 16) is zero.
@@ -2143,7 +2091,7 @@ public class BlockImporterTests
     private static long RefusedByForkChoice(string operation) =>
         Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
 
-    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null, FailedBlockRoots? failedBlocks = null, IDataAvailabilityRule? availability = null, BeaconChainStore? store = null) =>
+    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null, FailedBlockRoots? failedBlocks = null, IDataAvailabilityRule? availability = null, BeaconChainStore? store = null, UnsignedChain.ChainBlock? anchor = null) =>
         new(
             chain.Spec,
             store ?? new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
@@ -2154,9 +2102,9 @@ public class BlockImporterTests
             availability ?? new CustodySamplingAvailability(new FixedCustodySource(custody), new DataColumnPoolSource(pool), clock ?? chain.ClockAtEpoch(0)),
             static (_, _) => false,
             importClock ?? new SlotClock(chain.Spec, Timestamper.Default),
-            new ForkedBeaconState.OfFulu(chain.AnchorState),
-            new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock),
-            chain.AnchorRoot,
+            new ForkedBeaconState.OfFulu(anchor?.PostState ?? chain.AnchorState),
+            new ForkedSignedBeaconBlock.OfFulu(anchor?.Block ?? chain.AnchorBlock),
+            anchor?.Root ?? chain.AnchorRoot,
             forkChoiceSnapshots,
             proposerLookaheads,
             failedBlocks);
@@ -2179,7 +2127,7 @@ public class BlockImporterTests
             new(new IIPResolver.NethermindIp(ip, ip));
     }
 
-    private sealed class ValidPayloadEngine : IEngineDriver
+    private sealed class ValidPayloadEngine(Action? onPayload = null) : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
 
@@ -2191,51 +2139,21 @@ public class BlockImporterTests
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
             HasAnsweredNewPayload = true;
-            return ExecutionStatus.Valid;
-        }
-    }
-
-    /// <summary>Answers VALID after advancing the node's clock by <paramref name="latency"/>: an execution layer slow to verify the payload.</summary>
-    private sealed class SlowPayloadEngine(ManualTimestamper timestamper, TimeSpan latency) : IEngineDriver
-    {
-        public SignedBeaconBlock? CurrentBlock { get; set; }
-
-        public bool HasAnsweredNewPayload { get; private set; }
-
-        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
-
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
-        {
-            HasAnsweredNewPayload = true;
-            timestamper.Add(latency);
+            onPayload?.Invoke();
             return ExecutionStatus.Valid;
         }
     }
 
     /// <summary>Fails the first <c>newPayload</c> call and answers VALID afterwards: a transient engine outage.</summary>
-    private sealed class UnavailableThenValidEngine : IEngineDriver
+    private static ValidPayloadEngine UnavailableThenValidEngine()
     {
-        private bool _failedOnce;
-
-        public SignedBeaconBlock? CurrentBlock { get; set; }
-
-        public bool HasAnsweredNewPayload { get; private set; }
-
-        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
-
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
+        bool failedOnce = false;
+        return new ValidPayloadEngine(() =>
         {
-            HasAnsweredNewPayload = true;
-            if (_failedOnce)
-            {
-                return ExecutionStatus.Valid;
-            }
-
-            _failedOnce = true;
+            if (failedOnce) return;
+            failedOnce = true;
             throw new EngineUnavailableException("newPayloadV4", "engine unavailable");
-        }
+        });
     }
 
     /// <summary>
