@@ -41,89 +41,62 @@ public class RequestFailureCauseTests
     // Stays under the request-failure limit, so the limit takes the peer under test out of selection.
     private const string UsablePeerAddress = "/ip4/10.0.0.2/tcp/9000/p2p/16Uiu2HAmUsable";
 
-    [Test]
+    public enum ChannelRequestEnd { Budget, Disconnect, Reset, AlreadyDropped, CallerCancellation }
+
+    [TestCase(ChannelRequestEnd.Budget)]
+    [TestCase(ChannelRequestEnd.Disconnect)]
+    [TestCase(ChannelRequestEnd.Reset)]
+    [TestCase(ChannelRequestEnd.AlreadyDropped)]
+    [TestCase(ChannelRequestEnd.CallerCancellation)]
     [CancelAfter(30_000)]
-    public async Task A_request_whose_channel_never_opens_names_the_budget_and_what_it_waited_for(CancellationToken token)
+    public async Task Channel_requests_preserve_budget_disconnect_and_caller_cancellation_causes(ChannelRequestEnd end, CancellationToken token)
     {
-        await using BeaconP2P node = CreateHost(TimeSpan.FromMilliseconds(300));
+        await using BeaconP2P node = CreateHost(end == ChannelRequestEnd.Budget ? TimeSpan.FromMilliseconds(300) : TimeSpan.FromSeconds(20));
         await node.StartAsync(token);
-        LocalPeer.Session wedged = AddWedgedSession(node);
+        LocalPeer.Session session = AddWedgedSession(node);
         RequestTiming timing = new();
-
-        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => node.RequestBlocksByRootAsync(wedged, [Hash256.Zero], token, timing));
-
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+        if (end == ChannelRequestEnd.AlreadyDropped) await session.DisconnectAsync();
+        if (end == ChannelRequestEnd.CallerCancellation) stopping.CancelAfter(TimeSpan.FromMilliseconds(200));
+        long startedAt = Stopwatch.GetTimestamp();
+        Task? request = end is ChannelRequestEnd.Disconnect or ChannelRequestEnd.Reset
+            ? node.RequestDataColumnSidecarsByRootAsync(session, [new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = [1] }], token, timing) : null;
+        if (end is ChannelRequestEnd.Disconnect or ChannelRequestEnd.Reset)
+        {
+            startedAt = Stopwatch.GetTimestamp();
+            if (end == ChannelRequestEnd.Reset)
+            {
+                lock (node.LocalPeerForTest!.Sessions) node.LocalPeerForTest.Sessions.Clear();
+            }
+            else await session.DisconnectAsync();
+        }
+        Exception? failure = request is not null ? Assert.CatchAsync(async () => await request)
+            : Assert.CatchAsync(() => end == ChannelRequestEnd.AlreadyDropped
+                ? node.RequestBlocksByRangeAsync(session, 1, 1, token)
+                : node.RequestBlocksByRootAsync(session, [Hash256.Zero], end == ChannelRequestEnd.CallerCancellation ? stopping.Token : token, end == ChannelRequestEnd.Budget ? timing : null));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cut!.Message, Does.Match(@"^timed out after 1\.\d s waiting for the channel to open: the request budget ran out$"));
-            Assert.That(PeerFailureClassifier.Classify(cut), Is.EqualTo(PeerFailureReason.RequestFailed), "a timeout must not read as a closed session, which exhausts the peer's failure budget at once");
-            Assert.That(timing.ToString(), Does.StartWith("channel open not reached, first chunk not reached, total "));
-        }
-    }
-
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_request_ends_as_soon_as_its_session_closes_and_names_the_disconnect([Values] bool reset, CancellationToken token)
-    {
-        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(20));
-        await node.StartAsync(token);
-        LocalPeer.Session wedged = AddWedgedSession(node);
-        RequestTiming timing = new();
-        Task<IReadOnlyList<DataColumnSidecar>> request = node.RequestDataColumnSidecarsByRootAsync(wedged, [new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = [1] }], token, timing);
-        long disconnectedAt = Stopwatch.GetTimestamp();
-
-        if (reset)
-        {
-            lock (node.LocalPeerForTest!.Sessions)
+            if (end == ChannelRequestEnd.Budget)
             {
-                node.LocalPeerForTest.Sessions.Clear();
+                Assert.That(failure, Is.TypeOf<ReqRespTimeoutException>());
+                Assert.That(failure!.Message, Does.Match(@"^timed out after 1\.\d s waiting for the channel to open: the request budget ran out$"));
+                Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed));
+                Assert.That(timing.ToString(), Does.StartWith("channel open not reached, first chunk not reached, total "));
+            }
+            else if (end == ChannelRequestEnd.CallerCancellation)
+                Assert.That(failure, Is.InstanceOf<OperationCanceledException>().And.Not.InstanceOf<TimeoutException>());
+            else
+            {
+                Assert.That(failure, Is.TypeOf<IOException>());
+                Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(5)));
+                if (end == ChannelRequestEnd.AlreadyDropped) Assert.That(failure!.Message, Does.StartWith("peer disconnected after "));
+                else
+                {
+                    Assert.That(failure!.Message, Does.Match(@"^peer disconnected after \d+(\.\d)? s waiting for the channel to open: its libp2p session closed$"));
+                    Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.SessionClosed));
+                }
             }
         }
-        else
-        {
-            await wedged.DisconnectAsync();
-        }
-
-        IOException? lost = Assert.ThrowsAsync<IOException>(async () => await request);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Stopwatch.GetElapsedTime(disconnectedAt), Is.LessThan(TimeSpan.FromSeconds(5)), "ended by the disconnect, not by the 21 s budget");
-            Assert.That(lost!.Message, Does.Match(@"^peer disconnected after \d+(\.\d)? s waiting for the channel to open: its libp2p session closed$"));
-            Assert.That(PeerFailureClassifier.Classify(lost), Is.EqualTo(PeerFailureReason.SessionClosed));
-        }
-    }
-
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_request_on_a_session_already_dropped_fails_at_once_as_a_disconnect(CancellationToken token)
-    {
-        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(20));
-        await node.StartAsync(token);
-        LocalPeer.Session dropped = AddWedgedSession(node);
-        await dropped.DisconnectAsync();
-        long startedAt = Stopwatch.GetTimestamp();
-
-        IOException? lost = Assert.ThrowsAsync<IOException>(() => node.RequestBlocksByRangeAsync(dropped, 1, 1, token));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(5)));
-            Assert.That(lost!.Message, Does.StartWith("peer disconnected after "));
-        }
-    }
-
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task The_callers_own_cancellation_stays_a_cancellation(CancellationToken token)
-    {
-        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(20));
-        await node.StartAsync(token);
-        LocalPeer.Session wedged = AddWedgedSession(node);
-        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
-        stopping.CancelAfter(TimeSpan.FromMilliseconds(200));
-
-        Exception? thrown = Assert.CatchAsync(() => node.RequestBlocksByRootAsync(wedged, [Hash256.Zero], stopping.Token));
-
-        Assert.That(thrown, Is.InstanceOf<OperationCanceledException>().And.Not.InstanceOf<TimeoutException>());
     }
 
     [Test]
@@ -165,49 +138,70 @@ public class RequestFailureCauseTests
         }
     }
 
+    public enum SlotCancellation { Queued, BeforeChannelOpen, WhileChannelOpen }
+
     // Consensus-specs v1.7.0-beta.2 req/resp requesting side: the requester MUST NOT make more than MAX_CONCURRENT_REQUESTS concurrent requests with the same protocol ID.
-    [Test]
+    [TestCase(SlotCancellation.Queued)]
+    [TestCase(SlotCancellation.BeforeChannelOpen)]
+    [TestCase(SlotCancellation.WhileChannelOpen)]
     [CancelAfter(30_000)]
-    public async Task A_peer_gets_at_most_two_requests_of_one_protocol_at_once_and_the_next_waits_for_a_slot(CancellationToken token)
+    public async Task Request_slots_preserve_protocol_bounds_and_cancelled_channel_ownership(SlotCancellation cancellation, CancellationToken token)
     {
         LevelCapturingLogManager logs = new();
-        HeldSession held = new();
+        HeldSession held = new(opensChannels: cancellation == SlotCancellation.WhileChannelOpen);
         Node node = Create();
         await using (node.P2P)
         {
-            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, logs);
+            PeerManager manager = cancellation == SlotCancellation.Queued
+                ? new(node.P2P, node.Config, node.StatusHolder, logs) : node.CreatePeerManager();
             IBeaconSyncPeer peer = manager.AddPeerForTest(held.Session, PeerAddress);
-
-            Task<IReadOnlyList<DataColumnSidecar>>[] byRoot = [.. Enumerable.Range(0, 3).Select(i => peer.RequestDataColumnSidecarsByRootAsync(Identifiers(i), token))];
-            int dialedAtOnce = held.ColumnDials.Count;
-            Task<IReadOnlyList<ForkedSignedBeaconBlock>> otherProtocol = peer.RequestBlocksByRootAsync([Hash256.Zero], token);
-
-            using (Assert.EnterMultipleScope())
+            using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+            Task<IReadOnlyList<DataColumnSidecar>> first = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(0), cancellation == SlotCancellation.Queued ? token : stopping.Token);
+            Task<IReadOnlyList<DataColumnSidecar>> second = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
+            Task<IReadOnlyList<DataColumnSidecar>> third = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
+            Task<IReadOnlyList<ForkedSignedBeaconBlock>>? otherProtocol = null;
+            bool openedBeforeReadingStopped = false;
+            if (cancellation == SlotCancellation.Queued)
             {
-                Assert.That(dialedAtOnce, Is.EqualTo(2), "the third waits for a slot");
-                Assert.That(held.BlockDials, Is.EqualTo(1), "another protocol has its own slots");
-                Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "a request waiting for a slot counts as in flight");
+                int dialedAtOnce = held.ColumnDials.Count;
+                otherProtocol = peer.RequestBlocksByRootAsync([Hash256.Zero], token);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(dialedAtOnce, Is.EqualTo(2));
+                    Assert.That(held.BlockDials, Is.EqualTo(1), "another protocol has its own slots");
+                    Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "a slot wait counts as in flight");
+                }
+                Task<IReadOnlyList<DataColumnSidecar>> abandoned = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(3), stopping.Token);
+                await stopping.CancelAsync();
+                Assert.CatchAsync<OperationCanceledException>(() => abandoned);
+                Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "cancelled slot wait releases its count");
+                Assert.That(logs.Lines.Where(static l => l.Text.Contains("request not sent, cancelled by this node")).Select(static l => l.Text), Has.Some.Contains("requests in flight 4,"));
+                held.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
+                await first.WaitAsync(token);
             }
-
-            using CancellationTokenSource queuedToken = CancellationTokenSource.CreateLinkedTokenSource(token);
-            Task<IReadOnlyList<DataColumnSidecar>> abandoned = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(3), queuedToken.Token);
-            await queuedToken.CancelAsync();
-            Assert.CatchAsync<OperationCanceledException>(() => abandoned);
-            Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "a cancelled slot wait releases its count");
-            Assert.That(logs.Lines.Where(static l => l.Text.Contains("request not sent, cancelled by this node")).Select(static l => l.Text), Has.Some.Contains("requests in flight 4,"));
-
-            held.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
-            await byRoot[0].WaitAsync(token);
+            else
+            {
+                await stopping.CancelAsync();
+                Assert.CatchAsync<OperationCanceledException>(() => first);
+                if (cancellation == SlotCancellation.WhileChannelOpen)
+                {
+                    openedBeforeReadingStopped = await EventuallyAsync(() => held.ColumnDials.Count == 3, TimeSpan.FromMilliseconds(500), token);
+                    held.Exchanges[0].Dispose();
+                }
+            }
             await WaitUntilAsync(() => held.ColumnDials.Count == 3, token);
-            foreach (TaskCompletionSource<ForkedDataColumnSidecars> dial in held.ColumnDials)
+            if (cancellation == SlotCancellation.BeforeChannelOpen)
+                Assert.Throws<OperationCanceledException>(() => RequestTiming.Open(held.ColumnRequests[0]), "an abandoned request is refused when its channel opens late");
+            foreach (TaskCompletionSource<ForkedDataColumnSidecars> dial in held.ColumnDials) dial.TrySetResult(new ForkedDataColumnSidecars([], []));
+            await Task.WhenAll(second, third).WaitAsync(token);
+            if (otherProtocol is not null)
             {
-                dial.TrySetResult(new ForkedDataColumnSidecars([], []));
+                held.BlockDial.SetResult([]);
+                await otherProtocol.WaitAsync(token);
             }
-
-            await Task.WhenAll(byRoot).WaitAsync(token);
-            held.BlockDial.SetResult([]);
-            await otherProtocol.WaitAsync(token);
-            Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.Zero);
+            if (cancellation == SlotCancellation.WhileChannelOpen)
+                Assert.That(openedBeforeReadingStopped, Is.False, "a third channel cannot open while two are still open");
+            else Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.Zero);
         }
     }
 
@@ -245,66 +239,6 @@ public class RequestFailureCauseTests
             }
 
             Assert.CatchAsync<IOException>(() => Task.WhenAll(first, second, queued));
-        }
-    }
-
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_cancelled_request_keeps_its_slot_until_its_protocol_stops_reading(CancellationToken token)
-    {
-        HeldSession held = new(opensChannels: true);
-        Node node = Create();
-        await using (node.P2P)
-        {
-            PeerManager manager = node.CreatePeerManager();
-            IBeaconSyncPeer peer = manager.AddPeerForTest(held.Session, PeerAddress);
-            using CancellationTokenSource givenUp = CancellationTokenSource.CreateLinkedTokenSource(token);
-            Task<IReadOnlyList<DataColumnSidecar>> cancelled = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(0), givenUp.Token);
-            Task<IReadOnlyList<DataColumnSidecar>> running = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
-            Task<IReadOnlyList<DataColumnSidecar>> queued = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
-
-            await givenUp.CancelAsync();
-            Assert.CatchAsync<OperationCanceledException>(() => cancelled);
-            bool dialedWhileTheChannelWasOpen = await EventuallyAsync(() => held.ColumnDials.Count == 3, TimeSpan.FromMilliseconds(500), token);
-            held.Exchanges[0].Dispose();
-            await WaitUntilAsync(() => held.ColumnDials.Count == 3, token);
-            foreach (TaskCompletionSource<ForkedDataColumnSidecars> dial in held.ColumnDials)
-            {
-                dial.TrySetResult(new ForkedDataColumnSidecars([], []));
-            }
-
-            await Task.WhenAll(running, queued).WaitAsync(token);
-            Assert.That(dialedWhileTheChannelWasOpen, Is.False, "a third channel was opened while two were still open");
-        }
-    }
-
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_request_given_up_before_its_channel_opened_frees_its_slot_and_is_refused_if_the_channel_opens_later(CancellationToken token)
-    {
-        HeldSession held = new();
-        Node node = Create();
-        await using (node.P2P)
-        {
-            PeerManager manager = node.CreatePeerManager();
-            IBeaconSyncPeer peer = manager.AddPeerForTest(held.Session, PeerAddress);
-            using CancellationTokenSource givenUp = CancellationTokenSource.CreateLinkedTokenSource(token);
-            Task<IReadOnlyList<DataColumnSidecar>> cancelled = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(0), givenUp.Token);
-            Task<IReadOnlyList<DataColumnSidecar>> running = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
-            Task<IReadOnlyList<DataColumnSidecar>> queued = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
-
-            await givenUp.CancelAsync();
-            Assert.CatchAsync<OperationCanceledException>(() => cancelled);
-            await WaitUntilAsync(() => held.ColumnDials.Count == 3, token);
-
-            Assert.Throws<OperationCanceledException>(() => RequestTiming.Open(held.ColumnRequests[0]), "the abandoned request is not sent on a channel opened after it was given up");
-            foreach (TaskCompletionSource<ForkedDataColumnSidecars> dial in held.ColumnDials)
-            {
-                dial.TrySetResult(new ForkedDataColumnSidecars([], []));
-            }
-
-            await Task.WhenAll(running, queued).WaitAsync(token);
-            Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.Zero);
         }
     }
 
@@ -696,50 +630,41 @@ public class RequestFailureCauseTests
         }
     }
 
-    [Test]
-    public async Task Health_timeouts_restore_selection_without_forgiving_sync_failures([Values(0, 7, 8)] int syncFailures)
-    {
-        Node node = Create();
-        await using (node.P2P)
-        {
-            PeerManager manager = node.CreatePeerManager();
-            IBeaconSyncPeer peer = manager.AddPeerForTest(Substitute.For<ISession>(), PeerAddress, Status);
-            manager.AddPeerForTest(Substitute.For<ISession>(), UsablePeerAddress, Status);
-            for (int i = 0; i < syncFailures; i++) peer.ReportFailure(PeerFailureReason.RequestFailed);
-            for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
-            Assert.That(manager.GetBestPeers(0), Does.Not.Contain(peer));
-            typeof(PeerManager).GetNestedType("ManagedPeer", BindingFlags.NonPublic)!
-                .GetMethod("ResetHealthCheckFailures")!.Invoke(peer, null);
-            Assert.That(manager.GetBestPeers(0).Contains(peer), Is.EqualTo(syncFailures < 8));
-        }
-    }
+    public enum HealthRecovery { Reset, ServedRequest, Decay }
 
-    [Test]
-    public async Task A_health_timeout_selection_penalty_recovers_through_a_served_request_or_decay([Values] bool served)
+    [TestCase(HealthRecovery.Reset, 0)]
+    [TestCase(HealthRecovery.Reset, 7)]
+    [TestCase(HealthRecovery.Reset, 8)]
+    [TestCase(HealthRecovery.ServedRequest, 0)]
+    [TestCase(HealthRecovery.Decay, 0)]
+    public async Task Health_selection_recovers_without_forgiving_sync_failures(HealthRecovery recovery, int syncFailures)
     {
         Node node = Create();
         await using (node.P2P)
         {
             ManualTimestamper clock = new();
-            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: clock);
+            PeerManager manager = recovery == HealthRecovery.Reset ? node.CreatePeerManager()
+                : new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: clock);
             HeldSession held = new();
-            IBeaconSyncPeer peer = manager.AddPeerForTest(held.Session, PeerAddress, Status);
+            IBeaconSyncPeer peer = manager.AddPeerForTest(recovery == HealthRecovery.Reset ? Substitute.For<ISession>() : held.Session, PeerAddress, Status);
             manager.AddPeerForTest(Substitute.For<ISession>(), UsablePeerAddress, Status);
+            for (int i = 0; i < syncFailures; i++) peer.ReportFailure(PeerFailureReason.RequestFailed);
             for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
             Assert.That(manager.GetBestPeers(0), Does.Not.Contain(peer));
-            if (served)
+            if (recovery == HealthRecovery.Reset)
+                typeof(PeerManager).GetNestedType("ManagedPeer", BindingFlags.NonPublic)!.GetMethod("ResetHealthCheckFailures")!.Invoke(peer, null);
+            else if (recovery == HealthRecovery.ServedRequest)
             {
                 held.BlockDial.SetResult([]);
                 await peer.RequestBlocksByRootAsync([Hash256.Zero], default);
             }
-            else
+            else clock.Add(PeerManager.RequestFailureDecayInterval);
+            Assert.That(manager.GetBestPeers(0).Contains(peer), Is.EqualTo(syncFailures < 8));
+            if (recovery != HealthRecovery.Reset)
             {
-                clock.Add(PeerManager.RequestFailureDecayInterval);
+                await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
+                Assert.That(manager.GetBestPeers(0), Does.Not.Contain(peer));
             }
-
-            Assert.That(manager.GetBestPeers(0), Does.Contain(peer));
-            await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
-            Assert.That(manager.GetBestPeers(0), Does.Not.Contain(peer));
         }
     }
 
