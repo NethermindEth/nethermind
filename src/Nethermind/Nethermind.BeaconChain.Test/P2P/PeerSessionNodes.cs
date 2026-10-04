@@ -150,7 +150,7 @@ internal static class PeerSessionNodes
     }
 
     /// <summary>Polls a condition; fails the test instead of hanging once <paramref name="within"/> or the token runs out.</summary>
-    public static async Task WaitUntilAsync(Func<bool> condition, string failure, CancellationToken token, TimeSpan? within = null)
+    public static async Task WaitUntilAsync(Func<bool> condition, string failure, CancellationToken token, TimeSpan? within = null, int pollDelayMilliseconds = 20)
     {
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
         bounded.CancelAfter(within ?? TimeSpan.FromSeconds(20));
@@ -161,7 +161,7 @@ internal static class PeerSessionNodes
                 Assert.Fail(failure);
             }
 
-            await Task.Delay(20, CancellationToken.None);
+            await Task.Delay(pollDelayMilliseconds, CancellationToken.None);
         }
     }
 }

@@ -13,6 +13,8 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
+using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
+
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
 public class CachedHasherTests
@@ -37,7 +39,7 @@ public class CachedHasherTests
         // Appends grow the registry lists (and cross a power-of-two boundary for the 64 case).
         for (int i = 0; i < 3; i++)
         {
-            state.AddValidatorToRegistry(Pubkey(validatorCount + i), Hash(0xAB), 32 * Gwei);
+            state.AddValidatorToRegistry(Pubkey(validatorCount + i), FromFirstByte(0xAB), 32 * Gwei);
         }
         AssertRootsMatch(hasher, state, "validator appends");
 
@@ -50,9 +52,9 @@ public class CachedHasherTests
         state.PreviousEpochParticipation![validatorCount - 1] |= 0b110;
         AssertRootsMatch(hasher, state, "participation edits");
 
-        state.RandaoMixes![7] = Hash(0x77);
-        state.BlockRoots![1] = Hash(0x11);
-        state.StateRoots![2] = Hash(0x22);
+        state.RandaoMixes![7] = FromFirstByte(0x77);
+        state.BlockRoots![1] = FromFirstByte(0x11);
+        state.StateRoots![2] = FromFirstByte(0x22);
         AssertRootsMatch(hasher, state, "randao and root vector updates");
 
         // A value-identical array replacement must be recognized as unchanged.
@@ -71,8 +73,8 @@ public class CachedHasherTests
         Validator cloneReplacement = clone.Validators![3].Clone();
         cloneReplacement.Slashed = true;
         clone.Validators[3] = cloneReplacement;
-        clone.RandaoMixes![9] = Hash(0x99);
-        clone.LatestBlockHeader!.StateRoot = Hash(0x88); // The in-place header write ProcessSlot performs.
+        clone.RandaoMixes![9] = FromFirstByte(0x99);
+        clone.LatestBlockHeader!.StateRoot = FromFirstByte(0x88); // The in-place header write ProcessSlot performs.
         clone.CurrentEpochParticipation![1] |= 0b010;
         clone.Slashings![0] += Gwei;
 
@@ -110,9 +112,9 @@ public class CachedHasherTests
         {
             state.CurrentEpochParticipation![random.Next(validatorCount)] |= 0b111;
         }
-        state.RandaoMixes![123] = Hash(0x55);
-        state.BlockRoots![45] = Hash(0x66);
-        state.StateRoots![46] = Hash(0x67);
+        state.RandaoMixes![123] = FromFirstByte(0x55);
+        state.BlockRoots![45] = FromFirstByte(0x66);
+        state.StateRoots![46] = FromFirstByte(0x67);
         stopwatch.Restart();
         hasher.HashTreeRoot(state);
         long warmBlockMs = stopwatch.ElapsedMilliseconds;
@@ -163,10 +165,10 @@ public class CachedHasherTests
         Hash256[] stateRoots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
         for (int i = 0; i < blockRoots.Length; i++)
         {
-            blockRoots[i] = Hash(0x0B);
-            stateRoots[i] = Hash(0x0C);
+            blockRoots[i] = FromFirstByte(0x0B);
+            stateRoots[i] = FromFirstByte(0x0C);
         }
-        Hash256[] randaoMixes = Enumerable.Repeat(Hash(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
+        Hash256[] randaoMixes = Enumerable.Repeat(FromFirstByte(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
 
         BlsPublicKey[] committee = new BlsPublicKey[512];
         for (int i = 0; i < committee.Length; i++)
@@ -175,20 +177,20 @@ public class CachedHasherTests
         }
         SyncCommittee syncCommittee = new() { Pubkeys = committee, AggregatePubkey = Pubkey(0) };
 
-        Eth1Data eth1Data = new() { DepositRoot = Hash(0x01), DepositCount = 16, BlockHash = Hash(0x02) };
+        Eth1Data eth1Data = new() { DepositRoot = FromFirstByte(0x01), DepositCount = 16, BlockHash = FromFirstByte(0x02) };
         ulong[] slashings = new ulong[(int)Presets.EpochsPerSlashingsVector];
         slashings[0] = Gwei;
 
         return new BeaconStateFulu
         {
             GenesisTime = 1_600_000_000,
-            GenesisValidatorsRoot = Hash(0x10),
+            GenesisValidatorsRoot = FromFirstByte(0x10),
             Slot = 6 * Presets.SlotsPerEpoch - 1, // Last slot of epoch 5.
             Fork = new Fork { PreviousVersion = new byte[4], CurrentVersion = [0, 0, 0, 1], Epoch = 0 },
-            LatestBlockHeader = new BeaconBlockHeader { Slot = 100, ParentRoot = Hash(0x20), StateRoot = Hash(0x21), BodyRoot = Hash(0x22) },
+            LatestBlockHeader = new BeaconBlockHeader { Slot = 100, ParentRoot = FromFirstByte(0x20), StateRoot = FromFirstByte(0x21), BodyRoot = FromFirstByte(0x22) },
             BlockRoots = blockRoots,
             StateRoots = stateRoots,
-            HistoricalRoots = [Hash(0x30), Hash(0x31)],
+            HistoricalRoots = [FromFirstByte(0x30), FromFirstByte(0x31)],
             Eth1Data = eth1Data,
             Eth1DataVotes = [eth1Data],
             Eth1DepositIndex = 16,
@@ -199,16 +201,16 @@ public class CachedHasherTests
             PreviousEpochParticipation = previousParticipation,
             CurrentEpochParticipation = currentParticipation,
             JustificationBits = new BitArray(4) { [0] = true, [1] = true },
-            PreviousJustifiedCheckpoint = new Checkpoint { Epoch = 3, Root = Hash(0x0B) },
-            CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 4, Root = Hash(0x0B) },
-            FinalizedCheckpoint = new Checkpoint { Epoch = 4, Root = Hash(0x0B) },
+            PreviousJustifiedCheckpoint = new Checkpoint { Epoch = 3, Root = FromFirstByte(0x0B) },
+            CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 4, Root = FromFirstByte(0x0B) },
+            FinalizedCheckpoint = new Checkpoint { Epoch = 4, Root = FromFirstByte(0x0B) },
             InactivityScores = inactivityScores,
             CurrentSyncCommittee = syncCommittee,
             NextSyncCommittee = syncCommittee,
-            LatestExecutionPayloadHeader = new ExecutionPayloadHeader { BlockNumber = 7, BlockHash = Hash(0x40), ExtraData = [] },
+            LatestExecutionPayloadHeader = new ExecutionPayloadHeader { BlockNumber = 7, BlockHash = FromFirstByte(0x40), ExtraData = [] },
             NextWithdrawalIndex = 5,
             NextWithdrawalValidatorIndex = 9,
-            HistoricalSummaries = [new HistoricalSummary { BlockSummaryRoot = Hash(0x50), StateSummaryRoot = Hash(0x51) }],
+            HistoricalSummaries = [new HistoricalSummary { BlockSummaryRoot = FromFirstByte(0x50), StateSummaryRoot = FromFirstByte(0x51) }],
             DepositRequestsStartIndex = Presets.UnsetDepositRequestsStartIndex,
             // Slot > 0 with the Eth1 bridge still active makes ProcessPendingDeposits stop at this
             // entry without verifying its (synthetic) signature.
@@ -225,12 +227,5 @@ public class CachedHasherTests
         bytes[0] = 0xA0;
         BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(1), index);
         return new BlsPublicKey(bytes);
-    }
-
-    private static Hash256 Hash(byte b)
-    {
-        byte[] bytes = new byte[32];
-        bytes[0] = b;
-        return new Hash256(bytes);
     }
 }

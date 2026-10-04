@@ -11,6 +11,8 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
+using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
+
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
 /// <summary>
@@ -52,8 +54,8 @@ public class RandaoMixAndEpochCacheTests
         // Stamp the two boundary slots of the window with distinctive, non-default mixes so the
         // test would fail if the accessor read the wrong slot as well as if it threw at all.
         ulong oldestInWindow = currentEpoch - Presets.EpochsPerHistoricalVector + 1;
-        Hash256 oldestMix = Hash(0xAA);
-        Hash256 currentMix = Hash(0xBB);
+        Hash256 oldestMix = FromFirstByte(0xAA);
+        Hash256 currentMix = FromFirstByte(0xBB);
         state.RandaoMixes![(int)(oldestInWindow % Presets.EpochsPerHistoricalVector)] = oldestMix;
         state.RandaoMixes[(int)(currentEpoch % Presets.EpochsPerHistoricalVector)] = currentMix;
 
@@ -87,8 +89,8 @@ public class RandaoMixAndEpochCacheTests
     public void GetTotalActiveBalance_refuses_reuse_across_two_branches_that_diverge_before_the_decision_slot()
     {
         const ulong epoch = 5;
-        BeaconStateFulu branchA = CreateBranchState(epoch, decisionSlotRoot: Hash(0xAA), validatorCount: 10);
-        BeaconStateFulu branchB = CreateBranchState(epoch, decisionSlotRoot: Hash(0xBB), validatorCount: 20);
+        BeaconStateFulu branchA = CreateBranchState(epoch, decisionSlotRoot: FromFirstByte(0xAA), validatorCount: 10);
+        BeaconStateFulu branchB = CreateBranchState(epoch, decisionSlotRoot: FromFirstByte(0xBB), validatorCount: 20);
 
         EpochCache cache = new();
         ulong balanceA = cache.GetTotalActiveBalance(branchA);
@@ -102,8 +104,8 @@ public class RandaoMixAndEpochCacheTests
     public void GetTotalActiveBalance_resolves_each_branch_correctly_when_given_its_own_cache()
     {
         const ulong epoch = 5;
-        BeaconStateFulu branchA = CreateBranchState(epoch, decisionSlotRoot: Hash(0xAA), validatorCount: 10);
-        BeaconStateFulu branchB = CreateBranchState(epoch, decisionSlotRoot: Hash(0xBB), validatorCount: 20);
+        BeaconStateFulu branchA = CreateBranchState(epoch, decisionSlotRoot: FromFirstByte(0xAA), validatorCount: 10);
+        BeaconStateFulu branchB = CreateBranchState(epoch, decisionSlotRoot: FromFirstByte(0xBB), validatorCount: 20);
 
         ulong balanceA = new EpochCache().GetTotalActiveBalance(branchA);
         ulong balanceB = new EpochCache().GetTotalActiveBalance(branchB);
@@ -119,8 +121,8 @@ public class RandaoMixAndEpochCacheTests
         // exactly the pair a decision-root key hands the wrong balance to without a word.
         const ulong epoch = 5;
         ulong forkSlot = DecisionSlot(epoch) + 5;
-        BeaconStateFulu branchA = CreateBranchState(epoch, forkSlot, branchRoot: Hash(0xAA), validatorCount: 10);
-        BeaconStateFulu branchB = CreateBranchState(epoch, forkSlot, branchRoot: Hash(0xBB), validatorCount: 20);
+        BeaconStateFulu branchA = CreateBranchState(epoch, forkSlot, branchRoot: FromFirstByte(0xAA), validatorCount: 10);
+        BeaconStateFulu branchB = CreateBranchState(epoch, forkSlot, branchRoot: FromFirstByte(0xBB), validatorCount: 20);
         Assert.That(branchA.GetShufflingDecisionRoot(epoch), Is.EqualTo(branchB.GetShufflingDecisionRoot(epoch)), "test fixture bug: the branches must share the decision root");
 
         EpochCache cache = new();
@@ -137,8 +139,8 @@ public class RandaoMixAndEpochCacheTests
         // One slot into the epoch, so the sibling blocks at the epoch's first slot have their roots recorded.
         const ulong epoch = 5;
         ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch);
-        BeaconStateFulu siblingA = CreateBranchState(epoch, startSlot, branchRoot: Hash(0xAA), validatorCount: 10, slotsIntoEpoch: 1);
-        BeaconStateFulu siblingB = CreateBranchState(epoch, startSlot, branchRoot: Hash(0xBB), validatorCount: 10, slotsIntoEpoch: 1);
+        BeaconStateFulu siblingA = CreateBranchState(epoch, startSlot, branchRoot: FromFirstByte(0xAA), validatorCount: 10, slotsIntoEpoch: 1);
+        BeaconStateFulu siblingB = CreateBranchState(epoch, startSlot, branchRoot: FromFirstByte(0xBB), validatorCount: 10, slotsIntoEpoch: 1);
         Assert.That(siblingA.GetBlockRootAtSlot(startSlot), Is.Not.EqualTo(siblingB.GetBlockRootAtSlot(startSlot)), "test fixture bug: siblings must differ at the first slot of the epoch");
 
         EpochCache cache = new();
@@ -150,7 +152,7 @@ public class RandaoMixAndEpochCacheTests
     public void GetTotalActiveBalance_reuses_the_memo_across_repeated_calls_on_the_same_branch()
     {
         const ulong epoch = 5;
-        BeaconStateFulu branch = CreateBranchState(epoch, decisionSlotRoot: Hash(0xAA), validatorCount: 10);
+        BeaconStateFulu branch = CreateBranchState(epoch, decisionSlotRoot: FromFirstByte(0xAA), validatorCount: 10);
         EpochCache cache = new();
 
         ulong first = cache.GetTotalActiveBalance(branch);
@@ -169,7 +171,7 @@ public class RandaoMixAndEpochCacheTests
         foreach (ulong epoch in new[] { currentEpoch - 1, currentEpoch, currentEpoch + 1 })
         {
             ulong mixEpoch = epoch - Presets.MinSeedLookahead - 1;
-            Hash256 mix = Hash((byte)(mixEpoch % 251));
+            Hash256 mix = FromFirstByte((byte)(mixEpoch % 251));
             randaoMixes[(int)(mixEpoch % Presets.EpochsPerHistoricalVector)] = mix;
 
             Hash256 seed = getSeed(epoch, domain);
@@ -185,7 +187,7 @@ public class RandaoMixAndEpochCacheTests
     /// <summary>Creates the minimal state used to test RANDAO windows and epoch-cache keys.</summary>
     internal static BeaconStateFulu CreateState(ulong currentEpoch, int validatorCount)
     {
-        BeaconStateFulu state = GloasTestFixtures.CreateMinimalFuluState(validatorCount, Hash(0x01));
+        BeaconStateFulu state = GloasTestFixtures.CreateMinimalFuluState(validatorCount, FromFirstByte(0x01));
         state.Slot = BeaconStateAccessors.ComputeStartSlotAtEpoch(currentEpoch);
         state.BlockRoots = CreateFilledBlockRoots();
         return state;
@@ -222,14 +224,7 @@ public class RandaoMixAndEpochCacheTests
         return decisionSlot > 0 ? decisionSlot - 1 : 0;
     }
 
-    private static Hash256[] CreateFilledBlockRoots() => Enumerable.Repeat(Hash(0x02), (int)Presets.SlotsPerHistoricalRoot).ToArray();
-
-    private static Hash256 Hash(byte b)
-    {
-        byte[] bytes = new byte[32];
-        bytes[0] = b;
-        return new Hash256(bytes);
-    }
+    private static Hash256[] CreateFilledBlockRoots() => Enumerable.Repeat(FromFirstByte(0x02), (int)Presets.SlotsPerHistoricalRoot).ToArray();
 
     /// <summary>Sync rewards go to the validators behind each committee pubkey; a stale memo would pay the previous period's committee.</summary>
     [Test]

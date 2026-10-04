@@ -18,6 +18,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Config;
@@ -144,12 +145,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo((int)expected));
     }
 
-    public static Hash256 TestRoot(byte marker)
-    {
-        byte[] bytes = new byte[32];
-        bytes[31] = marker;
-        return new Hash256(bytes);
-    }
+    public static Hash256 TestRoot(byte marker) => TestHashes.FromLow(marker);
 
     public static Hash256 FilledHash(byte fill) => new(Filled(32, fill));
 

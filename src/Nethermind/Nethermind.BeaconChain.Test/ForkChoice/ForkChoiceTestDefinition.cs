@@ -14,6 +14,15 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// <summary>Deterministic test hashes, mirroring the helpers of Lighthouse's <c>fork_choice_test_definition</c>.</summary>
 public static class TestHashes
 {
+    /// <summary>A zero-filled hash whose first byte is <paramref name="marker"/>.</summary>
+    /// <param name="marker">The first byte.</param>
+    public static Hash256 FromFirstByte(byte marker)
+    {
+        byte[] bytes = new byte[Hash256.Size];
+        bytes[0] = marker;
+        return new Hash256(bytes);
+    }
+
     /// <summary>A hash with <paramref name="n"/> written big-endian into its last 8 bytes (Lighthouse's <c>Hash256::from_low_u64_be</c>).</summary>
     /// <remarks>
     /// Only internal consistency matters, but the big-endian layout also preserves numeric order
