@@ -15,21 +15,20 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </summary>
 internal sealed class ExecutionPayloadPreparation(ExecutionPayload payload)
 {
-    private readonly byte[][] _encodedTransactions = payload.Transactions;
-
     public ParallelUnbalancedWork.WorkerGroup Workers { get; } = new(RuntimeInformation.ProcessorCount);
 
-    public Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
+    /// <param name="totalDifficulty">A total difficulty of the block.</param>
+    /// <param name="besideRecovery">
+    /// Sender recovery for these transactions is running on <see cref="Workers"/>. A root fanned out on them would wait
+    /// behind it, so the root is built on this thread alone instead.
+    /// </param>
+    public Result<Block> TryGetBlock(UInt256? totalDifficulty = null, bool besideRecovery = false)
     {
         using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
         Result<Transaction[]> transactions = payload.TryGetTransactions();
         if (transactions.IsError) return transactions.Error;
 
-        // Built on this thread alone: sender recovery holds the payload's workers by now, and a root fanned out on
-        // them would wait for recovery to finish first.
-        if (payload.TransactionsRoot is null && ReferenceEquals(_encodedTransactions, payload.Transactions))
-            payload.TransactionsRoot = TxTrie.CalculateRoot(_encodedTransactions, canBeParallel: false);
-
+        payload.TransactionsRoot ??= TxTrie.CalculateRoot(payload.Transactions, canBeParallel: !besideRecovery);
         return payload.TryGetBlock(totalDifficulty);
     }
 }

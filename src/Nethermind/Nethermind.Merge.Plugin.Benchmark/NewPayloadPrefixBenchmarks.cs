@@ -19,10 +19,10 @@ namespace Nethermind.Merge.Plugin.Benchmark;
 /// </summary>
 /// <remarks>
 /// <see cref="HandlerPrefix"/> decodes transactions before computing their trie root inline.
-/// <see cref="HandlerPrefixWithEarlyRoot"/> overlaps root computation with decoding through
-/// the same preparation object used by <c>NewPayloadHandler.HandleAsync</c>. Transactions are
-/// real signed EIP-1559 transactions with a mainnet-like calldata mix, not opaque blobs,
-/// so decode and trie-leaf costs are honest.
+/// <see cref="PreparationPrefix"/> and <see cref="PreparationPrefixBesideRecovery"/> go through the same preparation
+/// object used by <c>NewPayloadHandler.HandleAsync</c>, the second building the root on the calling thread alone, as
+/// it does while sender recovery holds the payload's workers. Transactions are real signed EIP-1559 transactions with
+/// a mainnet-like calldata mix, not opaque blobs, so decode and trie-leaf costs are honest.
 /// </remarks>
 [MemoryDiagnoser]
 public class NewPayloadPrefixBenchmarks
@@ -85,12 +85,20 @@ public class NewPayloadPrefixBenchmarks
         return _payload.TryGetBlock().Data!;
     }
 
-    [Benchmark(Description = "early root + decode + TryGetBlock")]
-    public Block HandlerPrefixWithEarlyRoot()
+    [Benchmark(Description = "preparation: decode + root + TryGetBlock")]
+    public Block PreparationPrefix()
     {
         _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
         ExecutionPayloadPreparation preparation = new(_payload);
         return preparation.TryGetBlock().Data!;
+    }
+
+    [Benchmark(Description = "preparation beside recovery: decode + root on this thread + TryGetBlock")]
+    public Block PreparationPrefixBesideRecovery()
+    {
+        _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
+        ExecutionPayloadPreparation preparation = new(_payload);
+        return preparation.TryGetBlock(besideRecovery: true).Data!;
     }
 
     private static Transaction[] BuildTransactions(int count)

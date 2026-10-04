@@ -134,8 +134,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
-            StartSenderRecovery(request);
-            decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            bool recovering = StartSenderRecovery(request);
+            decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty, besideRecovery: recovering);
         }
         if (decodingResult.IsError)
         {
@@ -649,28 +649,31 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private void StartSenderRecovery(ExecutionPayload request)
+    /// <returns>Whether a recovery was started for the payload's transactions.</returns>
+    private bool StartSenderRecovery(ExecutionPayload request)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
         // the senders; they recover in the processing queue as before.
         if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
-            return;
+            return false;
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
             // TryGetBlock reports the decoding error; nothing to recover otherwise.
-            return;
+            return false;
 
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
         try
         {
             _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+            return true;
         }
         catch (Exception e)
         {
             // Best-effort: the processing-queue preprocessor recovers anything still missing, so failing
             // to queue the early recovery must not fail an otherwise valid payload.
             if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed to start for block {request.BlockNumber}: {e}");
+            return false;
         }
     }
 
