@@ -1,12 +1,12 @@
 {
-  "scope": "point-in-time read-only summary of the finite live mixed functionality sampler; not a throughput ceiling or worst-program RAM bound",
-  "rawResourceSha256": "6036e15872443f3c683f8a38ae2cc313ce02d35c60ffffb8437f7684a5d87b89",
-  "rawResourceFileBytes": 520182,
-  "samplingMedianIntervalSeconds": 1.022066354751587,
+  "scope": "complete stopped finite live mixed functionality sampler; not a throughput ceiling or worst-program RAM bound",
+  "rawResourceSha256": "66b7d437c9572255d4c815f03f5ba3121cb28ba6e19c5ad2baab10a25f7f8170",
+  "rawResourceFileBytes": 640460,
+  "samplingMedianIntervalSeconds": 1.022169589996338,
   "allCapturedSamples": {
-    "sampleCount": 1440,
+    "sampleCount": 1773,
     "captureStartUtc": "2026-10-04T04:35:22.348293+00:00",
-    "captureEndUtc": "2026-10-04T04:59:53.782806+00:00",
+    "captureEndUtc": "2026-10-04T05:05:34.578309+00:00",
     "perEl": [
       {
         "node": 1,
@@ -252,9 +252,16 @@
     "nativeVerification": "coordinator-owned helper check; this observer recorded envelope/byte metadata only"
   },
   "limitations": [
-    "Sampler is still active; this snapshot ends at the recorded captureEndUtc.",
     "memory.events were not sampled in resources.jsonl; separately captured cumulative current-container events are attached.",
     "CPU is whole-host instantaneous sampled utilization, not proof-only attribution.",
-    "Canonical inclusion was rechecked after one observed reorganization; the original driver report retains its transient observer failure."
-  ]
+    "Canonical inclusion was rechecked after one observed reorganization; the original driver report retains its transient observer failure.",
+    "Strict log counts cover only their explicitly recorded log window, not the later sampler tail through shutdown."
+  ],
+  "shutdownConfirmed": true,
+  "earlierSnapshot": {
+    "sha256": "6036e15872443f3c683f8a38ae2cc313ce02d35c60ffffb8437f7684a5d87b89",
+    "bytes": 520182,
+    "sampleCount": 1440,
+    "captureEndUtc": "2026-10-04T04:59:53.782806+00:00"
+  }
 }
