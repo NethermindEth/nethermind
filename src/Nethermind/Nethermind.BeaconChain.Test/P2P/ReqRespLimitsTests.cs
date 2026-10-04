@@ -42,7 +42,7 @@ public class ReqRespLimitsTests
     {
         Channel channel = new();
         TestReqRespProtocol protocol = new() { WatchLingerAfterServed = closeRequester ? TimeSpan.FromSeconds(10) : TimeSpan.FromMilliseconds(50) };
-        ISessionContext context = attributed ? FakeSessionContext.ForNewPeer() : ReqRespTestChannel.Context();
+        ISessionContext context = attributed ? NewPeerContext() : ReqRespTestChannel.Context();
         Task<IOResult> writing = channel.WriteAsync(new ReadOnlySequence<byte>(emptyRequest ? new byte[] { 1, 9 } : new byte[] { 2, 9 }), token).AsTask();
         TaskCompletionSource releasedAdmission = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task serving = protocol.ServeRejectedAsync(new ChannelStreamAdapter(channel.Reverse), context, emptyRequest, token, releasedAdmission);
@@ -81,7 +81,7 @@ public class ReqRespLimitsTests
     public async Task Rejected_request_closure_waits_are_bounded_and_release_their_linger_slots([Values] bool attributed, CancellationToken token)
     {
         TestReqRespProtocol protocol = new();
-        ISessionContext context = attributed ? FakeSessionContext.ForNewPeer() : ReqRespTestChannel.Context();
+        ISessionContext context = attributed ? NewPeerContext() : ReqRespTestChannel.Context();
         List<Channel> channels = [];
         List<Task> serving = [];
         List<Task<IOResult>> writing = [];
@@ -244,7 +244,7 @@ public class ReqRespLimitsTests
     public async Task Concurrent_inbound_requests_beyond_the_cap_are_refused()
     {
         TestReqRespProtocol protocol = new();
-        ISessionContext peerA = FakeSessionContext.ForNewPeer();
+        ISessionContext peerA = NewPeerContext();
 
         long before = FailureCount(TestReqRespProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded);
 
@@ -260,7 +260,7 @@ public class ReqRespLimitsTests
         Assert.That(FailureCount(TestReqRespProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded), Is.EqualTo(before + 1), "limit violation recorded");
 
         // A different peer has its own budget: the cap is per-peer, not global to the protocol.
-        ISessionContext peerB = FakeSessionContext.ForNewPeer();
+        ISessionContext peerB = NewPeerContext();
         IAsyncDisposable? otherPeerSlot = protocol.TryEnter(peerB, TestReqRespProtocol.ProtocolId);
         Assert.That(otherPeerSlot, Is.Not.Null, "a different peer is not affected by peer A's cap");
 
@@ -415,15 +415,7 @@ public class ReqRespLimitsTests
         // all 10 blocks and return normally within the run.
         const int blockCount = 10;
         TestBlocksProtocol protocol = new(Spec);
-        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, [.. SlotRange(2_001, blockCount)]);
-
-        List<byte[]> wireChunks = [];
-        foreach (SignedBeaconBlock block in chain)
-        {
-            using MemoryStream buffer = new();
-            await WriteBlockChunkAsync(buffer, block);
-            wireChunks.Add(buffer.ToArray());
-        }
+        List<byte[]> wireChunks = await EncodeBlockChunksAsync(blockCount);
 
         using DrippingStream stream = new(wireChunks, TimeSpan.FromMilliseconds(20));
         long before = FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.Timeout);
@@ -441,14 +433,7 @@ public class ReqRespLimitsTests
     public async Task A_read_cut_by_a_chunk_bound_names_that_bound(int blocks, int delayBeforeEachChunkMs, string expected)
     {
         TestBlocksProtocol protocol = new(Spec) { TtfbTimeout = ShortTtfbTimeout, RespTimeout = ShortRespTimeout };
-        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, [.. SlotRange(2_001, blocks)]);
-        List<byte[]> wireChunks = [];
-        foreach (SignedBeaconBlock block in chain)
-        {
-            using MemoryStream buffer = new();
-            await WriteBlockChunkAsync(buffer, block);
-            wireChunks.Add(buffer.ToArray());
-        }
+        List<byte[]> wireChunks = await EncodeBlockChunksAsync(blocks);
 
         await using DrippingStream response = new(wireChunks, TimeSpan.FromMilliseconds(delayBeforeEachChunkMs));
 
@@ -464,7 +449,7 @@ public class ReqRespLimitsTests
     {
         BeaconBlocksByRootProtocolV2 protocol = new(Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>())) { RespTimeout = ShortRespTimeout };
 
-        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => protocol.DialAsync(new Channel(), FakeSessionContext.ForNewPeer(), [Hash256.Zero]));
+        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => protocol.DialAsync(new Channel(), NewPeerContext(), [Hash256.Zero]));
 
         Assert.That(cut!.Message, Is.EqualTo("timed out after 0.2 s writing the request"));
     }
@@ -488,8 +473,8 @@ public class ReqRespLimitsTests
         string id = metadata ? metadataProtocol.Id : protocol.Id;
         long before = FailureCount(id, ReqRespFailureReason.Timeout);
         ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => metadata
-            ? metadataProtocol.DialAsync(channel, FakeSessionContext.ForNewPeer(), 0)
-            : protocol.DialAsync(channel, FakeSessionContext.ForNewPeer(), 7));
+            ? metadataProtocol.DialAsync(channel, NewPeerContext(), 0)
+            : protocol.DialAsync(channel, NewPeerContext(), 7));
 
         using (Assert.EnterMultipleScope())
         {
@@ -510,7 +495,7 @@ public class ReqRespLimitsTests
         Task reply = ReplyAsync();
         try
         {
-            MetaDataV3 response = await protocol.DialAsync(channel, FakeSessionContext.ForNewPeer(), 0).WaitAsync(token);
+            MetaDataV3 response = await protocol.DialAsync(channel, NewPeerContext(), 0).WaitAsync(token);
             Assert.That(MetaDataV3.Encode(response), Is.EqualTo(MetaDataV3.Encode(source.Current)));
             await reply;
         }
@@ -538,7 +523,7 @@ public class ReqRespLimitsTests
         Task<ulong> read = ReadAsync();
         try
         {
-            ulong response = await protocol.DialAsync(channel, FakeSessionContext.ForNewPeer(), reason).WaitAsync(token);
+            ulong response = await protocol.DialAsync(channel, NewPeerContext(), reason).WaitAsync(token);
             ulong request = await read;
             using (Assert.EnterMultipleScope())
             {
@@ -720,39 +705,27 @@ public class ReqRespLimitsTests
             ReadBlockChunksAsync(response, maxBlocks, ProtocolId, overallTimeout, timing);
     }
 
-    /// <summary>A minimal <see cref="ISessionContext"/> carrying only a synthetic remote peer identity.</summary>
-    private sealed class FakeSessionContext : ISessionContext
+    private static ISessionContext NewPeerContext()
     {
-        private FakeSessionContext(PeerId peerId) =>
-            State = new Nethermind.Libp2p.Core.State { RemoteAddress = Multiaddress.Decode($"/p2p/{peerId}") };
+        byte[] keyBytes = new byte[33];
+        Random.Shared.NextBytes(keyBytes);
+        PeerId peerId = new(new Libp2pPublicKey { Type = KeyType.Secp256K1, Data = ByteString.CopyFrom(keyBytes) });
+        ISessionContext context = ReqRespTestChannel.Context();
+        context.State.RemoteAddress = Multiaddress.Decode($"/p2p/{peerId}");
+        return context;
+    }
 
-        public static FakeSessionContext ForNewPeer()
+    private static async Task<List<byte[]>> EncodeBlockChunksAsync(int count)
+    {
+        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, [.. SlotRange(2_001, count)]);
+        List<byte[]> chunks = [];
+        foreach (SignedBeaconBlock block in chain)
         {
-            byte[] keyBytes = new byte[33];
-            Random.Shared.NextBytes(keyBytes);
-            PeerId peerId = new(new Libp2pPublicKey { Type = KeyType.Secp256K1, Data = ByteString.CopyFrom(keyBytes) });
-            return new FakeSessionContext(peerId);
+            using MemoryStream buffer = new();
+            await WriteBlockChunkAsync(buffer, block);
+            chunks.Add(buffer.ToArray());
         }
-
-        public Nethermind.Libp2p.Core.State State { get; }
-
-        public string Id => throw new NotSupportedException();
-        public ILocalPeer Peer => throw new NotSupportedException();
-        public System.Diagnostics.Activity? Activity => throw new NotSupportedException();
-        public UpgradeOptions? UpgradeOptions => throw new NotSupportedException();
-        public IEnumerable<IProtocol> SubProtocols => throw new NotSupportedException();
-
-        public Task DialAsync<TProtocol>() where TProtocol : ISessionProtocol => throw new NotSupportedException();
-        public Task DialAsync(ISessionProtocol protocol) => throw new NotSupportedException();
-        public Task<TResponse> DialAsync<TProtocol, TRequest, TResponse>(TRequest request, CancellationToken token = default) where TProtocol : ISessionProtocol<TRequest, TResponse> => throw new NotSupportedException();
-        public Task DisconnectAsync() => throw new NotSupportedException();
-        public INewSessionContext UpgradeToSession() => throw new NotSupportedException();
-        public void ListenerReady(Multiaddress addr) => throw new NotSupportedException();
-        public INewConnectionContext CreateConnection() => throw new NotSupportedException();
-        public IChannel Upgrade(UpgradeOptions? options = null) => throw new NotSupportedException();
-        public IChannel Upgrade(IProtocol specificProtocol, UpgradeOptions? options = null) => throw new NotSupportedException();
-        public Task Upgrade(IChannel parentChannel, UpgradeOptions? options = null) => throw new NotSupportedException();
-        public Task Upgrade(IChannel parentChannel, IProtocol specificProtocol, UpgradeOptions? options = null) => throw new NotSupportedException();
+        return chunks;
     }
 
     /// <summary>A stream whose reads never complete on their own, honoring only the caller's cancellation token.</summary>
