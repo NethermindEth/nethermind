@@ -151,23 +151,9 @@ public class EpochProcessingTests
         // post.ssz_snappy is therefore "expect this sub-transition to fail", exactly like operations
         // and sanity/blocks - discovered by this suite's own mutation-testing pass, not assumed.
         string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
-        bool expectSuccess = File.Exists(postPath);
-
-        Exception? thrown = null;
-        try { apply(state, cache); }
-        catch (Exception ex) { thrown = ex; }
-
-        if (expectSuccess)
-        {
-            if (thrown is not null)
-                Assert.Fail($"expected the sub-transition to succeed, but it threw: {thrown}");
-
-            FuluDriverSupport.AssertPostStateRoot(driver, postPath, state, cache);
-        }
-        else
-        {
-            FuluDriverSupport.AssertRejected(thrown, "the sub-transition");
-        }
+        FuluDriverSupport.AssertTransition(driver, postPath, state, cache,
+            () => apply(state, cache), "the sub-transition",
+            "expected the sub-transition to succeed, but it threw");
     }
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
