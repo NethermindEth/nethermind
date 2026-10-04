@@ -140,6 +140,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // compete for the payload's workers while the request waits on the root.
             bool recoverAfterRoot = Core.Diagnostics.ExperimentKnobs.RecoveryAfterRoot;
             if (!recoverAfterRoot) StartSenderRecovery(request);
+            if (Core.Diagnostics.ExperimentKnobs.EarlyPrewarm) StartEarlyPrewarm(request);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
             if (recoverAfterRoot && !decodingResult.IsError) StartSenderRecovery(request);
         }
@@ -660,6 +661,35 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <summary>Slack above head within which early recovery is worthwhile, mirroring the
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
+
+    private void StartEarlyPrewarm(ExecutionPayload request)
+    {
+        try
+        {
+            if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance) return;
+            BlockHeader? parent = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            if (parent is null) return;
+            // The provisional block needs no transactions root; the real one is built and checked later.
+            Hash256? root = request.TransactionsRoot;
+            request.TransactionsRoot ??= Keccak.Zero;
+            Result<Block> provisional;
+            try
+            {
+                provisional = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            }
+            finally
+            {
+                request.TransactionsRoot = root;
+            }
+            if (provisional.IsError) return;
+            IReleaseSpec spec = _specProvider.GetSpec(provisional.Data.Header);
+            Consensus.Processing.BlockCachePreWarmer.TryStartEarly(provisional.Data, parent, spec);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Early prewarm failed to start for block {request.BlockNumber}: {e}");
+        }
+    }
 
     private void StartSenderRecovery(ExecutionPayload request)
     {

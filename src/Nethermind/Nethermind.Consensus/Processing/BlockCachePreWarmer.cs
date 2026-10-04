@@ -139,8 +139,96 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened += CancelAndJoinSpeculative;
     }
 
+    // Experiment (NETHERMIND_EXP_EARLY_PREWARM): a session the newPayload request starts as soon as its transactions are
+    // decoded, on a provisional block, and the block's own PreWarmCaches adopts.
+    private static BlockCachePreWarmer? s_mainPreWarmer;
+    private EarlyPrewarm? _earlyPrewarm;
+
+    private sealed class EarlyPrewarm(Hash256 parentHash, Transaction[] transactions, IDisposable session, CancellationTokenSource cancellation) : IDisposable
+    {
+        private CancellationTokenRegistration _link;
+        public Hash256 ParentHash => parentHash;
+        public Transaction[] Transactions => transactions;
+
+        public void Link(CancellationToken token) => _link = token.Register(static c => ((CancellationTokenSource)c!).Cancel(), cancellation);
+
+        public void Dispose()
+        {
+            _link.Dispose();
+            try
+            {
+                session.Dispose();
+            }
+            finally
+            {
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    public static void TryStartEarly(Block provisional, BlockHeader parent, IReleaseSpec spec) =>
+        Volatile.Read(ref s_mainPreWarmer)?.StartEarly(provisional, parent, spec);
+
+    private void StartEarly(Block block, BlockHeader parent, IReleaseSpec spec)
+    {
+        if (_preBlockCaches is null || parent.Hash is null) return;
+        EarlyPrewarm? stale;
+        lock (_speculativeLock)
+        {
+            if (_preBlockCaches.ConsumerScopeOpen) return;
+            stale = _earlyPrewarm;
+            _earlyPrewarm = null;
+        }
+        stale?.Dispose();
+
+        lock (_speculativeLock)
+        {
+            if (_preBlockCaches.ConsumerScopeOpen || _earlyPrewarm is not null) return;
+            CancelAndJoinSpeculativeLocked();
+            ClearWarmMarker();
+            _preBlockCaches.PrepareFor(parent.StateRoot, _logger);
+            if (!ShouldPreWarm(spec) || ShouldSkipReactiveWarming(block, spec)) return;
+            _nodeStorageCache.ClearCaches();
+            _nodeStorageCache.Enabled = true;
+            CancellationTokenSource cancellation = new();
+            IDisposable? session = WarmCaches(block, parent, spec, speculativelyWarmed: null, cancellation.Token);
+            if (session is null)
+            {
+                cancellation.Dispose();
+                return;
+            }
+            _earlyPrewarm = new EarlyPrewarm(parent.Hash, block.Transactions, session, cancellation);
+        }
+        if (Core.Diagnostics.NewPayloadTrace.Enabled) Core.Diagnostics.NewPayloadTrace.Note($"early@{Core.Diagnostics.NewPayloadTrace.NowUs()}");
+    }
+
+    private EarlyPrewarm? TakeEarly()
+    {
+        lock (_speculativeLock)
+        {
+            EarlyPrewarm? early = _earlyPrewarm;
+            _earlyPrewarm = null;
+            return early;
+        }
+    }
+
     public IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
+        if (Core.Diagnostics.ExperimentKnobs.EarlyPrewarm && _preBlockCaches is not null && suggestedBlock is not BlockToProduce)
+        {
+            Volatile.Write(ref s_mainPreWarmer, this);
+            if (TakeEarly() is { } early)
+            {
+                if (parent?.Hash == early.ParentHash && ReferenceEquals(early.Transactions, suggestedBlock.Transactions))
+                {
+                    early.Link(cancellationToken);
+                    if (Core.Diagnostics.NewPayloadTrace.Enabled) Core.Diagnostics.NewPayloadTrace.Note($"adopted@{Core.Diagnostics.NewPayloadTrace.NowUs()}");
+                    return early;
+                }
+                early.Dispose();
+            }
+        }
+
         // Join ahead of the gate: the session's spec comes from a synthetic next-block header, so it can enable warming
         // for a spec this block disables (a fork boundary), and no pass may run into execution.
         if (_preBlockCaches is null)

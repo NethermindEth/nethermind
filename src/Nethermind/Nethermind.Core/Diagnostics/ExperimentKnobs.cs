@@ -19,6 +19,9 @@ public static class ExperimentKnobs
     /// <summary>Every N seconds, print on-CPU and run-queue wait per thread name (0 = off); see <see cref="ThreadNicer"/>.</summary>
     public static readonly int ThreadReportSeconds = Int("NETHERMIND_EXP_THREAD_REPORT", 0);
 
+    /// <summary>The newPayload request starts the block's prewarm on a provisional block right after decoding its transactions.</summary>
+    public static readonly bool EarlyPrewarm = On("NETHERMIND_EXP_EARLY_PREWARM");
+
     /// <summary>RocksDB compaction threads (background compactions and the low-priority pool); 0 keeps ProcessorCount.</summary>
     public static readonly int RocksCompactionThreads = Int("NETHERMIND_EXP_ROCKS_COMPACTION_THREADS", 0);
 
