@@ -32,7 +32,7 @@ namespace Nethermind.BeaconChain.Sync;
 /// Every batch is verified by root linkage before anything is yielded: the first block's
 /// <c>parent_root</c> must be the hash tree root of the last yielded block (initially the anchor),
 /// and each subsequent block must link to its predecessor. A mismatching batch is dropped, the
-/// peer penalized only when it also supplied the block it fails to link to (or that block is the anchor), and the range re-requested from another peer - starting again from the
+/// peer penalized only when it also supplied the block it fails to link to, and the range re-requested from another peer - starting again from the
 /// slot after the last yielded block, which also recovers from a peer that falsely returned an
 /// empty range. Repeated failures halve the batch size down to a single slot.
 /// </para>
@@ -157,7 +157,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             // A peer may answer ResourceUnavailable below its earliest slot (phase0/p2p-interface.md); slots under it are taken as empty and block linkage still checks that.
             ulong from = Math.Max(nextSlot, peer.EarliestAvailableSlot);
             ulong count = Math.Min(batchSize, target - from + 1);
-            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null || from != lastSlot + 1 || (lastSupplier is not null && lastSupplier != peer.Id), token, superseded);
+            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null || from != lastSlot + 1 || lastSupplier != peer.Id, token, superseded);
             // Resolve an unverified anchor before attributing a mismatch to an empty reply.
             if (batch is { Linked: false } && fallback is null && skippedOnWordOf is { } behind)
             {
@@ -274,6 +274,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         if (_logger.IsDebug) _logger.Debug($"Blocks [{startSlot}, {startSlot + count}) by range from {peer.Id}: {batch.Count} blocks in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms");
 
         // Slot bounds and ordering are already enforced at the protocol layer; verify parent linkage here.
+        bool linked = true;
         Hash256 expectedParent = parentRoot;
         Hash256[] roots = new Hash256[batch.Count];
         for (int i = 0; i < roots.Length; i++)
@@ -283,17 +284,19 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             {
                 if (allowFirstMismatch && i == 0)
                 {
-                    return (batch, [], false);
+                    linked = false;
                 }
-
-                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Block at slot {block.Slot} has parent {block.ParentRoot}, expected {expectedParent}");
-                return null;
+                else
+                {
+                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Block at slot {block.Slot} has parent {block.ParentRoot}, expected {expectedParent}");
+                    return null;
+                }
             }
 
             expectedParent = roots[i] = block.ComputeMessageRoot();
         }
 
-        return (batch, roots, true);
+        return (batch, roots, linked);
     }
 
     /// <summary>

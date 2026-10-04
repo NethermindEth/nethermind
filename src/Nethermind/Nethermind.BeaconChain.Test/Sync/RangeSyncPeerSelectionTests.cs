@@ -173,6 +173,32 @@ public class RangeSyncPeerSelectionTests
         Assert.That(both.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
     }
 
+    /// <summary>A locally selected anchor does not make another peer responsible for following a different fork.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_first_reply_on_another_fork_is_not_blamed_on_its_supplier(CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 12);
+        ForkedSignedBeaconBlock[] blocks = [.. chain.Select(static block => new ForkedSignedBeaconBlock.OfFulu(block))];
+        SignedBeaconBlock alternateAnchor = TestChain.CreateBlock(AnchorSlot, Keccak.Zero);
+        alternateAnchor.Message!.StateRoot = Keccak.Compute("alternate-anchor");
+        SignedBeaconBlock alternateFirst = TestChain.CreateBlock(11, SszRoots.HashTreeRoot(alternateAnchor.Message));
+        SignedBeaconBlock alternateSecond = TestChain.CreateBlock(12, SszRoots.HashTreeRoot(alternateFirst.Message!));
+        ForkedSignedBeaconBlock[] alternate = [new ForkedSignedBeaconBlock.OfFulu(alternateFirst), new ForkedSignedBeaconBlock.OfFulu(alternateSecond)];
+        StubPeer fork = new("another-fork", 12, (_, _) => alternate);
+        StubPeer linked = new("linked", 12, (_, _) => blocks);
+        RangeSync sync = new(new StubPool(fork, linked), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+
+        List<ForkedSignedBeaconBlock> yielded = await CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => 12, token));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fork.Requests, Is.EqualTo(1));
+        Assert.That(linked.Requests, Is.EqualTo(1));
+        Assert.That(yielded, Is.EqualTo(blocks), "the alternate fork is not accepted merely because its reply is internally linked");
+        Assert.That(fork.Reports, Is.Empty, "the request supplied slots, not the locally selected parent root");
+        Assert.That(linked.Reports, Is.Empty);
+    }
+
     /// <summary>The sync gate fails a job on any log line containing "Exception", so a failed batch is logged by its cause, not its exception type.</summary>
     [Test]
     [CancelAfter(30_000)]
