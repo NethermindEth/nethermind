@@ -40,6 +40,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
     protected override void Load(ContainerBuilder builder)
     {
         builder.AddSingleton<ILeanProofVerifier, Nethermind.Crypto.NativeLeanProofVerifier>()
+            .AddDecorator<ILeanProofVerifier, ProductionProofCache>()
             .AddSingleton<LeanProofStore>()
             .AddSingleton<ProofWrapperService>();
 

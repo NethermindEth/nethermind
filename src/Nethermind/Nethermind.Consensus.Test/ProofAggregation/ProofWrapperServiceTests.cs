@@ -283,6 +283,116 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
+    public async Task Pool_removal_during_proving_prevents_publication_but_retains_verified_work()
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
+        ITxPool pool = Substitute.For<ITxPool>();
+        Transaction[] pending = [transaction];
+        LeanProofStore store = new();
+        store.AddVerified([dependency], [[1]], null);
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
+        pool.GetPendingTransactions().Returns(_ => Volatile.Read(ref pending));
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        verifier.OnProving = () =>
+        {
+            entered.TrySetResult();
+            if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Build release timed out");
+        };
+        Task<Result<byte[]>> build = Task.Run(() => service.BuildWrapper());
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Volatile.Write(ref pending, []);
+        }
+        finally { release.Set(); }
+        Result<byte[]> result = await build.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.Error, Does.Contain("selection changed"));
+            Assert.That(service.GetLatestWrapper().IsSuccess, Is.False);
+            Assert.That(store.TryGetRecursiveProof([dependency], out _), Is.True, "authenticated completed work survives pool churn");
+        }
+    }
+
+    [Test]
+    public void Previous_own_aggregate_is_reused_for_additions_and_authenticated_when_pruned([Values] bool rejectDiscardedParent)
+    {
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("second"), default);
+        Transaction a = CreateTransaction(first, TestItem.KeccakA);
+        Transaction b = CreateTransaction(second, TestItem.KeccakB);
+        Transaction[] pending = [a];
+        ITxPool pool = Substitute.For<ITxPool>();
+        LeanProofStore store = new();
+        store.AddVerified([first, second], [[1], [1]], null);
+        RecordingVerifier verifier = new();
+        ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
+        pool.GetPendingTransactions().Returns(_ => pending);
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        pending = [a, b];
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        FrameDependency[] expectedAddition = [second];
+        FrameDependency[] expectedParent = [first];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Inputs[1].Deps, Is.EqualTo(expectedAddition));
+            Assert.That(verifier.Inputs[1].RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(verifier.Inputs[1].RecursiveProofs[0].InnerDeps, Is.EqualTo(expectedParent));
+        }
+        // Remove the dependency whose singleton proof was never retained.
+        pending = [b];
+        ValueHash256 parentHash = Eip8288Dependencies.ComputeDepsHash([first, second]);
+        verifier.RejectedStatement = rejectDiscardedParent ? parentHash : null;
+        int before = verifier.VerifiedStatements.Count;
+        Result<byte[]> pruned = service.BuildWrapper();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned.IsSuccess, Is.EqualTo(!rejectDiscardedParent), pruned.Error);
+            Assert.That(verifier.Inputs[2].Deps, Is.Empty);
+            Assert.That(verifier.Inputs[2].RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(verifier.Inputs[2].Discards, Is.EqualTo(expectedParent));
+            Assert.That(verifier.VerifiedStatements.Skip(before), Does.Contain(parentHash), "discarded origins still require authentication");
+        }
+    }
+
+    private sealed class RecordingVerifier : ILeanProofVerifier
+    {
+        public List<AggregationInput> Inputs { get; } = [];
+        public List<ValueHash256> VerifiedStatements { get; } = [];
+        public ValueHash256? RejectedStatement { get; set; }
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+        {
+            VerifiedStatements.Add(depsHash);
+            return RejectedStatement != depsHash;
+        }
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
+        {
+            Inputs.Add(input);
+            if (!RecursiveStarkAggregator.TryAggregate(input, this, out _, out ValueHash256 actual) || actual != depsHash)
+                throw new InvalidOperationException("Invalid proving input.");
+            return [1];
+        }
+    }
+
+    private static Transaction CreateTransaction(FrameDependency dependency, Hash256 hash) => new()
+    {
+        Type = TxType.FrameTx,
+        NonceKeys = [UInt256.Zero],
+        ChainId = 1,
+        SenderAddress = Address.Zero,
+        Hash = hash,
+        Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+    };
+
+    [Test]
     public void Shared_dependencies_cannot_create_unbounded_transaction_payloads()
     {
         (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(10, 256 * 1024);
@@ -648,10 +758,17 @@ public class ProofWrapperServiceTests
         return (CreateService(transactions, store, verifier), verifier);
     }
 
-    private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, FakeLeanProofVerifier verifier, IReleaseSpec? spec = null)
+    private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier, IReleaseSpec? spec = null, ITxPool? pool = null)
     {
-        ITxPool pool = Substitute.For<ITxPool>();
+        pool ??= Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns(transactions);
+        ITxPool pendingPool = pool;
+        pool.TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            Transaction? found = Array.Find(pendingPool.GetPendingTransactions(), transaction => transaction.Hash!.ValueHash256 == call.Arg<ValueHash256>());
+            call[1] = found;
+            return found is not null;
+        });
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);

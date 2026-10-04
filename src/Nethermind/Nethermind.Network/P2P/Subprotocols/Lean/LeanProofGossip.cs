@@ -12,7 +12,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
-/// <summary>Builds one aggregate per cadence and broadcasts it to negotiated peers.</summary>
+/// <summary>Coalesces aggregation work while refreshing completed wrappers on each cadence.</summary>
 public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager logManager, TimeProvider? timeProvider = null) : IAsyncDisposable, IDisposable
 {
     internal const int RefreshIntervalSeconds = 30;
@@ -35,6 +35,7 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
     private readonly CancellationTokenSource _stop = new();
     private readonly ILogger _logger = logManager.GetClassLogger<LeanProofGossip>();
     private Task? _loop;
+    private TaskCompletionSource? _buildWorker;
     private bool _disposed;
     private Wrapper? _lastWrapper;
 
@@ -50,16 +51,14 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
 
     public void AddPeer(Func<ReadOnlyMemory<byte>, ValueHash256, CancellationToken, ValueTask<bool>> send)
     {
-        Wrapper? last;
         Peer peer = new(send);
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!_peers.TryAdd(send, peer)) return;
             _loop ??= Task.Run(RunAsync);
-            last = _lastWrapper;
         }
-        if (last is not null && wrappers.IsEnabled) TrySend(peer, last);
+        if (wrappers.IsEnabled) PublishLatest();
     }
 
     public void RemovePeer(Func<ReadOnlyMemory<byte>, ValueHash256, CancellationToken, ValueTask<bool>> send)
@@ -75,32 +74,75 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
         {
             while (await timer.WaitForNextTickAsync(_stop.Token))
             {
-                Peer[] peers;
-                lock (_lock) peers = [.. _peers.Values];
-                if (!wrappers.IsEnabled) continue;
                 try
                 {
-                    Result<byte[]> result = wrappers.BuildWrapper(skipEmpty: true, cancellationToken: _stop.Token);
-                    if (!result.IsSuccess) continue;
-                    byte[] encoded = result.Data!;
-                    Wrapper wrapper = new(encoded, ValueKeccak.Compute(encoded));
-                    lock (_lock)
-                    {
-                        if (_disposed) break;
-                        if (_lastWrapper is { } last && last.Hash == wrapper.Hash) wrapper = last;
-                        else _lastWrapper = wrapper;
-                    }
-                    foreach (Peer peer in peers)
-                    {
-                        _stop.Token.ThrowIfCancellationRequested();
-                        TrySend(peer, wrapper);
-                    }
+                    if (!wrappers.IsEnabled) continue;
+                    ScheduleBuild();
+                    PublishLatest();
                 }
                 catch (OperationCanceledException) when (_stop.IsCancellationRequested) { break; }
-                catch (Exception exception) { if (_logger.IsWarn) _logger.Warn($"Lean proof aggregation failed: {exception.Message}"); }
+                catch (Exception exception) { if (_logger.IsWarn) _logger.Warn($"Lean proof refresh failed: {exception.Message}"); }
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+    }
+
+    private void ScheduleBuild()
+    {
+        TaskCompletionSource worker;
+        lock (_lock)
+        {
+            if (_disposed || _buildWorker is not null) return;
+            worker = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _buildWorker = worker;
+            _workers.Add(worker.Task);
+        }
+        _ = Task.Run(() => BuildAndPublish(worker));
+    }
+
+    private void BuildAndPublish(TaskCompletionSource worker)
+    {
+        try
+        {
+            Result<byte[]> result = wrappers.BuildWrapper(skipEmpty: true, cancellationToken: _stop.Token);
+            if (result.IsSuccess) PublishLatest();
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception exception) { if (_logger.IsWarn) _logger.Warn($"Lean proof aggregation failed: {exception.Message}"); }
+        finally
+        {
+            lock (_lock)
+            {
+                _buildWorker = null;
+                worker.TrySetResult();
+                _workers.Remove(worker.Task);
+            }
+        }
+    }
+
+    private void PublishLatest()
+    {
+        Result<byte[]> result = wrappers.GetLatestWrapper();
+        if (!result.IsSuccess)
+        {
+            lock (_lock)
+            {
+                _lastWrapper = null;
+                foreach (Peer peer in _peers.Values) peer.Pending = null;
+            }
+            return;
+        }
+        byte[] encoded = result.Data!;
+        Wrapper wrapper = new(encoded, ValueKeccak.Compute(encoded));
+        Peer[] peers;
+        lock (_lock)
+        {
+            if (_disposed) return;
+            if (_lastWrapper is { } last && last.Hash == wrapper.Hash) wrapper = last;
+            else _lastWrapper = wrapper;
+            peers = [.. _peers.Values];
+        }
+        foreach (Peer peer in peers) TrySend(peer, wrapper);
     }
 
     private void TrySend(Peer peer, Wrapper wrapper)

@@ -28,6 +28,7 @@ public class LeanProofGossipTests
     private sealed class Verifier : ILeanProofVerifier
     {
         public int ProofCalls { get; private set; }
+        public Action? OnProving { get; set; }
         public void EnsureAvailable() { }
 
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
@@ -36,6 +37,7 @@ public class LeanProofGossipTests
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             ProofCalls++;
+            OnProving?.Invoke();
             return [1];
         }
     }
@@ -270,6 +272,119 @@ public class LeanProofGossipTests
         await disposal.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    [Test]
+    public async Task Cadence_refreshes_eligible_work_while_one_build_is_blocked_and_disposal_waits()
+    {
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("previous"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("new"), default);
+        Transaction a = CreateTransaction(first, TestItem.KeccakA);
+        Transaction b = CreateTransaction(second, TestItem.KeccakB);
+        LeanProofStore store = new();
+        store.AddVerified([first, second], [[1], [1]], null);
+        ITxPool pool = Substitute.For<ITxPool>();
+        Transaction[] pending = [a];
+        Verifier verifier = new();
+        ProofWrapperService service = CreateService(pending, store, verifier, pool);
+        pool.GetPendingTransactions().Returns(_ => Volatile.Read(ref pending));
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        verifier.OnProving = () =>
+        {
+            entered.TrySetResult();
+            if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Build release timed out");
+        };
+        ManualTimeProvider time = new();
+        await using LeanProofGossip gossip = new(service, LimboLogs.Instance, time);
+        TaskCompletionSource initial = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource refresh = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int sends = 0;
+        gossip.AddPeer((_, _, _) =>
+        {
+            if (Interlocked.Increment(ref sends) == 1) initial.TrySetResult();
+            else refresh.TrySetResult();
+            return new(true);
+        });
+        await initial.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await time.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
+        Volatile.Write(ref pending, [a, b]);
+        time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        time.AdvanceAndFireTimer(TimeSpan.FromSeconds(LeanProofGossip.RefreshIntervalSeconds)
+            + TimeSpan.FromMilliseconds(LeanProofGossip.RefreshJitterMilliseconds));
+        Task disposal;
+        try
+        {
+            await refresh.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            for (int i = 0; i < 20; i++) time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(2), "missed ticks do not queue additional proving jobs");
+            disposal = gossip.DisposeAsync().AsTask();
+            Assert.That(disposal.IsCompleted, Is.False, "shutdown owns the uninterruptible build until it returns");
+        }
+        finally { release.Set(); }
+        await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(sends, Is.EqualTo(2), "canceled completion does not publish a new wrapper");
+    }
+
+    [Test]
+    public async Task Removed_selection_is_not_refreshed_or_delivered_after_a_slow_build()
+    {
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("previous"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("new"), default);
+        Transaction a = CreateTransaction(first, TestItem.KeccakA);
+        Transaction b = CreateTransaction(second, TestItem.KeccakB);
+        LeanProofStore store = new();
+        store.AddVerified([first, second], [[1], [1]], null);
+        ITxPool pool = Substitute.For<ITxPool>();
+        Transaction[] pending = [a];
+        Verifier verifier = new();
+        ProofWrapperService service = CreateService(pending, store, verifier, pool);
+        pool.GetPendingTransactions().Returns(_ => Volatile.Read(ref pending));
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        verifier.OnProving = () =>
+        {
+            entered.TrySetResult();
+            if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Build release timed out");
+        };
+        ManualTimeProvider time = new();
+        await using LeanProofGossip gossip = new(service, LimboLogs.Instance, time);
+        int sends = 0;
+        TaskCompletionSource initial = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        gossip.AddPeer((_, _, _) => { Interlocked.Increment(ref sends); initial.TrySetResult(); return new(true); });
+        await initial.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await time.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
+        Volatile.Write(ref pending, [a, b]);
+        time.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Volatile.Write(ref pending, []);
+        time.AdvanceAndFireTimer(TimeSpan.FromSeconds(LeanProofGossip.RefreshIntervalSeconds)
+            + TimeSpan.FromMilliseconds(LeanProofGossip.RefreshJitterMilliseconds));
+        TaskCompletionSource late = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        gossip.AddPeer((_, _, _) => { late.TrySetResult(); return new(true); });
+        Task disposal = gossip.DisposeAsync().AsTask();
+        release.Set();
+        await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sends, Is.EqualTo(1));
+            Assert.That(late.Task.IsCompleted, Is.False, "late peers do not receive removed transaction bodies");
+            Assert.That(service.GetLatestWrapper().IsSuccess, Is.False);
+        }
+    }
+
+    private static Transaction CreateTransaction(FrameDependency dependency, Hash256 hash) => new()
+    {
+        Type = TxType.FrameTx,
+        NonceKeys = [UInt256.Zero],
+        ChainId = 1,
+        SenderAddress = Address.Zero,
+        Hash = hash,
+        Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
+    };
+
     private static ProofWrapperService CreateService()
     {
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
@@ -288,15 +403,24 @@ public class LeanProofGossipTests
         return CreateService([transaction], store, new Verifier());
     }
 
-    private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier)
+    private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier, ITxPool? pool = null)
     {
-        ITxPool pool = Substitute.For<ITxPool>();
+        pool ??= Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns(transactions);
+        ConfigureMembership(pool);
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
         return new ProofWrapperService(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, verifier);
     }
+
+    private static void ConfigureMembership(ITxPool pool)
+        => pool.TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            Transaction? found = Array.Find(pool.GetPendingTransactions(), transaction => transaction.Hash!.ValueHash256 == call.Arg<ValueHash256>());
+            call[1] = found;
+            return found is not null;
+        });
 
     [Test]
     public async Task Unchanged_delivered_wrapper_refreshes_after_bounded_receiver_drops()
@@ -314,6 +438,7 @@ public class LeanProofGossipTests
         };
         ITxPool pool = Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns([transaction]);
+        ConfigureMembership(pool);
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);

@@ -47,7 +47,8 @@ public partial class BlockProcessor(
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
-    ILeanProofVerifier leanProofVerifier)
+    ILeanProofVerifier leanProofVerifier,
+    LeanProofStore? leanProofStore = null)
     : IBlockProcessor
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
@@ -218,10 +219,20 @@ public partial class BlockProcessor(
                 proof = _productionProof;
             else
             {
-                AggregationInput input = new();
-                if (block is BlockToProduce producing)
-                    input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
-                proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, in depsHash, token);
+                if (leanProofStore?.TryGetRecursiveProof(deps, out byte[]? prepared) == true)
+                {
+                    proof = prepared!;
+                    if (!leanProofVerifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof))
+                        throw new InvalidOperationException("Cached EIP-8288 proof failed verification.");
+                }
+                else
+                {
+                    AggregationInput input = new();
+                    if (block is BlockToProduce producing)
+                        input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
+                    proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, in depsHash, token);
+                    leanProofStore?.AddCachedRecursive(deps, proof);
+                }
                 token.ThrowIfCancellationRequested();
                 // One verified result per processor/backend; improvement passes reuse it without retaining old blocks.
                 _productionProof = proof;

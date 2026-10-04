@@ -212,7 +212,7 @@ public class NativeLeanProtocolTests
             Assert.That(chunks, Is.GreaterThan(1));
             Assert.That(earlyAdmissions, Is.Zero);
             Assert.That(target.Scheduler.Scheduled, Is.EqualTo(1));
-            Assert.That(target.Chain.Container.Resolve<ILeanProofVerifier>(), Is.TypeOf<NativeLeanProofVerifier>());
+            Assert.That(target.Chain.Container.Resolve<ILeanProofVerifier>(), Is.TypeOf<ProductionProofCache>());
             Assert.That(target.Chain.Container.Resolve<LeanProofStore>().Covers(transaction), Is.True);
             Assert.That(target.Chain.TxPool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out _), Is.True);
             target.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());

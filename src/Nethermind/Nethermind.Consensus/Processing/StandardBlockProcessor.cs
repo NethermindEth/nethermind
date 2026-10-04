@@ -21,6 +21,6 @@ public sealed class StandardBlockProcessor(
     IBlockProcessor.IBlockTransactionsExecutor executor, IWorldState state, IReceiptStorage receipts,
     IBeaconBlockRootHandler beaconRoot, IBlockhashStore blockHashes, ILogManager logManager,
     IWithdrawalProcessor withdrawals, IExecutionRequestsProcessor requests, IBlockAccessListManager balManager,
-    ILeanProofVerifier leanProofVerifier)
+    ILeanProofVerifier leanProofVerifier, LeanProofStore leanProofStore)
     : BlockProcessor(specProvider, blockValidator, rewardCalculator, executor, state, receipts,
-        beaconRoot, blockHashes, logManager, withdrawals, requests, balManager, leanProofVerifier);
+        beaconRoot, blockHashes, logManager, withdrawals, requests, balManager, leanProofVerifier, leanProofStore);

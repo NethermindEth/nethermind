@@ -262,9 +262,7 @@ rejection does not.
 Busy verification retains the charged wrapper for cancellable retries, up to five seconds;
 RPC native validation runs asynchronously under the same bounded admission gate.
 
-One node-wide worker aggregates eligible pending transactions every second. Bounded
-selection rotates across disjoint bounded groups; unchanged dependency sets reuse
-verified proofs. Each peer keeps one active transfer and the latest pending selection;
+The EIP-8288 one-second tick refreshes completed pending selections independently of one tracked aggregation worker. Ticks coalesce while proving; they do not queue new jobs or imply a one-second native proving time. Bounded selection rotates across disjoint groups; overlapping changes reuse the previous authenticated aggregate and discard removed dependencies. Completed selections are checked against current pool membership before publication. Each peer keeps one active transfer and the latest pending selection;
 a cadence never cancels an active object. Chunk sends await actual channel writes and
 yield between chunks so control and ETH traffic can interleave. A whole transfer is
 memoized only after every write succeeds. Unchanged wrappers refresh every 30–35 seconds
@@ -276,10 +274,7 @@ the prover. Managed aggregation folds at most four direct witnesses or two child
 per call and checks cancellation before and after each call. An individual native call
 remains uninterruptible; shutdown cancels peer work and joins the worker.
 
-Each producing block processor retains up to 64 verified aggregation steps within
-32 MiB, keyed by their complete inputs and expected statement. Work completed after
-an improvement deadline remains reusable, while the expired caller still cancels
-before publishing a block. This cache is a bounded optimization: a folding working
+The node-wide prover decorator shares up to 64 verified aggregation steps within 32 MiB, keyed by immutable complete inputs, verification key and expected statement. Identical concurrent requests reuse completed work; cached hits and verification do not wait for unrelated proving. New background work yields to active or waiting production requests. Waiting requests observe cancellation within bounded polling intervals and check again before starting native work; an active native call remains noninterruptible. Producing processors also retain a bounded local cache and consult the shared exact dependency-set cache after execution determines the final body. Work completed after an improvement deadline remains reusable, while the expired caller still cancels before publishing a block. This cache is a bounded optimization: a folding working
 set larger than its capacity can still repeat work, so the backend's 256-dependency
 acceptance limit does not guarantee production within a normal slot budget.
 

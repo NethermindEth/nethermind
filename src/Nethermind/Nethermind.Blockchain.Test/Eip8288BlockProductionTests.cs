@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -31,6 +32,168 @@ namespace Nethermind.Blockchain.Test;
 
 public class Eip8288BlockProductionTests
 {
+    [Test]
+    public async Task Background_aggregate_is_reused_by_fresh_production_scopes([Values] bool mixed)
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency firstDependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("background-first"), default);
+        FrameDependency secondDependency = new(mixed ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme,
+            ValueKeccak.Compute("background-second"), default);
+        Transaction first = CreateTransaction(chain, firstDependency, [1]);
+        Transaction second = CreateTransaction(chain, secondDependency, [2]);
+        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new(first), new(second)],
+            Deps = Eip8288Dependencies.Canonicalize([firstDependency, secondDependency]),
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [[1], [1]]
+        }).Bytes;
+        Assert.That((await service.AcceptAsync(wrapper)).IsSuccess, Is.True);
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+        Block? built = await chain.BlockProducer.BuildBlock();
+        Assert.That(built, Is.Not.Null);
+        Assert.That(built!.Transactions, Has.Length.EqualTo(2));
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the background proof already covers the final body");
+        await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
+        BlockToProduce repeated = new(built.Header.Clone(), built.Transactions, [], built.Withdrawals);
+        Block? processed = environment.ChainProcessor.Process(repeated, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+        Assert.That(processed, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed!.Transactions, Has.Length.EqualTo(2));
+            Assert.That(processed.Header.RecursiveStark!.BlockDepsHash,
+                Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(processed))));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a fresh production scope shares the prepared statement");
+        }
+    }
+
+    [Test]
+    public async Task Concurrent_identical_work_is_shared_and_cached_results_do_not_wait_for_unrelated_proving()
+    {
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("shared-first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("shared-second"), default);
+        ValueHash256 firstHash = Eip8288Dependencies.ComputeDepsHash([first]);
+        ValueHash256 secondHash = Eip8288Dependencies.ComputeDepsHash([second]);
+        AggregationInput firstInput = new() { Deps = [first], Witnesses = [new byte[] { 1 }] };
+        AggregationInput secondInput = new() { Deps = [second], Witnesses = [new byte[] { 1 }] };
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
+        ProductionProofCache cache = new(verifier);
+        Task<byte[]> initial = Task.Run(() => cache.ProveRecursiveStark(firstHash, Eip8288Constants.AggregatedVk, firstInput));
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            using ManualResetEventSlim requested = new();
+            Task<byte[]> concurrent = Task.Run(() =>
+            {
+                requested.Set();
+                return cache.ProveRecursiveStark(firstHash, Eip8288Constants.AggregatedVk, firstInput);
+            });
+            Assert.That(requested.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            await Task.Delay(50);
+            Assert.That(concurrent.IsCompleted, Is.False);
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            release.Set();
+            byte[][] completed = await Task.WhenAll(initial, concurrent).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(completed[0], Is.EqualTo(completed[1]));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            entered.Reset();
+            release.Reset();
+            Task<byte[]> unrelated = Task.Run(() => cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk, secondInput));
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Task<byte[]> ready = Task.Run(() => cache.ProveRecursiveStark(firstHash, Eip8288Constants.AggregatedVk, firstInput));
+            Assert.That(await ready.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(firstHash.ToByteArray()));
+            Assert.That(unrelated.IsCompleted, Is.False);
+            release.Set();
+            await unrelated.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+        }
+        finally
+        {
+            release.Set();
+            await initial.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Test]
+    public async Task Queued_requests_snapshot_the_statement_and_do_not_start_after_cancellation([Values] bool cancel)
+    {
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("queued-first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("queued-second"), default);
+        ValueHash256 firstHash = Eip8288Dependencies.ComputeDepsHash([first]);
+        ValueHash256 secondHash = Eip8288Dependencies.ComputeDepsHash([second]);
+        MutableStatement statement = new() { Hash = secondHash };
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        using ManualResetEventSlim observed = new();
+        using CancellationTokenSource cancellation = new();
+        CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
+        ProductionProofCache cache = new(verifier);
+        Task<byte[]> active = Task.Run(() => cache.ProveRecursiveStark(firstHash, Eip8288Constants.AggregatedVk,
+            new() { Deps = [first], Witnesses = [new byte[] { 1 }] }));
+        Task<byte[]>? queued = null;
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            AggregationInput input = new() { Deps = new ObservedDependencies(second, observed), Witnesses = [new byte[] { 1 }] };
+            queued = Task.Run(() => cancel
+                ? ProductionProofCache.Prove(cache, secondHash, Eip8288Constants.AggregatedVk, input, cancellation.Token)
+                : cache.ProveRecursiveStark(in statement.Hash, Eip8288Constants.AggregatedVk, input));
+            Assert.That(observed.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            await Task.Delay(50);
+            statement.Hash = firstHash;
+            if (cancel) cancellation.Cancel();
+            using (ProductionProofCache.Background(default))
+            {
+                Assert.Throws<InvalidOperationException>(() => cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk,
+                    new() { Deps = [second], Witnesses = [new byte[] { 1 }] }));
+            }
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "background work does not queue behind the active producer");
+            if (cancel)
+            {
+                Assert.That(async () => await queued.WaitAsync(TimeSpan.FromSeconds(5)), Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(active.IsCompleted, Is.False, "a canceled waiter returns while unrelated native work remains active");
+            }
+            release.Set();
+            await active.WaitAsync(TimeSpan.FromSeconds(5));
+            if (cancel)
+            {
+                Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            }
+            else
+            {
+                Assert.That(await queued.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(secondHash.ToByteArray()));
+                Assert.That(cache.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk,
+                    new() { Deps = [second], Witnesses = [new byte[] { 1 }] }), Is.EqualTo(secondHash.ToByteArray()));
+                Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+            }
+        }
+        finally
+        {
+            release.Set();
+            await active.WaitAsync(TimeSpan.FromSeconds(5));
+            if (queued is not null && !cancel) await queued.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    private sealed class MutableStatement
+    {
+        public ValueHash256 Hash;
+    }
+
+    private sealed class ObservedDependencies(FrameDependency dependency, ManualResetEventSlim observed) : IReadOnlyList<FrameDependency>
+    {
+        public int Count { get { observed.Set(); return 1; } }
+        public FrameDependency this[int index] => index == 0 ? dependency : throw new IndexOutOfRangeException();
+        public IEnumerator<FrameDependency> GetEnumerator() => ((IEnumerable<FrameDependency>)(FrameDependency[])[dependency]).GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     [Test]
     public async Task Improvement_passes_reuse_verified_proofs_and_changed_dependency_sets_replace_the_cache()
     {
@@ -73,7 +236,7 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
-            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(1));
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(3));
             Assert.That(second.Header.RecursiveStark!.StarkProof,
                 Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(second).ToByteArray()));
         }
@@ -142,6 +305,32 @@ public class Eip8288BlockProductionTests
         AggregationInput next = new() { Deps = [changed], Witnesses = [new byte[] { 1 }] };
         Assert.That(cache.ProveRecursiveStark(changedHash, Eip8288Constants.AggregatedVk, next), Is.EqualTo(changedHash.ToByteArray()));
         Assert.That(verifier.ProofCalls, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void Completed_proving_scopes_revoke_captured_cancellation([Values] bool background)
+    {
+        using CancellationTokenSource cancellation = new();
+        ExecutionContext? captured = null;
+        CountingVerifier verifier = new();
+        ProductionProofCache cache = new(verifier);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("scope"), default);
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
+        AggregationInput input = new() { Deps = [dependency], Witnesses = [new byte[] { 1 }] };
+        if (background)
+        {
+            using (ProductionProofCache.Background(cancellation.Token)) captured = ExecutionContext.Capture();
+        }
+        else
+        {
+            verifier.OnProof = () => captured = ExecutionContext.Capture();
+            ProductionProofCache.Prove(cache, hash, Eip8288Constants.AggregatedVk, input, cancellation.Token);
+            verifier.OnProof = null;
+        }
+        cancellation.Cancel();
+        Assert.That(captured, Is.Not.Null);
+        ExecutionContext.Run(captured!, _ =>
+            Assert.That(cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input), Is.EqualTo(hash.ToByteArray())), null);
     }
 
     [Test]
@@ -302,6 +491,7 @@ public class Eip8288BlockProductionTests
         Transaction independent = CreateTransaction(chain, dependency, [9]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
         Assert.That((await service.AcceptAsync(EncodeWrapper(dependency, first, independent))).IsSuccess, Is.True);
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
         Block block = await ProduceAndImport(chain, slot: 1);
         Assert.That(block.Transactions, Has.Length.EqualTo(2));
         using (chain.MainWorldState.BeginScope(block.Header))
@@ -344,6 +534,7 @@ public class Eip8288BlockProductionTests
         Result<Hash256[]> accepted = await service.AcceptAsync(EncodeWrapper(dependency, transaction));
         Assert.That(accepted.IsSuccess, Is.EqualTo(matchingRoot));
         Assert.That(verifier.VerificationCalls, Is.EqualTo(matchingRoot ? 1 : 0));
+        if (matchingRoot) Assert.That(service.BuildWrapper().IsSuccess, Is.True);
         if (!matchingRoot)
         {
             Assert.That(proofs.TryBeginAdmission([dependency], [[1]], null, out IDisposable? admission), Is.True);
@@ -403,7 +594,8 @@ public class Eip8288BlockProductionTests
         [
             new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, executionGasLimit: FrameTxTestFrames.PrefixFrameGas,
                 stateGasLimit: stateGas, UInt256.Zero, default),
-            new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            new(FrameMode.DepVerify, FrameFlags.None, null, dependency.Scheme == Eip8288Constants.LeanStarkScheme
+                ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency])),
             .. execution
         ];
