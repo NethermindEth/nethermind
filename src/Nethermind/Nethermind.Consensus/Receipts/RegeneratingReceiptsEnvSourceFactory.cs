@@ -6,11 +6,13 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Consensus.Receipts;
@@ -43,12 +45,24 @@ public sealed class RegeneratingReceiptsEnvSourceFactory(
         ILifetimeScope envScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(validationModules)
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
+            // Index table roots are committed after the transactions and never reach a receipt, while merging them needs the
+            // very receipt history this node derives instead of storing.
+            .AddSingleton<IIndexTableHandlerFactory>(NoIndexTablesFactory.Instance)
             .AddScoped<ReceiptsRegenerationEnv>()
             .AddModule(env));
 
         // The pool owns the scope; registering it with rootLifetimeScope.Disposer would retain every created env
         // until node shutdown and turn burst query traffic into long-lived memory.
         return new DisposableOverridableEnv(envScope.Resolve<IOverridableEnv<ReceiptsRegenerationEnv>>(), envScope);
+    }
+
+    private sealed class NoIndexTablesFactory : IIndexTableHandlerFactory
+    {
+        public static readonly NoIndexTablesFactory Instance = new();
+
+        public IIndexTableStore Store { get; } = new IndexTableStore();
+
+        public IIndexTableHandler Create(ITransactionProcessor transactionProcessor) => NullIndexTableHandler.Instance;
     }
 
     private sealed class DisposableOverridableEnv(

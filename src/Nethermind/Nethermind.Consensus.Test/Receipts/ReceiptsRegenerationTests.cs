@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Receipts;
 using Nethermind.Core;
@@ -33,6 +34,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using System.Threading;
@@ -360,6 +362,47 @@ public class ReceiptsRegenerationTests
             storage,
             chain.BlockFinder,
             chain.Container.Resolve<ReceiptsRegenerator>());
+    }
+
+    /// <summary>
+    /// Block 4 publishes the EIP-8304 level-1 table over blocks 0-3, whose tables and receipt bodies are both gone.
+    /// </summary>
+    [Test]
+    public async Task Regenerates_an_index_table_publication_block_without_the_receipts_it_covers()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder.AddSingleton<ISpecProvider>(
+            new TestSpecProvider(new OverridableReleaseSpec(Berlin.Instance) { IsEip8304Enabled = true, Eip8304ContractAddress = TestItem.AddressF })));
+
+        List<Block> blocks = [];
+        for (int i = 0; i < 4; i++)
+        {
+            ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
+            blocks.Add(await chain.AddBlock(Transfer(nonce)));
+        }
+
+        IIndexTableStore store = chain.Container.Resolve<IIndexTableStore>();
+        for (int level = 0; level < Eip8304Constants.TableSizes.Length; level++)
+        {
+            for (long firstBlock = 0; firstBlock < 4; firstBlock++)
+            {
+                store.Remove(level, firstBlock);
+            }
+        }
+
+        foreach (Block block in blocks[..^1])
+        {
+            chain.ReceiptStorage.RemoveReceipts(block);
+        }
+
+        RegeneratingReceiptsEnvSourceFactory factory = new(
+            chain.Container.Resolve<IOverridableEnvFactory>(),
+            chain.Container.Resolve<ILifetimeScope>(),
+            [.. chain.Container.Resolve<IEnumerable<IBlockValidationModule>>()]);
+        using IShareableOverridableEnvSource<ReceiptsRegenerationEnv> envSource = factory.Create(maxConcurrent: 1);
+        ReceiptsRegenerator regenerator = new(envSource, chain.SpecProvider, chain.EthereumEcdsa, chain.PoSSwitcher, LimboLogs.Instance);
+
+        Assert.That(regenerator.TryRegenerate(blocks[^1], out TxReceipt[] regenerated), Is.True);
+        AssertReceiptsMatch(chain.ReceiptStorage.Get(blocks[^1]), regenerated, blocks[^1]);
     }
 
     private Task<Block> AddBlock(Transaction[] transactions) => _chain.AddBlock(transactions);
