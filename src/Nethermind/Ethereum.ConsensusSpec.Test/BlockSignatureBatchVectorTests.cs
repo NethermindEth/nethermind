@@ -13,6 +13,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
+using static Ethereum.ConsensusSpec.Test.OperationVectorHandlers;
 using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransition;
 
 namespace Ethereum.ConsensusSpec.Test;
@@ -32,105 +33,6 @@ public class BlockSignatureBatchVectorTests
         public bool Accepted => Exception is null;
 
         public override string ToString() => Accepted ? $"accepted with root {Root}" : $"{Exception}: {Message}";
-    }
-
-    private readonly record struct OpContext<TState>(TState State, EpochCache Cache, PubkeyCache Pubkeys, bool VerifySignatures, BeaconChainSpec Spec, string CasePath);
-
-    private delegate void OpHandler<TState>(OpContext<TState> ctx, byte[] ssz, BlockSignatureBatch? batch);
-
-    private static readonly Dictionary<string, (string File, OpHandler<BeaconStateFulu> Apply)> FuluOperations = new(StringComparer.Ordinal)
-    {
-        ["attestation"] = ("attestation.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            Attestation.Decode(ssz, out Attestation value);
-            BlockProcessing.ProcessAttestation(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["attester_slashing"] = ("attester_slashing.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            AttesterSlashing.Decode(ssz, out AttesterSlashing value);
-            BlockProcessing.ProcessAttesterSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["bls_to_execution_change"] = ("address_change.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            SignedBlsToExecutionChange.Decode(ssz, out SignedBlsToExecutionChange value);
-            BlockProcessing.ProcessBlsToExecutionChange(ctx.State, value, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["proposer_slashing"] = ("proposer_slashing.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            ProposerSlashing.Decode(ssz, out ProposerSlashing value);
-            BlockProcessing.ProcessProposerSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["sync_aggregate"] = ("sync_aggregate.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            SyncAggregate.Decode(ssz, out SyncAggregate value);
-            BlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["voluntary_exit"] = ("voluntary_exit.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            SignedVoluntaryExit.Decode(ssz, out SignedVoluntaryExit value);
-            BlockProcessing.ProcessVoluntaryExit(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-    };
-
-    private static readonly Dictionary<string, (string File, OpHandler<BeaconStateGloas> Apply)> GloasOperations = new(StringComparer.Ordinal)
-    {
-        ["attestation"] = ("attestation.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            AttestationGloas.Decode(ssz, out AttestationGloas value);
-            ulong parentSlot = ulong.Parse(FuluDriverSupport.ParseFlowMap(Path.Combine(ctx.CasePath, "meta.yaml"))["parent_slot"]);
-            GloasBlockProcessing.ProcessAttestation(ctx.State, value, parentSlot, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["attester_slashing"] = ("attester_slashing.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            AttesterSlashingGloas.Decode(ssz, out AttesterSlashingGloas value);
-            GloasBlockProcessing.ProcessAttesterSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["bls_to_execution_change"] = ("address_change.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            SignedBlsToExecutionChange.Decode(ssz, out SignedBlsToExecutionChange value);
-            GloasBlockProcessing.ProcessBlsToExecutionChange(ctx.State, value, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["execution_payload_bid"] = ("execution_payload_bid.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            SignedExecutionPayloadBid.Decode(ssz, out SignedExecutionPayloadBid value);
-            GloasBlockProcessing.ProcessExecutionPayloadBid(ctx.State, value, ctx.Spec, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["payload_attestation"] = ("payload_attestation.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            PayloadAttestation.Decode(ssz, out PayloadAttestation value);
-            GloasBlockProcessing.ProcessPayloadAttestation(ctx.State, value, ctx.Spec, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["proposer_slashing"] = ("proposer_slashing.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            ProposerSlashing.Decode(ssz, out ProposerSlashing value);
-            GloasBlockProcessing.ProcessProposerSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["sync_aggregate"] = ("sync_aggregate.ssz_snappy", static (ctx, ssz, batch) =>
-        {
-            SyncAggregate.Decode(ssz, out SyncAggregate value);
-            GloasBlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
-        }
-        ),
-        ["voluntary_exit"] = ("voluntary_exit.ssz_snappy", GloasVoluntaryExit),
-        ["voluntary_exit_churn"] = ("voluntary_exit.ssz_snappy", GloasVoluntaryExit),
-    };
-
-    private static void GloasVoluntaryExit(OpContext<BeaconStateGloas> ctx, byte[] ssz, BlockSignatureBatch? batch)
-    {
-        SignedVoluntaryExit.Decode(ssz, out SignedVoluntaryExit value);
-        GloasBlockProcessing.ProcessVoluntaryExit(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
     }
 
     [TestCaseSource(nameof(SanityBlockCases))]
@@ -257,7 +159,7 @@ public class BlockSignatureBatchVectorTests
         ForkDriver other => throw new InvalidOperationException($"fork '{other.Fork}' has no state type this differential knows"),
     };
 
-    private static Outcome RunOperation<TState>(OperationCase testCase, ForkDriver<TState> driver, (string File, OpHandler<TState> Apply) handler, bool batched) where TState : class
+    private static Outcome RunOperation<TState>(OperationCase testCase, ForkDriver<TState> driver, (string File, Action<OpContext<TState>, byte[], BlockSignatureBatch?> Apply) handler, bool batched) where TState : class
     {
         TState state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
         OpContext<TState> ctx = new(
@@ -265,6 +167,7 @@ public class BlockSignatureBatchVectorTests
             driver.NewCache(),
             FuluDriverSupport.BuildPubkeyCache(driver.ValidatorsOf(state)),
             FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath),
+            ExecutionValid: true,
             FuluDriverSupport.CaseSpec(testCase.CasePath),
             testCase.CasePath);
         byte[] operand = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, handler.File));
