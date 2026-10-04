@@ -887,7 +887,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // One unsigned test bounds the depth on both sides: below the source the difference wraps past the limit.
             if ((nuint)(head - TOpCount.Count) < (nuint)(EvmStack.MaxStackSize - 1 - TOpCount.Count) && TryCharge(ref gas, VeryLowGasCost.GasCost))
             {
-                DupStep<TOpCount>.Apply(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)));
+                DupStep<TOpCount>.Apply(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), ref ip);
                 head++;
                 ip = ref Unsafe.Add(ref ip, 1);
                 nint next = handlers[ip];
@@ -960,7 +960,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (head > TOpCount.Count && TryCharge(ref gas, VeryLowGasCost.GasCost))
             {
-                SwapStep<TOpCount>.Apply(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)));
+                SwapStep<TOpCount>.Apply(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
                 nint next = handlers[ip];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
@@ -1765,13 +1765,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (head > 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
             {
-                ref ulong shift = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
-                ref ulong value = ref Unsafe.Subtract(ref shift, EvmStack.WordSize / sizeof(ulong));
-                ulong bits = shift;
-                if ((Unsafe.Add(ref shift, 1) | Unsafe.Add(ref shift, 2) | Unsafe.Add(ref shift, 3) | (bits >> 8)) == 0)
-                    ShiftLeft(ref value, (int)bits);
-                else
-                    SetWord(ref value, 0);
+                ShiftLeftStep.Apply(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), ref ip);
 
                 head--;
                 ip = ref Unsafe.Add(ref ip, 1);
@@ -1800,13 +1794,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (head > 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
             {
-                ref ulong shift = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
-                ref ulong value = ref Unsafe.Subtract(ref shift, EvmStack.WordSize / sizeof(ulong));
-                ulong bits = shift;
-                if ((Unsafe.Add(ref shift, 1) | Unsafe.Add(ref shift, 2) | Unsafe.Add(ref shift, 3) | (bits >> 8)) == 0)
-                    ShiftRight(ref value, (int)bits);
-                else
-                    SetWord(ref value, 0);
+                ShiftRightStep.Apply(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), ref ip);
 
                 head--;
                 ip = ref Unsafe.Add(ref ip, 1);

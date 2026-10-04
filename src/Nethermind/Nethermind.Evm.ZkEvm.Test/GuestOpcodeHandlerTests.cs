@@ -655,8 +655,9 @@ public class GuestOpcodeHandlerTests
         // On the heap, so the state that refers to it can be handed to a function pointer, whose parameters cannot be scoped.
         EthereumGasPolicy[] gasPolicy = [EthereumGasPolicy.FromULong(gas)];
         EvmExceptionType exception;
-        fixed (nint* table = PairedHandlers(vm))
+        fixed (nint* entries = PairedHandlers(vm))
         {
+            nint* table = entries + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
             // The code info's copy of the code is the one followed by the padding that dispatch may read.
             EvmStack stack = new(0, ref stackStart, codeInfo.CodeSpan, codeInfo);
             stack.HoistInputData(env.InputData.Span);

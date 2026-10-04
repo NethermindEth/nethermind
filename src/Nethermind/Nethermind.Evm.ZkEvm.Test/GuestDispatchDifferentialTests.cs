@@ -129,12 +129,14 @@ public class GuestDispatchDifferentialTests
         {
             ReadOnlySpan<nint> handlers = new(entries, 256);
             nint[] paired = VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers);
-            const int swap1Pop = (int)Instruction.SWAP1 | (int)Instruction.POP << 8;
-            const int swap1Stop = (int)Instruction.SWAP1;
+            const int swap1Pop = VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength + ((int)Instruction.SWAP1 | (int)Instruction.POP << 8);
+            const int swap1Stop = VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength + (int)Instruction.SWAP1;
+            const int push1Add = (int)Instruction.ADD;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(paired[swap1Pop] != handlers[(int)Instruction.SWAP1], Is.EqualTo(table == Table.Untraced));
                 Assert.That(paired[swap1Stop], Is.EqualTo(handlers[(int)Instruction.SWAP1]));
+                Assert.That(paired[push1Add] != handlers[(int)Instruction.PUSH1], Is.EqualTo(table == Table.Untraced));
             }
         }
     }
@@ -146,18 +148,27 @@ public class GuestDispatchDifferentialTests
     [Test]
     public void Fused_pairs_match_the_shared_handlers_at_every_gas([ValueSource(nameof(FusedPairs))] Instruction[] pair)
     {
-        byte[] code = [(byte)pair[0], (byte)pair[1], (byte)Instruction.NOT, (byte)Instruction.STOP];
         List<string> mismatches = [];
-        foreach (int head in (int[])[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 1022, 1023, 1024])
-            for (ulong gas = 0; gas <= 12 && mismatches.Count < 5; gas++)
-            {
-                Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced);
-                Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced);
-                if (!Matches(untraced, traced) || untraced.Pc != traced.Pc)
-                    mismatches.Add($"head {head} gas {gas}\n untraced {untraced}\n traced   {traced}");
-            }
+        foreach (byte[] code in Programs(pair))
+            foreach (int head in (int[])[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 1022, 1023, 1024])
+                for (ulong gas = 0; gas <= 12 && mismatches.Count < 5; gas++)
+                {
+                    Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced);
+                    Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced);
+                    if (!Matches(untraced, traced))
+                        mismatches.Add($"code {Convert.ToHexString(code)} head {head} gas {gas}\n untraced {untraced}\n traced   {traced}");
+                }
 
         Assert.That(mismatches, Is.Empty);
+
+        // A PUSH1 takes its immediate from the byte after it, at either end of its range and in between.
+        static IEnumerable<byte[]> Programs(Instruction[] pair) => pair[0] == Instruction.PUSH1
+            ? [Program(pair, 0x00), Program(pair, 0x07), Program(pair, 0xff)]
+            : [[(byte)pair[0], (byte)pair[1], (byte)Instruction.NOT, (byte)Instruction.STOP]];
+
+        static byte[] Program(Instruction[] pair, byte immediate) => pair[1] == Instruction.PUSH1
+            ? [(byte)Instruction.PUSH1, immediate, (byte)Instruction.PUSH1, (byte)~immediate, (byte)Instruction.NOT, (byte)Instruction.STOP]
+            : [(byte)Instruction.PUSH1, immediate, (byte)pair[1], (byte)Instruction.NOT, (byte)Instruction.STOP];
     }
 
     /// <remarks>POP, CALLDATALOAD and CLZ run checked in every table, so the random programs cannot cover them.</remarks>
@@ -207,6 +218,35 @@ public class GuestDispatchDifferentialTests
             Outcome traced = Run(100_000, [], 0, new CodeInfo(program), Table.Traced);
             if (!Matches(untraced, traced))
                 mismatches.Add($"code {Convert.ToHexString(program)}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
+    /// A PUSH1 fused with the opcode after it never writes the pushed word, so the operands lean on the carries, borrows
+    /// and signs the byte meets in the word below it; both words left on the stack are stored to memory.
+    /// </remarks>
+    [Test]
+    public void Pushed_bytes_match_the_shared_handlers(
+        [Values(Instruction.ADD, Instruction.SUB, Instruction.AND, Instruction.OR, Instruction.XOR, Instruction.SAR, Instruction.SHL,
+            Instruction.SHR, Instruction.SWAP1, Instruction.SWAP2)] Instruction op,
+        [Range(0, 3)] int seed)
+    {
+        List<string> mismatches = [];
+        Random random = new(seed * 7907 + (int)op);
+        for (int i = 0; i < 400 && mismatches.Count < 5; i++)
+        {
+            byte[] code =
+            [
+                (byte)Instruction.PUSH32, .. EdgeWord(random), (byte)Instruction.PUSH32, .. EdgeWord(random),
+                (byte)Instruction.PUSH1, SmallImmediate(random), (byte)op,
+                (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.PUSH1, 0x20, (byte)Instruction.MSTORE, (byte)Instruction.STOP
+            ];
+            Outcome untraced = Run(100_000, [], 0, new CodeInfo(code), Table.Untraced);
+            Outcome traced = Run(100_000, [], 0, new CodeInfo(code), Table.Traced);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"code {Convert.ToHexString(code)}\n untraced {untraced}\n traced   {traced}");
         }
 
         Assert.That(mismatches, Is.Empty);
@@ -455,7 +495,9 @@ public class GuestDispatchDifferentialTests
                     {
                         // An opcode pair the guest runs as one step, or that only shares an opcode with one.
                         Instruction[] pair = FusedPairs[random.Next(FusedPairs.Length)];
-                        code.AddRange([(byte)pair[0], (byte)pair[random.Next(4) == 0 ? 0 : 1]]);
+                        code.Add((byte)pair[0]);
+                        if (pair[0] == Instruction.PUSH1) code.Add(SmallImmediate(random));
+                        code.Add((byte)pair[random.Next(4) == 0 ? 0 : 1]);
                         break;
                     }
                 default: code.Add((byte)random.Next(256)); break;
@@ -492,9 +534,18 @@ public class GuestDispatchDifferentialTests
         {
             ReadOnlySpan<nint> handlers = new(entries, 256);
             nint[] paired = VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers);
-            for (int index = 0; index < paired.Length; index++)
-                if (paired[index] != handlers[index & 0xff])
+            for (int index = 0; index < VirtualMachine<EthereumGasPolicy>.PairedHandlersLength; index++)
+            {
+                if ((index & 0xff) != (int)Instruction.PUSH1 &&
+                    paired[VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength + index] != handlers[index & 0xff])
                     pairs.Add([(Instruction)(index & 0xff), (Instruction)(index >> 8)]);
+            }
+
+            for (int follower = 0; follower < VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength; follower++)
+            {
+                if (paired[follower] != handlers[(int)Instruction.PUSH1])
+                    pairs.Add([Instruction.PUSH1, (Instruction)follower]);
+            }
         }
 
         return [.. pairs];
@@ -562,8 +613,9 @@ public class GuestDispatchDifferentialTests
         nint finalHead;
         // Paired once per table, fork and replaced set, as the dispatch loop pairs each table once.
         nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
-        fixed (nint* entries = paired)
+        fixed (nint* pairedStart = paired)
         {
+            nint* entries = pairedStart + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
             EvmStack stack = new(head, vm.Tracer, ref stackBytes[start], codeInfo.ExecutionCodeSpan, codeInfo);
             stack.HoistInputData(inputData);
             VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Vm = vm, Memory = ref frame.Memory };

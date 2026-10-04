@@ -97,8 +97,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         // Safety: the paired table remains pinned for the complete tail-call chain. Every bytecode read lands in the
         // code or in the padding that follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.
-        fixed (nint* table = handlers)
+        fixed (nint* entries = handlers)
         {
+            nint* table = entries + FollowerHandlersLength;
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
             DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = table, Vm = this, Memory = ref VmState.Memory };
 
