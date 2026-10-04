@@ -57,6 +57,8 @@ public sealed class ForkAlgorithmGenerator : IIncrementalGenerator
             string? replacement = token.ValueText switch
             {
                 "ForkState" => gloas ? "BeaconStateGloas" : "BeaconStateFulu",
+                "ForkBlock" => gloas ? "BeaconBlockGloas" : "BeaconBlock",
+                "ForkAttestation" => gloas ? "AttestationGloas" : "Attestation",
                 "ForkBody" => gloas ? "BeaconBlockBodyGloas" : "BeaconBlockBody",
                 "ForkAttesterSlashing" => gloas ? "AttesterSlashingGloas" : "AttesterSlashing",
                 "ForkIndexedAttestation" => gloas ? "IndexedAttestationGloas" : "IndexedAttestation",
