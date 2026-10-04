@@ -283,20 +283,12 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    /// <summary>Runs pruning passes back to back until nothing more is owed under the current configuration.</summary>
-    /// <remarks>
-    /// Ignores <see cref="IHistoryConfig.PruningInterval"/> and <see cref="IHistoryConfig.PruningTimeoutSeconds"/>.
-    /// For offline use by the <c>prune-history</c> command. Stops on lack of progress rather than on
-    /// <see cref="ShouldPruneHistory"/>, which stays true while the sync pivot is below the cutoff.
-    /// </remarks>
-    /// <exception cref="HistoryPrunerException">
-    /// Pruning is disabled, the pruning boundary could not be established (no head, no sync pivot, or the ancient
-    /// bodies backfill is still descending), or the transaction index sweep stopped making progress.
-    /// </exception>
+    /// <inheritdoc/>
     public void PruneToCompletion(CancellationToken cancellationToken)
     {
         if (!_enabled) throw new HistoryPrunerException("History pruning is disabled.");
 
+        // Stops on lack of progress rather than on ShouldPruneHistory, which stays true while the sync pivot is below the cutoff.
         while (true)
         {
             (ulong, ulong, ulong, ulong) pointersBeforePass = (_blocksDeletePointer, _blocksReclaimCursor, _balsDeletePointer, _sliceCleanupCursor);

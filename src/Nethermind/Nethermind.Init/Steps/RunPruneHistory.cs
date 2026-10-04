@@ -10,7 +10,7 @@ namespace Nethermind.Init.Steps;
 
 [StepCommand("prune-history", "Prune historical blocks, receipts and block access lists per the History configuration, then exit.")]
 [RunnerStepDependencies(typeof(InitializeBlockTree), typeof(StartMonitoring))]
-public class RunPruneHistory(HistoryPruner historyPruner) : IStep
+public class RunPruneHistory(IHistoryPruner historyPruner) : IStep
 {
     /// <inheritdoc/>
     /// <exception cref="HistoryPruner.HistoryPrunerException">Pruning is disabled or its boundary could not be established.</exception>
