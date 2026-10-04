@@ -95,8 +95,13 @@ class MixedObserverChecks(unittest.TestCase):
         for tag in [None, {'number': '0xf', 'hash': anchored['hash']}, {'number': '0x20', 'hash': anchored['hash']}]:
             with self.subTest(tag=tag), self.assertRaises(mixed.ObservationMoved):
                 mixed.ensure_el_finalized([FinalizedRpc(tag)], anchored)
-        with self.assertRaisesRegex(RuntimeError, 'Malformed execution finalized block'):
-            mixed.ensure_el_finalized([FinalizedRpc({'number': 'invalid', 'hash': finalized['hash']})], anchored)
+        for tag in [{'number': 'invalid', 'hash': finalized['hash']},
+                    {'number': '0x20', 'hash': '22' * 32},
+                    {'number': '0x20', 'hash': '0x' + 'gg' * 32},
+                    {'number': '0x20', 'hash': '0x' + '22' * 31},
+                    {'number': '0x20', 'hash': finalized['hash'] + '\n'}]:
+            with self.subTest(tag=tag), self.assertRaisesRegex(RuntimeError, 'Malformed execution finalized block'):
+                mixed.ensure_el_finalized([FinalizedRpc(tag)], anchored)
 
     def test_health_gate_remains_enabled_in_optimized_python(self):
         sample = {'capturedEpoch': time.time(), 'hostAvailableBytes': 5 * 1024**3,

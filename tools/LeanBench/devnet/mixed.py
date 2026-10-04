@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import pathlib
+import re
 import struct
 import subprocess
 import sys
@@ -15,6 +16,8 @@ import urllib.error
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from drive import Rpc, RpcError, quantity, wait_for
 from spam import beacon, dependencies, read_json, basename, utc
+
+HASH = re.compile(r'0x[0-9a-fA-F]{64}')
 
 
 class ObservationMoved(RuntimeError):
@@ -86,7 +89,7 @@ def validate_health(v):
     require(all(n > 0 for n in v['elMemoryLimits']), 'Execution memory limits must be positive')
     require(v['hostAvailableFloorBytes'] >= 6 * 1024**3, 'Host memory floor must be at least 6 GiB')
     require(v['hostAvailableBytes'] >= v['hostAvailableFloorBytes'], 'Host available memory is below the safety floor')
-    require(v['hostCpuPercent'] < 85 and len(v['elMemoryBytes']) == 2, 'Host CPU is above the safety threshold')
+    require(v['hostCpuPercent'] < 85, 'Host CPU is above the safety threshold')
     require(all(x < y * .8 for x, y in zip(v['elMemoryBytes'], v['elMemoryLimits'])), 'Execution memory is above the safety threshold')
     require(v['elOomKilled'] == [False, False] and v['elRestarts'] == [0, 0], 'Execution node OOM or restart detected')
 
@@ -96,13 +99,14 @@ def ensure_el_finalized(nodes, block, record_retry=lambda error: None):
         finalized = retry_read(lambda: node.call('eth_getBlockByNumber', ['finalized', False]), record_retry)
         if finalized is None:
             raise ObservationMoved('Waiting for execution finalized block')
-        require(isinstance(finalized, dict) and isinstance(finalized.get('number'), str) and isinstance(finalized.get('hash'), str) and len(finalized['hash']) == 66, 'Malformed execution finalized block')
+        require(isinstance(finalized, dict) and isinstance(finalized.get('number'), str)
+                and isinstance(finalized.get('hash'), str) and HASH.fullmatch(finalized['hash']),
+                'Malformed execution finalized block')
         try:
             height = quantity(finalized['number'])
-            require(len(bytes.fromhex(finalized['hash'][2:])) == 32, 'Malformed execution finalized block')
         except (ValueError, TypeError) as error:
             raise RuntimeError('Malformed execution finalized block') from error
-        require(finalized['hash'].startswith('0x') and finalized['number'].startswith('0x') and height >= 0, 'Malformed execution finalized block')
+        require(finalized['number'].startswith('0x') and height >= 0, 'Malformed execution finalized block')
         if height < quantity(block['number']):
             raise ObservationMoved('Execution finalized block has not reached the anchored block')
         ensure_canonical([node], finalized, record_retry)
