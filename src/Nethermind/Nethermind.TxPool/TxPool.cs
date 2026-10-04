@@ -1592,9 +1592,7 @@ namespace Nethermind.TxPool
             {
                 _hashCache.DeleteFromCurrentBlock(tx.Hash!);
             }
-            // A pushed one, which nothing requested, stays known so resending it buys no further validation,
-            // until a peer announces it and NotifyAboutTx makes the request it is owed.
-            // A resend of such a push is AlreadyKnown and must leave its entry for the announcement it waits for.
+            // A yielded push stays known, so resends buy no validation, and waits for an announcement to refetch it.
             else if (!(state.FrameSimulationYielded && _retryCache.TryAwaitAnnouncement(tx.Hash!))
                 && accepted != AcceptTxResult.Invalid
                 && accepted != AcceptTxResult.InvalidBlobProofs

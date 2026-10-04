@@ -46,8 +46,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly int _maxPreferredRetryResourcesPerHandlerPerTick;
     private readonly TimeProvider _timeProvider;
 
-    /// <summary>When the latest unclaimed <see cref="TryAwaitAnnouncement"/> entry was published, so the announce path
-    /// can skip the lookup while none can still be alive.</summary>
+    /// <summary>Lets the announce path skip the lookup while no unclaimed entry can be alive.</summary>
     private long _lastUnclaimedPublishedAt = long.MinValue;
     private readonly Task _mainLoopTask;
     private static readonly ObjectPool<HandlerBag<TMessage>> _handlerBagsPool = new DefaultObjectPool<HandlerBag<TMessage>>(new HandlerBagPolicy<TMessage>(), maximumRetained: MaxRetainedHandlerBags);
@@ -498,8 +497,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         if (_retryRequests.TryGetValue(item.ResourceId, out currentEntry)
             && currentEntry.RequestGeneration == item.RequestGeneration)
         {
-            // An entry nobody claimed made no request and holds no handlers, so nothing is left in flight to fire
-            // for. Its bag is not touched: a claim that wins the compare-and-remove keeps a live lifecycle.
+            // An unclaimed entry made no request; its bag is left alone so a claim that wins the race stays live.
             if (currentEntry.SourceHandler is null)
             {
                 TryRemove(item.ResourceId, currentEntry);
@@ -747,17 +745,9 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Tracks a delivered resource no request was made for, which this node could not consume yet, so the
-    /// first peer to announce it later is asked for it.
-    /// </summary>
-    /// <remarks>The entry has no requester until an announcement claims it, through
-    /// <see cref="Announced"/> or <see cref="TryClaimUnrequested"/>; that request is then the first one of an
-    /// ordinary retry lifecycle, bounded as <see cref="TryDefer"/> describes. An unclaimed entry grants no
-    /// deferral and expires after the usual timeout without sending anything. It takes a tracked slot like an
-    /// announced request does, so many yielded pushes can crowd announced ones until they expire.</remarks>
-    /// <returns><see langword="true"/> when the resource is tracked awaiting an announcement; <see langword="false"/>
-    /// when it is tracked for a request already, or cannot be tracked, in which case the caller treats it as received.</returns>
+    /// <summary>Tracks a delivered resource nobody requested, so the first peer to announce it later is asked for it once.</summary>
+    /// <remarks>Unclaimed, the entry grants no deferral and expires after the usual timeout; it uses a tracked slot.</remarks>
+    /// <returns><see langword="false"/> when it is already requested or cannot be tracked: treat it as received.</returns>
     internal bool TryAwaitAnnouncement(in TResourceId resourceId)
     {
         if (!TryEnterOperation())
@@ -775,10 +765,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Lets <paramref name="handler"/> make the request an unclaimed <see cref="TryAwaitAnnouncement"/> entry is waiting for.
-    /// </summary>
-    /// <returns><see langword="true"/> when the caller must request the resource from <paramref name="handler"/>.</returns>
+    /// <summary>Lets <paramref name="handler"/> make the request an unclaimed entry waits for; true means request it.</summary>
     internal bool TryClaimUnrequested(in TResourceId resourceId, IMessageHandler<TMessage> handler)
     {
         if (!MayHaveUnclaimed() || !TryEnterOperation())
@@ -799,8 +786,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
     }
 
-    /// <summary>Whether <paramref name="resourceId"/> has an unclaimed <see cref="TryAwaitAnnouncement"/> entry, which a
-    /// resend of the resource must not consume.</summary>
+    /// <summary>Whether an unclaimed entry waits for <paramref name="resourceId"/>; a resend must not consume it.</summary>
     internal bool IsAwaitingAnnouncement(in TResourceId resourceId)
     {
         if (!MayHaveUnclaimed() || !TryEnterOperation())
@@ -871,9 +857,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             return false;
         }
 
-        // The claimed request starts its own timeout under a new generation, so the push's queue item goes stale.
-        // Without a queue slot the claim is refused: an expiry already past the push's item would leave the
-        // claimed entry with no item left to expire it.
+        // A claim starts its own timeout under a new generation; without a queue slot it is refused, as nothing
+        // would be left to expire it.
         if (!TryReserveExpiringQueueSlot())
         {
             ReleaseHandlerSlot(handler);
