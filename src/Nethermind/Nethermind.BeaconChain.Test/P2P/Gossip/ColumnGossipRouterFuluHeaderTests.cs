@@ -581,8 +581,11 @@ public class ColumnGossipRouterFuluHeaderTests
         QueuedColumnCase test = QueuedColumnScenarios[index];
         ForkChoiceSnapshot withParent = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true);
         ForkChoiceSnapshotHolder snapshots = new() { Current = test.ParentMissing ? Snapshot(Ancestry.BlockAndParentNotInSnapshot, parentInSnapshot: true) : withParent };
-        ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(test.OtherBranch ? OtherRoot : ParentRoot, 0,
-            test.CheckMetrics ? Spec.GetEpoch(CurrentSlot) - 1 : null) };
+        ProposerLookaheadHolder lookaheads = new()
+        {
+            Current = Lookahead(test.OtherBranch ? OtherRoot : ParentRoot, 0,
+                test.CheckMetrics ? Spec.GetEpoch(CurrentSlot) - 1 : null)
+        };
         (ColumnGossipRouter router, DataColumnSidecarPool pool, BeaconChainStore store) = Create(null, subnets: test.CheckMetrics ? AllSubnets : null, withPubkeys: test.WithPubkeys, lookaheads: lookaheads, forkChoice: snapshots);
         DataColumnSidecar honest = test.WithPubkeys ? SignedSidecar() : DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot);
         Hash256 blockRoot = SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!);
