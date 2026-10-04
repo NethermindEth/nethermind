@@ -185,28 +185,10 @@ public class RandaoMixAndEpochCacheTests
     /// <summary>Creates the minimal state used to test RANDAO windows and epoch-cache keys.</summary>
     internal static BeaconStateFulu CreateState(ulong currentEpoch, int validatorCount)
     {
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        Array.Fill(randaoMixes, Hash(0x01));
-
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
-        for (int i = 0; i < validatorCount; i++)
-        {
-            validators[i] = GloasTestFixtures.CreateActiveValidator(default);
-            balances[i] = 32 * Gwei;
-        }
-
-        return new BeaconStateFulu
-        {
-            Slot = BeaconStateAccessors.ComputeStartSlotAtEpoch(currentEpoch),
-            Validators = validators,
-            Balances = balances,
-            RandaoMixes = randaoMixes,
-            BlockRoots = CreateFilledBlockRoots(),
-            Slashings = new ulong[(int)Presets.EpochsPerSlashingsVector],
-            ProposerLookahead = new ulong[(int)Presets.ProposerLookaheadSlots],
-            FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-        };
+        BeaconStateFulu state = GloasTestFixtures.CreateMinimalFuluState(validatorCount, Hash(0x01));
+        state.Slot = BeaconStateAccessors.ComputeStartSlotAtEpoch(currentEpoch);
+        state.BlockRoots = CreateFilledBlockRoots();
+        return state;
     }
 
     /// <summary>A state at <paramref name="epoch"/> on a branch that forked from the common history

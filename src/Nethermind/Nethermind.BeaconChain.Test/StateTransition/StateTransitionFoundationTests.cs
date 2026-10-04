@@ -242,33 +242,8 @@ public class StateTransitionFoundationTests
     };
 
     /// <summary>Creates a minimal Fulu state with active validators at epoch 0 and non-zero RANDAO mixes.</summary>
-    private static BeaconStateFulu CreateState(int validatorCount, ulong effectiveBalance = 32 * Gwei, int inactiveEvery = 0)
-    {
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        Array.Fill(randaoMixes, Hash(0x42));
-
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
-        for (int i = 0; i < validatorCount; i++)
-        {
-            bool inactive = inactiveEvery > 0 && i % inactiveEvery == 0;
-            validators[i] = CreateActiveValidator(default);
-            validators[i].EffectiveBalance = effectiveBalance;
-            validators[i].ActivationEpoch = inactive ? Presets.FarFutureEpoch : 0;
-            balances[i] = effectiveBalance;
-        }
-
-        return new BeaconStateFulu
-        {
-            Slot = 0,
-            Validators = validators,
-            Balances = balances,
-            RandaoMixes = randaoMixes,
-            Slashings = new ulong[(int)Presets.EpochsPerSlashingsVector],
-            ProposerLookahead = new ulong[(int)Presets.ProposerLookaheadSlots],
-            FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-        };
-    }
+    private static BeaconStateFulu CreateState(int validatorCount, ulong effectiveBalance = 32 * Gwei, int inactiveEvery = 0) =>
+        CreateMinimalFuluState(validatorCount, Hash(0x42), effectiveBalance, inactiveEvery);
 
     private static Hash256 Hash(byte b)
     {
