@@ -16,7 +16,6 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
-using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
@@ -147,19 +146,12 @@ public class CanonicalIndexReorgServingTests
 
     internal static async Task<T> ServeAsync<T>(ISessionListenerProtocol protocol, System.Func<IChannel, ISessionContext, Task<T>> dial)
     {
-        ISessionContext context = Substitute.For<ISessionContext>();
-        context.State.Returns(new Nethermind.Libp2p.Core.State());
+        ISessionContext context = ReqRespTestChannel.Context();
         Channel channel = new();
-        Task listen = ListenThenCloseAsync(protocol, channel.Reverse, context);
+        Task listen = ReqRespTestChannel.ListenThenCloseAsync(protocol, channel.Reverse, context);
         T result = await dial(channel, context);
         await listen;
         return result;
     }
 
-    // The libp2p host closes the response stream once the handler returns; the dial side reads until then.
-    private static async Task ListenThenCloseAsync(ISessionListenerProtocol protocol, IChannel channel, ISessionContext context)
-    {
-        await protocol.ListenAsync(channel, context);
-        await channel.WriteEofAsync();
-    }
 }

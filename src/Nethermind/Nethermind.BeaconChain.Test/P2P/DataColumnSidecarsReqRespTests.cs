@@ -19,7 +19,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
-using NSubstitute;
 using NUnit.Framework;
 using Snappier;
 
@@ -324,10 +323,9 @@ public class DataColumnSidecarsReqRespTests
         Assert.That((ulong)request.Length * (ulong)allColumns.Length, Is.EqualTo(DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars));
 
         DataColumnSidecarsByRootProtocol protocol = new(Spec, new DataColumnSidecarPool());
-        ISessionContext context = Substitute.For<ISessionContext>();
-        context.State.Returns(new Nethermind.Libp2p.Core.State());
+        ISessionContext context = ReqRespTestChannel.Context();
         Channel channel = new();
-        Task listen = ListenThenCloseAsync(protocol, channel.Reverse, context);
+        Task listen = ReqRespTestChannel.ListenThenCloseAsync(protocol, channel.Reverse, context);
 
         ForkedDataColumnSidecars served = await protocol.DialAsync(channel, context, new(request, gloas));
         await listen;
@@ -408,8 +406,7 @@ public class DataColumnSidecarsReqRespTests
     private static async Task DialRangeAsync(DataColumnSidecar[] whole, byte[] trailingBytes, Action<DataColumnSidecar> onSidecar, DataColumnSidecarsByRangeRequest? request = null, TimeSpan chunkGap = default, CancellationToken token = default, DataColumnSidecarsByRangeProtocol? protocol = null)
     {
         protocol ??= new(Spec, new DataColumnSidecarPool(), new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()));
-        ISessionContext context = Substitute.For<ISessionContext>();
-        context.State.Returns(new Nethermind.Libp2p.Core.State());
+        ISessionContext context = ReqRespTestChannel.Context();
         Channel channel = new();
         using CancellationTokenSource serverStop = CancellationTokenSource.CreateLinkedTokenSource(token);
 
@@ -467,21 +464,13 @@ public class DataColumnSidecarsReqRespTests
     internal static async Task<IReadOnlyList<DataColumnSidecar>> RequestRangeAsync(DataColumnSidecarPool pool, BeaconChainStore store, ulong startSlot, ulong count, ulong[] columns, SlotClock? clock = null)
     {
         DataColumnSidecarsByRangeProtocol protocol = new(Spec, pool, store, clock);
-        ISessionContext context = Substitute.For<ISessionContext>();
-        context.State.Returns(new Nethermind.Libp2p.Core.State());
+        ISessionContext context = ReqRespTestChannel.Context();
 
         Channel channel = new();
-        Task listen = ListenThenCloseAsync(protocol, channel.Reverse, context);
+        Task listen = ReqRespTestChannel.ListenThenCloseAsync(protocol, channel.Reverse, context);
         ForkedDataColumnSidecars served = await protocol.DialAsync(channel, context, new(new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }, Gloas: false));
         await listen;
         return served.Fulu;
-    }
-
-    // The libp2p host closes the response stream once the handler returns; the dial side reads until then.
-    private static async Task ListenThenCloseAsync(ISessionListenerProtocol protocol, IChannel channel, ISessionContext context)
-    {
-        await protocol.ListenAsync(channel, context);
-        await channel.WriteEofAsync();
     }
 
     private const string ByRangeId = "/eth2/beacon_chain/req/data_column_sidecars_by_range/1/ssz_snappy";

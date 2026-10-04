@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
@@ -17,7 +16,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.ReqResp;
@@ -249,12 +247,5 @@ public class DataColumnSidecarsByRangeReadFailureTests
     private static long InvalidMessageCount(DataColumnSidecarsByRangeProtocol protocol) =>
         Metrics.BeaconChainReqRespFailures.TryGetValue(new ReqRespFailureKey(protocol.Id, ReqRespFailureReason.InvalidMessage), out long count) ? count : 0;
 
-    private static ISessionContext Context()
-    {
-        ISessionContext context = Substitute.For<ISessionContext>();
-        Nethermind.Libp2p.Core.State state = new();
-        state.RemoteAddress = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/4001/p2p/{Requester}");
-        context.State.Returns(state);
-        return context;
-    }
+    private static ISessionContext Context() => ReqRespTestChannel.Context(Requester);
 }
