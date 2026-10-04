@@ -885,7 +885,7 @@ namespace Nethermind.Trie
             {
                 if (_count == 0) { frame = default; return false; }
                 frame = _entries[--_count];
-                _entries[_count] = default; // release references
+                if (ReleasesPoppedFrames) _entries[_count] = default; // release references
                 return true;
             }
 

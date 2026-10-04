@@ -18,6 +18,11 @@ public partial class PatriciaTree
     /// <remarks>Asked per level as a trie write climbs back to the root; out of line, the call costs more than its few compares.</remarks>
     private const MethodImplOptions ShouldUpdateChildInlining = MethodImplOptions.AggressiveInlining;
 
+    /// <inheritdoc cref="ReleasesPoppedFrames" path="/summary"/>
+    /// <remarks>Not in the guest: it verifies one block and exits, so what the stack keeps alive costs nothing, while
+    /// the clear is a second index computation and three stores per level of every write's climb.</remarks>
+    private static bool ReleasesPoppedFrames => false;
+
     /// <summary>Whether a trie write may stop climbing at this level, the rest of the climb changing nothing.</summary>
     /// <remarks>
     /// So it is when the parent is dirty and unhashed and already holds the same, unhashed child: updating it would store
