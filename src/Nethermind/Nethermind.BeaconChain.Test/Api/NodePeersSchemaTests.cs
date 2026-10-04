@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -29,8 +28,7 @@ public class NodePeersSchemaTests
         host.PeerManager!.ReserveDialingForTest("/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAmSchemaPeer", enr);
 
         HttpResponseMessage response = await host.GetAsync("/eth/v1/node/peers", "application/json");
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement root = JsonDocument.Parse(raw).RootElement;
         JsonElement peer = root.GetProperty("data").EnumerateArray().Single();
         JsonElement count = root.GetProperty("meta").GetProperty("count");

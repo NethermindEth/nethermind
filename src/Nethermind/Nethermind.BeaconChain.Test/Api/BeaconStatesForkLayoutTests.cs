@@ -98,8 +98,7 @@ public class BeaconStatesForkLayoutTests
         [Values("fork", "finality_checkpoints", "validators", "validator_balances", "committees", "randao", "sync_committees")] string endpoint)
     {
         using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{SlotOf(fork)}/{endpoint}", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement data = JsonDocument.Parse(raw).RootElement.GetProperty("data");
 
         switch (endpoint)

@@ -89,16 +89,13 @@ public class BeaconBlockAttestationsTests
     public async Task Errors_follow_the_published_responses(string blockId, string accept, HttpStatusCode expected)
     {
         using HttpResponseMessage response = await _host.GetAsync($"/eth/v2/beacon/blocks/{blockId}/attestations", accept);
-        Assert.That(response.StatusCode, Is.EqualTo(expected));
-        using JsonDocument body = await ReadJsonAsync(response);
-        Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo((int)expected));
+        await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
     private async Task<JsonElement> ReadEnvelope(string path, bool expectedFinalized)
     {
         using HttpResponseMessage response = await _host.GetAsync(path, Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
 
         JsonElement root = JsonDocument.Parse(raw).RootElement;

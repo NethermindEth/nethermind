@@ -25,6 +25,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.DataAvailability;
+using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -272,8 +273,7 @@ public class BeaconApiBlobsTests
     {
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/blobs/{blockIdAndQuery}", accept);
 
-        Assert.That(response.StatusCode, Is.EqualTo(expected));
-        Assert.That((await ReadJsonAsync(response)).RootElement.GetProperty("code").GetInt32(), Is.EqualTo((int)expected));
+        await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
     /// <summary>Rebuilds past <see cref="BlobsEndpoint.MaxConcurrentRebuilds"/> are refused at once with 503, and a released permit serves again.</summary>
@@ -337,42 +337,16 @@ public class BeaconApiBlobsTests
 
     private static SignedBeaconBlockGloas GloasBlock(ulong slot, SszKzgCommitment[] commitments)
     {
-        BeaconBlockBody fulu = MinimalBlock(slot).Message!.Body!;
-        return new SignedBeaconBlockGloas
-        {
-            Message = new BeaconBlockGloas
-            {
-                Slot = slot,
-                ParentRoot = Hash256.Zero,
-                StateRoot = Hash256.Zero,
-                Body = new BeaconBlockBodyGloas
-                {
-                    Eth1Data = fulu.Eth1Data,
-                    Graffiti = fulu.Graffiti,
-                    ProposerSlashings = [],
-                    AttesterSlashings = [],
-                    Attestations = [],
-                    Deposits = [],
-                    VoluntaryExits = [],
-                    SyncAggregate = fulu.SyncAggregate,
-                    BlsToExecutionChanges = [],
-                    SignedExecutionPayloadBid = new SignedExecutionPayloadBid
-                    {
-                        Message = new ExecutionPayloadBid
-                        {
-                            ParentBlockHash = FilledHash(0x81),
-                            ParentBlockRoot = Hash256.Zero,
-                            BlockHash = FilledHash(0x02),
-                            PrevRandao = Hash256.Zero,
-                            FeeRecipient = Address.Zero,
-                            BlobKzgCommitments = commitments,
-                            ExecutionRequestsRoot = Hash256.Zero,
-                        },
-                    },
-                    PayloadAttestations = [],
-                    ParentExecutionRequests = new ExecutionRequestsGloas { Deposits = [], Withdrawals = [], Consolidations = [], BuilderDeposits = [], BuilderExits = [] },
-                },
-            },
-        };
+        SignedBeaconBlockGloas block = SignedBeaconBlockBuilders.CreateMinimalGloasBlock(slot);
+        block.Message!.ProposerIndex = 0;
+        ExecutionPayloadBid bid = block.Message.Body!.SignedExecutionPayloadBid!.Message!;
+        bid.ParentBlockHash = FilledHash(0x81);
+        bid.BlockHash = FilledHash(0x02);
+        bid.GasLimit = 0;
+        bid.BuilderIndex = 0;
+        bid.Slot = 0;
+        bid.BlobKzgCommitments = commitments;
+        block.Message.Body.ParentExecutionRequests = new ExecutionRequestsGloas { Deposits = [], Withdrawals = [], Consolidations = [], BuilderDeposits = [], BuilderExits = [] };
+        return block;
     }
 }

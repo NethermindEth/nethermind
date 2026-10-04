@@ -159,16 +159,13 @@ public class BeaconStatesRandaoAndSyncCommitteesTests
         };
 
         using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{stateId}/{endpoint}", accept);
-        Assert.That(response.StatusCode, Is.EqualTo(expected));
-        using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
-        Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo((int)expected));
+        await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
     /// <summary>Neither operation is fork-versioned: the body carries only the two flags and data, and no version header.</summary>
     private static async Task<JsonElement> ReadEnvelope(HttpResponseMessage response, bool expectedFinalized)
     {
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
 
         JsonElement root = JsonDocument.Parse(raw).RootElement;
