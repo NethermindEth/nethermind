@@ -965,14 +965,8 @@ public partial class BeaconSyncOrchestratorTests
     {
         List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2);
         SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
-        EnvelopeServingPeer Serving(string id, ulong earliestAvailableSlot) => new(
-            id,
-            WallSlot,
-            byRange: (start, count) => [.. envelopes.Where(e => e.Message!.Payload!.SlotNumber >= start && e.Message.Payload.SlotNumber - start < count)],
-            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)],
-            earliestAvailableSlot: earliestAvailableSlot);
-        EnvelopeServingPeer candidate = Serving("candidate", chain[0].Slot + earliestPastStart);
-        EnvelopeServingPeer fallback = Serving("fallback", 0);
+        EnvelopeServingPeer candidate = RangeServingPeer("candidate", WallSlot, chain, envelopes, chain[0].Slot + earliestPastStart);
+        EnvelopeServingPeer fallback = RangeServingPeer("fallback", WallSlot, chain, envelopes);
         Harness harness = CreateHarness(peers: [candidate, fallback]);
         harness.Importer.Known.Add(AnchorRoot());
         harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
@@ -993,13 +987,8 @@ public partial class BeaconSyncOrchestratorTests
     {
         List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 3);
         SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
-        EnvelopeServingPeer Serving(string id, ulong headSlot) => new(
-            id,
-            headSlot,
-            byRange: (start, count) => [.. envelopes.Where(e => e.Message!.Payload!.SlotNumber >= start && e.Message.Payload.SlotNumber - start < count)],
-            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
-        EnvelopeServingPeer inside = Serving("inside", chain[1].Slot);
-        EnvelopeServingPeer ahead = Serving("ahead", WallSlot);
+        EnvelopeServingPeer inside = RangeServingPeer("inside", chain[1].Slot, chain, envelopes);
+        EnvelopeServingPeer ahead = RangeServingPeer("ahead", WallSlot, chain, envelopes);
         Harness harness = CreateHarness(peers: [inside, ahead], filterPoolByHead: true);
         harness.Importer.Known.Add(AnchorRoot());
         harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
@@ -1019,16 +1008,10 @@ public partial class BeaconSyncOrchestratorTests
     {
         List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 2, 2);
         SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
-        EnvelopeServingPeer Serving(string id, ulong headSlot, ulong earliestAvailableSlot) => new(
-            id,
-            headSlot,
-            byRange: (start, count) => [.. envelopes.Where(e => e.Message!.Payload!.SlotNumber >= start && e.Message.Payload.SlotNumber - start < count)],
-            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)],
-            earliestAvailableSlot: earliestAvailableSlot);
         // Serves the blocks from before the run but its head is short of the run, so only the late-starting peer reaches it.
-        EnvelopeServingPeer behind = Serving("behind", AnchorSlot + 1, 0);
-        EnvelopeServingPeer beyond = Serving("beyond", WallSlot, chain[^1].Slot + 1);
-        EnvelopeServingPeer late = Serving("late", WallSlot, chain[^1].Slot);
+        EnvelopeServingPeer behind = RangeServingPeer("behind", AnchorSlot + 1, chain, envelopes);
+        EnvelopeServingPeer beyond = RangeServingPeer("beyond", WallSlot, chain, envelopes, chain[^1].Slot + 1);
+        EnvelopeServingPeer late = RangeServingPeer("late", WallSlot, chain, envelopes, chain[^1].Slot);
         Harness harness = CreateHarness(peers: [behind, beyond, late], filterPoolByHead: true);
         harness.Importer.Known.Add(AnchorRoot());
         harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
@@ -1050,11 +1033,7 @@ public partial class BeaconSyncOrchestratorTests
     {
         List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2);
         SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
-        EnvelopeServingPeer serving = new(
-            "serving",
-            WallSlot,
-            byRange: (start, count) => [.. envelopes.Where(e => e.Message!.Payload!.SlotNumber >= start && e.Message.Payload.SlotNumber - start < count)],
-            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
+        EnvelopeServingPeer serving = RangeServingPeer("serving", WallSlot, chain, envelopes);
         EnvelopeServingPeer second = new("second", WallSlot, blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
         Harness harness = CreateHarness(peers: [serving, second]);
         harness.Importer.Known.Add(AnchorRoot());
@@ -1201,6 +1180,16 @@ public partial class BeaconSyncOrchestratorTests
         return chain;
     }
 
+    /// <summary>A peer serving the run's blocks and envelopes in the requested window, with explicit head and availability bounds.</summary>
+    private static EnvelopeServingPeer RangeServingPeer(
+        string id, ulong headSlot, List<ForkedSignedBeaconBlock.OfGloas> chain, SignedExecutionPayloadEnvelope[] envelopes,
+        ulong earliestAvailableSlot = 0, bool serveEveryEnvelope = false) => new(
+            id,
+            headSlot,
+            byRange: (start, count) => [.. envelopes.Where(e => serveEveryEnvelope || (e.Message!.Payload!.SlotNumber >= start && e.Message.Payload.SlotNumber - start < count))],
+            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)],
+            earliestAvailableSlot: earliestAvailableSlot);
+
     /// <summary>
     /// A harness over a peer serving <paramref name="chain"/> and <paramref name="envelopes"/> by range, each in the requested window
     /// unless <paramref name="serveEveryEnvelope"/>, after <paramref name="extraPeer"/> when given; the anchor is known.
@@ -1213,11 +1202,7 @@ public partial class BeaconSyncOrchestratorTests
         bool serveEveryEnvelope = false,
         IBeaconSyncPeer? extraPeer = null)
     {
-        peer = new EnvelopeServingPeer(
-            "peer",
-            wallSlot,
-            byRange: (start, count) => [.. envelopes.Where(e => serveEveryEnvelope || (e.Message!.Payload!.SlotNumber >= start && e.Message.Payload.SlotNumber - start < count))],
-            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
+        peer = RangeServingPeer("peer", wallSlot, chain, envelopes, serveEveryEnvelope: serveEveryEnvelope);
         Harness harness = CreateHarness(wallSlot: wallSlot, peers: extraPeer is null ? [peer] : [extraPeer, peer]);
         harness.Importer.Known.Add(AnchorRoot());
         return harness;
