@@ -609,7 +609,7 @@ public class BeaconChainServiceStartupTests
     {
         await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static n => n <= 2 ? StateResponse.DropMidBody : StateResponse.Serve);
 
-        (LevelCapturingLogManager logs, KickEngine engine, PubkeyCache pubkeyCache) = await RunFromProviderAsync(provider, TimeSpan.FromMilliseconds(1), waitForCache: true);
+        (TestLogRecorder logs, KickEngine engine, PubkeyCache pubkeyCache) = await RunFromProviderAsync(provider, TimeSpan.FromMilliseconds(1), waitForCache: true);
 
         using (Assert.EnterMultipleScope())
         {
@@ -629,7 +629,7 @@ public class BeaconChainServiceStartupTests
         state.GenesisValidatorsRoot = GloasTestFixtures.Hash(0x5A);
         await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.Serve, state);
 
-        (LevelCapturingLogManager logs, KickEngine engine, _) = await RunFromProviderAsync(provider, TimeSpan.FromMilliseconds(1), waitForCache: false);
+        (TestLogRecorder logs, KickEngine engine, _) = await RunFromProviderAsync(provider, TimeSpan.FromMilliseconds(1), waitForCache: false);
 
         using (Assert.EnterMultipleScope())
         {
@@ -646,7 +646,7 @@ public class BeaconChainServiceStartupTests
     public async Task A_missing_checkpoint_state_file_is_not_started_again()
     {
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         PubkeyCache pubkeyCache = new();
         BeaconChainConfig config = new()
         {
@@ -677,7 +677,7 @@ public class BeaconChainServiceStartupTests
     {
         await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.ServerError);
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         PubkeyCache pubkeyCache = new();
         BeaconChainConfig config = new() { CheckpointSyncUrl = provider.Url };
         await using IContainer container = KickContainer(new KickEngine(pubkeyCache), pubkeyCache, config: config).AddSingleton(store).Build();
@@ -700,11 +700,11 @@ public class BeaconChainServiceStartupTests
     }
 
     /// <summary>Runs a fresh start against <paramref name="provider"/> with one download attempt per checkpoint sync, until the driver has built its pubkey cache or its run ends.</summary>
-    private static async Task<(LevelCapturingLogManager Logs, KickEngine Engine, PubkeyCache PubkeyCache)> RunFromProviderAsync(FlakyCheckpointProvider provider, TimeSpan startRetryDelay, bool waitForCache)
+    private static async Task<(TestLogRecorder Logs, KickEngine Engine, PubkeyCache PubkeyCache)> RunFromProviderAsync(FlakyCheckpointProvider provider, TimeSpan startRetryDelay, bool waitForCache)
     {
         CacheWrittenMemDb metadata = new();
         BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         PubkeyCache pubkeyCache = new();
         KickEngine engine = new(pubkeyCache);
         BeaconChainConfig config = new() { CheckpointSyncUrl = provider.Url };

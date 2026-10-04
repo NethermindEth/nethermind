@@ -17,7 +17,6 @@ using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
-using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -143,7 +142,7 @@ public class RequestFailureCauseTests
     [CancelAfter(30_000)]
     public async Task Request_slots_preserve_protocol_bounds_and_cancelled_channel_ownership(SlotCancellation cancellation, CancellationToken token)
     {
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         HeldSession held = new(opensChannels: cancellation == SlotCancellation.WhileChannelOpen);
         Node node = Create();
         await using PeerHostScope hosts = new(node.P2P);
@@ -277,7 +276,7 @@ public class RequestFailureCauseTests
     [CancelAfter(30_000)]
     public async Task A_timeout_while_no_request_to_any_peer_was_answered_is_not_counted_against_the_peer(CancellationToken token)
     {
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         HeldSession silentSession = new();
         HeldSession answeringSession = new();
         Node node = Create();
@@ -445,7 +444,7 @@ public class RequestFailureCauseTests
     [CancelAfter(30_000)]
     public async Task Each_request_ends_with_a_debug_line_naming_its_protocol_peer_timing_and_outcome(CancellationToken token)
     {
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         HeldSession held = new();
         Node node = Create();
         await using (node.P2P)

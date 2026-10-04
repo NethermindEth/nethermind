@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Logging;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 using static Nethermind.BeaconChain.Test.P2P.PeerHealthCheckRoundTests;
@@ -32,10 +30,10 @@ public class PeerStatusRefreshTests
         (Node client, StatusMessageV2 status) = CreateClient();
         ulong head = status.HeadSlot;
         Node server = CreateNode(new ScriptedStatusSource(n => WithHead(status, n == 1 ? head : head + ChainAheadBy)));
-        LineCollector log = new();
+        TestLogRecorder log = new(TestLogLevels.Debug);
         try
         {
-            PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log.Manager);
+            PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log);
             Assert.That(peerManager.GetBestPeers(head + 1), Is.Empty, "fixture: the admission status is behind the chain");
             // The admission's own request would otherwise hold the first refresh back.
             peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
@@ -48,7 +46,7 @@ public class PeerStatusRefreshTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(peerManager.GetBestPeers(head + 1).Single().HeadSlot, Is.EqualTo(head + ChainAheadBy));
-                Assert.That(log.Lines.Count(static l => l.Contains(Reason, StringComparison.Ordinal)), Is.EqualTo(1), "one Debug line per trigger that asks, none for one the interval holds back");
+                Assert.That(log.Messages.Count(static l => l.Contains(Reason, StringComparison.Ordinal)), Is.EqualTo(1), "one Debug line per trigger that asks, none for one the interval holds back");
             }
         }
         finally
@@ -123,17 +121,17 @@ public class PeerStatusRefreshTests
         (Node client, StatusMessageV2 status) = CreateClient();
         ulong head = status.HeadSlot;
         Node server = CreateNode(new ScriptedStatusSource(n => n == 1 ? status : throw new Eth2ReqRespException("status refused for the test")));
-        LineCollector log = new();
+        TestLogRecorder log = new(TestLogLevels.Debug);
         try
         {
-            PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log.Manager);
+            PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log);
             peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
             // A refresh starts only once the one before it ended, so the ninth start means eight refreshes failed.
             const int failedRefreshes = 8;
             await WaitUntilAsync(() =>
             {
                 Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy, Reason);
-                return log.Lines.Count(static l => l.Contains(Reason, StringComparison.Ordinal)) > failedRefreshes;
+                return log.Messages.Count(static l => l.Contains(Reason, StringComparison.Ordinal)) > failedRefreshes;
             }, token, "the refreshes did not run one after another", TimeSpan.FromSeconds(60));
 
             IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
@@ -210,28 +208,5 @@ public class PeerStatusRefreshTests
 
             await Task.Delay(20, CancellationToken.None);
         }
-    }
-
-    /// <summary>Keeps every Debug line; safe to write from concurrent requests.</summary>
-    private sealed class LineCollector : InterfaceLogger
-    {
-        private readonly ConcurrentQueue<string> _lines = new();
-
-        public ILogManager Manager => new OneLoggerLogManager(new ILogger(this));
-
-        public string[] Lines => [.. _lines];
-
-        public bool IsInfo => false;
-        public bool IsWarn => false;
-        public bool IsDebug => true;
-        public bool IsTrace => false;
-        public bool IsError => false;
-
-        public void Debug(string text) => _lines.Enqueue(text);
-
-        public void Info(string text) { }
-        public void Warn(string text) { }
-        public void Trace(string text) { }
-        public void Error(string text, Exception? ex = null) { }
     }
 }
