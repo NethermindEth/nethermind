@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -43,7 +45,10 @@ public class NativeBlockProductionTests
         Assert.That((bool)wellFormed, Is.True, wellFormed.ToString());
         AcceptTxResult accepted = chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
         Assert.That(accepted, Is.EqualTo(AcceptTxResult.Accepted), accepted.ToString());
-        Block block = await chain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);
+        // Fresh native proving can exceed the default test-chain deadline.
+        using CancellationTokenSource provingBudget = new(TimeSpan.FromMinutes(3));
+        Block block = await chain.Container.Resolve<TestBlockchainUtil>()
+            .AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, provingBudget.Token);
         ValueHash256 commitment = Eip8288Dependencies.ComputeBlockDepsHash(block);
         Assert.That(block.Transactions, Has.Length.EqualTo(1));
         Assert.That(block.Header.RecursiveStark, Is.Not.Null);

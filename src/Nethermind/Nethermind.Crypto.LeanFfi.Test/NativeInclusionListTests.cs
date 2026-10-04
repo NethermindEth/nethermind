@@ -34,6 +34,7 @@ public class NativeInclusionListTests
     [TestCase("bad-proof", true)]
     public async Task Real_proof_membership_preserves_independent_inclusion_list_obligations(string scenario, bool frameSuppressed)
     {
+        byte[] proofBytes = NativeLeanProofVerifierTests.MixedProof();
         OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(spec)));
@@ -52,8 +53,6 @@ public class NativeInclusionListTests
         if (scenario == "uncovered") Assert.That(FrameTxValidation.IsWellFormed(bad, spec, out string? error), Is.True, error);
         FrameDependency[] dependencies = [.. Eip8288Dependencies.ForTransaction(covered)];
         ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        byte[] proofBytes = NativeLeanProofVerifier.Instance.ProveRecursiveStark(commitment, Eip8288Constants.AggregatedVk,
-            new AggregationInput { Deps = dependencies, Witnesses = [NativeLeanProofVerifierTests.Witness("sphincs"), NativeLeanProofVerifierTests.Witness("stark")] });
         NativeLeanProofVerifierTests.AssertMixedEnvelope(proofBytes, dependencies);
         Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proofBytes), Is.True);
         if (scenario == "bad-proof") proofBytes[^1] ^= 1;

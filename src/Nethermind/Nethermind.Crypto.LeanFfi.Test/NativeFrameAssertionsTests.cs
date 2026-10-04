@@ -32,6 +32,7 @@ public class NativeFrameAssertionsTests
     [TestCase("static-write")]
     public async Task Lean_dependency_blocks_preserve_state_diff_assertion_semantics(string scenario)
     {
+        byte[] proof = NativeLeanProofVerifierTests.MixedProof();
         LeanProofStore proofs = new();
         IReleaseSpec spec = Eip8288Prototype.Instance;
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
@@ -48,12 +49,6 @@ public class NativeFrameAssertionsTests
                 state.InsertCode(Assertion, assertion, provider.GenesisSpec);
                 state.RecalculateStateRoot();
             })));
-        FrameDependency signature = NativeLeanProofVerifierTests.Dependency("sphincs");
-        FrameDependency stark = NativeLeanProofVerifierTests.Dependency("stark");
-        byte[][] witnesses = [NativeLeanProofVerifierTests.Witness("sphincs"), NativeLeanProofVerifierTests.Witness("stark")];
-        Assert.That(NativeLeanProofVerifier.Instance.VerifyLeanSphincs(signature.DataHash, signature.VerificationKey, witnesses[0]), Is.True);
-        Assert.That(NativeLeanProofVerifier.Instance.VerifyLeanStark(stark.DataHash, stark.VerificationKey, witnesses[1]), Is.True);
-        proofs.AddVerified([signature, stark], witnesses, null);
         Transaction transaction = NativeBlockProductionTests.CreateTransaction(chain);
         transaction.Frames = [.. transaction.Frames!,
             new(FrameMode.Sender, FrameFlags.None, Body, 100_000, GasCostOf.SSetState, UInt256.Zero, default),
@@ -61,6 +56,10 @@ public class NativeFrameAssertionsTests
         transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         transaction.Hash = transaction.CalculateHash();
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(dependencies);
+        Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proof), Is.True);
+        proofs.AddVerified(dependencies, null, proof);
         UInt256 balanceBefore;
         using (chain.MainWorldState.BeginScope(chain.BlockTree.Head!.Header))
             balanceBefore = chain.MainWorldState.GetBalance(TestItem.PrivateKeyB.Address);
@@ -87,7 +86,7 @@ public class NativeFrameAssertionsTests
             Assert.That(state, Is.EqualTo(passes ? (ulong)GasCostOf.SSetState : 0));
             Assert.That(receipt.GasUsed, Is.EqualTo(execution + state));
             Assert.That(Math.Max(execution, state) + 3 * Eip8288Constants.LeanStarkVerificationGas, Is.EqualTo(block.GasUsed));
-            ValueHash256 commitment = Eip8288Dependencies.ComputeBlockDepsHash(block);
+            Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block), Is.EqualTo(commitment));
             Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk,
                 block.Header.RecursiveStark!.StarkProof), Is.True);
         }

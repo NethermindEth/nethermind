@@ -35,23 +35,6 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 [NonParallelizable]
 public class NativeLeanProtocolTests
 {
-    private static readonly Lazy<byte[]> MixedProof = new(CreateMixedProof);
-
-    private static byte[] CreateMixedProof()
-    {
-        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(
-            [NativeLeanProofVerifierTests.Dependency("sphincs"), NativeLeanProofVerifierTests.Dependency("stark")]);
-        AggregationInput input = new()
-        {
-            Deps = dependencies,
-            Witnesses = [NativeLeanProofVerifierTests.Witness("sphincs"), NativeLeanProofVerifierTests.Witness("stark")]
-        };
-        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        byte[] proof = RecursiveStarkAggregator.Prove(input, NativeLeanProofVerifier.Instance, in hash);
-        Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
-        return proof;
-    }
-
     private sealed class Scheduler : IBackgroundTaskScheduler
     {
         public bool Defer { get; set; }
@@ -189,7 +172,7 @@ public class NativeLeanProtocolTests
     [Test]
     public async Task Lean1_chunks_reassemble_a_real_recursive_wrapper_before_admission()
     {
-        byte[] proof = MixedProof.Value;
+        byte[] proof = NativeLeanProofVerifierTests.MixedProof();
         using Context source = await Create(version: 1);
         using Context target = await Create(version: 1);
         using LeanP2PCapabilityResolver resolver = new(source.Chain.BlockTree, source.Chain.SpecProvider);
@@ -332,7 +315,7 @@ public class NativeLeanProtocolTests
     [Test]
     public async Task Gossip_retries_a_blocked_peer_without_resending_to_a_writable_peer()
     {
-        byte[] proof = MixedProof.Value;
+        byte[] proof = NativeLeanProofVerifierTests.MixedProof();
         using Context context = await Create();
         Result<Hash256[]> admitted = await context.Chain.Container.Resolve<ProofWrapperService>().AcceptAsync(CreateValidWrapper(context));
         Assert.That(admitted.IsSuccess, Is.True);
