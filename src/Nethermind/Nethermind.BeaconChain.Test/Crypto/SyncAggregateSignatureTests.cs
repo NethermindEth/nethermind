@@ -106,30 +106,18 @@ public class SyncAggregateSignatureTests
     [Test]
     public void Participants_whose_keys_sum_to_infinity_fail_the_block([Values] bool gloas, [Values] bool batched, [Values] bool infinitySignature)
     {
-        BitArray bits = Bits(static i => i < 2);
-        Action<BlockSignatureBatch?> process;
+        int[] members = [.. Enumerable.Range(0, Presets.SyncCommitteeSize).Select(i => gloas ? i % 2 : i % 2 == 0 ? KeyIndex : NegatedKeyIndex)];
+        SyncFixture fixture = CreateSyncFixture(gloas, members, keyedValidators: 2, cachedValidators: RegistrySize + 2);
         if (gloas)
         {
-            int[] members = [.. Enumerable.Range(0, Presets.SyncCommitteeSize).Select(static i => i % 2)];
-            BeaconStateGloas state = GloasStateWithCommittee(members, 2, out Hash256 signingRoot);
-            SetPubkey(state.Validators!, state.CurrentSyncCommittee!, members, 1, NegatedKey(0));
-            PubkeyCache pubkeys = new();
-            pubkeys.Build(state.Validators![..2]);
-            AssertParticipantsSumToInfinity(bits, state.CurrentSyncCommittee!, state.Validators!, pubkeys);
-            SyncAggregate syncAggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = InfinityOrSignedBy(infinitySignature, 0, signingRoot) };
-            process = batch => GloasBlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), pubkeys, verifySignature: true, batch);
+            SetPubkey(fixture.Validators, fixture.Committee, members, 1, NegatedKey(0));
+            fixture.Pubkeys.Build(fixture.Validators[..2]);
         }
-        else
-        {
-            int[] members = [.. Enumerable.Range(0, Presets.SyncCommitteeSize).Select(static i => i % 2 == 0 ? KeyIndex : NegatedKeyIndex)];
-            BeaconStateFulu state = CreateState(members, out Hash256 signingRoot);
-            PubkeyCache pubkeys = CacheOf(state, state.Validators!.Length);
-            AssertParticipantsSumToInfinity(bits, state.CurrentSyncCommittee!, state.Validators!, pubkeys);
-            SyncAggregate syncAggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = InfinityOrSignedBy(infinitySignature, KeyIndex, signingRoot) };
-            process = batch => BlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), pubkeys, verifySignature: true, batch);
-        }
+        BitArray bits = Bits(static i => i < 2);
+        AssertParticipantsSumToInfinity(bits, fixture.Committee, fixture.Validators, fixture.Pubkeys);
+        SyncAggregate aggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = InfinityOrSignedBy(infinitySignature, gloas ? 0 : KeyIndex, fixture.SigningRoot) };
 
-        Assert.That(() => Process(process, batched), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo("Invalid sync aggregate signature"));
+        Assert.That(() => Process(batch => fixture.Process(aggregate, true, batch), batched), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo("Invalid sync aggregate signature"));
     }
 
     public enum AttestationKind
@@ -283,16 +271,11 @@ public class SyncAggregateSignatureTests
         const int undecodableIndex = 7;
         int[] members = RepeatingCommittee();
         members[^1] = undecodableIndex;
-        BeaconStateGloas state = GloasStateWithCommittee(members, undecodableIndex, out Hash256 signingRoot);
-        Validator[] validators = state.Validators!;
-        SetPubkey(validators, state.CurrentSyncCommittee!, members, undecodableIndex, UndecodableKey);
-        PubkeyCache pubkeys = new();
-        pubkeys.Build(validators[..undecodableIndex]);
-
+        SyncFixture fixture = CreateSyncFixture(true, members, keyedValidators: undecodableIndex);
+        SetPubkey(fixture.Validators, fixture.Committee, members, undecodableIndex, UndecodableKey);
         BitArray bits = LastMemberBits(undecodableParticipates);
-        SyncAggregate syncAggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = HonestSignatureWithoutLastMember(signingRoot, members, bits) };
-
-        Action process = () => GloasBlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), pubkeys);
+        SyncAggregate aggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = HonestSignatureWithoutLastMember(fixture.SigningRoot, members, bits) };
+        Action process = () => fixture.Process(aggregate, true, null);
 
         if (undecodableParticipates)
             Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.EqualTo("Invalid sync aggregate signature"));
@@ -304,25 +287,9 @@ public class SyncAggregateSignatureTests
     [Test]
     public void Processing_no_participants_accepts_only_the_infinity_signature([Values] bool gloas, [Values] bool infinitySignature)
     {
-        const int keyedValidators = 7;
-        int[] members = RepeatingCommittee();
-        BitArray bits = Bits(static _ => false);
-        Action process;
-        if (gloas)
-        {
-            BeaconStateGloas state = GloasStateWithCommittee(members, keyedValidators, out Hash256 signingRoot);
-            SyncAggregate syncAggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = NoParticipantSignature(infinitySignature, signingRoot) };
-            PubkeyCache pubkeys = new();
-            pubkeys.Build(state.Validators![..keyedValidators]);
-            process = () => GloasBlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), pubkeys);
-        }
-        else
-        {
-            BeaconStateFulu state = CreateState(members, out Hash256 signingRoot);
-            SyncAggregate syncAggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = NoParticipantSignature(infinitySignature, signingRoot) };
-            PubkeyCache pubkeys = CacheOf(state, RegistrySize);
-            process = () => BlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), pubkeys);
-        }
+        SyncFixture fixture = CreateSyncFixture(gloas, RepeatingCommittee());
+        SyncAggregate aggregate = new() { SyncCommitteeBits = Bits(static _ => false), SyncCommitteeSignature = NoParticipantSignature(infinitySignature, fixture.SigningRoot) };
+        Action process = () => fixture.Process(aggregate, true, null);
 
         if (infinitySignature)
             Assert.That(process, Throws.Nothing);
@@ -379,24 +346,12 @@ public class SyncAggregateSignatureTests
     [Test]
     public void A_valid_aggregate_is_deferred_to_the_batch([Values] bool gloas)
     {
-        const int keyedValidators = 7;
         int[] members = RepeatingCommittee();
+        SyncFixture fixture = CreateSyncFixture(gloas, members);
         BitArray bits = Bits(static i => i % 3 != 1);
+        SyncAggregate aggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = HonestSignature(fixture.SigningRoot, members, bits) };
         BlockSignatureBatch batch = new();
-        if (gloas)
-        {
-            BeaconStateGloas state = GloasStateWithCommittee(members, keyedValidators, out Hash256 signingRoot);
-            PubkeyCache pubkeys = new();
-            pubkeys.Build(state.Validators![..keyedValidators]);
-            SyncAggregate syncAggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = HonestSignature(signingRoot, members, bits) };
-            GloasBlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), pubkeys, verifySignature: true, batch);
-        }
-        else
-        {
-            BeaconStateFulu state = CreateState(members, out Hash256 signingRoot);
-            SyncAggregate syncAggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = HonestSignature(signingRoot, members, bits) };
-            BlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), CacheOf(state, RegistrySize), verifySignature: true, batch);
-        }
+        fixture.Process(aggregate, true, batch);
 
         Assert.That(batch.Count, Is.EqualTo(1));
         Assert.That(batch.Verify, Throws.Nothing);
@@ -411,33 +366,13 @@ public class SyncAggregateSignatureTests
     {
         const int unregisteredPosition = 3;
         const int unregisteredKey = 200;
-        const int keyedValidators = 7;
         int[] members = RepeatingCommittee();
-        BlsPublicKey unregistered = new(new Bls.P1(ValidatorKey(unregisteredKey)).Compress());
+        SyncFixture fixture = CreateSyncFixture(gloas, members);
+        fixture.Committee.Pubkeys![unregisteredPosition] = new BlsPublicKey(new Bls.P1(ValidatorKey(unregisteredKey)).Compress());
         BitArray bits = Bits(i => i != unregisteredPosition || participates);
         int[] signers = [.. Enumerable.Range(0, members.Length).Where(i => bits[i]).Select(i => i == unregisteredPosition ? unregisteredKey : members[i])];
-        SyncAggregate syncAggregate = new() { SyncCommitteeBits = bits };
-
-        Action<BlockSignatureBatch?> processBlock;
-        if (gloas)
-        {
-            BeaconStateGloas state = GloasStateWithCommittee(members, keyedValidators, out Hash256 signingRoot);
-            state.CurrentSyncCommittee!.Pubkeys![unregisteredPosition] = unregistered;
-            syncAggregate.SyncCommitteeSignature = AggregateSignature(signingRoot, honest ? signers : signers[1..]);
-            PubkeyCache pubkeys = new();
-            pubkeys.Build(state.Validators![..keyedValidators]);
-            processBlock = batch => GloasBlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), pubkeys, verifySignature, batch);
-        }
-        else
-        {
-            BeaconStateFulu state = CreateState(members, out Hash256 signingRoot);
-            state.CurrentSyncCommittee!.Pubkeys![unregisteredPosition] = unregistered;
-            syncAggregate.SyncCommitteeSignature = AggregateSignature(signingRoot, honest ? signers : signers[1..]);
-            PubkeyCache pubkeys = CacheOf(state, RegistrySize);
-            processBlock = batch => BlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), pubkeys, verifySignature, batch);
-        }
-
-        Action process = () => Process(processBlock, batched);
+        SyncAggregate aggregate = new() { SyncCommitteeBits = bits, SyncCommitteeSignature = AggregateSignature(fixture.SigningRoot, honest ? signers : signers[1..]) };
+        Action process = () => Process(batch => fixture.Process(aggregate, verifySignature, batch), batched);
 
         if (verifySignature && !honest)
             Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.EqualTo("Invalid sync aggregate signature"));
@@ -449,20 +384,9 @@ public class SyncAggregateSignatureTests
     [Test]
     public void Sync_committee_bits_of_the_wrong_width_fail_the_block([Values(0, 511, 513)] int width, [Values] bool gloas, [Values] bool verifySignature)
     {
-        SyncAggregate syncAggregate = new() { SyncCommitteeBits = new BitArray(width, true), SyncCommitteeSignature = new BlsSignature(G2PointAtInfinity()) };
-        Action process;
-        if (gloas)
-        {
-            BeaconStateGloas state = GloasStateWithCommittee(RepeatingCommittee(), 7, out _);
-            PubkeyCache pubkeys = new();
-            pubkeys.Build(state.Validators![..7]);
-            process = () => GloasBlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), pubkeys, verifySignature);
-        }
-        else
-        {
-            BeaconStateFulu state = CreateState(RepeatingCommittee(), out _);
-            process = () => BlockProcessing.ProcessSyncAggregate(state, syncAggregate, new EpochCache(), CacheOf(state, RegistrySize), verifySignature);
-        }
+        SyncFixture fixture = CreateSyncFixture(gloas, RepeatingCommittee());
+        SyncAggregate aggregate = new() { SyncCommitteeBits = new BitArray(width, true), SyncCommitteeSignature = new BlsSignature(G2PointAtInfinity()) };
+        Action process = () => fixture.Process(aggregate, verifySignature, null);
 
         Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.EqualTo($"Sync committee bits have {width} entries, expected {Presets.SyncCommitteeSize}"));
     }
@@ -476,6 +400,27 @@ public class SyncAggregateSignatureTests
         byte[] encoded = new byte[length];
 
         Assert.That(() => SyncAggregate.Decode(encoded, out SyncAggregate _), Throws.TypeOf<InvalidDataException>().With.Message.Contains("expected 160 bytes"));
+    }
+
+    private sealed record SyncFixture(
+        Validator[] Validators, SyncCommittee Committee, PubkeyCache Pubkeys, Hash256 SigningRoot,
+        Action<SyncAggregate, bool, BlockSignatureBatch?> Process);
+
+    private static SyncFixture CreateSyncFixture(bool gloas, int[] members, int keyedValidators = 7, int cachedValidators = RegistrySize)
+    {
+        if (gloas)
+        {
+            BeaconStateGloas state = GloasStateWithCommittee(members, keyedValidators, out Hash256 signingRoot);
+            PubkeyCache pubkeys = new();
+            pubkeys.Build(state.Validators![..keyedValidators]);
+            return new SyncFixture(state.Validators, state.CurrentSyncCommittee!, pubkeys, signingRoot,
+                (aggregate, verify, batch) => GloasBlockProcessing.ProcessSyncAggregate(state, aggregate, new EpochCache(), pubkeys, verify, batch));
+        }
+
+        BeaconStateFulu fulu = CreateState(members, out Hash256 root);
+        PubkeyCache cache = CacheOf(fulu, cachedValidators);
+        return new SyncFixture(fulu.Validators!, fulu.CurrentSyncCommittee!, cache, root,
+            (aggregate, verify, batch) => BlockProcessing.ProcessSyncAggregate(fulu, aggregate, new EpochCache(), cache, verify, batch));
     }
 
     private static BlsSignature HonestSignature(Hash256 signingRoot, int[] members, BitArray bits) =>
