@@ -164,7 +164,9 @@ public class NativeLeanProofVerifierTests
         witness[^1] ^= 1;
         AggregationInput duplicate = new()
         {
-            Deps = [dependency], Witnesses = [witness], RecursiveProofs = [new([dependency], parent)]
+            Deps = [dependency],
+            Witnesses = [witness],
+            RecursiveProofs = [new([dependency], parent)]
         };
         Assert.Throws<InvalidOperationException>(() => Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, duplicate));
     }
