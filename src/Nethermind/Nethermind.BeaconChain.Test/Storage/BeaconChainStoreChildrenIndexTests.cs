@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.BeaconChain.Storage;
@@ -439,12 +438,7 @@ public class BeaconChainStoreChildrenIndexTests
         return snapshot;
     }
 
-    private static Hash256 BlockRoot(int index)
-    {
-        byte[] bytes = new byte[32];
-        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(28), index);
-        return new Hash256(bytes);
-    }
+    private static Hash256 BlockRoot(int index) => BeaconChainStoreStateSlotIndexTests.Root(index);
 
     private static Hash256 TestRoot(byte marker)
     {

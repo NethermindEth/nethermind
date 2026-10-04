@@ -365,16 +365,7 @@ public class BeaconChainStoreDataColumnTests
         ulong edge = DataAvailabilityBoundary.ComputeStartSlot(currentEpoch, Spec);
         Hash256 old = Root("old");
         Put(store, old, edge - 3);
-        byte[] bounds = new byte[16];
-        if (damage == "inverted")
-        {
-            BinaryPrimitives.WriteUInt64BigEndian(bounds, edge);
-            BinaryPrimitives.WriteUInt64BigEndian(bounds.AsSpan(8), edge - 3);
-        }
-        else
-        {
-            bounds = [1, 2, 3];
-        }
+        byte[] bounds = damage == "inverted" ? BeaconChainStoreEnvelopeRetentionTests.Bounds(edge, edge - 3) : [1, 2, 3];
 
         db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars).Set(BoundsKey, bounds);
 

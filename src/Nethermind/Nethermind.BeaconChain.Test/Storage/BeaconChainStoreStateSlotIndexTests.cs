@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using NUnit.Framework;
+using static Nethermind.BeaconChain.Test.Storage.BeaconChainStoreStatePruningTests;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
@@ -20,22 +21,14 @@ namespace Nethermind.BeaconChain.Test.Storage;
 [TestFixture]
 public class BeaconChainStoreStateSlotIndexTests
 {
-    private const int StateSlotOffset = 40;
     private const int IndexKeyLength = sizeof(ulong) + Hash256.Size;
 
-    private static Hash256 Root(int id)
+    /// <summary>Creates a block root distinguished by its final four bytes.</summary>
+    internal static Hash256 Root(int id)
     {
         byte[] bytes = new byte[Hash256.Size];
         BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(Hash256.Size - sizeof(int)), id);
         return new Hash256(bytes);
-    }
-
-    private static byte[] StateAt(ulong slot)
-    {
-        byte[] ssz = new byte[256];
-        new Random((int)slot).NextBytes(ssz);
-        BinaryPrimitives.WriteUInt64LittleEndian(ssz.AsSpan(StateSlotOffset), slot);
-        return ssz;
     }
 
     private static int IndexKeyCount(IDb states) => states.GetAllKeys().Count(key => key.Length == IndexKeyLength);
