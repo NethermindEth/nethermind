@@ -1,0 +1,3 @@
+Generated 2 distinct SPHINCS claims and 2 genuine leanSTARK proofs.
+mode,claims,sphincs_claims,generic_claims,input_bytes,fixture_generation_ms,child_preparation_ms,total_ms,profile_key,input_keccak
+mixed-prepare,2,1,1,579660,346.266,59825.768,61118.518,9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace,a9f527db8c2bd61770f0224e040c380ca1735fb45703b52d98cc23f4a7f47d4d
