@@ -752,16 +752,8 @@ public class RangeSyncGloasColumnsTests
     private static Task<List<ForkedSignedBeaconBlock>> RunAsync(RangeSyncTests.StubPeer peer, DataColumnSidecarPool pool, BeaconDiscovery discovery, SlotClock? clock, StraddlingChain chain, CancellationToken token) =>
         RunAsync(pool, discovery, clock, chain, GloasSlot, token, peer);
 
-    private static async Task<List<ForkedSignedBeaconBlock>> RunAsync(DataColumnSidecarPool pool, BeaconDiscovery discovery, SlotClock? clock, StraddlingChain chain, ulong targetSlot, CancellationToken token, params IBeaconSyncPeer[] peers)
-    {
-        List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in CreateSync(pool, discovery, clock, peers).Run(chain.AnchorRoot, chain.Anchor, () => targetSlot, token))
-        {
-            yielded.Add(block);
-        }
-
-        return yielded;
-    }
+    private static async Task<List<ForkedSignedBeaconBlock>> RunAsync(DataColumnSidecarPool pool, BeaconDiscovery discovery, SlotClock? clock, StraddlingChain chain, ulong targetSlot, CancellationToken token, params IBeaconSyncPeer[] peers) =>
+        await RangeSyncTests.CollectAsync(CreateSync(pool, discovery, clock, peers).Run(chain.AnchorRoot, chain.Anchor, () => targetSlot, token));
 
     private static RangeSync CreateSync(DataColumnSidecarPool pool, BeaconDiscovery? discovery, SlotClock? clock, params IBeaconSyncPeer[] peers) =>
         new(new RangeSyncTests.StubPool(peers), LimboLogs.Instance, pool, Spec, clock ?? RangeSyncTests.ClockAtGenesis(Spec), discovery);

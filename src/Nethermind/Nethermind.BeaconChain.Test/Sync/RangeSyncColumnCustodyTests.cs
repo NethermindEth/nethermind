@@ -165,9 +165,7 @@ public class RangeSyncColumnCustodyTests
         }
         else
         {
-            await foreach (ForkedSignedBeaconBlock _ in sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token))
-            {
-            }
+            await DrainAsync(sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token));
         }
 
         using (Assert.EnterMultipleScope())
@@ -270,9 +268,7 @@ public class RangeSyncColumnCustodyTests
         RangeSyncPeerSelectionTests.AllLevelsCapture log = new();
         RangeSync sync = new(new StubPool(cutShort), new OneLoggerLogManager(new ILogger(log)), fixture.SidecarPool, fixture.Chain.Spec, fixture.Clock, fixture.Discovery);
 
-        await foreach (ForkedSignedBeaconBlock _ in sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token))
-        {
-        }
+        await DrainAsync(sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -333,9 +329,7 @@ public class RangeSyncColumnCustodyTests
             return [];
         }))];
 
-        await foreach (ForkedSignedBeaconBlock _ in fixture.CreateRangeSync(peers).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Slot, token))
-        {
-        }
+        await DrainAsync(fixture.CreateRangeSync(peers).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Slot, token));
 
         Assert.That(requests, Is.EqualTo(new[] { (first.Slot, 2UL), (second.Slot, 1UL) }), "round 0 covers the batch, the next round only the slot still lacking the column");
     }
@@ -373,9 +367,7 @@ public class RangeSyncColumnCustodyTests
         StubPeer reaching = new("reaching", second.Message.Slot, (_, _) => blocks, serveSecond, custody: new PeerColumnCustody(fixture.Sampled, isAdvertised: false));
         IBeaconSyncPeer[] peers = custodianReachingTheSlot ? [blockSource, unserving, stale, reaching] : [blockSource, unserving, stale];
 
-        await foreach (ForkedSignedBeaconBlock _ in fixture.CreateRangeSync(peers).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Message.Slot, token))
-        {
-        }
+        await DrainAsync(fixture.CreateRangeSync(peers).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Message.Slot, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -420,9 +412,7 @@ public class RangeSyncColumnCustodyTests
             return serveSecond(start, count, columns);
         }, custody: new PeerColumnCustody([behindColumn], isAdvertised: false));
 
-        await foreach (ForkedSignedBeaconBlock _ in fixture.CreateRangeSync([blockSource, unserving, reaching, stale]).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Message.Slot, token))
-        {
-        }
+        await DrainAsync(fixture.CreateRangeSync([blockSource, unserving, reaching, stale]).Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => second.Message.Slot, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -539,9 +529,7 @@ public class RangeSyncColumnCustodyTests
         });
         RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, fixture.SidecarPool, oneBlobSpec, fixture.Clock, fixture.Discovery);
 
-        await foreach (ForkedSignedBeaconBlock _ in sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token))
-        {
-        }
+        await DrainAsync(sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -641,16 +629,8 @@ public class RangeSyncColumnCustodyTests
         public RangeSync CreateRangeSync(IBeaconSyncPeer[] peers) =>
             new(new StubPool(peers), LimboLogs.Instance, SidecarPool, Chain.Spec, Clock, Discovery);
 
-        public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RunOneRoundAsync(IBeaconSyncPeer[] peers, CancellationToken token)
-        {
-            List<ForkedSignedBeaconBlock> yielded = [];
-            await foreach (ForkedSignedBeaconBlock block in CreateRangeSync(peers).Run(Chain.AnchorRoot, Chain.AnchorBlock.Message!.Slot, () => Chain.Block.Message!.Slot, token))
-            {
-                yielded.Add(block);
-            }
-
-            return yielded;
-        }
+        public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RunOneRoundAsync(IBeaconSyncPeer[] peers, CancellationToken token) =>
+            await CollectAsync(CreateRangeSync(peers).Run(Chain.AnchorRoot, Chain.AnchorBlock.Message!.Slot, () => Chain.Block.Message!.Slot, token));
 
         public BeaconSyncOrchestrator CreateOrchestrator(params IBeaconSyncPeer[] peers)
         {

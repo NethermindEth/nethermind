@@ -49,11 +49,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer full = new("full", TargetSlot, (_, _) => chainBlocks);
         RangeSync sync = new(new StubPool(pruned, full), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
-        List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
-        {
-            yielded.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -106,11 +102,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer peer = new("earliest", firstSlot + 1, (start, count) => { starts.Add(start); return [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]; }, earliestAvailableSlot: firstSlot);
         RangeSync sync = new(new StubPool(later, peer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
-        List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => firstSlot + 1, token))
-        {
-            yielded.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => firstSlot + 1, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -145,11 +137,7 @@ public class RangeSyncPeerSelectionTests
             return [.. blocks.Where(b => b.Slot >= start && b.Slot < start + count)];
         });
         RangeSync sync = new(new StubPool(limited, honest), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
-        List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => 43, token))
-        {
-            yielded.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => 43, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -185,9 +173,7 @@ public class RangeSyncPeerSelectionTests
 
         Assert.That(async () =>
         {
-            await foreach (ForkedSignedBeaconBlock _ in sync.Run(anchorRoot, AnchorSlot, () => 14, stop.Token))
-            {
-            }
+            await RangeSyncTests.DrainAsync(sync.Run(anchorRoot, AnchorSlot, () => 14, stop.Token));
         }, Throws.InstanceOf<OperationCanceledException>());
 
         using (Assert.EnterMultipleScope())
@@ -210,9 +196,7 @@ public class RangeSyncPeerSelectionTests
         AllLevelsCapture log = new();
         RangeSync sync = new(new StubPool(peer), new OneLoggerLogManager(new ILogger(log)), new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
-        await foreach (ForkedSignedBeaconBlock _ in sync.Run(anchorRoot, AnchorSlot, () => 13, token))
-        {
-        }
+        await RangeSyncTests.DrainAsync(sync.Run(anchorRoot, AnchorSlot, () => 13, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -281,11 +265,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer peer = new("from20", 22, (start, count) => ++calls <= 3 ? throw new TimeoutException("slow") : serve(start, count), earliestAvailableSlot: 20);
         RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
-        List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => 22, token))
-        {
-            yielded.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => 22, token));
 
         Assert.That(yielded, Has.Count.EqualTo(chain.Length));
     }
@@ -309,9 +289,7 @@ public class RangeSyncPeerSelectionTests
         stop.CancelAfter(TimeSpan.FromMilliseconds(500));
         Assert.ThrowsAsync<TaskCanceledException>(async () =>
         {
-            await foreach (ForkedSignedBeaconBlock _ in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, stop.Token))
-            {
-            }
+            await RangeSyncTests.DrainAsync(sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, stop.Token));
         });
 
         using (Assert.EnterMultipleScope())
@@ -380,11 +358,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer ahead = new("ahead", slots[^1], (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
         RangeSync sync = new(new OfferingPool(behind, ahead), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
-        List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => slots[^1], token))
-        {
-            yielded.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => slots[^1], token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -406,11 +380,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer behind = new("behind", AnchorSlot, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
         RangeSync sync = new(new OfferingPool(behind), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
-        List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => chain[^1].Message!.Slot, token))
-        {
-            yielded.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => chain[^1].Message!.Slot, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -459,11 +429,7 @@ public class RangeSyncPeerSelectionTests
         bool rejected = false;
         RangeSync.AnchorFallback fallback = new(anchorRoot, AnchorSlot, () => rejected = true);
 
-        List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(Keccak.Compute("a held block off the chain"), heldSlot, () => blockAfterGap, token, fallback))
-        {
-            yielded.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(Keccak.Compute("a held block off the chain"), heldSlot, () => blockAfterGap, token, fallback));
 
         using (Assert.EnterMultipleScope())
         {
@@ -611,18 +577,14 @@ public class RangeSyncPeerSelectionTests
         public async Task RunAsync(CancellationToken token, params IBeaconSyncPeer[] peers)
         {
             RangeSync sync = new(new StubPool(peers), LimboLogs.Instance, SidecarPool, Chain.Spec, Chain.ClockAtEpoch(1), _discovery);
-            await foreach (ForkedSignedBeaconBlock _ in sync.Run(Chain.AnchorRoot, Chain.AnchorBlock.Message!.Slot, () => 2, token))
-            {
-            }
+            await RangeSyncTests.DrainAsync(sync.Run(Chain.AnchorRoot, Chain.AnchorBlock.Message!.Slot, () => 2, token));
         }
 
         /// <summary>Syncs from the anchor's parent so the batch starts at the anchor block at slot 0 (a ulong anchor slot of MaxValue makes the next slot 0), ahead of the blob block at slot 1.</summary>
         public async Task RunFromBelowTheBlobBlockAsync(CancellationToken token, params IBeaconSyncPeer[] peers)
         {
             RangeSync sync = new(new StubPool(peers), LimboLogs.Instance, SidecarPool, Chain.Spec, Chain.ClockAtEpoch(1), _discovery);
-            await foreach (ForkedSignedBeaconBlock _ in sync.Run(Chain.AnchorBlock.Message!.ParentRoot!, ulong.MaxValue, () => 1, token))
-            {
-            }
+            await RangeSyncTests.DrainAsync(sync.Run(Chain.AnchorBlock.Message!.ParentRoot!, ulong.MaxValue, () => 1, token));
         }
 
         public ValueTask DisposeAsync() => _discovery.DisposeAsync();
