@@ -16,7 +16,7 @@ namespace Nethermind.BeaconChain.Test.Api;
 
 /// <summary>
 /// <c>/eth/v1/config/spec</c> serves every key of <c>configs/mainnet.yaml</c> and of the consensus-specs v1.7.0-beta.2
-/// mainnet presets of phase0 to gloas (embedded verbatim in <see cref="PinnedMainnetSpec"/>) and every constant of the
+/// mainnet presets of phase0 to gloas (pinned in <see cref="PinnedMainnetSpec"/>) and every constant of the
 /// specs' Constants tables (<see cref="PinnedSpecConstants"/>), with the network's values where the network differs, so
 /// tooling that keys on any of them does not find it missing or wrong.
 /// </summary>
