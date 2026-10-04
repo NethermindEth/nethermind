@@ -13,12 +13,15 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 public record GethTraceOptions
 {
+    private bool _enableMemory;
+
+    // A setter rather than init: source-generated metadata assigns every init-only member, so an init alias would be reset.
     [Obsolete("Use EnableMemory instead.")]
-    public bool DisableMemory { get => !EnableMemory; init => EnableMemory = !value; }
+    public bool DisableMemory { get => !_enableMemory; set => _enableMemory = !value; }
 
     public bool DisableStorage { get; init; }
 
-    public bool EnableMemory { get; init; }
+    public bool EnableMemory { get => _enableMemory; init => _enableMemory = value; }
 
     public bool EnableReturnData { get; init; }
 
