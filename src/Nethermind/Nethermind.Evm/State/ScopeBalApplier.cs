@@ -62,8 +62,9 @@ public static class ScopeBalApplier
                         continue;
                     }
 
-                    writeBatch.Set(address, account);
+                    // Storage creation reads the account; keep flat state and the trie aligned until that read completes.
                     WriteSlots(writeBatch, accountChanges);
+                    writeBatch.Set(address, account);
                 }
             }
             finally
