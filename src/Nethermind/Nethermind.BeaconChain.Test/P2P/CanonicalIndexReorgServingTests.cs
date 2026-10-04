@@ -79,11 +79,9 @@ public class CanonicalIndexReorgServingTests
         Eth2ReqRespException? refused = Assert.ThrowsAsync<Eth2ReqRespException>(() => ServeAsync(
             protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = anchorSlot - 1, Count = 3, Step = 1 }))));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(served.Select(static b => b.Slot), Is.EqualTo(new[] { anchorSlot, anchorSlot + 1, anchorSlot + 2 }), "finality moving the anchor keeps the canonical blocks below it servable");
-            Assert.That(refused!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "an empty reply would claim the slots below the earliest block are empty");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(served.Select(static b => b.Slot), Is.EqualTo(new[] { anchorSlot, anchorSlot + 1, anchorSlot + 2 }), "finality moving the anchor keeps the canonical blocks below it servable");
+        Assert.That(refused!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "an empty reply would claim the slots below the earliest block are empty");
     }
 
     [Test]
@@ -137,11 +135,9 @@ public class CanonicalIndexReorgServingTests
         });
 
         Assert.That(served, Has.Count.EqualTo(1));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(served[0].Result, Is.EqualTo(ReqRespFraming.ResponseCode.Success));
-            Assert.That(served[0].Payload, Is.EqualTo(SignedBeaconBlockCodec.Encode(block, Sepolia)));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(served[0].Result, Is.EqualTo(ReqRespFraming.ResponseCode.Success));
+        Assert.That(served[0].Payload, Is.EqualTo(SignedBeaconBlockCodec.Encode(block, Sepolia)));
     }
 
     internal static async Task<T> ServeAsync<T>(ISessionListenerProtocol protocol, System.Func<IChannel, ISessionContext, Task<T>> dial)

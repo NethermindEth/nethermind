@@ -45,14 +45,12 @@ public class SlotClockTests
     public void Computes_slot_math(long millisecondsSinceGenesis, ulong slot, ulong epoch, long intoSlotMs, long toNextSlotMs)
     {
         SlotClock clock = CreateClock(millisecondsSinceGenesis);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(clock.CurrentSlot, Is.EqualTo(slot), "current slot");
-            Assert.That(clock.CurrentEpoch, Is.EqualTo(epoch), "current epoch");
-            Assert.That(clock.TimeIntoSlot, Is.EqualTo(TimeSpan.FromMilliseconds(intoSlotMs)), "time into slot");
-            Assert.That(clock.MillisecondsToNextSlot, Is.EqualTo(toNextSlotMs), "ms to next slot");
-            Assert.That(clock.UnixMilliseconds, Is.EqualTo((long)GenesisTime * 1000 + millisecondsSinceGenesis), "unix ms");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(clock.CurrentSlot, Is.EqualTo(slot), "current slot");
+        Assert.That(clock.CurrentEpoch, Is.EqualTo(epoch), "current epoch");
+        Assert.That(clock.TimeIntoSlot, Is.EqualTo(TimeSpan.FromMilliseconds(intoSlotMs)), "time into slot");
+        Assert.That(clock.MillisecondsToNextSlot, Is.EqualTo(toNextSlotMs), "ms to next slot");
+        Assert.That(clock.UnixMilliseconds, Is.EqualTo((long)GenesisTime * 1000 + millisecondsSinceGenesis), "unix ms");
     }
 
     [TestCase(0ul)]

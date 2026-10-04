@@ -44,12 +44,10 @@ public partial class GossipRouterTests
 
         MessageValidity validity = router.Handle(name, gloasTopic, message);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(message.Length, Is.EqualTo(compressedLength), "fixture: valid snappy of the exact length");
-            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(router.GetDropCount(reason), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(message.Length, Is.EqualTo(compressedLength), "fixture: valid snappy of the exact length");
+        Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(router.GetDropCount(reason), Is.EqualTo(1));
     }
 
     // A valid aggregate encoded with 6-byte literals exceeds max_compressed_len(16829) yet stays far under max_compressed_len(MAX_PAYLOAD_SIZE).
@@ -66,12 +64,10 @@ public partial class GossipRouterTests
 
         MessageValidity validity = router.Handle(GossipTopics.BeaconAggregateAndProof, gloasTopic: true, message);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((ssz.Length <= MaxSignedAggregateAndProofSizeGloas, message.Length > Eth2MessageId.MaxCompressedLength(MaxSignedAggregateAndProofSizeGloas)), Is.EqualTo((true, true)), "fixture");
-            Assert.That(Snappy.DecompressToArray(message), Is.EqualTo(ssz), "fixture: valid snappy");
-            AssertVerdict(router, validity, received, null, rejected: false);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((ssz.Length <= MaxSignedAggregateAndProofSizeGloas, message.Length > Eth2MessageId.MaxCompressedLength(MaxSignedAggregateAndProofSizeGloas)), Is.EqualTo((true, true)), "fixture");
+        Assert.That(Snappy.DecompressToArray(message), Is.EqualTo(ssz), "fixture: valid snappy");
+        AssertVerdict(router, validity, received, null, rejected: false);
     }
 
     public enum InvalidBlockField { FuluTimestamp, FuluBlobCount, FuluParentSlot, GloasBlobCount, GloasParentSlot, GloasBidParentRoot }
@@ -150,12 +146,10 @@ public partial class GossipRouterTests
 
         MessageValidity validity = router.HandleBeaconBlock(Snappy.CompressToArray(SignedBeaconBlock.Encode(TestChain.CreateBlock(CurrentSlot, parentRoot))));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.HasBlock(parentRoot), Is.True, "fixture: the parent is held");
-            AssertVerdict(router, validity, received, null, rejected: false);
-            Assert.That(router.GetDropCount(GossipDropReason.InvalidSsz), Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.HasBlock(parentRoot), Is.True, "fixture: the parent is held");
+        AssertVerdict(router, validity, received, null, rejected: false);
+        Assert.That(router.GetDropCount(GossipDropReason.InvalidSsz), Is.Zero);
     }
 
     private sealed class ThrowingOnReadDb : MemDb
@@ -284,14 +278,12 @@ public partial class GossipRouterTests
 
     private static void AssertVerdict(GossipRouter router, MessageValidity validity, int received, GossipDropReason? reason, bool rejected)
     {
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(rejected ? MessageValidity.Rejected : MessageValidity.Ignored), "validity");
+        Assert.That(received, Is.EqualTo(reason is null ? 1 : 0), "a message passing every synchronous rule is consumed, a dropped one never");
+        if (reason is { } expected)
         {
-            Assert.That(validity, Is.EqualTo(rejected ? MessageValidity.Rejected : MessageValidity.Ignored), "validity");
-            Assert.That(received, Is.EqualTo(reason is null ? 1 : 0), "a message passing every synchronous rule is consumed, a dropped one never");
-            if (reason is { } expected)
-            {
-                Assert.That(router.GetDropCount(expected), Is.EqualTo(1), "drop reason");
-            }
+            Assert.That(router.GetDropCount(expected), Is.EqualTo(1), "drop reason");
         }
     }
 

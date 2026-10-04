@@ -34,12 +34,10 @@ public class BeaconApiHeadSnapshotDiTests
         object?[] orchestratorHolders = [.. resolved.Where(static r => r.Consumer == typeof(BeaconSyncOrchestrator)).Select(static r => r.Instance)];
         object?[] apiHolders = [.. resolved.Where(static r => r.Consumer == typeof(BeaconApiHost)).Select(static r => r.Instance)];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(orchestratorHolders, Has.Length.EqualTo(1), "the orchestrator asks the container for the holder");
-            Assert.That(orchestratorHolders, Is.All.SameAs(registered), "the orchestrator publishes to the registered holder");
-            Assert.That(apiHolders, Has.Length.EqualTo(1), "the API asks the container for the holder");
-            Assert.That(apiHolders, Is.All.SameAs(registered), "the API reads the registered holder");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(orchestratorHolders, Has.Length.EqualTo(1), "the orchestrator asks the container for the holder");
+        Assert.That(orchestratorHolders, Is.All.SameAs(registered), "the orchestrator publishes to the registered holder");
+        Assert.That(apiHolders, Has.Length.EqualTo(1), "the API asks the container for the holder");
+        Assert.That(apiHolders, Is.All.SameAs(registered), "the API reads the registered holder");
     }
 }

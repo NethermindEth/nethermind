@@ -210,14 +210,12 @@ public class BeaconApiBlobsTests : BeaconApiFixture
         }
 
         JsonElement body = (await ReadJsonAsync(response)).RootElement;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(body.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "execution_optimistic", "finalized", "data" }));
-            Assert.That(body.GetProperty("data").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(expected.Select(b => b.ToHexString(true))));
-            Assert.That(body.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(root == RecoveryRoot || root == InterleavedRoot),
-                "types/primitive.yaml ExecutionOptimistic: a verified block payload, or for Gloas the verified bid payload, is not optimistic");
-            Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(body.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "execution_optimistic", "finalized", "data" }));
+        Assert.That(body.GetProperty("data").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(expected.Select(b => b.ToHexString(true))));
+        Assert.That(body.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(root == RecoveryRoot || root == InterleavedRoot),
+            "types/primitive.yaml ExecutionOptimistic: a verified block payload, or for Gloas the verified bid payload, is not optimistic");
+        Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False);
     }
 
     /// <summary>blobs.yaml versioned_hashes: only the named blobs, in commitment order; an unknown hash selects nothing.</summary>

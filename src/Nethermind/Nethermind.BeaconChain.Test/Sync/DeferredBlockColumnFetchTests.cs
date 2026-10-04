@@ -58,13 +58,11 @@ public class DeferredBlockColumnFetchTests
         fixture.Peers.Add(custodian);
         BlockImportResult custodianConnected = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((withoutCustodian, sameCustodians), Is.EqualTo((BlockImportResult.DataUnavailable, BlockImportResult.DataUnavailable)));
-            Assert.That(custodianConnected, Is.EqualTo(BlockImportResult.Imported), "the newly connected custodian is asked without waiting for the next slot");
-            Assert.That(custodian.RootColumnRequests, Is.EqualTo(1));
-            Assert.That(bystander.RootColumnRequests, Is.Zero, "a peer custodying no sampled column is never asked");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((withoutCustodian, sameCustodians), Is.EqualTo((BlockImportResult.DataUnavailable, BlockImportResult.DataUnavailable)));
+        Assert.That(custodianConnected, Is.EqualTo(BlockImportResult.Imported), "the newly connected custodian is asked without waiting for the next slot");
+        Assert.That(custodian.RootColumnRequests, Is.EqualTo(1));
+        Assert.That(bystander.RootColumnRequests, Is.Zero, "a peer custodying no sampled column is never asked");
     }
 
     /// <summary>fulu/p2p-interface.md DataColumnSidecarsByRoot names the block by root, so a custodian whose last status head is behind a gossip block at the head is still asked.</summary>
@@ -82,12 +80,10 @@ public class DeferredBlockColumnFetchTests
 
         BlockImportResult result = await orchestrator.ImportAndSettleAsync(fixture.Importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(blockSlot, Is.GreaterThan(behind.HeadSlot));
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(behind.RootColumnRequests, Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(blockSlot, Is.GreaterThan(behind.HeadSlot));
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(behind.RootColumnRequests, Is.EqualTo(1));
     }
 
     [Test]
@@ -108,12 +104,10 @@ public class DeferredBlockColumnFetchTests
         fixture.Peers[0] = grown;
         BlockImportResult custodyGrown = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(custodyingOnlyHeld, Is.EqualTo(BlockImportResult.DataUnavailable));
-            Assert.That(custodyGrown, Is.EqualTo(BlockImportResult.Imported), "a peer that custodied only held columns was never asked, so it is asked once it custodies a missing one");
-            Assert.That(grown.RootColumnRequests, Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(custodyingOnlyHeld, Is.EqualTo(BlockImportResult.DataUnavailable));
+        Assert.That(custodyGrown, Is.EqualTo(BlockImportResult.Imported), "a peer that custodied only held columns was never asked, so it is asked once it custodies a missing one");
+        Assert.That(grown.RootColumnRequests, Is.EqualTo(1));
     }
 
     /// <summary>The custodians of one import are asked at once for the same columns, so a copy of a column an earlier reply supplied is neither verified again nor held against its peer.</summary>
@@ -202,24 +196,22 @@ public class DeferredBlockColumnFetchTests
             requestsPerAttempt.Add(queried.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests - before);
         }
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(results[^1], Is.EqualTo(BlockImportResult.Imported), "the rotation reaches the serving custodians in the same slot");
+        Assert.That(requestsPerAttempt, Is.All.LessThanOrEqualTo(CustodiansPerImport), "each import asks at most three custodians");
+        if (distribution == CustodianDistribution.SingleColumn)
         {
-            Assert.That(results[^1], Is.EqualTo(BlockImportResult.Imported), "the rotation reaches the serving custodians in the same slot");
-            Assert.That(requestsPerAttempt, Is.All.LessThanOrEqualTo(CustodiansPerImport), "each import asks at most three custodians");
-            if (distribution == CustodianDistribution.SingleColumn)
-            {
-                Assert.That(initial, Has.Length.GreaterThan(CustodiansPerImport));
-                Assert.That(results[..^1], Is.All.EqualTo(BlockImportResult.DataUnavailable));
-                Assert.That(initial.Select(static p => p.RootColumnRequests), Is.All.EqualTo(1));
-            }
-            else
-            {
-                Assert.That(results, distribution is CustodianDistribution.ConnectsLater or CustodianDistribution.Churns
-                    ? Has.Count.EqualTo(2) : Has.Count.LessThanOrEqualTo(maxAttempts), "a new or previously overlooked custodian is reached on the next import");
-                Assert.That(honest.RootColumnRequests, Is.EqualTo(1));
-                if (distribution != CustodianDistribution.Churns)
-                    Assert.That(initial.Select(static p => p.RootColumnRequests), Is.All.LessThanOrEqualTo(1), "a peer is asked once per block and slot");
-            }
+            Assert.That(initial, Has.Length.GreaterThan(CustodiansPerImport));
+            Assert.That(results[..^1], Is.All.EqualTo(BlockImportResult.DataUnavailable));
+            Assert.That(initial.Select(static p => p.RootColumnRequests), Is.All.EqualTo(1));
+        }
+        else
+        {
+            Assert.That(results, distribution is CustodianDistribution.ConnectsLater or CustodianDistribution.Churns
+                ? Has.Count.EqualTo(2) : Has.Count.LessThanOrEqualTo(maxAttempts), "a new or previously overlooked custodian is reached on the next import");
+            Assert.That(honest.RootColumnRequests, Is.EqualTo(1));
+            if (distribution != CustodianDistribution.Churns)
+                Assert.That(initial.Select(static p => p.RootColumnRequests), Is.All.LessThanOrEqualTo(1), "a peer is asked once per block and slot");
         }
     }
 
@@ -261,13 +253,11 @@ public class DeferredBlockColumnFetchTests
         await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
         await orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((silentReply, sameSlot), Is.EqualTo((BlockImportResult.DataUnavailable, BlockImportResult.DataUnavailable)));
-            Assert.That(requestsInFirstSlot, Is.EqualTo(1), "an asked peer is not asked again for the same block in the same slot");
-            Assert.That(custodian.RootColumnRequests, Is.EqualTo(2), "the next slot asks it again");
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the retried block imports once its columns arrive");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((silentReply, sameSlot), Is.EqualTo((BlockImportResult.DataUnavailable, BlockImportResult.DataUnavailable)));
+        Assert.That(requestsInFirstSlot, Is.EqualTo(1), "an asked peer is not asked again for the same block in the same slot");
+        Assert.That(custodian.RootColumnRequests, Is.EqualTo(2), "the next slot asks it again");
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the retried block imports once its columns arrive");
     }
 
     /// <summary>A block's pool watch and fetch rotation live only while it waits for a retry, ending on import or expiry.</summary>
@@ -299,12 +289,10 @@ public class DeferredBlockColumnFetchTests
             await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(whileDeferred, Is.EqualTo(1));
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.EqualTo(imports));
-            Assert.That(tracksRotation ? orchestrator.ColumnFetchRotationCount : fixture.SidecarPool.WatchCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(whileDeferred, Is.EqualTo(1));
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.EqualTo(imports));
+        Assert.That(tracksRotation ? orchestrator.ColumnFetchRotationCount : fixture.SidecarPool.WatchCount, Is.Zero);
     }
 
     /// <summary>The by-root requests of one import run together, so custodians that never answer cost one request timeout between them, not one each.</summary>
@@ -323,13 +311,11 @@ public class DeferredBlockColumnFetchTests
         BlockImportResult result = await orchestrator.ImportAndSettleAsync(fixture.Importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
         elapsed.Stop();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable));
-            Assert.That(allAsked.MaxInFlight, Is.EqualTo(CustodiansPerImport), "every custodian of the import is asked before any answers");
-            Assert.That(elapsed.Elapsed, Is.LessThan(requestTimeout), "no request waited out its timeout behind another");
-            Assert.That(custodians.Select(static p => p.Failures), Is.All.EqualTo(1), "each failed request penalizes its peer");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable));
+        Assert.That(allAsked.MaxInFlight, Is.EqualTo(CustodiansPerImport), "every custodian of the import is asked before any answers");
+        Assert.That(elapsed.Elapsed, Is.LessThan(requestTimeout), "no request waited out its timeout behind another");
+        Assert.That(custodians.Select(static p => p.Failures), Is.All.EqualTo(1), "each failed request penalizes its peer");
     }
 
     /// <summary>
@@ -362,17 +348,15 @@ public class DeferredBlockColumnFetchTests
         fixture.AdmitPeer(custodian);
         await orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stuck, Is.True, "no peer serves the block's columns");
-            Assert.That(requestedStarts.Count(start => start <= blockSlot), Is.EqualTo(1), "only the first round asks for the block's slot");
-            // BeaconBlocksByRange: the first round asks again from the slot after the block, as a limited reply may have left out the rest of its window.
-            Assert.That(requestsPerRound.Skip(1), Is.All.EqualTo(requestsPerRound[0] - 1), "each later round asks for the slots past the block, no more");
-            Assert.That(server.RootColumnRequests, Is.EqualTo(1), "the block is not delivered again, so the same custodian is not asked again within the slot");
-            Assert.That(custodian.RootColumnRequests, Is.EqualTo(1));
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the admitted custodian is asked at once and the block imports");
-            Assert.That(orchestrator.SyncTip, Is.EqualTo((fixture.Chain.BlockRoot, blockSlot)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(stuck, Is.True, "no peer serves the block's columns");
+        Assert.That(requestedStarts.Count(start => start <= blockSlot), Is.EqualTo(1), "only the first round asks for the block's slot");
+        // BeaconBlocksByRange: the first round asks again from the slot after the block, as a limited reply may have left out the rest of its window.
+        Assert.That(requestsPerRound.Skip(1), Is.All.EqualTo(requestsPerRound[0] - 1), "each later round asks for the slots past the block, no more");
+        Assert.That(server.RootColumnRequests, Is.EqualTo(1), "the block is not delivered again, so the same custodian is not asked again within the slot");
+        Assert.That(custodian.RootColumnRequests, Is.EqualTo(1));
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the admitted custodian is asked at once and the block imports");
+        Assert.That(orchestrator.SyncTip, Is.EqualTo((fixture.Chain.BlockRoot, blockSlot)));
     }
 
     /// <summary>
@@ -401,15 +385,13 @@ public class DeferredBlockColumnFetchTests
             resumed.Add(held.RequestedStarts.Count);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.False, "fixture: the head block waits for its columns");
-            Assert.That(log.Messages.Count(static line => line.Contains("resuming range sync from the head")), Is.EqualTo(2), "fixture: the head was resumed twice");
-            Assert.That(firstRoundBlockRequests, Is.EqualTo(1), "the first round fetches the held blocks with one request");
-            Assert.That(held.RequestedStarts.Count(start => start <= heldSlot), Is.EqualTo(firstRoundBlockRequests), "no later round asks for a held block's slot");
-            Assert.That(resumed, Has.Some.GreaterThan(firstRoundRequests), "fixture: the later rounds still ask for the slots above the held blocks");
-            Assert.That(held.Orchestrator.PendingGossipBlockCount, Is.EqualTo(held.Blocks.Length - 1), "the descendants wait for the head block");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.False, "fixture: the head block waits for its columns");
+        Assert.That(log.Messages.Count(static line => line.Contains("resuming range sync from the head")), Is.EqualTo(2), "fixture: the head was resumed twice");
+        Assert.That(firstRoundBlockRequests, Is.EqualTo(1), "the first round fetches the held blocks with one request");
+        Assert.That(held.RequestedStarts.Count(start => start <= heldSlot), Is.EqualTo(firstRoundBlockRequests), "no later round asks for a held block's slot");
+        Assert.That(resumed, Has.Some.GreaterThan(firstRoundRequests), "fixture: the later rounds still ask for the slots above the held blocks");
+        Assert.That(held.Orchestrator.PendingGossipBlockCount, Is.EqualTo(held.Blocks.Length - 1), "the descendants wait for the head block");
     }
 
     /// <summary>
@@ -442,15 +424,13 @@ public class DeferredBlockColumnFetchTests
         await orchestrator.FeedRangeSyncRoundAsync(token);
         await orchestrator.ProcessQueuedAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(heldFromFork, Is.EqualTo(1), "fixture: the fork child is held for the deferred block");
-            Assert.That(honest.Reports, Is.Empty, "a fork child held here is not the honest peer's fault");
-            Assert.That(honestStarts[0], Is.EqualTo(4), "the round first tried the block past the held fork child");
-            Assert.That(honestStarts.Skip(1).First(), Is.EqualTo(fixture.Chain.Block.Message!.Slot), "then it started over from the sync tip");
-            Assert.That(orchestrator.PendingGossipBlockCount, Is.EqualTo(1 + canonical.Length - 1), "the honest chain is held above the deferred block");
-            Assert.That(honestStarts.Skip(afterRestart), Is.All.GreaterThan(canonical[^1].Slot), "and later rounds start past it");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldFromFork, Is.EqualTo(1), "fixture: the fork child is held for the deferred block");
+        Assert.That(honest.Reports, Is.Empty, "a fork child held here is not the honest peer's fault");
+        Assert.That(honestStarts[0], Is.EqualTo(4), "the round first tried the block past the held fork child");
+        Assert.That(honestStarts.Skip(1).First(), Is.EqualTo(fixture.Chain.Block.Message!.Slot), "then it started over from the sync tip");
+        Assert.That(orchestrator.PendingGossipBlockCount, Is.EqualTo(1 + canonical.Length - 1), "the honest chain is held above the deferred block");
+        Assert.That(honestStarts.Skip(afterRestart), Is.All.GreaterThan(canonical[^1].Slot), "and later rounds start past it");
     }
 
     /// <summary>A block dropped for another reason leaves the held blocks alone, so they are neither fetched nor held a second time.</summary>
@@ -467,12 +447,10 @@ public class DeferredBlockColumnFetchTests
         await held.Orchestrator.FeedRangeSyncRoundAsync(token);
         await held.Orchestrator.ProcessQueuedAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(unrelated, Is.EqualTo(BlockImportResult.Invalid), "fixture: the block is dropped");
-            Assert.That(held.Orchestrator.PendingGossipBlockCount, Is.EqualTo(heldCount));
-            Assert.That(held.RequestedStarts.Skip(requestsBefore), Is.All.GreaterThan(held.Blocks[^1].Slot), "no held block is asked for again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(unrelated, Is.EqualTo(BlockImportResult.Invalid), "fixture: the block is dropped");
+        Assert.That(held.Orchestrator.PendingGossipBlockCount, Is.EqualTo(heldCount));
+        Assert.That(held.RequestedStarts.Skip(requestsBefore), Is.All.GreaterThan(held.Blocks[^1].Slot), "no held block is asked for again");
     }
 
     /// <summary>
@@ -491,11 +469,9 @@ public class DeferredBlockColumnFetchTests
         held.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(held.Blocks[0]));
         await held.Orchestrator.ProcessQueuedAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(held.Orchestrator.PendingGossipBlockCount, Is.EqualTo(held.Blocks.Length - 1));
-            Assert.That(held.Orchestrator.RangeHeldSlot, Is.EqualTo(held.Blocks[^1].Slot));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(held.Orchestrator.PendingGossipBlockCount, Is.EqualTo(held.Blocks.Length - 1));
+        Assert.That(held.Orchestrator.RangeHeldSlot, Is.EqualTo(held.Blocks[^1].Slot));
     }
 
     /// <summary>
@@ -520,13 +496,11 @@ public class DeferredBlockColumnFetchTests
         await held.Orchestrator.FeedRangeSyncRoundAsync(token);
         await held.Orchestrator.ProcessQueuedAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(starts.Take(fallbackRequests), Has.Some.EqualTo(held.Blocks[0].Slot), "fixture: the round fell back to the sync tip");
-            Assert.That(peer.Reports, Is.Empty);
-            Assert.That(held.Orchestrator.RangeHeldSlot, Is.EqualTo(reorg.Slot));
-            Assert.That(starts.Skip(fallbackRequests), Is.All.GreaterThan(reorg.Slot), "no held block is asked for again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(starts.Take(fallbackRequests), Has.Some.EqualTo(held.Blocks[0].Slot), "fixture: the round fell back to the sync tip");
+        Assert.That(peer.Reports, Is.Empty);
+        Assert.That(held.Orchestrator.RangeHeldSlot, Is.EqualTo(reorg.Slot));
+        Assert.That(starts.Skip(fallbackRequests), Is.All.GreaterThan(reorg.Slot), "no held block is asked for again");
     }
 
     /// <summary>Only a first block off the held tip is laid on the held blocks; a peer whose blocks break their own chain after linking to it is penalized.</summary>
@@ -554,11 +528,9 @@ public class DeferredBlockColumnFetchTests
 
         await held.Orchestrator.FeedRangeSyncRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(brokenServed, Is.True, "fixture: the broken block was served");
-            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(brokenServed, Is.True, "fixture: the broken block was served");
+        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
     }
 
     /// <summary>Held range blocks take at most their share of the queue shared with gossip, and past it a round asks for nothing more.</summary>
@@ -575,12 +547,10 @@ public class DeferredBlockColumnFetchTests
         await held.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(fixture.Clock.CurrentSlot, Keccak.Compute("unknown parent"))), token);
         int gossipHeld = held.Orchestrator.PendingGossipBlockCount;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(heldCount, Is.EqualTo(BeaconSyncOrchestrator.MaxRangeHeldBlocks));
-            Assert.That(held.Server.Requests, Is.EqualTo(requestsBefore), "a full share makes the next round ask for nothing");
-            Assert.That(gossipHeld, Is.EqualTo(heldCount + 1), "a gossip block still finds room in the queue");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldCount, Is.EqualTo(BeaconSyncOrchestrator.MaxRangeHeldBlocks));
+        Assert.That(held.Server.Requests, Is.EqualTo(requestsBefore), "a full share makes the next round ask for nothing");
+        Assert.That(gossipHeld, Is.EqualTo(heldCount + 1), "a gossip block still finds room in the queue");
     }
 
     /// <summary>
@@ -608,13 +578,11 @@ public class DeferredBlockColumnFetchTests
         int requestsBefore = requestedStarts.Count;
         await orchestrator.FeedRangeSyncRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(heldBefore, Is.EqualTo(blocks[^1].Slot), "fixture: the blocks are held for the deferred block");
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
-            Assert.That(orchestrator.RangeHeldSlot, Is.EqualTo(childWaits ? blocks[^1].Slot : null));
-            Assert.That(requestedStarts.Skip(requestsBefore), Is.All.GreaterThan(blocks[^1].Slot), "no held block is asked for again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldBefore, Is.EqualTo(blocks[^1].Slot), "fixture: the blocks are held for the deferred block");
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
+        Assert.That(orchestrator.RangeHeldSlot, Is.EqualTo(childWaits ? blocks[^1].Slot : null));
+        Assert.That(requestedStarts.Skip(requestsBefore), Is.All.GreaterThan(blocks[^1].Slot), "no held block is asked for again");
     }
 
     /// <summary>
@@ -640,16 +608,14 @@ public class DeferredBlockColumnFetchTests
         }
 
         ForkedSignedBeaconBlock last = drain.Blocks[^1];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported once its columns arrived");
-            Assert.That(heldBehindLaterBlock, Is.EqualTo(laterHeldBlockWaits ? drain.Blocks.Length - WaitingIndex - 1 : 0), "the blocks behind the waiting block, of both batches, are held");
-            Assert.That(heldSlot, Is.EqualTo(laterHeldBlockWaits ? last.Slot : null), "rounds keep starting past the held blocks");
-            Assert.That(drain.Blocks.Skip(1).Select(static b => b.ComputeMessageRoot()), Is.All.Matches<Hash256>(drain.Importer.IsKnown), "every block of both batches imports");
-            Assert.That(drain.Orchestrator.SyncTip, Is.EqualTo((last.ComputeMessageRoot(), last.Slot)));
-            Assert.That(drain.Orchestrator.PendingGossipBlockCount, Is.Zero);
-            Assert.That(drain.Orchestrator.RangeHeldSlot, Is.Null);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported once its columns arrived");
+        Assert.That(heldBehindLaterBlock, Is.EqualTo(laterHeldBlockWaits ? drain.Blocks.Length - WaitingIndex - 1 : 0), "the blocks behind the waiting block, of both batches, are held");
+        Assert.That(heldSlot, Is.EqualTo(laterHeldBlockWaits ? last.Slot : null), "rounds keep starting past the held blocks");
+        Assert.That(drain.Blocks.Skip(1).Select(static b => b.ComputeMessageRoot()), Is.All.Matches<Hash256>(drain.Importer.IsKnown), "every block of both batches imports");
+        Assert.That(drain.Orchestrator.SyncTip, Is.EqualTo((last.ComputeMessageRoot(), last.Slot)));
+        Assert.That(drain.Orchestrator.PendingGossipBlockCount, Is.Zero);
+        Assert.That(drain.Orchestrator.RangeHeldSlot, Is.Null);
     }
 
     /// <summary>
@@ -681,16 +647,14 @@ public class DeferredBlockColumnFetchTests
         drain.RequestedStarts.Clear();
         await drain.Orchestrator.FeedRangeSyncRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(drain.Importer.ImportCalls.Count(root => root == waitingRoot), Is.GreaterThan(1), "the waiting block is retried on the slot tick");
-            Assert.That(heldWhileRetried, Is.EqualTo(drain.Blocks.Length - WaitingIndex - 1), "the blocks behind it stay held while it is retried");
-            Assert.That(whileRetried, Is.Not.Empty.And.All.GreaterThan(drain.Blocks[^1].Slot), "no round asks for a held block while it is retried");
-            Assert.That(log.Messages.Count(line => line.Contains($"Dropping block {waitingRoot}")), Is.EqualTo(1), "the drop is logged");
-            Assert.That(heldAfterExpiry, Is.Zero, "the blocks behind it are dropped with it");
-            Assert.That(heldSlotAfterExpiry, Is.Null);
-            Assert.That(drain.RequestedStarts, Has.Some.LessThanOrEqualTo(waiting.Slot), "the next round asks for the dropped block again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(drain.Importer.ImportCalls.Count(root => root == waitingRoot), Is.GreaterThan(1), "the waiting block is retried on the slot tick");
+        Assert.That(heldWhileRetried, Is.EqualTo(drain.Blocks.Length - WaitingIndex - 1), "the blocks behind it stay held while it is retried");
+        Assert.That(whileRetried, Is.Not.Empty.And.All.GreaterThan(drain.Blocks[^1].Slot), "no round asks for a held block while it is retried");
+        Assert.That(log.Messages.Count(line => line.Contains($"Dropping block {waitingRoot}")), Is.EqualTo(1), "the drop is logged");
+        Assert.That(heldAfterExpiry, Is.Zero, "the blocks behind it are dropped with it");
+        Assert.That(heldSlotAfterExpiry, Is.Null);
+        Assert.That(drain.RequestedStarts, Has.Some.LessThanOrEqualTo(waiting.Slot), "the next round asks for the dropped block again");
     }
 
     /// <summary>
@@ -719,17 +683,15 @@ public class DeferredBlockColumnFetchTests
         await orchestrator.FeedRangeSyncRoundAsync(token);
 
         string[] drops = [.. log.Messages.Where(static line => line.StartsWith("Dropped "))];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(heldBefore, Is.EqualTo(blocks.Length - 1), "fixture: the blocks above the deferred block are held");
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
-            Assert.That(drops, Has.Length.EqualTo(1), "one line for the whole chain");
-            Assert.That(drops[0], Does.Contain($"the {blocks.Length - 2} held blocks behind {blocks[1].ComputeMessageRoot()}").And.Contain("invalid"));
-            Assert.That(log.Messages, Has.None.Contain("Exception"));
-            Assert.That(Metrics.BeaconChainHeldBlocksDropped, Is.GreaterThanOrEqualTo(droppedBefore + (ulong)(blocks.Length - 2)), "the drop is counted");
-            Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero);
-            Assert.That(requestedStarts, Has.Some.EqualTo(blocks[1].Slot), "the next round fetches the dropped blocks again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldBefore, Is.EqualTo(blocks.Length - 1), "fixture: the blocks above the deferred block are held");
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
+        Assert.That(drops, Has.Length.EqualTo(1), "one line for the whole chain");
+        Assert.That(drops[0], Does.Contain($"the {blocks.Length - 2} held blocks behind {blocks[1].ComputeMessageRoot()}").And.Contain("invalid"));
+        Assert.That(log.Messages, Has.None.Contain("Exception"));
+        Assert.That(Metrics.BeaconChainHeldBlocksDropped, Is.GreaterThanOrEqualTo(droppedBefore + (ulong)(blocks.Length - 2)), "the drop is counted");
+        Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero);
+        Assert.That(requestedStarts, Has.Some.EqualTo(blocks[1].Slot), "the next round fetches the dropped blocks again");
     }
 
     /// <summary>A held block the full retry set refuses drops the blocks held behind it, says so once, and the next round fetches it again.</summary>
@@ -767,19 +729,17 @@ public class DeferredBlockColumnFetchTests
         requestedStarts.Clear();
         await orchestrator.FeedRangeSyncRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldBefore, Is.EqualTo(blocks.Length - 1), "fixture: the blocks above the deferred head are held");
+        Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "fixture: the first block took the last place");
+        Assert.That(requestedStarts, Has.Some.EqualTo(refused.Slot), "the next round starts at the refused block, not past it");
+        if (hasDescendant)
         {
-            Assert.That(heldBefore, Is.EqualTo(blocks.Length - 1), "fixture: the blocks above the deferred head are held");
-            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "fixture: the first block took the last place");
-            Assert.That(requestedStarts, Has.Some.EqualTo(refused.Slot), "the next round starts at the refused block, not past it");
-            if (hasDescendant)
-            {
-                string[] drops = [.. log.Messages.Where(static line => line.StartsWith("Dropped "))];
-                Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred head imported");
-                Assert.That(drops, Has.Length.EqualTo(1));
-                Assert.That(drops[0], Does.Contain($"the 1 held block behind {refused.ComputeMessageRoot()}").And.Contain("retry set is full"));
-                Assert.That(log.Messages, Has.None.Contain("Exception"));
-            }
+            string[] drops = [.. log.Messages.Where(static line => line.StartsWith("Dropped "))];
+            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred head imported");
+            Assert.That(drops, Has.Length.EqualTo(1));
+            Assert.That(drops[0], Does.Contain($"the 1 held block behind {refused.ComputeMessageRoot()}").And.Contain("retry set is full"));
+            Assert.That(log.Messages, Has.None.Contain("Exception"));
         }
     }
 
@@ -813,19 +773,17 @@ public class DeferredBlockColumnFetchTests
         await scenario.Orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
         await scenario.Orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
-            Assert.That(heldAfterHeadImported, Is.EqualTo(HeldBlocks - 1), "fixture: the blocks behind the first one it drains wait for their parents");
-            Assert.That(queuedForAPlace, Is.EqualTo(HeldBlocks - BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "the blocks past the bound wait for a place");
-            Assert.That(requestedWhileBlocked, Is.EqualTo(BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "only the blocks with a place asked the peer");
-            Assert.That(inFlightWhileBlocked, Is.EqualTo(BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "the fetches of the held blocks overlap, up to the bound");
-            Assert.That(inFlightAtMost, Is.EqualTo(BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "a finished fetch gives its place to one queued block, never more");
-            Assert.That(columnsHeld, Is.True, "every held block's columns reached the pool");
-            Assert.That(scenario.HeldRoots, Is.All.Matches<Hash256>(scenario.Importer.IsKnown), "every held block imports");
-            Assert.That(scenario.Orchestrator.PendingGossipBlockCount, Is.Zero);
-            Assert.That(scenario.Orchestrator.PendingRetryBlockCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
+        Assert.That(heldAfterHeadImported, Is.EqualTo(HeldBlocks - 1), "fixture: the blocks behind the first one it drains wait for their parents");
+        Assert.That(queuedForAPlace, Is.EqualTo(HeldBlocks - BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "the blocks past the bound wait for a place");
+        Assert.That(requestedWhileBlocked, Is.EqualTo(BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "only the blocks with a place asked the peer");
+        Assert.That(inFlightWhileBlocked, Is.EqualTo(BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "the fetches of the held blocks overlap, up to the bound");
+        Assert.That(inFlightAtMost, Is.EqualTo(BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches), "a finished fetch gives its place to one queued block, never more");
+        Assert.That(columnsHeld, Is.True, "every held block's columns reached the pool");
+        Assert.That(scenario.HeldRoots, Is.All.Matches<Hash256>(scenario.Importer.IsKnown), "every held block imports");
+        Assert.That(scenario.Orchestrator.PendingGossipBlockCount, Is.Zero);
+        Assert.That(scenario.Orchestrator.PendingRetryBlockCount, Is.Zero);
     }
 
     /// <summary>Held blocks remain unimported without their sampled columns (v1.7.0-beta.2 fulu/fork-choice.md, is_data_available).</summary>
@@ -865,12 +823,10 @@ public class DeferredBlockColumnFetchTests
         scenario.Gate.Open();
         await scenario.Orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(scenario.HeldRoots[..^1], Is.All.Matches<Hash256>(scenario.Importer.IsKnown), "fixture: the blocks before the last one imported");
-            Assert.That(importedBeforeTheirTurn, Is.Not.Empty.And.None.Matches<Hash256>(scenario.Peer.RequestedRoots.Contains), "no block asks for columns it no longer waits on");
-            Assert.That(scenario.HeldRootsRequested, Is.EquivalentTo(scenario.HeldRoots[..BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches].Append(scenario.HeldRoots[^1])), "the blocks that had a place, and the one that waits");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(scenario.HeldRoots[..^1], Is.All.Matches<Hash256>(scenario.Importer.IsKnown), "fixture: the blocks before the last one imported");
+        Assert.That(importedBeforeTheirTurn, Is.Not.Empty.And.None.Matches<Hash256>(scenario.Peer.RequestedRoots.Contains), "no block asks for columns it no longer waits on");
+        Assert.That(scenario.HeldRootsRequested, Is.EquivalentTo(scenario.HeldRoots[..BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches].Append(scenario.HeldRoots[^1])), "the blocks that had a place, and the one that waits");
     }
 
     /// <summary>Blocks dropped with their parent leave the fetch queue at once: fetches waiting on a slow peer must not gather entries of blocks that are fetched again and dropped again.</summary>
@@ -892,13 +848,11 @@ public class DeferredBlockColumnFetchTests
         await scenario.Orchestrator.SettleColumnFetchesAsync(token);
 
         string[] drops = [.. log.Messages.Where(static line => line.StartsWith("Dropped "))];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(scenario.Orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "fixture: the sibling took the last place");
-            Assert.That(drops, Has.Length.EqualTo(1), "fixture: the blocks behind the refused block were dropped");
-            Assert.That(queuedAfterDrop, Is.Zero);
-            Assert.That(scenario.HeldRootsRequested, Is.EquivalentTo(scenario.HeldRoots[..BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches]), "only the fetches that had started");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(scenario.Orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "fixture: the sibling took the last place");
+        Assert.That(drops, Has.Length.EqualTo(1), "fixture: the blocks behind the refused block were dropped");
+        Assert.That(queuedAfterDrop, Is.Zero);
+        Assert.That(scenario.HeldRootsRequested, Is.EquivalentTo(scenario.HeldRoots[..BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches]), "only the fetches that had started");
     }
 
     /// <summary>The queue of a chain that ended is empty at once, so a block held again on a later chain is not fetched twice.</summary>
@@ -911,12 +865,10 @@ public class DeferredBlockColumnFetchTests
         HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, HeldBlocks, static (importer, delivered) => importer.Accepted.UnionWith(delivered), token);
         await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(scenario.HeldRoots, Is.All.Matches<Hash256>(scenario.Importer.IsKnown), "fixture: every held block imported with the deferred block");
-            Assert.That(scenario.Orchestrator.RangeHeldSlot, Is.Null, "fixture: the chain ended");
-            Assert.That(scenario.Orchestrator.HeldColumnFetchQueueCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(scenario.HeldRoots, Is.All.Matches<Hash256>(scenario.Importer.IsKnown), "fixture: every held block imported with the deferred block");
+        Assert.That(scenario.Orchestrator.RangeHeldSlot, Is.Null, "fixture: the chain ended");
+        Assert.That(scenario.Orchestrator.HeldColumnFetchQueueCount, Is.Zero);
     }
 
     /// <summary>A held block that defers while its own fetch ahead of its turn runs asks again when that fetch ends short, instead of waiting for the slot tick.</summary>
@@ -933,12 +885,10 @@ public class DeferredBlockColumnFetchTests
         scenario.Gate.Open();
         await scenario.Orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(scenario.Orchestrator.PendingRetryBlockCount, Is.EqualTo(1), "fixture: the first held block waits for its data");
-            Assert.That(askedWhileRunning, Is.EqualTo(1), "fixture: its own fetch was still running");
-            Assert.That(scenario.Peer.RequestedRoots.Count(root => root == first), Is.EqualTo(2), "the short fetch is followed by another without a slot tick");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(scenario.Orchestrator.PendingRetryBlockCount, Is.EqualTo(1), "fixture: the first held block waits for its data");
+        Assert.That(askedWhileRunning, Is.EqualTo(1), "fixture: its own fetch was still running");
+        Assert.That(scenario.Peer.RequestedRoots.Count(root => root == first), Is.EqualTo(2), "the short fetch is followed by another without a slot tick");
     }
 
     /// <summary>A block the full retry set refuses while its own fetch ahead of its turn runs still gets its import attempt when that fetch ends, as one that started its own fetch does.</summary>
@@ -962,13 +912,11 @@ public class DeferredBlockColumnFetchTests
         scenario.Gate.Open();
         await scenario.Orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(retrySetAfterDrain, Is.EqualTo(RetrySetCapacity), "fixture: the retry set is full, so the fork is refused");
-            Assert.That(importedBeforeItsFetchEnded, Is.False);
-            Assert.That(scenario.Importer.IsKnown(refusedRoot), Is.True, "the refused block is imported once the fetch of its columns ends");
-            Assert.That(scenario.Orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "the set stays at its cap");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(retrySetAfterDrain, Is.EqualTo(RetrySetCapacity), "fixture: the retry set is full, so the fork is refused");
+        Assert.That(importedBeforeItsFetchEnded, Is.False);
+        Assert.That(scenario.Importer.IsKnown(refusedRoot), Is.True, "the refused block is imported once the fetch of its columns ends");
+        Assert.That(scenario.Orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "the set stays at its cap");
     }
 
     /// <summary>A deferred blob head with blob blocks held behind it, whose by-root column fetches wait at <see cref="Gate"/> until a test opens it.</summary>
@@ -1144,12 +1092,10 @@ public class DeferredBlockColumnFetchTests
         BlockImportResult otherRoute = fixture.Importer.Import(held.Blocks[0], held.Blocks[0].ComputeMessageRoot(), verifySignatures: true);
         await held.Orchestrator.ProcessQueuedAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(otherRoute, Is.EqualTo(BlockImportResult.Imported), "fixture: the block imports once its columns are held");
-            Assert.That(held.Orchestrator.PendingRetryBlockCount, Is.Zero, "fixture: the retry ended");
-            Assert.That(held.Orchestrator.RangeHeldSlot, Is.Null);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(otherRoute, Is.EqualTo(BlockImportResult.Imported), "fixture: the block imports once its columns are held");
+        Assert.That(held.Orchestrator.PendingRetryBlockCount, Is.Zero, "fixture: the retry ended");
+        Assert.That(held.Orchestrator.RangeHeldSlot, Is.Null);
     }
 
     /// <summary>A block range sync delivers that does not follow a held block or a deferred one is not held for anything.</summary>
@@ -1183,11 +1129,9 @@ public class DeferredBlockColumnFetchTests
 
         await orchestrator.FeedRangeSyncRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "fixture: the retry set refused the block");
-            Assert.That(requestedStarts, Has.Some.EqualTo(fixture.Chain.Block.Message!.Slot), "the round asks for the refused block again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "fixture: the retry set refused the block");
+        Assert.That(requestedStarts, Has.Some.EqualTo(fixture.Chain.Block.Message!.Slot), "the round asks for the refused block again");
     }
 
     /// <summary>Which block off the held chain waits for its data while the held chain's deferred head waits.</summary>
@@ -1253,14 +1197,12 @@ public class DeferredBlockColumnFetchTests
         await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
         await orchestrator.FeedRangeSyncRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(unrelated, Is.EqualTo(BlockImportResult.DataUnavailable), "fixture: the unrelated block waits for its data");
-            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(offChain == OffChainWait.None ? 0 : 1), "fixture: only the head block's retry expired");
-            Assert.That(orchestrator.RangeHeldSlot, Is.Null);
-            Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero);
-            Assert.That(requestedStarts.Min(), Is.EqualTo(fixture.Chain.Block.Message!.Slot), "the dropped blocks are fetched again from the head");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(unrelated, Is.EqualTo(BlockImportResult.DataUnavailable), "fixture: the unrelated block waits for its data");
+        Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(offChain == OffChainWait.None ? 0 : 1), "fixture: only the head block's retry expired");
+        Assert.That(orchestrator.RangeHeldSlot, Is.Null);
+        Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero);
+        Assert.That(requestedStarts.Min(), Is.EqualTo(fixture.Chain.Block.Message!.Slot), "the dropped blocks are fetched again from the head");
     }
 
     /// <summary>
@@ -1300,14 +1242,12 @@ public class DeferredBlockColumnFetchTests
         requestedStarts.Clear();
         await orchestrator.FeedRangeSyncRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(heldSlot, Is.EqualTo(heldAbove.Slot), "fixture: the later round holds blocks above its own deferred block");
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the previous chain's deferred block imported");
-            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(1), "fixture: the previous chain's block still waits");
-            Assert.That(orchestrator.RangeHeldSlot, Is.Null);
-            Assert.That(requestedStarts, Has.Some.LessThanOrEqualTo(deferred.Slot), "the dropped blocks of the later round are fetched again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldSlot, Is.EqualTo(heldAbove.Slot), "fixture: the later round holds blocks above its own deferred block");
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the previous chain's deferred block imported");
+        Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(1), "fixture: the previous chain's block still waits");
+        Assert.That(orchestrator.RangeHeldSlot, Is.Null);
+        Assert.That(requestedStarts, Has.Some.LessThanOrEqualTo(deferred.Slot), "the dropped blocks of the later round are fetched again");
     }
 
     /// <summary>
@@ -1328,12 +1268,10 @@ public class DeferredBlockColumnFetchTests
         fixture.AdmitPeer(admitted);
         await orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(withoutCustodian, Is.EqualTo(BlockImportResult.DataUnavailable));
-            Assert.That(admitted.RootColumnRequests, Is.EqualTo(custodies ? 1 : 0));
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.EqualTo(custodies), "the block imports before the next slot tick");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(withoutCustodian, Is.EqualTo(BlockImportResult.DataUnavailable));
+        Assert.That(admitted.RootColumnRequests, Is.EqualTo(custodies ? 1 : 0));
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.EqualTo(custodies), "the block imports before the next slot tick");
     }
 
     /// <summary>A peer that custodies no column the block still misses is not worth a request, even while other custodians are connected.</summary>
@@ -1379,12 +1317,10 @@ public class DeferredBlockColumnFetchTests
         slowFetch.Open();
         await orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(askedWhileRunning, Is.Zero, "fixture: the running fetch had not reached the custodian");
-            Assert.That(custodian.RootColumnRequests, Is.EqualTo(1));
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the block imports without a slot tick");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(askedWhileRunning, Is.Zero, "fixture: the running fetch had not reached the custodian");
+        Assert.That(custodian.RootColumnRequests, Is.EqualTo(1));
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the block imports without a slot tick");
     }
 
     /// <summary>The worker itself routes admissions to the fetch, and stops when it ends, so a stopped worker is not kept alive by the pool.</summary>
@@ -1408,11 +1344,9 @@ public class DeferredBlockColumnFetchTests
         await stop.CancelAsync();
         Assert.CatchAsync<OperationCanceledException>(async () => await worker);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(subscribedWhileRunning, Is.EqualTo(1));
-            Assert.That(fixture.AdmissionSubscribers, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(subscribedWhileRunning, Is.EqualTo(1));
+        Assert.That(fixture.AdmissionSubscribers, Is.Zero);
     }
 
     /// <summary>
@@ -1448,16 +1382,14 @@ public class DeferredBlockColumnFetchTests
         await ProcessUntilAsync(orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
         await stopRounds.CancelAsync();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(deferred, Is.True);
-            Assert.That(roundWaiting, Is.True, "the round moved past the block and waits for a peer ahead of the wall clock");
-            Assert.That(restarted, Is.True, "the round in flight is ended so the next starts from the head");
-            Assert.That(await BeaconSyncOrchestratorTests.EndsAsync(firstRound, token), Is.True);
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the block imports once the custodian is asked");
-            Assert.That(orchestrator.SyncTip, Is.EqualTo((fixture.Chain.BlockRoot, fixture.Chain.Block.Message.Slot)));
-            Assert.That(await BeaconSyncOrchestratorTests.EndsAsync(secondRound, token), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(deferred, Is.True);
+        Assert.That(roundWaiting, Is.True, "the round moved past the block and waits for a peer ahead of the wall clock");
+        Assert.That(restarted, Is.True, "the round in flight is ended so the next starts from the head");
+        Assert.That(await BeaconSyncOrchestratorTests.EndsAsync(firstRound, token), Is.True);
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the block imports once the custodian is asked");
+        Assert.That(orchestrator.SyncTip, Is.EqualTo((fixture.Chain.BlockRoot, fixture.Chain.Block.Message.Slot)));
+        Assert.That(await BeaconSyncOrchestratorTests.EndsAsync(secondRound, token), Is.True);
     }
 
     /// <summary>A full retry set gives a refused data block one fetch and one import attempt; an engine deferral needs no column request.</summary>
@@ -1480,16 +1412,14 @@ public class DeferredBlockColumnFetchTests
             waiting == BlockImportResult.EngineUnavailable ? importer : fixture.Importer,
             new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "the set stays at its cap");
-            Assert.That(custodian.RootColumnRequests, Is.EqualTo(waiting == BlockImportResult.DataUnavailable ? 1 : 0), "only missing data needs a fetch, once");
-            Assert.That(result, Is.EqualTo(waiting == BlockImportResult.DataUnavailable && !remainsUnavailable ? BlockImportResult.Imported : waiting));
-            Assert.That(fixture.Importer.IsKnown(root), Is.EqualTo(waiting == BlockImportResult.DataUnavailable && !remainsUnavailable));
-            Assert.That(orchestrator.ColumnFetchRotationCount, Is.Zero, "a refused block keeps no rotation");
-            Assert.That(fixture.SidecarPool.WatchCount, Is.Zero, "a refused block keeps no pool watch");
-            if (waiting == BlockImportResult.EngineUnavailable) Assert.That(importer.ImportCalls.Count(c => c == root), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "the set stays at its cap");
+        Assert.That(custodian.RootColumnRequests, Is.EqualTo(waiting == BlockImportResult.DataUnavailable ? 1 : 0), "only missing data needs a fetch, once");
+        Assert.That(result, Is.EqualTo(waiting == BlockImportResult.DataUnavailable && !remainsUnavailable ? BlockImportResult.Imported : waiting));
+        Assert.That(fixture.Importer.IsKnown(root), Is.EqualTo(waiting == BlockImportResult.DataUnavailable && !remainsUnavailable));
+        Assert.That(orchestrator.ColumnFetchRotationCount, Is.Zero, "a refused block keeps no rotation");
+        Assert.That(fixture.SidecarPool.WatchCount, Is.Zero, "a refused block keeps no pool watch");
+        if (waiting == BlockImportResult.EngineUnavailable) Assert.That(importer.ImportCalls.Count(c => c == root), Is.EqualTo(1));
     }
 
     /// <summary>The refused blocks are not tracked, so blocks the full retry set refuses cost one by-root fetch at a time, however many are sent.</summary>
@@ -1518,12 +1448,10 @@ public class DeferredBlockColumnFetchTests
         int requestsInFlight = neverOpens.MaxInFlight;
         await stop.CancelAsync();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(inFlight, Is.EqualTo(1));
-            Assert.That(requestsInFlight, Is.EqualTo(1), "the second refused block asked nobody");
-            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(inFlight, Is.EqualTo(1));
+        Assert.That(requestsInFlight, Is.EqualTo(1), "the second refused block asked nobody");
+        Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity));
     }
 
     /// <summary>Each refused block's fetch frees its slot for the next; an ordinary deferred fetch does not take that slot.</summary>
@@ -1546,11 +1474,9 @@ public class DeferredBlockColumnFetchTests
         await orchestrator.ImportBlockAsync(second, token);
         await orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity));
-            Assert.That((afterFirst, custodian.RootColumnRequests), Is.EqualTo((1, 2)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity));
+        Assert.That((afterFirst, custodian.RootColumnRequests), Is.EqualTo((1, 2)));
     }
 
     /// <summary>A refused block that another route imported while its fetch ran is not run through the importer again.</summary>
@@ -1575,11 +1501,9 @@ public class DeferredBlockColumnFetchTests
         BlockImportResult otherRoute = fixture.Importer.Import(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), blockRoot, verifySignatures: true);
         await orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(otherRoute, Is.EqualTo(BlockImportResult.Imported), "fixture: the block imports once its columns are held");
-            Assert.That(importer.ImportCalls.Count(c => c == blockRoot), Is.EqualTo(1), "only the attempt the retry set refused");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(otherRoute, Is.EqualTo(BlockImportResult.Imported), "fixture: the block imports once its columns are held");
+        Assert.That(importer.ImportCalls.Count(c => c == blockRoot), Is.EqualTo(1), "only the attempt the retry set refused");
     }
 
     private static ForkedSignedBeaconBlock SecondBlobBlock(Fixture fixture)

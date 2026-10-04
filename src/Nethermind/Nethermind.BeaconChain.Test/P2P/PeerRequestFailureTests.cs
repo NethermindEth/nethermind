@@ -40,11 +40,9 @@ public class PeerRequestFailureTests
         await fixture.Manager.RunMaintenanceRoundAsync(token);
         await fixture.Manager.RunMaintenanceRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.IsSelectable, Is.False, "answering status and ping does not make a peer that fails its requests selectable again");
-            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2), "request failures alone do not drop the peer");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.IsSelectable, Is.False, "answering status and ping does not make a peer that fails its requests selectable again");
+        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2), "request failures alone do not drop the peer");
     }
 
     [TestCase(typeof(TimeoutException), PeerFailureReason.RequestFailed, ExpectedResult = true)]
@@ -73,11 +71,9 @@ public class PeerRequestFailureTests
 
         await fixture.Manager.RunMaintenanceRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(violated ? 0 : 1));
-            Assert.That(fixture.Manager.IsBannedForTest(peerId), Is.EqualTo(violated), "silence alone must not ban, a violation in the run must");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(violated ? 0 : 1));
+        Assert.That(fixture.Manager.IsBannedForTest(peerId), Is.EqualTo(violated), "silence alone must not ban, a violation in the run must");
     }
 
     // A lone peer that stops answering cannot be told from this node stalling, so its health check timeout is not counted.
@@ -191,11 +187,9 @@ public class PeerRequestFailureTests
 
         await fixture.Manager.RunMaintenanceRoundAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.Manager.PeerCount, Is.EqualTo(0), "test setup: the failure limit drops the peer");
-            Assert.That(fixture.Manager.IsBannedForTest(peerId), Is.True, "a reply that failed its checks counts even when the last failure is a timeout");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.Manager.PeerCount, Is.EqualTo(0), "test setup: the failure limit drops the peer");
+        Assert.That(fixture.Manager.IsBannedForTest(peerId), Is.True, "a reply that failed its checks counts even when the last failure is a timeout");
     }
 
     [Test]
@@ -234,11 +228,9 @@ public class PeerRequestFailureTests
         bool selectableAfterServing = fixture.IsSelectable;
         fixture.Fail(PeerFailureReason.RequestFailed, 1);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(selectableAfterServing, Is.True, "failures are held at the limit, so one served request readmits the peer");
-            Assert.That(fixture.IsSelectable, Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(selectableAfterServing, Is.True, "failures are held at the limit, so one served request readmits the peer");
+        Assert.That(fixture.IsSelectable, Is.False);
     }
 
     [Test]
@@ -254,12 +246,10 @@ public class PeerRequestFailureTests
         bool selectableAfterTheInterval = fixture.IsSelectable;
         fixture.Fail(PeerFailureReason.RequestFailed, 1);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(selectableBeforeTheInterval, Is.False);
-            Assert.That(selectableAfterTheInterval, Is.True, "a peer at the limit is tried again once one failure has decayed");
-            Assert.That(fixture.IsSelectable, Is.False, "and is out again when that request fails");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(selectableBeforeTheInterval, Is.False);
+        Assert.That(selectableAfterTheInterval, Is.True, "a peer at the limit is tried again once one failure has decayed");
+        Assert.That(fixture.IsSelectable, Is.False, "and is out again when that request fails");
     }
 
     [Test]
@@ -275,11 +265,9 @@ public class PeerRequestFailureTests
         bool selectableSoonAfterTheLimit = fixture.IsSelectable;
         fixture.Time.Add(PeerManager.RequestFailureDecayInterval);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(selectableSoonAfterTheLimit, Is.False, "the interval counts from the latest failure, so a peer that just reached the limit is not tried in the next round");
-            Assert.That(fixture.IsSelectable, Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(selectableSoonAfterTheLimit, Is.False, "the interval counts from the latest failure, so a peer that just reached the limit is not tried in the next round");
+        Assert.That(fixture.IsSelectable, Is.True);
     }
 
     [Test]

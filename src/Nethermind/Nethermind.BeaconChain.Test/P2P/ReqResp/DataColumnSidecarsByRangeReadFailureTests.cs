@@ -42,12 +42,10 @@ public class DataColumnSidecarsByRangeReadFailureTests
 
         List<ResponseChunk> chunks = await RequestAsync(protocol, First, 4, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chunks, Has.Count.EqualTo(1), "no sidecar could be read, so the reply is the error alone");
-            Assert.That(chunks[0].Result, Is.EqualTo(ReqRespFraming.ResponseCode.ServerError));
-            Assert.That(InvalidMessageCount(protocol), Is.EqualTo(invalidBefore), "a failing store is not the requester's fault");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(chunks, Has.Count.EqualTo(1), "no sidecar could be read, so the reply is the error alone");
+        Assert.That(chunks[0].Result, Is.EqualTo(ReqRespFraming.ResponseCode.ServerError));
+        Assert.That(InvalidMessageCount(protocol), Is.EqualTo(invalidBefore), "a failing store is not the requester's fault");
     }
 
     [Test]

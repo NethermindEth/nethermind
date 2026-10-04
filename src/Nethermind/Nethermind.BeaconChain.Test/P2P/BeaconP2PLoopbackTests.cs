@@ -463,12 +463,10 @@ public class BeaconP2PLoopbackTests
             DataColumnSidecarsDial<DataColumnsByRootIdentifier[]> byRoot => byRoot.Gloas,
             var other => throw new AssertionException($"Unexpected dial argument {other}"),
         };
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(call.GetMethodInfo().GetGenericArguments()[0],
-                Is.EqualTo(dial is ColumnDial.FuluByRange or ColumnDial.GloasByRange ? typeof(DataColumnSidecarsByRangeProtocol) : typeof(DataColumnSidecarsByRootProtocol)));
-            Assert.That(gloas, Is.EqualTo(dial is ColumnDial.GloasByRange or ColumnDial.GloasByRoot));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(call.GetMethodInfo().GetGenericArguments()[0],
+            Is.EqualTo(dial is ColumnDial.FuluByRange or ColumnDial.GloasByRange ? typeof(DataColumnSidecarsByRangeProtocol) : typeof(DataColumnSidecarsByRootProtocol)));
+        Assert.That(gloas, Is.EqualTo(dial is ColumnDial.GloasByRange or ColumnDial.GloasByRoot));
     }
 
     /// <summary>A by-range block reply that failed used to throw away every block already read; they reach the caller with the failure, whose text stays the cause's.</summary>
@@ -490,24 +488,20 @@ public class BeaconP2PLoopbackTests
         await using PeerHostScope hosts = new(node.P2P);
         Exception? thrown = Assert.CatchAsync(async () => await node.P2P.RequestBlocksByRangeAsync(session, 5, 2, default));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((thrown as PartialBlocksException)?.Received, delivered ? Is.EqualTo(new[] { block }) : Is.Null);
-            Assert.That(thrown!.Message, Does.StartWith("Truncated response chunk"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((thrown as PartialBlocksException)?.Received, delivered ? Is.EqualTo(new[] { block }) : Is.Null);
+        Assert.That(thrown!.Message, Does.StartWith("Truncated response chunk"));
     }
 
     private static void AssertStatus(StatusMessageV2 actual, StatusMessageV2 expected)
     {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(actual.ForkDigest, Is.EqualTo(expected.ForkDigest), "fork digest");
-            Assert.That(actual.FinalizedRoot, Is.EqualTo(expected.FinalizedRoot), "finalized root");
-            Assert.That(actual.FinalizedEpoch, Is.EqualTo(expected.FinalizedEpoch), "finalized epoch");
-            Assert.That(actual.HeadRoot, Is.EqualTo(expected.HeadRoot), "head root");
-            Assert.That(actual.HeadSlot, Is.EqualTo(expected.HeadSlot), "head slot");
-            Assert.That(actual.EarliestAvailableSlot, Is.EqualTo(expected.EarliestAvailableSlot), "earliest available slot");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(actual.ForkDigest, Is.EqualTo(expected.ForkDigest), "fork digest");
+        Assert.That(actual.FinalizedRoot, Is.EqualTo(expected.FinalizedRoot), "finalized root");
+        Assert.That(actual.FinalizedEpoch, Is.EqualTo(expected.FinalizedEpoch), "finalized epoch");
+        Assert.That(actual.HeadRoot, Is.EqualTo(expected.HeadRoot), "head root");
+        Assert.That(actual.HeadSlot, Is.EqualTo(expected.HeadSlot), "head slot");
+        Assert.That(actual.EarliestAvailableSlot, Is.EqualTo(expected.EarliestAvailableSlot), "earliest available slot");
     }
 
     private record Node(BeaconP2P P2P, BeaconChainStore Store, BeaconChainStatusHolder StatusHolder, LocalMetadataSource MetadataSource, BeaconChainConfig Config, DataColumnSidecarPool Pool);

@@ -87,13 +87,11 @@ public partial class BeaconSyncOrchestratorTests
         MessageValidity otherValidator = PtcVote(router, slot, validatorIndex: 8, signatureSeed: 0);
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(repeats.Append(first).Append(otherValidator), Is.All.EqualTo(MessageValidity.Ignored), "consumed by the router, never forwarded");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries + 1 - GossipRouter.PayloadAttestationVerifyAttempts), "each repeat past the limit is dropped before it is queued");
-            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts + 1), "the limit for the pair and one for the other validator");
-            Assert.That(harness.Importer.GossipOperations, Is.All.TypeOf<PayloadAttestationMessage>());
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(repeats.Append(first).Append(otherValidator), Is.All.EqualTo(MessageValidity.Ignored), "consumed by the router, never forwarded");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries + 1 - GossipRouter.PayloadAttestationVerifyAttempts), "each repeat past the limit is dropped before it is queued");
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts + 1), "the limit for the pair and one for the other validator");
+        Assert.That(harness.Importer.GossipOperations, Is.All.TypeOf<PayloadAttestationMessage>());
     }
 
     /// <summary>
@@ -118,12 +116,10 @@ public partial class BeaconSyncOrchestratorTests
         PtcVote(router, slot, validatorIndex: 7, signatureSeed: 3);
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(verifiedBeforeRepeat, Is.EqualTo(2), "the genuine vote reached fork choice behind the forgery");
-            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(2), "a vote after the accepted one is not verified");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verifiedBeforeRepeat, Is.EqualTo(2), "the genuine vote reached fork choice behind the forgery");
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(2), "a vote after the accepted one is not verified");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
     }
 
     /// <summary>gloas/p2p-interface.md IGNOREs every vote after the first valid one: votes queued before that one is processed must not reach fork choice again.</summary>
@@ -176,13 +172,11 @@ public partial class BeaconSyncOrchestratorTests
         PtcVote(router, slot, member, signatureSeed: identicalCopy ? (byte)1 : (byte)200);
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(dropped, Is.EqualTo((ulong)refusedCopies), "fixture: every copy reached the full channel and was refused");
-            Assert.That(verifiedBefore, Is.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity), "fixture: the refused copies were never queued");
-            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity + 1), "the later copy is verified");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(dropped, Is.EqualTo((ulong)refusedCopies), "fixture: every copy reached the full channel and was refused");
+        Assert.That(verifiedBefore, Is.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity), "fixture: the refused copies were never queued");
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity + 1), "the later copy is verified");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.Zero);
     }
 
     public enum FloodKind
@@ -313,12 +307,10 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Ticks, Has.Count.EqualTo(ticksBefore + 1), "fixture: the tick was processed");
-            Assert.That(harness.Importer.TicksAtGossipOperations,
-                Is.EqualTo(Enumerable.Repeat(ticksBefore, votesBeforeTick).Concat(Enumerable.Repeat(ticksBefore + 1, votesAfterTick))));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Ticks, Has.Count.EqualTo(ticksBefore + 1), "fixture: the tick was processed");
+        Assert.That(harness.Importer.TicksAtGossipOperations,
+            Is.EqualTo(Enumerable.Repeat(ticksBefore, votesBeforeTick).Concat(Enumerable.Repeat(ticksBefore + 1, votesAfterTick))));
     }
 
     /// <summary>
@@ -340,11 +332,9 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Ticks.Skip(ticksBefore), Is.EqualTo((ulong[])[WallSlot + 1, WallSlot + 2]), "the skipped tick is applied for its vote, then the newest");
-            Assert.That(harness.Importer.TicksAtGossipOperations, Is.EqualTo((int[])[ticksBefore + 1]), "the vote is verified after the skipped tick and before the newest");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Ticks.Skip(ticksBefore), Is.EqualTo((ulong[])[WallSlot + 1, WallSlot + 2]), "the skipped tick is applied for its vote, then the newest");
+        Assert.That(harness.Importer.TicksAtGossipOperations, Is.EqualTo((int[])[ticksBefore + 1]), "the vote is verified after the skipped tick and before the newest");
     }
 
     /// <summary>Votes stamped with a tick stuck behind a full work channel cannot be read yet, so only a bounded number may wait; earlier votes stay queued.</summary>
@@ -382,11 +372,9 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(dropped, Is.EqualTo((ulong)(BeaconSyncOrchestrator.VoteQueueCapacity - BeaconSyncOrchestrator.MaxVotesAheadOfTick)), "votes past the bound are dropped");
-            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(earlyVotes + BeaconSyncOrchestrator.MaxVotesAheadOfTick), "the votes queued before the tick and the bounded ones are verified");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(dropped, Is.EqualTo((ulong)(BeaconSyncOrchestrator.VoteQueueCapacity - BeaconSyncOrchestrator.MaxVotesAheadOfTick)), "votes past the bound are dropped");
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(earlyVotes + BeaconSyncOrchestrator.MaxVotesAheadOfTick), "the votes queued before the tick and the bounded ones are verified");
     }
 
     /// <summary>A tick skipped behind a newer stamped one that never reached the work channel still ticks fork choice before the vote read by the next pass.</summary>
@@ -407,11 +395,9 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Ticks.Skip(ticksBefore), Is.EqualTo((ulong[])[WallSlot + 1]), "the skipped tick is applied for its vote");
-            Assert.That(harness.Importer.TicksAtGossipOperations, Is.EqualTo((int[])[ticksBefore + 1]), "the vote is verified after that tick");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Ticks.Skip(ticksBefore), Is.EqualTo((ulong[])[WallSlot + 1]), "the skipped tick is applied for its vote");
+        Assert.That(harness.Importer.TicksAtGossipOperations, Is.EqualTo((int[])[ticksBefore + 1]), "the vote is verified after that tick");
     }
 
     /// <summary>
@@ -516,11 +502,9 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(dropped, Is.EqualTo((ulong)overflow));
-            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(dropped, Is.EqualTo((ulong)overflow));
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(BeaconSyncOrchestrator.VoteQueueCapacity));
     }
 
     // These tests are about queueing, so every validator index is a member of the slot's PTC; membership is covered with the router.
@@ -565,11 +549,9 @@ public partial class BeaconSyncOrchestratorTests
         MessageValidity nonMember = PtcVoteWithoutPtc(router, slot, validatorIndex: 8, signatureSeed: 1);
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((beforeHeadStep, member, nonMember), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored, MessageValidity.Rejected)));
-            Assert.That(harness.Importer.GossipOperations.Cast<PayloadAttestationMessage>().Select(static vote => vote.ValidatorIndex), Is.EqualTo(new ulong[] { 7 }), "only the member, after the head step");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((beforeHeadStep, member, nonMember), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored, MessageValidity.Rejected)));
+        Assert.That(harness.Importer.GossipOperations.Cast<PayloadAttestationMessage>().Select(static vote => vote.ValidatorIndex), Is.EqualTo(new ulong[] { 7 }), "only the member, after the head step");
     }
 
     /// <summary>
@@ -593,11 +575,9 @@ public partial class BeaconSyncOrchestratorTests
         MessageValidity nonMember = PtcVoteWithoutPtc(router, slot, validatorIndex: slot + 1);
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((member, nonMember), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Rejected)), "a known committee separates the member from the rest");
-            Assert.That(harness.Importer.GossipOperations.Cast<PayloadAttestationMessage>().Select(static vote => vote.ValidatorIndex), Is.EqualTo(new[] { slot }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((member, nonMember), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Rejected)), "a known committee separates the member from the rest");
+        Assert.That(harness.Importer.GossipOperations.Cast<PayloadAttestationMessage>().Select(static vote => vote.ValidatorIndex), Is.EqualTo(new[] { slot }));
     }
 
     /// <summary>A head state that cannot tell the committee (a head not yet Gloas, an unknown head) must leave votes IGNOREd, not REJECTed: the sender is honest.</summary>

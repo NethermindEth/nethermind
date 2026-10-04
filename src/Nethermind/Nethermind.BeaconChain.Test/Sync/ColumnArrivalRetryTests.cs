@@ -47,16 +47,14 @@ public class ColumnArrivalRetryTests
         bool importedOffTheWorker = fixture.Importer.IsKnown(fixture.Chain.BlockRoot);
         await orchestrator.ProcessQueuedAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(deferred, Is.EqualTo(BlockImportResult.DataUnavailable));
-            Assert.That(queuedWithOneMissing, Is.Zero, "a column short of the sample wakes nothing");
-            Assert.That(queuedOnceComplete, Is.EqualTo(1), "the last column queues the retry");
-            Assert.That(importedOffTheWorker, Is.False, "the pool only queues work; the worker is the one that imports");
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "imported before any slot tick");
-            Assert.That(fixture.Clock.CurrentSlot, Is.EqualTo(slotAtDeferral));
-            Assert.That(fixture.SidecarPool.WatchCount, Is.Zero, "the watch ends with the wait");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(deferred, Is.EqualTo(BlockImportResult.DataUnavailable));
+        Assert.That(queuedWithOneMissing, Is.Zero, "a column short of the sample wakes nothing");
+        Assert.That(queuedOnceComplete, Is.EqualTo(1), "the last column queues the retry");
+        Assert.That(importedOffTheWorker, Is.False, "the pool only queues work; the worker is the one that imports");
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "imported before any slot tick");
+        Assert.That(fixture.Clock.CurrentSlot, Is.EqualTo(slotAtDeferral));
+        Assert.That(fixture.SidecarPool.WatchCount, Is.Zero, "the watch ends with the wait");
     }
 
     /// <summary>A flood of cheap sidecars must not add work: only a root the worker waits on queues anything, and it queues once.</summary>
@@ -81,11 +79,9 @@ public class ColumnArrivalRetryTests
             fixture.GiveColumn(column);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(queuedForUnknownRoot, Is.Zero);
-            Assert.That(orchestrator.QueuedWorkCount, Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(queuedForUnknownRoot, Is.Zero);
+        Assert.That(orchestrator.QueuedWorkCount, Is.EqualTo(1));
     }
 
     [Test]
@@ -104,13 +100,11 @@ public class ColumnArrivalRetryTests
         ulong[][] requested = [.. custodian.RequestedColumns];
         await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(requestsAfterDeferral, Is.EqualTo(1), "the deferral itself starts the fetch");
-            Assert.That(requested, Has.Length.EqualTo(1));
-            Assert.That(requested[0], Is.EqualTo(fixture.Sampled[1..]), "the held column is not asked for");
-            Assert.That(custodian.RootColumnRequests, Is.EqualTo(1), "a second deferral in the same slot asks the same custodian nothing");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(requestsAfterDeferral, Is.EqualTo(1), "the deferral itself starts the fetch");
+        Assert.That(requested, Has.Length.EqualTo(1));
+        Assert.That(requested[0], Is.EqualTo(fixture.Sampled[1..]), "the held column is not asked for");
+        Assert.That(custodian.RootColumnRequests, Is.EqualTo(1), "a second deferral in the same slot asks the same custodian nothing");
     }
 
     /// <summary>The deferral returns while the custodian's answer is pending, a second deferral does not start a second fetch, and the answer reaches the importer only through the worker.</summary>
@@ -134,15 +128,13 @@ public class ColumnArrivalRetryTests
         slow.Answer(fixture.Sampled.Select(c => fixture.Chain.Columns[(int)c]));
         await orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((first, second), Is.EqualTo((BlockImportResult.DataUnavailable, BlockImportResult.DataUnavailable)));
-            Assert.That(inFlightWhileAsked, Is.EqualTo(1));
-            Assert.That(slow.Requests, Is.EqualTo(1));
-            Assert.That(newcomer.RootColumnRequests, Is.Zero, "one fetch in flight per block");
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the fetched columns import the block without a tick");
-            Assert.That(orchestrator.ColumnFetchesInFlight, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((first, second), Is.EqualTo((BlockImportResult.DataUnavailable, BlockImportResult.DataUnavailable)));
+        Assert.That(inFlightWhileAsked, Is.EqualTo(1));
+        Assert.That(slow.Requests, Is.EqualTo(1));
+        Assert.That(newcomer.RootColumnRequests, Is.Zero, "one fetch in flight per block");
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the fetched columns import the block without a tick");
+        Assert.That(orchestrator.ColumnFetchesInFlight, Is.Zero);
     }
 
     [Test]
@@ -158,13 +150,11 @@ public class ColumnArrivalRetryTests
         int queued = orchestrator.QueuedWorkCount;
         await orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(deferred, Is.EqualTo(BlockImportResult.DataUnavailable));
-            Assert.That(importedOffTheWorker, Is.False);
-            Assert.That(queued, Is.Positive);
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(deferred, Is.EqualTo(BlockImportResult.DataUnavailable));
+        Assert.That(importedOffTheWorker, Is.False);
+        Assert.That(queued, Is.Positive);
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True);
     }
 
     /// <summary>A fetch that fails, or faults before it asks anyone, must not leave the block waiting on it: the slot tick retries and fetches again.</summary>
@@ -190,13 +180,11 @@ public class ColumnArrivalRetryTests
         await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
         await orchestrator.SettleColumnFetchesAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(deferred, Is.EqualTo(BlockImportResult.DataUnavailable));
-            Assert.That(importedByFailedFetch, Is.False);
-            Assert.That(inFlightAfterFailure, Is.Zero, "the failed fetch does not block the next one");
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the tick's retry fetched and imported");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(deferred, Is.EqualTo(BlockImportResult.DataUnavailable));
+        Assert.That(importedByFailedFetch, Is.False);
+        Assert.That(inFlightAfterFailure, Is.Zero, "the failed fetch does not block the next one");
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the tick's retry fetched and imported");
     }
 
     /// <summary>The live case: a head block still deferred at the next tick keeps its wake, so its last column imports it before the tick after.</summary>
@@ -220,12 +208,10 @@ public class ColumnArrivalRetryTests
 
         await orchestrator.ProcessQueuedAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(importedByTick, Is.False);
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "imported with no second tick");
-            Assert.That(fixture.SidecarPool.WatchCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(importedByTick, Is.False);
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "imported with no second tick");
+        Assert.That(fixture.SidecarPool.WatchCount, Is.Zero);
     }
 
     /// <summary>Every sampled column held but none verifying must not feed the worker: the retry a wake or a tick runs ends the wait instead of fetching again.</summary>
@@ -248,12 +234,10 @@ public class ColumnArrivalRetryTests
         await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
         int passesAfterTick = await orchestrator.SettleWithinAsync(4, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(passesAfterWake, Is.Positive);
-            Assert.That(passesAfterTick, Is.LessThanOrEqualTo(4));
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(passesAfterWake, Is.Positive);
+        Assert.That(passesAfterTick, Is.LessThanOrEqualTo(4));
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.False);
     }
 
     /// <summary>A custodian whose by-root answer is held until the test gives it, or that faults before it is asked.</summary>

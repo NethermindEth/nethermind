@@ -66,11 +66,9 @@ public class InboundViolationReportingTests
         long before = PeerManager.FailuresReportedForTest(connected);
         PeerId strangerId = strangerHost.LocalPeerId ?? throw new InvalidOperationException("not started");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(manager.TryReportInboundViolation(strangerId, "bytes after the request"), Is.False);
-            Assert.DoesNotThrow(() => listenerHost.ReportRequestViolation(strangerId, "bytes after the request"));
-            Assert.That(PeerManager.FailuresReportedForTest(connected), Is.EqualTo(before));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(manager.TryReportInboundViolation(strangerId, "bytes after the request"), Is.False);
+        Assert.DoesNotThrow(() => listenerHost.ReportRequestViolation(strangerId, "bytes after the request"));
+        Assert.That(PeerManager.FailuresReportedForTest(connected), Is.EqualTo(before));
     }
 }

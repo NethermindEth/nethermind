@@ -193,14 +193,12 @@ public class BeaconDiscoveryTests
         IPAddress ipv6 = IPAddress.Parse("2001:4860:4860::8888");
         NodeRecord decoded = NodeRecord.FromEnrString(new BeaconNodeRecordProvider(TestItem.PrivateKeyA, ipv6, 9000, 9001, TestForkId, 4).Current.ToString());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decoded.HasEntry(EnrContentKey.Ip), Is.False, "an IPv6 address was encoded as an IPv4 ip entry");
-            Assert.That(decoded.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? tcp6), Is.True);
-            Assert.That(tcp6?.Address, Is.EqualTo(ipv6));
-            Assert.That(tcp6?.Port, Is.EqualTo(9000));
-            Assert.That(decoded.TryGetDiscoveryEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? udp6) ? udp6.Port : 0, Is.EqualTo(9001));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(decoded.HasEntry(EnrContentKey.Ip), Is.False, "an IPv6 address was encoded as an IPv4 ip entry");
+        Assert.That(decoded.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? tcp6), Is.True);
+        Assert.That(tcp6?.Address, Is.EqualTo(ipv6));
+        Assert.That(tcp6?.Port, Is.EqualTo(9000));
+        Assert.That(decoded.TryGetDiscoveryEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? udp6) ? udp6.Port : 0, Is.EqualTo(9001));
     }
 
     [TestCase("8.8.8.8", "8.8.8.8", TestName = "The external IPv4 address is advertised")]
@@ -213,11 +211,9 @@ public class BeaconDiscoveryTests
         await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
             new RangeSyncTests.FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
         discovery.CreateDiscv5Services(address);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(discovery.LocalNodeRecord.HasEntry(EnrContentKey.Ip), Is.EqualTo(advertised is not null));
-            Assert.That(discovery.LocalNodeRecord.HasEntry(EnrContentKey.Ip6), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(discovery.LocalNodeRecord.HasEntry(EnrContentKey.Ip), Is.EqualTo(advertised is not null));
+        Assert.That(discovery.LocalNodeRecord.HasEntry(EnrContentKey.Ip6), Is.False);
     }
 
     [Test]
@@ -272,11 +268,9 @@ public class BeaconDiscoveryTests
         Assert.That(provider.Update(rotated), Is.True);
         NodeRecord updated = NodeRecord.FromEnrString(provider.Current.ToString());
         Assert.That(BeaconDiscovery.TryGetForkId(updated, out EnrForkId? updatedForkId), Is.True);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(updated.EnrSequence, Is.EqualTo(2ul));
-            Assert.That(updatedForkId, Is.EqualTo(rotated));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(updated.EnrSequence, Is.EqualTo(2ul));
+        Assert.That(updatedForkId, Is.EqualTo(rotated));
     }
 
     [Test]
@@ -364,16 +358,14 @@ public class BeaconDiscoveryTests
         NodeRecord record = ParsedEnr(key, TestForkId.Encode(), includeTcp: true);
 
         Assert.That(BeaconDiscovery.TryCreateCandidate(record, CurrentDigest, null, out BeaconPeerCandidate? candidate), Is.True);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(candidate!.PeerId, Is.EqualTo(expectedPeerId));
-            Assert.That(candidate.Multiaddress, Is.EqualTo($"/ip4/8.8.8.8/tcp/9000/p2p/{expectedPeerId}"));
-            Assert.That(candidate.ForkDigest, Is.EqualTo(CurrentDigest));
-            Assert.That(candidate.EnrSequence, Is.EqualTo(1ul));
-            // The Beacon API's node/peers endpoint reads this straight from the admitted peer; a
-            // candidate that silently drops it forces that endpoint back to reporting null.
-            Assert.That(candidate.Enr, Is.EqualTo(record.ToString()));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(candidate!.PeerId, Is.EqualTo(expectedPeerId));
+        Assert.That(candidate.Multiaddress, Is.EqualTo($"/ip4/8.8.8.8/tcp/9000/p2p/{expectedPeerId}"));
+        Assert.That(candidate.ForkDigest, Is.EqualTo(CurrentDigest));
+        Assert.That(candidate.EnrSequence, Is.EqualTo(1ul));
+        // The Beacon API's node/peers endpoint reads this straight from the admitted peer; a
+        // candidate that silently drops it forces that endpoint back to reporting null.
+        Assert.That(candidate.Enr, Is.EqualTo(record.ToString()));
     }
 
     // next_fork_version tracks the next hard fork (or stays at the current one), while next_fork_epoch also
@@ -388,13 +380,11 @@ public class BeaconDiscoveryTests
         EnrForkId forkId = EnrForkId.Compute(BeaconChainSpec.Mainnet, epoch);
 
         Assert.That(EnrForkId.TryDecode(forkId.Encode(), out EnrForkId? decoded), Is.True);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(forkId.ForkDigest, Is.EqualTo(ForkDigest.Compute(BeaconChainSpec.Mainnet, epoch)));
-            Assert.That(forkId.NextForkVersion, Is.EqualTo(Bytes.FromHexString(expectedNextVersion)));
-            Assert.That(forkId.NextForkEpoch, Is.EqualTo(expectedNextEpoch));
-            Assert.That(decoded, Is.EqualTo(forkId));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forkId.ForkDigest, Is.EqualTo(ForkDigest.Compute(BeaconChainSpec.Mainnet, epoch)));
+        Assert.That(forkId.NextForkVersion, Is.EqualTo(Bytes.FromHexString(expectedNextVersion)));
+        Assert.That(forkId.NextForkEpoch, Is.EqualTo(expectedNextEpoch));
+        Assert.That(decoded, Is.EqualTo(forkId));
     }
 
     [Test]
@@ -420,11 +410,9 @@ public class BeaconDiscoveryTests
         // Resolving the private container is what regressed; Start would mask it behind a bind and live traffic.
         NettyDiscoveryV5Handler handler = discovery.CreateDiscv5Services(PublicIp);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(handler, Is.Not.Null);
-            Assert.That(discovery.LocalNodeRecord, Is.Not.Null);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(handler, Is.Not.Null);
+        Assert.That(discovery.LocalNodeRecord, Is.Not.Null);
     }
 
     [Test]

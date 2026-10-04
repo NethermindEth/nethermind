@@ -44,21 +44,19 @@ public partial class ColumnBackfillTests
         await fixture.UntilFloorAsync(0, token);
         await run.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Enumerable.Range(0, 6).Select(slot => fixture.Store.TryGetCanonicalRoot((ulong)slot, out Hash256? root) ? root : null), Is.EqualTo(fixture.Roots), "every canonical block below the anchor is indexed");
+        Assert.That(fixture.Roots.All(fixture.Store.HasBlock), Is.True, "and stored");
+        foreach (Hash256 blobRoot in fixture.BlobRoots)
         {
-            Assert.That(Enumerable.Range(0, 6).Select(slot => fixture.Store.TryGetCanonicalRoot((ulong)slot, out Hash256? root) ? root : null), Is.EqualTo(fixture.Roots), "every canonical block below the anchor is indexed");
-            Assert.That(fixture.Roots.All(fixture.Store.HasBlock), Is.True, "and stored");
-            foreach (Hash256 blobRoot in fixture.BlobRoots)
-            {
-                Assert.That(fixture.Sampled.All(column => fixture.Store.HasDataColumnRecord(blobRoot, column)), Is.True, "every sampled column of a blob block is stored");
-            }
-
-            Assert.That(fixture.Sampled.Any(column => fixture.Store.HasDataColumnRecord(fixture.Roots[2], column)), Is.False, "a block without blobs has no columns");
-            Assert.That(peer.RequestedColumns.SelectMany(static c => c).Distinct(), Is.EquivalentTo(fixture.Sampled), "only the sampled columns are asked for");
-            Assert.That(fixture.Backfill.CompleteFrom, Is.EqualTo(0UL));
-            Assert.That(fixture.Store.BackfilledBlockFloor, Is.EqualTo(0UL));
-            Assert.That(fixture.Store.GetMetadata(ColumnBackfill.ProgressKey), Is.EqualTo(new byte[sizeof(ulong)]), "the stored progress is the floor");
+            Assert.That(fixture.Sampled.All(column => fixture.Store.HasDataColumnRecord(blobRoot, column)), Is.True, "every sampled column of a blob block is stored");
         }
+
+        Assert.That(fixture.Sampled.Any(column => fixture.Store.HasDataColumnRecord(fixture.Roots[2], column)), Is.False, "a block without blobs has no columns");
+        Assert.That(peer.RequestedColumns.SelectMany(static c => c).Distinct(), Is.EquivalentTo(fixture.Sampled), "only the sampled columns are asked for");
+        Assert.That(fixture.Backfill.CompleteFrom, Is.EqualTo(0UL));
+        Assert.That(fixture.Store.BackfilledBlockFloor, Is.EqualTo(0UL));
+        Assert.That(fixture.Store.GetMetadata(ColumnBackfill.ProgressKey), Is.EqualTo(new byte[sizeof(ulong)]), "the stored progress is the floor");
     }
 
     [Test]
@@ -87,13 +85,11 @@ public partial class ColumnBackfillTests
         await fixture.UntilFloorAsync(0, token);
         await run.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(peer.RootColumnRequests, Is.GreaterThan(requestsAtMissing), "a later round asks again");
-            Assert.That(fixture.Sampled.All(column => fixture.Store.HasDataColumnRecord(fixture.Roots[1], column)), Is.True);
-            Assert.That(log.Messages, Has.Some.Contains("cannot complete slot 1"));
-            Assert.That(log.Messages, Has.None.Contains("Exception"), "the sync gate fails a job on any log line with that word");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(peer.RootColumnRequests, Is.GreaterThan(requestsAtMissing), "a later round asks again");
+        Assert.That(fixture.Sampled.All(column => fixture.Store.HasDataColumnRecord(fixture.Roots[1], column)), Is.True);
+        Assert.That(log.Messages, Has.Some.Contains("cannot complete slot 1"));
+        Assert.That(log.Messages, Has.None.Contains("Exception"), "the sync gate fails a job on any log line with that word");
     }
 
     [Test]
@@ -162,12 +158,10 @@ public partial class ColumnBackfillTests
         await restarted.UntilFloorAsync(0, token);
         await run.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(peer.Requests + peer.RootBlockRequests, Is.Zero, "the blocks are stored");
-            Assert.That(restarted.RequestedRoots, Is.All.EqualTo(restarted.Roots[1]), "only the incomplete block's columns are asked for");
-            Assert.That(restarted.RequestedRoots, Is.Not.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(peer.Requests + peer.RootBlockRequests, Is.Zero, "the blocks are stored");
+        Assert.That(restarted.RequestedRoots, Is.All.EqualTo(restarted.Roots[1]), "only the incomplete block's columns are asked for");
+        Assert.That(restarted.RequestedRoots, Is.Not.Empty);
     }
 
     [Test]
@@ -187,12 +181,10 @@ public partial class ColumnBackfillTests
         await fixture.UntilFloorAsync(0, token);
         await run.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(requestsWhileBehind, Is.Zero);
-            Assert.That(floorWhileBehind, Is.EqualTo(ulong.MaxValue), "and no floor is claimed");
-            Assert.That(peer.Requests + peer.RootBlockRequests + peer.RootColumnRequests, Is.GreaterThan(0));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(requestsWhileBehind, Is.Zero);
+        Assert.That(floorWhileBehind, Is.EqualTo(ulong.MaxValue), "and no floor is claimed");
+        Assert.That(peer.Requests + peer.RootBlockRequests + peer.RootColumnRequests, Is.GreaterThan(0));
     }
 
     public enum BackfillReply
@@ -235,44 +227,42 @@ public partial class ColumnBackfillTests
         await fixture.UntilFloorAsync(0, token);
         await run.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (reply == BackfillReply.ForgedWhole)
         {
-            if (reply == BackfillReply.ForgedWhole)
-            {
-                Assert.That(first.Reports, Does.Contain(PeerFailureReason.ProtocolViolation));
-                Assert.That(fixture.Store.TryGetCanonicalRoot(3, out Hash256? canonical) ? canonical : null, Is.EqualTo(fixture.Roots[3]));
-            }
-            else
-            {
-                Assert.That(first.Reports, Is.EqualTo(reply == BackfillReply.ForgedPartial
-                    ? new[] { PeerFailureReason.RequestFailed, PeerFailureReason.ProtocolViolation }
-                    : new[] { PeerFailureReason.RequestFailed }));
-                Assert.That(peers.Sum(peer => peer.RootBlockRequests), Is.Zero, "linked range replies require no by-root fetch");
-                Assert.That(fixture.Roots[..4].All(fixture.Store.HasBlock), Is.True);
-            }
-            if (forged) Assert.That(fixture.Store.HasBlock(invalidRoot), Is.False);
-            switch (reply)
-            {
-                case BackfillReply.LinkedPartial:
-                    Assert.That(first.RequestedRanges, Is.EqualTo(new[] { (0UL, AnchorSlot) }));
-                    Assert.That(second.RequestedRanges, Is.EqualTo(new[] { (2UL, AnchorSlot - 2) }));
-                    Assert.That(second.Reports, Is.Empty);
-                    break;
-                case BackfillReply.ForgedPartial:
-                    Assert.That(second.RequestedRanges[0], Is.EqualTo((3UL, 1UL)));
-                    Assert.That(third!.RequestedRanges[0], Is.EqualTo((0UL, 3UL)));
-                    Assert.That(second.Reports.Concat(third.Reports), Is.Empty);
-                    break;
-                case BackfillReply.TwoPartials:
-                case BackfillReply.OmittedBlock:
-                    Assert.That(second.Reports, Is.EqualTo(new[] { reply == BackfillReply.OmittedBlock ? PeerFailureReason.ProtocolViolation : PeerFailureReason.RequestFailed }));
-                    Assert.That(third!.Reports, Is.Empty);
-                    break;
-                case BackfillReply.UnlinkedUpper:
-                    Assert.That(second.RequestedRanges[0], Is.EqualTo((2UL, 2UL)));
-                    Assert.That(third!.RequestedRanges[0], Is.EqualTo((2UL, 2UL)), "kept slots are not requested again");
-                    break;
-            }
+            Assert.That(first.Reports, Does.Contain(PeerFailureReason.ProtocolViolation));
+            Assert.That(fixture.Store.TryGetCanonicalRoot(3, out Hash256? canonical) ? canonical : null, Is.EqualTo(fixture.Roots[3]));
+        }
+        else
+        {
+            Assert.That(first.Reports, Is.EqualTo(reply == BackfillReply.ForgedPartial
+                ? new[] { PeerFailureReason.RequestFailed, PeerFailureReason.ProtocolViolation }
+                : new[] { PeerFailureReason.RequestFailed }));
+            Assert.That(peers.Sum(peer => peer.RootBlockRequests), Is.Zero, "linked range replies require no by-root fetch");
+            Assert.That(fixture.Roots[..4].All(fixture.Store.HasBlock), Is.True);
+        }
+        if (forged) Assert.That(fixture.Store.HasBlock(invalidRoot), Is.False);
+        switch (reply)
+        {
+            case BackfillReply.LinkedPartial:
+                Assert.That(first.RequestedRanges, Is.EqualTo(new[] { (0UL, AnchorSlot) }));
+                Assert.That(second.RequestedRanges, Is.EqualTo(new[] { (2UL, AnchorSlot - 2) }));
+                Assert.That(second.Reports, Is.Empty);
+                break;
+            case BackfillReply.ForgedPartial:
+                Assert.That(second.RequestedRanges[0], Is.EqualTo((3UL, 1UL)));
+                Assert.That(third!.RequestedRanges[0], Is.EqualTo((0UL, 3UL)));
+                Assert.That(second.Reports.Concat(third.Reports), Is.Empty);
+                break;
+            case BackfillReply.TwoPartials:
+            case BackfillReply.OmittedBlock:
+                Assert.That(second.Reports, Is.EqualTo(new[] { reply == BackfillReply.OmittedBlock ? PeerFailureReason.ProtocolViolation : PeerFailureReason.RequestFailed }));
+                Assert.That(third!.Reports, Is.Empty);
+                break;
+            case BackfillReply.UnlinkedUpper:
+                Assert.That(second.RequestedRanges[0], Is.EqualTo((2UL, 2UL)));
+                Assert.That(third!.RequestedRanges[0], Is.EqualTo((2UL, 2UL)), "kept slots are not requested again");
+                break;
         }
     }
 
@@ -325,12 +315,10 @@ public partial class ColumnBackfillTests
 
         await backfill.RunAsync(token).WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(backfill.CompleteFrom, Is.EqualTo(0UL), "the backfill is complete either way");
-            Assert.That(sampled.All(column => store.HasDataColumnRecord(gloasRoot, column)), Is.EqualTo(revealed));
-            Assert.That(gloasRequests > 0, Is.EqualTo(revealed), "no peer is asked for the columns of a block whose payload was not revealed");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(backfill.CompleteFrom, Is.EqualTo(0UL), "the backfill is complete either way");
+        Assert.That(sampled.All(column => store.HasDataColumnRecord(gloasRoot, column)), Is.EqualTo(revealed));
+        Assert.That(gloasRequests > 0, Is.EqualTo(revealed), "no peer is asked for the columns of a block whose payload was not revealed");
     }
 
     /// <summary>

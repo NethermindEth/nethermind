@@ -59,12 +59,10 @@ public class ExecutionPayloadEnvelopeImporterTests
 
         ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine).Import(envelope);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(expected));
-            Assert.That(Rejections() - rejectionsBefore, Is.EqualTo(expectedRejections));
-            engine.ReceivedWithAnyArgs(1).engine_newPayloadV5(default!, default!, default, default);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(expected));
+        Assert.That(Rejections() - rejectionsBefore, Is.EqualTo(expectedRejections));
+        engine.ReceivedWithAnyArgs(1).engine_newPayloadV5(default!, default!, default, default);
     }
 
     /// <summary>
@@ -104,13 +102,11 @@ public class ExecutionPayloadEnvelopeImporterTests
 
         ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates(), engine, (_, _) => availabilityAsked = true).Import(envelope);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock));
-            Assert.That(availabilityAsked, Is.False);
-            Assert.That(Rejections(), Is.EqualTo(rejectionsBefore), "an envelope may arrive before its block; that is not an invalid message");
-            engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock));
+        Assert.That(availabilityAsked, Is.False);
+        Assert.That(Rejections(), Is.EqualTo(rejectionsBefore), "an envelope may arrive before its block; that is not an invalid message");
+        engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
     }
 
     [Test]
@@ -123,12 +119,10 @@ public class ExecutionPayloadEnvelopeImporterTests
 
         ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine, (_, _) => false).Import(envelope);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
-            Assert.That(Rejections(), Is.EqualTo(rejectionsBefore));
-            engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.DataUnavailable));
+        Assert.That(Rejections(), Is.EqualTo(rejectionsBefore));
+        engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
     }
 
     /// <summary>
@@ -171,13 +165,11 @@ public class ExecutionPayloadEnvelopeImporterTests
 
         ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine, pubkeys: cache).Import(envelope);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
-            Assert.That(Rejections(), Is.EqualTo(rejectionsBefore));
-            Assert.That(cache.Count, Is.EqualTo(state.Validators!.Length));
-            engine.ReceivedWithAnyArgs(1).engine_newPayloadV5(default!, default!, default, default);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        Assert.That(Rejections(), Is.EqualTo(rejectionsBefore));
+        Assert.That(cache.Count, Is.EqualTo(state.Validators!.Length));
+        engine.ReceivedWithAnyArgs(1).engine_newPayloadV5(default!, default!, default, default);
     }
 
     /// <summary>
@@ -223,11 +215,9 @@ public class ExecutionPayloadEnvelopeImporterTests
             }
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Invalid));
-            Assert.That(counted, Is.EqualTo(new[] { "execution_payload_envelope" }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Invalid));
+        Assert.That(counted, Is.EqualTo(new[] { "execution_payload_envelope" }));
     }
 
     /// <summary>
@@ -353,13 +343,11 @@ public class ExecutionPayloadEnvelopeImporterTests
 
         ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine, (_, _) => availabilityAsked = true).Import(envelope);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Invalid), "a missing root can never become known, so retrying it as an unknown block would never end");
-            Assert.That(Rejections() - rejectionsBefore, Is.EqualTo(1));
-            Assert.That(availabilityAsked, Is.False);
-            engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Invalid), "a missing root can never become known, so retrying it as an unknown block would never end");
+        Assert.That(Rejections() - rejectionsBefore, Is.EqualTo(1));
+        Assert.That(availabilityAsked, Is.False);
+        engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
     }
 
     [Test]
@@ -372,11 +360,9 @@ public class ExecutionPayloadEnvelopeImporterTests
 
         ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine).Import(envelope);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.EngineUnavailable));
-            Assert.That(Rejections(), Is.EqualTo(rejectionsBefore), "an unevaluated envelope is not an invalid one");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.EngineUnavailable));
+        Assert.That(Rejections(), Is.EqualTo(rejectionsBefore), "an unevaluated envelope is not an invalid one");
     }
 
     /// <summary>
@@ -394,11 +380,9 @@ public class ExecutionPayloadEnvelopeImporterTests
         long rejectionsBefore = Rejections();
 
         Assert.That(() => importer.Import(envelope), Throws.InvalidOperationException);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Rejections(), Is.EqualTo(rejectionsBefore));
-            notifier.ReceivedWithAnyArgs(1).NotifyNewPayload(default!, default!, default!, default!);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Rejections(), Is.EqualTo(rejectionsBefore));
+        notifier.ReceivedWithAnyArgs(1).NotifyNewPayload(default!, default!, default!, default!);
     }
 
     /// <summary>
@@ -435,12 +419,10 @@ public class ExecutionPayloadEnvelopeImporterTests
         ExecutionPayloadEnvelopeImportResult resultB = importer.Import(ValidEnvelope(stateB, bidB.Message!, builderSk, builderIndex: 0));
         ExecutionPayloadEnvelopeImportResult resultA = importer.Import(ValidEnvelope(stateA, bidA.Message!, builderSk, builderIndex: 0));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resultB, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Optimistic));
-            Assert.That(resultA, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
-            Assert.That(availabilityAsked, Is.EqualTo(new[] { (rootB, Hash(0x89)), (rootA, Hash(0x88)) }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(resultB, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Optimistic));
+        Assert.That(resultA, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        Assert.That(availabilityAsked, Is.EqualTo(new[] { (rootB, Hash(0x89)), (rootA, Hash(0x88)) }));
     }
 
     private static BeaconStateGloas StateWithCommittedBid(out SignedExecutionPayloadBid bid, out Bls.SecretKey builderSk, byte blockHashFill = 0x88)
@@ -496,12 +478,10 @@ public class ExecutionPayloadEnvelopeImporterTests
 
     private static void AssertCountedRejectionWithoutEngineCall(ExecutionPayloadEnvelopeImportResult result, long rejectionsBefore, IEngineRpcModule engine)
     {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Invalid));
-            Assert.That(Rejections() - rejectionsBefore, Is.EqualTo(1));
-            engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Invalid));
+        Assert.That(Rejections() - rejectionsBefore, Is.EqualTo(1));
+        engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
     }
 
     private static long Rejections() => Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(EnvelopeRejected);

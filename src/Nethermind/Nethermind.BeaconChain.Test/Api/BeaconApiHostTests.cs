@@ -509,11 +509,9 @@ public class BeaconApiHostTests
             using HttpResponseMessage response = await host.Client.GetAsync("/eth/v1/node/syncing");
             using JsonDocument body = await ReadJsonAsync(response);
             using HttpResponseMessage health = await host.Client.GetAsync("/eth/v1/node/health");
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(body.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.EqualTo(expected));
-                Assert.That((int)health.StatusCode, Is.EqualTo(expected ? 206 : 200));
-            }
+            using IDisposable assertionScope = Assert.EnterMultipleScope();
+            Assert.That(body.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.EqualTo(expected));
+            Assert.That((int)health.StatusCode, Is.EqualTo(expected ? 206 : 200));
         }
     }
 }

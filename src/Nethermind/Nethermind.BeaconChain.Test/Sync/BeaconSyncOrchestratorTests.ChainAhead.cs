@@ -39,11 +39,9 @@ public partial class BeaconSyncOrchestratorTests
 
         await harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(blockSlot, seed: 0), CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Pool.StatusRefreshSlots, Is.EqualTo(signalled is { } slot ? new[] { slot } : Array.Empty<ulong>()));
-            Assert.That(signalsAtFetch, Is.EqualTo(signalled is null ? 0 : 1), "the status refresh runs while the ancestor is fetched, not after it failed");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Pool.StatusRefreshSlots, Is.EqualTo(signalled is { } slot ? new[] { slot } : Array.Empty<ulong>()));
+        Assert.That(signalsAtFetch, Is.EqualTo(signalled is null ? 0 : 1), "the status refresh runs while the ancestor is fetched, not after it failed");
     }
 
     [TestCase(AnchorSlot, true, TestName = "a head an epoch behind signals the wall slot")]
@@ -104,12 +102,10 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.ProcessQueuedAsync(token);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(heldAfterFailedFetch, Is.EqualTo(1), "the gossip block is kept while its ancestry is missing");
-            Assert.That(harness.Importer.Known, Does.Contain(gossip.ComputeMessageRoot()), $"the head did not reach the gossip block's slot within {maxRounds} range sync rounds");
-            Assert.That(harness.Importer.Imports.Select(static i => i.Slot).Where(static s => s == WallSlot).Count(), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldAfterFailedFetch, Is.EqualTo(1), "the gossip block is kept while its ancestry is missing");
+        Assert.That(harness.Importer.Known, Does.Contain(gossip.ComputeMessageRoot()), $"the head did not reach the gossip block's slot within {maxRounds} range sync rounds");
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot).Where(static s => s == WallSlot).Count(), Is.EqualTo(1));
     }
 
     /// <summary>Range sync that already reached the wall clock waits a slot between rounds; a failed ancestor fetch must not wait that out.</summary>
@@ -144,12 +140,10 @@ public partial class BeaconSyncOrchestratorTests
         TimeSpan untilNextRound = sinceFailedFetch.Elapsed;
         await stopFeed.CancelAsync();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(await EndsAsync(feed, token), Is.True);
-            Assert.That(RangeRequests(stale), Is.Positive, "a range sync round started after the failed fetch");
-            Assert.That(untilNextRound, Is.LessThan(bound));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(await EndsAsync(feed, token), Is.True);
+        Assert.That(RangeRequests(stale), Is.Positive, "a range sync round started after the failed fetch");
+        Assert.That(untilNextRound, Is.LessThan(bound));
     }
 
     /// <summary>
@@ -187,11 +181,9 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.ProcessQueuedAsync(token);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Pool.StatusRefreshSlots, Does.Contain(WallSlot), "the slot tick told the pool the chain is past its peers");
-            Assert.That(harness.Importer.Known, Does.Contain(wallSlotRoot), $"the head did not reach the wall slot within {maxRounds} range sync rounds");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Pool.StatusRefreshSlots, Does.Contain(WallSlot), "the slot tick told the pool the chain is past its peers");
+        Assert.That(harness.Importer.Known, Does.Contain(wallSlotRoot), $"the head did not reach the wall slot within {maxRounds} range sync rounds");
     }
 
     private static IBeaconSyncPeer TimingOutPeer(string id, ulong headSlot)

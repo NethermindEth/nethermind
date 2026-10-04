@@ -87,16 +87,14 @@ public class ColumnGossipRouterFuluHeaderTests
         DataColumnSidecar honest = SignedSidecar();
         MessageValidity honestVerdict = router.Handle(Column, gloasTopic: false, Message(honest));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(verdicts, Is.All.Not.EqualTo(MessageValidity.Accepted), "a forgery is never forwarded");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.InvalidHeaderSignature), Is.EqualTo(forgeries / 2), "a known proposer's forged signature is refused");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.UnknownProposer), Is.EqualTo(forgeries / 2), "a proposer with no known key is refused");
-            Assert.That(honestVerdict, Is.EqualTo(MessageValidity.Ignored));
-            Assert.That(router.KzgBatchCount, Is.EqualTo(1), "the only KZG batch is the honest sidecar's");
-            Assert.That(raised, Is.EqualTo(1), "only the honest sidecar is consumed");
-            Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True, "the honest sidecar is pooled for availability");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdicts, Is.All.Not.EqualTo(MessageValidity.Accepted), "a forgery is never forwarded");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.InvalidHeaderSignature), Is.EqualTo(forgeries / 2), "a known proposer's forged signature is refused");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.UnknownProposer), Is.EqualTo(forgeries / 2), "a proposer with no known key is refused");
+        Assert.That(honestVerdict, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(router.KzgBatchCount, Is.EqualTo(1), "the only KZG batch is the honest sidecar's");
+        Assert.That(raised, Is.EqualTo(1), "only the honest sidecar is consumed");
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True, "the honest sidecar is pooled for availability");
     }
 
     [Test]
@@ -111,12 +109,10 @@ public class ColumnGossipRouterFuluHeaderTests
             verdicts.Add(router.Handle(Column, gloasTopic: false, Message(Signed(equivocation, signer: 0))));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored));
-            Assert.That(router.KzgBatchCount, Is.EqualTo(ColumnGossipRouter.SignedHeadersPerProposal), "no KZG batch past the limit");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.ProposerHeaderLimit), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored));
+        Assert.That(router.KzgBatchCount, Is.EqualTo(ColumnGossipRouter.SignedHeadersPerProposal), "no KZG batch past the limit");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.ProposerHeaderLimit), Is.EqualTo(1));
     }
 
     [Test]
@@ -130,13 +126,11 @@ public class ColumnGossipRouterFuluHeaderTests
         MessageValidity first = router.Handle(Column, gloasTopic: false, Message(garbage));
         MessageValidity second = router.Handle(Column, gloasTopic: false, Message(honest));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((first, second), Is.EqualTo((MessageValidity.Rejected, MessageValidity.Ignored)));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedKzgProofs), Is.EqualTo(1));
-            Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out DataColumnSidecar? pooled), Is.True);
-            Assert.That(pooled!.KzgProofs, Is.EqualTo(honest.KzgProofs), "the honest copy is pooled, the garbage is not");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((first, second), Is.EqualTo((MessageValidity.Rejected, MessageValidity.Ignored)));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedKzgProofs), Is.EqualTo(1));
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out DataColumnSidecar? pooled), Is.True);
+        Assert.That(pooled!.KzgProofs, Is.EqualTo(honest.KzgProofs), "the honest copy is pooled, the garbage is not");
     }
 
     /// <summary>fulu/p2p-interface.md: [REJECT] the sidecar's block's parent passes validation; a parent the importer never recorded stays the IGNORE of an unseen one.</summary>
@@ -174,12 +168,10 @@ public class ColumnGossipRouterFuluHeaderTests
         garbage.KzgProofs = [garbage.KzgProofs![1], garbage.KzgProofs[0]];
         MessageValidity[] verdicts = [.. Enumerable.Range(0, copies).Select(_ => router.Handle(Column, gloasTopic: false, Message(garbage)))];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(router.KzgBatchCount, Is.EqualTo(batchesBefore), "no KZG batch for a column already verified under this header");
-            Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(copies));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(router.KzgBatchCount, Is.EqualTo(batchesBefore), "no KZG batch for a column already verified under this header");
+        Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(copies));
     }
 
     // A column sync pooled proves which cells and proofs are valid under its header, so a copy is judged against it without KZG.
@@ -201,15 +193,13 @@ public class ColumnGossipRouterFuluHeaderTests
         MessageValidity first = router.Handle(Column, gloasTopic: false, Message(alteredCopy ? Altered(honest, 0) : honest));
         MessageValidity second = router.Handle(Column, gloasTopic: false, Message(honest));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (forwardable ? 1UL : 0UL)));
-            Assert.That(router.KzgBatchCount, Is.Zero);
-            Assert.That((first, second), Is.EqualTo(!forwardable ? (MessageValidity.Ignored, MessageValidity.Ignored)
-                : alteredCopy ? (MessageValidity.Ignored, MessageValidity.Accepted)
-                : (MessageValidity.Accepted, MessageValidity.Ignored)));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(forwardable ? 1 : 2));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (forwardable ? 1UL : 0UL)));
+        Assert.That(router.KzgBatchCount, Is.Zero);
+        Assert.That((first, second), Is.EqualTo(!forwardable ? (MessageValidity.Ignored, MessageValidity.Ignored)
+            : alteredCopy ? (MessageValidity.Ignored, MessageValidity.Accepted)
+            : (MessageValidity.Accepted, MessageValidity.Ignored)));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(forwardable ? 1 : 2));
     }
 
     // With no key cache no signature rule applies, so the forged header here passes every check this router can run.
@@ -257,18 +247,16 @@ public class ColumnGossipRouterFuluHeaderTests
         MessageValidity first = router.Handle(reconstructedColumn, gloasTopic: false, Message(honest));
         MessageValidity second = router.Handle(reconstructedColumn, gloasTopic: false, Message(honest));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(received, Is.All.EqualTo(MessageValidity.Accepted));
-            Assert.That(reconstructed, Is.True, "the column was reconstructed before any copy of it arrived");
-            Assert.That(topics[reconstructedTopic].Published, Is.EqualTo(publishFails ? Array.Empty<byte[]>() : new[] { Message(honest) }), "the reconstructed sidecar is sent once, as its snappy SSZ");
-            Assert.That(forgedVerdict, Is.Not.EqualTo(MessageValidity.Accepted));
-            Assert.That((first, second), Is.EqualTo(publishFails ? (MessageValidity.Accepted, MessageValidity.Ignored) : (MessageValidity.Ignored, MessageValidity.Ignored)),
-                "a published column is never forwarded again; an unpublished one is forwarded once");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(publishFails ? 1 : 3), "a published tuple also drops a forged copy claiming it");
-            Assert.That(router.KzgBatchCount, Is.EqualTo(batchesBefore));
-            Assert.That(pool.TryGet(SszRoots.HashTreeRoot(forged.SignedBlockHeader.Message), reconstructedColumn, out _), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(received, Is.All.EqualTo(MessageValidity.Accepted));
+        Assert.That(reconstructed, Is.True, "the column was reconstructed before any copy of it arrived");
+        Assert.That(topics[reconstructedTopic].Published, Is.EqualTo(publishFails ? Array.Empty<byte[]>() : new[] { Message(honest) }), "the reconstructed sidecar is sent once, as its snappy SSZ");
+        Assert.That(forgedVerdict, Is.Not.EqualTo(MessageValidity.Accepted));
+        Assert.That((first, second), Is.EqualTo(publishFails ? (MessageValidity.Accepted, MessageValidity.Ignored) : (MessageValidity.Ignored, MessageValidity.Ignored)),
+            "a published column is never forwarded again; an unpublished one is forwarded once");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(publishFails ? 1 : 3), "a published tuple also drops a forged copy claiming it");
+        Assert.That(router.KzgBatchCount, Is.EqualTo(batchesBefore));
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(forged.SignedBlockHeader.Message), reconstructedColumn, out _), Is.False);
     }
 
     [Test]
@@ -344,12 +332,10 @@ public class ColumnGossipRouterFuluHeaderTests
             router.Handle(Column, gloasTopic: false, Message(SignedSidecar()));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.InvalidHeaderSignature), Is.EqualTo(1));
-            Assert.That(router.HeaderSignatureVerificationCount, Is.EqualTo(2), "one pairing per distinct signature; the honest one stays cached across the failed one");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.InvalidHeaderSignature), Is.EqualTo(1));
+        Assert.That(router.HeaderSignatureVerificationCount, Is.EqualTo(2), "one pairing per distinct signature; the honest one stays cached across the failed one");
     }
 
     [TestCase(true, true, TestName = "signed header on a deep chain from the finalized root is consumed")]
@@ -401,14 +387,12 @@ public class ColumnGossipRouterFuluHeaderTests
 
         MessageValidity verdict = router.Handle(Column, gloasTopic: false, Message(SignedSidecar()));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(publishedDependentRoot, Is.EqualTo(chain.AnchorRoot), "the importer publishes into the container's holder");
-            // Accepted only if the router reads both the lookahead and the key cache the test wrote.
-            Assert.That(verdict, Is.EqualTo(expectedProposer ? MessageValidity.Accepted : MessageValidity.Rejected));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(expectedProposer ? 0 : 1));
-            Assert.That((raised, router.KzgBatchCount), Is.EqualTo(expectedProposer ? (1, 1L) : (0, 0L)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(publishedDependentRoot, Is.EqualTo(chain.AnchorRoot), "the importer publishes into the container's holder");
+        // Accepted only if the router reads both the lookahead and the key cache the test wrote.
+        Assert.That(verdict, Is.EqualTo(expectedProposer ? MessageValidity.Accepted : MessageValidity.Rejected));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(expectedProposer ? 0 : 1));
+        Assert.That((raised, router.KzgBatchCount), Is.EqualTo(expectedProposer ? (1, 1L) : (0, 0L)));
     }
 
     [Test]
@@ -436,13 +420,11 @@ public class ColumnGossipRouterFuluHeaderTests
         BlockImportResult imported = importer.Import(new ForkedSignedBeaconBlock.OfFulu(broken.Block), brokenRoot, verifySignatures: false);
         MessageValidity verdict = router.Handle(Column, gloasTopic: false, Message(Signed(sidecar, signer: 0)));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(imported, Is.EqualTo(BlockImportResult.Invalid), "fixture");
-            Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected), "the importer's refusal reaches the router through the container");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlockValidation), Is.EqualTo(1));
-            Assert.That(router.KzgBatchCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(imported, Is.EqualTo(BlockImportResult.Invalid), "fixture");
+        Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected), "the importer's refusal reaches the router through the container");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlockValidation), Is.EqualTo(1));
+        Assert.That(router.KzgBatchCount, Is.Zero);
     }
 
     private static IEnumerable<HeaderValidationCase> ExpectedProposerCases()
@@ -495,17 +477,15 @@ public class ColumnGossipRouterFuluHeaderTests
         MessageValidity second = router.Handle(Column, gloasTopic: false, Message(honest));
         MessageValidity third = router.Handle(Column, gloasTopic: false, Message(honest));
 
-        using (Assert.EnterMultipleScope())
-        {
-            MessageValidity[] expected = order is ImportOrder.UncoveredUntilImport or ImportOrder.AncestryUnknownUntilImport
-                ? [MessageValidity.Ignored, MessageValidity.Accepted, MessageValidity.Ignored]
-                : [MessageValidity.Accepted, MessageValidity.Ignored, MessageValidity.Ignored];
-            // With ancestry unknown the first copy is consumed but not forwarded: two messages, two accepted outcomes.
-            Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (order == ImportOrder.AncestryUnknownUntilImport ? 2UL : 1UL)));
-            Assert.That(new[] { first, second, third }, Is.EqualTo(expected));
-            Assert.That((raised, router.KzgBatchCount), Is.EqualTo((1, 1L)), "consumed once, verified once");
-            Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        MessageValidity[] expected = order is ImportOrder.UncoveredUntilImport or ImportOrder.AncestryUnknownUntilImport
+            ? [MessageValidity.Ignored, MessageValidity.Accepted, MessageValidity.Ignored]
+            : [MessageValidity.Accepted, MessageValidity.Ignored, MessageValidity.Ignored];
+        // With ancestry unknown the first copy is consumed but not forwarded: two messages, two accepted outcomes.
+        Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (order == ImportOrder.AncestryUnknownUntilImport ? 2UL : 1UL)));
+        Assert.That(new[] { first, second, third }, Is.EqualTo(expected));
+        Assert.That((raised, router.KzgBatchCount), Is.EqualTo((1, 1L)), "consumed once, verified once");
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True);
     }
 
     // Every column of a block carries the same signed header and inclusion proof, so copies with altered cells cost nothing to make.
@@ -534,15 +514,13 @@ public class ColumnGossipRouterFuluHeaderTests
 
         altered.AddRange(Enumerable.Range(alteredBeforeHonest, alteredAfterHonest).Select(i => router.Handle(Column, gloasTopic: false, Message(Altered(honest, i)))));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(altered, Is.All.Not.EqualTo(MessageValidity.Accepted));
-            Assert.That(honestVerdict, Is.EqualTo(withinBound ? MessageValidity.Accepted : MessageValidity.Ignored));
-            Assert.That(batchesThroughHonest, Is.EqualTo(withinBound ? alteredBeforeHonest + 1 : ColumnGossipRouter.KzgBatchesPerColumn));
-            Assert.That(router.KzgBatchCount, Is.EqualTo(batchesThroughHonest), "no KZG batch once the column is held");
-            Assert.That(pool.TryGet(blockRoot, Column, out DataColumnSidecar? pooled), Is.True);
-            Assert.That(DataColumnSidecar.Encode(pooled!), Is.EqualTo(DataColumnSidecar.Encode(honest)), "the honest copy is pooled");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(altered, Is.All.Not.EqualTo(MessageValidity.Accepted));
+        Assert.That(honestVerdict, Is.EqualTo(withinBound ? MessageValidity.Accepted : MessageValidity.Ignored));
+        Assert.That(batchesThroughHonest, Is.EqualTo(withinBound ? alteredBeforeHonest + 1 : ColumnGossipRouter.KzgBatchesPerColumn));
+        Assert.That(router.KzgBatchCount, Is.EqualTo(batchesThroughHonest), "no KZG batch once the column is held");
+        Assert.That(pool.TryGet(blockRoot, Column, out DataColumnSidecar? pooled), Is.True);
+        Assert.That(DataColumnSidecar.Encode(pooled!), Is.EqualTo(DataColumnSidecar.Encode(honest)), "the honest copy is pooled");
     }
 
     public enum Resolution
@@ -610,25 +588,23 @@ public class ColumnGossipRouterFuluHeaderTests
             lookaheads.Current = Lookahead(OtherRoot, 0);
             router.Handle(Column, gloasTopic: false, UndecodableMessage);
         }
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdict, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(pooledByRetry, Is.EqualTo(test.WithPubkeys));
+        Assert.That(batchesAfterRetry, Is.EqualTo(!test.WithPubkeys ? 0 : test.AlteredCopies > 0 ? ColumnGossipRouter.KzgBatchesPerColumn : 1));
+        Assert.That(router.KzgBatchCount, Is.EqualTo(batchesAfterRetry));
+        if (test.WithPubkeys) Assert.That(pool.TryGet(blockRoot, Column, out DataColumnSidecar? pooled) ? DataColumnSidecar.Encode(pooled!) : null, Is.EqualTo(DataColumnSidecar.Encode(honest)));
+        if (test.ProbeBeforePublication)
         {
-            Assert.That(verdict, Is.EqualTo(MessageValidity.Ignored));
-            Assert.That(pooledByRetry, Is.EqualTo(test.WithPubkeys));
-            Assert.That(batchesAfterRetry, Is.EqualTo(!test.WithPubkeys ? 0 : test.AlteredCopies > 0 ? ColumnGossipRouter.KzgBatchesPerColumn : 1));
-            Assert.That(router.KzgBatchCount, Is.EqualTo(batchesAfterRetry));
-            if (test.WithPubkeys) Assert.That(pool.TryGet(blockRoot, Column, out DataColumnSidecar? pooled) ? DataColumnSidecar.Encode(pooled!) : null, Is.EqualTo(DataColumnSidecar.Encode(honest)));
-            if (test.ProbeBeforePublication)
-            {
-                Assert.That((beforePublish, pooledBeforePublish), Is.EqualTo(((MessageValidity?)MessageValidity.Rejected, false)));
-                Assert.That(raised, Is.EqualTo(1));
-            }
-            if (test.ProbeBeforePublication || test.LaterPublications > 0) Assert.That(router.GetDropCount(ColumnGossipDropReason.ProposerNotVerifiable), Is.EqualTo(1));
-            if (test.LaterPublications > 0 || test.AlteredCopies > 0) Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.Zero);
-            if (test.CheckMetrics)
-            {
-                Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore));
-                Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(droppedBefore + (test.NestedMessage ? 2UL : 1UL)));
-            }
+            Assert.That((beforePublish, pooledBeforePublish), Is.EqualTo(((MessageValidity?)MessageValidity.Rejected, false)));
+            Assert.That(raised, Is.EqualTo(1));
+        }
+        if (test.ProbeBeforePublication || test.LaterPublications > 0) Assert.That(router.GetDropCount(ColumnGossipDropReason.ProposerNotVerifiable), Is.EqualTo(1));
+        if (test.LaterPublications > 0 || test.AlteredCopies > 0) Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.Zero);
+        if (test.CheckMetrics)
+        {
+            Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore));
+            Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(droppedBefore + (test.NestedMessage ? 2UL : 1UL)));
         }
     }
 
@@ -659,12 +635,10 @@ public class ColumnGossipRouterFuluHeaderTests
         lookaheads.Current = Lookahead(ParentRoot, 0);
         router.Handle(Column, gloasTopic: false, UndecodableMessage);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((routed, handedOff, pooledWhileQueued), Is.EqualTo((MessageValidity.Ignored, false, false)), "the caller gives the IGNORE at once");
-            Assert.That(given, Is.Empty, "the retry gives no verdict for a message already ignored");
-            Assert.That(pool.TryGet(blockRoot, Column, out _), Is.True, "the retry pools the queued sidecar");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((routed, handedOff, pooledWhileQueued), Is.EqualTo((MessageValidity.Ignored, false, false)), "the caller gives the IGNORE at once");
+        Assert.That(given, Is.Empty, "the retry gives no verdict for a message already ignored");
+        Assert.That(pool.TryGet(blockRoot, Column, out _), Is.True, "the retry pools the queued sidecar");
     }
 
     /// <summary>
@@ -683,12 +657,10 @@ public class ColumnGossipRouterFuluHeaderTests
 
         (MessageValidity routed, List<MessageValidity> given) = HandleBlock(router, SignedBlock(signer, Hash256.Zero));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(given, Is.EqualTo(new[] { expected }));
-            Assert.That(raisedVerdicts, Has.Count.EqualTo(raised), "only a block that is not rejected reaches the import pipeline");
-            Assert.That(routed, Is.EqualTo(expected == MessageValidity.Rejected ? MessageValidity.Rejected : MessageValidity.Ignored));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(given, Is.EqualTo(new[] { expected }));
+        Assert.That(raisedVerdicts, Has.Count.EqualTo(raised), "only a block that is not rejected reaches the import pipeline");
+        Assert.That(routed, Is.EqualTo(expected == MessageValidity.Rejected ? MessageValidity.Rejected : MessageValidity.Ignored));
     }
 
     /// <summary>A child of a parent whose execution payload fork choice invalidated is ignored, not accepted, though its header verifies.</summary>
@@ -785,11 +757,9 @@ public class ColumnGossipRouterFuluHeaderTests
         long verifiedBeforeSecond = headers.HeaderSignatureVerificationCount;
         (_, List<MessageValidity> second) = HandleBlock(router, SignedBlock(0, OtherRoot));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((first.Single(), second.Single()), Is.EqualTo((MessageValidity.Accepted, MessageValidity.Ignored)));
-            Assert.That(headers.HeaderSignatureVerificationCount, Is.EqualTo(verifiedBeforeSecond), "the second block costs no BLS work");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((first.Single(), second.Single()), Is.EqualTo((MessageValidity.Accepted, MessageValidity.Ignored)));
+        Assert.That(headers.HeaderSignatureVerificationCount, Is.EqualTo(verifiedBeforeSecond), "the second block costs no BLS work");
     }
 
     private static (GossipRouter Router, ColumnGossipRouter Headers) BlockRouter(Hash256 dependentRoot, ulong expectedProposer, out List<GossipVerdict> raised, ForkChoiceSnapshot? snapshot = null)
@@ -854,12 +824,10 @@ public class ColumnGossipRouterFuluHeaderTests
 
         MessageValidity verdict = router.Handle(Column, gloasTopic: false, Message(sidecar));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(verdict, Is.EqualTo(offSubgroup ? MessageValidity.Rejected : MessageValidity.Ignored), "the same signature verifies under the key inside the subgroup");
-            Assert.That(router.KzgBatchCount, Is.EqualTo(offSubgroup ? 0 : 1));
-            Assert.That(pool.TryGet(SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!), Column, out _), Is.EqualTo(!offSubgroup));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdict, Is.EqualTo(offSubgroup ? MessageValidity.Rejected : MessageValidity.Ignored), "the same signature verifies under the key inside the subgroup");
+        Assert.That(router.KzgBatchCount, Is.EqualTo(offSubgroup ? 0 : 1));
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!), Column, out _), Is.EqualTo(!offSubgroup));
     }
 
     [Test]
@@ -889,11 +857,9 @@ public class ColumnGossipRouterFuluHeaderTests
         snapshots.Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true);
         router.Handle(Column, gloasTopic: false, UndecodableMessage);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True, "the other proposer's queued column survives the flood");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(ColumnGossipRouter.ParkedColumnsPerProposer), "the retry meets exactly the flooding proposer's share of the queue");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True, "the other proposer's queued column survives the flood");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(ColumnGossipRouter.ParkedColumnsPerProposer), "the retry meets exactly the flooding proposer's share of the queue");
     }
 
 
@@ -916,16 +882,14 @@ public class ColumnGossipRouterFuluHeaderTests
 
         MessageValidity validity = router.Handle(Column, gloasTopic: false, Message(sidecar));
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(expected));
+        Assert.That(router.KzgBatchCount, Is.EqualTo(kzgBatches), "KZG batches run");
+        Assert.That(raised, Is.EqualTo(consumed ? 1 : 0), "consumed");
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!), Column, out _), Is.EqualTo(consumed), "pooled");
+        if (reason is { } dropReason)
         {
-            Assert.That(validity, Is.EqualTo(expected));
-            Assert.That(router.KzgBatchCount, Is.EqualTo(kzgBatches), "KZG batches run");
-            Assert.That(raised, Is.EqualTo(consumed ? 1 : 0), "consumed");
-            Assert.That(pool.TryGet(SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!), Column, out _), Is.EqualTo(consumed), "pooled");
-            if (reason is { } dropReason)
-            {
-                Assert.That(router.GetDropCount(dropReason), Is.EqualTo(1), "the drop is counted under its reason");
-            }
+            Assert.That(router.GetDropCount(dropReason), Is.EqualTo(1), "the drop is counted under its reason");
         }
     }
 

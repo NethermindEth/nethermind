@@ -44,22 +44,20 @@ public class BeaconBlockAttestationsTests : BeaconApiFixture
         Assert.That(data.GetArrayLength(), Is.EqualTo(1));
         JsonElement attestation = data[0];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(attestation.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "aggregation_bits", "data", "signature", "committee_bits" }));
-            // Bits {0, 2} of a 3-bit bitlist plus the length sentinel at bit 3.
-            Assert.That(attestation.GetProperty("aggregation_bits").GetString(), Is.EqualTo("0x0d"));
-            Assert.That(attestation.GetProperty("committee_bits").GetString(), Is.EqualTo("0x0200000000000000"));
-            Assert.That(attestation.GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0x43)));
-            JsonElement attestationData = attestation.GetProperty("data");
-            Assert.That(attestationData.GetProperty("slot").GetString(), Is.EqualTo((RichSlot - 1).ToString()));
-            Assert.That(attestationData.GetProperty("index").GetString(), Is.EqualTo("0"));
-            Assert.That(attestationData.GetProperty("beacon_block_root").GetString(), Is.EqualTo(Hex(32, 0xaa)));
-            Assert.That(attestationData.GetProperty("source").GetProperty("epoch").GetString(), Is.EqualTo("412498"));
-            Assert.That(attestationData.GetProperty("source").GetProperty("root").GetString(), Is.EqualTo(Hex(32, 0xab)));
-            Assert.That(attestationData.GetProperty("target").GetProperty("epoch").GetString(), Is.EqualTo("412499"));
-            Assert.That(attestationData.GetProperty("target").GetProperty("root").GetString(), Is.EqualTo(Hex(32, 0xac)));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(attestation.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "aggregation_bits", "data", "signature", "committee_bits" }));
+        // Bits {0, 2} of a 3-bit bitlist plus the length sentinel at bit 3.
+        Assert.That(attestation.GetProperty("aggregation_bits").GetString(), Is.EqualTo("0x0d"));
+        Assert.That(attestation.GetProperty("committee_bits").GetString(), Is.EqualTo("0x0200000000000000"));
+        Assert.That(attestation.GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0x43)));
+        JsonElement attestationData = attestation.GetProperty("data");
+        Assert.That(attestationData.GetProperty("slot").GetString(), Is.EqualTo((RichSlot - 1).ToString()));
+        Assert.That(attestationData.GetProperty("index").GetString(), Is.EqualTo("0"));
+        Assert.That(attestationData.GetProperty("beacon_block_root").GetString(), Is.EqualTo(Hex(32, 0xaa)));
+        Assert.That(attestationData.GetProperty("source").GetProperty("epoch").GetString(), Is.EqualTo("412498"));
+        Assert.That(attestationData.GetProperty("source").GetProperty("root").GetString(), Is.EqualTo(Hex(32, 0xab)));
+        Assert.That(attestationData.GetProperty("target").GetProperty("epoch").GetString(), Is.EqualTo("412499"));
+        Assert.That(attestationData.GetProperty("target").GetProperty("root").GetString(), Is.EqualTo(Hex(32, 0xac)));
     }
 
     [Test]

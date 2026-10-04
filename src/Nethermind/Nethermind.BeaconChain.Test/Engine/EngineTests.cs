@@ -503,13 +503,11 @@ public class EngineTests
             Assert.That(actual.Withdrawals, Has.Length.EqualTo(1));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(actual.Withdrawals![0].Index, Is.EqualTo(withdrawal.Index));
-            Assert.That(actual.Withdrawals[0].ValidatorIndex, Is.EqualTo(withdrawal.ValidatorIndex));
-            Assert.That(actual.Withdrawals[0].Address, Is.EqualTo(withdrawal.Address));
-            Assert.That(actual.Withdrawals[0].AmountInGwei, Is.EqualTo(withdrawal.Amount));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(actual.Withdrawals![0].Index, Is.EqualTo(withdrawal.Index));
+        Assert.That(actual.Withdrawals[0].ValidatorIndex, Is.EqualTo(withdrawal.ValidatorIndex));
+        Assert.That(actual.Withdrawals[0].Address, Is.EqualTo(withdrawal.Address));
+        Assert.That(actual.Withdrawals[0].AmountInGwei, Is.EqualTo(withdrawal.Amount));
     }
 
     internal static ExecutionPayloadGloas GloasPayload(ulong slotNumber) => new()

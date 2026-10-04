@@ -101,12 +101,10 @@ public class EarlyRejectLoopbackTests
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, token);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.InvalidRequest), "an error chunk, not silence or a success");
-            Assert.That(chunk?.Payload, Is.Not.Empty, "the error chunk carries its message");
-            Assert.That(elapsed, Is.LessThan(Prompt), "answered at once, not by the listener's own timeout");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.InvalidRequest), "an error chunk, not silence or a success");
+        Assert.That(chunk?.Payload, Is.Not.Empty, "the error chunk carries its message");
+        Assert.That(elapsed, Is.LessThan(Prompt), "answered at once, not by the listener's own timeout");
     }
 
     // A list that may be empty has nothing to send, so it must close the stream at once.
@@ -121,11 +119,9 @@ public class EarlyRejectLoopbackTests
         await server.StartAsync(token);
         (byte[] response, TimeSpan elapsed) = await RequestAsync(server, protocolId, wire, request != Request.ZeroLengthStreamHeldOpen, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(response, Is.Empty, "no chunk, error or success");
-            Assert.That(elapsed, Is.LessThan(Prompt), "closed at once, not by the listener's own timeout");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(response, Is.Empty, "no chunk, error or success");
+        Assert.That(elapsed, Is.LessThan(Prompt), "closed at once, not by the listener's own timeout");
     }
 
     /// <summary>Sends the request from a fresh plain libp2p peer and returns the whole response and how long it took.</summary>

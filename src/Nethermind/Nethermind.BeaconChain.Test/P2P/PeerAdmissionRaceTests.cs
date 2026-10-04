@@ -212,16 +212,14 @@ public class PeerAdmissionRaceTests
 
         bool admitted = await dial.WaitAsync(Hold, token);
         TimeSpan[] accepted = relay.Accepted;
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(admitted, Is.True, "a redial after the old session closed admits the peer");
+        Assert.That(manager.PeerCount, Is.EqualTo(1));
+        for (int redial = 1; redial < accepted.Length; redial++)
         {
-            Assert.That(admitted, Is.True, "a redial after the old session closed admits the peer");
-            Assert.That(manager.PeerCount, Is.EqualTo(1));
-            for (int redial = 1; redial < accepted.Length; redial++)
-            {
-                // Timer resolution can end a delay a tick early.
-                Assert.That(accepted[redial] - accepted[redial - 1], Is.GreaterThanOrEqualTo(PeerManager.RedialBackoff * redial - TimerTolerance),
-                    $"redial {redial} waited out its backoff");
-            }
+            // Timer resolution can end a delay a tick early.
+            Assert.That(accepted[redial] - accepted[redial - 1], Is.GreaterThanOrEqualTo(PeerManager.RedialBackoff * redial - TimerTolerance),
+                $"redial {redial} waited out its backoff");
         }
     }
 

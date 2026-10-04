@@ -185,11 +185,9 @@ public class CustodySamplingAvailabilityTests
 
         bool available = rule.IsDataAvailable(electraBlock, SszRoots.HashTreeRoot(electraBlock), spec);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.EqualTo(expected));
-            Assert.That(columns.Requested, Is.Empty, "a pre-Fulu block has blob sidecars, not columns");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.EqualTo(expected));
+        Assert.That(columns.Requested, Is.Empty, "a pre-Fulu block has blob sidecars, not columns");
     }
 
     /// <summary>
@@ -210,11 +208,9 @@ public class CustodySamplingAvailabilityTests
         atFinalizedSlot.Slot = chain.AnchorBlock.Message!.Slot;
         BlockImportResult old = importer.Import(new ForkedSignedBeaconBlock.OfFulu(chain.Block), SszRoots.HashTreeRoot(atFinalizedSlot), verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((child, askedForChild), Is.EqualTo((BlockImportResult.DataUnavailable, 1)), "a block after the anchor is asked");
-            Assert.That((old, rule.Asked), Is.EqualTo((BlockImportResult.Invalid, 1)), "a block at the finalized slot is refused unasked");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((child, askedForChild), Is.EqualTo((BlockImportResult.DataUnavailable, 1)), "a block after the anchor is asked");
+        Assert.That((old, rule.Asked), Is.EqualTo((BlockImportResult.Invalid, 1)), "a block at the finalized slot is refused unasked");
     }
 
     private static IEnumerable<ulong> All() => Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(c => (ulong)c);

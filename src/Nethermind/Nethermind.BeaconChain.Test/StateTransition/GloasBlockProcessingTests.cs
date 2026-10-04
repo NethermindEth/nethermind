@@ -61,11 +61,9 @@ public class GloasBlockProcessingTests
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
             GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature))!;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ex.Message, Does.Contain("Builder index").And.Contain("out of range"));
-            Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ex.Message, Does.Contain("Builder index").And.Contain("out of range"));
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore));
     }
 
     [Test]

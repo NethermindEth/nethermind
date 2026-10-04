@@ -155,11 +155,9 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         host.SetStatus(root, root, 412_501);
         using HttpResponseMessage confirmedResponse = await host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json);
         using JsonDocument confirmed = await BeaconApiTestHost.ReadJsonAsync(confirmedResponse);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(confirmed.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
-            Assert.That(confirmed.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(confirmed.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
+        Assert.That(confirmed.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
     }
 
     [Test]
@@ -313,12 +311,10 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement body = JsonDocument.Parse(raw).RootElement;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
-            Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False);
-            Assert.That(body.GetProperty("execution_optimistic").GetBoolean(), Is.False, "an empty list references no payload, even while the execution client is not in sync");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+        Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False);
+        Assert.That(body.GetProperty("execution_optimistic").GetBoolean(), Is.False, "an empty list references no payload, even while the execution client is not in sync");
     }
 
     [Test]
@@ -492,11 +488,9 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
 
         using HttpResponseMessage response = await _host.GetAsync("/eth/v2/debug/beacon/states/head", Json);
         using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-            Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.EqualTo(offset == 0));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.EqualTo(offset == 0));
     }
 }
 

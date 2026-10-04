@@ -54,14 +54,12 @@ public class BeaconChainStoreStateSlotIndexTests
         db.States.ResetCount();
         store.SetAnchor(Root(Below - 1), 30);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(db.Index.KeysRead, Is.LessThanOrEqualTo(Below + 1), "the entries in range, and at most the first key past it on a table that cannot seek; never one of the 200 states above");
-            Assert.That(db.States.KeysRead, Is.Zero, "state manifests and chunks are never enumerated");
-            Assert.That(store.TryGetState(Root(0), out _) || store.TryGetState(Root(1), out _), Is.False);
-            Assert.That(store.TryGetState(Root(Below - 1), out _), Is.True, "the anchor stays");
-            Assert.That(Enumerable.Range(0, Above).All(i => store.TryGetState(Root(1000 + i), out _)), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(db.Index.KeysRead, Is.LessThanOrEqualTo(Below + 1), "the entries in range, and at most the first key past it on a table that cannot seek; never one of the 200 states above");
+        Assert.That(db.States.KeysRead, Is.Zero, "state manifests and chunks are never enumerated");
+        Assert.That(store.TryGetState(Root(0), out _) || store.TryGetState(Root(1), out _), Is.False);
+        Assert.That(store.TryGetState(Root(Below - 1), out _), Is.True, "the anchor stays");
+        Assert.That(Enumerable.Range(0, Above).All(i => store.TryGetState(Root(1000 + i), out _)), Is.True);
     }
 
     [Test]
@@ -108,13 +106,11 @@ public class BeaconChainStoreStateSlotIndexTests
         int keysReadByRepeat = db.States.KeysRead;
         upgraded.SetAnchor(Root(3), 40);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(upgraded.TryGetState(Root(count), out _), Is.True, "a legacy state without a readable slot is kept");
-            Assert.That(indexed, Is.EqualTo(count));
-            Assert.That(keysReadByRepeat, Is.Zero, "the state table is scanned once, when the version is raised");
-            Assert.That(Enumerable.Range(0, count).Select(i => upgraded.TryGetState(Root(i), out _)), Is.EqualTo(Enumerable.Range(0, count).Select(i => i >= 3)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(upgraded.TryGetState(Root(count), out _), Is.True, "a legacy state without a readable slot is kept");
+        Assert.That(indexed, Is.EqualTo(count));
+        Assert.That(keysReadByRepeat, Is.Zero, "the state table is scanned once, when the version is raised");
+        Assert.That(Enumerable.Range(0, count).Select(i => upgraded.TryGetState(Root(i), out _)), Is.EqualTo(Enumerable.Range(0, count).Select(i => i >= 3)));
     }
 
     [Test]
@@ -137,12 +133,10 @@ public class BeaconChainStoreStateSlotIndexTests
 
         store.SetAnchor(Root(2), 50);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.TryGetState(Root(1), out byte[]? kept), Is.True, "its slot is 100");
-            Assert.That(kept, Is.EqualTo(StateAt(100)));
-            Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(2), "the entry of its old slot is dropped; the anchor's and its own remain");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetState(Root(1), out byte[]? kept), Is.True, "its slot is 100");
+        Assert.That(kept, Is.EqualTo(StateAt(100)));
+        Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(2), "the entry of its old slot is dropped; the anchor's and its own remain");
     }
 
     [Test]
@@ -184,12 +178,10 @@ public class BeaconChainStoreStateSlotIndexTests
         }
 
         store.PutState(blockRoot, StateAt(20));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.TryGetBlockRootByStateRoot(stateRoot, out Hash256? restored), Is.True);
-            Assert.That(restored, Is.EqualTo(blockRoot));
-            Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetBlockRootByStateRoot(stateRoot, out Hash256? restored), Is.True);
+        Assert.That(restored, Is.EqualTo(blockRoot));
+        Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(1));
     }
 
     [Test]
@@ -214,13 +206,11 @@ public class BeaconChainStoreStateSlotIndexTests
 
         store.EnsureSchemaVersion();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.TryGetBlockRootByStateRoot(stateRoot, out Hash256? found), Is.True);
-            Assert.That(found, Is.EqualTo(blockRoot));
-            Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(1));
-            Assert.That(store.TryGetSchemaVersion(out uint migrated) ? migrated : 0, Is.EqualTo(6u));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetBlockRootByStateRoot(stateRoot, out Hash256? found), Is.True);
+        Assert.That(found, Is.EqualTo(blockRoot));
+        Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(1));
+        Assert.That(store.TryGetSchemaVersion(out uint migrated) ? migrated : 0, Is.EqualTo(6u));
     }
 
     [Test]

@@ -38,11 +38,9 @@ public class BeaconChainStoreDataColumnScanTests
 
         db.FailReads = true;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.FindIncompleteDataColumnSlot(FuluStart, top, null, Required, out BeaconChainStore.DataColumnShortfall shortfall), Is.EqualTo(top));
-            Assert.That(shortfall, Is.EqualTo(BeaconChainStore.DataColumnShortfall.ReadFailed));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.FindIncompleteDataColumnSlot(FuluStart, top, null, Required, out BeaconChainStore.DataColumnShortfall shortfall), Is.EqualTo(top));
+        Assert.That(shortfall, Is.EqualTo(BeaconChainStore.DataColumnShortfall.ReadFailed));
     }
 
     [Test]
@@ -55,11 +53,9 @@ public class BeaconChainStoreDataColumnScanTests
         store.PutBlock(RootAt(slot), block);
         store.ApplyCanonicalIndexChanges([(slot, RootAt(slot))], slot);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.FindIncompleteDataColumnSlot(0, slot, null, Required, out _), Is.Null, "a Deneb/Electra block's blobs are blob sidecars, not columns");
-            Assert.That(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()).FindIncompleteDataColumnSlot(0, 0, null, Required, out _), Is.Null, "an empty store");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.FindIncompleteDataColumnSlot(0, slot, null, Required, out _), Is.Null, "a Deneb/Electra block's blobs are blob sidecars, not columns");
+        Assert.That(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()).FindIncompleteDataColumnSlot(0, 0, null, Required, out _), Is.Null, "an empty store");
     }
 
     [Test]

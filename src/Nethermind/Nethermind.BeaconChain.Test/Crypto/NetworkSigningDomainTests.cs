@@ -30,12 +30,10 @@ public class NetworkSigningDomainTests
     {
         BeaconChainSpec spec = Spec(network);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(spec.GenesisForkVersion.ToHexString(true), Is.EqualTo(genesis), "GENESIS_FORK_VERSION");
-            Assert.That(spec.CapellaForkVersion.ToHexString(true), Is.EqualTo(capella), "CAPELLA_FORK_VERSION");
-            Assert.That(BeaconChainSpec.ForGenesisValidatorsRoot(spec.GenesisValidatorsRoot), Is.SameAs(spec), "a state of this network resolves to it");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(spec.GenesisForkVersion.ToHexString(true), Is.EqualTo(genesis), "GENESIS_FORK_VERSION");
+        Assert.That(spec.CapellaForkVersion.ToHexString(true), Is.EqualTo(capella), "CAPELLA_FORK_VERSION");
+        Assert.That(BeaconChainSpec.ForGenesisValidatorsRoot(spec.GenesisValidatorsRoot), Is.SameAs(spec), "a state of this network resolves to it");
     }
 
     [Test]

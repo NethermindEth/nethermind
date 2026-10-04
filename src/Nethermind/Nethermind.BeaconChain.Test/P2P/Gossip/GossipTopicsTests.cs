@@ -24,30 +24,26 @@ public class GossipTopicsTests
     [Test]
     public void Rotation_schedule_covers_fork_and_bpo_epochs()
     {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(GossipTopics.DigestRotationEpochs(Spec, 0),
-                Is.EqualTo(new ulong[] { 0, 74240, 144896, 194048, 269568, 364032, 411392, 412672, 419072 }),
-                "all fork activations plus the BPO schedule");
-            Assert.That(GossipTopics.DigestRotationEpochs(Spec, 412_000),
-                Is.EqualTo(new ulong[] { 412672, 419072 }),
-                "only upcoming rotations from a mid-Fulu epoch");
-            Assert.That(GossipTopics.DigestRotationEpochs(Spec, 412_672),
-                Is.EqualTo(new ulong[] { 412672, 419072 }),
-                "a rotation epoch itself is included");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(GossipTopics.DigestRotationEpochs(Spec, 0),
+            Is.EqualTo(new ulong[] { 0, 74240, 144896, 194048, 269568, 364032, 411392, 412672, 419072 }),
+            "all fork activations plus the BPO schedule");
+        Assert.That(GossipTopics.DigestRotationEpochs(Spec, 412_000),
+            Is.EqualTo(new ulong[] { 412672, 419072 }),
+            "only upcoming rotations from a mid-Fulu epoch");
+        Assert.That(GossipTopics.DigestRotationEpochs(Spec, 412_672),
+            Is.EqualTo(new ulong[] { 412672, 419072 }),
+            "a rotation epoch itself is included");
     }
 
     [Test]
     public void Next_rotation_returns_the_next_digest_or_null_when_none_is_scheduled()
     {
         (ulong epoch, byte[] digest) = GossipTopics.NextRotation(Spec, 412_672)!.Value;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(epoch, Is.EqualTo(419_072ul), "BPO2 follows BPO1");
-            Assert.That(digest, Is.EqualTo(Bytes.FromHexString("0x8c9f62fe")), "BPO2 digest");
-            Assert.That(GossipTopics.NextRotation(Spec, 419_072), Is.Null, "nothing scheduled after BPO2");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(epoch, Is.EqualTo(419_072ul), "BPO2 follows BPO1");
+        Assert.That(digest, Is.EqualTo(Bytes.FromHexString("0x8c9f62fe")), "BPO2 digest");
+        Assert.That(GossipTopics.NextRotation(Spec, 419_072), Is.Null, "nothing scheduled after BPO2");
     }
 
     [TestCase(GossipTopics.ExecutionPayload, "/eth2/8c9f62fe/execution_payload/ssz_snappy")]

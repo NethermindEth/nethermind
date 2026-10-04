@@ -35,11 +35,9 @@ public class PeerSelectionOrderTests
             peer => { readsPerPeer[peer]++; return peer == 1 && changed() ? 1 : 0; },
             peer => { readsPerPeer[peer]++; return heads[peer]; }));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ordered, Is.EquivalentTo(peers));
-            Assert.That(readsPerPeer, Has.All.EqualTo(3), "one reading of the cooldown, one of the requests in flight and one of the head slot per peer");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ordered, Is.EquivalentTo(peers));
+        Assert.That(readsPerPeer, Has.All.EqualTo(3), "one reading of the cooldown, one of the requests in flight and one of the head slot per peer");
     }
 
     [Test]

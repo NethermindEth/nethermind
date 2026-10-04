@@ -104,17 +104,15 @@ public class RangeSyncGloasColumnsTests
         List<ForkedSignedBeaconBlock> yielded = await RunAsync(peer, pool, discovery, clock: null, chain, token);
 
         ulong[] sampled = [.. SampledColumns(discovery)];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Has.Count.EqualTo(2), "both blocks are yielded");
-            Assert.That(fuluWindows, Is.EqualTo(new[] { (FuluSlot, 1UL) }), "one Fulu request, over the Fulu block only");
-            Assert.That(gloasWindows.Select(static w => (w.StartSlot, w.Count)), Is.EqualTo(new[] { (GloasSlot, 1UL) }), "one Gloas request, over the Gloas block only");
-            Assert.That(Spec.ForkAtEpoch(Spec.GetEpoch(fuluWindows[0].StartSlot + fuluWindows[0].Count - 1)), Is.EqualTo(BeaconFork.Fulu), "the Fulu window ends before the fork");
-            Assert.That(Spec.ForkAtEpoch(Spec.GetEpoch(gloasWindows[0].StartSlot)), Is.EqualTo(BeaconFork.Gloas), "the Gloas window starts at or after the fork");
-            Assert.That(gloasWindows[0].Columns, Is.EquivalentTo(sampled), "the node's sampled columns are requested");
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True, "every verified Gloas sidecar is pooled");
-            Assert.That(peer.Failures, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded, Has.Count.EqualTo(2), "both blocks are yielded");
+        Assert.That(fuluWindows, Is.EqualTo(new[] { (FuluSlot, 1UL) }), "one Fulu request, over the Fulu block only");
+        Assert.That(gloasWindows.Select(static w => (w.StartSlot, w.Count)), Is.EqualTo(new[] { (GloasSlot, 1UL) }), "one Gloas request, over the Gloas block only");
+        Assert.That(Spec.ForkAtEpoch(Spec.GetEpoch(fuluWindows[0].StartSlot + fuluWindows[0].Count - 1)), Is.EqualTo(BeaconFork.Fulu), "the Fulu window ends before the fork");
+        Assert.That(Spec.ForkAtEpoch(Spec.GetEpoch(gloasWindows[0].StartSlot)), Is.EqualTo(BeaconFork.Gloas), "the Gloas window starts at or after the fork");
+        Assert.That(gloasWindows[0].Columns, Is.EquivalentTo(sampled), "the node's sampled columns are requested");
+        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True, "every verified Gloas sidecar is pooled");
+        Assert.That(peer.Failures, Is.Zero);
     }
 
     /// <summary>
@@ -139,14 +137,12 @@ public class RangeSyncGloasColumnsTests
 
         List<ForkedSignedBeaconBlock> yielded = await RunAsync(peer, pool, discovery, clock: null, chain, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Has.Count.EqualTo(2), "a bad sidecar never fails the batch");
-            Assert.That(pool.TryGetGloas(forged.BeaconBlockRoot!, victim, out _), Is.False, "the bad sidecar is not pooled");
-            Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out _), Is.False);
-            Assert.That(sampled.Where(c => c != victim).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True, "the peer's valid sidecars still count");
-            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded, Has.Count.EqualTo(2), "a bad sidecar never fails the batch");
+        Assert.That(pool.TryGetGloas(forged.BeaconBlockRoot!, victim, out _), Is.False, "the bad sidecar is not pooled");
+        Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out _), Is.False);
+        Assert.That(sampled.Where(c => c != victim).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True, "the peer's valid sidecars still count");
+        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
     }
 
     /// <summary>The batch block is not state-validated, so its bid slot may differ from its slot; the sidecar must name the block slot.</summary>
@@ -163,11 +159,9 @@ public class RangeSyncGloasColumnsTests
 
         await RunAsync(peer, pool, discovery, clock: null, chain, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out DataColumnSidecarGloas? held) && held.Slot == GloasSlot), Is.True, "sidecars naming the block slot are pooled");
-            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the sidecar naming the bid slot is rejected");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out DataColumnSidecarGloas? held) && held.Slot == GloasSlot), Is.True, "sidecars naming the block slot are pooled");
+        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the sidecar naming the bid slot is rejected");
     }
 
     [Test]
@@ -180,11 +174,9 @@ public class RangeSyncGloasColumnsTests
 
         List<ForkedSignedBeaconBlock> yielded = await RunAsync(peer, new DataColumnSidecarPool(), discovery, clock: null, chain, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Has.Count.EqualTo(2));
-            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded, Has.Count.EqualTo(2));
+        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
     }
 
     [TestCase(WindowClock.None, 1)]
@@ -204,11 +196,9 @@ public class RangeSyncGloasColumnsTests
 
         await RunAsync(peer, new DataColumnSidecarPool(), discovery, CreateClock(setting), chain, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gloasRequests, Is.EqualTo(expectedRequests));
-            Assert.That(peer.Failures, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(gloasRequests, Is.EqualTo(expectedRequests));
+        Assert.That(peer.Failures, Is.Zero);
     }
 
     [Test]
@@ -236,19 +226,17 @@ public class RangeSyncGloasColumnsTests
 
         List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, GloasSlot, token, peers);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded, Has.Count.EqualTo(2));
+        Assert.That(peers.Where(static p => p.RequestedGloasColumns.Count > 0).Select(static p => p.Id), Is.SubsetOf(new[] { "a", "b" }), "a peer custodying no missing column gets no request");
+        foreach (RangeSyncTests.StubPeer peer in peers)
         {
-            Assert.That(yielded, Has.Count.EqualTo(2));
-            Assert.That(peers.Where(static p => p.RequestedGloasColumns.Count > 0).Select(static p => p.Id), Is.SubsetOf(new[] { "a", "b" }), "a peer custodying no missing column gets no request");
-            foreach (RangeSyncTests.StubPeer peer in peers)
-            {
-                Assert.That(peer.RequestedGloasColumns.SelectMany(static c => c), Is.All.Matches<ulong>(peer.Custody.Custodies), $"{peer.Id} is asked only for columns it custodies");
-            }
-
-            Assert.That(peers.SelectMany(static p => p.RequestedGloasColumns).SelectMany(static c => c), Is.EquivalentTo(sampled.Except(held)), "every missing column is asked of exactly one custodian and held ones are not asked");
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-            Assert.That(peers.Sum(static p => p.Failures), Is.Zero);
+            Assert.That(peer.RequestedGloasColumns.SelectMany(static c => c), Is.All.Matches<ulong>(peer.Custody.Custodies), $"{peer.Id} is asked only for columns it custodies");
         }
+
+        Assert.That(peers.SelectMany(static p => p.RequestedGloasColumns).SelectMany(static c => c), Is.EquivalentTo(sampled.Except(held)), "every missing column is asked of exactly one custodian and held ones are not asked");
+        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
+        Assert.That(peers.Sum(static p => p.Failures), Is.Zero);
     }
 
     /// <summary>Verifying the second copy of a column would fail (tampered proof) and penalize the peer, so no report shows it was skipped.</summary>
@@ -265,11 +253,9 @@ public class RangeSyncGloasColumnsTests
 
         await RunAsync(peer, pool, discovery, clock: null, chain, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(peer.Reports, Is.Empty, "the second copy of each column was not verified");
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(peer.Reports, Is.Empty, "the second copy of each column was not verified");
+        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
     }
 
     /// <summary>A reply repeating one invalid (root, index) is verified and penalized once, not once per copy: each copy would cost a KZG verification.</summary>
@@ -315,11 +301,9 @@ public class RangeSyncGloasColumnsTests
 
         bool available = await CreateSync(pool, discovery, clock: null, peer).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.True, "the valid copy after the rejected ones is pooled");
-            Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.True, "the valid copy after the rejected ones is pooled");
+        Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out _), Is.True);
     }
 
     [Test]
@@ -430,45 +414,43 @@ public class RangeSyncGloasColumnsTests
         IReadOnlyList<ForkedSignedBeaconBlock> yielded = gloas
             ? await RunAsync(pool, gloasDiscovery!, clock: null, chain!, GloasSlot, token, peers)
             : await fulu!.RunOneRoundAsync(peers, token);
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (gloas)
         {
+            if (reply != CustodianReply.Partial) Assert.That(yielded, Has.Count.EqualTo(2));
+            Assert.That(sampled.All(c => pool.TryGetGloas(chain!.GloasRoot, c, out _)), Is.True);
+        }
+        else
+            Assert.That(yielded.Select(b => fulu!.Importer.Import(b, fulu!.Chain.BlockRoot, verifySignatures: true)), Is.EqualTo(new[] { BlockImportResult.Imported }));
+        if (reply == CustodianReply.Supernode)
+        {
+            int share = Math.Max(2, (sampled.Length + 3) / 4);
+            ulong[][] firstColumns = gloas ? [.. first.RequestedGloasColumns] : [.. first.RequestedColumns];
+            Assert.That(firstColumns.SelectMany(static c => c).Count(), Is.LessThanOrEqualTo(share));
+            Assert.That(others.Sum(p => gloas ? p.RequestedGloasColumns.Count : p.ColumnRequests), Is.GreaterThan(0));
+            if (gloas) Assert.That(first.RequestedGloasColumns, Is.Not.Empty);
+        }
+        else if (reply == CustodianReply.Failed)
+        {
+            Assert.That(gloas ? first.RequestedGloasColumns.Count : first.ColumnRequests, Is.EqualTo(1));
+            Assert.That(first.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
             if (gloas)
             {
-                if (reply != CustodianReply.Partial) Assert.That(yielded, Has.Count.EqualTo(2));
-                Assert.That(sampled.All(c => pool.TryGetGloas(chain!.GloasRoot, c, out _)), Is.True);
+                Assert.That(others[0].RequestedGloasColumns, Has.Count.EqualTo(2));
+                Assert.That(others[0].RequestedGloasColumns.SelectMany(static c => c), Is.EquivalentTo(sampled).And.Unique);
             }
-            else
-                Assert.That(yielded.Select(b => fulu!.Importer.Import(b, fulu!.Chain.BlockRoot, verifySignatures: true)), Is.EqualTo(new[] { BlockImportResult.Imported }));
-            if (reply == CustodianReply.Supernode)
-            {
-                int share = Math.Max(2, (sampled.Length + 3) / 4);
-                ulong[][] firstColumns = gloas ? [.. first.RequestedGloasColumns] : [.. first.RequestedColumns];
-                Assert.That(firstColumns.SelectMany(static c => c).Count(), Is.LessThanOrEqualTo(share));
-                Assert.That(others.Sum(p => gloas ? p.RequestedGloasColumns.Count : p.ColumnRequests), Is.GreaterThan(0));
-                if (gloas) Assert.That(first.RequestedGloasColumns, Is.Not.Empty);
-            }
-            else if (reply == CustodianReply.Failed)
-            {
-                Assert.That(gloas ? first.RequestedGloasColumns.Count : first.ColumnRequests, Is.EqualTo(1));
-                Assert.That(first.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
-                if (gloas)
-                {
-                    Assert.That(others[0].RequestedGloasColumns, Has.Count.EqualTo(2));
-                    Assert.That(others[0].RequestedGloasColumns.SelectMany(static c => c), Is.EquivalentTo(sampled).And.Unique);
-                }
-            }
-            else if (gloas)
-            {
-                Assert.That(first.RequestedGloasColumns, Has.Count.EqualTo(1));
-                Assert.That(others[0].RequestedGloasColumns.SelectMany(static c => c), Is.EquivalentTo(sampled.Except(first.RequestedGloasColumns[0][1..])));
-                Assert.That(first.Failures + others[0].Failures, Is.Zero);
-            }
-            else
-            {
-                ulong[] asked = first.RequestedColumns.Single();
-                Assert.That(others[0].RequestedColumns.Skip(1).SelectMany(static c => c), Is.EquivalentTo(asked[1..]));
-                Assert.That(others[0].RequestedColumns.SelectMany(static c => c), Has.None.EqualTo(asked[0]));
-            }
+        }
+        else if (gloas)
+        {
+            Assert.That(first.RequestedGloasColumns, Has.Count.EqualTo(1));
+            Assert.That(others[0].RequestedGloasColumns.SelectMany(static c => c), Is.EquivalentTo(sampled.Except(first.RequestedGloasColumns[0][1..])));
+            Assert.That(first.Failures + others[0].Failures, Is.Zero);
+        }
+        else
+        {
+            ulong[] asked = first.RequestedColumns.Single();
+            Assert.That(others[0].RequestedColumns.Skip(1).SelectMany(static c => c), Is.EquivalentTo(asked[1..]));
+            Assert.That(others[0].RequestedColumns.SelectMany(static c => c), Has.None.EqualTo(asked[0]));
         }
     }
 
@@ -497,16 +479,14 @@ public class RangeSyncGloasColumnsTests
         RangeSyncTests.StubPeer[] peers = fromInside ? [blocksOnly, late] : [late, blocksOnly];
         List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, SecondGloasSlot, token, peers);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Has.Count.EqualTo(3), fromInside ? "one batch carries all three blocks" : null);
-            Assert.That(windows.Select(static w => (w.StartSlot, w.Count)), Is.EqualTo(new[] { (SecondGloasSlot, 1UL) }), fromInside ? "the request starts at the custodian's earliest slot" : null);
-            Assert.That(windows[0].Columns, Is.EquivalentTo(sampled));
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.SecondGloasRoot!, c, out _)), Is.True);
-            if (fromInside)
-                Assert.That(sampled.Any(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.False, "the block below the custodian's earliest slot was not requested");
-            Assert.That(late.Failures + blocksOnly.Failures, Is.Zero, fromInside ? null : "the block peer is never asked for columns it does not custody");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(yielded, Has.Count.EqualTo(3), fromInside ? "one batch carries all three blocks" : null);
+        Assert.That(windows.Select(static w => (w.StartSlot, w.Count)), Is.EqualTo(new[] { (SecondGloasSlot, 1UL) }), fromInside ? "the request starts at the custodian's earliest slot" : null);
+        Assert.That(windows[0].Columns, Is.EquivalentTo(sampled));
+        Assert.That(sampled.All(c => pool.TryGetGloas(chain.SecondGloasRoot!, c, out _)), Is.True);
+        if (fromInside)
+            Assert.That(sampled.Any(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.False, "the block below the custodian's earliest slot was not requested");
+        Assert.That(late.Failures + blocksOnly.Failures, Is.Zero, fromInside ? null : "the block peer is never asked for columns it does not custody");
     }
 
     public enum RootColumnCoverage
@@ -550,26 +530,24 @@ public class RangeSyncGloasColumnsTests
 
         bool available = await CreateSync(pool, discovery, clock: null, peers).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.EqualTo(coverage != RootColumnCoverage.OneWithheld));
+        if (coverage == RootColumnCoverage.HalfHeld)
         {
-            Assert.That(available, Is.EqualTo(coverage != RootColumnCoverage.OneWithheld));
-            if (coverage == RootColumnCoverage.HalfHeld)
-            {
-                Assert.That(requests[0], Has.Count.EqualTo(1));
-                Assert.That(requests[0][0], Has.Length.EqualTo(1), "one identifier for the one block");
-                Assert.That(requests[0][0][0].BlockRoot, Is.EqualTo(chain.GloasRoot));
-                Assert.That(requests[0][0][0].Columns, Is.EquivalentTo(sampled.Skip(sampled.Length / 2)), "held columns are not requested again");
-            }
-            if (coverage is RootColumnCoverage.Missing or RootColumnCoverage.AllHeld)
-                Assert.That(requests.Select(static r => r.Count), Is.EqualTo(coverage == RootColumnCoverage.AllHeld ? new[] { 0, 0 } : new[] { 1, 1 }));
-            if (coverage == RootColumnCoverage.OneWithheld)
-            {
-                Assert.That(requests.Select(static r => r.Count), Is.EqualTo(new[] { 1, 1, 1, 0 }), "at most three peers are asked");
-                Assert.That(pool.TryGetGloas(chain.GloasRoot, sampled[^1], out _), Is.False);
-            }
-            if (coverage != RootColumnCoverage.AllHeld)
-                Assert.That(sampled.Where(c => coverage != RootColumnCoverage.OneWithheld || c != sampled[^1]).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
+            Assert.That(requests[0], Has.Count.EqualTo(1));
+            Assert.That(requests[0][0], Has.Length.EqualTo(1), "one identifier for the one block");
+            Assert.That(requests[0][0][0].BlockRoot, Is.EqualTo(chain.GloasRoot));
+            Assert.That(requests[0][0][0].Columns, Is.EquivalentTo(sampled.Skip(sampled.Length / 2)), "held columns are not requested again");
         }
+        if (coverage is RootColumnCoverage.Missing or RootColumnCoverage.AllHeld)
+            Assert.That(requests.Select(static r => r.Count), Is.EqualTo(coverage == RootColumnCoverage.AllHeld ? new[] { 0, 0 } : new[] { 1, 1 }));
+        if (coverage == RootColumnCoverage.OneWithheld)
+        {
+            Assert.That(requests.Select(static r => r.Count), Is.EqualTo(new[] { 1, 1, 1, 0 }), "at most three peers are asked");
+            Assert.That(pool.TryGetGloas(chain.GloasRoot, sampled[^1], out _), Is.False);
+        }
+        if (coverage != RootColumnCoverage.AllHeld)
+            Assert.That(sampled.Where(c => coverage != RootColumnCoverage.OneWithheld || c != sampled[^1]).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
     }
 
     [Test]
@@ -591,15 +569,13 @@ public class RangeSyncGloasColumnsTests
 
         bool available = await CreateSync(pool, discovery, clock: null, lying, honest).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.True);
-            Assert.That(lying.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-            Assert.That(secondPeerRequests, Is.EqualTo(new[] { sampled }), "the peers are asked at once, each for every missing column");
-            Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out DataColumnSidecarGloas? held) ? held : null, Is.Not.Null.And.Property(nameof(DataColumnSidecarGloas.Slot)).EqualTo(GloasSlot), "the honest sidecar is pooled");
-            Assert.That(pool.TryGetGloas(OtherRoot, victim, out _), Is.False, "a sidecar for another block is not pooled");
-            Assert.That(honest.Failures, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.True);
+        Assert.That(lying.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+        Assert.That(secondPeerRequests, Is.EqualTo(new[] { sampled }), "the peers are asked at once, each for every missing column");
+        Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out DataColumnSidecarGloas? held) ? held : null, Is.Not.Null.And.Property(nameof(DataColumnSidecarGloas.Slot)).EqualTo(GloasSlot), "the honest sidecar is pooled");
+        Assert.That(pool.TryGetGloas(OtherRoot, victim, out _), Is.False, "a sidecar for another block is not pooled");
+        Assert.That(honest.Failures, Is.Zero);
     }
 
     /// <summary>A column an earlier reply of the same fetch supplied is neither verified again nor held against a later peer's copy.</summary>
@@ -624,12 +600,10 @@ public class RangeSyncGloasColumnsTests
 
         bool available = await CreateSync(pool, discovery, clock: null, honest, late).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.True);
-            Assert.That(late.Reports, Is.Empty, "the tampered copies were never verified");
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out DataColumnSidecarGloas? held) && ReferenceEquals(held, served[c])), Is.True, "the first reply's sidecars stay pooled");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.True);
+        Assert.That(late.Reports, Is.Empty, "the tampered copies were never verified");
+        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out DataColumnSidecarGloas? held) && ReferenceEquals(held, served[c])), Is.True, "the first reply's sidecars stay pooled");
     }
 
     [Test]
@@ -644,13 +618,11 @@ public class RangeSyncGloasColumnsTests
 
         bool available = await CreateSync(pool, discovery, clock: null, failing, honest).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.True);
-            Assert.That(failing.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-            Assert.That(honest.Failures, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.True);
+        Assert.That(failing.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
+        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
+        Assert.That(honest.Failures, Is.Zero);
     }
 
     /// <summary>The by-root requests of one fetch run together, so peers that never answer cost one request timeout between them, not one each.</summary>
@@ -670,13 +642,11 @@ public class RangeSyncGloasColumnsTests
         bool available = await CreateSync(new DataColumnSidecarPool(), discovery, clock: null, peers).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, token);
         elapsed.Stop();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.False);
-            Assert.That(allAsked.MaxInFlight, Is.EqualTo(PeersPerFetch), "every peer of the fetch is asked before any answers");
-            Assert.That(elapsed.Elapsed, Is.LessThan(requestTimeout), "no request waited out its timeout behind another");
-            Assert.That(peers.Select(static p => p.Failures), Is.All.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.False);
+        Assert.That(allAsked.MaxInFlight, Is.EqualTo(PeersPerFetch), "every peer of the fetch is asked before any answers");
+        Assert.That(elapsed.Elapsed, Is.LessThan(requestTimeout), "no request waited out its timeout behind another");
+        Assert.That(peers.Select(static p => p.Failures), Is.All.EqualTo(1));
     }
 
     /// <summary>Repeated fetches for one block rotate through the peers, so peers answering with nothing do not hide one that serves the columns.</summary>
@@ -699,12 +669,10 @@ public class RangeSyncGloasColumnsTests
         bool first = await sync.FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, rotation, CancellationToken.None);
         bool second = await sync.FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, rotation, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((first, second), Is.EqualTo((false, true)));
-            Assert.That(requests, Is.EqualTo(new[] { 1, 1, 1, 1 }), "the second fetch asks only the peer the first did not");
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((first, second), Is.EqualTo((false, true)));
+        Assert.That(requests, Is.EqualTo(new[] { 1, 1, 1, 1 }), "the second fetch asks only the peer the first did not");
+        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
     }
 
     /// <summary>Mirrors <see cref="GloasCustodySamplingAvailability.IsDataAvailable"/>: nothing is demanded without blobs or before the window, and nothing can be proven without an identity.</summary>
@@ -725,11 +693,9 @@ public class RangeSyncGloasColumnsTests
 
         bool available = await CreateSync(new DataColumnSidecarPool(), discovery: null, clock, peer).FetchGloasColumnsByRootAsync(chain.GloasRoot, bid, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.EqualTo(expected));
-            Assert.That(requests, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.EqualTo(expected));
+        Assert.That(requests, Is.Zero);
     }
 
     private static DataColumnSidecarGloas Forge(BadSidecar bad, DataColumnSidecarGloas sidecar)

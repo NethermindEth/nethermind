@@ -40,19 +40,17 @@ public partial class GossipRouterTests
         Rpc[] toNeighbor = [.. fixture.SentTo(fixture.Neighbor)];
         int announcement = Array.FindIndex(toNeighbor, static rpc => rpc.Control?.Idontwant.Count > 0);
         int forwarded = Array.FindIndex(toNeighbor, rpc => rpc.Publish.Any(message => message.Data.Span.SequenceEqual(block)));
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(announcedWhilePending, Is.Zero, "a message awaiting its verdict is not announced");
+        Assert.That(fixture.IdontwantsTo(fixture.Sender), Is.Empty, "the delivering peer is not told");
+        if (validity == MessageValidity.Accepted)
         {
-            Assert.That(announcedWhilePending, Is.Zero, "a message awaiting its verdict is not announced");
-            Assert.That(fixture.IdontwantsTo(fixture.Sender), Is.Empty, "the delivering peer is not told");
-            if (validity == MessageValidity.Accepted)
-            {
-                Assert.That(fixture.IdontwantsTo(fixture.Neighbor), Is.EqualTo(new[] { new MessageId(Eth2MessageId.Compute(BlockTopic, block)) }));
-                Assert.That(announcement, Is.GreaterThanOrEqualTo(0).And.LessThan(forwarded), "the announcement goes ahead of the message");
-            }
-            else
-            {
-                Assert.That((announcement, forwarded), Is.EqualTo((-1, -1)));
-            }
+            Assert.That(fixture.IdontwantsTo(fixture.Neighbor), Is.EqualTo(new[] { new MessageId(Eth2MessageId.Compute(BlockTopic, block)) }));
+            Assert.That(announcement, Is.GreaterThanOrEqualTo(0).And.LessThan(forwarded), "the announcement goes ahead of the message");
+        }
+        else
+        {
+            Assert.That((announcement, forwarded), Is.EqualTo((-1, -1)));
         }
     }
 

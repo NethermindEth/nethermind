@@ -35,12 +35,10 @@ public class DepositContractEndpointTests
         HttpResponseMessage response = await host.GetAsync(Endpoint, "application/json");
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement data = JsonDocument.Parse(raw).RootElement.GetProperty("data");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(data.GetProperty("chain_id").ValueKind, Is.EqualTo(JsonValueKind.String), "Uint64 is a decimal string on the wire");
-            Assert.That(data.GetProperty("chain_id").GetString(), Is.EqualTo(chainId));
-            Assert.That(data.GetProperty("address").GetString(), Is.EqualTo(address));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(data.GetProperty("chain_id").ValueKind, Is.EqualTo(JsonValueKind.String), "Uint64 is a decimal string on the wire");
+        Assert.That(data.GetProperty("chain_id").GetString(), Is.EqualTo(chainId));
+        Assert.That(data.GetProperty("address").GetString(), Is.EqualTo(address));
     }
 
     [TestCase("application/octet-stream")]

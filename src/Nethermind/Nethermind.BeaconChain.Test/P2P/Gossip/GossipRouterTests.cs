@@ -142,11 +142,9 @@ public partial class GossipRouterTests
         publish.Publish.Add(new Message { Topic = topicId, Data = ByteString.CopyFrom([1]) });
         receive(publish);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(((IRoutingStateContainer)pubsub).Mesh[topicId], Does.Contain(peer), "no delivery score or broken promise prunes the peer");
-            Assert.That(verified, Is.EqualTo(1), "the peer's messages still reach the validator");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(((IRoutingStateContainer)pubsub).Mesh[topicId], Does.Contain(peer), "no delivery score or broken promise prunes the peer");
+        Assert.That(verified, Is.EqualTo(1), "the peer's messages still reach the validator");
     }
 
     /// <summary>
@@ -283,11 +281,9 @@ public partial class GossipRouterTests
 
         router.HandleBeaconBlock(message);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(received, Is.Zero, "no event for a dropped message");
-            Assert.That(router.GetDropCount(reason), Is.EqualTo(1), "the drop is counted under its reason");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(received, Is.Zero, "no event for a dropped message");
+        Assert.That(router.GetDropCount(reason), Is.EqualTo(1), "the drop is counted under its reason");
     }
 
     [Test]
@@ -332,11 +328,9 @@ public partial class GossipRouterTests
         router.HandleBeaconBlock(message);
         router.HandleBeaconBlock(message);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(received, Is.EqualTo(1), "only the first copy raises the event");
-            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(received, Is.EqualTo(1), "only the first copy raises the event");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
     }
 
     [Test]
@@ -367,14 +361,12 @@ public partial class GossipRouterTests
         FakeTopic blockTopicBpo2 = topics[GossipTopics.Topic(bpo2Digest, GossipTopics.BeaconBlock)];
         blockTopicBpo2.Deliver(BlockMessage(CurrentSlot));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(blockTopicBpo1.IsSubscribed, Is.False, "old topics are unsubscribed on rotation");
-            Assert.That(blockTopicBpo2.IsSubscribed, "new topics are subscribed on rotation");
-            // The pubsub validator consumes every message, and the router raises topic events for each one it forwards.
-            Assert.That(topics.Values.Select(static t => t.HasHandlers), Is.All.False, "no topic handler would process a forwarded message again");
-            Assert.That(blocks, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(blockTopicBpo1.IsSubscribed, Is.False, "old topics are unsubscribed on rotation");
+        Assert.That(blockTopicBpo2.IsSubscribed, "new topics are subscribed on rotation");
+        // The pubsub validator consumes every message, and the router raises topic events for each one it forwards.
+        Assert.That(topics.Values.Select(static t => t.HasHandlers), Is.All.False, "no topic handler would process a forwarded message again");
+        Assert.That(blocks, Is.Zero);
     }
 
     [Test]
@@ -411,13 +403,11 @@ public partial class GossipRouterTests
         router.SubscribeDigest(bpo2Digest);
         router.UnsubscribeDigest(bpo1Digest);
         string envelopeTopicBpo2 = GossipTopics.Topic(bpo2Digest, GossipTopics.ExecutionPayload);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(topics[envelopeTopicBpo1].IsSubscribed, Is.False, "old Gloas topics are unsubscribed on rotation");
-            Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo2), "Gloas topics rotate to the new digest automatically");
-            Assert.That(topics[envelopeTopicBpo2].IsSubscribed, Is.True);
-            Assert.That(envelopes, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(topics[envelopeTopicBpo1].IsSubscribed, Is.False, "old Gloas topics are unsubscribed on rotation");
+        Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo2), "Gloas topics rotate to the new digest automatically");
+        Assert.That(topics[envelopeTopicBpo2].IsSubscribed, Is.True);
+        Assert.That(envelopes, Is.Zero);
     }
 
     public enum EnvelopeCase
@@ -548,15 +538,13 @@ public partial class GossipRouterTests
 
         MessageValidity validity = fixture.Handle(envelope);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(expected), "validity");
+        Assert.That(fixture.Raised, Is.EqualTo(raised ? 1 : 0), "consumed");
+        Assert.That(Enum.GetValues<GossipDropReason>().Sum(fixture.Router.GetDropCount), Is.EqualTo(reason is null ? 0 : 1), "one drop at most");
+        if (reason is { } expectedReason)
         {
-            Assert.That(validity, Is.EqualTo(expected), "validity");
-            Assert.That(fixture.Raised, Is.EqualTo(raised ? 1 : 0), "consumed");
-            Assert.That(Enum.GetValues<GossipDropReason>().Sum(fixture.Router.GetDropCount), Is.EqualTo(reason is null ? 0 : 1), "one drop at most");
-            if (reason is { } expectedReason)
-            {
-                Assert.That(fixture.Router.GetDropCount(expectedReason), Is.EqualTo(1), "drop reason");
-            }
+            Assert.That(fixture.Router.GetDropCount(expectedReason), Is.EqualTo(1), "drop reason");
         }
     }
 
@@ -592,13 +580,11 @@ public partial class GossipRouterTests
         MessageValidity first = fixture.Handle(fixture.Envelope(unreadableRoot));
         MessageValidity second = fixture.Handle(fixture.Envelope(unreadableRoot, builderIndex: 7));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((afterFirstFulu - reads, afterFulu - afterFirstFulu), Is.EqualTo((1L, 0L)),
-                "a Gloas bid and a held non-Gloas block are both cached after one read");
-            Assert.That((first, second, fixture.BlockReads - afterFulu, fixture.Raised - raised), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored, 1L, 0)),
-                "an unreadable stored block is read once, then ignored from the cache without raising");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((afterFirstFulu - reads, afterFulu - afterFirstFulu), Is.EqualTo((1L, 0L)),
+            "a Gloas bid and a held non-Gloas block are both cached after one read");
+        Assert.That((first, second, fixture.BlockReads - afterFulu, fixture.Raised - raised), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored, 1L, 0)),
+            "an unreadable stored block is read once, then ignored from the cache without raising");
     }
 
     [Test]
@@ -615,13 +601,11 @@ public partial class GossipRouterTests
         fixture.Timestamper.Set(SepoliaSlotStart(now + 1));
         MessageValidity nextSlot = fixture.Handle(fixture.Envelope(roots[^1], builderIndex: EnvelopeFixture.BuilderIndex + 2));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(verdicts[..^1], Is.All.EqualTo(MessageValidity.Rejected), "the whole budget is left for these blocks after the canonical one");
-            Assert.That((verdicts[^1], fixture.Router.GetDropCount(GossipDropReason.StoreDecodeBudgetSpent)), Is.EqualTo((MessageValidity.Ignored, 1L)), "one past the budget is not decoded");
-            Assert.That(canonical, Is.EqualTo(MessageValidity.Rejected), "the canonical block at the current or previous slot is decoded outside the budget");
-            Assert.That(nextSlot, Is.EqualTo(MessageValidity.Rejected), "the budget is renewed each slot");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdicts[..^1], Is.All.EqualTo(MessageValidity.Rejected), "the whole budget is left for these blocks after the canonical one");
+        Assert.That((verdicts[^1], fixture.Router.GetDropCount(GossipDropReason.StoreDecodeBudgetSpent)), Is.EqualTo((MessageValidity.Ignored, 1L)), "one past the budget is not decoded");
+        Assert.That(canonical, Is.EqualTo(MessageValidity.Rejected), "the canonical block at the current or previous slot is decoded outside the budget");
+        Assert.That(nextSlot, Is.EqualTo(MessageValidity.Rejected), "the budget is renewed each slot");
     }
 
     private static DateTime SepoliaSlotStart(ulong slot) => DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot);

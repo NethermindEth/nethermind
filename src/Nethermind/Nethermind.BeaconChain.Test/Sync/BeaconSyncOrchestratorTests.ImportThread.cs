@@ -82,11 +82,9 @@ public partial class BeaconSyncOrchestratorTests
                 }
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.ImportedOnPoolThread, Is.Not.Empty);
-            Assert.That(harness.Importer.ImportedOnPoolThread, Is.All.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.ImportedOnPoolThread, Is.Not.Empty);
+        Assert.That(harness.Importer.ImportedOnPoolThread, Is.All.False);
     }
 
     /// <summary>Gossip blocks arrive a slot apart, so the thread must outlive that gap instead of being started for every import.</summary>

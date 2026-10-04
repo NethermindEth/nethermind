@@ -47,13 +47,11 @@ public class ColumnGossipRouterSubscriptionTests
         router.UnsubscribeDigest(Bpo1Digest);
         router.UnsubscribeDigest(Bpo1Digest);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(requested, Is.EquivalentTo(subnets.SelectMany(s => new[] { SubnetTopic(Bpo1Digest, s), SubnetTopic(Bpo2Digest, s) })),
-                "every digest subscribes exactly the started subnets, each once");
-            Assert.That(subnets.Select(s => topics[SubnetTopic(Bpo1Digest, s)].IsSubscribed), Is.All.False, "the unsubscribed digest drops all its subnets");
-            Assert.That(subnets.Select(s => topics[SubnetTopic(Bpo2Digest, s)].IsSubscribed), Is.All.True, "the other digest keeps its subnets");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(requested, Is.EquivalentTo(subnets.SelectMany(s => new[] { SubnetTopic(Bpo1Digest, s), SubnetTopic(Bpo2Digest, s) })),
+            "every digest subscribes exactly the started subnets, each once");
+        Assert.That(subnets.Select(s => topics[SubnetTopic(Bpo1Digest, s)].IsSubscribed), Is.All.False, "the unsubscribed digest drops all its subnets");
+        Assert.That(subnets.Select(s => topics[SubnetTopic(Bpo2Digest, s)].IsSubscribed), Is.All.True, "the other digest keeps its subnets");
     }
 
     [Test]
@@ -82,13 +80,11 @@ public class ColumnGossipRouterSubscriptionTests
             router.Handle(column, gloasTopic: false, Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(column, Bpo2Slot))));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(container.Resolve<DataColumnSidecarPool>().TryGet(blockRoot, required, out _), Is.True, "the missing column was reconstructed");
-            Assert.That(topics[SubnetTopic(Bpo2Digest, required)].Published, Is.EqualTo(new[] { Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(required, Bpo2Slot))) }),
-                "fulu/das-core.md: a reconstructed column of a subscribed subnet goes to its topic of the sidecar's fork digest");
-            Assert.That(topics[SubnetTopic(Bpo1Digest, required)].Published, Is.Empty, "never re-broadcast on the other fork's topic");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(container.Resolve<DataColumnSidecarPool>().TryGet(blockRoot, required, out _), Is.True, "the missing column was reconstructed");
+        Assert.That(topics[SubnetTopic(Bpo2Digest, required)].Published, Is.EqualTo(new[] { Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(required, Bpo2Slot))) }),
+            "fulu/das-core.md: a reconstructed column of a subscribed subnet goes to its topic of the sidecar's fork digest");
+        Assert.That(topics[SubnetTopic(Bpo1Digest, required)].Published, Is.Empty, "never re-broadcast on the other fork's topic");
     }
 
     private static string SubnetTopic(byte[] digest, ulong subnet) => GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(subnet));

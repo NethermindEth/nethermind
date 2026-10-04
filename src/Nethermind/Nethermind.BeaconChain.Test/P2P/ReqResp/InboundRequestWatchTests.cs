@@ -49,11 +49,9 @@ public class InboundRequestWatchTests
         stream.Teardown();
         await listenerReturn.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(returnedBeforeTheRequesterEnded, Is.False, "the channel is torn down when the listener returns, so the listener waits for the requester");
-            Assert.That(reported, Is.Empty, "a requester that ends its stream is not a violation");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(returnedBeforeTheRequesterEnded, Is.False, "the channel is torn down when the listener returns, so the listener waits for the requester");
+        Assert.That(reported, Is.Empty, "a requester that ends its stream is not a violation");
     }
 
     [Test]
@@ -187,12 +185,10 @@ public class InboundRequestWatchTests
         await protocol.ReadAsync(stream, token);
         (PeerId peer, string detail) = await reported.Task.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(peer, Is.EqualTo(Requester));
-            Assert.That(detail, Does.StartWith(ProbeId));
-            Assert.That(InvalidMessageCount(), Is.EqualTo(before + 1), "the failure metric counts the violation");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(peer, Is.EqualTo(Requester));
+        Assert.That(detail, Does.StartWith(ProbeId));
+        Assert.That(InvalidMessageCount(), Is.EqualTo(before + 1), "the failure metric counts the violation");
     }
 
     // A sink that fails (a pool resolved after shutdown, say) must not surface as an unobserved task exception.
@@ -275,12 +271,10 @@ public class InboundRequestWatchTests
 
         await channel.WriteEofAsync(token);
         await listen;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(detail, Does.Contain("Unexpected bytes"));
-            Assert.That(chunks, Has.Count.EqualTo(3));
-            Assert.That(chunks, Has.All.Matches<ResponseChunk>(static c => c.Result == ReqRespFraming.ResponseCode.Success));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(detail, Does.Contain("Unexpected bytes"));
+        Assert.That(chunks, Has.Count.EqualTo(3));
+        Assert.That(chunks, Has.All.Matches<ResponseChunk>(static c => c.Result == ReqRespFraming.ResponseCode.Success));
     }
 
     [Test]
@@ -337,11 +331,9 @@ public class InboundRequestWatchTests
         }
 
         await listening.WaitAsync(token);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(received, Has.Count.EqualTo(2));
-            Assert.That(received, Has.All.Matches<ResponseChunk>(static c => c.Result == ReqRespFraming.ResponseCode.Success));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(received, Has.Count.EqualTo(2));
+        Assert.That(received, Has.All.Matches<ResponseChunk>(static c => c.Result == ReqRespFraming.ResponseCode.Success));
     }
 
     // p2p-interface.md range replies: reread passed slots to keep the reply on one chain.
@@ -388,11 +380,9 @@ public class InboundRequestWatchTests
         }
 
         await listening.WaitAsync(token);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(received, Has.Count.EqualTo(columns || passedSlotWasEmpty ? 1 : 2), "nothing of the new chain follows what was served of the old one");
-            Assert.That(received, Has.All.Matches<ResponseChunk>(static c => c.Result == ReqRespFraming.ResponseCode.Success));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(received, Has.Count.EqualTo(columns || passedSlotWasEmpty ? 1 : 2), "nothing of the new chain follows what was served of the old one");
+        Assert.That(received, Has.All.Matches<ResponseChunk>(static c => c.Result == ReqRespFraming.ResponseCode.Success));
     }
 
     [Test]

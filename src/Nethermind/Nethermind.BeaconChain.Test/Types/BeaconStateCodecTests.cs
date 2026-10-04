@@ -79,11 +79,9 @@ public class BeaconStateCodecTests
             ForkedBeaconState.OfFulu f => SszRoots.HashTreeRoot(f.State),
             _ => throw new AssertionException($"Unexpected shape {decoded.GetType().Name}"),
         };
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decoded.Fork, Is.EqualTo(gloas ? BeaconFork.Gloas : BeaconFork.Fulu));
-            Assert.That(root, Is.EqualTo(gloas ? SszRoots.HashTreeRoot(chain.First.PostState) : SszRoots.HashTreeRoot(chain.AnchorState)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(decoded.Fork, Is.EqualTo(gloas ? BeaconFork.Gloas : BeaconFork.Fulu));
+        Assert.That(root, Is.EqualTo(gloas ? SszRoots.HashTreeRoot(chain.First.PostState) : SszRoots.HashTreeRoot(chain.AnchorState)));
     }
 
     [Test]
