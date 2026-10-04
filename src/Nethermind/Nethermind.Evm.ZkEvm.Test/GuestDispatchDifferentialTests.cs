@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -35,6 +37,8 @@ namespace Nethermind.Evm.ZkEvm.Test;
 public class GuestDispatchDifferentialTests
 {
     private const int ProgramsPerSeed = 1500;
+
+    private static readonly ConcurrentDictionary<(Table, IReleaseSpec), nint[]> SharedTables = new();
 
     private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool), nint[]> PairedTables = new();
 
@@ -117,27 +121,67 @@ public class GuestDispatchDifferentialTests
 
     /// <remarks>Without the fused entry, the pair tests below would only compare the shared handlers with themselves.</remarks>
     [Test]
-    public unsafe void Pairing_installs_fused_handlers_only_for_guest_handlers([Values] Table table)
+    public void Pairing_installs_fused_handlers_only_for_guest_handlers([Values] Table table)
+    {
+        nint[] handlers = SharedHandlers(table, ReleaseSpec);
+        nint[] paired = VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers);
+        const int swap1Pop = VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength + ((int)Instruction.SWAP1 | (int)Instruction.POP << 8);
+        const int push1Add = (int)Instruction.ADD;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(paired[swap1Pop] != handlers[(int)Instruction.SWAP1], Is.EqualTo(table == Table.Untraced));
+            Assert.That(paired[push1Add] != handlers[(int)Instruction.PUSH1], Is.EqualTo(table == Table.Untraced));
+        }
+    }
+
+    /// <remarks>
+    /// Handlers that have read the next opcode alone, and dispatch on a jump's taken or fall-through byte, index the
+    /// paired table by that byte, so an opcode followed by STOP must hold the opcode's own handler; a PUSH1 re-reads
+    /// the code to find its follower.
+    /// </remarks>
+    [Test]
+    public void Opcodes_followed_by_STOP_keep_their_own_handlers([Values] Table table)
+    {
+        nint[] handlers = SharedHandlers(table, ReleaseSpec);
+        nint[] paired = VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers);
+        List<Instruction> fused = [];
+        for (int opcode = 0; opcode < handlers.Length; opcode++)
+        {
+            if (opcode != (int)Instruction.PUSH1 && paired[VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength + opcode] != handlers[opcode])
+                fused.Add((Instruction)opcode);
+        }
+
+        Assert.That(fused, Is.Empty);
+    }
+
+    /// <remarks>A filtering tracer's table is refilled in place when its mask changes, so the paired table has to follow.</remarks>
+    [Test]
+    public unsafe void Paired_table_follows_the_instruction_filter_of_each_transaction()
     {
         DispatchingVirtualMachine vm = new(ReleaseSpec);
-        fixed (void* entries = table switch
+        FilteringTracer tracer = new();
+        vm.Trace(tracer);
+        Type type = typeof(VirtualMachine<EthereumGasPolicy>);
+        MethodInfo prepare = type.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
+            .Single(static method => method.Name == "PrepareOpcodes" && method.GetGenericArguments().Length == 1)
+            .MakeGenericMethod(typeof(OnFlag));
+        MethodInfo pair = type.GetMethod("GetPairedHandlers", BindingFlags.NonPublic | BindingFlags.Static)!.MakeGenericMethod(typeof(OnFlag));
+        FieldInfo prepared = type.GetField("_opcodeHandlers", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        nint tracedAdd = (nint)vm.GetOpcodeHandlers<OnFlag, OffFlag>()[(int)Instruction.ADD];
+        const int addStop = VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength + (int)Instruction.ADD;
+
+        tracer.InstructionMask = UInt256.One << (int)Instruction.ADD;
+        prepare.Invoke(vm, null);
+        nint addTraced = ((nint[])pair.Invoke(null, [prepared.GetValue(vm)])!)[addStop];
+
+        tracer.InstructionMask = UInt256.One << (int)Instruction.SUB;
+        prepare.Invoke(vm, null);
+        nint addSilent = ((nint[])pair.Invoke(null, [prepared.GetValue(vm)])!)[addStop];
+
+        using (Assert.EnterMultipleScope())
         {
-            Table.Untraced => vm.GetOpcodeHandlers<OffFlag, OffFlag>(),
-            Table.Cancelable => vm.GetOpcodeHandlers<OffFlag, OnFlag>(),
-            _ => vm.GetOpcodeHandlers<OnFlag, OffFlag>(),
-        })
-        {
-            ReadOnlySpan<nint> handlers = new(entries, 256);
-            nint[] paired = VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers);
-            const int swap1Pop = VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength + ((int)Instruction.SWAP1 | (int)Instruction.POP << 8);
-            const int swap1Stop = VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength + (int)Instruction.SWAP1;
-            const int push1Add = (int)Instruction.ADD;
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(paired[swap1Pop] != handlers[(int)Instruction.SWAP1], Is.EqualTo(table == Table.Untraced));
-                Assert.That(paired[swap1Stop], Is.EqualTo(handlers[(int)Instruction.SWAP1]));
-                Assert.That(paired[push1Add] != handlers[(int)Instruction.PUSH1], Is.EqualTo(table == Table.Untraced));
-            }
+            Assert.That(addTraced, Is.EqualTo(tracedAdd));
+            Assert.That(addSilent, Is.Not.EqualTo(tracedAdd));
         }
     }
 
@@ -529,26 +573,22 @@ public class GuestDispatchDifferentialTests
     /// <summary>The opcode pairs the guest fuses, read off the paired untraced table.</summary>
     private static readonly Instruction[][] FusedPairs = FindFusedPairs();
 
-    private static unsafe Instruction[][] FindFusedPairs()
+    private static Instruction[][] FindFusedPairs()
     {
-        DispatchingVirtualMachine vm = new(ReleaseSpec);
         List<Instruction[]> pairs = [];
-        fixed (void* entries = vm.GetOpcodeHandlers<OffFlag, OffFlag>())
+        nint[] handlers = SharedHandlers(Table.Untraced, ReleaseSpec);
+        nint[] paired = VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers);
+        for (int index = 0; index < VirtualMachine<EthereumGasPolicy>.PairedHandlersLength; index++)
         {
-            ReadOnlySpan<nint> handlers = new(entries, 256);
-            nint[] paired = VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers);
-            for (int index = 0; index < VirtualMachine<EthereumGasPolicy>.PairedHandlersLength; index++)
-            {
-                if ((index & 0xff) != (int)Instruction.PUSH1 &&
-                    paired[VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength + index] != handlers[index & 0xff])
-                    pairs.Add([(Instruction)(index & 0xff), (Instruction)(index >> 8)]);
-            }
+            if ((index & 0xff) != (int)Instruction.PUSH1 &&
+                paired[VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength + index] != handlers[index & 0xff])
+                pairs.Add([(Instruction)(index & 0xff), (Instruction)(index >> 8)]);
+        }
 
-            for (int follower = 0; follower < VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength; follower++)
-            {
-                if (paired[follower] != handlers[(int)Instruction.PUSH1])
-                    pairs.Add([Instruction.PUSH1, (Instruction)follower]);
-            }
+        for (int follower = 0; follower < VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength; follower++)
+        {
+            if (paired[follower] != handlers[(int)Instruction.PUSH1])
+                pairs.Add([Instruction.PUSH1, (Instruction)follower]);
         }
 
         return [.. pairs];
@@ -561,6 +601,20 @@ public class GuestDispatchDifferentialTests
         2 => (byte)random.Next(250, 256),
         _ => (byte)random.Next(256),
     };
+
+    /// <summary>The 256 handlers of <paramref name="table"/> for <paramref name="spec"/>.</summary>
+    /// <remarks>
+    /// Built apart from the virtual machine's tables, which the guest builds once per process for the one fork it runs,
+    /// so each fork's cases run their own fork in every table whichever case runs first.
+    /// </remarks>
+    private static nint[] SharedHandlers(Table table, IReleaseSpec spec) => SharedTables.GetOrAdd((table, spec), static key =>
+    {
+        MethodInfo generate = typeof(VirtualMachine<EthereumGasPolicy>)
+            .GetMethod("GenerateOpcodeHandlers", BindingFlags.NonPublic | BindingFlags.Static)!
+            .MakeGenericMethod(key.Item1 == Table.Traced ? typeof(OnFlag) : typeof(OffFlag), key.Item1 == Table.Cancelable ? typeof(OnFlag) : typeof(OffFlag));
+        // The table's declared entry type is the host's signature; its entries take the guest's.
+        return Unsafe.As<nint[]>(generate.Invoke(null, [key.Item2])!).AsSpan(0, 256).ToArray();
+    });
 
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null)
@@ -592,15 +646,7 @@ public class GuestDispatchDifferentialTests
             }
         }
 
-        // The table's declared entry type is the host's signature; its entries take the guest's.
-        nint[] handlers = new nint[256];
-        fixed (void* source = table switch
-        {
-            Table.Untraced => vm.GetOpcodeHandlers<OffFlag, OffFlag>(),
-            Table.Cancelable => vm.GetOpcodeHandlers<OffFlag, OnFlag>(),
-            _ => vm.GetOpcodeHandlers<OnFlag, OffFlag>(),
-        })
-            new ReadOnlySpan<nint>(source, handlers.Length).CopyTo(handlers);
+        nint[] handlers = [.. SharedHandlers(table, spec ?? ReleaseSpec)];
         for (int opcode = 0; opcode < handlers.Length; opcode++)
         {
             if (NeedsWorldStateOrHash((Instruction)opcode) &&
@@ -672,9 +718,18 @@ public class GuestDispatchDifferentialTests
         public ITxTracer Tracer => _txTracer;
 
         public void Enter(VmState<EthereumGasPolicy> frame) => VmState = frame;
+
+        public void Trace(ITxTracer tracer) => _txTracer = tracer;
     }
 
     private sealed class SilentTracer : TxTracer;
+
+    private sealed class FilteringTracer : TxTracer, IInstructionTracingFilter
+    {
+        public FilteringTracer() => IsTracingInstructions = true;
+
+        public UInt256 InstructionMask { get; set; }
+    }
 
     private sealed class NoBlockhashProvider : IBlockhashProvider
     {

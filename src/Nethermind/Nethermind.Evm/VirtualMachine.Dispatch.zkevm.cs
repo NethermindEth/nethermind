@@ -93,7 +93,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)programCounter >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
 
-        nint[] handlers = GetPairedHandlers(_opcodeHandlers);
+        nint[] handlers = GetPairedHandlers<TTracingInst>(_opcodeHandlers);
 
         // Safety: the paired table remains pinned for the complete tail-call chain. Every bytecode read lands in the
         // code or in the padding that follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.

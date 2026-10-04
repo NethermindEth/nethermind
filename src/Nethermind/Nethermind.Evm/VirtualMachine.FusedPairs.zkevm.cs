@@ -27,24 +27,39 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <summary>The table <see cref="GetPairedHandlers"/> paired last, with the one it paired.</summary>
     private static PairedHandlers? _pairedHandlers;
 
-    private sealed class PairedHandlers(object source, nint[] entries)
+    private sealed class PairedHandlers(object source, nint[]? sourceEntries, nint[] entries)
     {
         public readonly object Source = source;
+        public readonly nint[]? SourceEntries = sourceEntries;
         public readonly nint[] Entries = entries;
     }
 
     /// <summary>The table <see cref="PairHandlers"/> builds from <paramref name="handlers"/>, built again only for another table.</summary>
-    private static nint[] GetPairedHandlers(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers)
+    /// <remarks>
+    /// A traced run's filtered table is refilled in place when the tracer's instruction mask changes, so traced runs
+    /// compare its entries as well as its identity.
+    /// </remarks>
+    private static nint[] GetPairedHandlers<TTracingInst>(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers)
+        where TTracingInst : struct, IFlag
     {
         PairedHandlers? paired = Volatile.Read(ref _pairedHandlers);
-        if (paired is null || paired.Source != handlers)
+        if (paired is null || paired.Source != handlers || (TTracingInst.IsActive && IsRefilled(paired, handlers)))
         {
             fixed (void* entries = handlers)
-                paired = new PairedHandlers(handlers, PairHandlers(new ReadOnlySpan<nint>(entries, byte.MaxValue + 1)));
+            {
+                ReadOnlySpan<nint> source = new(entries, byte.MaxValue + 1);
+                paired = new PairedHandlers(handlers, TTracingInst.IsActive ? source.ToArray() : null, PairHandlers(source));
+            }
             Volatile.Write(ref _pairedHandlers, paired);
         }
 
         return paired.Entries;
+    }
+
+    private static bool IsRefilled(PairedHandlers paired, delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers)
+    {
+        fixed (void* entries = handlers)
+            return paired.SourceEntries is null || !new ReadOnlySpan<nint>(entries, byte.MaxValue + 1).SequenceEqual(paired.SourceEntries);
     }
 
     /// <summary>
