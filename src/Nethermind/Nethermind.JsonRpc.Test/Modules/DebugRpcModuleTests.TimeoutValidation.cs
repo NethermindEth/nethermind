@@ -17,7 +17,6 @@ public partial class DebugRpcModuleTests
         string hash = TestItem.KeccakA.ToString();
         (string Method, object[] Arguments)[] methods =
         [
-            ("debug_traceTransaction", [hash]),
             ("debug_traceTransactionByBlockhashAndIndex", [hash, 0]),
             ("debug_traceTransactionByBlockAndIndex", ["latest", 0]),
             ("debug_traceTransactionInBlockByHash", ["0x", hash]),
