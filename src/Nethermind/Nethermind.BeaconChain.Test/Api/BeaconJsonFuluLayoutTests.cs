@@ -16,11 +16,10 @@ using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 namespace Nethermind.BeaconChain.Test.Api;
 
 /// <summary>The Fulu block JSON shares writers with the Gloas block, so its bytes are pinned here: a shared writer that moves or changes a Fulu field fails.</summary>
-public class BeaconJsonFuluLayoutTests
+public class BeaconJsonFuluLayoutTests : BeaconApiFixture
 {
     private const ulong Slot = 412_500 * 32 + 7;
 
-    private BeaconApiTestHost _host = null!;
     private string _raw = null!;
 
     [OneTimeSetUp]
@@ -33,9 +32,6 @@ public class BeaconJsonFuluLayoutTests
         _raw = await response.Content.ReadAsStringAsync();
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), _raw);
     }
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     [Test]
     public void Block_body_fields_follow_the_fulu_container_order()

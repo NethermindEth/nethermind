@@ -21,7 +21,7 @@ namespace Nethermind.BeaconChain.Test.Api;
 /// <c>getPendingConsolidations</c> and <c>getProposerLookahead</c>. Expected values are written from
 /// the fixture's construction, never read back from the response.
 /// </summary>
-public class BeaconStatesQueuesTests
+public class BeaconStatesQueuesTests : BeaconApiFixture
 {
     private const string Json = "application/json";
     private const string Octet = "application/octet-stream";
@@ -36,8 +36,6 @@ public class BeaconStatesQueuesTests
 
     private static readonly Hash256 StateRoot = BeaconApiTestHost.TestRoot(0x60);
 
-    private BeaconApiTestHost _host = null!;
-
     [OneTimeSetUp]
     public async Task StartHost()
     {
@@ -46,9 +44,6 @@ public class BeaconStatesQueuesTests
         _host.Store.PutBlock(StateRoot, BeaconApiTestHost.MinimalBlock(StateSlot));
         _host.Store.SetCanonicalRoot(StateSlot, StateRoot);
     }
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     [SetUp]
     public void ResetSharedState() => _host.SetStatus(StateRoot, Hash256.Zero, 0);

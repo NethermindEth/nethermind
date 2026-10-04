@@ -28,11 +28,9 @@ namespace Nethermind.BeaconChain.Test.Api;
 /// (BeaconApiHostTests.Headers_by_id_...): a hardcoded <c>false</c> in
 /// ResponseEnvelope.IsFinalized would pass every one of them. This proves the true branch.
 /// </summary>
-public class BeaconApiEnvelopeTests
+public class BeaconApiEnvelopeTests : BeaconApiFixture
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
-
-    private BeaconApiTestHost _host = null!;
 
     [OneTimeSetUp]
     public async Task StartHost()
@@ -42,9 +40,6 @@ public class BeaconApiEnvelopeTests
         // to the infinite SSE loop must fail fast here, not hang the run.
         _host.Client.Timeout = TimeSpan.FromSeconds(5);
     }
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     [Test]
     public async Task Header_reports_finalized_true_when_the_blocks_epoch_is_at_or_before_the_finalized_checkpoint()

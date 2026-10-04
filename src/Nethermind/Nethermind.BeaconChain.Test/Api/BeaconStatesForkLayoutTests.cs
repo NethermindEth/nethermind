@@ -22,7 +22,7 @@ namespace Nethermind.BeaconChain.Test.Api;
 /// serve every field that fork has. Each fork's state carries its own marker values, so a field read from another
 /// layout, or a version named after another fork, fails here.
 /// </summary>
-public class BeaconStatesForkLayoutTests
+public class BeaconStatesForkLayoutTests : BeaconApiFixture
 {
     private const string Json = "application/json";
     private const string Octet = "application/octet-stream";
@@ -31,8 +31,6 @@ public class BeaconStatesForkLayoutTests
 
     // Enough validators that every slot's committee is non-empty, which upgrade_to_gloas needs to fill its PTC window.
     private const int ValidatorCount = 64;
-
-    private BeaconApiTestHost _host = null!;
 
     [OneTimeSetUp]
     public async Task StartHost()
@@ -47,9 +45,6 @@ public class BeaconStatesForkLayoutTests
             _host.Store.SetCanonicalRoot(slot, root);
         }
     }
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     [TestCase("electra")]
     [TestCase("fulu")]
