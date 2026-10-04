@@ -19,7 +19,7 @@ public static partial class KeccakCache
     // more to store and compare than the hash they save.
     internal const nuint MinMemoLength = sizeof(ulong);
     internal const nuint MaxMemoLength = 64;
-    internal const int MemoSlotBits = 15;
+    internal const int MemoSlotBits = 16;
     private const int MemoSlotCount = 1 << MemoSlotBits;
 
     // Underflows and fails the build off either end of MemoSlot's precondition: at 0 the multiplied hash
