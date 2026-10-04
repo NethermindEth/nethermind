@@ -71,24 +71,7 @@ public class RandaoMixAndEpochCacheTests
         ulong currentEpoch = Presets.EpochsPerHistoricalVector + 100;
         BeaconStateFulu state = CreateState(currentEpoch, validatorCount: 4);
 
-        byte[] domain = [1, 2, 3, 4];
-        Span<byte> preimage = stackalloc byte[4 + 8 + 32];
-        domain.CopyTo(preimage);
-
-        foreach (ulong epoch in new[] { currentEpoch - 1, currentEpoch, currentEpoch + 1 })
-        {
-            ulong mixEpoch = epoch - Presets.MinSeedLookahead - 1;
-            Hash256 mix = Hash((byte)(mixEpoch % 251));
-            state.RandaoMixes![(int)(mixEpoch % Presets.EpochsPerHistoricalVector)] = mix;
-
-            Hash256 seed = state.GetSeed(epoch, domain);
-
-            BinaryPrimitives.WriteUInt64LittleEndian(preimage[4..], epoch);
-            mix.Bytes.CopyTo(preimage[12..]);
-            Hash256 expected = new(SHA256.HashData(preimage));
-
-            Assert.That(seed, Is.EqualTo(expected), $"seed for epoch {epoch} must use mix epoch {mixEpoch}'s randao mix");
-        }
+        AssertSeedMatchesReference(currentEpoch, state.RandaoMixes!, (epoch, domain) => state.GetSeed(epoch, domain));
     }
 
     [Test]
@@ -176,7 +159,31 @@ public class RandaoMixAndEpochCacheTests
         Assert.That(second, Is.EqualTo(first), "repeated calls for the same branch and epoch must not be treated as a conflict");
     }
 
-    private static BeaconStateFulu CreateState(ulong currentEpoch, int validatorCount)
+    /// <summary>Checks the seed preimage against distinctive mixes for the previous, current and next epochs.</summary>
+    internal static void AssertSeedMatchesReference(ulong currentEpoch, Hash256[] randaoMixes, Func<ulong, byte[], Hash256> getSeed)
+    {
+        byte[] domain = [1, 2, 3, 4];
+        Span<byte> preimage = stackalloc byte[4 + 8 + 32];
+        domain.CopyTo(preimage);
+
+        foreach (ulong epoch in new[] { currentEpoch - 1, currentEpoch, currentEpoch + 1 })
+        {
+            ulong mixEpoch = epoch - Presets.MinSeedLookahead - 1;
+            Hash256 mix = Hash((byte)(mixEpoch % 251));
+            randaoMixes[(int)(mixEpoch % Presets.EpochsPerHistoricalVector)] = mix;
+
+            Hash256 seed = getSeed(epoch, domain);
+
+            BinaryPrimitives.WriteUInt64LittleEndian(preimage[4..], epoch);
+            mix.Bytes.CopyTo(preimage[12..]);
+            Hash256 expected = new(SHA256.HashData(preimage));
+
+            Assert.That(seed, Is.EqualTo(expected), $"seed for epoch {epoch} must use mix epoch {mixEpoch}'s randao mix");
+        }
+    }
+
+    /// <summary>Creates the minimal state used to test RANDAO windows and epoch-cache keys.</summary>
+    internal static BeaconStateFulu CreateState(ulong currentEpoch, int validatorCount)
     {
         Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
         Array.Fill(randaoMixes, Hash(0x01));

@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using NUnit.Framework;
+using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
@@ -26,7 +27,6 @@ public class GloasForkTransitionTests
     // with too few validators most slices are empty and ComputeBalanceWeightedSelection has nothing
     // to sample from.
     private const int ValidatorCount = 2048;
-    private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
     private static readonly byte[] GloasVersion = Bytes.FromHexString("0x07000000");
     // PAYLOAD_BUILDER_VERSION, Uint8(0) in specs/gloas/beacon-chain.md.
     private const byte PayloadBuilderVersion = 0;
@@ -487,40 +487,22 @@ public class GloasForkTransitionTests
 
     private static BeaconStateFulu CreateState(int validatorCount)
     {
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        System.Array.Fill(randaoMixes, Hash(0x42));
-
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
+        BeaconStateFulu state = CreateFuluState(validatorCount);
+        state.GenesisValidatorsRoot = Hash(0x01);
+        state.BlockRoots = null;
+        state.StateRoots = null;
+        state.HistoricalRoots = null;
+        state.Eth1DataVotes = null;
+        state.FinalizedCheckpoint!.Epoch = 0;
+        state.JustificationBits = null;
+        state.CurrentSyncCommittee!.Pubkeys = null;
+        state.NextSyncCommittee!.Pubkeys = null;
+        state.PendingDeposits = null;
+        state.PendingPartialWithdrawals = null;
+        state.PendingConsolidations = null;
         for (int i = 0; i < validatorCount; i++)
-        {
-            validators[i] = GloasTestFixtures.CreateActiveValidator(PubkeyForIndex(i));
-            balances[i] = 32 * Gwei;
-        }
-
-        return new BeaconStateFulu
-        {
-            GenesisTime = 1_606_824_023,
-            GenesisValidatorsRoot = Hash(0x01),
-            Slot = 0,
-            Fork = new Fork { PreviousVersion = Bytes.FromHexString("0x05000000"), CurrentVersion = Bytes.FromHexString("0x06000000"), Epoch = 0 },
-            LatestBlockHeader = new BeaconBlockHeader { Slot = 0, ProposerIndex = 0, ParentRoot = Hash(0x02), StateRoot = Hash256.Zero, BodyRoot = Hash256.Zero },
-            Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-            Validators = validators,
-            Balances = balances,
-            RandaoMixes = randaoMixes,
-            Slashings = new ulong[(int)Presets.EpochsPerSlashingsVector],
-            PreviousEpochParticipation = new byte[validatorCount],
-            CurrentEpochParticipation = new byte[validatorCount],
-            InactivityScores = new ulong[validatorCount],
-            PreviousJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            CurrentSyncCommittee = new SyncCommittee { AggregatePubkey = Pubkey(0x60) },
-            NextSyncCommittee = new SyncCommittee { AggregatePubkey = Pubkey(0x61) },
-            LatestExecutionPayloadHeader = new ExecutionPayloadHeader { ParentHash = Hash(0x70), BlockHash = Hash(0x71), PrevRandao = Hash(0x72), GasLimit = 30_000_000 },
-            ProposerLookahead = new ulong[(int)Presets.ProposerLookaheadSlots],
-        };
+            state.Validators![i].Pubkey = PubkeyForIndex(i);
+        return state;
     }
 
     private static Hash256 BuilderWithdrawalCredentials(byte seed) => PrefixedCredentials(Presets.BuilderWithdrawalPrefix, seed);
@@ -535,32 +517,6 @@ public class GloasForkTransitionTests
             bytes[i] = unchecked((byte)(seed + i));
         bytes[0] = prefix;
         return new Hash256(bytes);
-    }
-
-    private static Bls.SecretKey DeriveKey(int index) => new(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)index));
-
-    private static (BlsPublicKey Pubkey, BlsSignature Signature) SignDeposit(Bls.SecretKey sk, Hash256 withdrawalCredentials, ulong amount)
-    {
-        BlsPublicKey pubkey = new(new Bls.P1(sk).Compress());
-        DepositMessage.Merkleize(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount }, out UInt256 root);
-        Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, BeaconChainSpec.Mainnet.GenesisForkVersion, Hash256.Zero);
-        Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
-        BlsSignature signature = new(BlsSigner.Sign(sk, signingRoot.Bytes).Bytes);
-        return (pubkey, signature);
-    }
-
-    private static Hash256 Hash(byte value)
-    {
-        byte[] bytes = new byte[32];
-        bytes.AsSpan().Fill(value);
-        return new Hash256(bytes);
-    }
-
-    private static BlsPublicKey Pubkey(byte value)
-    {
-        byte[] bytes = new byte[BlsPublicKey.Length];
-        bytes.AsSpan().Fill(value);
-        return new BlsPublicKey(bytes);
     }
 
     /// <summary>A distinct pubkey per validator index, unlike <see cref="Pubkey"/>'s single repeated fill byte.</summary>
