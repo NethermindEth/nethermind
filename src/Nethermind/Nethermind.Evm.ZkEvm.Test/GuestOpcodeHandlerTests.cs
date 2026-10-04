@@ -655,15 +655,13 @@ public class GuestOpcodeHandlerTests
         // On the heap, so the state that refers to it can be handed to a function pointer, whose parameters cannot be scoped.
         EthereumGasPolicy[] gasPolicy = [EthereumGasPolicy.FromULong(gas)];
         EvmExceptionType exception;
-        // The table's declared entry type is the host's signature; its entries take the guest's.
-        fixed (void* entries = vm.GetOpcodeHandlers<OffFlag, OffFlag>())
+        fixed (nint* table = PairedHandlers(vm))
         {
-            nint* table = (nint*)entries;
             // The code info's copy of the code is the one followed by the padding that dispatch may read.
             EvmStack stack = new(0, ref stackStart, codeInfo.CodeSpan, codeInfo);
             stack.HoistInputData(env.InputData.Span);
             VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm, Memory = ref frame.Memory };
-            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[code[0]])(
+            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[Unsafe.ReadUnaligned<ushort>(ref stack.Code)])(
                 ref stack, gas, ref state, ref stack.Code, stack.Head, table, ref stack.Code, ref stack.Bottom);
         }
 
@@ -671,6 +669,21 @@ public class GuestOpcodeHandlerTests
         Assert.That(frame.Memory.TryLoadSpan(UInt256.Zero, size, out Span<byte> memory), Is.True);
         return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), memory.ToArray());
     }
+
+    /// <summary>The table the guest dispatches through, paired from the machine's untraced table once for all tests.</summary>
+    private static unsafe nint[] PairedHandlers(VirtualMachine<EthereumGasPolicy> vm)
+    {
+        if (_pairedHandlers is null)
+        {
+            // The table's declared entry type is the host's signature; its entries take the guest's.
+            fixed (void* entries = vm.GetOpcodeHandlers<OffFlag, OffFlag>())
+                _pairedHandlers = VirtualMachine<EthereumGasPolicy>.PairHandlers(new ReadOnlySpan<nint>(entries, 256));
+        }
+
+        return _pairedHandlers;
+    }
+
+    private static nint[]? _pairedHandlers;
 
     /// <summary>The Yellow Paper memory cost of <paramref name="words"/> active words.</summary>
     private static ulong MemoryCost(ulong words) => words * GasCostOf.Memory + words * words / 512;

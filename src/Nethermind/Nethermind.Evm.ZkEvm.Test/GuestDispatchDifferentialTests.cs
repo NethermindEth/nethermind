@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -34,6 +35,8 @@ namespace Nethermind.Evm.ZkEvm.Test;
 public class GuestDispatchDifferentialTests
 {
     private const int ProgramsPerSeed = 1500;
+
+    private static readonly ConcurrentDictionary<(Table, IReleaseSpec, bool, bool), nint[]> PairedTables = new();
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
 
@@ -110,6 +113,51 @@ public class GuestDispatchDifferentialTests
             Assert.That(outcome.Head, Is.EqualTo((nint)1));
             Assert.That(outcome.Stack, Is.EqualTo(pushed.Stack));
         }
+    }
+
+    /// <remarks>Without the fused entry, the pair tests below would only compare the shared handlers with themselves.</remarks>
+    [Test]
+    public unsafe void Pairing_installs_fused_handlers_only_for_guest_handlers([Values] Table table)
+    {
+        DispatchingVirtualMachine vm = new(ReleaseSpec);
+        fixed (void* entries = table switch
+        {
+            Table.Untraced => vm.GetOpcodeHandlers<OffFlag, OffFlag>(),
+            Table.Cancelable => vm.GetOpcodeHandlers<OffFlag, OnFlag>(),
+            _ => vm.GetOpcodeHandlers<OnFlag, OffFlag>(),
+        })
+        {
+            ReadOnlySpan<nint> handlers = new(entries, 256);
+            nint[] paired = VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers);
+            const int swap1Pop = (int)Instruction.SWAP1 | (int)Instruction.POP << 8;
+            const int swap1Stop = (int)Instruction.SWAP1;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(paired[swap1Pop] != handlers[(int)Instruction.SWAP1], Is.EqualTo(table == Table.Untraced));
+                Assert.That(paired[swap1Stop], Is.EqualTo(handlers[(int)Instruction.SWAP1]));
+            }
+        }
+    }
+
+    /// <remarks>
+    /// Each pair runs from stacks too short for either opcode, and full enough that a DUP overflows, with every amount
+    /// of gas around the two charges, and then a third opcode, so a fused step that resumes in the wrong place shows.
+    /// </remarks>
+    [Test]
+    public void Fused_pairs_match_the_shared_handlers_at_every_gas([ValueSource(nameof(FusedPairs))] Instruction[] pair)
+    {
+        byte[] code = [(byte)pair[0], (byte)pair[1], (byte)Instruction.NOT, (byte)Instruction.STOP];
+        List<string> mismatches = [];
+        foreach (int head in (int[])[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 1022, 1023, 1024])
+            for (ulong gas = 0; gas <= 12 && mismatches.Count < 5; gas++)
+            {
+                Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced);
+                Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced);
+                if (!Matches(untraced, traced) || untraced.Pc != traced.Pc)
+                    mismatches.Add($"head {head} gas {gas}\n untraced {untraced}\n traced   {traced}");
+            }
+
+        Assert.That(mismatches, Is.Empty);
     }
 
     /// <remarks>POP, CALLDATALOAD and CLZ run checked in every table, so the random programs cannot cover them.</remarks>
@@ -328,7 +376,7 @@ public class GuestDispatchDifferentialTests
         int snippets = random.Next(10, 90);
         for (int s = 0; s < snippets; s++)
         {
-            int pick = random.Next(105);
+            int pick = random.Next(110);
             switch (pick)
             {
                 case < 8: code.Add((byte)Instruction.JUMPDEST); break;
@@ -403,6 +451,13 @@ public class GuestDispatchDifferentialTests
                 case < 102: code.Add((byte)Instruction.SLT); break;
                 case < 103: code.Add((byte)Instruction.SGT); break;
                 case < 104: code.Add((byte)Instruction.CALLDATASIZE); break;
+                case < 109:
+                    {
+                        // An opcode pair the guest runs as one step, or that only shares an opcode with one.
+                        Instruction[] pair = FusedPairs[random.Next(FusedPairs.Length)];
+                        code.AddRange([(byte)pair[0], (byte)pair[random.Next(4) == 0 ? 0 : 1]]);
+                        break;
+                    }
                 default: code.Add((byte)random.Next(256)); break;
             }
         }
@@ -424,6 +479,25 @@ public class GuestDispatchDifferentialTests
         // Sometimes cut the last opcode's immediates short.
         if (code.Count > 1 && random.Next(3) == 0) code.RemoveAt(code.Count - 1);
         return code.Count == 0 ? [(byte)Instruction.STOP] : code.ToArray();
+    }
+
+    /// <summary>The opcode pairs the guest fuses, read off the paired untraced table.</summary>
+    private static readonly Instruction[][] FusedPairs = FindFusedPairs();
+
+    private static unsafe Instruction[][] FindFusedPairs()
+    {
+        DispatchingVirtualMachine vm = new(ReleaseSpec);
+        List<Instruction[]> pairs = [];
+        fixed (void* entries = vm.GetOpcodeHandlers<OffFlag, OffFlag>())
+        {
+            ReadOnlySpan<nint> handlers = new(entries, 256);
+            nint[] paired = VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers);
+            for (int index = 0; index < paired.Length; index++)
+                if (paired[index] != handlers[index & 0xff])
+                    pairs.Add([(Instruction)(index & 0xff), (Instruction)(index >> 8)]);
+        }
+
+        return [.. pairs];
     }
 
     private static byte SmallImmediate(Random random) => random.Next(5) switch
@@ -486,13 +560,15 @@ public class GuestDispatchDifferentialTests
         EvmExceptionType exception;
         nint pc;
         nint finalHead;
-        fixed (nint* entries = handlers)
+        // Paired once per table, fork and replaced set, as the dispatch loop pairs each table once.
+        nint[] paired = PairedTables.GetOrAdd((table, spec ?? ReleaseSpec, loadsStorage, returnData is not null), _ => VirtualMachine<EthereumGasPolicy>.PairHandlers(handlers));
+        fixed (nint* entries = paired)
         {
             EvmStack stack = new(head, vm.Tracer, ref stackBytes[start], codeInfo.ExecutionCodeSpan, codeInfo);
             stack.HoistInputData(inputData);
             VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Vm = vm, Memory = ref frame.Memory };
             exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                entries[codeInfo.CodeSpan[0]])(ref stack, gas, ref state, ref stack.Code, stack.Head, entries, ref stack.Code, ref stack.Bottom);
+                entries[Unsafe.ReadUnaligned<ushort>(ref stack.Code)])(ref stack, gas, ref state, ref stack.Code, stack.Head, entries, ref stack.Code, ref stack.Bottom);
             pc = state.FinalProgramCounter;
             finalHead = state.Head;
         }
