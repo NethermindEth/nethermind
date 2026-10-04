@@ -8,7 +8,6 @@ using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
-using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -110,30 +109,7 @@ public static partial class BlockProcessing
     }
 
     /// <summary>Spec <c>process_block_header</c>: validates the block against the chain tip and caches it as the latest header.</summary>
-    public static void ProcessBlockHeader(BeaconStateFulu state, BeaconBlock block)
-    {
-        if (block.Slot != state.Slot)
-            throw new BeaconStateException($"Block slot {block.Slot} does not match state slot {state.Slot}");
-        if (block.Slot <= state.LatestBlockHeader!.Slot)
-            throw new BeaconStateException($"Block slot {block.Slot} is not newer than latest header slot {state.LatestBlockHeader.Slot}");
-        if (block.ProposerIndex != state.GetBeaconProposerIndex())
-            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The block is proposed by the expected proposer for the slot".
-            throw new BeaconStateException($"Block proposer {block.ProposerIndex} does not match expected proposer {state.GetBeaconProposerIndex()}") { RejectGossip = true };
-        if (block.ParentRoot != SszRoots.HashTreeRoot(state.LatestBlockHeader))
-            throw new BeaconStateException($"Block parent root {block.ParentRoot} does not match latest header root");
-
-        state.LatestBlockHeader = new BeaconBlockHeader
-        {
-            Slot = block.Slot,
-            ProposerIndex = block.ProposerIndex,
-            ParentRoot = block.ParentRoot,
-            StateRoot = Hash256.Zero, // Overwritten by the next process_slot.
-            BodyRoot = SszRoots.HashTreeRoot(block.Body!),
-        };
-
-        if (state.Validators![(int)block.ProposerIndex].Slashed)
-            throw new BeaconStateException($"Proposer {block.ProposerIndex} is slashed");
-    }
+    public static partial void ProcessBlockHeader(BeaconStateFulu state, BeaconBlock block);
 
     /// <summary>
     /// Spec <c>process_withdrawals</c> (Electra): asserts the payload withdrawals equal
@@ -298,18 +274,7 @@ public static partial class BlockProcessing
     public static partial void ProcessRandao(BeaconStateFulu state, BeaconBlockBody body, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
 
     /// <summary>Spec <c>process_eth1_data</c>: records the vote and adopts it once it has a majority of the voting period.</summary>
-    public static void ProcessEth1Data(BeaconStateFulu state, BeaconBlockBody body)
-    {
-        state.Eth1DataVotes = [.. state.Eth1DataVotes!, body.Eth1Data!];
-        int votes = 0;
-        foreach (Eth1Data vote in state.Eth1DataVotes)
-        {
-            if (Eth1DataEquals(vote, body.Eth1Data!))
-                votes++;
-        }
-        if ((ulong)votes * 2 > Presets.EpochsPerEth1VotingPeriod * Presets.SlotsPerEpoch)
-            state.Eth1Data = body.Eth1Data;
-    }
+    public static partial void ProcessEth1Data(BeaconStateFulu state, BeaconBlockBody body);
 
     private static bool Eth1DataEquals(Eth1Data a, Eth1Data b) =>
         a.DepositRoot == b.DepositRoot && a.DepositCount == b.DepositCount && a.BlockHash == b.BlockHash;
@@ -380,87 +345,14 @@ public static partial class BlockProcessing
     /// Spec <c>process_attestation</c> (Electra): validates the EIP-7549 aggregate, sets
     /// participation flags, and credits the proposer reward.
     /// </summary>
-    public static void ProcessAttestation(BeaconStateFulu state, Attestation attestation, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
-    {
-        AttestationData data = attestation.Data!;
-        ulong currentEpoch = state.GetCurrentEpoch();
-        if (data.Target!.Epoch != state.GetPreviousEpoch() && data.Target.Epoch != currentEpoch)
-            throw new BeaconStateException($"Attestation target epoch {data.Target.Epoch} is not the previous or current epoch");
-        if (data.Target.Epoch != BeaconStateAccessors.ComputeEpochAtSlot(data.Slot))
-            throw new BeaconStateException("Attestation target epoch does not match its slot");
-        if (data.Slot + Presets.MinAttestationInclusionDelay > state.Slot)
-            throw new BeaconStateException($"Attestation for slot {data.Slot} is included too early at slot {state.Slot}");
-        // [Modified in Electra:EIP7549] The committee is selected by committee_bits.
-        if (data.Index != 0)
-            throw new BeaconStateException($"Attestation data index {data.Index} must be zero");
-
-        // GetAttestingIndices performs the spec's committee/aggregation-bits structural asserts.
-        CommitteeCache committees = cache.GetCommitteeCache(state, data.Target.Epoch);
-        ulong[] attestingIndices = state.GetAttestingIndices(attestation, committees);
-
-        byte participationFlags = GetAttestationParticipationFlagIndices(state, data, state.Slot - data.Slot);
-
-        IndexedAttestation indexed = new()
-        {
-            AttestingIndices = attestingIndices,
-            Data = data,
-            Signature = attestation.Signature,
-        };
-        const string invalidAttestation = "Invalid indexed attestation";
-        if (!IsValidIndexedAttestation(state, indexed, pubkeys, verifySignature, batch?.Defer(invalidAttestation)))
-            throw new BeaconStateException(invalidAttestation);
-
-        byte[] epochParticipation = data.Target.Epoch == currentEpoch
-            ? state.CurrentEpochParticipation!
-            : state.PreviousEpochParticipation!;
-
-        ulong proposerRewardNumerator = 0;
-        ulong? baseRewardPerIncrement = null;
-        foreach (ulong index in attestingIndices)
-        {
-            ulong? baseReward = null;
-            for (int flagIndex = 0; flagIndex < Presets.ParticipationFlagWeights.Length; flagIndex++)
-            {
-                byte flag = (byte)(1 << flagIndex);
-                if ((participationFlags & flag) != 0 && (epochParticipation[index] & flag) == 0)
-                {
-                    epochParticipation[index] |= flag;
-                    baseRewardPerIncrement ??= state.GetBaseRewardPerIncrement(cache);
-                    baseReward ??= state.Validators![(int)index].EffectiveBalance / Presets.EffectiveBalanceIncrement * baseRewardPerIncrement.Value;
-                    proposerRewardNumerator += baseReward.Value * Presets.ParticipationFlagWeights[flagIndex];
-                }
-            }
-        }
-
-        ulong proposerRewardDenominator = (Presets.WeightDenominator - Presets.ProposerWeight) * Presets.WeightDenominator / Presets.ProposerWeight;
-        state.IncreaseBalance((int)state.GetBeaconProposerIndex(), proposerRewardNumerator / proposerRewardDenominator);
-    }
+    public static partial void ProcessAttestation(BeaconStateFulu state, Attestation attestation, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
 
     /// <summary>
     /// Spec <c>get_attestation_participation_flag_indices</c> (Deneb/EIP-7045 timeliness rules),
     /// returned as a bitmask over the participation flag indices.
     /// </summary>
     /// <exception cref="BeaconStateException">The attestation source does not match the justified checkpoint.</exception>
-    private static byte GetAttestationParticipationFlagIndices(BeaconStateFulu state, AttestationData data, ulong inclusionDelay)
-    {
-        Checkpoint justifiedCheckpoint = data.Target!.Epoch == state.GetCurrentEpoch()
-            ? state.CurrentJustifiedCheckpoint!
-            : state.PreviousJustifiedCheckpoint!;
-        if (data.Source!.Epoch != justifiedCheckpoint.Epoch || data.Source.Root != justifiedCheckpoint.Root)
-            throw new BeaconStateException("Attestation source does not match the justified checkpoint");
-
-        bool isMatchingTarget = data.Target.Root == state.GetBlockRoot(data.Target.Epoch);
-        bool isMatchingHead = isMatchingTarget && data.BeaconBlockRoot == state.GetBlockRootAtSlot(data.Slot);
-
-        byte flags = 0;
-        if (inclusionDelay <= BeaconStateAccessors.IntegerSquareRoot(Presets.SlotsPerEpoch))
-            flags |= 1 << Presets.TimelySourceFlagIndex;
-        if (isMatchingTarget)
-            flags |= 1 << Presets.TimelyTargetFlagIndex;
-        if (isMatchingHead && inclusionDelay == Presets.MinAttestationInclusionDelay)
-            flags |= 1 << Presets.TimelyHeadFlagIndex;
-        return flags;
-    }
+    private static partial byte GetAttestationParticipationFlagIndices(BeaconStateFulu state, AttestationData data, ulong inclusionDelay);
 
     /// <summary>Spec <c>process_deposit</c>: verifies the Eth1 deposit tree Merkle branch, then applies the deposit.</summary>
     public static void ProcessDeposit(BeaconStateFulu state, Deposit deposit)
@@ -537,16 +429,7 @@ public static partial class BlockProcessing
     private static partial bool IsValidSwitchToCompoundingRequest(BeaconStateFulu state, ConsolidationRequest request);
 
     /// <summary>Spec <c>switch_to_compounding_validator</c>.</summary>
-    private static void SwitchToCompoundingValidator(BeaconStateFulu state, int index)
-    {
-        Span<byte> credentials = stackalloc byte[32];
-        Validator validator = state.Validators![index].Clone();
-        validator.WithdrawalCredentials!.Bytes.CopyTo(credentials);
-        credentials[0] = Presets.CompoundingWithdrawalPrefix;
-        validator.WithdrawalCredentials = new Hash256(credentials);
-        state.Validators[index] = validator;
-        QueueExcessActiveBalance(state, index);
-    }
+    private static partial void SwitchToCompoundingValidator(BeaconStateFulu state, int index);
 
     /// <summary>Spec <c>queue_excess_active_balance</c>.</summary>
     private static void QueueExcessActiveBalance(BeaconStateFulu state, int index)

@@ -29,11 +29,11 @@ public class ForkAlgorithmGeneratorTests
             #else
                 public
             #endif
-                static partial ForkState Run(ForkBody body, ForkAttesterSlashing slash, ForkIndexedAttestation vote)
+                static partial ForkState Run(ForkBody body, ForkAttesterSlashing slash, ForkIndexedAttestation vote, ForkBlock block, ForkAttestation attestation)
                 {
                     // ForkState, ForkBody and ForkSignatureSets are literal documentation here.
                     const string stateName = "ForkState";
-                    const string bodyName = @"ForkBody";
+                    const string bodyName = @"ForkBody ForkBlock ForkAttestation";
                     const char letter = 'F';
                     ForkSignatureSets.Verify();
                     ForkEpochProcessing.ProcessEpoch();
@@ -63,6 +63,8 @@ public class ForkAlgorithmGeneratorTests
             Assert.That(text, Does.Contain(gloas ? "BeaconBlockBodyGloas" : "BeaconBlockBody body"));
             Assert.That(text, Does.Contain(gloas ? "AttesterSlashingGloas" : "AttesterSlashing slash"));
             Assert.That(text, Does.Contain(gloas ? "IndexedAttestationGloas" : "IndexedAttestation vote"));
+            Assert.That(text, Does.Contain(gloas ? "BeaconBlockGloas block" : "BeaconBlock block"));
+            Assert.That(text, Does.Contain(gloas ? "AttestationGloas attestation" : "Attestation attestation"));
             Assert.That(text, Does.Contain(gloas ? "GloasSignatureSets.Verify" : "SignatureSets.Verify"));
             Assert.That(text, Does.Contain(gloas ? "GloasEpochProcessing.ProcessEpoch" : "EpochProcessing.ProcessEpoch"));
             Assert.That(text, Does.Contain(gloas ? "Slot = 2" : "Slot = 1"));
@@ -71,7 +73,7 @@ public class ForkAlgorithmGeneratorTests
             Assert.That(text, Does.Not.Contain("#if").And.Not.Contain("#else").And.Not.Contain("#endif"));
             Assert.That(text, Does.Contain("// ForkState, ForkBody and ForkSignatureSets are literal documentation here."));
             Assert.That(text, Does.Contain("const string stateName = \"ForkState\";"));
-            Assert.That(text, Does.Contain("const string bodyName = @\"ForkBody\";"));
+            Assert.That(text, Does.Contain("const string bodyName = @\"ForkBody ForkBlock ForkAttestation\";"));
             Assert.That(text, Does.Contain("const char letter = 'F';"));
         }
     }
