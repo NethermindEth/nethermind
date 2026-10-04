@@ -8,13 +8,16 @@ namespace Nethermind.Core.Diagnostics;
 /// <summary>Experiment switches read once from the environment; every one defaults to the current behaviour.</summary>
 public static class ExperimentKnobs
 {
-    static ExperimentKnobs() => ThreadNicer.Start(PoolNice, RocksNice);
+    static ExperimentKnobs() => ThreadNicer.Start(PoolNice, RocksNice, ThreadReportSeconds);
 
     /// <summary>Nice value for thread-pool workers (0 leaves them alone); see <see cref="ThreadNicer"/>.</summary>
     public static readonly int PoolNice = Int("NETHERMIND_EXP_POOL_NICE", 0);
 
     /// <summary>Nice value for RocksDB background threads (0 leaves them alone).</summary>
     public static readonly int RocksNice = Int("NETHERMIND_EXP_ROCKS_NICE", 0);
+
+    /// <summary>Every N seconds, print on-CPU and run-queue wait per thread name (0 = off); see <see cref="ThreadNicer"/>.</summary>
+    public static readonly int ThreadReportSeconds = Int("NETHERMIND_EXP_THREAD_REPORT", 0);
 
     /// <summary>RocksDB compaction threads (background compactions and the low-priority pool); 0 keeps ProcessorCount.</summary>
     public static readonly int RocksCompactionThreads = Int("NETHERMIND_EXP_ROCKS_COMPACTION_THREADS", 0);
