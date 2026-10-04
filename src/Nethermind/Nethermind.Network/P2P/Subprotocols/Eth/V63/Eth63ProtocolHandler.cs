@@ -126,7 +126,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             IOwnedReadOnlyList<TxReceipt[]> txReceipts = await _nodeStats.RunSizeAndLatencyRequestSizer<IOwnedReadOnlyList<TxReceipt[]>, Hash256, TxReceipt[]>(RequestType.Receipts, blockHashes, async clampedBlockHashes =>
                 await SendRequest(new GetReceiptsMessage(clampedBlockHashes.ToPooledList())
                 {
-                    MaxReceiptsPerBlock = expectedReceiptCounts
+                    MaxReceiptsPerBlock = expectedReceiptCounts.ToArray()
                 }, token));
 
             return txReceipts;

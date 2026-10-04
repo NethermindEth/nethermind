@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         /// <summary>
         /// Per requested block, the most receipts a response may hold for it, negative when unknown; blocks past its end have no limit.
         /// </summary>
-        /// <remarks>Local bookkeeping for checking the response; not sent to the peer. It borrows the caller's buffer, which outlives the request.</remarks>
+        /// <remarks>Local bookkeeping for checking the response; not sent to the peer. It owns its counts, since a late response to a cancelled request is still checked against them.</remarks>
         public ReadOnlyMemory<int> MaxReceiptsPerBlock { get; init; }
 
         /// <summary>

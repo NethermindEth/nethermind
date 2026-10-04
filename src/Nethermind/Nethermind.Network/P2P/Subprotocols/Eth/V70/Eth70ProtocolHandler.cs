@@ -300,12 +300,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             }
         }
 
-        using ArrayPoolList<int> maxReceiptsPerBlock = new(blockHashes.Count);
+        int[] maxReceiptsPerBlock = new int[blockHashes.Count];
         ReadOnlySpan<int> expectedCounts = expectedReceiptCounts.Span;
         for (int i = 0; i < blockHashes.Count; i++)
         {
             int expected = i < expectedCounts.Length ? expectedCounts[i] : -1;
-            maxReceiptsPerBlock.Add(expected >= 0 ? expected : blockTransactions[i]?.Length ?? -1);
+            maxReceiptsPerBlock[i] = expected >= 0 ? expected : blockTransactions[i]?.Length ?? -1;
         }
 
         try
