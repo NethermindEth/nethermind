@@ -467,15 +467,8 @@ public class GloasEpochProcessingTests
         Validator[] validators = new Validator[validatorCount];
         for (int i = 0; i < validators.Length; i++)
         {
-            validators[i] = new Validator
-            {
-                Pubkey = Pubkey((byte)i),
-                WithdrawalCredentials = Hash256.Zero,
-                EffectiveBalance = effectiveBalanceEth * Gwei,
-                ActivationEpoch = 0,
-                ExitEpoch = Presets.FarFutureEpoch,
-                WithdrawableEpoch = Presets.FarFutureEpoch,
-            };
+            validators[i] = CreateActiveValidator(Pubkey((byte)i));
+            validators[i].EffectiveBalance = effectiveBalanceEth * Gwei;
         }
         state.Validators = validators;
         return state;

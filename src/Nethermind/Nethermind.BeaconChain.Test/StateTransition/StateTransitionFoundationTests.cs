@@ -252,15 +252,9 @@ public class StateTransitionFoundationTests
         for (int i = 0; i < validatorCount; i++)
         {
             bool inactive = inactiveEvery > 0 && i % inactiveEvery == 0;
-            validators[i] = new Validator
-            {
-                WithdrawalCredentials = Hash256.Zero,
-                EffectiveBalance = effectiveBalance,
-                ActivationEpoch = inactive ? Presets.FarFutureEpoch : 0,
-                ExitEpoch = Presets.FarFutureEpoch,
-                WithdrawableEpoch = Presets.FarFutureEpoch,
-                ActivationEligibilityEpoch = 0,
-            };
+            validators[i] = CreateActiveValidator(default);
+            validators[i].EffectiveBalance = effectiveBalance;
+            validators[i].ActivationEpoch = inactive ? Presets.FarFutureEpoch : 0;
             balances[i] = effectiveBalance;
         }
 
