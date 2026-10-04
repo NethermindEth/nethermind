@@ -12,12 +12,14 @@ namespace Nethermind.JsonRpc.Test.Data;
 public class GethTraceOptionsDeserializationTests
 {
     // The node reads RPC parameters through the source-generated EthRpcJsonContext, which assigns every init-only member;
-    // the legacy disableMemory alias must still decide memory capture when enableMemory is absent.
+    // the legacy disableMemory alias must decide memory capture as reflection did: the last of the two in the JSON wins.
     [TestCase("{}", false)]
     [TestCase("""{"disableMemory":false}""", true)]
     [TestCase("""{"disableMemory":true}""", false)]
     [TestCase("""{"enableMemory":true}""", true)]
     [TestCase("""{"enableMemory":false}""", false)]
+    [TestCase("""{"disableMemory":true,"enableMemory":true}""", true)]
+    [TestCase("""{"enableMemory":true,"disableMemory":true}""", false)]
     public void Memory_capture_follows_the_options_present(string json, bool enableMemory)
     {
         GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(json, EthereumJsonSerializer.JsonRpcRequestOptions)!;
