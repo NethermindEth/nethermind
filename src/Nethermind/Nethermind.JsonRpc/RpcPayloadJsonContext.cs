@@ -16,7 +16,7 @@ namespace Nethermind.JsonRpc;
 
 /// <summary>
 /// Metadata for JSON-RPC payloads that method signatures do not name: <c>eth_config</c> builds its result as nodes, proofs are
-/// written by a converter, peer protocols are stored as <see cref="object"/>, and diagnostics wrap responses.
+/// written by a converter, peer protocols are stored as <see cref="object"/>, diagnostics wrap responses, and the client builds its own requests.
 /// </summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(ForkConfigSummary))]
@@ -29,6 +29,11 @@ namespace Nethermind.JsonRpc;
 [JsonSerializable(typeof(ReadOnlyMemory<byte>?))]
 [JsonSerializable(typeof(JsonRpcDiagnostics.DiagnosticJsonRpcResult))]
 [JsonSerializable(typeof(RpcReport))]
+[JsonSerializable(typeof(Client.JsonRpcClientRequest))]
+[JsonSerializable(typeof(LogEntryForRpc[]))]
+[JsonSerializable(typeof(Modules.DebugModule.GethLikeTxTraceStreamingResult))]
+[JsonSerializable(typeof(Modules.Trace.ParityTxTraceFromReplay[]))]
+[JsonSerializable(typeof(Modules.Trace.ParityTxTraceFromStore[]))]
 [JsonSerializable(typeof(Modules.Admin.PeerInfo.ProtocolVersion))]
 internal partial class RpcPayloadJsonContext : JsonSerializerContext
 {

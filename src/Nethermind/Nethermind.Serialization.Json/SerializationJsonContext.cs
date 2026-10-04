@@ -7,4 +7,5 @@ namespace Nethermind.Serialization.Json;
 
 [JsonSerializable(typeof(double[]))]
 [JsonSerializable(typeof(object))]
+[JsonSerializable(typeof(Nethermind.Core.TxReceipt))]
 internal partial class SerializationJsonContext : JsonSerializerContext;
