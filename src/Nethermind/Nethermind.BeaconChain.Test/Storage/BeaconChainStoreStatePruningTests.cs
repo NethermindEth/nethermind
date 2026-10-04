@@ -36,7 +36,7 @@ public class BeaconChainStoreStatePruningTests
     private static Hash256 Root(byte fill) => new(Enumerable.Repeat(fill, Hash256.Size).ToArray());
 
     /// <summary>State bytes whose slot field reads <paramref name="slot"/>, padded to <paramref name="length"/> so a long one spans several chunks.</summary>
-    private static byte[] StateAt(ulong slot, int length = 256)
+    internal static byte[] StateAt(ulong slot, int length = 256)
     {
         byte[] ssz = new byte[length];
         new Random((int)slot).NextBytes(ssz);
