@@ -85,6 +85,39 @@ The package patch routes both CL Engine connections through one authenticated re
 
 Dora listens on port 19490. After explicitly launching the fresh enclave, check real beacon progress at `/eth/v1/beacon/headers/head` and `/eth/v1/beacon/states/head/finality_checkpoints`; the archived Engine-driver dashboard on 19480 represented a separate network and is stopped.
 
+## Validate with real consensus clients
+
+The current mixed-profile live result is pending. On the Linux Docker host, run the passive sampler in a separate terminal using the two actual EL container IDs:
+
+```sh
+export LEANVM_NUM_THREADS=1
+python3 tools/LeanBench/devnet/sample_resources.py --el=EL1_CONTAINER_ID --el=EL2_CONTAINER_ID \
+  --out=/root/eip8288-mixed-devnet/runtime/resources --floor-gib=6
+```
+
+From the repository root, submit only the preproved Stage 1 request. Replace the relay container ID and source with the actual deployment; `--dotnet` defaults to `dotnet` and accepts an explicit SDK executable path:
+
+```sh
+python3 tools/LeanBench/devnet/mixed.py --mode=reuse \
+  --manifest=/root/eip8288-mixed-devnet/requests/stage1/manifest.json \
+  --out=/root/eip8288-mixed-devnet/runtime/stage1 --relay=PROOF_RELAY_CONTAINER_ID \
+  --helper=/root/eip8288-mixed-devnet/helper/LeanBench.dll --source=DEPLOYED_RUNNER_COMMIT \
+  --health-file=/root/eip8288-mixed-devnet/runtime/resources/health.json
+```
+
+Only after Stage 1 reports `completed: true` and the separately measured memory margin permits concurrent client proving, explicitly launch Stage 2:
+
+```sh
+python3 tools/LeanBench/devnet/mixed.py --mode=merge \
+  --manifest=/root/eip8288-mixed-devnet/requests/stage2-sphincs/manifest.json \
+  --manifest=/root/eip8288-mixed-devnet/requests/stage2-generic/manifest.json \
+  --out=/root/eip8288-mixed-devnet/runtime/stage2 --relay=PROOF_RELAY_CONTAINER_ID \
+  --helper=/root/eip8288-mixed-devnet/helper/LeanBench.dll --source=DEPLOYED_RUNNER_COMMIT \
+  --health-file=/root/eip8288-mixed-devnet/runtime/resources/health.json
+```
+
+The driver uses real CL block production; it sends no Engine forkchoice/getPayload requests and never resubmits a wrapper. It requires healthy peers and empty pools before offering, observed pending gossip on node 2, successful matching receipts, exact body dependencies, native verification of the captured complete Engine payload, canonical beacon bids and finality on both CLs. A merge succeeds only if the two distinct claims land in one block; separate inclusion is retained as a failed aggregation result. Default receipt/finality deadlines are 180/1200 seconds. Optional `--rpc-port1/2` and `--beacon-port1/2` change localhost ports. Keep full payload copies private and untracked; preserve failure reports. Stop the sampler after validation and shut down the owned enclave when testing finishes.
+
 The configuration caps each execution node at two CPU cores and 5120 MB, each beacon node at one core and 1536 MB, and each validator client at half a core and 768 MB. These are memory limits, not reservations; the combined limits, Dora and the relay can exceed a 15 GiB host. Kurtosis expresses these values in decimal MB. The recovered test containers were instead updated to exactly 5 GiB each, without additional swap.
 
 In the archived ABI 4 run, the initial 2048 MB execution limit caused an OOM kill during an honest two-transaction SPHINCS run. Archived native-only measurements reached approximately 1.375 GB for two direct claims, 2.223 GB for four direct claims and 3.450 GB for binary recursive aggregation, before managed-client memory. Those measurements are not Linux peak-memory guarantees. Count and serialized-input bounds do not bound proving RAM, and cancellation cannot interrupt an active native call.
