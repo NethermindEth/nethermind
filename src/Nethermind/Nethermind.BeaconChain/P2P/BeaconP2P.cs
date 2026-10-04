@@ -447,6 +447,7 @@ public sealed class BeaconP2P : IAsyncDisposable
         PeerId? remotePeerId = address.GetPeerId();
         if (remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? existing))
         {
+            token.ThrowIfCancellationRequested();
             return existing;
         }
 
