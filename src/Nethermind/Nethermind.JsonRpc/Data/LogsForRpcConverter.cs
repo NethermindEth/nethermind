@@ -10,7 +10,7 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.JsonRpc.Data;
 
 /// <summary>Serializes a log list, writing a receipt's own logs straight from the stored entries.</summary>
-internal sealed class LogsForRpcConverter : JsonConverter<IReadOnlyList<LogEntryForRpc>>
+public sealed class LogsForRpcConverter : JsonConverter<IReadOnlyList<LogEntryForRpc>>
 {
     public override IReadOnlyList<LogEntryForRpc>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         TypeInfoJsonSerializer.Deserialize<LogEntryForRpc[]>(ref reader, options);
