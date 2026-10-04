@@ -231,15 +231,18 @@ class DevnetChecks(unittest.TestCase):
                 (base / 'report.json').write_text(json.dumps({'completed': completed,
                     'error': 'preserved failure' if not completed else None,
                     'nativeProfile': {'bounds': {'dependencies': 256, 'inputs': 'private profile witness'}},
-                    'params': ['private Engine payload'], 'admissions': [],
+                    'params': ['private Engine payload'], 'admissions': [{'transactionHash': '0x44',
+                        'accepted': False, 'admissionUncertain': True, 'params': ['private submission']}],
                     'blocks': [{'blockHash': '0x33', 'rawProof': 'private proof',
                         'nativeInspection': {'originalNativeProofValid': True, 'inputs': ['private witness']}}]}))
             encoded = json.dumps(capture.export_mixed(root))
-            for omitted in ('secret private payload', 'private Engine payload', 'private proof', 'private witness', 'private profile witness'):
+            for omitted in ('secret private payload', 'private Engine payload', 'private proof', 'private witness', 'private profile witness', 'private submission'):
                 self.assertNotIn(omitted, encoded)
             runs = capture.export_mixed(root)['runs']
             self.assertFalse(runs['mixed-merge']['completed'])
             self.assertTrue(runs['mixed-merge-observed']['completed'])
+            self.assertTrue(runs['mixed-merge-observed']['admissions'][0]['admissionUncertain'])
+            self.assertFalse(runs['mixed-merge-observed']['admissions'][0]['accepted'])
             self.assertEqual(runs['mixed-merge']['error'], 'preserved failure')
             self.assertEqual(len(runs['mixed-merge-observed']['reportSha256']), 64)
 

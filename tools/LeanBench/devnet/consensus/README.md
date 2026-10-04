@@ -131,6 +131,8 @@ Open `http://127.0.0.1:19480`. Public binding requires explicit `--bind=0.0.0.0`
 
 Preserve failed reports. After restoring healthy reads, observe already accepted transactions in a new output directory without offering them again. Repeat the original command with `--observe-report=<original report.json>` and `--out=.../runtime/mixed-reuse-observed` or `--out=.../runtime/mixed-merge-observed`. The observer refreshes receipts after reorgs, checks their canonical block on both ELs, and verifies the current block's proof and beacon bids. The viewer retains original and recovery phases separately.
 
+A timed-out or malformed submission response can leave admission uncertain. Recovery also observes those original signed hashes, without claiming confirmed RPC acceptance or measuring new gossip. Never retry a submission merely because its response was lost. Missing receipts fail within the observation deadline. Checks remain active under Python optimized mode; final success additionally requires both EL finalized tags to cover the anchored blocks.
+
 Export compact evidence without reading captured payloads:
 
 ```sh

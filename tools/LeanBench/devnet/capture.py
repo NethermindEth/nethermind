@@ -52,7 +52,7 @@ def export_mixed(root):
         run["admissions"] = []
         for admission in data.get("admissions", []):
             item = select(admission, ("transactionHash", "nonce", "offeredUtc", "accepted", "acceptedUtc",
-                                      "gossipSeenBeforeReceipt"))
+                                      "gossipSeenBeforeReceipt", "admissionUncertain"))
             item["receipts"] = [select(receipt, ("transactionHash", "status", "blockHash", "blockNumber", "gasUsed"))
                                 for receipt in admission.get("receipts", [])]
             run["admissions"].append(item)
