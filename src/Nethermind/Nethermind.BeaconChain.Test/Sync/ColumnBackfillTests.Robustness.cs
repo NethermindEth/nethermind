@@ -25,6 +25,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.RangeSyncTests;
+using static Nethermind.BeaconChain.Test.Sync.DeferredBlockColumnFetchTests;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -146,18 +147,15 @@ public partial class ColumnBackfillTests
         }
     }
 
-    private sealed class SlowPeer(StubPeer inner, TimeSpan delay) : IBeaconSyncPeer
+    private sealed class SlowPeer(StubPeer inner, TimeSpan delay) : TestPeer(inner.Id, inner.HeadSlot, inner.Custody)
     {
         private int _inFlight;
         public int MaxInFlight;
-        public string Id => inner.Id;
-        public ulong HeadSlot => inner.HeadSlot;
-        public PeerColumnCustody Custody => inner.Custody;
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong s, ulong c, CancellationToken t) => inner.RequestBlocksByRangeAsync(s, c, t);
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] r, CancellationToken t) => inner.RequestBlocksByRootAsync(r, t);
-        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong s, ulong c, ulong[] col, CancellationToken t) => inner.RequestDataColumnSidecarsByRangeAsync(s, c, col, t);
+        public override Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong s, ulong c, CancellationToken t) => inner.RequestBlocksByRangeAsync(s, c, t);
+        public override Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] r, CancellationToken t) => inner.RequestBlocksByRootAsync(r, t);
+        public override Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong s, ulong c, ulong[] col, CancellationToken t) => inner.RequestDataColumnSidecarsByRangeAsync(s, c, col, t);
 
-        public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] ids, CancellationToken t)
+        public override async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] ids, CancellationToken t)
         {
             int now = Interlocked.Increment(ref _inFlight);
             int seen;
@@ -176,30 +174,25 @@ public partial class ColumnBackfillTests
             }
         }
 
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong s, ulong c, ulong[] col, CancellationToken t) => inner.RequestGloasDataColumnSidecarsByRangeAsync(s, c, col, t);
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] ids, CancellationToken t) => inner.RequestGloasDataColumnSidecarsByRootAsync(ids, t);
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong s, ulong c, CancellationToken t) => throw new NotSupportedException();
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] r, CancellationToken t) => throw new NotSupportedException();
-        public void ReportFailure(PeerFailureReason reason, string? detail = null) => inner.ReportFailure(reason, detail);
+        public override Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong s, ulong c, ulong[] col, CancellationToken t) => inner.RequestGloasDataColumnSidecarsByRangeAsync(s, c, col, t);
+        public override Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] ids, CancellationToken t) => inner.RequestGloasDataColumnSidecarsByRootAsync(ids, t);
+        public override void ReportFailure(PeerFailureReason reason, string? detail = null) => inner.ReportFailure(reason, detail);
     }
 
-    private sealed class ThrowingPeer(string id, ulong head, Func<Exception> make, StubPeer? blocks = null) : IBeaconSyncPeer
+    private sealed class ThrowingPeer(string id, ulong head, Func<Exception> make, StubPeer? blocks = null) : TestPeer(id, head)
     {
         public int Calls;
         public List<string?> Details = [];
-        public string Id => id;
-        public ulong HeadSlot => head;
-        public PeerColumnCustody Custody => StubPeer.AllColumns;
         private Task<T> Throw<T>() { Interlocked.Increment(ref Calls); throw make(); }
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong s, ulong c, CancellationToken t) => blocks?.RequestBlocksByRangeAsync(s, c, t) ?? Throw<IReadOnlyList<ForkedSignedBeaconBlock>>();
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] r, CancellationToken t) => blocks?.RequestBlocksByRootAsync(r, t) ?? Throw<IReadOnlyList<ForkedSignedBeaconBlock>>();
-        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong s, ulong c, ulong[] col, CancellationToken t) => Throw<IReadOnlyList<DataColumnSidecar>>();
-        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] ids, CancellationToken t) => Throw<IReadOnlyList<DataColumnSidecar>>();
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong s, ulong c, ulong[] col, CancellationToken t) => Throw<IReadOnlyList<DataColumnSidecarGloas>>();
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] ids, CancellationToken t) => Throw<IReadOnlyList<DataColumnSidecarGloas>>();
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong s, ulong c, CancellationToken t) => Throw<IReadOnlyList<SignedExecutionPayloadEnvelope>>();
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] r, CancellationToken t) => Throw<IReadOnlyList<SignedExecutionPayloadEnvelope>>();
-        public void ReportFailure(PeerFailureReason reason, string? detail = null) { lock (Details) Details.Add(detail); }
+        public override Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong s, ulong c, CancellationToken t) => blocks?.RequestBlocksByRangeAsync(s, c, t) ?? Throw<IReadOnlyList<ForkedSignedBeaconBlock>>();
+        public override Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] r, CancellationToken t) => blocks?.RequestBlocksByRootAsync(r, t) ?? Throw<IReadOnlyList<ForkedSignedBeaconBlock>>();
+        public override Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong s, ulong c, ulong[] col, CancellationToken t) => Throw<IReadOnlyList<DataColumnSidecar>>();
+        public override Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] ids, CancellationToken t) => Throw<IReadOnlyList<DataColumnSidecar>>();
+        public override Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong s, ulong c, ulong[] col, CancellationToken t) => Throw<IReadOnlyList<DataColumnSidecarGloas>>();
+        public override Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] ids, CancellationToken t) => Throw<IReadOnlyList<DataColumnSidecarGloas>>();
+        public override Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong s, ulong c, CancellationToken t) => Throw<IReadOnlyList<SignedExecutionPayloadEnvelope>>();
+        public override Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] r, CancellationToken t) => Throw<IReadOnlyList<SignedExecutionPayloadEnvelope>>();
+        public override void ReportFailure(PeerFailureReason reason, string? detail = null) { lock (Details) Details.Add(detail); }
     }
 
     [Test]

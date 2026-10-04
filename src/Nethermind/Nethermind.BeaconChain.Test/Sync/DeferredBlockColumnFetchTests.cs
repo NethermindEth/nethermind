@@ -991,19 +991,13 @@ public class DeferredBlockColumnFetchTests
     }
 
     /// <summary>A custodian of every sampled column that answers the by-root request for <paramref name="servedRoot"/> at once and holds every other request at <paramref name="gate"/>, then answers with no sidecar after running <paramref name="afterGate"/>.</summary>
-    private sealed class GatedColumnPeer(ulong[] custodied, Gate gate, Hash256 servedRoot, DataColumnSidecar[] servedColumns, Action<Hash256>? afterGate) : IBeaconSyncPeer
+    private sealed class GatedColumnPeer(ulong[] custodied, Gate gate, Hash256 servedRoot, DataColumnSidecar[] servedColumns, Action<Hash256>? afterGate) : TestPeer("gated", ulong.MaxValue, new(custodied, isAdvertised: true))
     {
         private readonly ConcurrentQueue<Hash256> _requestedRoots = new();
 
         public IEnumerable<Hash256> RequestedRoots => _requestedRoots;
 
-        public string Id => "gated";
-
-        public ulong HeadSlot => ulong.MaxValue;
-
-        public PeerColumnCustody Custody { get; } = new(custodied, isAdvertised: true);
-
-        public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+        public override async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
         {
             DataColumnsByRootIdentifier identifier = identifiers.Single();
             _requestedRoots.Enqueue(identifier.BlockRoot!);
@@ -1016,24 +1010,6 @@ public class DeferredBlockColumnFetchTests
             afterGate?.Invoke(identifier.BlockRoot!);
             return [];
         }
-
-        public void ReportFailure(PeerFailureReason reason, string? detail = null)
-        {
-        }
-
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token) => throw new NotSupportedException();
     }
 
     /// <summary>The index in <see cref="HeldChainDrain.Blocks"/> of the held block that may wait for its data after the deferred block imports.</summary>
@@ -1855,43 +1831,51 @@ public class DeferredBlockColumnFetchTests
         }
     }
 
+    /// <summary>A sync peer whose unconfigured requests fail, so scenarios implement only the requests they serve.</summary>
+    internal abstract class TestPeer(string id, ulong headSlot, PeerColumnCustody? custody = null) : IBeaconSyncPeer
+    {
+        public string Id => id;
+        public ulong HeadSlot => headSlot;
+        public virtual PeerColumnCustody Custody { get; } = custody ?? StubPeer.AllColumns;
+
+        public virtual Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) => throw new NotSupportedException();
+
+        public virtual Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) => throw new NotSupportedException();
+
+        public virtual Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) => throw new NotSupportedException();
+
+        public virtual Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) => throw new NotSupportedException();
+
+        public virtual Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) => throw new NotSupportedException();
+
+        public virtual Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) => throw new NotSupportedException();
+
+        public virtual Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token) => throw new NotSupportedException();
+
+        public virtual Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token) => throw new NotSupportedException();
+
+        public virtual void ReportFailure(PeerFailureReason reason, string? detail = null) { }
+    }
+
     /// <summary>A custodian whose by-root requests answer nothing until every custodian of the import was asked, then fails as a timed-out request would.</summary>
-    internal sealed class UnansweringPeer(string id, ulong[] custodied, Gate gate, TimeSpan requestTimeout) : IBeaconSyncPeer
+    internal sealed class UnansweringPeer(string id, ulong[] custodied, Gate gate, TimeSpan requestTimeout) : TestPeer(id, ulong.MaxValue, new(custodied, isAdvertised: true))
     {
         private int _failures;
 
         public int Failures => Volatile.Read(ref _failures);
 
-        public string Id => id;
-
-        public ulong HeadSlot => ulong.MaxValue;
-
-        public PeerColumnCustody Custody { get; } = new(custodied, isAdvertised: true);
-
-        public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+        public override async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
         {
             await gate.WaitAsync(requestTimeout, token);
-            throw new TimeoutException($"{id} did not answer");
+            throw new TimeoutException($"{Id} did not answer");
         }
 
-        public void ReportFailure(PeerFailureReason reason, string? detail = null) => Interlocked.Increment(ref _failures);
+        public override void ReportFailure(PeerFailureReason reason, string? detail = null) => Interlocked.Increment(ref _failures);
 
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) => throw new NotSupportedException();
-
-        public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+        public override async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
         {
             await gate.WaitAsync(requestTimeout, token);
-            throw new TimeoutException($"{id} did not answer");
+            throw new TimeoutException($"{Id} did not answer");
         }
-
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token) => throw new NotSupportedException();
     }
 }

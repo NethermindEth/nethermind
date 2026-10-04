@@ -11,7 +11,6 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.RangeSyncTests;
@@ -241,43 +240,23 @@ public class ColumnArrivalRetryTests
     }
 
     /// <summary>A custodian whose by-root answer is held until the test gives it, or that faults before it is asked.</summary>
-    private sealed class AsyncRootPeer(string id, ulong[] custodied, ulong headSlot, bool faultsBeforeAsking = false) : IBeaconSyncPeer
+    private sealed class AsyncRootPeer(string id, ulong[] custodied, ulong headSlot, bool faultsBeforeAsking = false) : TestPeer(id, headSlot)
     {
         private readonly TaskCompletionSource<IReadOnlyList<DataColumnSidecar>> _answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _requests;
 
         public int Requests => Volatile.Read(ref _requests);
 
-        public string Id => id;
-
-        public ulong HeadSlot => headSlot;
-
-        public PeerColumnCustody Custody => faultsBeforeAsking ? throw new InvalidOperationException($"{id} has no custody") : new(custodied, isAdvertised: true);
+        public override PeerColumnCustody Custody => faultsBeforeAsking ? throw new InvalidOperationException($"{Id} has no custody") : new(custodied, isAdvertised: true);
 
         public void Answer(IEnumerable<DataColumnSidecar> sidecars) => _answer.TrySetResult([.. sidecars]);
 
-        public void Fail() => _answer.TrySetException(new TimeoutException($"{id} did not answer"));
+        public void Fail() => _answer.TrySetException(new TimeoutException($"{Id} did not answer"));
 
-        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+        public override Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
         {
             Interlocked.Increment(ref _requests);
             return _answer.Task;
         }
-
-        public void ReportFailure(PeerFailureReason reason, string? detail = null) { }
-
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token) => throw new NotSupportedException();
-
-        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token) => throw new NotSupportedException();
     }
 }
