@@ -46,12 +46,33 @@ public class LeanProofVerifierWiringTests
     }
 
     [Test]
-    public async Task Production_module_registers_native_verifier_without_loading_the_backend()
+    public async Task Production_module_registers_shared_verifier_without_loading_the_backend()
     {
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
-        Assert.That(chain.Container.Resolve<ILeanProofVerifier>(), Is.TypeOf<NativeLeanProofVerifier>());
+        AssertSharedVerifier(chain);
         Assert.That(chain.BlockProcessor, Is.Not.Null);
         await chain.AddBlock();
+    }
+
+    [Test]
+    public async Task Production_decorator_forwards_backend_availability()
+    {
+        ILeanProofVerifier backend = Substitute.For<ILeanProofVerifier>();
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ILeanProofVerifier>(backend));
+
+        AssertSharedVerifier(chain).EnsureAvailable();
+
+        backend.Received(1).EnsureAvailable();
+    }
+
+    private static ILeanProofVerifier AssertSharedVerifier(BasicTestBlockchain chain)
+    {
+        ILeanProofVerifier verifier = chain.Container.Resolve<ILeanProofVerifier>();
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope();
+        Assert.That(verifier, Is.TypeOf<ProductionProofCache>());
+        Assert.That(scope.Resolve<ILeanProofVerifier>(), Is.SameAs(verifier));
+        return verifier;
     }
 
     [Test]
@@ -84,7 +105,7 @@ public class LeanProofVerifierWiringTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chain.Container.Resolve<ILeanProofVerifier>(), Is.SameAs(verifier));
+            AssertSharedVerifier(chain);
             Assert.That(block.Header.RecursiveStark is not null, Is.EqualTo(enabled));
             Assert.That(verifier.ProofCalls > 0, Is.EqualTo(enabled));
             Assert.That(verifier.VerificationCalls > 0, Is.EqualTo(enabled));

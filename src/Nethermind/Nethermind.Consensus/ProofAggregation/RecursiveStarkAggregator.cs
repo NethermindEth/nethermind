@@ -102,7 +102,7 @@ public static class RecursiveStarkAggregator
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
             && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)
         {
-            byte[] result = verifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, input);
+            byte[] result = ProductionProofCache.Prove(verifier, in depsHash, Eip8288Constants.AggregatedVk, input, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             return result;
         }
@@ -177,8 +177,8 @@ public static class RecursiveStarkAggregator
             children = next;
         }
         cancellationToken.ThrowIfCancellationRequested();
-        byte[] proof = verifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk,
-            new AggregationInput { RecursiveProofs = children });
+        byte[] proof = ProductionProofCache.Prove(verifier, in depsHash, Eip8288Constants.AggregatedVk,
+            new AggregationInput { RecursiveProofs = children }, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return proof;
 
@@ -200,7 +200,7 @@ public static class RecursiveStarkAggregator
                 Discards = [.. removed]
             };
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(canonical);
-            byte[] childProof = verifier.ProveRecursiveStark(in hash, Eip8288Constants.AggregatedVk, childInput);
+            byte[] childProof = ProductionProofCache.Prove(verifier, in hash, Eip8288Constants.AggregatedVk, childInput, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             return new(canonical, childProof);
         }
