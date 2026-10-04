@@ -297,9 +297,9 @@ public class ExecutionPayloadTests
     {
         byte[][] rlps = EncodeTxs(count);
         ExecutionPayload payload = new() { Transactions = rlps };
-        using ExecutionPayloadPreparation first = new(payload);
+        ExecutionPayloadPreparation first = new(payload);
         Result<Block> block = first.TryGetBlock();
-        using ExecutionPayloadPreparation second = new(payload);
+        ExecutionPayloadPreparation second = new(payload);
         Result<Block> resent = second.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
@@ -318,7 +318,7 @@ public class ExecutionPayloadTests
         byte[][] replacementRlps = EncodeTxs(count: 64, nonceOffset: 1000);
 
         ExecutionPayload payload = new() { Transactions = originalRlps };
-        using ExecutionPayloadPreparation preparation = new(payload);
+        ExecutionPayloadPreparation preparation = new(payload);
         if (decoded) preparation.TryGetBlock();
         payload.Transactions = replacementRlps;
         Assert.That(payload.TransactionsRoot, Is.Null);
@@ -333,17 +333,15 @@ public class ExecutionPayloadTests
         byte[][] rlps = EncodeTxs(count);
         rlps[^1] = [0x01];
         BlockConversionProbe payload = new() { Transactions = rlps };
-        using (ExecutionPayloadPreparation preparation = new(payload))
-        {
-            Assert.That(preparation.TryGetBlock().IsError, Is.True);
-        }
+        ExecutionPayloadPreparation preparation = new(payload);
+        Assert.That(preparation.TryGetBlock().IsError, Is.True);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(payload.TransactionsRoot, Is.Null);
             Assert.That(payload.Converted, Is.False, "a decoding failure must return before block conversion retries decoding");
         }
         payload.Transactions = EncodeTxs(count, nonceOffset: 1000);
-        using ExecutionPayloadPreparation replacement = new(payload);
+        ExecutionPayloadPreparation replacement = new(payload);
         Result<Block> block = replacement.TryGetBlock();
 
         using (Assert.EnterMultipleScope())

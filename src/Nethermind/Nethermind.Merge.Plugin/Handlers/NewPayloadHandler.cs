@@ -130,7 +130,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
-        using ExecutionPayloadPreparation preparation = new(request);
+        ExecutionPayloadPreparation preparation = new(request);
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {

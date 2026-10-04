@@ -107,20 +107,23 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         return new IndexedTrieRoot.Calculator<ReadOnlyMemory<byte>, EncodedMemoryEncoder>(encoded.AsSpan(), default).Calculate();
     }
 
-    public static Hash256 CalculateRoot(ReadOnlySpan<byte[]> encodedTransactions)
+    public static Hash256 CalculateRoot(ReadOnlySpan<byte[]> encodedTransactions) =>
+        CalculateRoot(encodedTransactions, canBeParallel: true);
+
+    public static Hash256 CalculateRoot(ReadOnlySpan<byte[]> encodedTransactions, bool canBeParallel)
     {
         foreach (byte[] value in encodedTransactions)
         {
             // Empty values delete keys in PatriciaTree.Set, so they cannot use the dense indexed trie.
-            if (value is null || value.Length == 0) return CalculateSparseRoot<byte[], EncodedTransactionEncoder>(encodedTransactions, default);
+            if (value is null || value.Length == 0) return CalculateSparseRoot<byte[], EncodedTransactionEncoder>(encodedTransactions, default, canBeParallel);
         }
-        return new IndexedTrieRoot.Calculator<byte[], EncodedTransactionEncoder>(encodedTransactions, default).Calculate();
+        return new IndexedTrieRoot.Calculator<byte[], EncodedTransactionEncoder>(encodedTransactions, default).Calculate(canBeParallel);
     }
 
-    private static Hash256 CalculateSparseRoot<T, TEncoder>(ReadOnlySpan<T> values, TEncoder encoder)
+    private static Hash256 CalculateSparseRoot<T, TEncoder>(ReadOnlySpan<T> values, TEncoder encoder, bool canBeParallel = true)
         where TEncoder : struct, IndexedTrieRoot.IValueEncoder<T>
     {
-        bool canBeParallel = values.Length > MinItemsForParallelRootHash;
+        canBeParallel &= values.Length > MinItemsForParallelRootHash;
         using TrackingCappedArrayPool pool = new(values.Length * 4, canBeParallel: canBeParallel);
         TxTrie trie = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: canBeParallel);
         for (int key = 0; key < values.Length; key++)

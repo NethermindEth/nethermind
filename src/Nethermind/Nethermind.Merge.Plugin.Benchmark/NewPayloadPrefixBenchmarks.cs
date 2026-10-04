@@ -89,7 +89,7 @@ public class NewPayloadPrefixBenchmarks
     public Block HandlerPrefixWithEarlyRoot()
     {
         _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
-        using ExecutionPayloadPreparation preparation = new(_payload);
+        ExecutionPayloadPreparation preparation = new(_payload);
         return preparation.TryGetBlock().Data!;
     }
 
