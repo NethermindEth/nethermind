@@ -278,17 +278,54 @@ public abstract class ReqRespProtocolBase
         /// <exception cref="Eth2ReqRespException">The request is malformed, or bytes after it are already buffered.</exception>
         public async Task<byte[]> ReadRequestAsync(Stream stream, int maxSize, CancellationToken token, bool allowEmpty = false)
         {
-            (byte[] payload, ReqRespFraming.RequestTail tail) = await ReqRespFraming.ReadRequestWithTailAsync(stream, maxSize, token, allowEmpty);
-            Watch(stream, tail);
-            return payload;
+            try
+            {
+                (byte[] payload, ReqRespFraming.RequestTail tail) = await ReqRespFraming.ReadRequestWithTailAsync(stream, maxSize, token, allowEmpty);
+                Watch(stream, tail);
+                return payload;
+            }
+            catch (Eth2ReqRespException)
+            {
+                WatchRejected(stream);
+                throw;
+            }
         }
 
         /// <summary>Accepts a request that has no content, such as <c>metadata</c>.</summary>
         /// <exception cref="Eth2ReqRespException">Bytes are already buffered.</exception>
         public async Task AcceptRequestWithoutPayloadAsync(Stream stream, CancellationToken token)
         {
-            await ReqRespFraming.RejectTrailingBytesAsync(stream, token);
-            Watch(stream, ReqRespFraming.RequestTail.Open);
+            try
+            {
+                await ReqRespFraming.RejectTrailingBytesAsync(stream, token);
+                Watch(stream, ReqRespFraming.RequestTail.Open);
+            }
+            catch (Eth2ReqRespException)
+            {
+                WatchRejected(stream);
+                throw;
+            }
+        }
+
+        private void WatchRejected(Stream stream)
+        {
+            if (stream is ChannelStreamAdapter channel)
+            {
+                _stream = stream;
+                _watching = ObserveClosureAsync(channel);
+            }
+        }
+
+        private async Task ObserveClosureAsync(ChannelStreamAdapter channel)
+        {
+            try
+            {
+                await channel.WaitForCloseAsync(_watchEnd.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Listener teardown closes the transport after the bounded linger expires.
+            }
         }
 
         private void Watch(Stream stream, ReqRespFraming.RequestTail tail)

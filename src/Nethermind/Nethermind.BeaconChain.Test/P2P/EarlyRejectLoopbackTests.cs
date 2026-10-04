@@ -101,6 +101,7 @@ public class EarlyRejectLoopbackTests
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, token);
+        Assert.That(chunk, Is.Not.Null, "the peer sends an error chunk");
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.InvalidRequest), "an error chunk, not silence or a success");
         Assert.That(chunk?.Payload, Is.Not.Empty, "the error chunk carries its message");
