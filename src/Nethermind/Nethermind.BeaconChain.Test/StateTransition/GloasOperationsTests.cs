@@ -152,13 +152,8 @@ public class GloasOperationsTests
                 state.Validators[proposer] = alreadySlashed;
                 break;
         }
-        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
-
-        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            GloasBlockProcessing.ProcessProposerSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true))!;
-
-        Assert.That(ex.Message, Does.Contain(expectedMessage));
-        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected slashing must leave the state untouched");
+        AssertRefusedWithoutMutation(state, () =>
+            GloasBlockProcessing.ProcessProposerSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true), expectedMessage, "a rejected slashing must leave the state untouched");
     }
 
     // ---- Attester slashings ----
@@ -238,13 +233,8 @@ public class GloasOperationsTests
             slashing.Attestation2!.Signature = Corrupt(slashing.Attestation2.Signature);
         if (defect == "every common validator already slashed")
             state.SlashValidator(2, new EpochCache());
-        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
-
-        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true))!;
-
-        Assert.That(ex.Message, Does.Contain(expectedMessage));
-        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected slashing must leave the state untouched");
+        AssertRefusedWithoutMutation(state, () =>
+            GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true), expectedMessage, "a rejected slashing must leave the state untouched");
     }
 
     [Test]
@@ -370,13 +360,8 @@ public class GloasOperationsTests
             data.Source = new Checkpoint { Epoch = data.Source!.Epoch, Root = Hash(0x55) };
         CommitteeCache committees = cache.GetCommitteeCache(state, BeaconStateAccessors.ComputeEpochAtSlot(data.Slot));
         AttestationGloas attestation = CommitteeAttestation(state, data, committees, committeeIndex: 0, sign: false);
-        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
-
-        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: state.LatestBlockHeader!.Slot, cache, new PubkeyCache(), verifySignature: false))!;
-
-        Assert.That(ex.Message, Does.Contain(expectedMessage));
-        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected attestation must leave the state untouched");
+        AssertRefusedWithoutMutation(state, () =>
+            GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: state.LatestBlockHeader!.Slot, cache, new PubkeyCache(), verifySignature: false), expectedMessage, "a rejected attestation must leave the state untouched");
     }
 
     [Test]
@@ -769,13 +754,8 @@ public class GloasOperationsTests
                 state.Validators[exiting] = exitingValidator;
                 break;
         }
-        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
-
-        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            GloasBlockProcessing.ProcessVoluntaryExit(state, exit, new EpochCache(), pubkeys, verifySignature: true))!;
-
-        Assert.That(ex.Message, Does.Contain(expectedMessage));
-        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected exit must leave the state untouched");
+        AssertRefusedWithoutMutation(state, () =>
+            GloasBlockProcessing.ProcessVoluntaryExit(state, exit, new EpochCache(), pubkeys, verifySignature: true), expectedMessage, "a rejected exit must leave the state untouched");
     }
 
     // ---- BLS-to-execution changes ----
@@ -828,13 +808,8 @@ public class GloasOperationsTests
         SignedBlsToExecutionChange change = SignedBlsChange(state, defect == "index out of range" ? ValidatorCount : changing, fromKey, new Address(Hash(0xE7).Bytes[12..]));
         if (defect == "bad signature")
             change.Signature = Corrupt(change.Signature);
-        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
-
-        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            GloasBlockProcessing.ProcessBlsToExecutionChange(state, change, verifySignature: true))!;
-
-        Assert.That(ex.Message, Does.Contain(expectedMessage));
-        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected change must leave the state untouched");
+        AssertRefusedWithoutMutation(state, () =>
+            GloasBlockProcessing.ProcessBlsToExecutionChange(state, change, verifySignature: true), expectedMessage, "a rejected change must leave the state untouched");
     }
 
     [Test]
