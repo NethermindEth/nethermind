@@ -7,6 +7,7 @@ import hmac
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import socket
 import struct
@@ -253,20 +254,23 @@ class PayloadCaptureChecks(unittest.TestCase):
                 self.assertIn("0x" + f"{1:064x}", capture.records)
 
     def test_count_byte_and_restart_bounds_remove_oldest_records(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory)
-            capture = proxy.PayloadCapture(path)
-            for index in range(1, 5):
-                capture.remember(self.request(index))
-            with patch.object(proxy, "MAX_CAPTURE_RECORDS", 3), \
-                    patch.object(proxy, "MAX_CAPTURE_BYTES", capture.bytes // 2):
-                restarted = proxy.PayloadCapture(path)
-                self.assertLessEqual(restarted.bytes, proxy.MAX_CAPTURE_BYTES)
-                self.assertLessEqual(len(restarted.records), proxy.MAX_CAPTURE_RECORDS)
-                self.assertEqual(len(restarted.records), 2)
-                restarted.remember(self.request(5))
-                self.assertEqual(list(restarted.records), ["0x" + f"{index:064x}" for index in (4, 5)])
-                self.assertEqual(sum(item.stat().st_size for item in path.glob("*.json")), restarted.bytes)
+        for tied in (False, True):
+            with self.subTest(tied=tied), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory)
+                capture = proxy.PayloadCapture(path)
+                for index in (2, 4, 1, 3):
+                    capture.remember(self.request(index))
+                    stamp = 1_700_000_000 + (0 if tied else index)
+                    os.utime(path / (f"{index:064x}" + ".json"), (stamp, stamp))
+                with patch.object(proxy, "MAX_CAPTURE_RECORDS", 3), \
+                        patch.object(proxy, "MAX_CAPTURE_BYTES", capture.bytes // 2):
+                    restarted = proxy.PayloadCapture(path)
+                    self.assertLessEqual(restarted.bytes, proxy.MAX_CAPTURE_BYTES)
+                    self.assertLessEqual(len(restarted.records), proxy.MAX_CAPTURE_RECORDS)
+                    self.assertEqual(list(restarted.records), ["0x" + f"{index:064x}" for index in (3, 4)])
+                    restarted.remember(self.request(5))
+                    self.assertEqual(list(restarted.records), ["0x" + f"{index:064x}" for index in (4, 5)])
+                    self.assertEqual(sum(item.stat().st_size for item in path.glob("*.json")), restarted.bytes)
 
     def test_oversize_or_failed_capture_preserves_forwarding(self):
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):

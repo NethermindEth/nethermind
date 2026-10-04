@@ -135,7 +135,7 @@ class PayloadCapture:
                 path.unlink()
             elif not re.fullmatch(r"[0-9a-f]{64}\.json", path.name):
                 raise ProxyError("Capture directory contains foreign entries")
-        for path in sorted(directory.glob("*.json"), key=lambda item: item.stat().st_mtime):
+        for path in sorted(directory.glob("*.json"), key=lambda item: (item.stat().st_mtime_ns, item.name)):
             if not re.fullmatch(r"[0-9a-f]{64}\.json", path.name):
                 continue
             if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_BODY:
