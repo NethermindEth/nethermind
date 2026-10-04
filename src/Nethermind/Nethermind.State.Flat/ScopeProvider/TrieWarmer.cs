@@ -64,6 +64,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             _processors[i] = new Processor(this);
         }
+        if (Core.Diagnostics.ExperimentKnobs.TrieWarmExecutionCap > 0) Core.Diagnostics.ExecutionPhase.Ended += KickProcessors;
     }
 
     private sealed class Processor(TrieWarmer owner) : IThreadPoolWorkItem
@@ -93,13 +94,16 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void KickProcessors()
     {
+        int cap = Core.Diagnostics.ExperimentKnobs.TrieWarmExecutionCap > 0 && Core.Diagnostics.ExecutionPhase.Executing
+            ? Math.Min(Core.Diagnostics.ExperimentKnobs.TrieWarmExecutionCap, _processors.Length)
+            : _processors.Length;
         int activeProcessors = Volatile.Read(ref _activeProcessors);
-        if (activeProcessors >= _processors.Length) return;
+        if (activeProcessors >= cap) return;
 
         long pending = PendingHint();
         if (pending == 0) return;
 
-        int desiredProcessors = (int)Math.Min(_processors.Length - activeProcessors, Math.Max(1, pending));
+        int desiredProcessors = (int)Math.Min(cap - activeProcessors, Math.Max(1, pending));
         int scheduledProcessors = 0;
         for (int i = 0; i < _processors.Length && scheduledProcessors < desiredProcessors; i++)
         {

@@ -97,6 +97,7 @@ public class BranchProcessor(
         void CancelBackgroundWork()
         {
             NewPayloadTrace.Stamp(NewPayloadTrace.TxsDone);
+            Core.Diagnostics.ExecutionPhase.End();
             if (Core.Diagnostics.ExperimentKnobs.RunnerLingerUs > 0)
                 ParallelUnbalancedWork.LingerRunnersUntil(Stopwatch.GetTimestamp() + Core.Diagnostics.ExperimentKnobs.RunnerLingerUs * Stopwatch.Frequency / 1_000_000);
             backgroundCancellation?.Cancel();
@@ -157,7 +158,15 @@ public class BranchProcessor(
                 {
                     NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneStart);
                     NewPayloadTrace.SchedStart();
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
+                    if (Core.Diagnostics.ExperimentKnobs.TrieWarmExecutionCap > 0 && notReadOnly) Core.Diagnostics.ExecutionPhase.Begin();
+                    try
+                    {
+                        (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
+                    }
+                    finally
+                    {
+                        Core.Diagnostics.ExecutionPhase.End();
+                    }
                     NewPayloadTrace.SchedEnd();
                     NewPayloadTrace.Stamp(NewPayloadTrace.ProcessOneEnd);
                     if (Core.Diagnostics.ExperimentKnobs.RunnerLingerUs > 0) ParallelUnbalancedWork.LingerRunnersUntil(0);

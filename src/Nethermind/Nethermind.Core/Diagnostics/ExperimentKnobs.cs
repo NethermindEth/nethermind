@@ -22,6 +22,9 @@ public static class ExperimentKnobs
     /// <summary>The newPayload request starts the block's prewarm on a provisional block right after decoding its transactions.</summary>
     public static readonly bool EarlyPrewarm = On("NETHERMIND_EXP_EARLY_PREWARM");
 
+    /// <summary>Trie warmer processors allowed while the block's transactions execute (0 = no cap); all of them after.</summary>
+    public static readonly int TrieWarmExecutionCap = Int("NETHERMIND_EXP_TRIE_WARM_EXEC_CAP", 0);
+
     /// <summary>RocksDB compaction threads (background compactions and the low-priority pool); 0 keeps ProcessorCount.</summary>
     public static readonly int RocksCompactionThreads = Int("NETHERMIND_EXP_ROCKS_COMPACTION_THREADS", 0);
 
