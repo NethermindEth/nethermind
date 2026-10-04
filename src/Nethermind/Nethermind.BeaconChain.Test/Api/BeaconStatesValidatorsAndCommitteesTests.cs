@@ -256,8 +256,7 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
 
     private void PutState(Hash256 root, Validator[] validators, ulong[] balances)
     {
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        Array.Fill(randaoMixes, TestHash(0x42));
+        Hash256[] randaoMixes = Enumerable.Repeat(TestHash(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
 
         BeaconStateFulu state = MinimalState(Spec, StateSlot,
             new Fork { PreviousVersion = [5, 0, 0, 0], CurrentVersion = [6, 0, 0, 0], Epoch = StateEpoch },

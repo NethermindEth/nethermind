@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Reflection;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
@@ -406,8 +407,7 @@ public class GloasBlockProcessingTests
     public void ProcessOperations_rejects_an_operation_list_over_its_spec_bound_before_processing_any_of_it()
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
-        AttestationGloas[] attestations = new AttestationGloas[Presets.MaxAttestationsElectra + 1];
-        Array.Fill(attestations, new AttestationGloas());
+        AttestationGloas[] attestations = Enumerable.Repeat(new AttestationGloas(), Presets.MaxAttestationsElectra + 1).ToArray();
         BeaconBlockBodyGloas body = new() { Deposits = [], Attestations = attestations };
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>

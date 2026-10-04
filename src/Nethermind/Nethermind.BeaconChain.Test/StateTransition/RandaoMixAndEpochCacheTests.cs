@@ -222,12 +222,7 @@ public class RandaoMixAndEpochCacheTests
         return decisionSlot > 0 ? decisionSlot - 1 : 0;
     }
 
-    private static Hash256[] CreateFilledBlockRoots()
-    {
-        Hash256[] roots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
-        Array.Fill(roots, Hash(0x02));
-        return roots;
-    }
+    private static Hash256[] CreateFilledBlockRoots() => Enumerable.Repeat(Hash(0x02), (int)Presets.SlotsPerHistoricalRoot).ToArray();
 
     private static Hash256 Hash(byte b)
     {

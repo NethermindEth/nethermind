@@ -1866,8 +1866,7 @@ public class BlockImporterTests
     [TestCase(0, 128, false)]
     public void Selection_proof_selects_an_aggregator_by_its_hash(byte proofFill, int committeeSize, bool selected)
     {
-        byte[] proof = new byte[BlsSignature.Length];
-        proof.AsSpan().Fill(proofFill);
+        byte[] proof = Enumerable.Repeat(proofFill, BlsSignature.Length).ToArray();
 
         Assert.That(BeaconStateAccessors.IsAggregator(committeeSize, new BlsSignature(proof)), Is.EqualTo(selected));
     }

@@ -122,8 +122,7 @@ internal static class GloasTestFixtures
     /// <summary>A minimal epoch-zero state with independent registry arrays and the requested RANDAO mix and activation pattern.</summary>
     internal static BeaconStateFulu CreateMinimalFuluState(int validatorCount, Hash256 randaoMix, ulong effectiveBalance = 32 * Gwei, int inactiveEvery = 0)
     {
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        Array.Fill(randaoMixes, randaoMix);
+        Hash256[] randaoMixes = Enumerable.Repeat(randaoMix, (int)Presets.EpochsPerHistoricalVector).ToArray();
 
         Validator[] validators = new Validator[validatorCount];
         ulong[] balances = new ulong[validatorCount];
@@ -150,12 +149,9 @@ internal static class GloasTestFixtures
 
     public static BeaconStateFulu CreateFuluState(int validatorCount)
     {
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        Array.Fill(randaoMixes, Hash(0x42));
-        Hash256[] blockRoots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
-        Array.Fill(blockRoots, Hash256.Zero);
-        Hash256[] stateRoots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
-        Array.Fill(stateRoots, Hash256.Zero);
+        Hash256[] randaoMixes = Enumerable.Repeat(Hash(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
+        Hash256[] blockRoots = Enumerable.Repeat(Hash256.Zero, (int)Presets.SlotsPerHistoricalRoot).ToArray();
+        Hash256[] stateRoots = Enumerable.Repeat(Hash256.Zero, (int)Presets.SlotsPerHistoricalRoot).ToArray();
 
         Validator[] validators = new Validator[validatorCount];
         ulong[] balances = new ulong[validatorCount];
@@ -212,12 +208,7 @@ internal static class GloasTestFixtures
         ActivationEligibilityEpoch = 0,
     };
 
-    private static BlsPublicKey[] FillCommittee(BlsPublicKey pubkey)
-    {
-        BlsPublicKey[] committee = new BlsPublicKey[Presets.SyncCommitteeSize];
-        Array.Fill(committee, pubkey);
-        return committee;
-    }
+    private static BlsPublicKey[] FillCommittee(BlsPublicKey pubkey) => Enumerable.Repeat(pubkey, Presets.SyncCommitteeSize).ToArray();
 
     /// <summary>The key <see cref="InstallRealValidatorKeys"/> gives validator <paramref name="validatorIndex"/>.</summary>
     public static Bls.SecretKey ValidatorKey(int validatorIndex) => DeriveKey(ValidatorKeyOffset + validatorIndex);
@@ -579,16 +570,14 @@ internal static class GloasTestFixtures
 
     public static Hash256 EthWithdrawalCredentials(byte fill)
     {
-        byte[] bytes = new byte[32];
-        bytes.AsSpan().Fill(fill);
+        byte[] bytes = Enumerable.Repeat(fill, 32).ToArray();
         bytes[0] = Presets.EthWithdrawalPrefix;
         return new Hash256(bytes);
     }
 
     public static Hash256 BuilderWithdrawalCredentials(byte fill)
     {
-        byte[] bytes = new byte[32];
-        bytes.AsSpan().Fill(fill);
+        byte[] bytes = Enumerable.Repeat(fill, 32).ToArray();
         bytes[0] = Presets.BuilderWithdrawalPrefix;
         return new Hash256(bytes);
     }

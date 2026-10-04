@@ -307,12 +307,9 @@ internal sealed class ImportableBlobBlock
             committee[i] = pubkeys[i % pubkeys.Length];
         }
 
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        Array.Fill(randaoMixes, Hash(0x42));
-        Hash256[] blockRoots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
-        Array.Fill(blockRoots, Hash256.Zero);
-        Hash256[] stateRoots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
-        Array.Fill(stateRoots, Hash256.Zero);
+        Hash256[] randaoMixes = Enumerable.Repeat(Hash(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
+        Hash256[] blockRoots = Enumerable.Repeat(Hash256.Zero, (int)Presets.SlotsPerHistoricalRoot).ToArray();
+        Hash256[] stateRoots = Enumerable.Repeat(Hash256.Zero, (int)Presets.SlotsPerHistoricalRoot).ToArray();
 
         return new BeaconStateFulu
         {
@@ -351,10 +348,5 @@ internal sealed class ImportableBlobBlock
         };
     }
 
-    private static Hash256 Hash(byte value)
-    {
-        byte[] bytes = new byte[32];
-        bytes.AsSpan().Fill(value);
-        return new Hash256(bytes);
-    }
+    private static Hash256 Hash(byte value) => new(Enumerable.Repeat(value, 32).ToArray());
 }

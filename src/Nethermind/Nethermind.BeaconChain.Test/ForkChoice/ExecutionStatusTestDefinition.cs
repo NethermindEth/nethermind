@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.BeaconChain.ForkChoice;
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
@@ -124,8 +124,7 @@ public static class ExecutionStatusTestDefinition
 
     public static ForkChoiceTestDefinition Get03()
     {
-        ulong[] balances = new ulong[2_000];
-        Array.Fill(balances, 1_000UL);
+        ulong[] balances = Enumerable.Repeat(1_000UL, 2_000).ToArray();
 
         List<Operation> operations =
         [

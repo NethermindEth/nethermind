@@ -93,8 +93,7 @@ public class GloasCachedHasherTests
         AssertRootsMatch(hasher, state, "builder registry shrink");
 
         PayloadTimelinessCommittee[] window = state.PtcWindow!;
-        ulong[] indices = new ulong[Presets.PtcSize];
-        indices.AsSpan().Fill(7);
+        ulong[] indices = Enumerable.Repeat(7UL, (int)Presets.PtcSize).ToArray();
         window[5] = new PayloadTimelinessCommittee { Indices = indices };
         AssertRootsMatch(hasher, state, "ptc window element replacement");
 
