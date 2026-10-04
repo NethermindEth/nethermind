@@ -126,48 +126,42 @@ public class BeaconChainStoreDataColumnTests
         Assert.That(store.HasDataColumnRecord(root, Eip7594DasConstants.NumberOfColumns), Is.False);
     }
 
-    // A prune runs on the thread that added a column, so one call must not be held for a whole backlog after a long outage.
-    [Test]
-    public void One_prune_call_deletes_a_bounded_backlog_and_the_next_call_finishes_it([Values] bool restart)
+    public enum PrunePass
     {
-        (MemColumnsDb<BeaconChainDbColumns> db, BeaconChainStore store) = Create();
-        ulong currentEpoch = Spec.FuluForkEpoch + Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 100;
-        ulong edge = DataAvailabilityBoundary.ComputeStartSlot(currentEpoch, Spec);
-        Hash256 oldest = Root("oldest"), newest = Root("newest");
-        Put(store, oldest, edge - 1 - (BeaconChainStore.MaxColumnPruneBatchesPerCall + 1) * BeaconChainStore.ColumnPruneBatchSlots);
-        Put(store, newest, edge - 1);
-
-        store.PruneDataColumnSidecars(currentEpoch, finalizedSlot: 0);
-        bool oldestGoneAfterOne = !Holds(store, oldest), newestKeptAfterOne = Holds(store, newest);
-        store = restart ? new BeaconChainStore(db, Spec) : store;
-        store.PruneDataColumnSidecars(currentEpoch, finalizedSlot: 0);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(oldestGoneAfterOne, Is.True);
-        Assert.That(newestKeptAfterOne, Is.True, "the call stops after its batch budget and leaves the rest for the next one");
-        Assert.That(Holds(store, newest), Is.False);
+        RetentionWindow,
+        NonCanonical,
     }
 
+    /// <summary>Each bounded prune pass resumes its unfinished backlog, including after reopening the store.</summary>
     [Test]
-    public void One_non_canonical_pass_checks_a_bounded_range_and_the_next_call_finishes_it([Values] bool restart)
+    public void Prune_pass_resumes_after_its_batch_budget([Values] PrunePass pass, [Values] bool restart)
     {
         (MemColumnsDb<BeaconChainDbColumns> db, BeaconChainStore store) = Create();
-        ulong currentEpoch = Spec.FuluForkEpoch + 10;
-        ulong first = FirstSlot, last = first + (BeaconChainStore.MaxColumnPruneBatchesPerCall + 1) * BeaconChainStore.ColumnPruneBatchSlots;
-        Hash256 canonical = Root("canonical"), earlyOrphan = Root("early orphan"), lateOrphan = Root("late orphan");
-        store.ApplyCanonicalIndexChanges([(first, canonical), (last, canonical)], last);
-        Put(store, earlyOrphan, first);
-        Put(store, lateOrphan, last);
-
-        store.PruneDataColumnSidecars(currentEpoch, last + 1);
-        bool earlyGoneAfterOne = !Holds(store, earlyOrphan), lateKeptAfterOne = Holds(store, lateOrphan);
+        bool window = pass == PrunePass.RetentionWindow;
+        ulong currentEpoch = Spec.FuluForkEpoch + (window ? Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 100 : 10);
+        ulong batches = (BeaconChainStore.MaxColumnPruneBatchesPerCall + 1) * BeaconChainStore.ColumnPruneBatchSlots;
+        ulong edge = window ? DataAvailabilityBoundary.ComputeStartSlot(currentEpoch, Spec) : 0;
+        ulong first = window ? edge - 1 - batches : FirstSlot;
+        ulong last = window ? edge - 1 : first + batches;
+        Hash256 early = Root(window ? "oldest" : "early orphan");
+        Hash256 late = Root(window ? "newest" : "late orphan");
+        if (!window)
+        {
+            Hash256 canonical = Root("canonical");
+            store.ApplyCanonicalIndexChanges([(first, canonical), (last, canonical)], last);
+        }
+        Put(store, early, first);
+        Put(store, late, last);
+        ulong finalized = window ? 0 : last + 1;
+        store.PruneDataColumnSidecars(currentEpoch, finalized);
+        bool earlyGoneAfterOne = !Holds(store, early);
+        bool lateKeptAfterOne = Holds(store, late);
         store = restart ? new BeaconChainStore(db, Spec) : store;
-        store.PruneDataColumnSidecars(currentEpoch, last + 1);
-
+        store.PruneDataColumnSidecars(currentEpoch, finalized);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(earlyGoneAfterOne, Is.True);
-        Assert.That(lateKeptAfterOne, Is.True);
-        Assert.That(Holds(store, lateOrphan), Is.False);
+        Assert.That(lateKeptAfterOne, Is.True, "the batch budget leaves the rest for the next pass");
+        Assert.That(Holds(store, late), Is.False);
     }
 
     // A block that reaches the canonical index after a pass must still have its competing sidecars dropped once it does.
