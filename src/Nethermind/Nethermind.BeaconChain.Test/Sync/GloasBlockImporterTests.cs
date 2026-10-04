@@ -9,7 +9,6 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Crypto;
-using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -42,6 +41,11 @@ namespace Nethermind.BeaconChain.Test.Sync;
 public class GloasBlockImporterTests
 {
     private const ulong ForkSlot = 32;
+    private SignedGloasChain _chain = null!;
+
+    /// <summary>Creates a fresh chain for each test case.</summary>
+    [SetUp]
+    public void SetUp() => _chain = new();
 
     /// <summary>
     /// The first Gloas block is applied to the Fulu parent's post-state carried across the fork. That crossing
@@ -51,11 +55,10 @@ public class GloasBlockImporterTests
     [Test]
     public void First_gloas_block_crosses_the_fork_on_a_copy_and_is_stored_in_its_own_shape()
     {
-        SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new();
-        BeaconChainStore store = chain.CreateStore();
-        BlockImporter importer = chain.CreateImporter(engine, store: store);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        BeaconChainStore store = _chain.CreateStore();
+        BlockImporter importer = _chain.CreateImporter(engine, store: store);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
 
         BlockImportResult result = importer.Import(first.Forked, first.Root, verifySignatures: true);
 
@@ -64,7 +67,7 @@ public class GloasBlockImporterTests
             Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
             Assert.That(importer.IsKnown(first.Root), Is.True);
             Assert.That(store.TryGetForkedBlock(first.Root, out ForkedSignedBeaconBlock? stored) ? stored : null, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
-            Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(chain.AnchorBlock.Message!.StateRoot), "the Fulu lineage state is untouched by the crossing");
+            Assert.That(SszRoots.HashTreeRoot(_chain.AnchorState), Is.EqualTo(_chain.AnchorBlock.Message!.StateRoot), "the Fulu lineage state is untouched by the crossing");
             Assert.That(engine.HasAnsweredNewPayload, Is.False, "a Gloas block carries only a bid; its payload reaches the engine in the envelope");
         }
     }
@@ -72,10 +75,9 @@ public class GloasBlockImporterTests
     [Test]
     public void Block_whose_shape_is_not_the_fork_of_its_slot_is_invalid_before_any_state_is_touched()
     {
-        SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new();
-        BlockImporter importer = chain.CreateImporter(engine);
-        SignedBeaconBlock fuluShaped = new() { Message = new BeaconBlock { Slot = ForkSlot, ParentRoot = chain.AnchorRoot }, Signature = default };
+        BlockImporter importer = _chain.CreateImporter(engine);
+        SignedBeaconBlock fuluShaped = new() { Message = new BeaconBlock { Slot = ForkSlot, ParentRoot = _chain.AnchorRoot }, Signature = default };
 
         BlockImportResult result = importer.Import(new ForkedSignedBeaconBlock.OfFulu(fuluShaped), Hash(0x5A), verifySignatures: true);
 
@@ -98,12 +100,11 @@ public class GloasBlockImporterTests
     [TestCase(true, ExecutionStatus.Valid, 3 * ForkSlot, TestName = "Full_child_past_its_parents_lookahead_is_deferred_until_the_envelope")]
     public void Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(bool full, ExecutionStatus envelopeVerdict, ulong childSlot)
     {
-        SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new() { EnvelopeVerdict = envelopeVerdict };
-        BeaconChainStore store = chain.CreateStore();
-        BlockImporter importer = chain.CreateImporter(engine, store: store);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block child = chain.Next(first, childSlot, full, 0xA2);
+        BeaconChainStore store = _chain.CreateStore();
+        BlockImporter importer = _chain.CreateImporter(engine, store: store);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = _chain.Next(first, childSlot, full, 0xA2);
         Import(importer, first);
 
         BlockImportResult beforeEnvelope = importer.Import(child.Forked, child.Root, verifySignatures: true);
@@ -127,11 +128,10 @@ public class GloasBlockImporterTests
     [TestCase(ExecutionStatus.Valid, false, ExecutionPayloadEnvelopeImportResult.DataUnavailable)]
     public void Envelope_that_does_not_verify_leaves_the_full_child_waiting(ExecutionStatus envelopeVerdict, bool dataAvailable, ExecutionPayloadEnvelopeImportResult expected)
     {
-        SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new() { EnvelopeVerdict = envelopeVerdict };
-        BlockImporter importer = chain.CreateImporter(engine, isEnvelopeDataAvailable: (_, _) => dataAvailable);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block child = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        BlockImporter importer = _chain.CreateImporter(engine, isEnvelopeDataAvailable: (_, _) => dataAvailable);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = _chain.Next(first, ForkSlot + 1, full: true, 0xA2);
         importer.Import(first.Forked, first.Root, verifySignatures: true);
 
         ExecutionPayloadEnvelopeImportResult envelope = importer.ImportEnvelope(first.Envelope);
@@ -147,11 +147,10 @@ public class GloasBlockImporterTests
     [Test]
     public void Envelope_already_verified_or_for_an_unknown_block_never_reaches_the_engine()
     {
-        SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new();
-        BlockImporter importer = chain.CreateImporter(engine);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block neverImported = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        BlockImporter importer = _chain.CreateImporter(engine);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block neverImported = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
         importer.Import(first.Forked, first.Root, verifySignatures: true);
 
         ExecutionPayloadEnvelopeImportResult firstTime = importer.ImportEnvelope(first.Envelope);
@@ -176,18 +175,17 @@ public class GloasBlockImporterTests
     [TestCase(true, TestName = "Head_hash_of_the_same_head_flips_from_empty_to_full_when_its_payload_is_verified")]
     public void Head_execution_hash_moves_to_the_bid_block_hash_once_the_envelope_verifies(bool clockAtBlock)
     {
-        SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new();
         ForkChoiceSnapshotHolder snapshots = new();
-        SlotClock? clock = clockAtBlock ? new SlotClock(chain.Spec, new ManualTimestamper(SlotStart(chain, ForkSlot).AddSeconds(1))) : null;
-        BlockImporter importer = chain.CreateImporter(engine, snapshots: snapshots, clock: clock);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SlotClock? clock = clockAtBlock ? new SlotClock(_chain.Spec, new ManualTimestamper(SlotStart(_chain, ForkSlot).AddSeconds(1))) : null;
+        BlockImporter importer = _chain.CreateImporter(engine, snapshots: snapshots, clock: clock);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, first);
 
         HeadView beforeEnvelope = importer.ComputeHead();
         Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the payload is verified");
         HeadView afterEnvelope = importer.ComputeHead();
-        Hash256 anchorPayloadHash = chain.AnchorBlock.Message!.Body!.ExecutionPayload!.BlockHash!;
+        Hash256 anchorPayloadHash = _chain.AnchorBlock.Message!.Body!.ExecutionPayload!.BlockHash!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -210,23 +208,22 @@ public class GloasBlockImporterTests
     [Test]
     public void Head_hash_follows_the_payload_status_the_ptc_votes_resolve([Values] bool ptcVotedTimely)
     {
-        SignedGloasChain chain = new();
-        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot).AddSeconds(1));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot).AddSeconds(1));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, first);
         Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the head's payload is verified");
         if (ptcVotedTimely)
         {
             importer.ComputeHead();
-            foreach (ulong member in first.PostState.GetPtc(ForkSlot, chain.Spec).Indices!.Distinct())
+            foreach (ulong member in first.PostState.GetPtc(ForkSlot, _chain.Spec).Indices!.Distinct())
             {
                 Assert.That(importer.OnGossipPayloadAttestation(PtcVote(first, member, payloadPresent: true)), Is.True, "fixture: a signed vote of a PTC member");
             }
         }
 
-        timestamper.Set(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
-        SignedGloasChain.Block boosted = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        timestamper.Set(SlotStart(_chain, ForkSlot + 1).AddSeconds(1));
+        SignedGloasChain.Block boosted = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
         Import(importer, boosted);
         importer.OnInvalidExecutionPayload(boosted.Root, latestValidHash: null);
 
@@ -247,10 +244,9 @@ public class GloasBlockImporterTests
     [Test]
     public void Block_body_payload_attestations_reach_fork_choice_on_import([Values] bool inBody)
     {
-        SignedGloasChain chain = new();
-        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot).AddSeconds(1));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot).AddSeconds(1));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, first);
         Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the head's payload is verified");
         PayloadAttestation vote = PtcAttestation(
@@ -259,8 +255,8 @@ public class GloasBlockImporterTests
             [.. Enumerable.Range(0, (int)Presets.PtcSize)],
             sign: true);
 
-        timestamper.Set(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
-        SignedGloasChain.Block boosted = chain.Next(first, ForkSlot + 1, full: false, 0xA2, payloadAttestations: inBody ? [vote] : []);
+        timestamper.Set(SlotStart(_chain, ForkSlot + 1).AddSeconds(1));
+        SignedGloasChain.Block boosted = _chain.Next(first, ForkSlot + 1, full: false, 0xA2, payloadAttestations: inBody ? [vote] : []);
         Import(importer, boosted);
         importer.OnInvalidExecutionPayload(boosted.Root, latestValidHash: null);
 
@@ -276,14 +272,13 @@ public class GloasBlockImporterTests
     [Test]
     public async Task Gossip_aggregate_claiming_a_payload_in_its_blocks_slot_charges_the_delivering_peer([Values] bool finalizedAncestor, [Values] bool validSignature)
     {
-        SignedGloasChain chain = new();
-        BeaconChainStore store = chain.CreateStore();
-        SlotClock clock = ClockAt(chain, ForkSlot, millisecondsEarly: 0);
+        BeaconChainStore store = _chain.CreateStore();
+        SlotClock clock = ClockAt(_chain, ForkSlot, millisecondsEarly: 0);
         ForkChoiceSnapshotHolder snapshots = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, store: store, clock: clock);
-        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, store: store, clock: clock);
+        SignedGloasChain.Block block = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, block);
-        SignedGloasChain.Block sibling = chain.Next(null, ForkSlot, full: false, 0xA2);
+        SignedGloasChain.Block sibling = _chain.Next(null, ForkSlot, full: false, 0xA2);
         if (!finalizedAncestor)
         {
             Import(importer, sibling);
@@ -294,7 +289,7 @@ public class GloasBlockImporterTests
             Slot = ForkSlot,
             Index = 1,
             BeaconBlockRoot = block.Root,
-            Source = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
+            Source = new Checkpoint { Epoch = 0, Root = _chain.AnchorRoot },
             Target = new Checkpoint { Epoch = 1, Root = block.Root },
         });
         if (!validSignature)
@@ -309,8 +304,8 @@ public class GloasBlockImporterTests
                 ? $"Attestation for slot {ForkSlot} votes for the payload of a block from its own slot"
                 : $"Aggregate head block {block.Root} does not descend from the finalized checkpoint {new CheckpointRef(1, sibling.Root)}"),
             "finalized ancestry must be checked before the same-slot payload claim can charge a peer");
-        ColumnGossipRouter headers = new(chain.Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
-        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, store, headers: headers);
+        ColumnGossipRouter headers = new(_chain.Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
+        GossipRouter router = new(_chain.Spec, clock, LimboLogs.Instance, store, headers: headers);
         await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, ForkSlot, GossipTopics.BeaconAggregateAndProof,
             Snappy.CompressToArray(SignedAggregateAndProofGloas.Encode(aggregate)), verdict => new BeaconSyncOrchestrator.GossipGloasAggregateItem(aggregate, verdict),
             !validSignature || finalizedAncestor ? MessageValidity.Rejected : MessageValidity.Ignored, router, gloas: true);
@@ -319,14 +314,13 @@ public class GloasBlockImporterTests
     [Test]
     public async Task Stale_aggregate_for_finalized_block_rejects_out_of_range_committee_before_timing([Values(1UL, ulong.MaxValue)] ulong targetEpoch)
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
-        BeaconChainStore store = chain.CreateStore();
+        SignedGloasChain.Block block = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        BeaconChainStore store = _chain.CreateStore();
         store.PutForkedBlock(block.Root, block.Forked);
         ulong currentSlot = 3 * ForkSlot;
-        SlotClock clock = ClockAt(chain, currentSlot, millisecondsEarly: 0);
+        SlotClock clock = ClockAt(_chain, currentSlot, millisecondsEarly: 0);
         ForkChoiceSnapshotHolder snapshots = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, store: store, clock: clock, gloasAnchor: block);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, store: store, clock: clock, gloasAnchor: block);
         importer.OnSlotTick(currentSlot);
         importer.ComputeHead();
         SignedAggregateAndProofGloas aggregate = SignedAggregate(block);
@@ -334,8 +328,8 @@ public class GloasBlockImporterTests
         aggregate.Message.Aggregate.Data.Target!.Epoch = targetEpoch;
         aggregate.Message.Aggregate.CommitteeBits!.SetAll(false);
         aggregate.Message.Aggregate.CommitteeBits[1] = true;
-        ColumnGossipRouter headers = new(chain.Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
-        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, store, headers: headers);
+        ColumnGossipRouter headers = new(_chain.Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
+        GossipRouter router = new(_chain.Spec, clock, LimboLogs.Instance, store, headers: headers);
 
         Assert.That(headers.HasFinalizedAncestor(block.Root), Is.True, "the same-slot payload claim must not bypass committee validation for a held finalized block");
         await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, currentSlot, GossipTopics.BeaconAggregateAndProof,
@@ -365,16 +359,15 @@ public class GloasBlockImporterTests
     [TestCase(GossipPtcVote.PreviousSlot, false)]
     public async Task Gossip_payload_attestation_is_accepted_only_when_fork_choice_applies_it(GossipPtcVote vote, bool accepted)
     {
-        SignedGloasChain chain = new();
-        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block second = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot + 1).AddSeconds(1));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block second = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
         Import(importer, first, second);
-        ulong[] ptc = second.PostState.GetPtc(ForkSlot + 1, chain.Spec).Indices!;
+        ulong[] ptc = second.PostState.GetPtc(ForkSlot + 1, _chain.Spec).Indices!;
         ulong outsider = Enumerable.Range(0, ValidatorCount).Select(static i => (ulong)i).First(i => !ptc.Contains(i));
         PayloadAttestationMessage message = vote == GossipPtcVote.PreviousSlot
-            ? PtcVote(first, first.PostState.GetPtc(ForkSlot, chain.Spec).Indices![0], payloadPresent: true)
+            ? PtcVote(first, first.PostState.GetPtc(ForkSlot, _chain.Spec).Indices![0], payloadPresent: true)
             : PtcVote(second, vote == GossipPtcVote.NotInPtc ? outsider : ptc[0], payloadPresent: true);
         switch (vote)
         {
@@ -402,19 +395,18 @@ public class GloasBlockImporterTests
     [Test]
     public async Task Gossip_payload_attestation_uses_head_membership_without_charging_for_block_state_refusal([Values] bool headMember)
     {
-        SignedGloasChain chain = new();
-        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot).AddSeconds(1));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
-        SignedGloasChain.Block a = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block b = chain.Next(null, ForkSlot, full: false, 0xB1);
+        ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot).AddSeconds(1));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
+        SignedGloasChain.Block a = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block b = _chain.Next(null, ForkSlot, full: false, 0xB1);
         Import(importer, a, b);
         ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
         SignedGloasChain.Block voted = runner.GetHead() == a.Root ? b : a;
         PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
         BeaconStateGloas headState = states.GetGloasBlockState(runner.GetHead())!;
         BeaconStateGloas blockState = states.GetGloasBlockState(voted.Root)!;
-        ulong member = headState.GetPtc(ForkSlot, chain.Spec).Indices![0];
-        ulong outsider = Enumerable.Range(0, ValidatorCount).Select(static i => (ulong)i).First(i => !headState.GetPtc(ForkSlot, chain.Spec).Indices!.Contains(i));
+        ulong member = headState.GetPtc(ForkSlot, _chain.Spec).Indices![0];
+        ulong outsider = Enumerable.Range(0, ValidatorCount).Select(static i => (ulong)i).First(i => !headState.GetPtc(ForkSlot, _chain.Spec).Indices!.Contains(i));
         int ptcIndex = (int)(Presets.SlotsPerEpoch + ForkSlot % Presets.SlotsPerEpoch);
         // Different retained committees isolate head-state gossip checks from voted-block fork choice.
         blockState.PtcWindow![ptcIndex] = new PayloadTimelinessCommittee { Indices = Enumerable.Repeat(outsider, (int)Presets.PtcSize).ToArray() };
@@ -440,17 +432,16 @@ public class GloasBlockImporterTests
     [Test]
     public void Forged_gossip_payload_attestations_under_one_member_cost_fork_choice_a_bounded_number_of_verifies()
     {
-        SignedGloasChain chain = new();
-        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
-        SlotClock clock = new(chain.Spec, timestamper);
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: clock);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block second = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot + 1).AddSeconds(1));
+        SlotClock clock = new(_chain.Spec, timestamper);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: clock);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block second = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
         Import(importer, first, second);
-        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance);
+        GossipRouter router = new(_chain.Spec, clock, LimboLogs.Instance);
         router.PayloadAttestationMessageReceived += (vote, _) => importer.OnGossipPayloadAttestation(vote);
         importer.ComputeHead();
-        ulong member = second.PostState.GetPtc(ForkSlot + 1, chain.Spec).Indices![0];
+        ulong member = second.PostState.GetPtc(ForkSlot + 1, _chain.Spec).Indices![0];
         PayloadAttestationMessage genuine = PtcVote(second, member, payloadPresent: true);
         const int forgeries = 40;
 
@@ -474,14 +465,13 @@ public class GloasBlockImporterTests
     [Test]
     public void Genuine_gossip_payload_attestation_after_a_forgery_reaches_fork_choice()
     {
-        SignedGloasChain chain = new();
-        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot + 1).AddSeconds(1));
-        SlotClock clock = new(chain.Spec, timestamper);
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: clock);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block second = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot + 1).AddSeconds(1));
+        SlotClock clock = new(_chain.Spec, timestamper);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: clock);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block second = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
         Import(importer, first, second);
-        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance);
+        GossipRouter router = new(_chain.Spec, clock, LimboLogs.Instance);
         int accepted = 0;
         importer.ComputeHead();
         router.PayloadAttestationMessageReceived += (vote, _) =>
@@ -492,7 +482,7 @@ public class GloasBlockImporterTests
                 router.MarkPayloadAttestationVerified(vote);
             }
         };
-        ulong member = second.PostState.GetPtc(ForkSlot + 1, chain.Spec).Indices![0];
+        ulong member = second.PostState.GetPtc(ForkSlot + 1, _chain.Spec).Indices![0];
         PayloadAttestationMessage forged = PtcVote(second, member, payloadPresent: true);
         forged.Signature = new BlsSignature([.. Enumerable.Repeat((byte)1, BlsSignature.Length)]);
 
@@ -506,14 +496,13 @@ public class GloasBlockImporterTests
     [Test]
     public void Head_ptc_is_the_head_states_committee_and_null_where_it_cannot_be_read()
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, first);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(importer.GetPtc(first.Root, ForkSlot), Is.EqualTo(first.PostState.GetPtc(ForkSlot, chain.Spec).Indices));
+            Assert.That(importer.GetPtc(first.Root, ForkSlot), Is.EqualTo(first.PostState.GetPtc(ForkSlot, _chain.Spec).Indices));
             Assert.That(importer.GetPtc(Hash(0x5A), ForkSlot), Is.Null, "unknown head");
             Assert.That(importer.GetPtc(first.Root, ForkSlot + 10 * Presets.SlotsPerEpoch), Is.Null, "outside the state's window");
         }
@@ -522,12 +511,11 @@ public class GloasBlockImporterTests
     [Test]
     public async Task Worker_accepts_votes_after_a_slashing_without_an_intervening_tick([Values] bool gloasSlashing, [Values] bool payloadVote)
     {
-        SignedGloasChain chain = new();
-        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot).AddSeconds(1));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
-        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot).AddSeconds(1));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
+        SignedGloasChain.Block block = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, block);
-        AttesterSlashing slashing = SignedSlashing(chain, block);
+        AttesterSlashing slashing = SignedSlashing(_chain, block);
         List<MessageValidity> slashingVerdicts = [];
         GossipVerdict slashingVerdict = new(validity => { slashingVerdicts.Add(validity); return true; }, null);
         BeaconSyncOrchestrator.WorkItem preceding = gloasSlashing
@@ -540,7 +528,7 @@ public class GloasBlockImporterTests
 
         if (payloadVote)
         {
-            PayloadAttestationMessage vote = PtcVote(block, block.PostState.GetPtc(ForkSlot, chain.Spec).Indices![0], payloadPresent: true);
+            PayloadAttestationMessage vote = PtcVote(block, block.PostState.GetPtc(ForkSlot, _chain.Spec).Indices![0], payloadPresent: true);
             await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, ForkSlot, GossipTopics.PayloadAttestationMessage,
                 Snappy.CompressToArray(PayloadAttestationMessage.Encode(vote)), verdict => new BeaconSyncOrchestrator.GossipPayloadAttestationItem(vote, verdict),
                 MessageValidity.Accepted, preceding: preceding);
@@ -559,15 +547,14 @@ public class GloasBlockImporterTests
     [Test]
     public async Task Worker_accepts_gossip_after_a_skipped_tick_with_a_real_importer([Values] SkippedTickOperation operation)
     {
-        SignedGloasChain chain = new();
-        ManualTimestamper timestamper = new(SlotStart(chain, ForkSlot));
-        SlotClock clock = new(chain.Spec, timestamper);
-        BeaconChainStore store = chain.CreateStore();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store, clock: clock);
-        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot));
+        SlotClock clock = new(_chain.Spec, timestamper);
+        BeaconChainStore store = _chain.CreateStore();
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store, clock: clock);
+        SignedGloasChain.Block block = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, block);
-        timestamper.Set(SlotStart(chain, ForkSlot + 1));
-        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, store);
+        timestamper.Set(SlotStart(_chain, ForkSlot + 1));
+        GossipRouter router = new(_chain.Spec, clock, LimboLogs.Instance, store);
         string topic;
         byte[] payload;
         if (operation == SkippedTickOperation.Aggregate)
@@ -578,7 +565,7 @@ public class GloasBlockImporterTests
         else
         {
             topic = GossipTopics.AttesterSlashing;
-            AttesterSlashing slashing = SignedSlashing(chain, block);
+            AttesterSlashing slashing = SignedSlashing(_chain, block);
             payload = operation == SkippedTickOperation.FuluSlashing ? AttesterSlashing.Encode(slashing) : AttesterSlashingGloas.Encode(new AttesterSlashingGloas
             {
                 Attestation1 = new IndexedAttestationGloas { AttestingIndices = slashing.Attestation1!.AttestingIndices, Data = slashing.Attestation1.Data, Signature = slashing.Attestation1.Signature },
@@ -653,14 +640,13 @@ public class GloasBlockImporterTests
     public void Justified_gloas_checkpoint_maps_to_its_bid_parent_block_hash()
     {
         ForkCrossingChain fork = ForkCrossingChain.Instance;
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
         foreach (ForkCrossingChain.ChainBlock block in (ForkCrossingChain.ChainBlock[])[fork.First, .. fork.Voting])
         {
             Assert.That(importer.Import(new ForkedSignedBeaconBlock.OfGloas(block.Block), block.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
         }
 
-        importer.OnSlotTick(3 * chain.Spec.SlotsPerEpoch);
+        importer.OnSlotTick(3 * _chain.Spec.SlotsPerEpoch);
         HeadView head = importer.ComputeHead();
         ExecutionPayloadBid firstBid = fork.First.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
 
@@ -679,12 +665,11 @@ public class GloasBlockImporterTests
     [Test]
     public void Replayed_full_child_stands_in_for_its_parents_envelope()
     {
-        SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new();
-        BlockImporter importer = chain.CreateImporter(engine);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block child = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
-        SignedGloasChain.Block grandchild = chain.Next(child, ForkSlot + 2, full: true, 0xA3);
+        BlockImporter importer = _chain.CreateImporter(engine);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = _chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        SignedGloasChain.Block grandchild = _chain.Next(child, ForkSlot + 2, full: true, 0xA3);
 
         using (Assert.EnterMultipleScope())
         {
@@ -706,11 +691,10 @@ public class GloasBlockImporterTests
     [Test]
     public void Checkpoint_block_states_outlive_the_per_block_tier([Values] bool skipWholeEpoch)
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block epochStart = chain.Next(null, ForkSlot, full: false, 0xB0);
-        SignedGloasChain.Block middle = chain.Next(epochStart, ForkSlot + 1, full: false, 0xB1);
-        SignedGloasChain.Block lastBeforeSkip = chain.Next(middle, ForkSlot + 2, full: false, 0xB2);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block epochStart = _chain.Next(null, ForkSlot, full: false, 0xB0);
+        SignedGloasChain.Block middle = _chain.Next(epochStart, ForkSlot + 1, full: false, 0xB1);
+        SignedGloasChain.Block lastBeforeSkip = _chain.Next(middle, ForkSlot + 2, full: false, 0xB2);
         Import(importer, epochStart, middle, lastBeforeSkip);
 
         // Skips slot 64 (or all of epoch 2); the 64 blocks after each early block push its state out of the per-block tier.
@@ -720,7 +704,7 @@ public class GloasBlockImporterTests
         ulong nextEpochStart = (resumeSlot / ForkSlot + 1) * ForkSlot;
         for (ulong slot = resumeSlot; slot <= resumeSlot + 3 * ForkSlot; slot++)
         {
-            tip = chain.Next(tip, slot, full: false, (byte)(slot + 0x60));
+            tip = _chain.Next(tip, slot, full: false, (byte)(slot + 0x60));
             Import(importer, tip);
             if (slot == nextEpochStart - 1)
             {
@@ -763,11 +747,10 @@ public class GloasBlockImporterTests
     [Test]
     public void Sibling_on_an_evicted_gloas_parent_imports_on_a_regenerated_state([Values] EvictedParent parentKind, [Values] HeldBase heldBase)
     {
-        SignedGloasChain chain = new();
         TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
-        Hash256 anchorStateRoot = SszRoots.HashTreeRoot(chain.AnchorState);
-        SignedGloasChain.Block first = chain.Next(null, heldBase == HeldBase.FuluAnchor ? ForkSlot + 1 : ForkSlot, full: false, 0xE1);
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)),
+        Hash256 anchorStateRoot = SszRoots.HashTreeRoot(_chain.AnchorState);
+        SignedGloasChain.Block first = _chain.Next(null, heldBase == HeldBase.FuluAnchor ? ForkSlot + 1 : ForkSlot, full: false, 0xE1);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)),
             gloasAnchor: heldBase == HeldBase.GloasAnchor ? first : null);
         PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
         if (heldBase != HeldBase.GloasAnchor)
@@ -778,7 +761,7 @@ public class GloasBlockImporterTests
 
         ulong parentSlot = first.Signed.Message!.Slot + 1;
         // Built on the first block's full payload where it was imported, so regenerating it replays a parent payload's effects.
-        SignedGloasChain.Block parent = chain.Next(first, parentSlot, full: heldBase != HeldBase.GloasAnchor, 0xE2);
+        SignedGloasChain.Block parent = _chain.Next(first, parentSlot, full: heldBase != HeldBase.GloasAnchor, 0xE2);
         Import(importer, parent);
         if (parentKind == EvictedParent.FullVerified)
         {
@@ -789,12 +772,12 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block tip = parent;
         for (ulong slot = parentSlot + 1; slot <= parentSlot + 2 * ForkSlot + 1; slot++)
         {
-            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            tip = _chain.Next(tip, slot, full: false, (byte)slot);
             Import(importer, tip);
         }
 
         BeaconStateGloas? heldBefore = states.GetGloasBlockState(parent.Root);
-        SignedGloasChain.Block sibling = chain.Next(parent, parentSlot + 1, full: parentKind != EvictedParent.Empty, 0xE3);
+        SignedGloasChain.Block sibling = _chain.Next(parent, parentSlot + 1, full: parentKind != EvictedParent.Empty, 0xE3);
         BlockImportResult result = importer.ImportRequested(sibling.Forked, sibling.Root);
         ExecutionPayloadEnvelopeImportResult? envelope = null;
         BlockImportResult? afterEnvelope = null;
@@ -820,7 +803,7 @@ public class GloasBlockImporterTests
 
             if (heldBase == HeldBase.FuluAnchor)
             {
-                Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(anchorStateRoot), "the replay crosses the fork on a copy of the held Fulu state");
+                Assert.That(SszRoots.HashTreeRoot(_chain.AnchorState), Is.EqualTo(anchorStateRoot), "the replay crosses the fork on a copy of the held Fulu state");
             }
             else
             {
@@ -839,39 +822,38 @@ public class GloasBlockImporterTests
     [Test]
     public void Fulu_parent_of_a_first_gloas_block_that_skips_the_fork_slot_stays_a_regeneration_base()
     {
-        SignedGloasChain chain = new();
         TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)));
         List<BlockImportResult> fixture = [];
         void ImportFulu(SignedGloasChain.FuluBlock block) => fixture.Add(importer.Import(block.Forked, block.Root, verifySignatures: true));
 
         // The lineage leaves the anchor, so the dense Fulu run is a fork branch whose states only the LRU holds.
-        ImportFulu(chain.NextFulu(2, blockHashFill: 0xD0));
+        ImportFulu(_chain.NextFulu(2, blockHashFill: 0xD0));
         SignedGloasChain.FuluBlock? lastFulu = null;
         for (ulong slot = 1; slot < ForkSlot; slot++)
         {
-            lastFulu = chain.NextFulu(slot, lastFulu, (byte)slot);
+            lastFulu = _chain.NextFulu(slot, lastFulu, (byte)slot);
             ImportFulu(lastFulu);
         }
 
-        SignedGloasChain.Block first = chain.NextOnFulu(lastFulu!, ForkSlot + 1, full: false, 0xE1);
-        SignedGloasChain.Block parent = chain.Next(first, ForkSlot + 2, full: false, 0xE2);
+        SignedGloasChain.Block first = _chain.NextOnFulu(lastFulu!, ForkSlot + 1, full: false, 0xE1);
+        SignedGloasChain.Block parent = _chain.Next(first, ForkSlot + 2, full: false, 0xE2);
         Import(importer, first, parent);
 
         // Fulu fork branch imports push the dense run's states out of the LRU, and a long Gloas branch the Gloas states.
         for (ulong slot = 3; slot < 12; slot++)
         {
-            ImportFulu(chain.NextFulu(slot, blockHashFill: (byte)(0x80 + slot)));
+            ImportFulu(_chain.NextFulu(slot, blockHashFill: (byte)(0x80 + slot)));
         }
 
         SignedGloasChain.Block tip = parent;
         for (ulong slot = ForkSlot + 3; slot <= 3 * ForkSlot + 3; slot++)
         {
-            tip = chain.Next(tip, slot, full: false, (byte)slot);
+            tip = _chain.Next(tip, slot, full: false, (byte)slot);
             Import(importer, tip);
         }
 
-        SignedGloasChain.Block sibling = chain.Next(parent, ForkSlot + 3, full: false, 0xE3);
+        SignedGloasChain.Block sibling = _chain.Next(parent, ForkSlot + 3, full: false, 0xE3);
         BlockImportResult result = importer.ImportRequested(sibling.Forked, sibling.Root);
 
         using (Assert.EnterMultipleScope())
@@ -889,12 +871,11 @@ public class GloasBlockImporterTests
     [Test]
     public void Fulu_checkpoint_parent_retained_from_the_lineage_is_a_copy()
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.FuluBlock lineage = chain.NextFulu(ForkSlot - 2);
-        SignedGloasChain.FuluBlock late = chain.NextFulu(ForkSlot - 1, lineage, 0xD1);
-        SignedGloasChain.Block first = chain.NextOnFulu(lineage, ForkSlot + 1, full: false, 0xE1);
-        SignedGloasChain.Block sibling = chain.NextOnFulu(lineage, ForkSlot + 2, full: false, 0xE2);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.FuluBlock lineage = _chain.NextFulu(ForkSlot - 2);
+        SignedGloasChain.FuluBlock late = _chain.NextFulu(ForkSlot - 1, lineage, 0xD1);
+        SignedGloasChain.Block first = _chain.NextOnFulu(lineage, ForkSlot + 1, full: false, 0xE1);
+        SignedGloasChain.Block sibling = _chain.NextOnFulu(lineage, ForkSlot + 2, full: false, 0xE2);
 
         BlockImportResult[] fixture =
         [
@@ -919,16 +900,15 @@ public class GloasBlockImporterTests
     [Test]
     public void Forged_children_of_evicted_blocks_cost_no_regeneration()
     {
-        SignedGloasChain chain = new();
         TestLogger logger = new() { IsInfo = false, IsTrace = false };
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)));
         PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
         List<SignedGloasChain.Block> blocks = [];
         SignedGloasChain.Block? tip = null;
         for (ulong slot = ForkSlot; slot < ForkSlot + 136; slot++)
         {
             // Offset so no fill is the anchor payload's 0x71, which a bid may not repeat as its parent block hash.
-            tip = chain.Next(tip, slot, full: false, (byte)(slot + 0x80));
+            tip = _chain.Next(tip, slot, full: false, (byte)(slot + 0x80));
             Import(importer, tip);
             blocks.Add(tip);
         }
@@ -950,7 +930,7 @@ public class GloasBlockImporterTests
         // Children built on an evicted parent's unverified full payload take the deferral path, which regenerates too.
         for (int i = 1; i <= 2; i++)
         {
-            SignedGloasChain.Block fullChild = chain.Next(blocks[i], blocks[i].Signed.Message!.Slot + 1, full: true, (byte)(0xF0 + i));
+            SignedGloasChain.Block fullChild = _chain.Next(blocks[i], blocks[i].Signed.Message!.Slot + 1, full: true, (byte)(0xF0 + i));
             BeaconBlockGloas real = fullChild.Signed.Message!;
             BeaconBlockGloas message = new() { Slot = real.Slot, ProposerIndex = real.ProposerIndex, ParentRoot = real.ParentRoot, StateRoot = Keccak.Compute(BitConverter.GetBytes(-i)), Body = real.Body };
             forged.Add((blocks[i], new ForkedSignedBeaconBlock.OfGloas(new SignedBeaconBlockGloas { Message = message, Signature = fullChild.Signed.Signature }), SszRoots.HashTreeRoot(message)));
@@ -977,17 +957,16 @@ public class GloasBlockImporterTests
     [Test]
     public void Signed_blocks_on_evicted_parents_regenerate_within_a_per_slot_budget()
     {
-        SignedGloasChain chain = new();
-        List<SignedGloasChain.Block> blocks = RegenerationLineage(chain);
+        List<SignedGloasChain.Block> blocks = RegenerationLineage(_chain);
 
         ulong wallSlot = blocks[^1].Signed.Message!.Slot + 2;
-        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + wallSlot * chain.Spec.SecondsPerSlot + 1));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(_chain.Spec.GenesisTime + wallSlot * _chain.Spec.SecondsPerSlot + 1));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
         Import(importer, [.. blocks]);
-        SignedGloasChain.Block[] siblings = [.. Enumerable.Range(1, 3).Select(i => chain.Next(blocks[i], 3 * ForkSlot + (ulong)i, full: false, (byte)(0xF0 + i)))];
+        SignedGloasChain.Block[] siblings = [.. Enumerable.Range(1, 3).Select(i => _chain.Next(blocks[i], 3 * ForkSlot + (ulong)i, full: false, (byte)(0xF0 + i)))];
 
         // The first sibling's slot and proposer, signed by that proposer on another evicted parent.
-        BeaconBlockGloas repeat = chain.Next(blocks[5], siblings[0].Signed.Message!.Slot, full: false, 0xF5).Signed.Message!;
+        BeaconBlockGloas repeat = _chain.Next(blocks[5], siblings[0].Signed.Message!.Slot, full: false, 0xF5).Signed.Message!;
         repeat.ProposerIndex = siblings[0].Signed.Message!.ProposerIndex;
         Hash256 repeatRoot = SszRoots.HashTreeRoot(repeat);
         Hash256 domain = siblings[0].PostState.GetDomain(DomainType.BeaconProposer, siblings[0].PostState.GetCurrentEpoch());
@@ -1002,7 +981,7 @@ public class GloasBlockImporterTests
             Gossip(siblings[2].Forked, siblings[2].Root),
         ];
         ImportRefusal spentRefusal = importer.LastRefusal;
-        timestamper.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
+        timestamper.Add(TimeSpan.FromSeconds(_chain.Spec.SecondsPerSlot));
         BlockImportResult nextSlot = Gossip(siblings[2].Forked, siblings[2].Root);
 
         using (Assert.EnterMultipleScope())
@@ -1027,22 +1006,21 @@ public class GloasBlockImporterTests
     [Test]
     public void Gossip_block_deferred_after_its_regeneration_regenerates_again_on_retry()
     {
-        SignedGloasChain chain = new();
-        List<SignedGloasChain.Block> blocks = RegenerationLineage(chain);
+        List<SignedGloasChain.Block> blocks = RegenerationLineage(_chain);
 
         ulong blockSlot = blocks[^1].Signed.Message!.Slot + 2;
         // Within MAXIMUM_GOSSIP_CLOCK_DISPARITY before the block's slot, so it waits for its slot after its transition.
-        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + blockSlot * chain.Spec.SecondsPerSlot).AddMilliseconds(-200));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(_chain.Spec.GenesisTime + blockSlot * _chain.Spec.SecondsPerSlot).AddMilliseconds(-200));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
         PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
         Import(importer, [.. blocks]);
-        SignedGloasChain.Block early = chain.Next(blocks[1], blockSlot, full: false, 0xF1);
+        SignedGloasChain.Block early = _chain.Next(blocks[1], blockSlot, full: false, 0xF1);
 
         BlockImportResult first = importer.Import(early.Forked, early.Root, verifySignatures: true);
         // Range-sync regenerations of two other evicted parents push the first regenerated state out.
         BlockImportResult[] churn = [.. new[] { 2, 3 }.Select(i =>
         {
-            SignedGloasChain.Block other = chain.Next(blocks[i], blockSlot - 4 + (ulong)i, full: false, (byte)(0xF0 + i));
+            SignedGloasChain.Block other = _chain.Next(blocks[i], blockSlot - 4 + (ulong)i, full: false, (byte)(0xF0 + i));
             return importer.ImportRequested(other.Forked, other.Root);
         })];
         bool parentChurned = states.GetGloasBlockState(blocks[1].Root) is null;
@@ -1065,25 +1043,24 @@ public class GloasBlockImporterTests
     [Test]
     public void Blocks_fetched_by_root_regenerate_within_their_own_per_slot_budget()
     {
-        SignedGloasChain chain = new();
-        List<SignedGloasChain.Block> blocks = RegenerationLineage(chain);
+        List<SignedGloasChain.Block> blocks = RegenerationLineage(_chain);
 
         ulong wallSlot = blocks[^1].Signed.Message!.Slot + 2;
-        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + wallSlot * chain.Spec.SecondsPerSlot + 1));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, timestamper));
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(_chain.Spec.GenesisTime + wallSlot * _chain.Spec.SecondsPerSlot + 1));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
         Import(importer, [.. blocks]);
-        SignedGloasChain.Block[] fetched = [.. Enumerable.Range(1, 5).Select(i => chain.Next(blocks[i], 3 * ForkSlot + (ulong)i, full: false, (byte)(0xF0 + i)))];
-        SignedGloasChain.Block gossip = chain.Next(blocks[6], 3 * ForkSlot + 6, full: false, 0xF6);
+        SignedGloasChain.Block[] fetched = [.. Enumerable.Range(1, 5).Select(i => _chain.Next(blocks[i], 3 * ForkSlot + (ulong)i, full: false, (byte)(0xF0 + i)))];
+        SignedGloasChain.Block gossip = _chain.Next(blocks[6], 3 * ForkSlot + 6, full: false, 0xF6);
 
         BlockImportResult[] sameSlot = [.. fetched.Select(f => importer.ImportRequested(f.Forked, f.Root, fetchedByRoot: true))];
         ImportRefusal budgetRefusal = importer.LastRefusal;
         // A proposer with no cached key is refused before any budget, and no later slot changes that.
-        BeaconBlockGloas keyless = chain.Next(blocks[7], 3 * ForkSlot + 7, full: false, 0xF7).Signed.Message!;
+        BeaconBlockGloas keyless = _chain.Next(blocks[7], 3 * ForkSlot + 7, full: false, 0xF7).Signed.Message!;
         keyless.ProposerIndex = 1UL << 40;
         BlockImportResult keylessResult = importer.ImportRequested(new ForkedSignedBeaconBlock.OfGloas(new SignedBeaconBlockGloas { Message = keyless }), SszRoots.HashTreeRoot(keyless), fetchedByRoot: true);
         ImportRefusal keylessRefusal = importer.LastRefusal;
         BlockImportResult gossipResult = importer.Import(gossip.Forked, gossip.Root, verifySignatures: true);
-        timestamper.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
+        timestamper.Add(TimeSpan.FromSeconds(_chain.Spec.SecondsPerSlot));
         BlockImportResult nextSlot = importer.ImportRequested(fetched[2].Forked, fetched[2].Root, fetchedByRoot: true);
 
         using (Assert.EnterMultipleScope())
@@ -1111,26 +1088,25 @@ public class GloasBlockImporterTests
     [Test]
     public void Gloas_regeneration_crosses_the_fork_and_replays_at_most_one_epoch([Values] bool beyondBound)
     {
-        SignedGloasChain chain = new();
-        BeaconChainStore store = chain.CreateStore();
-        int count = (int)chain.Spec.SlotsPerEpoch + (beyondBound ? 1 : 0);
+        BeaconChainStore store = _chain.CreateStore();
+        int count = (int)_chain.Spec.SlotsPerEpoch + (beyondBound ? 1 : 0);
         List<SignedGloasChain.Block> blocks = [];
         SignedGloasChain.Block? tip = null;
         for (int i = 0; i < count; i++)
         {
-            tip = chain.Next(tip, ForkSlot + (ulong)i, full: i % 2 == 1, (byte)(0x40 + i));
+            tip = _chain.Next(tip, ForkSlot + (ulong)i, full: i % 2 == 1, (byte)(0x40 + i));
             store.PutForkedBlock(tip.Root, tip.Forked);
             blocks.Add(tip);
         }
 
-        Hash256[] ancestry = [.. blocks.Select(static b => b.Root).Reverse(), chain.AnchorRoot];
+        Hash256[] ancestry = [.. blocks.Select(static b => b.Root).Reverse(), _chain.AnchorRoot];
         HashSet<Hash256> gloasRoots = [.. blocks.Select(static b => b.Root)];
         PubkeyCache pubkeys = new();
-        pubkeys.Build(chain.AnchorState.Validators!);
+        pubkeys.Build(_chain.AnchorState.Validators!);
         TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
-        PostStateCache states = new(store, chain.Spec, chain.AnchorRoot, chain.AnchorState, isGloasBlock: gloasRoots.Contains, logManager: new OneLoggerLogManager(new ILogger(logger)),
+        PostStateCache states = new(store, _chain.Spec, _chain.AnchorRoot, _chain.AnchorState, isGloasBlock: gloasRoots.Contains, logManager: new OneLoggerLogManager(new ILogger(logger)),
             pubkeys: pubkeys, ancestors: root => ancestry.SkipWhile(r => r != root));
-        Hash256 anchorStateRoot = SszRoots.HashTreeRoot(chain.AnchorState);
+        Hash256 anchorStateRoot = SszRoots.HashTreeRoot(_chain.AnchorState);
         // A full per-block tier of live states, which a regeneration must not push out.
         Hash256[] live = [.. Enumerable.Range(0, 2 * (int)ForkSlot).Select(static i => Keccak.Compute(BitConverter.GetBytes(i)))];
         foreach (Hash256 root in live)
@@ -1141,15 +1117,15 @@ public class GloasBlockImporterTests
         long started = Stopwatch.GetTimestamp();
         BeaconStateGloas? regenerated = states.GetOrRegenerateGloasBlockState(blocks[^1].Root);
         double elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        if (!beyondBound) TestContext.Out.WriteLine($"Gloas regeneration across the fork: {count} blocks in {elapsedMs:F1} ms, {elapsedMs / count:F2} ms per block, {chain.AnchorState.Validators!.Length} validators");
+        if (!beyondBound) TestContext.Out.WriteLine($"Gloas regeneration across the fork: {count} blocks in {elapsedMs:F1} ms, {elapsedMs / count:F2} ms per block, {_chain.AnchorState.Validators!.Length} validators");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(regenerated is null ? null : SszRoots.HashTreeRoot(regenerated), Is.EqualTo(beyondBound ? null : blocks[^1].Signed.Message!.StateRoot));
             Assert.That(states.GetGloasBlockState(blocks[^1].Root), Is.SameAs(regenerated), "a regenerated state is retained, so the next import naming it replays nothing");
-            Assert.That(SszRoots.HashTreeRoot(chain.AnchorState), Is.EqualTo(anchorStateRoot));
+            Assert.That(SszRoots.HashTreeRoot(_chain.AnchorState), Is.EqualTo(anchorStateRoot));
             Assert.That(live.Select(states.GetGloasBlockState), Is.All.Not.Null, "regenerated states are kept apart from the states of live blocks");
-            Assert.That(logger.LogList, beyondBound ? Has.One.Contains($"no ancestor state is held within {chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
+            Assert.That(logger.LogList, beyondBound ? Has.One.Contains($"no ancestor state is held within {_chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
         }
     }
 
@@ -1168,12 +1144,11 @@ public class GloasBlockImporterTests
     [TestCase(ForkSlot, 2000L, 1000L, true)]
     public void Proposer_boost_follows_the_clock_at_import(ulong clockSlot, long msIntoSlot, long msPerClockRead, bool boosted)
     {
-        SignedGloasChain chain = new();
         ForkChoiceSnapshotHolder snapshots = new();
-        DateTime arrival = DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + clockSlot * chain.Spec.SecondsPerSlot).AddMilliseconds(msIntoSlot);
-        SlotClock clock = new(chain.Spec, new AdvancingTimestamper(arrival, TimeSpan.FromMilliseconds(msPerClockRead)));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, clock: clock);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        DateTime arrival = DateTime.UnixEpoch.AddSeconds(_chain.Spec.GenesisTime + clockSlot * _chain.Spec.SecondsPerSlot).AddMilliseconds(msIntoSlot);
+        SlotClock clock = new(_chain.Spec, new AdvancingTimestamper(arrival, TimeSpan.FromMilliseconds(msPerClockRead)));
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, clock: clock);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
 
         Import(importer, first);
         importer.ComputeHead();
@@ -1188,14 +1163,13 @@ public class GloasBlockImporterTests
     [Test]
     public void Factory_importer_refuses_an_envelope_whose_blobs_it_cannot_sample()
     {
-        SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new();
         PubkeyCache pubkeys = new();
-        pubkeys.Build(chain.AnchorState.Validators!);
-        BlockImporterFactory factory = new(chain.Spec, chain.CreateStore(), pubkeys, engine, new BeaconChainConfig(), LimboLogs.Instance, new DataColumnSidecarPool(),
-            clock: new SlotClock(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (ForkSlot + 1) * chain.Spec.SecondsPerSlot))));
-        IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1, blobCommitments: [default]);
+        pubkeys.Build(_chain.AnchorState.Validators!);
+        BlockImporterFactory factory = new(_chain.Spec, _chain.CreateStore(), pubkeys, engine, new BeaconChainConfig(), LimboLogs.Instance, new DataColumnSidecarPool(),
+            clock: new SlotClock(_chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(_chain.Spec.GenesisTime + (ForkSlot + 1) * _chain.Spec.SecondsPerSlot))));
+        IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(_chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(_chain.AnchorBlock), _chain.AnchorRoot);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1, blobCommitments: [default]);
         importer.Import(first.Forked, first.Root, verifySignatures: true);
 
         using (Assert.EnterMultipleScope())
@@ -1231,12 +1205,11 @@ public class GloasBlockImporterTests
     [TestCase(HeldProposal.FromTheFuture, BlockImportResult.Invalid)]
     public async Task Child_of_a_deferred_block_is_deferred_only_when_its_expected_proposer_signed_it(HeldProposal proposal, BlockImportResult expected)
     {
-        SignedGloasChain chain = new();
-        SlotClock? clock = proposal == HeldProposal.FromTheFuture ? ClockAt(chain, ForkSlot + 2, millisecondsEarly: GossipRouter.MaximumGossipClockDisparityMs + 1) : null;
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: clock);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block parked = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
-        SignedGloasChain.Block held = chain.Next(parked, proposal == HeldProposal.PastAncestorLookahead ? 3 * ForkSlot : ForkSlot + 2, full: false, 0xA3);
+        SlotClock? clock = proposal == HeldProposal.FromTheFuture ? ClockAt(_chain, ForkSlot + 2, millisecondsEarly: GossipRouter.MaximumGossipClockDisparityMs + 1) : null;
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: clock);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block parked = _chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        SignedGloasChain.Block held = _chain.Next(parked, proposal == HeldProposal.PastAncestorLookahead ? 3 * ForkSlot : ForkSlot + 2, full: false, 0xA3);
         Import(importer, first);
         if (proposal != HeldProposal.ParentNotDeferred)
         {
@@ -1278,11 +1251,10 @@ public class GloasBlockImporterTests
     [Test]
     public void Child_of_a_deferred_block_found_invalid_is_no_longer_deferred()
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block parked = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
-        SignedGloasChain.Block child = chain.Next(parked, ForkSlot + 2, full: false, 0xA3);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block parked = _chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        SignedGloasChain.Block child = _chain.Next(parked, ForkSlot + 2, full: false, 0xA3);
         Import(importer, first);
         parked.Signed.Message!.StateRoot = Hash(0x77);
         SignAsProposer(parked.Signed, first.PostState);
@@ -1313,11 +1285,10 @@ public class GloasBlockImporterTests
     [Test]
     public void Deferred_blocks_are_bounded_and_forgotten_once_finalized()
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block parked = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
-        SignedGloasChain.Block finalized = chain.Next(first, ForkSlot + 2, full: false, 0xA3);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block parked = _chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        SignedGloasChain.Block finalized = _chain.Next(first, ForkSlot + 2, full: false, 0xA3);
         Import(importer, first, finalized);
 
         const int maxDeferredBlocks = 256;
@@ -1343,11 +1314,10 @@ public class GloasBlockImporterTests
     [Test]
     public void Deferred_block_at_or_below_the_finalized_epoch_start_is_forgotten_once_finalized([Values(ForkSlot + 2, ForkSlot + 8)] ulong siblingSlot)
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block finalized = chain.Next(first, ForkSlot + 2, full: false, 0xA3);
-        SignedGloasChain.Block sibling = chain.Next(first, siblingSlot, full: true, 0xA4);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block finalized = _chain.Next(first, ForkSlot + 2, full: false, 0xA3);
+        SignedGloasChain.Block sibling = _chain.Next(first, siblingSlot, full: true, 0xA4);
         Import(importer, first, finalized);
         Assert.That(importer.Import(sibling.Forked, sibling.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture");
 
@@ -1361,10 +1331,9 @@ public class GloasBlockImporterTests
     [Test]
     public void Release_forgets_a_deferred_block_at_once()
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block parked = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block parked = _chain.Next(first, ForkSlot + 1, full: true, 0xA2);
         Import(importer, first);
         Assert.That(importer.Import(parked.Forked, parked.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture");
         int before = DeferredCount(importer);
@@ -1400,10 +1369,9 @@ public class GloasBlockImporterTests
     [Test]
     public async Task Gossip_block_rejects_invalid_proposals_and_charges_the_delivering_peer([Values] Forgery forgery)
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block parent = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block child = chain.Next(parent, ForkSlot + 1, full: false, 0xA2);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block parent = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = _chain.Next(parent, ForkSlot + 1, full: false, 0xA2);
         Import(importer, parent);
         MutateProposal(child.Signed, parent.PostState, forgery);
         await BeaconSyncOrchestratorTests.AssertBlockVerdictAsync(importer, child.Forked,
@@ -1413,10 +1381,9 @@ public class GloasBlockImporterTests
     [Test]
     public async Task Gossip_wrong_proposer_obeys_parent_payload_validation_order([Values] bool payloadVerified, [Values] bool validSignature)
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: ClockAt(chain, ForkSlot + 1, millisecondsEarly: 0));
-        SignedGloasChain.Block parent = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block child = chain.Next(parent, ForkSlot + 1, full: true, 0xA2);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: ClockAt(_chain, ForkSlot + 1, millisecondsEarly: 0));
+        SignedGloasChain.Block parent = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = _chain.Next(parent, ForkSlot + 1, full: true, 0xA2);
         Import(importer, parent);
         if (payloadVerified)
         {
@@ -1444,11 +1411,10 @@ public class GloasBlockImporterTests
     [Test]
     public async Task Gossip_head_registry_precedes_unverified_parent_payload([Values] bool validSignature, [Values] bool keysAvailable)
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: ClockAt(chain, ForkSlot + 2, millisecondsEarly: 0));
-        SignedGloasChain.Block parent = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block head = chain.Next(parent, ForkSlot + 1, full: false, 0xA2);
-        SignedGloasChain.Block child = chain.Next(parent, ForkSlot + 2, full: true, 0xA3);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: ClockAt(_chain, ForkSlot + 2, millisecondsEarly: 0));
+        SignedGloasChain.Block parent = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block head = _chain.Next(parent, ForkSlot + 1, full: false, 0xA2);
+        SignedGloasChain.Block child = _chain.Next(parent, ForkSlot + 2, full: true, 0xA3);
         Import(importer, parent, head);
         ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
         PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
@@ -1482,15 +1448,14 @@ public class GloasBlockImporterTests
     public async Task Gossip_block_refusal_obeys_parent_payload_validation_order(
         [Values] GossipBlockFault fault, [Values] bool payloadVerified, [Values] bool validSignature)
     {
-        SignedGloasChain chain = new();
-        BeaconChainStore store = chain.CreateStore();
-        SlotClock clock = ClockAt(chain, 2 * ForkSlot + 2, millisecondsEarly: 0);
+        BeaconChainStore store = _chain.CreateStore();
+        SlotClock clock = ClockAt(_chain, 2 * ForkSlot + 2, millisecondsEarly: 0);
         ForkChoiceSnapshotHolder snapshots = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, store: store, clock: clock);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block checkpoint = chain.Next(first, 2 * ForkSlot, full: false, 0xA2);
-        SignedGloasChain.Block parent = chain.Next(first, 2 * ForkSlot + 1, full: false, 0xA3);
-        SignedGloasChain.Block child = chain.Next(parent, 2 * ForkSlot + 2, full: true, 0xA4);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, store: store, clock: clock);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block checkpoint = _chain.Next(first, 2 * ForkSlot, full: false, 0xA2);
+        SignedGloasChain.Block parent = _chain.Next(first, 2 * ForkSlot + 1, full: false, 0xA3);
+        SignedGloasChain.Block child = _chain.Next(parent, 2 * ForkSlot + 2, full: true, 0xA4);
         Import(importer, first, checkpoint, parent);
         if (payloadVerified)
             Assert.That(importer.ImportEnvelope(parent.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
@@ -1505,7 +1470,7 @@ public class GloasBlockImporterTests
                 Finalize(importer, new CheckpointRef(2, checkpoint.Root));
                 break;
             case GossipBlockFault.BlobCount:
-                int count = (int)(chain.Spec.GetBlobParameters(chain.Spec.GetEpoch(message.Slot))?.MaxBlobsPerBlock ?? chain.Spec.MaxBlobsPerBlockElectra) + 1;
+                int count = (int)(_chain.Spec.GetBlobParameters(_chain.Spec.GetEpoch(message.Slot))?.MaxBlobsPerBlock ?? _chain.Spec.MaxBlobsPerBlockElectra) + 1;
                 message.Body!.SignedExecutionPayloadBid!.Message!.BlobKzgCommitments = Enumerable.Range(0, count)
                     .Select(_ => SszKzgCommitment.FromSpan(new byte[SszKzgCommitment.KzgCommitmentLength])).ToArray();
                 break;
@@ -1526,8 +1491,8 @@ public class GloasBlockImporterTests
             "invalid children must still be refused before a transition or a payload retry is queued");
         Assert.That(DeferredCount(importer), Is.Zero);
         importer.ComputeHead();
-        ColumnGossipRouter headers = new(chain.Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
-        GossipRouter router = new(chain.Spec, clock, LimboLogs.Instance, store, headers: headers);
+        ColumnGossipRouter headers = new(_chain.Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
+        GossipRouter router = new(_chain.Spec, clock, LimboLogs.Instance, store, headers: headers);
         await BeaconSyncOrchestratorTests.AssertBlockVerdictAsync(importer, child.Forked,
             Snappy.CompressToArray(SignedBeaconBlockGloas.Encode(child.Signed)),
             validSignature && !payloadVerified && fault != GossipBlockFault.BidExecutionHead ? MessageValidity.Ignored : MessageValidity.Rejected, router);
@@ -1550,10 +1515,9 @@ public class GloasBlockImporterTests
     [TestCase(Forgery.ProposerPastRegistry, BlockImportResult.Invalid, true)]
     public void Full_child_is_deferred_only_when_its_expected_proposer_signed_it(Forgery forgery, BlockImportResult expected, bool pastLookahead)
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block child = chain.Next(first, pastLookahead ? 3 * ForkSlot : ForkSlot + 1, full: true, 0xA2);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = _chain.Next(first, pastLookahead ? 3 * ForkSlot : ForkSlot + 1, full: true, 0xA2);
         Import(importer, first);
         BeaconBlockGloas message = child.Signed.Message!;
         MutateProposal(child.Signed, first.PostState, forgery);
@@ -1602,43 +1566,42 @@ public class GloasBlockImporterTests
     [Test]
     public async Task Block_failing_an_on_block_assertion_is_refused_before_its_state_transition([Values] OnBlockAssertion assertion)
     {
-        SignedGloasChain chain = new();
         TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
-        SlotClock? clock = assertion is OnBlockAssertion.CurrentSlot ? ClockAt(chain, ForkSlot + 1, millisecondsEarly: GossipRouter.MaximumGossipClockDisparityMs + 1) : null;
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)), clock: clock);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SlotClock? clock = assertion is OnBlockAssertion.CurrentSlot ? ClockAt(_chain, ForkSlot + 1, millisecondsEarly: GossipRouter.MaximumGossipClockDisparityMs + 1) : null;
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)), clock: clock);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, first);
         SignedGloasChain.Block block;
         switch (assertion)
         {
             case OnBlockAssertion.CurrentSlot:
-                block = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+                block = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
                 break;
             case OnBlockAssertion.FarFutureSlot:
-                block = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+                block = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
                 block.Signed.Message!.Slot = 1UL << 40;
                 break;
             case OnBlockAssertion.AfterParentSlot:
-                block = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+                block = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
                 block.Signed.Message!.Slot = ForkSlot;
                 block.Signed.Message.ProposerIndex = first.Signed.Message!.ProposerIndex;
                 SignAsProposer(block.Signed, first.PostState);
                 break;
             case OnBlockAssertion.AfterFinalizedSlot:
                 // The checkpoint block is at slot 33 and the child sits on the bound, slot 64; full, so a missed bound would park it on the unverified payload.
-                SignedGloasChain.Block finalized = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+                SignedGloasChain.Block finalized = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
                 Import(importer, finalized);
                 Finalize(importer, new CheckpointRef(2, finalized.Root));
-                block = chain.Next(finalized, 2 * ForkSlot, full: true, 0xA5);
+                block = _chain.Next(finalized, 2 * ForkSlot, full: true, 0xA5);
                 break;
             default:
                 // Finalizes the epoch-2 checkpoint block of one branch; the other branch forked off before it.
-                SignedGloasChain.Block finalizedBranch = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
-                SignedGloasChain.Block otherBranch = chain.Next(first, ForkSlot + 2, full: false, 0xA3);
-                SignedGloasChain.Block checkpoint = chain.Next(finalizedBranch, 2 * ForkSlot, full: false, 0xA4);
+                SignedGloasChain.Block finalizedBranch = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+                SignedGloasChain.Block otherBranch = _chain.Next(first, ForkSlot + 2, full: false, 0xA3);
+                SignedGloasChain.Block checkpoint = _chain.Next(finalizedBranch, 2 * ForkSlot, full: false, 0xA4);
                 Import(importer, finalizedBranch, otherBranch, checkpoint);
                 Finalize(importer, new CheckpointRef(2, checkpoint.Root));
-                block = chain.Next(otherBranch, 2 * ForkSlot + 1, full: false, 0xA5);
+                block = _chain.Next(otherBranch, 2 * ForkSlot + 1, full: false, 0xA5);
                 break;
         }
 
@@ -1669,17 +1632,16 @@ public class GloasBlockImporterTests
     [Test]
     public void Block_before_its_slot_starts_waits_for_the_slot()
     {
-        SignedGloasChain chain = new();
-        DateTime slotStart = TickFinalityFixture.SlotStart(chain.Spec, ForkSlot + 1);
+        DateTime slotStart = TickFinalityFixture.SlotStart(_chain.Spec, ForkSlot + 1);
         ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs));
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(chain.Spec, time));
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, time));
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, first);
-        SignedGloasChain.Block block = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        SignedGloasChain.Block block = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
 
         BlockImportResult early = importer.Import(block.Forked, block.Root, verifySignatures: true);
         bool knownEarly = importer.IsKnown(block.Root);
-        ulong member = first.PostState.GetPtc(ForkSlot, chain.Spec).Indices![0];
+        ulong member = first.PostState.GetPtc(ForkSlot, _chain.Spec).Indices![0];
         importer.ComputeHead();
         bool? voteAccepted = importer.OnGossipPayloadAttestation(PtcVote(first, member, payloadPresent: true));
         time.Set(slotStart);
@@ -1725,11 +1687,10 @@ public class GloasBlockImporterTests
     [Test]
     public void Block_refused_by_fork_choice_leaves_no_state_behind()
     {
-        SignedGloasChain chain = new();
-        BeaconChainStore store = chain.CreateStore();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block child = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        BeaconChainStore store = _chain.CreateStore();
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
         Import(importer, first);
         importer.OnInvalidExecutionPayload(first.Root, latestValidHash: null);
 
@@ -1751,11 +1712,10 @@ public class GloasBlockImporterTests
     [Test]
     public void Envelope_for_a_block_fork_choice_no_longer_holds_never_reaches_the_engine()
     {
-        SignedGloasChain chain = new();
         SignedGloasChain.EnvelopeEngine engine = new();
-        BlockImporter importer = chain.CreateImporter(engine);
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block pruned = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        BlockImporter importer = _chain.CreateImporter(engine);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block pruned = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
         Import(importer, first);
         // Stands in for finalization pruning: that needs a finalized block past the proto-array's 256-node prune threshold.
         PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
@@ -1778,14 +1738,13 @@ public class GloasBlockImporterTests
     [Test]
     public void Block_on_a_sibling_branch_across_an_epoch_boundary_imports()
     {
-        SignedGloasChain chain = new();
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block left = chain.Next(first, ForkSlot + 1, full: false, 0xA2);
-        SignedGloasChain.Block right = chain.Next(first, ForkSlot + 2, full: false, 0xA3);
-        SignedGloasChain.Block leftNextEpoch = chain.Next(left, 2 * ForkSlot, full: false, 0xA4);
-        SignedGloasChain.Block rightNextEpoch = chain.Next(right, 2 * ForkSlot + 1, full: false, 0xA5);
-        SignedGloasChain.Block leftTip = chain.Next(leftNextEpoch, 2 * ForkSlot + 2, full: false, 0xA6);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block left = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        SignedGloasChain.Block right = _chain.Next(first, ForkSlot + 2, full: false, 0xA3);
+        SignedGloasChain.Block leftNextEpoch = _chain.Next(left, 2 * ForkSlot, full: false, 0xA4);
+        SignedGloasChain.Block rightNextEpoch = _chain.Next(right, 2 * ForkSlot + 1, full: false, 0xA5);
+        SignedGloasChain.Block leftTip = _chain.Next(leftNextEpoch, 2 * ForkSlot + 2, full: false, 0xA6);
         Import(importer, first, left, right, leftNextEpoch, rightNextEpoch);
 
         Assert.That(importer.Import(leftTip.Forked, leftTip.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
@@ -1795,10 +1754,9 @@ public class GloasBlockImporterTests
     [Test]
     public void Gloas_head_step_is_not_taken_for_a_reorg()
     {
-        SignedGloasChain chain = new();
         TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
-        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)));
-        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)));
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
         Import(importer, first);
 
         HeadView head = importer.ComputeHead();
@@ -1818,11 +1776,10 @@ public class GloasBlockImporterTests
     [Test]
     public void Body_attester_slashing_refused_by_fork_choice_is_tolerated_and_counted()
     {
-        SignedGloasChain chain = new();
-        (BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot) = BlockImporterTests.AnchorWithQueuedValidator(chain.AnchorState, chain.AnchorBlock);
+        (BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot) = BlockImporterTests.AnchorWithQueuedValidator(_chain.AnchorState, _chain.AnchorBlock);
         BeaconStateFulu crossing = anchorState.Clone();
         SlotProcessing.ProcessSlots(crossing, ForkSlot, new EpochCache());
-        BeaconStateGloas state = GloasForkTransition.UpgradeToGloas(crossing, chain.Spec);
+        BeaconStateGloas state = GloasForkTransition.UpgradeToGloas(crossing, _chain.Spec);
         ulong onboarded = (ulong)anchorState.Validators!.Length;
         Assert.That(state.Validators, Has.Length.EqualTo(anchorState.Validators.Length + 1), "fixture bug: the queued validator must be onboarded before the slashing block");
         AttesterSlashingGloas slashing = new()
@@ -1836,21 +1793,8 @@ public class GloasBlockImporterTests
         block.Message.StateRoot = SszRoots.HashTreeRoot(state);
         Hash256 root = SszRoots.HashTreeRoot(block.Message);
         Assert.That(state.Validators![1].Slashed, Is.True, "fixture bug: the transition must accept the slashing");
-        PubkeyCache pubkeys = new();
-        pubkeys.Build(anchorState.Validators);
-        BlockImporter importer = new(
-            chain.Spec,
-            chain.CreateStore(),
-            pubkeys,
-            new SignedGloasChain.EnvelopeEngine(),
-            new BeaconChainConfig(),
-            LimboLogs.Instance,
-            ReplayedBlockAvailability.Instance,
-            static (_, _) => true,
-            new SlotClock(chain.Spec, Timestamper.Default),
-            new ForkedBeaconState.OfFulu(anchorState),
-            new ForkedSignedBeaconBlock.OfFulu(anchorBlock),
-            anchorRoot);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(),
+            fuluAnchor: new SignedGloasChain.FuluBlock(anchorBlock, anchorRoot, anchorState));
         long refusedBefore = RefusedByForkChoice("body_attester_slashing");
 
         BlockImportResult result = importer.Import(new ForkedSignedBeaconBlock.OfGloas(block), root, verifySignatures: false);

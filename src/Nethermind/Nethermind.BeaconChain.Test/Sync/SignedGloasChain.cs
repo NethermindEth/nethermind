@@ -148,10 +148,10 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
     }
 
     /// <summary>A real importer on the anchor whose store can hold Gloas blocks.</summary>
-    public BlockImporter CreateImporter(IEngineDriver engine, System.Func<Hash256, ExecutionPayloadBid, bool>? isEnvelopeDataAvailable = null, ForkChoiceSnapshotHolder? snapshots = null, BeaconChainStore? store = null, ILogManager? logManager = null, SlotClock? clock = null, FailedBlockRoots? failedBlocks = null, Block? gloasAnchor = null)
+    public BlockImporter CreateImporter(IEngineDriver engine, System.Func<Hash256, ExecutionPayloadBid, bool>? isEnvelopeDataAvailable = null, ForkChoiceSnapshotHolder? snapshots = null, BeaconChainStore? store = null, ILogManager? logManager = null, SlotClock? clock = null, FailedBlockRoots? failedBlocks = null, Block? gloasAnchor = null, FuluBlock? fuluAnchor = null)
     {
         PubkeyCache pubkeys = new();
-        pubkeys.Build(AnchorState.Validators!);
+        pubkeys.Build((fuluAnchor?.PostState ?? AnchorState).Validators!);
         return new BlockImporter(
             Spec,
             store ?? CreateStore(),
@@ -162,9 +162,9 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
             ReplayedBlockAvailability.Instance,
             isEnvelopeDataAvailable ?? (static (_, _) => true),
             clock ?? new SlotClock(Spec, Timestamper.Default),
-            gloasAnchor is null ? new ForkedBeaconState.OfFulu(AnchorState) : new ForkedBeaconState.OfGloas(gloasAnchor.PostState),
-            gloasAnchor?.Forked ?? new ForkedSignedBeaconBlock.OfFulu(AnchorBlock),
-            gloasAnchor?.Root ?? AnchorRoot,
+            gloasAnchor is null ? new ForkedBeaconState.OfFulu(fuluAnchor?.PostState ?? AnchorState) : new ForkedBeaconState.OfGloas(gloasAnchor.PostState),
+            gloasAnchor?.Forked ?? new ForkedSignedBeaconBlock.OfFulu(fuluAnchor?.Signed ?? AnchorBlock),
+            gloasAnchor?.Root ?? fuluAnchor?.Root ?? AnchorRoot,
             snapshots,
             failedBlocks: failedBlocks);
     }
