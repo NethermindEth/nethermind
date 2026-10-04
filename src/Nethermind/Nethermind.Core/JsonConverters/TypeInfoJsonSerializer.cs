@@ -98,22 +98,34 @@ public static class TypeInfoJsonSerializer
 
     /// <remarks>
     /// Converters call into the serializer once per nested value, so a lookup in the options' metadata cache on every call is
-    /// measurable; one remembered entry per type serves the common case of a single options instance.
+    /// measurable. Two remembered entries per type serve the request and response options together without evicting each
+    /// other; misses replace them in turn, so an entry for options that are no longer used is gone after the next miss.
     /// </remarks>
     private static class TypeInfoCache<T>
     {
-        private static Entry? _entry;
+        private static Entry? _first;
+        private static Entry? _second;
+        private static bool _replaceSecond;
 
         public static JsonTypeInfo<T> Get(JsonSerializerOptions options)
         {
-            Entry? entry = _entry;
+            Entry? entry = _first;
+            if (entry is not null && ReferenceEquals(entry.Options, options))
+            {
+                return entry.TypeInfo;
+            }
+
+            entry = _second;
             if (entry is not null && ReferenceEquals(entry.Options, options))
             {
                 return entry.TypeInfo;
             }
 
             JsonTypeInfo<T> typeInfo = (JsonTypeInfo<T>)GetTypeInfo(options, typeof(T));
-            _entry = new Entry(options, typeInfo);
+            Entry created = new(options, typeInfo);
+            if (_replaceSecond) _second = created;
+            else _first = created;
+            _replaceSecond = !_replaceSecond;
             return typeInfo;
         }
 

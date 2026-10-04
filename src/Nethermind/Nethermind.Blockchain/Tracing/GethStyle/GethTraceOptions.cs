@@ -58,5 +58,5 @@ public record GethTraceOptions
     /// </summary>
     public bool? StreamMode { get; init; }
 
-    public static GethTraceOptions Default { get; } = new();
+    public static GethTraceOptions Default => new();
 }
