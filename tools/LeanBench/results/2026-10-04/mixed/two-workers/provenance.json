@@ -1,0 +1,36 @@
+{
+  "measurementScope": "one offline two-worker native S1+G1 recursive merge of exactly the previously prepared parents; no clients, transport or throughput measurement",
+  "sourceRevision": "03df8d0528c68e7f5f89c698b973d3fcf89aa4dc",
+  "parentPreparationSourceRevision": "899d7907c3f34966174350a71f2133cc97fd1317",
+  "nativeRevision": "854997bd156f47f1b1ce2192c4499741f29bd0df",
+  "workerCount": 2,
+  "allocationPoisoning": false,
+  "packagedRuntimeDefaultWorkers": 1,
+  "resourceProbeSha256": "8b15fb71905f4a6a9677c38468d5d5c7df804315e0bc47f739a30a05f428d24c",
+  "publicArtifactSha256": {
+    "profile-key.bin": "d38c934304cf51fb1d93d54de22b2328340a9c955b6774b3a5b1ea8816e18c19",
+    "dependencies.bin": "65cb2c7c68d8b5beecd7c49463893f9d2c917cccdd619949554fce34b638673b",
+    "dependency-hash.bin": "bf85786511febb4a2a5dd852fcdcceb66b89d798855de185ba11e5f7c91644f1",
+    "input.bin": "e9a5aab298f49b39329e2f5b0c2d0b7b2e520f8c1dd4020022624c51eb3fc401",
+    "sphincs-parent.bin": "9b13777464a395f8fa9610e5ccd3e74d086886058a8f9b76f52ea2b84a69cb50",
+    "generic-parent.bin": "f02a08e3ae265eb29c16d3587a17c0df52fe6be58f4a378d1f4932df8f4e5ece",
+    "mixed-root.bin": "93e8639c033ea68ad868fc78caa805ef5f94c6f3c0d786799e9bf24215e0dea1"
+  },
+  "identicalRootToOneWorker": true,
+  "mergeProcess": {
+    "wallSeconds": 13.4,
+    "maximumResidentKiB": 1811580,
+    "provingMilliseconds": 12350.085,
+    "verificationMilliseconds": 91.85,
+    "totalMilliseconds": 13369.913,
+    "inputBytes": 579660,
+    "proofBytes": 325548
+  },
+  "originalRawSha256": {
+    "environment.txt": "2943bc6adfd73ab838585d38a6bcba3452bf58fdeb2989dbb218b5202ce3fbe1",
+    "input-output-sha256.txt": "074860c1ec72018a0668da0e220bcea6b6b0aa8732df919f39c913b6e41f08ed",
+    "mixed-merge.csv": "74d03a7ca64106a735902c5fa12ef696d9a19922957b11a7de08a1824456d704",
+    "mixed-merge.time": "85d6d78c6c853b2e8ca457555194e6164b618ec79c4640e58a1bfd3ae099861d",
+    "native-profile.json": "d2f12f22668db5adabe24bea8fa64234d68f94dbd1046108a9b9dd4c3b3c9d57"
+  }
+}

@@ -13,7 +13,20 @@ One genuine SPHINCS claim and one distinct generic STARK claim were prepared as 
 
 The fresh merge process took **23.69 s** wall time: the probe measured **22.596 s** proving and **145.819 ms** final verification. GNU `time` reported a maximum resident set of **1,711,244 KiB (1.632 GiB)**. This is whole native-probe process RSS, including cold setup, parent verification, proving and final verification; it is not an isolated allocation count or a Runner memory guarantee. Parent preparation ran separately, with a 61.90 s process wall time and 3,636,812 KiB peak RSS. The preparation script also generated two signature/generic fixtures before the probe; those operations are excluded from the fresh merge interval.
 
-This is **one offline capture**, with no warmup or repeated samples, no execution/beacon nodes and no network traffic. It establishes small-case recursive functionality and the captured byte sizes. It does not establish throughput, stable tail latency, slot-time compatibility, larger-program/dependency capacity, or the RAM margin for two concurrent client provers.
+This is **one offline case**, captured once per worker setting with no warmup or repeated samples, no execution/beacon nodes and no network traffic. It establishes small-case recursive functionality and the captured byte sizes. It does not establish throughput, stable tail latency, slot-time compatibility, larger-program/dependency capacity, or the RAM margin for two concurrent client provers.
+
+## Two-worker comparison
+
+![Offline worker timing and whole-process RSS](worker-timing.png)
+
+| Workers | Process wall | Proving call | Final verification | Peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 23.69 s | 22,595.643 ms | 145.819 ms | 1,711,244 KiB (1.632 GiB) |
+| 2 | 13.40 s | 12,350.085 ms | 91.850 ms | 1,811,580 KiB (1.728 GiB) |
+
+The two-worker process consumed the same prepared parents and 579,660-byte input, and produced the **identical 325,548-byte root**, SHA-256 `93e8639c033ea68ad868fc78caa805ef5f94c6f3c0d786799e9bf24215e0dea1`. Its source checkout was `03df8d0528c68e7f5f89c698b973d3fcf89aa4dc`; the one-worker capture and parent preparation used `899d7907c3f34966174350a71f2133cc97fd1317`. Both resource-probe executables have the same recorded SHA-256 and use fork `854997bd…`, key `9370d760…`, inverse-rate log 1, native CPU targeting and no allocation poisoning. The [two-worker provenance](two-workers/provenance.json), [environment](two-workers/environment.txt), [input/output hashes](two-workers/input-output-sha256.txt), [CSV](two-workers/mixed-merge.csv), [GNU time output](two-workers/mixed-merge.time) and [raw checksums](two-workers/sha256sums.txt) preserve the separate capture.
+
+This observed reduction is one offline merge comparison, not sustained transaction goodput or a capacity claim. Both process wall times exceed the plotted 12-second slot reference; that marker is not a proving deadline or a slot-time guarantee. The prepared live test keeps **one worker** unchanged. Repeat only the separately prepared merge command with `LEANVM_NUM_THREADS=2` to reproduce this setting, preserving new outputs and hashes rather than overwriting the first capture.
 
 ## Provenance and reproduce
 

@@ -1,0 +1,26 @@
+{
+  "sourceRevision": "03df8d0528c68e7f5f89c698b973d3fcf89aa4dc",
+  "nativeRevision": "854997bd156f47f1b1ce2192c4499741f29bd0df",
+  "abi": 5,
+  "guestKey": "9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace",
+  "bounds": [
+    8388608,
+    256,
+    16,
+    6208,
+    16,
+    2048,
+    65535,
+    18874368,
+    8364020
+  ],
+  "architecture": "x86_64",
+  "nativeWorkers": 1,
+  "rustFlags": "-C target-cpu=native",
+  "binarySha256": {
+    "client/libnethermind_lean.so": "c639ff7bf020203b18ca56c72d3145af9d72465e7042ab06caaf5dbebf86dd95",
+    "client/nethermind.dll": "a46efb70958a61f19c9d5ac43407147465bedf456ae4649619be681f929a0ddc",
+    "helper/LeanBench.dll": "729428e7155adfe74498f02f94a75c8796bdd713ac0110a587869d400cc07946",
+    "helper/libnethermind_lean.so": "c639ff7bf020203b18ca56c72d3145af9d72465e7042ab06caaf5dbebf86dd95"
+  }
+}
