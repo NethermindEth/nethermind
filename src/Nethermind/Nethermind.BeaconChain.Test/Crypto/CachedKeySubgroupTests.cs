@@ -7,6 +7,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -67,13 +68,6 @@ public class CachedKeySubgroupTests
         return new SignedVoluntaryExit { Message = exit, Signature = SignBy(validatorIndex, ExitDomain(genesisValidatorsRoot), SszRoots.HashTreeRoot(exit)) };
     }
 
-    private static Hash256 EpochRoot(ulong epoch)
-    {
-        byte[] root = new byte[32];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(root, epoch);
-        return new Hash256(root);
-    }
-
     [Test]
     public void Fulu_proposer_signature_under_a_key_outside_the_subgroup_is_refused([Values] bool offSubgroup)
     {
@@ -98,7 +92,7 @@ public class CachedKeySubgroupTests
     public void Fulu_randao_reveal_under_a_key_outside_the_subgroup_is_refused([Values] bool offSubgroup)
     {
         BeaconStateFulu state = CreateFuluState(KeyCount);
-        BlsSignature reveal = SignBy(SignerIndex, state.GetDomain(DomainType.Randao, 3), EpochRoot(3));
+        BlsSignature reveal = SignBy(SignerIndex, state.GetDomain(DomainType.Randao, 3), ImportableBlobBlock.EpochRoot(3));
 
         Assert.That(SignatureSets.VerifyRandaoReveal(state, SignerIndex, 3, reveal, Cache(offSubgroup)), Is.EqualTo(!offSubgroup));
     }
@@ -195,7 +189,7 @@ public class CachedKeySubgroupTests
         BeaconStateGloas state = CreateGloasState(out _, out _);
         int proposerIndex = (int)state.GetBeaconProposerIndex();
         ulong epoch = state.GetCurrentEpoch();
-        BeaconBlockBodyGloas body = new() { RandaoReveal = SignBy(proposerIndex, state.GetDomain(DomainType.Randao, epoch), EpochRoot(epoch)) };
+        BeaconBlockBodyGloas body = new() { RandaoReveal = SignBy(proposerIndex, state.GetDomain(DomainType.Randao, epoch), ImportableBlobBlock.EpochRoot(epoch)) };
         PubkeyCache cache = Cache(offSubgroup, torsionIndex: proposerIndex);
 
         Action process = () => GloasBlockProcessing.ProcessRandao(state, body, cache);
@@ -237,7 +231,7 @@ public class CachedKeySubgroupTests
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         state.ProposerLookahead![(int)(state.Slot % Presets.SlotsPerEpoch)] = proposerIndex;
-        BeaconBlockBodyGloas body = new() { RandaoReveal = SignBy(0, state.GetDomain(DomainType.Randao, state.GetCurrentEpoch()), EpochRoot(state.GetCurrentEpoch())) };
+        BeaconBlockBodyGloas body = new() { RandaoReveal = SignBy(0, state.GetDomain(DomainType.Randao, state.GetCurrentEpoch()), ImportableBlobBlock.EpochRoot(state.GetCurrentEpoch())) };
         GloasBlockProcessing.ProcessRandao(state, body, SameKeyCache());
     }
 

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Crypto;
@@ -74,7 +73,7 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
         message.ProposerIndex = (ulong)preState.GetBeaconProposerIndex();
         Bls.SecretKey proposerKey = ValidatorKey((int)message.ProposerIndex);
         BeaconBlockBody body = message.Body!;
-        body.RandaoReveal = Sign(proposerKey, Domains.ComputeSigningRoot(EpochRoot(epoch), preState.GetDomain(DomainType.Randao, epoch)));
+        body.RandaoReveal = Sign(proposerKey, Domains.ComputeSigningRoot(ImportableBlobBlock.EpochRoot(epoch), preState.GetDomain(DomainType.Randao, epoch)));
         body.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(SignatureSets.G2PointAtInfinity);
         Nethermind.BeaconChain.Types.ExecutionPayload payload = body.ExecutionPayload!;
         payload.ParentHash = preState.LatestExecutionPayloadHeader!.BlockHash;
@@ -136,7 +135,7 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
 
         Bls.SecretKey proposerKey = ValidatorKey((int)message.ProposerIndex);
         ulong epoch = state.GetCurrentEpoch();
-        message.Body!.RandaoReveal = Sign(proposerKey, Domains.ComputeSigningRoot(EpochRoot(epoch), state.GetDomain(DomainType.Randao, epoch)));
+        message.Body!.RandaoReveal = Sign(proposerKey, Domains.ComputeSigningRoot(ImportableBlobBlock.EpochRoot(epoch), state.GetDomain(DomainType.Randao, epoch)));
         Hash256 proposerDomain = state.GetDomain(DomainType.BeaconProposer, epoch);
 
         GloasBlockProcessing.ProcessBlock(state, message, cache, new PubkeyCache(), new AcceptingNotifier(), Spec, verifySignatures: false);
@@ -170,13 +169,6 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
     }
 
     public BeaconChainStore CreateStore() => new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
-
-    private static Hash256 EpochRoot(ulong epoch)
-    {
-        byte[] root = new byte[32];
-        BinaryPrimitives.WriteUInt64LittleEndian(root, epoch);
-        return new Hash256(root);
-    }
 
     /// <summary>Answers every block body VALID and every envelope with <see cref="EnvelopeVerdict"/>, counting the envelope calls.</summary>
     internal sealed class EnvelopeEngine : IEngineDriver

@@ -26,32 +26,18 @@ public class CachedHasherFixedVectorTests
 {
     private const int ValidatorCount = 64;
 
-    public static IEnumerable<TestCaseData> FuluCases() => Cases(FuluFields);
+    public static IEnumerable<TestCaseData> FuluCases() => Cases(FuluFields, false, "Fulu_cached_hasher_matches_generated_hasher_for_vector_length");
 
-    public static IEnumerable<TestCaseData> GloasCases() => Cases(GloasFields);
+    public static IEnumerable<TestCaseData> GloasCases() => Cases(GloasFields, true, "Gloas_cached_hasher_matches_generated_hasher_for_vector_length");
 
+    /// <summary>Checks vector refusal and cache recovery against the generated SSZ hasher for both forks.</summary>
     [TestCaseSource(nameof(FuluCases))]
-    public void Fulu_cached_hasher_matches_generated_hasher_for_vector_length(string field, int? length, bool warm)
-    {
-        FixedField<BeaconStateFulu> target = FuluFields.Find(f => f.Name == field)!;
-        CachedBeaconStateHasher hasher = new();
-        BeaconStateFulu state = CreateFuluStateAtBoundary(ValidatorCount);
-        if (warm)
-            hasher.HashTreeRoot(state);
-
-        target.Resize(state, length);
-
-        AssertParity(() => SszRoots.HashTreeRoot(state), () => hasher.HashTreeRoot(state), field, length);
-        target.Resize(state, target.ExactLength);
-        Assert.That(hasher.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(state)), "a refused state must not poison the caches");
-    }
-
     [TestCaseSource(nameof(GloasCases))]
-    public void Gloas_cached_hasher_matches_generated_hasher_for_vector_length(string field, int? length, bool warm)
+    public void Cached_hasher_matches_generated_hasher_for_vector_length(bool gloas, string field, int? length, bool warm)
     {
-        FixedField<BeaconStateGloas> target = GloasFields.Find(f => f.Name == field)!;
+        FixedField target = (gloas ? GloasFields : FuluFields).Find(f => f.Name == field)!;
         CachedBeaconStateHasher hasher = new();
-        BeaconStateGloas state = CreateGloasState(out _, out _);
+        dynamic state = gloas ? (object)CreateGloasState(out _, out _) : CreateFuluStateAtBoundary(ValidatorCount);
         if (warm)
             hasher.HashTreeRoot(state);
 
@@ -59,7 +45,7 @@ public class CachedHasherFixedVectorTests
 
         AssertParity(() => SszRoots.HashTreeRoot(state), () => hasher.HashTreeRoot(state), field, length);
         target.Resize(state, target.ExactLength);
-        Assert.That(hasher.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(state)), "a refused state must not poison the caches");
+        Assert.That((Hash256)hasher.HashTreeRoot(state), Is.EqualTo((Hash256)SszRoots.HashTreeRoot(state)), "a refused state must not poison the caches");
     }
 
     [Test]
@@ -115,19 +101,7 @@ public class CachedHasherFixedVectorTests
         AssertNullRootElement(state, field, warm, RootVector(state, field), s => hasher.HashTreeRoot(s), s => SszRoots.HashTreeRoot(s));
     }
 
-    private static Hash256[] RootVector(BeaconStateFulu state, string field) => field switch
-    {
-        "BlockRoots" => state.BlockRoots!,
-        "StateRoots" => state.StateRoots!,
-        _ => state.RandaoMixes!,
-    };
-
-    private static Hash256[] RootVector(BeaconStateGloas state, string field) => field switch
-    {
-        "BlockRoots" => state.BlockRoots!,
-        "StateRoots" => state.StateRoots!,
-        _ => state.RandaoMixes!,
-    };
+    private static Hash256[] RootVector(object state, string field) => (Hash256[])state.GetType().GetProperty(field)!.GetValue(state)!;
 
     // An earlier changed element plus a later null proves a refusal cannot leave a half-updated tree behind.
     private static void AssertNullRootElement<TState>(TState state, string field, bool warm, Hash256[] vector,
@@ -176,43 +150,41 @@ public class CachedHasherFixedVectorTests
         }
     }
 
-    private static IEnumerable<TestCaseData> Cases<TState>(List<FixedField<TState>> fields)
+    private static IEnumerable<TestCaseData> Cases(List<FixedField> fields, bool gloas, string method)
     {
-        foreach (FixedField<TState> field in fields)
+        foreach (FixedField field in fields)
         {
             foreach (int? length in (int?[])[null, 0, 1, field.ExactLength - 1, field.ExactLength, field.ExactLength + 1, field.ExactLength * 2])
             {
                 foreach (bool warm in (bool[])[false, true])
                 {
-                    yield return new TestCaseData(field.Name, length, warm).SetName($"{{m}}({field.Name}, {(length is null ? "null" : length)}, warm: {warm})");
+                    yield return new TestCaseData(gloas, field.Name, length, warm).SetName($"{method}({field.Name}, {(length is null ? "null" : length)}, warm: {warm})");
                 }
             }
         }
     }
 
-    private sealed record FixedField<TState>(string Name, int ExactLength, Action<TState, int?> Resize);
+    private sealed record FixedField(string Name, int ExactLength, Func<int?, object?> Create)
+    {
+        public void Resize(object state, int? length) => state.GetType().GetProperty(Name)!.SetValue(state, Create(length));
+    }
 
-    private static readonly List<FixedField<BeaconStateFulu>> FuluFields =
+    private static readonly List<FixedField> FuluFields =
     [
-        new("BlockRoots", (int)Presets.SlotsPerHistoricalRoot, (s, n) => s.BlockRoots = Roots(n)),
-        new("StateRoots", (int)Presets.SlotsPerHistoricalRoot, (s, n) => s.StateRoots = Roots(n)),
-        new("RandaoMixes", (int)Presets.EpochsPerHistoricalVector, (s, n) => s.RandaoMixes = Roots(n)),
-        new("Slashings", (int)Presets.EpochsPerSlashingsVector, (s, n) => s.Slashings = Words(n)),
-        new("JustificationBits", 4, (s, n) => s.JustificationBits = Bits(n)),
-        new("ProposerLookahead", (int)Presets.ProposerLookaheadSlots, (s, n) => s.ProposerLookahead = Words(n)),
+        new("BlockRoots", (int)Presets.SlotsPerHistoricalRoot, n => Roots(n)),
+        new("StateRoots", (int)Presets.SlotsPerHistoricalRoot, n => Roots(n)),
+        new("RandaoMixes", (int)Presets.EpochsPerHistoricalVector, n => Roots(n)),
+        new("Slashings", (int)Presets.EpochsPerSlashingsVector, n => Words(n)),
+        new("JustificationBits", 4, n => Bits(n)),
+        new("ProposerLookahead", (int)Presets.ProposerLookaheadSlots, n => Words(n)),
     ];
 
-    private static readonly List<FixedField<BeaconStateGloas>> GloasFields =
+    private static readonly List<FixedField> GloasFields =
     [
-        new("BlockRoots", (int)Presets.SlotsPerHistoricalRoot, (s, n) => s.BlockRoots = Roots(n)),
-        new("StateRoots", (int)Presets.SlotsPerHistoricalRoot, (s, n) => s.StateRoots = Roots(n)),
-        new("RandaoMixes", (int)Presets.EpochsPerHistoricalVector, (s, n) => s.RandaoMixes = Roots(n)),
-        new("Slashings", (int)Presets.EpochsPerSlashingsVector, (s, n) => s.Slashings = Words(n)),
-        new("JustificationBits", 4, (s, n) => s.JustificationBits = Bits(n)),
-        new("ProposerLookahead", (int)Presets.ProposerLookaheadSlots, (s, n) => s.ProposerLookahead = Words(n)),
-        new("ExecutionPayloadAvailability", (int)Presets.SlotsPerHistoricalRoot, (s, n) => s.ExecutionPayloadAvailability = Bits(n)),
-        new("BuilderPendingPayments", (int)Presets.BuilderPendingPaymentsLength, (s, n) => s.BuilderPendingPayments = Items<BuilderPendingPayment>(n)),
-        new("PtcWindow", (int)Presets.PtcWindowLength, (s, n) => s.PtcWindow = Items<PayloadTimelinessCommittee>(n)),
+        .. FuluFields,
+        new("ExecutionPayloadAvailability", (int)Presets.SlotsPerHistoricalRoot, n => Bits(n)),
+        new("BuilderPendingPayments", (int)Presets.BuilderPendingPaymentsLength, n => Items<BuilderPendingPayment>(n)),
+        new("PtcWindow", (int)Presets.PtcWindowLength, n => Items<PayloadTimelinessCommittee>(n)),
     ];
 
     private static Hash256[]? Roots(int? length)
