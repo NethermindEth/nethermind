@@ -230,6 +230,26 @@ public class GuestJumpDestinationTests
         AssertQueriesMatch(code, expected, "backward", backward);
         AssertQueriesMatch(code, expected, "shuffled", Shuffled(code.Length));
         AssertQueriesMatch(code, expected, "forward then backward", [.. forward, .. backward]);
+        if (code[0] != (byte)Instruction.STOP)
+        {
+            AssertJumpHandlerQueriesMatch(code, expected, backward);
+            AssertJumpHandlerQueriesMatch(code, expected, Shuffled(code.Length));
+        }
+    }
+
+    /// <summary>Queries <paramref name="order"/> the way the guest jump handlers do, analyzing only what the bit test misses.</summary>
+    private static void AssertJumpHandlerQueriesMatch(byte[] code, long[] expected, int[] order)
+    {
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
+        foreach (int i in order)
+        {
+            bool isJumpDestination = stack.IsKnownJumpDestination(i) ||
+                stack.TryMarkJumpDestination(i, ref code[0]) ||
+                stack.AnalyzeJumpDestination(i, ref code[0]);
+            Assert.That(isJumpDestination, Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"jump handler {i}");
+        }
     }
 
     /// <summary>Queries <paramref name="order"/> on one fresh code info, each query leaving its bitmap and cursor to the next.</summary>

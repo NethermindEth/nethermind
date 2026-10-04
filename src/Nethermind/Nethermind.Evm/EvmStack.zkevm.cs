@@ -38,6 +38,24 @@ public ref partial struct EvmStack
         _codeInfo is not null && _codeInfo.AnalyzeJump(destination, _jumpDestinations!, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength));
 
     /// <summary>
+    /// Analyzes <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, as the
+    /// destination of the jump running, and reports whether it is a jump destination.
+    /// </summary>
+    /// <param name="destination">The destination.</param>
+    /// <param name="code">The first byte of <see cref="Code"/>, as dispatch carries it.</param>
+    /// <remarks>
+    /// <see cref="AnalyzeJumpDestination(int)"/> without the tests that running code makes redundant: the code holds
+    /// the jump, so it does not start with STOP, and the destination is inside it.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal readonly bool AnalyzeJumpDestination(nint destination, ref byte code)
+    {
+        CodeInfo? codeInfo = _codeInfo;
+        return codeInfo is not null && Unsafe.Add(ref code, destination) == (byte)Instruction.JUMPDEST &&
+            codeInfo.AnalyzeRunningJump(destination, _jumpDestinations!, ref code);
+    }
+
+    /// <summary>
     /// Marks <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, when a single
     /// look-back proves it the destination of the jump running, and reports whether it did.
     /// </summary>
@@ -50,7 +68,8 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal readonly bool TryMarkJumpDestination(nint destination, ref byte code)
     {
-        if (_codeInfo is null || !_codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
+        CodeInfo? codeInfo = _codeInfo;
+        if (codeInfo is null || !codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
 
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
         segment |= 1L << (int)destination;

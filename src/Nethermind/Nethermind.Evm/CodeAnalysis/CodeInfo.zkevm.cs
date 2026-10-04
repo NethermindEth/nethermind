@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -49,9 +50,23 @@ public sealed partial class CodeInfo
     /// start of the code (see <see cref="JumpDestinationAnalyzer.AnalyzeJump"/>). The caller passes the bitmap
     /// and code it already holds.
     /// </remarks>
+    // Out of line: it carries the whole inlined analysis, which the shared jump handlers reaching it should not.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal bool AnalyzeJump(int destination, long[] bitmap, ReadOnlySpan<byte> code) =>
         code[0] != (byte)Instruction.STOP && code[destination] == (byte)Instruction.JUMPDEST &&
-        JumpDestinationAnalyzer.AnalyzeJump(destination, bitmap, code, ref _analyzedUntil);
+        AnalyzeRunningJump(destination, bitmap, ref MemoryMarshal.GetReference(code));
+
+    /// <summary>
+    /// <see cref="AnalyzeJump"/> for <paramref name="destination"/>, a JUMPDEST byte inside the code whose bit is still
+    /// clear, in code that does not start with STOP.
+    /// </summary>
+    /// <param name="destination">The position of a JUMPDEST byte in the code.</param>
+    /// <param name="bitmap">This code's <see cref="IncrementalJumpBitmap"/>.</param>
+    /// <param name="code">The first byte of this code.</param>
+    /// <remarks>A jump handler has tested the byte already, and code that starts with STOP halts before any jump.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool AnalyzeRunningJump(nint destination, long[] bitmap, ref byte code) =>
+        JumpDestinationAnalyzer.AnalyzeJump(destination, bitmap, ref code, ref _analyzedUntil);
 
     /// <summary>Reports whether a single look-back proves <paramref name="destination"/> the destination of the jump running.</summary>
     /// <param name="destination">A destination inside the code.</param>

@@ -2280,8 +2280,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>The rest of <see cref="ExecuteJumpToUnanalyzedDestination{TConditional}"/> for a destination a single look-back cannot decide.</summary>
         /// <remarks>
-        /// Analyzing the destination needs a call, so this handler has a frame and the handlers before it do not pay
-        /// for it. An invalid destination runs the shared jump handler, which faults on it.
+        /// The analysis is inlined here and needs callee-saved registers, so this handler has a frame and the handlers
+        /// before it do not pay for it. An invalid destination runs the shared jump handler, which faults on it.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -2296,14 +2296,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte bottom)
             where TConditional : struct, IFlag
         {
-            int target = (int)Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
-            bool valid = stack.AnalyzeJumpDestination(target);
-            // Reloaded rather than held across the call, where each would take a callee-saved register.
-            handlers = state.OpcodeHandlers;
-            code = ref stack.Code;
-            bottom = ref stack.Bottom;
-            if (valid)
+            nint target = (nint)Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
+            if (stack.AnalyzeJumpDestination(target, ref code))
             {
+                // Reloaded rather than held across the inlined analysis, which needs the callee-saved registers.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                bottom = ref stack.Bottom;
                 head -= TConditional.IsActive ? 2 : 1;
                 gas -= JumpAndJumpDestGas<TConditional>();
                 ip = ref Unsafe.Add(ref code, target + 1);
@@ -2316,7 +2315,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     &ExecuteJumpIfOpcode<OffFlag, OffFlag>
                 : (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                     &ExecuteOpcode<JumpOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
-            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, state.OpcodeHandlers, ref stack.Code, ref stack.Bottom, shared);
         }
 
         /// <summary>The charge of a taken JUMP, or with <typeparamref name="TConditional"/> a taken JUMPI, and the JUMPDEST it lands on.</summary>
