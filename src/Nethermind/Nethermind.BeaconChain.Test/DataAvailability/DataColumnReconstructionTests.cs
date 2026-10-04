@@ -17,18 +17,11 @@ public class DataColumnReconstructionTests
         DataColumnKzgFixture.BlobFixture[] blobs = [.. Enumerable.Range(0, blobCount).Select(i => DataColumnKzgFixture.BuildBlob((byte)(0x20 * (i + 1))))];
         SszKzgCommitment[] commitments = [.. blobs.Select(DataColumnKzgFixture.CommitmentOf)];
 
-        SignedBeaconBlockHeader header = new()
-        {
-            Message = new BeaconBlockHeader
-            {
-                Slot = 42,
-                ProposerIndex = 0,
-                ParentRoot = new Hash256(Enumerable.Repeat((byte)0x09, 32).ToArray()),
-                StateRoot = new Hash256(Enumerable.Repeat((byte)0x0A, 32).ToArray()),
-                BodyRoot = new Hash256(Enumerable.Repeat((byte)0x0B, 32).ToArray()),
-            },
-            Signature = new BlsSignature(new byte[BlsSignature.Length]),
-        };
+        SignedBeaconBlockHeader header = ReconstructionBroadcastTests.Header();
+        header.Message!.ProposerIndex = 0;
+        header.Message.ParentRoot = new Hash256(Enumerable.Repeat((byte)0x09, 32).ToArray());
+        header.Message.StateRoot = new Hash256(Enumerable.Repeat((byte)0x0A, 32).ToArray());
+        header.Message.BodyRoot = new Hash256(Enumerable.Repeat((byte)0x0B, 32).ToArray());
         Hash256[] inclusionProof = [.. Enumerable.Range(0, Eip7594DasConstants.KzgCommitmentsInclusionProofDepth)
             .Select(i => new Hash256(Enumerable.Repeat((byte)(0xC0 + i), 32).ToArray()))];
 
