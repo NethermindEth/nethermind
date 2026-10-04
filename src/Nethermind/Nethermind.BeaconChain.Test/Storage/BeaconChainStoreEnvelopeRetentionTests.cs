@@ -200,7 +200,8 @@ public class BeaconChainStoreEnvelopeRetentionTests
         _ => throw new ArgumentOutOfRangeException(nameof(damage)),
     };
 
-    private static byte[] Bounds(ulong lowest, ulong highest)
+    /// <summary>Encodes the inclusive stored slot bounds.</summary>
+    internal static byte[] Bounds(ulong lowest, ulong highest)
     {
         byte[] value = new byte[2 * sizeof(ulong)];
         BinaryPrimitives.WriteUInt64BigEndian(value, lowest);
