@@ -42,7 +42,7 @@ namespace Nethermind.BeaconChain.Test.Api;
 /// beacon-APIs v5.0.0-alpha.2 <c>getBlobs</c> (apis/beacon/blobs/blobs.yaml): blobs rebuilt from the stored data columns of a block,
 /// directly from columns 0 to 63 or through cell recovery from any other half (fulu/das-core.md recover_matrix).
 /// </summary>
-public class BeaconApiBlobsTests
+public class BeaconApiBlobsTests : BeaconApiFixture
 {
     private const string Json = "application/json";
     private const string OctetStream = "application/octet-stream";
@@ -61,7 +61,6 @@ public class BeaconApiBlobsTests
     private static readonly Hash256 GloasRoot = TestRoot(0xb6);
     private static readonly Hash256 DamagedRoot = TestRoot(0xb7);
 
-    private BeaconApiTestHost _host = null!;
     private SszKzgCommitment[] _commitments = null!;
 
     [OneTimeSetUp]
@@ -102,9 +101,6 @@ public class BeaconApiBlobsTests
             });
         }
     }
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     [Test]
     public async Task Accepted_columns_serve_blobs_before_the_store_writer_drains([Values] bool gloas, [Values(0, 32)] int storedColumns)

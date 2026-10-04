@@ -18,7 +18,7 @@ namespace Nethermind.BeaconChain.Test.Api;
 /// every served randao index and every committee position a distinct, independently known value, so a
 /// wrong vector index, period or subnet slice reads a different value rather than the same fill.
 /// </summary>
-public class BeaconStatesRandaoAndSyncCommitteesTests
+public class BeaconStatesRandaoAndSyncCommitteesTests : BeaconApiFixture
 {
     private const string Json = "application/json";
 
@@ -35,8 +35,6 @@ public class BeaconStatesRandaoAndSyncCommitteesTests
     private static readonly Hash256 StateRoot = BeaconApiTestHost.TestRoot(0x70);
     private static readonly Hash256 CorruptRoot = BeaconApiTestHost.TestRoot(0x71);
 
-    private BeaconApiTestHost _host = null!;
-
     [OneTimeSetUp]
     public async Task StartHost()
     {
@@ -47,9 +45,6 @@ public class BeaconStatesRandaoAndSyncCommitteesTests
         corrupt.CurrentSyncCommittee!.Pubkeys![300] = BeaconApiTestHost.FilledPubkey(0xee);
         Put(CorruptRoot, CorruptSlot, corrupt);
     }
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     [SetUp]
     public void ResetSharedState() => _host.SetStatus(StateRoot, Hash256.Zero, 0);

@@ -24,7 +24,7 @@ namespace Nethermind.BeaconChain.Test.Api;
 /// re-running the production code - so a wrong classification or a broken shuffling partition would
 /// actually fail these.
 /// </summary>
-public class BeaconStatesValidatorsAndCommitteesTests
+public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
@@ -32,17 +32,12 @@ public class BeaconStatesValidatorsAndCommitteesTests
     private const ulong StateEpoch = 412_500;
     private const ulong StateSlot = StateEpoch * 32;
 
-    private BeaconApiTestHost _host = null!;
-
     [OneTimeSetUp]
     public async Task StartHost()
     {
         _host = await BeaconApiTestHost.StartAsync(Spec, forkAwareStore: false);
         _host.Client.Timeout = TimeSpan.FromSeconds(5);
     }
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     /// <summary>
     /// One validator per beacon-api status string, each constructed so only one branch of
@@ -87,96 +82,29 @@ public class BeaconStatesValidatorsAndCommitteesTests
         }
     }
 
-    [TestCase("active", new[] { "active_ongoing", "active_exiting", "active_slashed" })]
-    [TestCase("exited", new[] { "exited_unslashed", "exited_slashed" })]
-    [TestCase("active_ongoing", new[] { "active_ongoing" })]
-    public async Task Validators_list_status_filter_matches_the_broad_group_or_the_exact_status(string filter, string[] expectedStatuses)
+    [TestCase("validators", "status=active", "status", new[] { "active_ongoing", "active_exiting", "active_slashed" })]
+    [TestCase("validators", "status=exited", "status", new[] { "exited_unslashed", "exited_slashed" })]
+    [TestCase("validators", "status=active_ongoing", "status", new[] { "active_ongoing" })]
+    [TestCase("validators", "id=0&id={2}", "index", new[] { "0", "2" })]
+    [TestCase("validators", "id={1}&id={4}", "index", new[] { "1", "4" })]
+    [TestCase("validator_balances", "id=0&id={1}&id={4}", "index", new[] { "0", "1", "4" })]
+    [TestCase("validators", "id=0,2", "index", new[] { "0", "2" })]
+    [TestCase("validators", "status=active_ongoing&status=exited_slashed", "status", new[] { "active_ongoing", "exited_slashed" })]
+    public async Task Validator_filters_resolve_mixed_and_multiple_pubkeys_and_union_query_forms(string endpoint, string query, string field, string[] expected)
     {
-        PutStatusState(TestRoot(11));
-
-        HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?status={filter}");
-        JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        JsonElement data = body.RootElement.GetProperty("data");
-
-        List<string> statuses = [.. data.EnumerateArray().Select(e => e.GetProperty("status").GetString()!)];
-        Assert.That(statuses, Is.EquivalentTo(expectedStatuses));
+        Validator[] validators = PutStatusState(TestRoot(11));
+        query = string.Format(query, validators.Select(v => (object)v.Pubkey.ToString()).ToArray());
+        using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/{endpoint}?{query}");
+        using JsonDocument body = await ReadJsonAsync(response);
+        Assert.That(body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty(field).GetString()), Is.EquivalentTo(expected));
     }
 
     [Test]
-    public async Task Validators_list_id_filter_accepts_index_and_pubkey_and_rejects_garbage()
+    public async Task Validator_filter_rejects_a_malformed_id()
     {
-        Validator[] validators = PutStatusState(TestRoot(12));
-
-        string pubkeyOfIndex2 = validators[2].Pubkey.ToString();
-        HttpResponseMessage byMixedId = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id=0&id={pubkeyOfIndex2}");
-        JsonDocument mixedBody = JsonDocument.Parse(await byMixedId.Content.ReadAsStringAsync());
-        List<string> indices = [.. mixedBody.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
-        Assert.That(indices, Is.EquivalentTo(new[] { "0", "2" }));
-
-        HttpResponseMessage badId = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id=not-a-real-id");
-        Assert.That(badId.StatusCode, Is.EqualTo((HttpStatusCode)400));
-    }
-
-    /// <summary>
-    /// A stale or misbuilt per-request pubkey map would resolve the second pubkey id to the wrong
-    /// index (or fail to find it) once the map holds more than one entry - a single-pubkey-id test
-    /// cannot distinguish a correct map from one that only works for its first insertion.
-    /// </summary>
-    [Test]
-    public async Task Validators_list_resolves_multiple_pubkey_ids_through_the_shared_request_map()
-    {
-        Validator[] validators = PutStatusState(TestRoot(20));
-
-        string pubkeyOfIndex1 = validators[1].Pubkey.ToString();
-        string pubkeyOfIndex4 = validators[4].Pubkey.ToString();
-        HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id={pubkeyOfIndex1}&id={pubkeyOfIndex4}");
-        JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        List<string> indices = [.. body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
-        Assert.That(indices, Is.EquivalentTo(new[] { "1", "4" }));
-    }
-
-    /// <summary>
-    /// <c>validator_balances</c> had no id-filter coverage at all before this: this both proves the
-    /// filter works there and, with two pubkey ids, exercises the same shared per-request map as the
-    /// <c>validators</c> list test above.
-    /// </summary>
-    [Test]
-    public async Task Validator_balances_id_filter_accepts_index_and_multiple_pubkey_ids()
-    {
-        Validator[] validators = PutStatusState(TestRoot(21));
-
-        string pubkeyOfIndex1 = validators[1].Pubkey.ToString();
-        string pubkeyOfIndex4 = validators[4].Pubkey.ToString();
-        HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validator_balances?id=0&id={pubkeyOfIndex1}&id={pubkeyOfIndex4}");
-        JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        List<string> indices = [.. body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
-        Assert.That(indices, Is.EquivalentTo(new[] { "0", "1", "4" }));
-    }
-
-    /// <summary>
-    /// The beacon-api spec declares both <c>id</c> and <c>status</c> as array-typed query
-    /// parameters; the repeated-key form (<c>id=a&amp;id=b</c>) is the array's canonical wire
-    /// encoding, and comma-joined is a common client shorthand this driver also accepts. Only the
-    /// mixed-id, repeated-key case had a test before this one - this proves comma-joining alone,
-    /// and repetition of a comma-joined status filter, independently of that existing case.
-    /// </summary>
-    [Test]
-    public async Task Validators_list_id_and_status_filters_accept_both_comma_joined_and_repeated_forms()
-    {
-        PutStatusState(TestRoot(18));
-
-        // id=0,2 (comma-joined) must select the same two validators as the repeated-key form does.
-        HttpResponseMessage commaId = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id=0,2");
-        JsonDocument commaIdBody = JsonDocument.Parse(await commaId.Content.ReadAsStringAsync());
-        List<string> commaIndices = [.. commaIdBody.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
-        Assert.That(commaIndices, Is.EquivalentTo(new[] { "0", "2" }), "comma-joined id list must be split, not treated as one unmatched id");
-
-        // status=active_ongoing&status=exited_slashed (repeated key, not comma) must union both groups.
-        HttpResponseMessage repeatedStatus = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?status=active_ongoing&status=exited_slashed");
-        JsonDocument repeatedStatusBody = JsonDocument.Parse(await repeatedStatus.Content.ReadAsStringAsync());
-        List<string> statuses = [.. repeatedStatusBody.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("status").GetString()!)];
-        Assert.That(statuses, Is.EquivalentTo(new[] { "active_ongoing", "exited_slashed" }),
-            "a repeated status= key is the array parameter's canonical form and must union, not overwrite or reject");
+        PutStatusState(TestRoot(12));
+        using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators?id=not-a-real-id");
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
     /// <summary>

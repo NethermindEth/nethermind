@@ -24,7 +24,7 @@ namespace Nethermind.BeaconChain.Test.Api;
 /// construction (a bit pattern, a byte fill, a decimal), never read back from the response, so a
 /// writer that emits the wrong encoding for a field type fails here rather than passing on shape.
 /// </summary>
-public class BeaconJsonBodiesTests
+public class BeaconJsonBodiesTests : BeaconApiFixture
 {
     private const string Json = "application/json";
     private const string Octet = "application/octet-stream";
@@ -32,13 +32,8 @@ public class BeaconJsonBodiesTests
     // epoch 412,500: past FuluForkEpoch (411,392) on BeaconChainSpec.Mainnet, so the codec accepts the state and ForkAtEpoch says fulu.
     private const ulong Slot = 412_500 * 32 + 7;
 
-    private BeaconApiTestHost _host = null!;
-
     [OneTimeSetUp]
     public async Task StartHost() => _host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet);
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     [SetUp]
     public void ResetSharedState()
@@ -506,15 +501,11 @@ public class BeaconJsonBodiesTests
 }
 
 /// <summary>Sepolia schedules Gloas, so children of one parent can straddle the fork boundary there.</summary>
-public class BeaconJsonBodiesGloasTests
+public class BeaconJsonBodiesGloasTests : BeaconApiFixture
 {
-    private BeaconApiTestHost _host = null!;
 
     [OneTimeSetUp]
     public async Task StartHost() => _host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Sepolia);
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     [Test]
     public async Task Headers_by_parent_root_names_the_fork_only_when_every_listed_child_is_in_the_same_one()

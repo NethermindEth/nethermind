@@ -14,7 +14,7 @@ using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 namespace Nethermind.BeaconChain.Test.Api;
 
 /// <summary>beacon-APIs v5.0.0-alpha.2 <c>getBlockAttestationsV2</c> for Fulu blocks; the Gloas shape is covered in <see cref="BeaconApiGloasBlockTests"/>.</summary>
-public class BeaconBlockAttestationsTests
+public class BeaconBlockAttestationsTests : BeaconApiFixture
 {
     private const string Json = "application/json";
 
@@ -22,8 +22,6 @@ public class BeaconBlockAttestationsTests
     private const ulong EmptySlot = RichSlot + 1;
     private static readonly Hash256 RichRoot = TestRoot(0xa0);
     private static readonly Hash256 EmptyRoot = TestRoot(0xa1);
-
-    private BeaconApiTestHost _host = null!;
 
     [OneTimeSetUp]
     public async Task StartHost()
@@ -34,9 +32,6 @@ public class BeaconBlockAttestationsTests
         _host.Store.PutBlock(EmptyRoot, MinimalBlock(EmptySlot));
         _host.Store.SetCanonicalRoot(EmptySlot, EmptyRoot);
     }
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     [SetUp]
     public void ResetSharedState() => _host.SetStatus(RichRoot, Hash256.Zero, 0);

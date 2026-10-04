@@ -22,7 +22,7 @@ namespace Nethermind.BeaconChain.Test.Api;
 /// <c>postStateValidatorIdentities</c>. The fixture registry has one validator per distinct activation
 /// epoch and balance, so a wrong index, field or filter reads a different value.
 /// </summary>
-public class BeaconStatesValidatorPostTests
+public class BeaconStatesValidatorPostTests : BeaconApiFixture
 {
     private const string Json = "application/json";
     private const string Octet = "application/octet-stream";
@@ -32,8 +32,6 @@ public class BeaconStatesValidatorPostTests
     private const int ValidatorCount = 70;
 
     private static readonly Hash256 StateRoot = BeaconApiTestHost.TestRoot(0x80);
-
-    private BeaconApiTestHost _host = null!;
 
     [OneTimeSetUp]
     public async Task StartHost()
@@ -50,9 +48,6 @@ public class BeaconStatesValidatorPostTests
         _host.Store.PutBlock(StateRoot, BeaconApiTestHost.MinimalBlock(StateSlot));
         _host.Store.SetCanonicalRoot(StateSlot, StateRoot);
     }
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     [SetUp]
     public void ResetSharedState() => _host.SetStatus(StateRoot, Hash256.Zero, 0);
