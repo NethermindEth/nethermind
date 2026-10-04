@@ -78,6 +78,11 @@ internal sealed class ChannelStreamAdapter(IChannel channel) : Stream
         }
     }
 
+    /// <summary>Waits for transport closure without consuming any more request bytes.</summary>
+    internal Task WaitForCloseAsync(CancellationToken cancellationToken) => ClosedAsync().WaitAsync(cancellationToken);
+
+    private async Task ClosedAsync() => await channel;
+
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
         ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
 

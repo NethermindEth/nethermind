@@ -37,6 +37,90 @@ public class ReqRespLimitsTests
     private static readonly TimeSpan ShortRespTimeout = TimeSpan.FromMilliseconds(200);
 
     [Test]
+    [CancelAfter(10000)]
+    public async Task Rejected_requests_end_the_response_before_waiting_for_transport_closure([Values] bool emptyRequest, [Values] bool attributed, [Values] bool closeRequester, CancellationToken token)
+    {
+        Channel channel = new();
+        TestReqRespProtocol protocol = new() { WatchLingerAfterServed = closeRequester ? TimeSpan.FromSeconds(10) : TimeSpan.FromMilliseconds(50) };
+        ISessionContext context = attributed ? FakeSessionContext.ForNewPeer() : ReqRespTestChannel.Context();
+        Task<IOResult> writing = channel.WriteAsync(new ReadOnlySequence<byte>(emptyRequest ? new byte[] { 1, 9 } : new byte[] { 2, 9 }), token).AsTask();
+        TaskCompletionSource releasedAdmission = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task serving = protocol.ServeRejectedAsync(new ChannelStreamAdapter(channel.Reverse), context, emptyRequest, token, releasedAdmission);
+
+        ReadResult response = await channel.ReadAsync(1, ReadBlockingMode.WaitAll, token);
+        ReadResult eof = await channel.ReadAsync(1, ReadBlockingMode.WaitAny, token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result, Is.EqualTo(IOResult.Ok));
+            Assert.That(response.Data.ToArray(), Is.EqualTo(new byte[] { 42 }));
+            Assert.That(eof.Result, Is.EqualTo(IOResult.Ended));
+            if (closeRequester)
+            {
+                Assert.That(serving.IsCompleted, Is.False, "response completion precedes listener teardown");
+            }
+            Assert.That(writing.IsCompleted, Is.False, "rejection must not drain the remaining invalid bytes");
+        }
+
+        await releasedAdmission.Task.WaitAsync(token);
+        await using IAsyncDisposable? first = protocol.TryEnter(context, TestReqRespProtocol.ProtocolId);
+        await using IAsyncDisposable? second = protocol.TryEnter(context, TestReqRespProtocol.ProtocolId);
+        Assert.That(first, Is.Not.Null, "completed response releases admission while lingering");
+        Assert.That(second, Is.Not.Null);
+        Assert.That(protocol.TryEnter(context, TestReqRespProtocol.ProtocolId), Is.Null, "admission remains bounded");
+        if (closeRequester)
+        {
+            await channel.CloseAsync();
+        }
+        await serving.WaitAsync(token);
+        await channel.CloseAsync();
+        await writing.WaitAsync(token);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Rejected_request_closure_waits_are_bounded_and_release_their_linger_slots([Values] bool attributed, CancellationToken token)
+    {
+        TestReqRespProtocol protocol = new();
+        ISessionContext context = attributed ? FakeSessionContext.ForNewPeer() : ReqRespTestChannel.Context();
+        List<Channel> channels = [];
+        List<Task> serving = [];
+        List<Task<IOResult>> writing = [];
+        try
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                Channel channel = new();
+                channels.Add(channel);
+                writing.Add(channel.WriteAsync(new ReadOnlySequence<byte>(new byte[] { 2, 9 }), token).AsTask());
+                Task listener = protocol.ServeRejectedAsync(new ChannelStreamAdapter(channel.Reverse), context, false, token);
+                serving.Add(listener);
+                Assert.That((await channel.ReadAsync(1, ReadBlockingMode.WaitAll, token)).Result, Is.EqualTo(IOResult.Ok));
+                Assert.That((await channel.ReadAsync(1, ReadBlockingMode.WaitAny, token)).Result, Is.EqualTo(IOResult.Ended));
+                if (i == 6)
+                {
+                    await listener.WaitAsync(token);
+                    Assert.That(serving.Take(6).All(static task => !task.IsCompleted), Is.True, "six completed requests may linger");
+                    await channels[0].CloseAsync();
+                    await serving[0].WaitAsync(token);
+                }
+                else
+                {
+                    Assert.That(listener.IsCompleted, Is.False, "released linger slot can be reused");
+                }
+            }
+        }
+        finally
+        {
+            foreach (Channel channel in channels)
+            {
+                await channel.CloseAsync();
+            }
+            await Task.WhenAll(serving).WaitAsync(token);
+            await Task.WhenAll(writing).WaitAsync(token);
+        }
+    }
+
+    [Test]
     public void Production_timeouts_match_the_spec_and_are_unaffected_by_test_overrides()
     {
         TestReqRespProtocol shortened = new() { TtfbTimeout = ShortTtfbTimeout, RespTimeout = ShortRespTimeout };
@@ -597,6 +681,34 @@ public class ReqRespLimitsTests
         public const string ProtocolId = "/test/reqresp-limits/1";
 
         public IAsyncDisposable? TryEnter(ISessionContext context, string protocolId) => TryEnterInbound(context, protocolId);
+
+        public async Task ServeRejectedAsync(Stream stream, ISessionContext context, bool emptyRequest, CancellationToken token, TaskCompletionSource? releasedAdmission = null)
+        {
+            InboundRequest? request = TryEnterInbound(context, ProtocolId);
+            Assert.That(request, Is.Not.Null);
+            try
+            {
+                if (emptyRequest)
+                {
+                    await request!.AcceptRequestWithoutPayloadAsync(stream, token);
+                }
+                else
+                {
+                    await request!.ReadRequestAsync(stream, 1, token);
+                }
+                Assert.Fail("malformed request accepted");
+            }
+            catch (Eth2ReqRespException)
+            {
+                await stream.WriteAsync(new byte[] { 42 }, token);
+            }
+            finally
+            {
+                Task disposing = request!.DisposeAsync().AsTask();
+                releasedAdmission?.TrySetResult();
+                await disposing;
+            }
+        }
     }
 
     /// <summary>Exposes the protected chunked-response reader for direct testing.</summary>
