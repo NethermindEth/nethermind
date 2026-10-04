@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.OpcodeTracing.Plugin.Output;
 
@@ -60,7 +61,7 @@ public sealed class TraceOutputWriter(ILogManager logManager)
 
             // Serialize directly to file stream
             await using FileStream stream = new(filePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);
-            await JsonSerializer.SerializeAsync(stream, traceOutput, _serializerOptions).ConfigureAwait(false);
+            await TypeInfoJsonSerializer.SerializeAsync(stream, traceOutput, _serializerOptions).ConfigureAwait(false);
 
             if (_logger.IsDebug)
             {

@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.PortfolioViewer.Plugin;
 
@@ -130,7 +131,7 @@ public sealed class DetectionCache : IDetectionCache
         {
             if (!File.Exists(_path)) return;
             Dictionary<string, DetectionEntry>? data =
-                JsonSerializer.Deserialize<Dictionary<string, DetectionEntry>>(File.ReadAllText(_path), Json);
+                TypeInfoJsonSerializer.Deserialize<Dictionary<string, DetectionEntry>>(File.ReadAllText(_path), Json);
             if (data is not null)
             {
                 foreach ((string key, DetectionEntry value) in data)
@@ -186,7 +187,7 @@ public sealed class DetectionCache : IDetectionCache
             lock (_fileLock)
             {
                 string tmp = _path + ".tmp";
-                File.WriteAllText(tmp, JsonSerializer.Serialize(_entries, Json));
+                File.WriteAllText(tmp, TypeInfoJsonSerializer.Serialize(_entries, Json));
                 File.Move(tmp, _path, overwrite: true);
             }
         }

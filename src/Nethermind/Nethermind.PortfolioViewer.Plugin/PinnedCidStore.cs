@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.PortfolioViewer.Plugin;
 
@@ -81,7 +82,7 @@ public sealed class PinnedCidStore : IPinnedCidStore
         try
         {
             if (!File.Exists(_path)) return;
-            string[]? data = JsonSerializer.Deserialize<string[]>(File.ReadAllText(_path), Json);
+            string[]? data = TypeInfoJsonSerializer.Deserialize<string[]>(File.ReadAllText(_path), Json);
             if (data is not null)
             {
                 foreach (string cid in data) _cids.TryAdd(cid, 0);
@@ -101,7 +102,7 @@ public sealed class PinnedCidStore : IPinnedCidStore
             lock (_fileLock)
             {
                 string tmp = _path + ".tmp";
-                File.WriteAllText(tmp, JsonSerializer.Serialize(Materialize(), Json));
+                File.WriteAllText(tmp, TypeInfoJsonSerializer.Serialize(Materialize(), Json));
                 File.Move(tmp, _path, overwrite: true);
             }
         }

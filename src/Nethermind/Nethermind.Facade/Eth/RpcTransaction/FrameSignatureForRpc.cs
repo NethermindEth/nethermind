@@ -79,6 +79,6 @@ public class FrameSignatureForRpc
             GetAddressConverter(options).Write(writer, value, options);
 
         private static JsonConverter<Address> GetAddressConverter(JsonSerializerOptions options) =>
-            (JsonConverter<Address>)options.GetConverter(typeof(Address));
+            (JsonConverter<Address>)TypeInfoJsonSerializer.GetTypeInfo<Address>(options).Converter;
     }
 }

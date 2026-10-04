@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
 using System.IO.Abstractions;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -68,7 +69,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
 
-        JsonSerializer.Serialize(_jsonWriter,
+        TypeInfoJsonSerializer.Serialize(_jsonWriter,
             new
             {
                 output = trace.ReturnValue.ToHexString(true),
@@ -104,7 +105,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter = null;
     }
 
-    private void DumpTraceEntry(GethTxFileTraceEntry entry) => JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+    private void DumpTraceEntry(GethTxFileTraceEntry entry) => TypeInfoJsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
 
     private string GetFileName(Hash256 txHash)
     {

@@ -138,7 +138,7 @@ internal sealed class JsonRpcDiagnostics
         ArrayBufferWriter<byte> writer = new();
         JsonRpcResponseWriter.Write(writer, responseToSerialize, EthereumJsonSerializer.JsonOptionsIndented);
         using JsonDocument document = JsonDocument.Parse(writer.WrittenMemory);
-        return JsonSerializer.Serialize(new DiagnosticJsonRpcResult(document.RootElement, response.Report), EthereumJsonSerializer.JsonOptionsIndented);
+        return TypeInfoJsonSerializer.Serialize(new DiagnosticJsonRpcResult(document.RootElement, response.Report), EthereumJsonSerializer.JsonOptionsIndented);
     }
 
     /// <summary>Replaces a streamed result with a placeholder, since diagnostics must not consume the stream.</summary>

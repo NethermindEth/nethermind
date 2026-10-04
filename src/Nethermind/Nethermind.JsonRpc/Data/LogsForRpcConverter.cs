@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data;
 
@@ -12,7 +13,7 @@ namespace Nethermind.JsonRpc.Data;
 internal sealed class LogsForRpcConverter : JsonConverter<IReadOnlyList<LogEntryForRpc>>
 {
     public override IReadOnlyList<LogEntryForRpc>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        JsonSerializer.Deserialize<LogEntryForRpc[]>(ref reader, options);
+        TypeInfoJsonSerializer.Deserialize<LogEntryForRpc[]>(ref reader, options);
 
     public override void Write(Utf8JsonWriter writer, IReadOnlyList<LogEntryForRpc> value, JsonSerializerOptions options)
     {
@@ -25,7 +26,7 @@ internal sealed class LogsForRpcConverter : JsonConverter<IReadOnlyList<LogEntry
         writer.WriteStartArray();
         for (int i = 0; i < value.Count; i++)
         {
-            JsonSerializer.Serialize(writer, value[i], options);
+            TypeInfoJsonSerializer.Serialize(writer, value[i], options);
         }
 
         writer.WriteEndArray();
