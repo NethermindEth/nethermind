@@ -196,146 +196,84 @@ public partial class ColumnBackfillTests
         }
     }
 
-    /// <summary>A range reply cut short holds the lowest slots, which link only below the slots above them: the next peer is asked for those alone, and nothing is fetched by root.</summary>
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task A_range_reply_cut_short_keeps_its_blocks_and_only_the_slots_above_them_are_requested(CancellationToken token)
+    public enum BackfillReply
     {
-        await using Fixture fixture = Fixture.Create();
-        StubPeer source = fixture.Peer("source");
-        StubPeer cutShort = new("cut-short", HeadSlot, (start, _) => throw new PartialBlocksException(
-            new TimeoutException("request timed out"), [.. source.RequestBlocksByRangeAsync(start, 2, token).Result]));
-        StubPeer honest = fixture.Peer("honest");
-
-        Task run = fixture.StartBackfill(token, cutShort, honest);
-        await fixture.UntilFloorAsync(0, token);
-        await run.WaitAsync(token);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(cutShort.RequestedRanges, Is.EqualTo(new[] { (0UL, AnchorSlot) }));
-            Assert.That(honest.RequestedRanges, Is.EqualTo(new[] { (2UL, AnchorSlot - 2) }), "only the slots above the kept blocks");
-            Assert.That(cutShort.RootBlockRequests + honest.RootBlockRequests, Is.Zero, "the kept blocks link without a by-root fetch");
-            Assert.That(cutShort.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
-            Assert.That(honest.Reports, Is.Empty);
-            Assert.That(fixture.Roots[..4].All(fixture.Store.HasBlock), Is.True);
-        }
-    }
-
-    /// <summary>
-    /// A peer that sends one block off the chain near the top of the range and then stalls must not leave the rest of the range to one by-root request per slot:
-    /// the slots below the lowest linked block are asked of the next peer, and the stalled peer is penalized for the block that never linked.
-    /// </summary>
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task A_cut_range_reply_off_the_chain_is_penalized_and_the_slots_below_are_asked_of_the_next_peer(CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        SignedBeaconBlock forged = TestChain.CreateBlock(2, Hash256.Zero);
-        StubPeer cutShort = new("cut-short", HeadSlot, (_, _) => throw new PartialBlocksException(
-            new TimeoutException("request timed out"), [new ForkedSignedBeaconBlock.OfFulu(forged)]));
-        StubPeer honest = fixture.Peer("honest");
-        StubPeer next = fixture.Peer("next");
-
-        Task run = fixture.StartBackfill(token, cutShort, honest, next);
-        await fixture.UntilFloorAsync(0, token);
-        await run.WaitAsync(token);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(honest.RequestedRanges[0], Is.EqualTo((3UL, 1UL)), "first only the slot above the cut reply");
-            Assert.That(next.RequestedRanges[0], Is.EqualTo((0UL, 3UL)), "then the slots below the lowest linked block");
-            Assert.That(cutShort.RootBlockRequests + honest.RootBlockRequests + next.RootBlockRequests, Is.Zero, "nothing is fetched by root");
-            Assert.That(cutShort.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed, PeerFailureReason.ProtocolViolation }));
-            Assert.That(honest.Reports.Concat(next.Reports), Is.Empty);
-            Assert.That(fixture.Store.HasBlock(SszRoots.HashTreeRoot(forged.Message!)), Is.False);
-            Assert.That(fixture.Roots[..4].All(fixture.Store.HasBlock), Is.True);
-        }
-    }
-
-    /// <summary>
-    /// A peer is penalized only once a linked block shows its reply left out a slot it covered: two honest cut replies below a reply that links are not,
-    /// while a whole reply that skipped the block above a cut reply is, once that block arrives, and the cut reply is not.
-    /// </summary>
-    [TestCase(false, TestName = "Honest cut replies below a reply that links are kept and not penalized")]
-    [TestCase(true, TestName = "A whole reply that left out a block is penalized and the cut reply below it is not")]
-    [CancelAfter(60_000)]
-    public async Task Only_a_reply_shown_to_leave_out_a_linked_block_is_penalized(bool skippingReply, CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        StubPeer source = fixture.Peer("source");
-        StubPeer canonicalCut = new("canonical-cut", HeadSlot, (start, _) => throw new PartialBlocksException(
-            new TimeoutException("request timed out"), [.. source.RequestBlocksByRangeAsync(start, 2, token).Result]));
-        StubPeer second = skippingReply
-            ? new("skipping", HeadSlot, (_, _) => [.. source.RequestBlocksByRangeAsync(3, 1, token).Result])
-            : new("honest-cut", HeadSlot, (start, _) => throw new PartialBlocksException(
-                new TimeoutException("request timed out"), [.. source.RequestBlocksByRangeAsync(start, 1, token).Result]));
-        StubPeer honest = fixture.Peer("honest");
-
-        Task run = fixture.StartBackfill(token, canonicalCut, second, honest);
-        await fixture.UntilFloorAsync(0, token);
-        await run.WaitAsync(token);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(canonicalCut.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
-            Assert.That(second.Reports, Is.EqualTo(skippingReply ? new[] { PeerFailureReason.ProtocolViolation } : new[] { PeerFailureReason.RequestFailed }));
-            Assert.That(honest.Reports, Is.Empty);
-            Assert.That(canonicalCut.RootBlockRequests + second.RootBlockRequests + honest.RootBlockRequests, Is.Zero, "every block comes by range");
-            Assert.That(fixture.Roots[..4].All(fixture.Store.HasBlock), Is.True);
-        }
-    }
-
-    /// <summary>A reply above the kept blocks that does not reach them proves nothing against them: they stay, their peer is not penalized, and the next peer is asked for the same slots.</summary>
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task Kept_blocks_below_a_reply_that_does_not_link_whole_stay_and_their_peer_is_not_penalized(CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        StubPeer source = fixture.Peer("source");
-        StubPeer cutShort = new("cut-short", HeadSlot, (start, _) => throw new PartialBlocksException(
-            new TimeoutException("request timed out"), [.. source.RequestBlocksByRangeAsync(start, 2, token).Result]));
-        // Limited before the top block, so nothing it sent links from the top.
-        StubPeer limited = new("limited", HeadSlot, (start, _) => [.. source.RequestBlocksByRangeAsync(start, 1, token).Result]);
-        StubPeer next = fixture.Peer("next");
-
-        Task run = fixture.StartBackfill(token, cutShort, limited, next);
-        await fixture.UntilFloorAsync(0, token);
-        await run.WaitAsync(token);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(limited.RequestedRanges[0], Is.EqualTo((2UL, 2UL)));
-            Assert.That(next.RequestedRanges[0], Is.EqualTo((2UL, 2UL)), "the kept slots are not asked for again");
-            Assert.That(cutShort.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
-            Assert.That(cutShort.RootBlockRequests + limited.RootBlockRequests + next.RootBlockRequests, Is.Zero);
-            Assert.That(fixture.Roots[..4].All(fixture.Store.HasBlock), Is.True);
-        }
+        LinkedPartial,
+        ForgedPartial,
+        TwoPartials,
+        OmittedBlock,
+        UnlinkedUpper,
+        ForgedWhole,
     }
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task A_block_that_does_not_link_to_the_chain_is_penalized_and_never_stored(CancellationToken token)
+    public async Task Backfill_preserves_linked_ranges_and_blames_only_proven_reply_faults([Values] BackfillReply reply, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
-        SignedBeaconBlock forged = TestChain.CreateBlock(3, Hash256.Zero);
-        Hash256 forgedRoot = SszRoots.HashTreeRoot(forged.Message!);
-        StubPeer liar = new(
-            "liar",
-            HeadSlot,
-            (_, _) => [new ForkedSignedBeaconBlock.OfFulu(forged)],
-            blockRootHandler: _ => [new ForkedSignedBeaconBlock.OfFulu(forged)]);
-        StubPeer honest = fixture.Peer("honest");
-
-        Task run = fixture.StartBackfill(token, liar, honest);
+        bool forged = reply is BackfillReply.ForgedPartial or BackfillReply.ForgedWhole;
+        SignedBeaconBlock invalid = TestChain.CreateBlock(reply == BackfillReply.ForgedWhole ? 3UL : 2UL, Hash256.Zero);
+        Hash256 invalidRoot = SszRoots.HashTreeRoot(invalid.Message!);
+        StubPeer? source = forged ? null : fixture.Peer("source");
+        StubPeer first = new("first", HeadSlot, (start, _) =>
+        {
+            ForkedSignedBeaconBlock[] blocks = forged
+                ? [new ForkedSignedBeaconBlock.OfFulu(invalid)]
+                : [.. source!.RequestBlocksByRangeAsync(start, 2, token).Result];
+            return reply == BackfillReply.ForgedWhole ? blocks : throw new PartialBlocksException(new TimeoutException("request timed out"), blocks);
+        }, blockRootHandler: reply == BackfillReply.ForgedWhole ? _ => [new ForkedSignedBeaconBlock.OfFulu(invalid)] : null);
+        StubPeer second = reply switch
+        {
+            BackfillReply.TwoPartials => new("second", HeadSlot, (start, _) => throw new PartialBlocksException(new TimeoutException("request timed out"), [.. source!.RequestBlocksByRangeAsync(start, 1, token).Result])),
+            BackfillReply.OmittedBlock => new("second", HeadSlot, (_, _) => [.. source!.RequestBlocksByRangeAsync(3, 1, token).Result]),
+            BackfillReply.UnlinkedUpper => new("second", HeadSlot, (start, _) => [.. source!.RequestBlocksByRangeAsync(start, 1, token).Result]),
+            _ => fixture.Peer("honest"),
+        };
+        bool thirdNeeded = reply is not (BackfillReply.LinkedPartial or BackfillReply.ForgedWhole);
+        StubPeer? third = thirdNeeded ? fixture.Peer("next") : null;
+        StubPeer[] peers = third is null ? [first, second] : [first, second, third];
+        Task run = fixture.StartBackfill(token, peers);
         await fixture.UntilFloorAsync(0, token);
         await run.WaitAsync(token);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(liar.Reports, Does.Contain(PeerFailureReason.ProtocolViolation), "the peer is penalized");
-            Assert.That(fixture.Store.HasBlock(forgedRoot), Is.False, "the forged block is not stored");
-            Assert.That(fixture.Store.TryGetCanonicalRoot(3, out Hash256? canonical) ? canonical : null, Is.EqualTo(fixture.Roots[3]));
+            if (reply == BackfillReply.ForgedWhole)
+            {
+                Assert.That(first.Reports, Does.Contain(PeerFailureReason.ProtocolViolation));
+                Assert.That(fixture.Store.TryGetCanonicalRoot(3, out Hash256? canonical) ? canonical : null, Is.EqualTo(fixture.Roots[3]));
+            }
+            else
+            {
+                Assert.That(first.Reports, Is.EqualTo(reply == BackfillReply.ForgedPartial
+                    ? new[] { PeerFailureReason.RequestFailed, PeerFailureReason.ProtocolViolation }
+                    : new[] { PeerFailureReason.RequestFailed }));
+                Assert.That(peers.Sum(peer => peer.RootBlockRequests), Is.Zero, "linked range replies require no by-root fetch");
+                Assert.That(fixture.Roots[..4].All(fixture.Store.HasBlock), Is.True);
+            }
+            if (forged) Assert.That(fixture.Store.HasBlock(invalidRoot), Is.False);
+            switch (reply)
+            {
+                case BackfillReply.LinkedPartial:
+                    Assert.That(first.RequestedRanges, Is.EqualTo(new[] { (0UL, AnchorSlot) }));
+                    Assert.That(second.RequestedRanges, Is.EqualTo(new[] { (2UL, AnchorSlot - 2) }));
+                    Assert.That(second.Reports, Is.Empty);
+                    break;
+                case BackfillReply.ForgedPartial:
+                    Assert.That(second.RequestedRanges[0], Is.EqualTo((3UL, 1UL)));
+                    Assert.That(third!.RequestedRanges[0], Is.EqualTo((0UL, 3UL)));
+                    Assert.That(second.Reports.Concat(third.Reports), Is.Empty);
+                    break;
+                case BackfillReply.TwoPartials:
+                case BackfillReply.OmittedBlock:
+                    Assert.That(second.Reports, Is.EqualTo(new[] { reply == BackfillReply.OmittedBlock ? PeerFailureReason.ProtocolViolation : PeerFailureReason.RequestFailed }));
+                    Assert.That(third!.Reports, Is.Empty);
+                    break;
+                case BackfillReply.UnlinkedUpper:
+                    Assert.That(second.RequestedRanges[0], Is.EqualTo((2UL, 2UL)));
+                    Assert.That(third!.RequestedRanges[0], Is.EqualTo((2UL, 2UL)), "kept slots are not requested again");
+                    break;
+            }
         }
     }
 
