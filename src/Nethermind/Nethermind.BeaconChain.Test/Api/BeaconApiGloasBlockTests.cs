@@ -25,7 +25,7 @@ using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 namespace Nethermind.BeaconChain.Test.Api;
 
 /// <summary>A block in a Gloas epoch is stored in the Gloas shape, and every endpoint that reads a block must serve that shape under the gloas version.</summary>
-public class BeaconApiGloasBlockTests
+public class BeaconApiGloasBlockTests : BeaconApiFixture
 {
     private const string Json = "application/json";
     private const string OctetStream = "application/octet-stream";
@@ -38,7 +38,6 @@ public class BeaconApiGloasBlockTests
     private static readonly Hash256 MismatchedEnvelopeRoot = TestRoot(0x93);
     private static readonly Hash256 UnreadableEnvelopeRoot = TestRoot(0x94);
 
-    private BeaconApiTestHost _host = null!;
     private SignedBeaconBlockGloas _block = null!;
     private SignedExecutionPayloadEnvelope _envelope = null!;
 
@@ -67,9 +66,6 @@ public class BeaconApiGloasBlockTests
         _host.Store.PutForkedBlock(UnreadableEnvelopeRoot, new ForkedSignedBeaconBlock.OfGloas(RichGloasBlock(GloasSlot + 3, MismatchedEnvelopeRoot)));
         _host.Db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).Set(UnreadableEnvelopeRoot.Bytes, [0x01, 0x02, 0x03]);
     }
-
-    [OneTimeTearDown]
-    public async Task StopHost() => await _host.DisposeAsync();
 
     private static readonly string RootHex = Root.ToString();
 
