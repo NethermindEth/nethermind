@@ -348,13 +348,9 @@ public partial class GossipRouterTests
             if (i < longLiterals)
             {
                 stream.WriteByte(0xF0);
-                stream.WriteByte(0);
-            }
-            else
-            {
-                stream.WriteByte(0);
             }
 
+            stream.WriteByte(0);
             stream.WriteByte(0);
         }
 
