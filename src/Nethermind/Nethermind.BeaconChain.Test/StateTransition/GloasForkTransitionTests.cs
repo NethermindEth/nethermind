@@ -498,16 +498,10 @@ public class GloasForkTransitionTests
     /// <summary>A distinct pubkey per validator index, unlike <see cref="Pubkey"/>'s single repeated fill byte.</summary>
     private static BlsPublicKey PubkeyForIndex(int index)
     {
-        byte[] bytes = new byte[BlsPublicKey.Length];
-        bytes.AsSpan().Fill(0x50);
+        byte[] bytes = Enumerable.Repeat((byte)0x50, BlsPublicKey.Length).ToArray();
         System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(BlsPublicKey.Length - 4), index);
         return new BlsPublicKey(bytes);
     }
 
-    private static BlsSignature Signature(byte value)
-    {
-        byte[] bytes = new byte[BlsSignature.Length];
-        bytes.AsSpan().Fill(value);
-        return new BlsSignature(bytes);
-    }
+    private static BlsSignature Signature(byte value) => new(Enumerable.Repeat(value, BlsSignature.Length).ToArray());
 }

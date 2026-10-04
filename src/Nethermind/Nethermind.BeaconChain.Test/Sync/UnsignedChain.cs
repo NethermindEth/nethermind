@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
@@ -171,10 +172,5 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
             Target = new Checkpoint { Epoch = 0, Root = AnchorRoot },
         };
 
-    private static Hash256 Hash(byte value)
-    {
-        byte[] bytes = new byte[32];
-        bytes.AsSpan().Fill(value);
-        return new Hash256(bytes);
-    }
+    private static Hash256 Hash(byte value) => new(Enumerable.Repeat(value, 32).ToArray());
 }

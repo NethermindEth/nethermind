@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Diagnostics;
+using System.Linq;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
@@ -165,8 +166,7 @@ public class CachedHasherTests
             blockRoots[i] = Hash(0x0B);
             stateRoots[i] = Hash(0x0C);
         }
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        Array.Fill(randaoMixes, Hash(0x42));
+        Hash256[] randaoMixes = Enumerable.Repeat(Hash(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
 
         BlsPublicKey[] committee = new BlsPublicKey[512];
         for (int i = 0; i < committee.Length; i++)
