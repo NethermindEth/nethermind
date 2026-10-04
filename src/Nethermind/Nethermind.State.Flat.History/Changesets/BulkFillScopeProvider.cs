@@ -101,6 +101,8 @@ public sealed class BulkFillScopeProvider(
         public void Commit(ulong blockNumber) => inner.Commit(blockNumber);
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => session.StageFinalState(takeSnapshot);
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
+        // Bulk fill stages final state only from the world state's block-change snapshot, which a BAL apply bypasses.
+        public void ApplyBal(ReadOnlyBlockAccessList bal) => throw new NotSupportedException();
         public void Dispose() => inner.Dispose();
     }
 

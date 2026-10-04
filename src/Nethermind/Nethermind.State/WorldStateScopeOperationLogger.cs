@@ -85,6 +85,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => innerScope.HintBal(bal, sink);
 
+        public void ApplyBal(ReadOnlyBlockAccessList bal)
+            => innerScope.ApplyBal(bal);
+
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>

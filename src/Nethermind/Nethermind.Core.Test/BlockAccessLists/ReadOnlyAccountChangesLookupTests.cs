@@ -141,7 +141,7 @@ public class ReadOnlyAccountChangesLookupTests
     [Test]
     public void Last_change_via_indexer_is_the_highest_indexed_change()
     {
-        // ApplyStateChanges reads [^1] to apply the final state for the account, so [^1] must
+        // ApplyBal reads [^1] to apply the final state for the account, so [^1] must
         // return the highest-index in-block change.
         ReadOnlyAccountChanges ac = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)

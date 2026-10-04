@@ -527,6 +527,45 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void ApplyBal_WithAccountAndStorageChanges_WithVerifyWithTrie([Values] bool existingAccount)
+    {
+        using TestContext ctx = new(config: new FlatDbConfig { VerifyWithTrie = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        if (existingAccount)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            writeBatch.Set(address, new Account(nonce: 1, balance: 5));
+        }
+
+        byte[] code = [0x60, 0x00];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(address)
+                .WithBalanceChanges(new BalanceChange(1, 10))
+                .WithNonceChanges(new NonceChange(1, 2))
+                .WithCodeChanges(new CodeChange(1, code))
+                .WithStorageChanges(1, new StorageChange(1, 0xCAFE))
+                .TestObject)
+            .TestObject;
+
+        scope.ApplyBal(bal);
+        scope.UpdateRootHash();
+
+        Account? account = scope.Get(address);
+        Assert.That(account, Is.Not.Null);
+        scope.CreateStorageTree(address).Get((UInt256)1, out UInt256 value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account!.Nonce, Is.EqualTo(2ul));
+            Assert.That(account.Balance, Is.EqualTo((UInt256)10));
+            Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code)));
+            Assert.That(value, Is.EqualTo((UInt256)0xCAFE));
+            Assert.That(scope.RootHash, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+        }
+    }
+
+    [Test]
     public void WriteBatch_DeletingAccountHeldByTrie_WithVerifyWithTrie_DoesNotThrow([Values] bool hasStorage)
     {
         // Deleting an account deletes it from the flat snapshot at once but from the trie only when the batch is
