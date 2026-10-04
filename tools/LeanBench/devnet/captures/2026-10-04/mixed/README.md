@@ -1,0 +1,18 @@
+# Finalized mixed recursion
+
+Two Nethermind execution nodes, two Lighthouse beacon/validator pairs and 32 validators ran in a fresh Kurtosis `lean8288-mixed` enclave, chain ID 10088289, with normal 12-second slots. Both nodes negotiated `lean/1`; every wrapper was offered only to node 1 and observed pending on node 2. This is a finite functionality test, not sustained goodput or fresh-signature capacity.
+
+| Case | Transactions | Claims | Canonical EL block | Beacon slot | Block proof bytes |
+| --- | ---: | --- | ---: | ---: | ---: |
+| Verified mixed parent reuse | 1 | 1 SPHINCS + 1 generic STARK | 19 | 20 | 326,668 |
+| Fresh merge of separate parents | 2 | 1 SPHINCS + 1 generic STARK | 58 | 60 | 325,612 |
+
+Both cases contain one NLR3 envelope with two canonical dependency triples and **one recursive proof blob**, without generic bytecode or inner proofs. Native inspections authenticated each actual captured Engine payload, matched its canonical header hash and exact transaction set, and verified both schemes. Both ELs returned successful receipts. Both CL execution bids commit to those exact block hashes; matching finalized epoch-2 checkpoints cover both slots. [Compact evidence](evidence.json) and [canonical/finality crosscheck](final-canonical-observation.json) retain these results.
+
+The original observers failed: reuse timed out on a finality API read; the merge observer retained receipts from slot 59 after that block was reorganized out and its beacon lookup returned 404. Both merge transactions subsequently landed together in canonical slot 60. Separate passive recovery runs re-read canonical receipts, authenticated the current proofs and observed finality, without submitting again. Original failures, original report hashes and the receipt relocation remain in the evidence. Reproduction and `--observe-report` recovery are in [the consensus guide](../../../consensus/README.md).
+
+[Deployment provenance](validation-summary.json) records Runner/helper source `03df8d0528c68e7f5f89c698b973d3fcf89aa4dc`, fork `854997bd156f47f1b1ce2192c4499741f29bd0df`, ABI 5, guest key `9370d760…`, binary/image hashes and package revision. Fixtures were prepared earlier under the same native profile; observer revision `a8ac91d1fe` replaced the initial `a5f09f0693` observer for passive recovery. Linux validation passed all 15 Rust adapter tests and 48 managed native integration cases without skips. Live proving used one worker; [offline worker comparisons](../../../../results/2026-10-04/mixed/README.md) are separate measurements.
+
+The [resource snapshot](resources.json) covers 1,440 samples from 04:35:22–04:59:53 UTC, including the merge. Peak sampled EL memory was 2.057/0.658 GiB, versus 5,120,000,000-byte caps; host available memory stayed above 11.230 GiB. No OOM or restart was observed. [Compressed raw samples](resources.jsonl.gz), hashes and the [initial](live-resource-gate.json)/[merge](live-stage2-resource-gate.json) resource gates are retained. Sampling can miss brief peaks. The producer logged a cancellation after noninterruptible native proving, then included the same two claims in the canonical block. These results do not establish a worst-program memory bound or slot-time proving.
+
+The local Engine relay preserved proof fields and forwarded verdicts unchanged; native CL serialization and proof-bearing inclusion-list interoperability are separate work. Complete payloads, witnesses and credentials remain private. The enclave, Dora, viewer, sampler and log followers were stopped after capture; [shutdown evidence](shutdown.json) records no remaining owned processes or open test ports. [Checksums](sha256sums.txt) cover the public artifacts.

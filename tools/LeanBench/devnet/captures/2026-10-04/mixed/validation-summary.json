@@ -1,0 +1,73 @@
+{
+  "binarySource": "03df8d0528c68e7f5f89c698b973d3fcf89aa4dc",
+  "offlinePreparationSource": "899d7907c3f34966174350a71f2133cc97fd1317",
+  "nativeProfile": {
+    "sourceRevision": "03df8d0528c68e7f5f89c698b973d3fcf89aa4dc",
+    "nativeRevision": "854997bd156f47f1b1ce2192c4499741f29bd0df",
+    "abi": 5,
+    "guestKey": "9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace",
+    "bounds": [
+      8388608,
+      256,
+      16,
+      6208,
+      16,
+      2048,
+      65535,
+      18874368,
+      8364020
+    ],
+    "architecture": "x86_64",
+    "nativeWorkers": 1,
+    "rustFlags": "-C target-cpu=native",
+    "binarySha256": {
+      "client/libnethermind_lean.so": "c639ff7bf020203b18ca56c72d3145af9d72465e7042ab06caaf5dbebf86dd95",
+      "client/nethermind.dll": "a46efb70958a61f19c9d5ac43407147465bedf456ae4649619be681f929a0ddc",
+      "helper/LeanBench.dll": "729428e7155adfe74498f02f94a75c8796bdd713ac0110a587869d400cc07946",
+      "helper/libnethermind_lean.so": "c639ff7bf020203b18ca56c72d3145af9d72465e7042ab06caaf5dbebf86dd95"
+    }
+  },
+  "rustTests": {
+    "passed": 15,
+    "failed": 0,
+    "ignored": 0,
+    "durationSeconds": 1752.54
+  },
+  "nativeTests": {
+    "passed": 48,
+    "failed": 0,
+    "skipped": 0,
+    "durationSeconds": 623.555
+  },
+  "nativeBuild": {
+    "errors": 0,
+    "warnings": 2,
+    "warningCause": "Git archive has no .git/SourceLink metadata"
+  },
+  "images": {
+    "nethermind:lean8288-mixed-devnet": "sha256:d4dbe1095c36af6b6e560ffafad51e2849a34718caf7bb9b612e824a59906853",
+    "ethpandaops/ethereum-genesis-generator:lean8288-mixed": "sha256:656dc6c7437c650db295978d6da32315f66889fc74ad87bc8f00c100e032feaf"
+  },
+  "packageRevision": "6dd3f2613d1f9d1a9274864083c692726146c9db",
+  "dryRunExit": 0,
+  "workerComparison": {
+    "one": {
+      "workers": 1,
+      "wallSeconds": 23.69,
+      "peakRssKiB": 1711244
+    },
+    "two": {
+      "workers": 2,
+      "wallSeconds": 13.4,
+      "peakRssKiB": 1811580
+    },
+    "sameRootSha256": "93e8639c033ea68ad868fc78caa805ef5f94c6f3c0d786799e9bf24215e0dea1",
+    "claims": "S1 + G1 precomputed parents; not a worst-case workload"
+  },
+  "launchCommand": "cd /root/eip8288-mixed-devnet && kurtosis run --parallelism 1 --enclave lean8288-mixed --args-file consensus/params.yaml consensus/ethereum-package",
+  "servicesLaunchedByValidationAgent": false,
+  "summaryScope": "pre-launch build/test/resource validation; coordinator owns subsequent deployment",
+  "finalLaunchParamsSha256": "9a7e6c3c4e39c5ad9892e1fe432141c5d55408d07c24376ee0eec8674f1048af",
+  "natExitIp": "178.79.137.95",
+  "finalDryRunLog": "logs/kurtosis-final-dryrun.log"
+}

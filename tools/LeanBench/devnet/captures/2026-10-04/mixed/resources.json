@@ -1,0 +1,260 @@
+{
+  "scope": "point-in-time read-only summary of the finite live mixed functionality sampler; not a throughput ceiling or worst-program RAM bound",
+  "rawResourceSha256": "6036e15872443f3c683f8a38ae2cc313ce02d35c60ffffb8437f7684a5d87b89",
+  "rawResourceFileBytes": 520182,
+  "samplingMedianIntervalSeconds": 1.022066354751587,
+  "allCapturedSamples": {
+    "sampleCount": 1440,
+    "captureStartUtc": "2026-10-04T04:35:22.348293+00:00",
+    "captureEndUtc": "2026-10-04T04:59:53.782806+00:00",
+    "perEl": [
+      {
+        "node": 1,
+        "peakMemoryBytes": 2208759808,
+        "peakMemoryGiB": 2.05706787109375,
+        "peakCapturedUtc": "2026-10-04T04:44:49.669366+00:00",
+        "memoryLimitBytesValues": [
+          5120000000
+        ],
+        "maximumLimitFraction": 0.4313984,
+        "oomKilledObserved": false,
+        "maximumReportedRestarts": 0
+      },
+      {
+        "node": 2,
+        "peakMemoryBytes": 706338816,
+        "peakMemoryGiB": 0.6578292846679688,
+        "peakCapturedUtc": "2026-10-04T04:47:40.255695+00:00",
+        "memoryLimitBytesValues": [
+          5120000000
+        ],
+        "maximumLimitFraction": 0.1379568,
+        "oomKilledObserved": false,
+        "maximumReportedRestarts": 0
+      }
+    ],
+    "hostMinimumAvailableBytes": 12058255360,
+    "hostMinimumAvailableGiB": 11.230125427246094,
+    "hostMinimumAvailableCapturedUtc": "2026-10-04T04:44:49.669366+00:00",
+    "hostMaximumCpuPercent": 40.21739130434783,
+    "hostMaximumCpuCapturedUtc": "2026-10-04T04:39:51.051491+00:00"
+  },
+  "stageWindows": [
+    {
+      "name": "reuseBeforeMerge",
+      "requestedStartUtc": "2026-10-04T04:37:03.831457+00:00",
+      "requestedEndUtc": "2026-10-04T04:44:28.408645+00:00",
+      "scope": "Stage1 driver start until Stage2 start; excludes overlapping Stage1 finality wait during Stage2.",
+      "sampleCount": 435,
+      "captureStartUtc": "2026-10-04T04:37:04.587599+00:00",
+      "captureEndUtc": "2026-10-04T04:44:28.165862+00:00",
+      "perEl": [
+        {
+          "node": 1,
+          "peakMemoryBytes": 681988096,
+          "peakMemoryGiB": 0.6351509094238281,
+          "peakCapturedUtc": "2026-10-04T04:41:58.789891+00:00",
+          "memoryLimitBytesValues": [
+            5120000000
+          ],
+          "maximumLimitFraction": 0.1332008,
+          "oomKilledObserved": false,
+          "maximumReportedRestarts": 0
+        },
+        {
+          "node": 2,
+          "peakMemoryBytes": 656461824,
+          "peakMemoryGiB": 0.6113777160644531,
+          "peakCapturedUtc": "2026-10-04T04:38:05.863568+00:00",
+          "memoryLimitBytesValues": [
+            5120000000
+          ],
+          "maximumLimitFraction": 0.1282152,
+          "oomKilledObserved": false,
+          "maximumReportedRestarts": 0
+        }
+      ],
+      "hostMinimumAvailableBytes": 13392740352,
+      "hostMinimumAvailableGiB": 12.47296142578125,
+      "hostMinimumAvailableCapturedUtc": "2026-10-04T04:37:28.113453+00:00",
+      "hostMaximumCpuPercent": 40.21739130434783,
+      "hostMaximumCpuCapturedUtc": "2026-10-04T04:39:51.051491+00:00"
+    },
+    {
+      "name": "mergeOriginalDriver",
+      "requestedStartUtc": "2026-10-04T04:44:28.408645+00:00",
+      "requestedEndUtc": "2026-10-04T04:45:56.277335+00:00",
+      "scope": "Original Stage2 driver start/finish; includes actual merge and transient-receipt/beacon404 observer failure.",
+      "sampleCount": 86,
+      "captureStartUtc": "2026-10-04T04:44:29.187565+00:00",
+      "captureEndUtc": "2026-10-04T04:45:56.068127+00:00",
+      "perEl": [
+        {
+          "node": 1,
+          "peakMemoryBytes": 2208759808,
+          "peakMemoryGiB": 2.05706787109375,
+          "peakCapturedUtc": "2026-10-04T04:44:49.669366+00:00",
+          "memoryLimitBytesValues": [
+            5120000000
+          ],
+          "maximumLimitFraction": 0.4313984,
+          "oomKilledObserved": false,
+          "maximumReportedRestarts": 0
+        },
+        {
+          "node": 2,
+          "peakMemoryBytes": 705957888,
+          "peakMemoryGiB": 0.6574745178222656,
+          "peakCapturedUtc": "2026-10-04T04:45:40.748745+00:00",
+          "memoryLimitBytesValues": [
+            5120000000
+          ],
+          "maximumLimitFraction": 0.1378824,
+          "oomKilledObserved": false,
+          "maximumReportedRestarts": 0
+        }
+      ],
+      "hostMinimumAvailableBytes": 12058255360,
+      "hostMinimumAvailableGiB": 11.230125427246094,
+      "hostMinimumAvailableCapturedUtc": "2026-10-04T04:44:49.669366+00:00",
+      "hostMaximumCpuPercent": 39.40397350993378,
+      "hostMaximumCpuCapturedUtc": "2026-10-04T04:45:26.460811+00:00"
+    },
+    {
+      "name": "mergeObservationWindow",
+      "requestedStartUtc": "2026-10-04T04:44:00+00:00",
+      "requestedEndUtc": "2026-10-04T04:46:00+00:00",
+      "scope": "Explicit requested observation window; overlaps mergeOriginalDriver and must not be summed with it.",
+      "sampleCount": 117,
+      "captureStartUtc": "2026-10-04T04:44:00.494755+00:00",
+      "captureEndUtc": "2026-10-04T04:45:59.133000+00:00",
+      "perEl": [
+        {
+          "node": 1,
+          "peakMemoryBytes": 2208759808,
+          "peakMemoryGiB": 2.05706787109375,
+          "peakCapturedUtc": "2026-10-04T04:44:49.669366+00:00",
+          "memoryLimitBytesValues": [
+            5120000000
+          ],
+          "maximumLimitFraction": 0.4313984,
+          "oomKilledObserved": false,
+          "maximumReportedRestarts": 0
+        },
+        {
+          "node": 2,
+          "peakMemoryBytes": 705957888,
+          "peakMemoryGiB": 0.6574745178222656,
+          "peakCapturedUtc": "2026-10-04T04:45:40.748745+00:00",
+          "memoryLimitBytesValues": [
+            5120000000
+          ],
+          "maximumLimitFraction": 0.1378824,
+          "oomKilledObserved": false,
+          "maximumReportedRestarts": 0
+        }
+      ],
+      "hostMinimumAvailableBytes": 12058255360,
+      "hostMinimumAvailableGiB": 11.230125427246094,
+      "hostMinimumAvailableCapturedUtc": "2026-10-04T04:44:49.669366+00:00",
+      "hostMaximumCpuPercent": 39.40397350993378,
+      "hostMaximumCpuCapturedUtc": "2026-10-04T04:45:26.460811+00:00"
+    }
+  ],
+  "currentMemoryEventsSnapshot": {
+    "capturedUtc": "2026-10-04T05:01:35.912658+00:00",
+    "containers": {
+      "el1": {
+        "containerId": "89b449667c7531498c7e743fb61d39384fb084611fbbeeddfbe8015efca8048f",
+        "running": true,
+        "oomKilled": false,
+        "restartCount": 0,
+        "memoryEvents": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      },
+      "el2": {
+        "containerId": "2b5368b785686cf5023b3d5c4f47191628a81a28df35269fbb5e6c7b447659d1",
+        "running": true,
+        "oomKilled": false,
+        "restartCount": 0,
+        "memoryEvents": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0
+        }
+      }
+    }
+  },
+  "logs": {
+    "fromUtc": "2026-10-04T04:35:22Z",
+    "toUtc": "2026-10-04T04:59:54Z",
+    "clients": {
+      "cl1": {
+        "strictSeverityCounts": {
+          "INFO": 809,
+          "WARN": 620
+        },
+        "warningCauseCounts": {
+          "defaultProposerGasLimit": 246,
+          "lowPeerCount": 122,
+          "engineMultiplexerDefaultGraffiti": 66,
+          "noPeerSubscribedToTopic": 61,
+          "other": 3,
+          "observerBeaconBlock404": 122
+        }
+      },
+      "cl2": {
+        "strictSeverityCounts": {
+          "WARN": 578,
+          "INFO": 798
+        },
+        "warningCauseCounts": {
+          "engineMultiplexerDefaultGraffiti": 57,
+          "defaultProposerGasLimit": 247,
+          "noPeerSubscribedToTopic": 62,
+          "proposerPreferencesHttp400": 88,
+          "lowPeerCount": 122,
+          "observerBeaconBlock404": 2
+        }
+      }
+    },
+    "productionCancellations": [
+      {
+        "role": "el1",
+        "timestampUtc": "2026-10-04T04:45:25Z",
+        "cause": "OperationCanceledException after noninterruptible native proving; later canonical receipts observed"
+      }
+    ]
+  },
+  "canonicalMixedProof": {
+    "initialTransientBlockHash": "0x59c2bee96f2f710b40efd24499c1183061f7b7f48eeeed18a89c3b81ee712138",
+    "initialTransientSlot": 59,
+    "replacementCanonicalBlockHash": "0x02d5e586d628d025345ccff3bed34751f9abe38d33419e0214a331859ba67420",
+    "replacementCanonicalBlockNumber": 58,
+    "replacementCanonicalSlot": 60,
+    "bothTransactionsNonce": [
+      1,
+      2
+    ],
+    "bothElReceiptStatus": 1,
+    "bothClBidHashMatches": true,
+    "proofBytes": 325612,
+    "oneOpaqueBlobBytes": 325408,
+    "proofSha256": "4fc6a1603316d5e38f8e40b9eb5b85cc9fa6ad460cf50587426f0850e84d2f3b",
+    "capturedEngineRequestSha256": "24b0e32ae72fbcf6e232a7ad5ec33f962dd20a35ac21a3e75d40d02d8237b043",
+    "nativeVerification": "coordinator-owned helper check; this observer recorded envelope/byte metadata only"
+  },
+  "limitations": [
+    "Sampler is still active; this snapshot ends at the recorded captureEndUtc.",
+    "memory.events were not sampled in resources.jsonl; separately captured cumulative current-container events are attached.",
+    "CPU is whole-host instantaneous sampled utilization, not proof-only attribution.",
+    "Canonical inclusion was rechecked after one observed reorganization; the original driver report retains its transient observer failure."
+  ]
+}

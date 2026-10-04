@@ -49,7 +49,7 @@ have matching heads, negotiated `lean/1` peers and empty pools. The one transact
 exactly its parent root's two claims, so both producers reuse that verified statement;
 peer wrapper admission and block import verify it without fresh generic proving. Check
 successful receipts on both nodes, the header dependency commitment and beacon anchors,
-then wait for finality before continuing.
+then keep its passive observer running until finality.
 
 Stage 2 is a separate, conditional aggregation test: submit the nonce-1 SPHINCS parent
 and nonce-2 generic parent to node 1 while otherwise idle. Their fresh claims require a
@@ -87,7 +87,9 @@ Dora listens on port 19490. After explicitly launching the fresh enclave, check 
 
 ## Validate with real consensus clients
 
-The current mixed-profile live result is pending. On the Linux Docker host, run the passive sampler in a separate terminal using the two actual EL container IDs:
+The [captured mixed run](../captures/2026-10-04/mixed/README.md) finalized both verified-parent reuse and a fresh SPHINCS-plus-STARK parent merge. It preserves the original observer failures and separate canonical/finality recovery. Those services are stopped.
+
+On the Linux Docker host, run the passive sampler in a separate terminal using the two actual EL container IDs:
 
 ```sh
 export LEANVM_NUM_THREADS=1
@@ -105,7 +107,7 @@ python3 tools/LeanBench/devnet/mixed.py --mode=reuse \
   --health-file=/root/eip8288-mixed-devnet/runtime/resources/health.json
 ```
 
-Only after Stage 1 reports `completed: true` and the separately measured memory margin permits concurrent client proving, explicitly launch Stage 2:
+Only after Stage 1 reports native verification and pending gossip, its receipts match the canonical beacon bids, both pools are drained and the separately measured memory margin permits concurrent client proving, explicitly launch Stage 2. Its passive finality observer may run concurrently; both stages must eventually report completed finality:
 
 ```sh
 python3 tools/LeanBench/devnet/mixed.py --mode=merge \
@@ -127,7 +129,16 @@ python3 tools/LeanBench/devnet/status.py --root=/root/eip8288-mixed-devnet --por
 
 Open `http://127.0.0.1:19480`. Public binding requires explicit `--bind=0.0.0.0`. The viewer serves only selected report fields and fixed filtered log tails, never captured Engine parameters, full proofs or credentials. Mixed phases identify real beacon production; archived Engine-driver phases keep their original wording and outcomes.
 
-The configuration caps each execution node at two CPU cores and 5120 MB, each beacon node at one core and 1536 MB, and each validator client at half a core and 768 MB. These are memory limits, not reservations; the combined limits, Dora and the relay can exceed a 15 GiB host. Kurtosis expresses these values in decimal MB. The recovered test containers were instead updated to exactly 5 GiB each, without additional swap.
+Preserve failed reports. After restoring healthy reads, observe already accepted transactions in a new output directory without offering them again. Repeat the original command with `--observe-report=<original report.json>` and `--out=.../runtime/mixed-reuse-observed` or `--out=.../runtime/mixed-merge-observed`. The observer refreshes receipts after reorgs, checks their canonical block on both ELs, and verifies the current block's proof and beacon bids. The viewer retains original and recovery phases separately.
+
+Export compact evidence without reading captured payloads:
+
+```sh
+python3 tools/LeanBench/devnet/capture.py --mixed \
+  --runtime-root=/root/eip8288-mixed-devnet > /tmp/mixed-evidence.json
+```
+
+The configuration caps each execution node at two CPU cores and 5120 MB, each beacon node at one core and 1536 MB, and each validator client at half a core and 768 MB. These are memory limits, not reservations; the combined limits, Dora and the relay can exceed a 15 GiB host. Kurtosis expresses these values in decimal MB. The older ABI 4 recovery used exactly 5 GiB per execution node; the fresh mixed run uses the declared 5120 MB caps.
 
 In the archived ABI 4 run, the initial 2048 MB execution limit caused an OOM kill during an honest two-transaction SPHINCS run. Archived native-only measurements reached approximately 1.375 GB for two direct claims, 2.223 GB for four direct claims and 3.450 GB for binary recursive aggregation, before managed-client memory. Those measurements are not Linux peak-memory guarantees. Count and serialized-input bounds do not bound proving RAM, and cancellation cannot interrupt an active native call.
 

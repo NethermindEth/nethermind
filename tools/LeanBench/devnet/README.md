@@ -78,7 +78,7 @@ Run the signed-manifest driver command above, then start the read-only viewer:
 python3 tools/LeanBench/devnet/status.py --root=/root/eip8288-mixed-devnet --port=19480
 ```
 
-Open `http://127.0.0.1:19480/` on that host, or `http://<runner-host>:19480/` after explicitly starting the viewer with `--bind=0.0.0.0` and allowing access to that port. The viewer uses only the fixed `runtime/driver/report.json` and `runtime/driver-sphincs64/report.json` reports, local node RPCs, and `logs/{node1,node2,driver,driver-sphincs64}.log`. It exposes `/` and `/api/status`, with no arbitrary file browsing, configuration, JWT or private-key output. Expected invalid-proof rejections are labelled as successful checks; actual failed runs remain visible separately. The separate live-beacon network is viewed in Dora as described in the consensus guide.
+Open `http://127.0.0.1:19480/` on that host, or `http://<runner-host>:19480/` after explicitly starting the viewer with `--bind=0.0.0.0` and allowing access to that port. The viewer uses fixed driver reports, local node RPCs and filtered log tails. It also recognizes `runtime/mixed-reuse`, `mixed-merge` and their separate `-observed` recovery directories; use the [consensus guide's node ports](consensus/README.md) for those runs. It exposes `/` and `/api/status`, with no arbitrary file browsing, configuration, JWT, captured payload or private-key output. Expected invalid-proof rejections are labelled as successful checks; actual failed runs remain visible separately. Dora shows the real beacon chain as described in the consensus guide.
 
 Offline helper and real localhost response-ownership checks:
 

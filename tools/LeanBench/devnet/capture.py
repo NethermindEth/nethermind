@@ -41,7 +41,8 @@ def export_mixed(root):
         run = select(data, ("startedUtc", "finishedUtc", "mode", "sourceRevision", "driverSha256",
                             "completed", "nativeProofsVerified", "completedFinality", "measurementScope",
                             "manifests", "peerPoolPropagationObserved", "freshMixedParentInOneBlock",
-                            "receiptsCompletedUtc", "drainedNonces", "error", "originalReportSha256"))
+                            "receiptsCompletedUtc", "drainedNonces", "error", "originalReportSha256",
+                            "originalReport", "observationOnly", "readRetries"))
         run["reportSha256"] = digest(path)
         profile = data.get("nativeProfile", {})
         run["nativeProfile"] = select(profile, ("abi", "recursiveGuestKey", "bounds"))
@@ -65,6 +66,9 @@ def export_mixed(root):
             run["blocks"].append(item)
         run["finalityCheckpoints"] = [select(checkpoint, ("epoch", "root"))
                                      for checkpoint in data.get("finalityCheckpoints", [])]
+        run["canonicalObservations"] = [select(observation,
+            ("transactionHash", "oldBlockHash", "blockHash", "observedUtc"))
+            for observation in data.get("canonicalObservations", [])]
         evidence["runs"][directory] = run
     return evidence
 

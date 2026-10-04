@@ -1,0 +1,34 @@
+{
+  "startedUtc": "2026-10-04T05:05:35.266531+00:00",
+  "scope": "stop owned lean8288-mixed services; preserve artifacts",
+  "processes": [
+    {
+      "pidFile": "sampler.pid",
+      "pid": 1691392,
+      "runningBefore": true,
+      "runningAfter": false
+    },
+    {
+      "pidFile": "viewer.pid",
+      "pid": 1691393,
+      "runningBefore": true,
+      "runningAfter": false
+    },
+    {
+      "pidFile": "node1-log.pid",
+      "pid": 1691394,
+      "runningBefore": false,
+      "runningAfter": false
+    },
+    {
+      "pidFile": "node2-log.pid",
+      "pid": 1691395,
+      "runningBefore": false,
+      "runningAfter": false
+    }
+  ],
+  "kurtosisExit": 0,
+  "openTaskPorts": [],
+  "remainingOwnedProcesses": [],
+  "finishedUtc": "2026-10-04T05:05:56.618030+00:00"
+}
