@@ -64,12 +64,10 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         string raw = await response.Content.ReadAsStringAsync();
         JsonDocument body = JsonDocument.Parse(raw);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((int)response.StatusCode, Is.EqualTo(200), $"unexpected status; body: {raw}");
-            Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
-            Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((int)response.StatusCode, Is.EqualTo(200), $"unexpected status; body: {raw}");
+        Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
+        Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True);
     }
 
     [Test]
@@ -130,11 +128,9 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
 
         using HttpResponseMessage response = await host.Client.GetAsync("/eth/v1/beacon/" + string.Format(path, root, stateRoot, parent));
         using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((int)response.StatusCode, Is.EqualTo(200));
-            Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(optimistic || !withSnapshot));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((int)response.StatusCode, Is.EqualTo(200));
+        Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(optimistic || !withSnapshot));
     }
 
     /// <summary>types/primitive.yaml ExecutionOptimistic requires verification even for pruned finalized history.</summary>
@@ -167,13 +163,11 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
 
         using HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/beacon/headers/{root}");
         using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((int)response.StatusCode, Is.EqualTo(200));
-            Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
-            Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(),
-                Is.EqualTo(!withSnapshot || !checkpointVerified || newerStatus));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((int)response.StatusCode, Is.EqualTo(200));
+        Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
+        Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(),
+            Is.EqualTo(!withSnapshot || !checkpointVerified || newerStatus));
     }
 
     /// <summary>types/primitive.yaml Finalized excludes descendants after the checkpoint's start slot.</summary>

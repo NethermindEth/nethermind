@@ -253,11 +253,9 @@ public class NetworkEntryFuzzTests
             }
         }, static _ => false);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decodable, Is.GreaterThan(0), "no decodable payload reached the validator");
-            Assert.That(undecodable, Is.GreaterThan(0), "no undecodable payload reached the validator");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(decodable, Is.GreaterThan(0), "no decodable payload reached the validator");
+        Assert.That(undecodable, Is.GreaterThan(0), "no undecodable payload reached the validator");
     }
 
     // A store fault while validating is this node's, not the sender's: it must not become a REJECT that charges an honest peer, so it reaches
@@ -302,12 +300,10 @@ public class NetworkEntryFuzzTests
         Eth2MessageId.Compute(topic, bomb);
         long idAllocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(verifyAllocated, Is.LessThan(1 << 20), "bytes allocated by Verify");
-            Assert.That(idAllocated, Is.LessThan(1 << 20), "bytes allocated by the message id");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(verifyAllocated, Is.LessThan(1 << 20), "bytes allocated by Verify");
+        Assert.That(idAllocated, Is.LessThan(1 << 20), "bytes allocated by the message id");
     }
 
     private sealed class FaultingReadsDb : MemDb

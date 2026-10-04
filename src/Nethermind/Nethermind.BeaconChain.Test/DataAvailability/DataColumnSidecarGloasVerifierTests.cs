@@ -25,11 +25,9 @@ public class DataColumnSidecarGloasVerifierTests
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(Column);
         SszKzgCommitment[] commitments = DataColumnSidecarGloasTestFixture.Commitments();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar, commitments), Is.True);
-            Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar, commitments), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar, commitments), Is.True);
+        Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar, commitments), Is.True);
     }
 
     private static IEnumerable<TestCaseData> StructuralDefects()
@@ -52,11 +50,9 @@ public class DataColumnSidecarGloasVerifierTests
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(Column);
         SszKzgCommitment[] commitments = tamper(sidecar, DataColumnSidecarGloasTestFixture.Commitments());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar, commitments), Is.False);
-            Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar, commitments), Is.False, "the KZG check must not run on arrays it indexes in lockstep, nor pass an empty batch");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar, commitments), Is.False);
+        Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar, commitments), Is.False, "the KZG check must not run on arrays it indexes in lockstep, nor pass an empty batch");
     }
 
     private static IEnumerable<TestCaseData> CryptographicDefects()
@@ -81,10 +77,8 @@ public class DataColumnSidecarGloasVerifierTests
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(Column);
         SszKzgCommitment[] commitments = tamper(sidecar, DataColumnSidecarGloasTestFixture.Commitments());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar, commitments), Is.True, "the defect must be one only KZG can see");
-            Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar, commitments), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar, commitments), Is.True, "the defect must be one only KZG can see");
+        Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar, commitments), Is.False);
     }
 }

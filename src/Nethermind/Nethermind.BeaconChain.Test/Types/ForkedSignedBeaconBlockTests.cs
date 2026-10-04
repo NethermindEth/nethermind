@@ -42,12 +42,10 @@ public class ForkedSignedBeaconBlockTests
             signedRoot = SszRoots.HashTreeRoot(signed);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(block.ParentRoot, Is.EqualTo(parentRoot), "parent root");
-            Assert.That(block.ProposerIndex, Is.EqualTo(ProposerIndex), "proposer index");
-            Assert.That(block.ComputeMessageRoot(), Is.EqualTo(messageRoot), "the block root is the message root");
-            Assert.That(block.ComputeMessageRoot(), Is.Not.EqualTo(signedRoot), "the block root is not the signed container's root");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(block.ParentRoot, Is.EqualTo(parentRoot), "parent root");
+        Assert.That(block.ProposerIndex, Is.EqualTo(ProposerIndex), "proposer index");
+        Assert.That(block.ComputeMessageRoot(), Is.EqualTo(messageRoot), "the block root is the message root");
+        Assert.That(block.ComputeMessageRoot(), Is.Not.EqualTo(signedRoot), "the block root is not the signed container's root");
     }
 }

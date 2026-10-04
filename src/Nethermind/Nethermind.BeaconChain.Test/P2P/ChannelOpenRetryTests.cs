@@ -45,17 +45,15 @@ public class ChannelOpenRetryTests
 
         IReadOnlyList<ForkedSignedBeaconBlock> blocks = await node.RequestBlocksByRootAsync(opener.Session, [Hash256.Zero], token, timing);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Metrics.BeaconChainChannelsReopened - reopened, Is.EqualTo(1UL), "the retry is counted");
-            Assert.That(timing.ToString(), Does.Match(@"total (\d+) ms, 0 chunks, attempt 2$"), "the Debug line names the attempt");
-            Assert.That(int.Parse(Regex.Match(timing.ToString(), @"total (\d+) ms").Groups[1].Value), Is.GreaterThanOrEqualTo((int)OpenBound.TotalMilliseconds),
-                "the total runs from the first attempt");
-            Assert.That(blocks, Is.Empty, "the second channel's answer is the request's");
-            Assert.That(opener.Attempts, Is.EqualTo(2));
-            Assert.That(opener.EarlierCancelledWhenOpened, Is.EqualTo(new[] { true }), "the dropped attempt is cancelled before the second starts");
-            Assert.That(timing.ChannelOpened, Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Metrics.BeaconChainChannelsReopened - reopened, Is.EqualTo(1UL), "the retry is counted");
+        Assert.That(timing.ToString(), Does.Match(@"total (\d+) ms, 0 chunks, attempt 2$"), "the Debug line names the attempt");
+        Assert.That(int.Parse(Regex.Match(timing.ToString(), @"total (\d+) ms").Groups[1].Value), Is.GreaterThanOrEqualTo((int)OpenBound.TotalMilliseconds),
+            "the total runs from the first attempt");
+        Assert.That(blocks, Is.Empty, "the second channel's answer is the request's");
+        Assert.That(opener.Attempts, Is.EqualTo(2));
+        Assert.That(opener.EarlierCancelledWhenOpened, Is.EqualTo(new[] { true }), "the dropped attempt is cancelled before the second starts");
+        Assert.That(timing.ChannelOpened, Is.True);
     }
 
     [Test]
@@ -67,13 +65,11 @@ public class ChannelOpenRetryTests
 
         ReqRespTimeoutException? failure = Assert.ThrowsAsync<ReqRespTimeoutException>(() => node.RequestBlocksByRootAsync(opener.Session, [Hash256.Zero], token, new RequestTiming()));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(failure!.ChannelNeverOpened, Is.True);
-            Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed), "counted against the peer as an unanswered request was before");
-            Assert.That(opener.Attempts, Is.EqualTo(2), "one second channel at most, so an unresponsive peer gets no more than twice the opens");
-            Assert.That(opener.EarlierCancelledWhenOpened, Is.EqualTo(new[] { true }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(failure!.ChannelNeverOpened, Is.True);
+        Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed), "counted against the peer as an unanswered request was before");
+        Assert.That(opener.Attempts, Is.EqualTo(2), "one second channel at most, so an unresponsive peer gets no more than twice the opens");
+        Assert.That(opener.EarlierCancelledWhenOpened, Is.EqualTo(new[] { true }));
     }
 
     [Test]
@@ -85,11 +81,9 @@ public class ChannelOpenRetryTests
 
         ReqRespTimeoutException? failure = Assert.ThrowsAsync<ReqRespTimeoutException>(() => node.RequestBlocksByRootAsync(opener.Session, [Hash256.Zero], token, new RequestTiming()));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(opener.LateOpens, Is.EqualTo(1), "fixture: the abandoned channel reached its protocol late");
-            Assert.That(failure!.ChannelNeverOpened, Is.True, "the second channel never opened, whatever the first did");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(opener.LateOpens, Is.EqualTo(1), "fixture: the abandoned channel reached its protocol late");
+        Assert.That(failure!.ChannelNeverOpened, Is.True, "the second channel never opened, whatever the first did");
     }
 
     /// <summary>An attempt is either abandoned or opened, never both, so an abandoned channel that opens late sends nothing and marks nothing.</summary>
@@ -138,11 +132,9 @@ public class ChannelOpenRetryTests
 
         IReadOnlyList<ForkedSignedBeaconBlock> blocks = await node.RequestBlocksByRootAsync(opener.Session, [Hash256.Zero], token, new RequestTiming());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(blocks, Is.Empty);
-            Assert.That(opener.Attempts, Is.EqualTo(1), "a slow peer whose channel opened is not asked twice");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(blocks, Is.Empty);
+        Assert.That(opener.Attempts, Is.EqualTo(1), "a slow peer whose channel opened is not asked twice");
     }
 
     /// <summary>A peer answers <c>na</c> for a protocol it does not support, which never opens either; when its identify answer lists protocols without this one, a second channel would only cost it another open.</summary>
@@ -241,12 +233,10 @@ public class ChannelOpenRetryTests
         await Task.WhenAll(answer, dial);
         BeaconP2P.SessionInfo info = await node.GetSessionInfoAsync(session, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(await dial, Is.SameAs(session), "the original connection succeeds through the identify retry");
-            Assert.That(info, Is.EqualTo(new BeaconP2P.SessionInfo(PeerDirection.Outbound, "retry-agent")));
-            Assert.That(node.IdentifyTimeoutsForTest, Is.Zero, "a recovered channel open does not count as an identify timeout");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(await dial, Is.SameAs(session), "the original connection succeeds through the identify retry");
+        Assert.That(info, Is.EqualTo(new BeaconP2P.SessionInfo(PeerDirection.Outbound, "retry-agent")));
+        Assert.That(node.IdentifyTimeoutsForTest, Is.Zero, "a recovered channel open does not count as an identify timeout");
     }
 
     private static BeaconP2P CreateHost(TimeSpan requestTimeout) =>

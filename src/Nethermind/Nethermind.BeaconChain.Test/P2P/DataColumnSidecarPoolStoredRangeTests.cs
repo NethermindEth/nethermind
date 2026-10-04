@@ -133,11 +133,9 @@ public class DataColumnSidecarPoolStoredRangeTests
         (FaultyColumnsDb db, BeaconChainStore store, _) = StoreRange();
         RemoveRecord(db, RootAt(First + 5), Sampled[2]);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.GetStoredDataColumns(First + 5, RootAt(First + 5)) >> (int)Sampled[2] & UInt128.One, Is.EqualTo(UInt128.One), "the slot index still names it");
-            Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(First + 6));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.GetStoredDataColumns(First + 5, RootAt(First + 5)) >> (int)Sampled[2] & UInt128.One, Is.EqualTo(UInt128.One), "the slot index still names it");
+        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(First + 6));
     }
 
     [Test]
@@ -148,11 +146,9 @@ public class DataColumnSidecarPoolStoredRangeTests
         store.ApplyCanonicalIndexChanges([(First + 6, null)], Last);
         RemoveRecord(db, RootAt(First + 6), Sampled[0]);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.GetStoredDataColumns(First + 6, RootAt(First + 6)), Is.Not.EqualTo(UInt128.Zero), "the orphaned block's columns are still indexed");
-            Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(First));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.GetStoredDataColumns(First + 6, RootAt(First + 6)), Is.Not.EqualTo(UInt128.Zero), "the orphaned block's columns are still indexed");
+        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(First));
     }
 
     [Test]
@@ -180,11 +176,9 @@ public class DataColumnSidecarPoolStoredRangeTests
     {
         (_, BeaconChainStore store, _) = StoreRange();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(First));
-            Assert.That(StoredFloor(store), Is.EqualTo(First));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(First));
+        Assert.That(StoredFloor(store), Is.EqualTo(First));
     }
 
     [Test]
@@ -195,11 +189,9 @@ public class DataColumnSidecarPoolStoredRangeTests
         store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, TestItem.PrivateKeyA.KeyBytes);
         store.ApplyCanonicalIndexChanges([(Last, RootAt(Last))], Last);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(ulong.MaxValue));
-            Assert.That(store.TryGetDataColumnFloor(out _), Is.False, "nothing is recorded before the first sidecar");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(ulong.MaxValue));
+        Assert.That(store.TryGetDataColumnFloor(out _), Is.False, "nothing is recorded before the first sidecar");
     }
 
     [Test]
@@ -208,11 +200,9 @@ public class DataColumnSidecarPoolStoredRangeTests
         (_, BeaconChainStore store, _) = StoreRange(skip: (First + 4, Sampled[0]));
         store.RaiseDataColumnFloor(Last + 5);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(Last + 5));
-            Assert.That(StoredFloor(store), Is.EqualTo(Last + 5));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(Last + 5));
+        Assert.That(StoredFloor(store), Is.EqualTo(Last + 5));
     }
 
     [Test]
@@ -268,11 +258,9 @@ public class DataColumnSidecarPoolStoredRangeTests
 
         Assert.That(check.Wait(Wait), Is.True);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(whilePending, Is.EqualTo(readWhilePending ? Last + 1 : null));
-            Assert.That(restarted.EarliestCompletelyServableSlot, Is.EqualTo(incomplete ? First + 8 : readWhilePending ? First - 10 : First));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(whilePending, Is.EqualTo(readWhilePending ? Last + 1 : null));
+        Assert.That(restarted.EarliestCompletelyServableSlot, Is.EqualTo(incomplete ? First + 8 : readWhilePending ? First - 10 : First));
     }
 
     [Test]

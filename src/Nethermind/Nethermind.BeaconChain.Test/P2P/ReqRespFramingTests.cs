@@ -200,11 +200,9 @@ public class ReqRespFramingTests
         (byte[] payload, ReqRespFraming.RequestTail tail) = await ReqRespFraming.ReadRequestWithTailAsync(head, maxSize: 8, default);
         using MemoryStream late = new(Bytes.FromHexString(lateHex));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(payload, Is.EqualTo(Bytes.FromHexString(PingSsz)));
-            Assert.That(await tail.WatchAsync(late, default), violation ? Is.Not.Null : Is.Null);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(payload, Is.EqualTo(Bytes.FromHexString(PingSsz)));
+        Assert.That(await tail.WatchAsync(late, default), violation ? Is.Not.Null : Is.Null);
     }
 
     // A peer that repeats the stream-identifier frame forever never advances uncompressedTotal (the
@@ -307,11 +305,9 @@ public class ReqRespFramingTests
     private static void AssertChunk(ResponseChunk? actual, byte result, byte[] contextBytes, byte[] payload)
     {
         Assert.That(actual, Is.Not.Null);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(actual!.Value.Result, Is.EqualTo(result), "result code");
-            Assert.That(actual.Value.ContextBytes, Is.EqualTo(contextBytes), "context bytes");
-            Assert.That(actual.Value.Payload, Is.EqualTo(payload), "payload");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(actual!.Value.Result, Is.EqualTo(result), "result code");
+        Assert.That(actual.Value.ContextBytes, Is.EqualTo(contextBytes), "context bytes");
+        Assert.That(actual.Value.Payload, Is.EqualTo(payload), "payload");
     }
 }

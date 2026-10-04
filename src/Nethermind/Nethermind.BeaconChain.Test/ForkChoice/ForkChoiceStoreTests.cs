@@ -44,13 +44,11 @@ public class ForkChoiceStoreTests
         // Checkpoint updates are monotonic by epoch: stale candidates are ignored.
         store.UpdateCheckpoints(GetCheckpoint(1), GetCheckpoint(0));
         store.UpdateUnrealizedCheckpoints(GetCheckpoint(1), GetCheckpoint(0));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.JustifiedCheckpoint, Is.EqualTo(GetCheckpoint(2)), "stale justified ignored");
-            Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "stale finalized ignored");
-            Assert.That(store.UnrealizedJustifiedCheckpoint, Is.EqualTo(GetCheckpoint(2)), "stale unrealized justified ignored");
-            Assert.That(store.UnrealizedFinalizedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "stale unrealized finalized ignored");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.JustifiedCheckpoint, Is.EqualTo(GetCheckpoint(2)), "stale justified ignored");
+        Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "stale finalized ignored");
+        Assert.That(store.UnrealizedJustifiedCheckpoint, Is.EqualTo(GetCheckpoint(2)), "stale unrealized justified ignored");
+        Assert.That(store.UnrealizedFinalizedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "stale unrealized finalized ignored");
     }
 
     /// <summary>

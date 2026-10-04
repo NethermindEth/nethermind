@@ -72,12 +72,10 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(available || !verifySignatures ? BlockImportResult.Imported : BlockImportResult.DataUnavailable),
-                "gossip checks must preserve import results, including trusted replay and availability deferral");
-            Assert.That(((IBlockImporter)importer).RejectGossip, Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(available || !verifySignatures ? BlockImportResult.Imported : BlockImportResult.DataUnavailable),
+            "gossip checks must preserve import results, including trusted replay and availability deferral");
+        Assert.That(((IBlockImporter)importer).RejectGossip, Is.False);
     }
 
     [Test]
@@ -128,14 +126,12 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), custodied
-                ? "missing columns are retryable, not a permanent rejection"
-                : "custody columns alone are not enough: the per-slot sample must succeed too");
-            Assert.That(importer.IsKnown(chain.BlockRoot), Is.False, "a block whose data is unavailable must not enter fork choice");
-            Assert.That(warnings.Messages, Has.None.Contains("blob data is not yet available"), "a block trailing its columns is routine at the head, not a warning");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), custodied
+            ? "missing columns are retryable, not a permanent rejection"
+            : "custody columns alone are not enough: the per-slot sample must succeed too");
+        Assert.That(importer.IsKnown(chain.BlockRoot), Is.False, "a block whose data is unavailable must not enter fork choice");
+        Assert.That(warnings.Messages, Has.None.Contains("blob data is not yet available"), "a block trailing its columns is routine at the head, not a warning");
     }
 
     [Test]
@@ -212,12 +208,10 @@ public class BlockImporterTests
 
         BlockImportResult result = GloasBlockImporterTests.ImportOrFailIfStuck(importer, new ForkedSignedBeaconBlock.OfFulu(chain.Block), root);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(expected));
-            Assert.That(failed.Contains(root), Is.False, "a block from a slot the clock has not reached may still become valid");
-            Assert.That(warnings.Messages.Any(w => w.Contains("before its state transition")), Is.EqualTo(expected == BlockImportResult.Invalid));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(expected));
+        Assert.That(failed.Contains(root), Is.False, "a block from a slot the clock has not reached may still become valid");
+        Assert.That(warnings.Messages.Any(w => w.Contains("before its state transition")), Is.EqualTo(expected == BlockImportResult.Invalid));
     }
 
     /// <summary>
@@ -250,14 +244,12 @@ public class BlockImporterTests
 
         BlockImportResult onTime = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: !trusted);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(forged, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(early, Is.EqualTo(BlockImportResult.FutureSlot));
-            Assert.That(knownEarly, Is.False, "fork choice has not seen the block before its slot");
-            Assert.That(failed.Contains(chain.BlockRoot), Is.False);
-            Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forged, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(early, Is.EqualTo(BlockImportResult.FutureSlot));
+        Assert.That(knownEarly, Is.False, "fork choice has not seen the block before its slot");
+        Assert.That(failed.Contains(chain.BlockRoot), Is.False);
+        Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));
     }
 
     /// <summary>
@@ -287,11 +279,9 @@ public class BlockImporterTests
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
         importer.ComputeHead();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(snapshots.Current!.ProposerBoostRoot, Is.EqualTo(boosted ? chain.BlockRoot : Hash256.Zero));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(snapshots.Current!.ProposerBoostRoot, Is.EqualTo(boosted ? chain.BlockRoot : Hash256.Zero));
     }
 
     [Test]
@@ -412,17 +402,15 @@ public class BlockImporterTests
         HeadView head = importer.ComputeHead();
         ProposerLookaheadSnapshot? published = lookaheads.Current;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(beforeAnyHead, Is.Null, "nothing is published until a head has been computed");
-            Assert.That(head.HeadRoot, Is.EqualTo(chain.BlockRoot));
-            Assert.That(published?.Epoch, Is.EqualTo(0UL));
-            // Nothing precedes the head's epoch, so the shuffling was decided below the fork-choice tree root.
-            Assert.That(published?.DependentRoot, Is.EqualTo(chain.AnchorRoot));
-            Assert.That(published!.TryGetProposer(chain.Block.Message.Slot, out ulong proposer) ? proposer : (ulong?)null, Is.EqualTo(chain.Block.Message.ProposerIndex));
-            Assert.That(published.TryGetProposer(Presets.ProposerLookaheadSlots, out _), Is.False, "the lookahead covers two epochs");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(beforeAnyHead, Is.Null, "nothing is published until a head has been computed");
+        Assert.That(head.HeadRoot, Is.EqualTo(chain.BlockRoot));
+        Assert.That(published?.Epoch, Is.EqualTo(0UL));
+        // Nothing precedes the head's epoch, so the shuffling was decided below the fork-choice tree root.
+        Assert.That(published?.DependentRoot, Is.EqualTo(chain.AnchorRoot));
+        Assert.That(published!.TryGetProposer(chain.Block.Message.Slot, out ulong proposer) ? proposer : (ulong?)null, Is.EqualTo(chain.Block.Message.ProposerIndex));
+        Assert.That(published.TryGetProposer(Presets.ProposerLookaheadSlots, out _), Is.False, "the lookahead covers two epochs");
     }
 
     [Test]
@@ -449,13 +437,11 @@ public class BlockImporterTests
         Hash256 headAfter = importer.ComputeHead().HeadRoot;
         ProposerLookaheadSnapshot? after = lookaheads.Current;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(imported.Append(slashingImported), Is.All.EqualTo(BlockImportResult.Imported));
-            Assert.That((headBefore, headAfter), Is.EqualTo((scenario.Voted.Root, nextEpoch.Root)), "the slashing moves the head to B's branch");
-            Assert.That((before?.Epoch, before?.DependentRoot), Is.EqualTo(((ulong?)0, (Hash256?)chain.AnchorRoot)));
-            Assert.That((after?.Epoch, after?.DependentRoot), Is.EqualTo(((ulong?)1, (Hash256?)scenario.B.Root)), "the new head's lookahead replaces the old branch's");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(imported.Append(slashingImported), Is.All.EqualTo(BlockImportResult.Imported));
+        Assert.That((headBefore, headAfter), Is.EqualTo((scenario.Voted.Root, nextEpoch.Root)), "the slashing moves the head to B's branch");
+        Assert.That((before?.Epoch, before?.DependentRoot), Is.EqualTo(((ulong?)0, (Hash256?)chain.AnchorRoot)));
+        Assert.That((after?.Epoch, after?.DependentRoot), Is.EqualTo(((ulong?)1, (Hash256?)scenario.B.Root)), "the new head's lookahead replaces the old branch's");
     }
 
     [Test]
@@ -478,13 +464,11 @@ public class BlockImporterTests
 
         MessageValidity verdict = router.Handle(column, gloasTopic: false, Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar)));
 
-        using (Assert.EnterMultipleScope())
-        {
-            // The expected proposer's unsigned header gets past the lookahead to the signature check.
-            Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(router.GetDropCount(expectedProposer ? ColumnGossipDropReason.InvalidHeaderSignature : ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(1));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.ProposerNotVerifiable), Is.Zero, "the imported head's branch is covered");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        // The expected proposer's unsigned header gets past the lookahead to the signature check.
+        Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(router.GetDropCount(expectedProposer ? ColumnGossipDropReason.InvalidHeaderSignature : ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(1));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.ProposerNotVerifiable), Is.Zero, "the imported head's branch is covered");
     }
 
     [TestCase(0xD, 32UL, 0xB, TestName = "a block at the lookahead's first slot is walked past")]
@@ -696,13 +680,11 @@ public class BlockImporterTests
         Hash256? lineageAfterHeadStep = importer.LineageRoot;
         BlockImportResult extended = importer.Import(c.Block, c.Root, verifySignatures: false);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head, Is.EqualTo(anchor.Root), "fixture bug: the blocks above the anchor must fail the voting-source check, as they do after checkpoint sync");
-            Assert.That(lineageAfterHeadStep, Is.EqualTo(b.Root), "a head that fell back to an ancestor is not a fork to move the lineage to");
-            Assert.That(extended, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(importer.LineageRoot, Is.EqualTo(c.Root), "the next block must import onto the lineage, not onto a copy of its parent's state");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head, Is.EqualTo(anchor.Root), "fixture bug: the blocks above the anchor must fail the voting-source check, as they do after checkpoint sync");
+        Assert.That(lineageAfterHeadStep, Is.EqualTo(b.Root), "a head that fell back to an ancestor is not a fork to move the lineage to");
+        Assert.That(extended, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(importer.LineageRoot, Is.EqualTo(c.Root), "the next block must import onto the lineage, not onto a copy of its parent's state");
     }
 
     /// <summary>
@@ -729,11 +711,9 @@ public class BlockImporterTests
         importer.OnInvalidExecutionPayload(invalid.Root, null);
         Hash256 head = importer.ComputeHead().HeadRoot;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head, Is.EqualTo(ancestor.Root), "fixture bug: invalidation must roll the head back to the ancestor");
-            Assert.That(importer.LineageRoot, Is.EqualTo(ancestor.Root), "the lineage must leave the invalid branch for the head");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head, Is.EqualTo(ancestor.Root), "fixture bug: invalidation must roll the head back to the ancestor");
+        Assert.That(importer.LineageRoot, Is.EqualTo(ancestor.Root), "the lineage must leave the invalid branch for the head");
     }
 
     // consensus-specs v1.7.0-beta.2 fork choice on_block requires the parent post-state even after its other child takes the lineage.
@@ -773,15 +753,13 @@ public class BlockImporterTests
         BlockImportResult[] restImported = [ImportAt(b2, 1000), ImportAt(b3, 1000)];
         Hash256 headAfterB3 = importer.ComputeHead().HeadRoot;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(b1Imported, Is.EqualTo(BlockImportResult.Imported), "the parent's post-state must outlive the lineage moving to its other child");
-            Assert.That(siblingsImported, Is.All.EqualTo(BlockImportResult.Imported));
-            Assert.That((headAfterB1, lineageAfterB1), Is.EqualTo((b1.Root, (Hash256?)b1.Root)), "the boosted block is the head, and the lineage follows it");
-            Assert.That(restImported, Is.All.EqualTo(BlockImportResult.Imported));
-            Assert.That((headAfterB3, importer.LineageRoot), Is.EqualTo((b3.Root, (Hash256?)b3.Root)));
-            Assert.That(warnings.Messages, Has.None.Contains("is no longer retained"), "no block may be refused for a parent post-state fork choice still needs");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(b1Imported, Is.EqualTo(BlockImportResult.Imported), "the parent's post-state must outlive the lineage moving to its other child");
+        Assert.That(siblingsImported, Is.All.EqualTo(BlockImportResult.Imported));
+        Assert.That((headAfterB1, lineageAfterB1), Is.EqualTo((b1.Root, (Hash256?)b1.Root)), "the boosted block is the head, and the lineage follows it");
+        Assert.That(restImported, Is.All.EqualTo(BlockImportResult.Imported));
+        Assert.That((headAfterB3, importer.LineageRoot), Is.EqualTo((b3.Root, (Hash256?)b3.Root)));
+        Assert.That(warnings.Messages, Has.None.Contains("is no longer retained"), "no block may be refused for a parent post-state fork choice still needs");
     }
 
     [Test]
@@ -847,13 +825,11 @@ public class BlockImporterTests
 
         BeaconStateFulu? regenerated = states.GetBlockState(second.Root);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(regenerated, Is.Not.Null, "fixture bug: the state must be regenerated from the retained parent");
-            Assert.That(states.GetHeldBlockState(first.Root), Is.SameAs(first.PostState), "the least recently used retained state survives");
-            Assert.That(filler.Select(states.GetHeldBlockState), Has.All.SameAs(chain.Anchor.AnchorState));
-            Assert.That(states.GetHeldBlockState(second.Root), Is.SameAs(regenerated), "the regenerated state is still held for the next request");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(regenerated, Is.Not.Null, "fixture bug: the state must be regenerated from the retained parent");
+        Assert.That(states.GetHeldBlockState(first.Root), Is.SameAs(first.PostState), "the least recently used retained state survives");
+        Assert.That(filler.Select(states.GetHeldBlockState), Has.All.SameAs(chain.Anchor.AnchorState));
+        Assert.That(states.GetHeldBlockState(second.Root), Is.SameAs(regenerated), "the regenerated state is still held for the next request");
     }
 
     /// <summary>
@@ -875,13 +851,11 @@ public class BlockImporterTests
 
         BeaconStateFulu? copy = states.CopyBlockState(second.Root);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(copy, Is.Not.Null, "fixture bug: the state must be regenerated from the retained parent");
-            Assert.That(SszRoots.HashTreeRoot(copy!), Is.EqualTo(second.Block.Message!.StateRoot));
-            Assert.That(states.GetHeldBlockState(second.Root), Is.Null, "the copy is the caller's alone");
-            Assert.That(states.GetBlockState(second.Root), Is.Not.SameAs(copy), "a later import regenerates its own state");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(copy, Is.Not.Null, "fixture bug: the state must be regenerated from the retained parent");
+        Assert.That(SszRoots.HashTreeRoot(copy!), Is.EqualTo(second.Block.Message!.StateRoot));
+        Assert.That(states.GetHeldBlockState(second.Root), Is.Null, "the copy is the caller's alone");
+        Assert.That(states.GetBlockState(second.Root), Is.Not.SameAs(copy), "a later import regenerates its own state");
     }
 
     [TestCase("unknown")]
@@ -950,12 +924,10 @@ public class BlockImporterTests
         double elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         if (!beyondBound) TestContext.Out.WriteLine($"Fulu regeneration: {count} blocks in {elapsedMs:F1} ms, {elapsedMs / count:F2} ms per block, {chain.Anchor.AnchorState.Validators!.Length} validators");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(regenerated is null ? null : SszRoots.HashTreeRoot(regenerated), Is.EqualTo(beyondBound ? null : blocks[^1].Block.Message!.StateRoot));
-            Assert.That(walked, Is.LessThanOrEqualTo((int)chain.Spec.SlotsPerEpoch + 1), "the ancestor walk stops at the bound, before reading any more stored states");
-            Assert.That(warnings.Messages, beyondBound ? Has.One.Contains($"no ancestor state is held within {chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(regenerated is null ? null : SszRoots.HashTreeRoot(regenerated), Is.EqualTo(beyondBound ? null : blocks[^1].Block.Message!.StateRoot));
+        Assert.That(walked, Is.LessThanOrEqualTo((int)chain.Spec.SlotsPerEpoch + 1), "the ancestor walk stops at the bound, before reading any more stored states");
+        Assert.That(warnings.Messages, beyondBound ? Has.One.Contains($"no ancestor state is held within {chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
     }
 
     /// <summary>
@@ -993,13 +965,11 @@ public class BlockImporterTests
         bool forgedParentRegenerated = states.GetHeldBlockState(lineage[1].Root) is not null || states.GetHeldBlockState(lineage[2].Root) is not null;
         BlockImportResult result = importer.Import(sibling.Block, sibling.Root, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
-            Assert.That(forged, Is.All.EqualTo(BlockImportResult.Invalid));
-            Assert.That(forgedParentRegenerated, Is.False, "no state is regenerated for a block whose proposer signature fails");
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the real block on an evicted parent still has the slot's regeneration budget");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
+        Assert.That(forged, Is.All.EqualTo(BlockImportResult.Invalid));
+        Assert.That(forgedParentRegenerated, Is.False, "no state is regenerated for a block whose proposer signature fails");
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the real block on an evicted parent still has the slot's regeneration budget");
     }
 
     /// <summary>
@@ -1066,11 +1036,9 @@ public class BlockImporterTests
         Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
         BlockImportResult result = Import(Extend(segment[epochStart + 3].Root, epochStart + 5));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "a mid-epoch parent is regenerated from its epoch's checkpoint block state");
-            Assert.That(warnings.Messages, Has.None.Contains("Cannot regenerate"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "a mid-epoch parent is regenerated from its epoch's checkpoint block state");
+        Assert.That(warnings.Messages, Has.None.Contains("Cannot regenerate"));
     }
 
     /// <summary>
@@ -1282,14 +1250,12 @@ public class BlockImporterTests
         BlockImportResult result = importer.Import(refused.Block, refused.Root, verifySignatures: false);
         importer.ComputeHead();
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        for (int i = 0; i < held.Length; i++)
         {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            for (int i = 0; i < held.Length; i++)
-            {
-                ExecutionStatus expected = latestValid >= 0 && i > latestValid ? ExecutionStatus.Invalid : ExecutionStatus.Optimistic;
-                Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == held[i].Root).ExecutionStatus, Is.EqualTo(expected));
-            }
+            ExecutionStatus expected = latestValid >= 0 && i > latestValid ? ExecutionStatus.Invalid : ExecutionStatus.Optimistic;
+            Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == held[i].Root).ExecutionStatus, Is.EqualTo(expected));
         }
     }
 
@@ -1315,12 +1281,10 @@ public class BlockImporterTests
         importer.ComputeHead();
 
         ForkChoiceSnapshotNode[] nodes = [.. snapshots.Current!.Nodes];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(nodes.Single(n => n.Root == parent.Root).ExecutionStatus, Is.EqualTo(expectedParent));
-            Assert.That(nodes.Single(n => n.Root == head.Root).ExecutionStatus, Is.EqualTo(expectedHead));
-            Assert.That(nodes.Single(n => n.Root == side.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(nodes.Single(n => n.Root == parent.Root).ExecutionStatus, Is.EqualTo(expectedParent));
+        Assert.That(nodes.Single(n => n.Root == head.Root).ExecutionStatus, Is.EqualTo(expectedHead));
+        Assert.That(nodes.Single(n => n.Root == side.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
     }
 
     /// <summary>fulu/p2p-interface.md data_column_sidecar_{subnet_id}: [REJECT] the sidecar's block's parent passes validation.</summary>
@@ -1481,12 +1445,10 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, matchingRoot ? chain.BlockRoot : Hash256.Zero, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(availability.Calls, Is.EqualTo(1), "neither the importer nor fork choice asks again");
-            Assert.That(result, Is.EqualTo(matchingRoot ? BlockImportResult.Imported : BlockImportResult.Invalid));
-            Assert.That(failed.Contains(chain.BlockRoot), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(availability.Calls, Is.EqualTo(1), "neither the importer nor fork choice asks again");
+        Assert.That(result, Is.EqualTo(matchingRoot ? BlockImportResult.Imported : BlockImportResult.Invalid));
+        Assert.That(failed.Contains(chain.BlockRoot), Is.False);
     }
 
     [Test]
@@ -1519,13 +1481,11 @@ public class BlockImporterTests
         MessageValidity envelopeVerdict = router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true,
             Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(broken.Envelope)));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(failed.Contains(brokenRoot), Is.True, "an invalid bid is committed by the block root");
-            Assert.That(childResult, Is.EqualTo(BlockImportResult.UnknownParent), "an invalid block cannot become an imported parent");
-            Assert.That(envelopeVerdict, Is.EqualTo(MessageValidity.Rejected), "the failed root must stop its envelope before import");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(failed.Contains(brokenRoot), Is.True, "an invalid bid is committed by the block root");
+        Assert.That(childResult, Is.EqualTo(BlockImportResult.UnknownParent), "an invalid block cannot become an imported parent");
+        Assert.That(envelopeVerdict, Is.EqualTo(MessageValidity.Rejected), "the failed root must stop its envelope before import");
     }
 
     [Test]
@@ -1909,14 +1869,12 @@ public class BlockImporterTests
             : importer.OnGossipAttesterSlashing(slashing);
 
         ForkChoiceSnapshot after = runner.Snapshot();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(accepted, Is.EqualTo(headComputed ? (bool?)false : null), "a forgery is rejected only when local validation data is held");
-            Assert.That(after.Nodes, Is.EqualTo(before.Nodes), "a refused slashing must not apply pending vote scores");
-            Assert.That(after.ProposerBoostRoot, Is.EqualTo(before.ProposerBoostRoot));
-            if (!headComputed)
-                Assert.That(() => runner.GetHeldHeadState(), Throws.TypeOf<ForkChoiceException>().With.Message.Contains("No cached head"), "validation must not populate the head cache");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(accepted, Is.EqualTo(headComputed ? (bool?)false : null), "a forgery is rejected only when local validation data is held");
+        Assert.That(after.Nodes, Is.EqualTo(before.Nodes), "a refused slashing must not apply pending vote scores");
+        Assert.That(after.ProposerBoostRoot, Is.EqualTo(before.ProposerBoostRoot));
+        if (!headComputed)
+            Assert.That(() => runner.GetHeldHeadState(), Throws.TypeOf<ForkChoiceException>().With.Message.Contains("No cached head"), "validation must not populate the head cache");
     }
 
     [Test]
@@ -1986,12 +1944,10 @@ public class BlockImporterTests
         await AssertSlashingVerdictAsync(importer, slashing, gloasContainer, MessageValidity.Ignored);
 
         Hash256 headAfter = runner.GetHead();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(headAfter, Is.EqualTo(scenario.Voted.Root), "a slashing refused by justified-state validation must not move the head");
-            Assert.That(runner.Snapshot().Nodes.Select(node => (node.Root, node.Weight)),
-                Is.EqualTo(before.Nodes.Select(node => (node.Root, node.Weight))), "neither indexed attestation may remove voting weight before both pass justified-state validation");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(headAfter, Is.EqualTo(scenario.Voted.Root), "a slashing refused by justified-state validation must not move the head");
+        Assert.That(runner.Snapshot().Nodes.Select(node => (node.Root, node.Weight)),
+            Is.EqualTo(before.Nodes.Select(node => (node.Root, node.Weight))), "neither indexed attestation may remove voting weight before both pass justified-state validation");
     }
 
     private static AttesterSlashing SignedDoubleVote(UnsignedChain chain)
@@ -2049,11 +2005,9 @@ public class BlockImporterTests
             ? importer.OnGossipAttesterSlashing(ToGloas(slashing))
             : importer.OnGossipAttesterSlashing(slashing);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(RefusedByForkChoice("gossip_attester_slashing") - refusedBefore, Is.EqualTo(1), "the slashing reached fork choice, which refused it");
-            Assert.That(accepted, Is.False, "a refused slashing must not mark its indices seen");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(RefusedByForkChoice("gossip_attester_slashing") - refusedBefore, Is.EqualTo(1), "the slashing reached fork choice, which refused it");
+        Assert.That(accepted, Is.False, "a refused slashing must not mark its indices seen");
     }
 
     /// <summary>An anchor with one new validator's signed deposit queued, which the first epoch transition onboards.</summary>

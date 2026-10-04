@@ -41,11 +41,9 @@ public class PeerColumnCustodyTests
         Libp2pPublicKey libp2pKey = new() { Type = KeyType.Secp256K1, Data = ByteString.CopyFrom(new CompressedPublicKey(Eip778PublicKey).Bytes) };
         Libp2pPublicKey ed25519Key = new() { Type = KeyType.Ed25519, Data = ByteString.CopyFrom(new byte[32]) };
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PeerColumnCustody.NodeIdOf(libp2pKey), Is.EqualTo(Eip778NodeId));
-            Assert.That(PeerColumnCustody.NodeIdOf(ed25519Key), Is.Null, "a discv5 node id exists only for a secp256k1 key");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(PeerColumnCustody.NodeIdOf(libp2pKey), Is.EqualTo(Eip778NodeId));
+        Assert.That(PeerColumnCustody.NodeIdOf(ed25519Key), Is.Null, "a discv5 node id exists only for a secp256k1 key");
     }
 
     [TestCase(8ul, new ulong[] { 40, 57, 61, 84, 102, 105, 113, 120 }, true, TestName = "An advertised count selects its get_custody_groups columns")]
@@ -55,11 +53,9 @@ public class PeerColumnCustodyTests
     {
         PeerColumnCustody custody = PeerColumnCustody.ForNode(KnownNodeId, custodyGroupCount);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Columns(custody), Is.EqualTo(expectedColumns));
-            Assert.That(custody.IsAdvertised, Is.EqualTo(advertised));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Columns(custody), Is.EqualTo(expectedColumns));
+        Assert.That(custody.IsAdvertised, Is.EqualTo(advertised));
     }
 
     [Test]
@@ -68,12 +64,10 @@ public class PeerColumnCustodyTests
         using PrivateKey key = new(Eip778PrivateKey);
         string enr = new BeaconNodeRecordProvider(key, IPAddress.Loopback, 9000, 9000, EnrForkId.Compute(BeaconChainSpec.Mainnet, 0), custodyGroupCount: 16).Current.ToString();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PeerColumnCustody.CustodyGroupCountOf(enr), Is.EqualTo(16UL));
-            Assert.That(PeerColumnCustody.CustodyGroupCountOf("enr:-not-a-record"), Is.Null);
-            Assert.That(PeerColumnCustody.CustodyGroupCountOf(null), Is.Null);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(PeerColumnCustody.CustodyGroupCountOf(enr), Is.EqualTo(16UL));
+        Assert.That(PeerColumnCustody.CustodyGroupCountOf("enr:-not-a-record"), Is.Null);
+        Assert.That(PeerColumnCustody.CustodyGroupCountOf(null), Is.Null);
     }
 
     /// <summary>A connected peer's custody follows the custody group count of its <c>MetaData</c>, and is re-read once its <c>seq_number</c> moves.</summary>
@@ -101,12 +95,10 @@ public class PeerColumnCustodyTests
         await peerManager.RunMaintenanceRoundAsync(token);
         PeerColumnCustody refreshed = peerManager.GetBestPeers(0).Single().Custody;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(admitted.IsAdvertised, Is.True);
-            Assert.That(Columns(admitted), Is.EqualTo(Columns(PeerColumnCustody.ForNode(serverNodeId, 8))));
-            Assert.That(Columns(refreshed), Is.EqualTo(Columns(PeerColumnCustody.ForNode(serverNodeId, 32))));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(admitted.IsAdvertised, Is.True);
+        Assert.That(Columns(admitted), Is.EqualTo(Columns(PeerColumnCustody.ForNode(serverNodeId, 8))));
+        Assert.That(Columns(refreshed), Is.EqualTo(Columns(PeerColumnCustody.ForNode(serverNodeId, 32))));
     }
 
     private static ulong[] Columns(PeerColumnCustody custody) =>

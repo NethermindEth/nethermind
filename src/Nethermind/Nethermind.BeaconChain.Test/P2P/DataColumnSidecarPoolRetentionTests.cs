@@ -36,11 +36,9 @@ public class DataColumnSidecarPoolRetentionTests
         Add(pool, gloas, 104);
         bool[] heldAfterNewer = [.. held.Append(104UL).Select(slot => Holds(pool, gloas, slot))];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(heldAfterFlood, Is.All.True, "a lower slot than every held one is refused, not admitted by evicting a higher one");
-            Assert.That(heldAfterNewer, Is.EqualTo(new[] { false, true, true, true, true }), "a newer slot evicts the lowest held slot");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldAfterFlood, Is.All.True, "a lower slot than every held one is refused, not admitted by evicting a higher one");
+        Assert.That(heldAfterNewer, Is.EqualTo(new[] { false, true, true, true, true }), "a newer slot evicts the lowest held slot");
     }
 
     [Test]
@@ -65,14 +63,12 @@ public class DataColumnSidecarPoolRetentionTests
         Add(pool, gloas, 15, column: 0);
         ulong afterSecondSlotEvicted = pool.EarliestCompletelyServableSlot;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(beforeAny, Is.EqualTo(ulong.MaxValue), "nothing given yet, so no slot is known to be complete");
-            Assert.That(full, Is.EqualTo(10UL));
-            Assert.That(afterPartialEviction, Is.EqualTo(11UL), "slot 10 lost one of its two columns");
-            Assert.That(afterRefusedLowSlot, Is.EqualTo(11UL), "a refused lower slot neither lowers nor raises the mark");
-            Assert.That(afterSecondSlotEvicted, Is.EqualTo(12UL), "slot 10's last column, then slot 11's, went next");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(beforeAny, Is.EqualTo(ulong.MaxValue), "nothing given yet, so no slot is known to be complete");
+        Assert.That(full, Is.EqualTo(10UL));
+        Assert.That(afterPartialEviction, Is.EqualTo(11UL), "slot 10 lost one of its two columns");
+        Assert.That(afterRefusedLowSlot, Is.EqualTo(11UL), "a refused lower slot neither lowers nor raises the mark");
+        Assert.That(afterSecondSlotEvicted, Is.EqualTo(12UL), "slot 10's last column, then slot 11's, went next");
     }
 
     /// <summary>A slot below the first one given was never seen whole, so a late or refused old sidecar must not mark the slots in between complete.</summary>
@@ -104,11 +100,9 @@ public class DataColumnSidecarPoolRetentionTests
         Add(pool, gloas, 15);
         for (ulong slot = 11; slot < 15; slot++) Add(pool, gloas, slot);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Holds(pool, gloas, 15), Is.False, "neither set still holds slot 15's column");
-            Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(16UL), "so the mark sits above slot 15");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Holds(pool, gloas, 15), Is.False, "neither set still holds slot 15's column");
+        Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(16UL), "so the mark sits above slot 15");
     }
 
     /// <summary>
@@ -124,12 +118,10 @@ public class DataColumnSidecarPoolRetentionTests
 
         for (ulong column = 0; column < Capacity; column++) Add(pool, gloas, 50, column);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Enumerable.Range(0, Capacity).Select(c => Holds(pool, gloas, 50, (ulong)c)), Is.All.True, "the refused columns are held for import");
-            Assert.That(held.Select(slot => Holds(pool, gloas, slot)), Is.All.True, "and still displace no higher slot");
-            Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(100UL), "a column held only for import is not counted as retained");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Enumerable.Range(0, Capacity).Select(c => Holds(pool, gloas, 50, (ulong)c)), Is.All.True, "the refused columns are held for import");
+        Assert.That(held.Select(slot => Holds(pool, gloas, slot)), Is.All.True, "and still displace no higher slot");
+        Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(100UL), "a column held only for import is not counted as retained");
     }
 
     /// <summary>
@@ -149,11 +141,9 @@ public class DataColumnSidecarPoolRetentionTests
         // Older-slot columns churn the recent set, so only the slot-ordered set can still hold the head slot's columns.
         for (ulong column = 0; column < Capacity; column++) Add(pool, gloas, headSlot - 1, RootFor(headSlot - 1), column);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Holds(pool, gloas, genuine), Is.True, "the newest column at the lowest slot is retained");
-            Assert.That(forged.Select(root => Holds(pool, gloas, root)), Is.EqualTo(new[] { false, true, true, true }), "the oldest column of that slot made room");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Holds(pool, gloas, genuine), Is.True, "the newest column at the lowest slot is retained");
+        Assert.That(forged.Select(root => Holds(pool, gloas, root)), Is.EqualTo(new[] { false, true, true, true }), "the oldest column of that slot made room");
     }
 
     /// <summary>A Fulu slot evicted from its own map leaves the Gloas map's slots complete, but the mark is one suffix for both.</summary>
@@ -167,11 +157,9 @@ public class DataColumnSidecarPoolRetentionTests
 
         for (ulong slot = 21; slot <= 24; slot++) Add(pool, gloas: false, slot);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(both, Is.EqualTo(20UL), "the lowest slot either fork was given");
-            Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(21UL), "the Fulu map evicted slot 20");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(both, Is.EqualTo(20UL), "the lowest slot either fork was given");
+        Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(21UL), "the Fulu map evicted slot 20");
     }
 
     [Test]
@@ -184,11 +172,9 @@ public class DataColumnSidecarPoolRetentionTests
         pool.Add(root, 7, first);
         pool.Add(root, 7, second);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.TryGet(root, Column, out DataColumnSidecar? held) ? held : null, Is.SameAs(second));
-            Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(7UL), "a replacement is not an eviction");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.TryGet(root, Column, out DataColumnSidecar? held) ? held : null, Is.SameAs(second));
+        Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(7UL), "a replacement is not an eviction");
     }
 
     /// <summary>Readers and writers share the served maps; an unguarded read during an eviction corrupts or throws.</summary>

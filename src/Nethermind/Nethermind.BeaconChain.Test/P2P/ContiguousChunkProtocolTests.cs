@@ -149,11 +149,9 @@ public class ContiguousChunkProtocolTests
         await upper.Reverse.CloseAsync();
         await relay.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(read.Result, Is.EqualTo(IOResult.Ok));
-            Assert.That(read.Data.ToArray(), Is.EqualTo(expected));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(read.Result, Is.EqualTo(IOResult.Ok));
+        Assert.That(read.Data.ToArray(), Is.EqualTo(expected));
     }
 
     private static ReadOnlySequence<byte> Segmented(byte[] data, int offset, int[] lengths)

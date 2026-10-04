@@ -71,15 +71,13 @@ public class ColumnGossipRouterCensorshipTests
 
         BlockImportResult result = await orchestrator.ImportAndSettleAsync(fixture.Importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((honestOverGossip, pooledOverGossip), Is.EqualTo((MessageValidity.Ignored, false)), "the honest copy is refused once the bound is spent");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.KzgBatchLimit), Is.EqualTo(1));
-            Assert.That(router.HeaderSignatureVerificationCount, Is.EqualTo(checkedHeader ? 1 : 0), "the copies passed the header signature check, so only the KZG bound stopped the honest one");
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(custodian.RequestedColumns, Is.EqualTo(new[] { new[] { censored } }), "only the censored column is fetched");
-            Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, censored, out DataColumnSidecar? recovered) && ReferenceEquals(recovered, fixture.Chain.Columns[(int)censored]), Is.True);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((honestOverGossip, pooledOverGossip), Is.EqualTo((MessageValidity.Ignored, false)), "the honest copy is refused once the bound is spent");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.KzgBatchLimit), Is.EqualTo(1));
+        Assert.That(router.HeaderSignatureVerificationCount, Is.EqualTo(checkedHeader ? 1 : 0), "the copies passed the header signature check, so only the KZG bound stopped the honest one");
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(custodian.RequestedColumns, Is.EqualTo(new[] { new[] { censored } }), "only the censored column is fetched");
+        Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, censored, out DataColumnSidecar? recovered) && ReferenceEquals(recovered, fixture.Chain.Columns[(int)censored]), Is.True);
     }
 
     /// <summary>A router that verifies the fixture block's header signature and proposer, as one with fork choice, a key cache and a lookahead does.</summary>

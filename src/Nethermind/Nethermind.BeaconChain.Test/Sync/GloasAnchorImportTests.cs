@@ -82,13 +82,11 @@ public class GloasAnchorImportTests
         await orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
         await orchestrator.ProcessSlotAsync(ForkSlot + 3, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(peer.ColumnRootRequests, Has.Count.EqualTo(delayedColumns ? 2 : 1));
-            Assert.That(peer.ColumnRootRequests[0][0].BlockRoot, Is.EqualTo(anchor.BlockRoot));
-            Assert.That(importer.IsKnown(child.Root), Is.True);
-            Assert.That(engine.EnvelopeCalls, Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(peer.ColumnRootRequests, Has.Count.EqualTo(delayedColumns ? 2 : 1));
+        Assert.That(peer.ColumnRootRequests[0][0].BlockRoot, Is.EqualTo(anchor.BlockRoot));
+        Assert.That(importer.IsKnown(child.Root), Is.True);
+        Assert.That(engine.EnvelopeCalls, Is.EqualTo(1));
     }
 
     /// <summary>
@@ -108,13 +106,11 @@ public class GloasAnchorImportTests
         BlockImportResult retry = importer.Import(child.Forked, child.Root, verifySignatures: true);
         ExecutionPayloadEnvelopeImportResult childEnvelope = importer.ImportEnvelope(child.Envelope);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(first, Is.EqualTo(full ? BlockImportResult.ParentPayloadUnverified : BlockImportResult.Imported));
-            Assert.That(envelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the anchor envelope verifies against the anchor state");
-            Assert.That(retry, Is.EqualTo(full ? BlockImportResult.Imported : BlockImportResult.AlreadyKnown));
-            Assert.That(childEnvelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the child's own envelope verifies against the child's post-state");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(first, Is.EqualTo(full ? BlockImportResult.ParentPayloadUnverified : BlockImportResult.Imported));
+        Assert.That(envelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the anchor envelope verifies against the anchor state");
+        Assert.That(retry, Is.EqualTo(full ? BlockImportResult.Imported : BlockImportResult.AlreadyKnown));
+        Assert.That(childEnvelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the child's own envelope verifies against the child's post-state");
     }
 
     /// <summary>
@@ -136,11 +132,9 @@ public class GloasAnchorImportTests
         ExecutionPayloadEnvelopeImportResult result = importer.ImportEnvelope(child.Envelope);
         importer.ComputeHead();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(verdict == ExecutionStatus.Valid ? ExecutionPayloadEnvelopeImportResult.Valid : ExecutionPayloadEnvelopeImportResult.Optimistic));
-            Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == child.Root).PayloadValid, Is.EqualTo(verdict == ExecutionStatus.Valid));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(verdict == ExecutionStatus.Valid ? ExecutionPayloadEnvelopeImportResult.Valid : ExecutionPayloadEnvelopeImportResult.Optimistic));
+        Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == child.Root).PayloadValid, Is.EqualTo(verdict == ExecutionStatus.Valid));
     }
 
     /// <summary>
@@ -178,16 +172,14 @@ public class GloasAnchorImportTests
         importer.ImportEnvelope(anchor.Envelope);
         HeadView after = importer.ComputeHead();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(anchor.Bid.ParentBlockHash, Is.Not.EqualTo(anchor.Bid.BlockHash), "fixture: the anchor builds on an empty payload");
-            Assert.That(before.HeadRoot, Is.EqualTo(anchor.Root));
-            Assert.That(before.HeadExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
-            Assert.That(before.JustifiedExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
-            Assert.That(before.FinalizedExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
-            Assert.That(after.HeadExecutionHash, Is.EqualTo(anchor.Bid.BlockHash));
-            Assert.That(after.FinalizedExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(anchor.Bid.ParentBlockHash, Is.Not.EqualTo(anchor.Bid.BlockHash), "fixture: the anchor builds on an empty payload");
+        Assert.That(before.HeadRoot, Is.EqualTo(anchor.Root));
+        Assert.That(before.HeadExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
+        Assert.That(before.JustifiedExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
+        Assert.That(before.FinalizedExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
+        Assert.That(after.HeadExecutionHash, Is.EqualTo(anchor.Bid.BlockHash));
+        Assert.That(after.FinalizedExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
     }
 
     /// <summary>
@@ -220,13 +212,11 @@ public class GloasAnchorImportTests
         store.PutState(held.Root, BeaconStateGloas.Encode(held.PostState));
         store.PutState(unheld.Root, BeaconStateGloas.Encode(unheld.PostState));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(importer.ImportEnvelope(anchor.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
-            Assert.That(heldBeforePersist, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "fixture: the held block's state aged out of every tier");
-            Assert.That(importer.ImportEnvelope(held.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
-            Assert.That(importer.ImportEnvelope(unheld.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(importer.ImportEnvelope(anchor.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        Assert.That(heldBeforePersist, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "fixture: the held block's state aged out of every tier");
+        Assert.That(importer.ImportEnvelope(held.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        Assert.That(importer.ImportEnvelope(unheld.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock));
     }
 
     /// <summary>
@@ -320,12 +310,10 @@ public class GloasAnchorImportTests
 
         HeadView? head = null;
         Assert.DoesNotThrow(() => head = importer.ComputeHead(), "the justified balances resolve the epoch 2 checkpoint state");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head!.Justified, Is.EqualTo(new CheckpointRef(justifiedEpoch, justified.Root)), "fixture: the late branch justifies epoch 2");
-            Assert.That(head.Finalized, Is.EqualTo(new CheckpointRef(1, anchor.Root)), "fixture: the root is above the finalized checkpoint");
-            Assert.That(store.TryGetState(justified.Root, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head!.Justified, Is.EqualTo(new CheckpointRef(justifiedEpoch, justified.Root)), "fixture: the late branch justifies epoch 2");
+        Assert.That(head.Finalized, Is.EqualTo(new CheckpointRef(1, anchor.Root)), "fixture: the root is above the finalized checkpoint");
+        Assert.That(store.TryGetState(justified.Root, out _), Is.True);
     }
 
     /// <summary>
@@ -359,17 +347,15 @@ public class GloasAnchorImportTests
 
         bool persisted = store.TryGetState(root, out byte[]? ssz);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(persistedWhileHeld, Is.False);
+        Assert.That(persisted, Is.EqualTo(aboveFinalized));
+        Assert.That(ssz is null ? null : BeaconStateCodec.DecodeForked(ssz, chain.Spec) switch
         {
-            Assert.That(persistedWhileHeld, Is.False);
-            Assert.That(persisted, Is.EqualTo(aboveFinalized));
-            Assert.That(ssz is null ? null : BeaconStateCodec.DecodeForked(ssz, chain.Spec) switch
-            {
-                ForkedBeaconState.OfGloas { State: { } gloasState } => SszRoots.HashTreeRoot(gloasState),
-                ForkedBeaconState.OfFulu { State: { } fuluState } => SszRoots.HashTreeRoot(fuluState),
-                _ => null,
-            }, Is.EqualTo(aboveFinalized ? gloas ? block.Signed.Message!.StateRoot : SszRoots.HashTreeRoot(chain.AnchorState) : null));
-        }
+            ForkedBeaconState.OfGloas { State: { } gloasState } => SszRoots.HashTreeRoot(gloasState),
+            ForkedBeaconState.OfFulu { State: { } fuluState } => SszRoots.HashTreeRoot(fuluState),
+            _ => null,
+        }, Is.EqualTo(aboveFinalized ? gloas ? block.Signed.Message!.StateRoot : SszRoots.HashTreeRoot(chain.AnchorState) : null));
     }
 
     /// <summary>
@@ -398,13 +384,11 @@ public class GloasAnchorImportTests
         }
 
         HeadView head = importer.ComputeHead();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head.Finalized, Is.EqualTo(new CheckpointRef(2, finalized.Root)), "fixture: epoch 2 is finalized");
-            Assert.That(head.Justified, Is.EqualTo(new CheckpointRef(3, justified.Root)), "fixture: epoch 3 is justified");
-            Assert.That(store.TryGetState(finalized.Root, out _), Is.False);
-            Assert.That(store.TryGetState(justified.Root, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head.Finalized, Is.EqualTo(new CheckpointRef(2, finalized.Root)), "fixture: epoch 2 is finalized");
+        Assert.That(head.Justified, Is.EqualTo(new CheckpointRef(3, justified.Root)), "fixture: epoch 3 is justified");
+        Assert.That(store.TryGetState(finalized.Root, out _), Is.False);
+        Assert.That(store.TryGetState(justified.Root, out _), Is.True);
     }
 
     /// <summary>A Gloas record found by the Fulu getter is refused by its slot, never decoded: a malformed body a full decode would log answers unknown silently.</summary>
@@ -429,14 +413,12 @@ public class GloasAnchorImportTests
         TestLogger logger = new();
         PostStateCache states = new(store, chain.Spec, null, null, _ => true, logManager: new OneLoggerLogManager(new ILogger(logger)));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(states.GetBlockState(TestItem.KeccakA) is { } fuluRead ? SszRoots.HashTreeRoot(fuluRead) : null, Is.EqualTo(SszRoots.HashTreeRoot(fulu)));
-            Assert.That(states.GetGloasBlockState(TestItem.KeccakA), Is.Null);
-            Assert.That(states.GetBlockState(TestItem.KeccakC), Is.Null);
-            Assert.That(states.GetGloasBlockState(TestItem.KeccakC) is { } gloasRead ? SszRoots.HashTreeRoot(gloasRead) : null, Is.EqualTo(chain.First.Block.Message!.StateRoot));
-            Assert.That(logger.LogList.Where(static l => l.Contains("undecodable")), Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(states.GetBlockState(TestItem.KeccakA) is { } fuluRead ? SszRoots.HashTreeRoot(fuluRead) : null, Is.EqualTo(SszRoots.HashTreeRoot(fulu)));
+        Assert.That(states.GetGloasBlockState(TestItem.KeccakA), Is.Null);
+        Assert.That(states.GetBlockState(TestItem.KeccakC), Is.Null);
+        Assert.That(states.GetGloasBlockState(TestItem.KeccakC) is { } gloasRead ? SszRoots.HashTreeRoot(gloasRead) : null, Is.EqualTo(chain.First.Block.Message!.StateRoot));
+        Assert.That(logger.LogList.Where(static l => l.Contains("undecodable")), Is.Empty);
     }
 
     /// <summary>
@@ -491,15 +473,13 @@ public class GloasAnchorImportTests
         bool earlyHeldBelowFinality = BlockImporter.IsAboveFinalized(runner, early);
         runner.Prune();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(earlyBeforeFinality, Is.True, "held above the anchor's finalized start slot");
-            Assert.That(earlyHeldBelowFinality, Is.False, "held below the finalized start slot");
-            Assert.That(runner.ContainsBlock(early), Is.False, "fixture: fork choice pruned the early block");
-            Assert.That(BlockImporter.IsAboveFinalized(runner, early), Is.False, "pruned");
-            Assert.That(BlockImporter.IsAboveFinalized(runner, finalized), Is.False, "the finalized checkpoint block itself");
-            Assert.That(BlockImporter.IsAboveFinalized(runner, parentRoot), Is.True, "the tip above the finalized start slot");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(earlyBeforeFinality, Is.True, "held above the anchor's finalized start slot");
+        Assert.That(earlyHeldBelowFinality, Is.False, "held below the finalized start slot");
+        Assert.That(runner.ContainsBlock(early), Is.False, "fixture: fork choice pruned the early block");
+        Assert.That(BlockImporter.IsAboveFinalized(runner, early), Is.False, "pruned");
+        Assert.That(BlockImporter.IsAboveFinalized(runner, finalized), Is.False, "the finalized checkpoint block itself");
+        Assert.That(BlockImporter.IsAboveFinalized(runner, parentRoot), Is.True, "the tip above the finalized start slot");
     }
 
     /// <summary>
@@ -526,13 +506,11 @@ public class GloasAnchorImportTests
         Assert.That(importer.Import(branchTip.Forked, branchTip.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
         HeadView after = importer.ComputeHead();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(before.HeadRoot, Is.EqualTo(lone.Root));
-            Assert.That(after.HeadRoot, Is.EqualTo(branchTip.Root));
-            Assert.That(store.TryGetCanonicalRoot(ForkSlot + 1, out Hash256? atFirstSlot) ? atFirstSlot : null, Is.EqualTo(branch.Root));
-            Assert.That(store.TryGetCanonicalRoot(ForkSlot + 2, out Hash256? atSecondSlot) ? atSecondSlot : null, Is.EqualTo(branchTip.Root));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(before.HeadRoot, Is.EqualTo(lone.Root));
+        Assert.That(after.HeadRoot, Is.EqualTo(branchTip.Root));
+        Assert.That(store.TryGetCanonicalRoot(ForkSlot + 1, out Hash256? atFirstSlot) ? atFirstSlot : null, Is.EqualTo(branch.Root));
+        Assert.That(store.TryGetCanonicalRoot(ForkSlot + 2, out Hash256? atSecondSlot) ? atSecondSlot : null, Is.EqualTo(branchTip.Root));
     }
 
     /// <summary>
@@ -554,11 +532,9 @@ public class GloasAnchorImportTests
             states.RetainGloas(Keccak.Compute(BitConverter.GetBytes(i)), block.PostState, checkpointCandidate: true);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(states.GetGloasBlockState(TestItem.KeccakA), Is.SameAs(block.PostState));
-            Assert.That(states.GetGloasBlockState(TestItem.KeccakB), Is.Null, "fixture: the boundary tier evicted the early checkpoint");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(states.GetGloasBlockState(TestItem.KeccakA), Is.SameAs(block.PostState));
+        Assert.That(states.GetGloasBlockState(TestItem.KeccakB), Is.Null, "fixture: the boundary tier evicted the early checkpoint");
     }
 
     /// <summary>
@@ -579,12 +555,10 @@ public class GloasAnchorImportTests
         Assert.DoesNotThrow(() => fulu = states.GetBlockState(block.Root));
         BeaconStateGloas? gloas = states.GetGloasBlockState(block.Root);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fulu, Is.Null);
-            Assert.That(gloas is null ? null : SszRoots.HashTreeRoot(gloas), Is.EqualTo(held ? block.Signed.Message!.StateRoot : null));
-            Assert.That(states.GetGloasBlockState(block.Root), Is.SameAs(gloas), "a state read back once is retained, not decoded again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fulu, Is.Null);
+        Assert.That(gloas is null ? null : SszRoots.HashTreeRoot(gloas), Is.EqualTo(held ? block.Signed.Message!.StateRoot : null));
+        Assert.That(states.GetGloasBlockState(block.Root), Is.SameAs(gloas), "a state read back once is retained, not decoded again");
     }
 
     /// <summary>
@@ -631,13 +605,11 @@ public class GloasAnchorImportTests
         orchestrator.Initialize(restarted, anchorBlock!, anchorRoot!);
         await orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(orchestrator.SyncTip, Is.EqualTo((tip.Root, tip.Signed.Message!.Slot)));
-            Assert.That(restarted.IsKnown(fullChild.Root) && restarted.IsKnown(tip.Root), Is.True);
-            Assert.That(restarted.ImportEnvelope(checkpoint.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.AlreadyKnown), "the replayed full child recorded the anchor's payload");
-            Assert.That(restartedEngine.FcuCalls, Is.EqualTo(new[] { (tip.Bid.ParentBlockHash!, checkpoint.Bid.ParentBlockHash!, checkpoint.Bid.ParentBlockHash!) }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(orchestrator.SyncTip, Is.EqualTo((tip.Root, tip.Signed.Message!.Slot)));
+        Assert.That(restarted.IsKnown(fullChild.Root) && restarted.IsKnown(tip.Root), Is.True);
+        Assert.That(restarted.ImportEnvelope(checkpoint.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.AlreadyKnown), "the replayed full child recorded the anchor's payload");
+        Assert.That(restartedEngine.FcuCalls, Is.EqualTo(new[] { (tip.Bid.ParentBlockHash!, checkpoint.Bid.ParentBlockHash!, checkpoint.Bid.ParentBlockHash!) }));
     }
 
     /// <summary>
@@ -659,12 +631,10 @@ public class GloasAnchorImportTests
         orchestrator.Initialize(importer, anchor.Forked, anchor.Root);
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(anchor.Bid.ParentBlockHash, Is.EqualTo(anchor.PostState.LatestBlockHash), "process_execution_payload_bid asserts it");
-            Assert.That(engine.FcuCalls, Has.Count.EqualTo(1));
-            Assert.That(engine.FcuCalls[0].Finalized, Is.EqualTo(anchor.Bid.ParentBlockHash));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(anchor.Bid.ParentBlockHash, Is.EqualTo(anchor.PostState.LatestBlockHash), "process_execution_payload_bid asserts it");
+        Assert.That(engine.FcuCalls, Has.Count.EqualTo(1));
+        Assert.That(engine.FcuCalls[0].Finalized, Is.EqualTo(anchor.Bid.ParentBlockHash));
     }
 
     /// <summary>
@@ -687,11 +657,9 @@ public class GloasAnchorImportTests
 
         BlockImportResult result = importer.Import(child.Forked, child.Root, verifySignatures: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.UnknownParent));
-            Assert.That(states.ReadsCount - readsBefore, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.UnknownParent));
+        Assert.That(states.ReadsCount - readsBefore, Is.Zero);
     }
 
     /// <summary>
@@ -743,15 +711,13 @@ public class GloasAnchorImportTests
         BeaconStateGloas? outgoingBeforeFinality = states.GetGloasBlockState(justified[1]);
         states.PinGloas(TestItem.KeccakD, state);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstAfter[0], Is.SameAs(state), "fixture: the justified pin holds the first root");
-            Assert.That(firstAfter[1], Is.SameAs(state), "the next justification keeps the outgoing state");
-            Assert.That(firstAfter[2], Is.Null, "two justifications later the first state is released");
-            Assert.That(outgoingBeforeFinality, Is.SameAs(state));
-            Assert.That(states.GetGloasBlockState(justified[1]), Is.Null, "finalization releases the outgoing state");
-            Assert.That(states.GetGloasBlockState(justified[2]), Is.SameAs(state), "finalization keeps the current justified state");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(firstAfter[0], Is.SameAs(state), "fixture: the justified pin holds the first root");
+        Assert.That(firstAfter[1], Is.SameAs(state), "the next justification keeps the outgoing state");
+        Assert.That(firstAfter[2], Is.Null, "two justifications later the first state is released");
+        Assert.That(outgoingBeforeFinality, Is.SameAs(state));
+        Assert.That(states.GetGloasBlockState(justified[1]), Is.Null, "finalization releases the outgoing state");
+        Assert.That(states.GetGloasBlockState(justified[2]), Is.SameAs(state), "finalization keeps the current justified state");
     }
 
     /// <summary>
@@ -779,12 +745,10 @@ public class GloasAnchorImportTests
         BeaconStateGloas? pinnedJustified = states.GetGloasBlockState(pinned[1]);
         states.RetainGloas(TestItem.KeccakC, state, checkpointCandidate: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(outgoing, Is.SameAs(state), "the outgoing justified state is not released for a root with no state");
-            Assert.That(pinnedJustified, Is.SameAs(state));
-            Assert.That(states.GetGloasBlockState(TestItem.KeccakC), Is.SameAs(state), "the root's state is found once retained");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(outgoing, Is.SameAs(state), "the outgoing justified state is not released for a root with no state");
+        Assert.That(pinnedJustified, Is.SameAs(state));
+        Assert.That(states.GetGloasBlockState(TestItem.KeccakC), Is.SameAs(state), "the root's state is found once retained");
     }
 
     /// <summary>A persisted state read back from the store is retained in the per-block tier, so it never evicts a checkpoint candidate from the boundary tier.</summary>
@@ -824,12 +788,10 @@ public class GloasAnchorImportTests
 
         object? state = null;
         Assert.DoesNotThrow(() => state = gloas ? states.GetGloasBlockState(TestItem.KeccakA) : states.GetBlockState(TestItem.KeccakA));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(state, Is.Null);
-            Assert.That(logger.LogList.Where(static l => l.Contains(TestItem.KeccakA.ToString())),
-                decodeExpected ? Is.Not.Empty : Is.Empty, "a fork mismatch must not attempt a full decode");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state, Is.Null);
+        Assert.That(logger.LogList.Where(static l => l.Contains(TestItem.KeccakA.ToString())),
+            decodeExpected ? Is.Not.Empty : Is.Empty, "a fork mismatch must not attempt a full decode");
     }
 
     /// <summary>Random bytes that, when long enough to carry a slot, carry <paramref name="slot"/> at the state's slot offset.</summary>

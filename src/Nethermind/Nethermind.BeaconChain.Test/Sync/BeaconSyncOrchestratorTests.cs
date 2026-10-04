@@ -103,14 +103,12 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.WorkWriter.Complete();
         await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[101, 102, 103]), "import order");
-            Assert.That(harness.Importer.Imports.Select(static i => i.VerifySignatures), Is.All.True, "network blocks verify signatures");
-            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "one head FCU per drained batch");
-            Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(103UL), "sync tip follows imports");
-            Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(harness.Importer.Head.HeadRoot), "status holder refreshed by the head step");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[101, 102, 103]), "import order");
+        Assert.That(harness.Importer.Imports.Select(static i => i.VerifySignatures), Is.All.True, "network blocks verify signatures");
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "one head FCU per drained batch");
+        Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(103UL), "sync tip follows imports");
+        Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(harness.Importer.Head.HeadRoot), "status holder refreshed by the head step");
     }
 
     /// <summary>
@@ -234,18 +232,16 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.FeedRangeSyncRoundAsync(token);
         await harness.Orchestrator.ProcessQueuedAsync(token);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(acceptedSlot, Is.EqualTo(rejectedSlot - 1));
+        Assert.That(starts, Does.Contain(rejectedSlot), "the restarted request begins after the last imported block");
+        Assert.That(honest.Reports, Is.Empty);
+        Assert.That(harness.Importer.Known, Does.Not.Contain(forgedRoot));
+        Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(target));
+        Assert.That(supplier.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+        if (rejection == RangeRejection.AtImport)
         {
-            Assert.That(acceptedSlot, Is.EqualTo(rejectedSlot - 1));
-            Assert.That(starts, Does.Contain(rejectedSlot), "the restarted request begins after the last imported block");
-            Assert.That(honest.Reports, Is.Empty);
-            Assert.That(harness.Importer.Known, Does.Not.Contain(forgedRoot));
-            Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(target));
-            Assert.That(supplier.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-            if (rejection == RangeRejection.AtImport)
-            {
-                Assert.That(harness.Importer.Imports.Any(i => i.Root == second.ComputeMessageRoot()), Is.False, "the rejected block's queued child is dropped unseen");
-            }
+            Assert.That(harness.Importer.Imports.Any(i => i.Root == second.ComputeMessageRoot()), Is.False, "the rejected block's queued child is dropped unseen");
         }
     }
 
@@ -267,11 +263,9 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.WorkWriter.Complete();
         await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Ticks.Skip(ticksBefore), Is.EqualTo((ulong[])[WallSlot + 6]), "only the newest tick reaches fork choice");
-            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(fcusBefore + 1), "one forkchoiceUpdated for the whole backlog");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Ticks.Skip(ticksBefore), Is.EqualTo((ulong[])[WallSlot + 6]), "only the newest tick reaches fork choice");
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(fcusBefore + 1), "one forkchoiceUpdated for the whole backlog");
     }
 
     /// <summary>An operator must see sync move without a line per block: at most one a second, only when the slot moved, saying how far.</summary>
@@ -289,11 +283,9 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.LogSyncProgress(120); // the slot did not move past the last line
 
         string[] lines = [.. logger.LogList.Where(static l => l.StartsWith("Beacon sync:"))];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(lines, Has.Length.EqualTo(1));
-            Assert.That(lines[0], Does.Match(@"slot 120 \(\+20 slots, 2\.0 blocks/s, 0 ms/block of which newPayload \d+ ms\), 80 behind wall slot 200"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(lines, Has.Length.EqualTo(1));
+        Assert.That(lines[0], Does.Match(@"slot 120 \(\+20 slots, 2\.0 blocks/s, 0 ms/block of which newPayload \d+ ms\), 80 behind wall slot 200"));
     }
 
     [TestCase(false, true, TestName = "Sync progress is logged near head while the execution layer syncs")]
@@ -326,23 +318,21 @@ public partial class BeaconSyncOrchestratorTests
 
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.ForkchoiceVerdicts, Is.EqualTo((List<(Hash256, Hash256, string, Hash256?)>)
-            [
-                (badHead.HeadRoot, badHead.HeadExecutionHash!, PayloadStatus.Invalid, TestItem.KeccakF),
-                (goodHead.HeadRoot, goodHead.HeadExecutionHash!, retryStatus, TestItem.KeccakD),
-            ]), "each verdict reaches fork choice keyed by the head hash it answered, the latest valid hash included");
-            Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(3), "head recomputed after each applied verdict");
-            Assert.That(harness.Engine.FcuCalls, Is.EqualTo((List<(Hash256, Hash256, Hash256)>)
-            [
-                (badHead.HeadExecutionHash!, badHead.JustifiedExecutionHash!, badHead.FinalizedExecutionHash!),
-                (goodHead.HeadExecutionHash!, goodHead.JustifiedExecutionHash!, goodHead.FinalizedExecutionHash!),
-            ]), "FCU retried exactly once with the recomputed head");
-            Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(goodHead.HeadRoot), "status advertises the recovered head");
-            Assert.That(harness.StatusHolder.JustifiedRoot, Is.EqualTo(goodHead.Justified.Root), "status carries the recovered head's justified root");
-            Assert.That(harness.StatusHolder.ExecutionInSync, Is.EqualTo(retryStatus == PayloadStatus.Valid));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.ForkchoiceVerdicts, Is.EqualTo((List<(Hash256, Hash256, string, Hash256?)>)
+        [
+            (badHead.HeadRoot, badHead.HeadExecutionHash!, PayloadStatus.Invalid, TestItem.KeccakF),
+            (goodHead.HeadRoot, goodHead.HeadExecutionHash!, retryStatus, TestItem.KeccakD),
+        ]), "each verdict reaches fork choice keyed by the head hash it answered, the latest valid hash included");
+        Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(3), "head recomputed after each applied verdict");
+        Assert.That(harness.Engine.FcuCalls, Is.EqualTo((List<(Hash256, Hash256, Hash256)>)
+        [
+            (badHead.HeadExecutionHash!, badHead.JustifiedExecutionHash!, badHead.FinalizedExecutionHash!),
+            (goodHead.HeadExecutionHash!, goodHead.JustifiedExecutionHash!, goodHead.FinalizedExecutionHash!),
+        ]), "FCU retried exactly once with the recomputed head");
+        Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(goodHead.HeadRoot), "status advertises the recovered head");
+        Assert.That(harness.StatusHolder.JustifiedRoot, Is.EqualTo(goodHead.Justified.Root), "status carries the recovered head's justified root");
+        Assert.That(harness.StatusHolder.ExecutionInSync, Is.EqualTo(retryStatus == PayloadStatus.Valid));
     }
 
     public enum ExecutionSend
@@ -422,17 +412,15 @@ public partial class BeaconSyncOrchestratorTests
                 }
             }
         }
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (scenario == ExecutionSend.PayloadFlip)
+            Assert.That(harness.Engine.FcuCalls.Select(static call => call.Head), Is.EqualTo(new[] { TestItem.KeccakB, TestItem.KeccakD, TestItem.KeccakB }));
+        else
         {
-            if (scenario == ExecutionSend.PayloadFlip)
-                Assert.That(harness.Engine.FcuCalls.Select(static call => call.Head), Is.EqualTo(new[] { TestItem.KeccakB, TestItem.KeccakD, TestItem.KeccakB }));
-            else
-            {
-                int expectedCalls = scenario == ExecutionSend.Unchanged ? 1 : headFailure || scenario == ExecutionSend.Invalid ? 3 : 2;
-                Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(expectedCalls));
-            }
-            if (headFailure) Assert.That(harness.StatusHolder.ExecutionInSync, Is.False, "the fresh SYNCING answer is used, not the cached VALID");
+            int expectedCalls = scenario == ExecutionSend.Unchanged ? 1 : headFailure || scenario == ExecutionSend.Invalid ? 3 : 2;
+            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(expectedCalls));
         }
+        if (headFailure) Assert.That(harness.StatusHolder.ExecutionInSync, Is.False, "the fresh SYNCING answer is used, not the cached VALID");
     }
 
     /// <summary>Stopping before or during the anchor kick skips the public-key cache build that follows it.</summary>
@@ -452,11 +440,9 @@ public partial class BeaconSyncOrchestratorTests
 
         Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token, () => cacheBuilds++));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(duringKick ? 1 : 0));
-            Assert.That(cacheBuilds, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(duringKick ? 1 : 0));
+        Assert.That(cacheBuilds, Is.Zero);
     }
 
     [Test]
@@ -535,11 +521,9 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None); // same epoch again
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Finalizations, Is.EqualTo((List<CheckpointRef>)[advanced]), "OnFinalized fired once per advance");
-            Assert.That(harness.StatusHolder.CurrentStatus.FinalizedEpoch, Is.EqualTo(5UL), "status advertises the new finality");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Finalizations, Is.EqualTo((List<CheckpointRef>)[advanced]), "OnFinalized fired once per advance");
+        Assert.That(harness.StatusHolder.CurrentStatus.FinalizedEpoch, Is.EqualTo(5UL), "status advertises the new finality");
     }
 
     [Test]
@@ -559,14 +543,12 @@ public partial class BeaconSyncOrchestratorTests
         byte[] digestBeforeBoundary = harness.Orchestrator.CurrentGossipDigest;
         await harness.Orchestrator.ProcessSlotAsync(Bpo2Epoch * Spec.SlotsPerEpoch, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(digestBeforeBoundary, Is.EqualTo(bpo1Digest), "no rotation before the boundary");
-            Assert.That(harness.Orchestrator.CurrentGossipDigest, Is.EqualTo(bpo2Digest), "digest rotated at the BPO epoch");
-            Assert.That(topics.Keys, Does.Contain(GossipTopics.Topic(bpo2Digest, GossipTopics.BeaconBlock)), "router re-subscribed on the new digest");
-            Assert.That(harness.Importer.Ticks, Does.Contain(preRotationSlot).And.Contain(Bpo2Epoch * Spec.SlotsPerEpoch), "fork-choice ticked per slot");
-            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "the head FCU is sent once; the unchanged head is not re-sent on the next tick");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(digestBeforeBoundary, Is.EqualTo(bpo1Digest), "no rotation before the boundary");
+        Assert.That(harness.Orchestrator.CurrentGossipDigest, Is.EqualTo(bpo2Digest), "digest rotated at the BPO epoch");
+        Assert.That(topics.Keys, Does.Contain(GossipTopics.Topic(bpo2Digest, GossipTopics.BeaconBlock)), "router re-subscribed on the new digest");
+        Assert.That(harness.Importer.Ticks, Does.Contain(preRotationSlot).And.Contain(Bpo2Epoch * Spec.SlotsPerEpoch), "fork-choice ticked per slot");
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "the head FCU is sent once; the unchanged head is not re-sent on the next tick");
     }
 
     [Test]
@@ -636,12 +618,10 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Unavailable.Remove(blockRoot);
         await orchestrator.ProcessSlotAsync(finalityPassesBlock ? 200UL : 151UL, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Known.Contains(blockRoot), Is.EqualTo(!finalityPassesBlock), "only a block ahead of finality imports once its data arrives");
-            if (finalityPassesBlock)
-                Assert.That(harness.Importer.Imports.Count(i => i.Root == blockRoot), Is.EqualTo(1), "the pruned entry must not be retried again on a later tick");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Known.Contains(blockRoot), Is.EqualTo(!finalityPassesBlock), "only a block ahead of finality imports once its data arrives");
+        if (finalityPassesBlock)
+            Assert.That(harness.Importer.Imports.Count(i => i.Root == blockRoot), Is.EqualTo(1), "the pruned entry must not be retried again on a later tick");
     }
 
     public enum BlockSource
@@ -693,16 +673,14 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Unavailable.Remove(blockRoot);
         await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 3, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(waited, Is.True, "fixture: the block waits in the retry set");
+        Assert.That(harness.Importer.Known, Does.Contain(blockRoot), "fixture: the retry imports the block");
+        Assert.That(harness.Importer.RequestedImports.Count(root => root == blockRoot), Is.EqualTo(source == BlockSource.Gossip ? 0 : 2));
+        if (source == BlockSource.RangeSync)
         {
-            Assert.That(waited, Is.True, "fixture: the block waits in the retry set");
-            Assert.That(harness.Importer.Known, Does.Contain(blockRoot), "fixture: the retry imports the block");
-            Assert.That(harness.Importer.RequestedImports.Count(root => root == blockRoot), Is.EqualTo(source == BlockSource.Gossip ? 0 : 2));
-            if (source == BlockSource.RangeSync)
-            {
-                Assert.That(harness.Importer.Known, Does.Contain(childRoot), "fixture: the held child imports");
-                Assert.That(harness.Importer.RequestedImports.Count(root => root == childRoot), Is.EqualTo(2), "the held range child imports as requested too");
-            }
+            Assert.That(harness.Importer.Known, Does.Contain(childRoot), "fixture: the held child imports");
+            Assert.That(harness.Importer.RequestedImports.Count(root => root == childRoot), Is.EqualTo(2), "the held range child imports as requested too");
         }
     }
 
@@ -763,12 +741,10 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.RegenerationRefused.Remove(ancestorRoot);
         await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 4, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(held, Is.EqualTo(3), "fixture: the forgery, the genuine block and the grandchild are held");
-            Assert.That(harness.Importer.Known, Does.Contain(genuineRoot), "fixture: the genuine block imports");
-            Assert.That(harness.Importer.Known, Does.Contain(grandchild.ComputeMessageRoot()));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(held, Is.EqualTo(3), "fixture: the forgery, the genuine block and the grandchild are held");
+        Assert.That(harness.Importer.Known, Does.Contain(genuineRoot), "fixture: the genuine block imports");
+        Assert.That(harness.Importer.Known, Does.Contain(grandchild.ComputeMessageRoot()));
     }
 
     /// <summary>
@@ -786,11 +762,9 @@ public partial class BeaconSyncOrchestratorTests
 
         BlockImportResult result = await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None, fetchedByRoot: true, servedBy: peer);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "fixture");
-            peer.Received(localAdmission ? 0 : 1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "fixture");
+        peer.Received(localAdmission ? 0 : 1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
     }
 
     /// <summary>
@@ -813,12 +787,10 @@ public partial class BeaconSyncOrchestratorTests
 
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(new ForkedSignedBeaconBlock.OfFulu(chain[^1]), CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Imports.Select(static i => i.Root), Does.Contain(oldestRoot), "fixture: the whole chain was fetched");
-            Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.EqualTo(budgetRefusal ? 1 : 0));
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount - pendingBefore, Is.EqualTo(budgetRefusal ? BeaconSyncOrchestrator.MaxHeldRefusedBackfills : 0));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Imports.Select(static i => i.Root), Does.Contain(oldestRoot), "fixture: the whole chain was fetched");
+        Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.EqualTo(budgetRefusal ? 1 : 0));
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount - pendingBefore, Is.EqualTo(budgetRefusal ? BeaconSyncOrchestrator.MaxHeldRefusedBackfills : 0));
     }
 
     /// <summary>
@@ -843,13 +815,11 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.RegenerationRefused.Remove(deferredRoot);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Known, Does.Contain(deferredRoot), "fixture: the deferred block imports on the next slot");
-            Assert.That(blocks.Skip(1).Take(BeaconSyncOrchestrator.MaxHeldRefusedBackfills).Select(static b => b.ComputeMessageRoot()), Is.SubsetOf(harness.Importer.Known),
-                "the held descendants nearest the deferred block import behind it");
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero, "no held block is left waiting on a parent never held");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Known, Does.Contain(deferredRoot), "fixture: the deferred block imports on the next slot");
+        Assert.That(blocks.Skip(1).Take(BeaconSyncOrchestrator.MaxHeldRefusedBackfills).Select(static b => b.ComputeMessageRoot()), Is.SubsetOf(harness.Importer.Known),
+            "the held descendants nearest the deferred block import behind it");
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero, "no held block is left waiting on a parent never held");
     }
 
     /// <summary>A forged gossip copy retains neither the fetched block's provenance nor the power to drop its retry and held child.</summary>
@@ -886,20 +856,18 @@ public partial class BeaconSyncOrchestratorTests
         if (waitingForRegeneration)
             await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 3, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(copy, Is.EqualTo(BlockImportResult.Invalid), "fixture");
+        if (waitingForRegeneration)
         {
-            Assert.That(copy, Is.EqualTo(BlockImportResult.Invalid), "fixture");
-            if (waitingForRegeneration)
-            {
-                Assert.That(harness.Importer.Known, Does.Contain(parentRoot));
-                Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()), "the held child imports with the queued block");
-            }
-            else
-            {
-                Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.EqualTo(1), "the fetched block still waits for its retry");
-                Assert.That(harness.Importer.ByRootImports.Count(root => root == parentRoot), Is.EqualTo(1), "the copy imports as gossip, not as the fetched block");
-                peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
-            }
+            Assert.That(harness.Importer.Known, Does.Contain(parentRoot));
+            Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()), "the held child imports with the queued block");
+        }
+        else
+        {
+            Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.EqualTo(1), "the fetched block still waits for its retry");
+            Assert.That(harness.Importer.ByRootImports.Count(root => root == parentRoot), Is.EqualTo(1), "the copy imports as gossip, not as the fetched block");
+            peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
         }
     }
 
@@ -926,13 +894,11 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.RegenerationRefused.Remove(ancestorRoot);
         await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 4, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ancestorWaited, Is.True, "fixture: the budget-deferred ancestor waits for a retry");
-            Assert.That(harness.Importer.Known, Does.Contain(ancestorRoot), "fixture: the ancestor imports on the next slot");
-            Assert.That(harness.Importer.ByRootImports, Does.Contain(middleRoot), "the held fetched block imports as fetched");
-            peer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ancestorWaited, Is.True, "fixture: the budget-deferred ancestor waits for a retry");
+        Assert.That(harness.Importer.Known, Does.Contain(ancestorRoot), "fixture: the ancestor imports on the next slot");
+        Assert.That(harness.Importer.ByRootImports, Does.Contain(middleRoot), "the held fetched block imports as fetched");
+        peer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
     }
 
     /// <summary>
@@ -977,15 +943,13 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Unavailable.Remove(root);
         await harness.Orchestrator.ProcessSlotAsync(NearWallSlot + 2, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(waiting, Is.EqualTo(2), "both copies wait for their data");
-            Assert.That(heldChildren, Is.EqualTo(1), "fixture: a gossip child is held for the root");
-            Assert.That(harness.Importer.Known, Does.Contain(root).And.Contain(child.ComputeMessageRoot()), "the genuine copy imports, and the child held for its root with it");
-            Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero, "no copy is left waiting");
-            Assert.That(harness.Importer.ByRootImports.Count(r => r == root), Is.EqualTo(2), "the genuine copy retries as fetched");
-            peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(waiting, Is.EqualTo(2), "both copies wait for their data");
+        Assert.That(heldChildren, Is.EqualTo(1), "fixture: a gossip child is held for the root");
+        Assert.That(harness.Importer.Known, Does.Contain(root).And.Contain(child.ComputeMessageRoot()), "the genuine copy imports, and the child held for its root with it");
+        Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero, "no copy is left waiting");
+        Assert.That(harness.Importer.ByRootImports.Count(r => r == root), Is.EqualTo(2), "the genuine copy retries as fetched");
+        peer.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
     }
 
     /// <summary>
@@ -1026,14 +990,12 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.RegenerationRefused.Remove(root);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(held, Is.EqualTo(1), "the child is held for the queued root");
-            Assert.That(importedInFirstSlot, Is.EqualTo(!genuineWaitsForRegeneration));
-            Assert.That(harness.Importer.Known, Does.Contain(root).And.Contain(child.ComputeMessageRoot()));
-            Assert.That(harness.Importer.Imports.Count(i => i.Root == root), Is.EqualTo(genuineWaitsForRegeneration ? 5 : 4), "the fetched forgery is never imported");
-            supplier.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(held, Is.EqualTo(1), "the child is held for the queued root");
+        Assert.That(importedInFirstSlot, Is.EqualTo(!genuineWaitsForRegeneration));
+        Assert.That(harness.Importer.Known, Does.Contain(root).And.Contain(child.ComputeMessageRoot()));
+        Assert.That(harness.Importer.Imports.Count(i => i.Root == root), Is.EqualTo(genuineWaitsForRegeneration ? 5 : 4), "the fetched forgery is never imported");
+        supplier.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
     }
 
     /// <summary>
@@ -1071,14 +1033,12 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.RequestedImports.Clear();
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(heldBefore, Is.EqualTo(child.Slot), "fixture: the range chain is held behind the queued root");
-            Assert.That(heldAfterForgery, Is.EqualTo(child.Slot), "the forgery's failure leaves the held chain and its round");
-            supplier.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
-            Assert.That(harness.Importer.Known, Does.Contain(root).And.Contain(child.ComputeMessageRoot()));
-            Assert.That(harness.Importer.RequestedImports, Does.Contain(child.ComputeMessageRoot()), "the held child retries as a range block");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldBefore, Is.EqualTo(child.Slot), "fixture: the range chain is held behind the queued root");
+        Assert.That(heldAfterForgery, Is.EqualTo(child.Slot), "the forgery's failure leaves the held chain and its round");
+        supplier.DidNotReceive().ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>());
+        Assert.That(harness.Importer.Known, Does.Contain(root).And.Contain(child.ComputeMessageRoot()));
+        Assert.That(harness.Importer.RequestedImports, Does.Contain(child.ComputeMessageRoot()), "the held child retries as a range block");
     }
 
     /// <summary>
@@ -1109,13 +1069,11 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Unavailable.Remove(root);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(waiting, Is.EqualTo(2), "fixture: both copies wait for their data");
-            firstPeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
-            secondPeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
-            Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(waiting, Is.EqualTo(2), "fixture: both copies wait for their data");
+        firstPeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+        secondPeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
+        Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero);
     }
 
     [TestCase(false, false, false)]
@@ -1281,13 +1239,11 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(real), CancellationToken.None);
         await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(equivocation), CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(seenAfterForged, Is.False, "a block failing its signature does not mark (slot, proposer)");
-            Assert.That(harness.Importer.Known, Does.Contain(SszRoots.HashTreeRoot(real.Message)), "the real block is imported after the forged one");
-            Assert.That(harness.Router.IsProposalSeen(150, real.Message.ProposerIndex), "the imported block marks (slot, proposer)");
-            Assert.That(harness.Importer.Imports.Select(static i => i.Root), Does.Not.Contain(SszRoots.HashTreeRoot(equivocation.Message)), "a later block for the pair is ignored");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(seenAfterForged, Is.False, "a block failing its signature does not mark (slot, proposer)");
+        Assert.That(harness.Importer.Known, Does.Contain(SszRoots.HashTreeRoot(real.Message)), "the real block is imported after the forged one");
+        Assert.That(harness.Router.IsProposalSeen(150, real.Message.ProposerIndex), "the imported block marks (slot, proposer)");
+        Assert.That(harness.Importer.Imports.Select(static i => i.Root), Does.Not.Contain(SszRoots.HashTreeRoot(equivocation.Message)), "a later block for the pair is ignored");
     }
 
     [Test]
@@ -1331,14 +1287,12 @@ public partial class BeaconSyncOrchestratorTests
         harness.Timestamper.Set(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + (WallSlot + 1) * Spec.SecondsPerSlot));
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(seenEarly, Is.True);
-            Assert.That(heldSlot, Is.EqualTo(fromRange ? WallSlot + 1 : (ulong?)null));
-            Assert.That(harness.Orchestrator.RangeHeldSlot, Is.Null);
-            Assert.That(harness.Importer.Known, Does.Contain(root), "the retry set re-imports the block after its slot's tick");
-            Assert.That(harness.Importer.Imports.Select(static i => i.Root), Is.EqualTo(new[] { root, root }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(seenEarly, Is.True);
+        Assert.That(heldSlot, Is.EqualTo(fromRange ? WallSlot + 1 : (ulong?)null));
+        Assert.That(harness.Orchestrator.RangeHeldSlot, Is.Null);
+        Assert.That(harness.Importer.Known, Does.Contain(root), "the retry set re-imports the block after its slot's tick");
+        Assert.That(harness.Importer.Imports.Select(static i => i.Root), Is.EqualTo(new[] { root, root }));
     }
 
     [Test]
@@ -1356,11 +1310,9 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.WorkWriter.Complete();
         await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored), "consumed by the router, not forwarded");
-            Assert.That(harness.Importer.GossipOperations.Select(static o => o.GetType()), Is.EqualTo(new[] { typeof(SignedAggregateAndProofGloas), typeof(AttesterSlashingGloas) }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored), "consumed by the router, not forwarded");
+        Assert.That(harness.Importer.GossipOperations.Select(static o => o.GetType()), Is.EqualTo(new[] { typeof(SignedAggregateAndProofGloas), typeof(AttesterSlashingGloas) }));
     }
 
     /// <summary>
@@ -1382,13 +1334,11 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
 
         string[] lines = [.. logger.LogList.Where(static l => l.StartsWith("Import worker spent") && l.Contains(" on a gossip aggregate"))];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(1), "fixture: the aggregate reaches fork choice");
-            Assert.That(lines, Has.Length.EqualTo(pastThreshold ? 1 : 0));
-            if (pastThreshold)
-                Assert.That(lines[0], Does.EndWith($" ms on a gossip aggregate for slot {WallSlot} with target epoch {target.Epoch} root {target.Root}"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(1), "fixture: the aggregate reaches fork choice");
+        Assert.That(lines, Has.Length.EqualTo(pastThreshold ? 1 : 0));
+        if (pastThreshold)
+            Assert.That(lines[0], Does.EndWith($" ms on a gossip aggregate for slot {WallSlot} with target epoch {target.Epoch} root {target.Root}"));
     }
 
     /// <summary>The head step after a worker pass reads the justified balances and can hold the worker as long as an import, so it is timed the same way.</summary>
@@ -1405,11 +1355,9 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.WorkWriter.Complete();
         await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(1), "fixture: one head step ends the pass");
-            Assert.That(logger.LogList.Where(static l => l.StartsWith("Import worker spent") && l.EndsWith(" ms on the head step")).ToArray(), Has.Length.EqualTo(pastThreshold ? 1 : 0));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(1), "fixture: one head step ends the pass");
+        Assert.That(logger.LogList.Where(static l => l.StartsWith("Import worker spent") && l.EndsWith(" ms on the head step")).ToArray(), Has.Length.EqualTo(pastThreshold ? 1 : 0));
     }
 
     [Test]
@@ -1447,16 +1395,14 @@ public partial class BeaconSyncOrchestratorTests
         Metrics.BeaconChainLastBlockImportMs = -1;
         await harness.Orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[101, 102, 103, 104, 105]), "all linked canonical blocks replayed");
-            Assert.That(harness.Importer.Imports.Select(static i => i.VerifySignatures), Is.All.False, "store replays skip signature verification");
-            Assert.That(Metrics.BeaconChainBlocksImported, Is.EqualTo(before + 5));
-            Assert.That(Metrics.BeaconChainLastBlockImportMs, Is.GreaterThanOrEqualTo(0));
-            Assert.That(harness.Pool.GetBestPeersCalls, Is.Zero, "the network was not touched");
-            Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(105UL), "sync tip resumes at the replayed head");
-            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "a head step follows the replay");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[101, 102, 103, 104, 105]), "all linked canonical blocks replayed");
+        Assert.That(harness.Importer.Imports.Select(static i => i.VerifySignatures), Is.All.False, "store replays skip signature verification");
+        Assert.That(Metrics.BeaconChainBlocksImported, Is.EqualTo(before + 5));
+        Assert.That(Metrics.BeaconChainLastBlockImportMs, Is.GreaterThanOrEqualTo(0));
+        Assert.That(harness.Pool.GetBestPeersCalls, Is.Zero, "the network was not touched");
+        Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(105UL), "sync tip resumes at the replayed head");
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "a head step follows the replay");
     }
 
     /// <summary>Gossip topics exist only once the libp2p host has started; a replayed head near the wall clock that finds none must wait for it to start gossip.</summary>
@@ -1479,12 +1425,10 @@ public partial class BeaconSyncOrchestratorTests
         await p2p.StartAsync(token);
         await harness.Orchestrator.RunHeadStepAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(NearHeadAnchorSlot + 2), "the stored blocks replayed");
-            Assert.That(startedBeforeHost, Is.False, "gossip topics cannot be subscribed before the host starts");
-            Assert.That(harness.Orchestrator.GossipStarted, Is.True, "the first head step after the host starts starts gossip");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(NearHeadAnchorSlot + 2), "the stored blocks replayed");
+        Assert.That(startedBeforeHost, Is.False, "gossip topics cannot be subscribed before the host starts");
+        Assert.That(harness.Orchestrator.GossipStarted, Is.True, "the first head step after the host starts starts gossip");
     }
 
     /// <summary>
@@ -1622,11 +1566,9 @@ public partial class BeaconSyncOrchestratorTests
         harness.Timestamper.Set(SlotStart(expirySlot));
         await harness.Orchestrator.ProcessSlotAsync(expirySlot, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(warningsWhileWaiting, Is.Zero);
-            Assert.That(logger.Messages.Count(l => l.StartsWith($"Dropping block {block.ComputeMessageRoot()}")), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(warningsWhileWaiting, Is.Zero);
+        Assert.That(logger.Messages.Count(l => l.StartsWith($"Dropping block {block.ComputeMessageRoot()}")), Is.EqualTo(1));
     }
 
     /// <summary>A restart also ends the wait between rounds, so the round from the head starts at once, not a slot later.</summary>
@@ -1658,13 +1600,11 @@ public partial class BeaconSyncOrchestratorTests
         TimeSpan untilNextRound = sinceRestart.Elapsed;
         await stopFeed.CancelAsync();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(await EndsAsync(feed, token), Is.True);
-            Assert.That(requestsWhileWaiting, Is.Zero);
-            Assert.That(server.Requests, Is.Positive, "the round from the head started");
-            Assert.That(untilNextRound, Is.LessThan(bound));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(await EndsAsync(feed, token), Is.True);
+        Assert.That(requestsWhileWaiting, Is.Zero);
+        Assert.That(server.Requests, Is.Positive, "the round from the head started");
+        Assert.That(untilNextRound, Is.LessThan(bound));
     }
 
     /// <summary>Whether <paramref name="task"/> ends, by completing or by cancellation, within a few seconds of a stop request.</summary>

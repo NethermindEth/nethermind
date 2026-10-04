@@ -27,11 +27,9 @@ public class DataColumnSidecarPoolGloasTests
 
         pool.AddGloas(sidecar);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out DataColumnSidecarGloas? byRoot) ? byRoot : null, Is.SameAs(sidecar));
-            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column + 1, out _), Is.False, "the column is part of the key");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out DataColumnSidecarGloas? byRoot) ? byRoot : null, Is.SameAs(sidecar));
+        Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column + 1, out _), Is.False, "the column is part of the key");
     }
 
     /// <summary>Both at one slot, so a shared slot index would let the later add hide the other fork's sidecar.</summary>
@@ -45,13 +43,11 @@ public class DataColumnSidecarPoolGloasTests
         pool.AddGloas(gloas);
         pool.Add(fuluRoot, Slot, fulu);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out DataColumnSidecarGloas? gloasByRoot) ? gloasByRoot : null, Is.SameAs(gloas));
-            Assert.That(pool.TryGet(fuluRoot, Column, out DataColumnSidecar? fuluByRoot) ? fuluByRoot : null, Is.SameAs(fulu));
-            Assert.That(pool.TryGet(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out _), Is.False);
-            Assert.That(pool.TryGetGloas(fuluRoot, Column, out _), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out DataColumnSidecarGloas? gloasByRoot) ? gloasByRoot : null, Is.SameAs(gloas));
+        Assert.That(pool.TryGet(fuluRoot, Column, out DataColumnSidecar? fuluByRoot) ? fuluByRoot : null, Is.SameAs(fulu));
+        Assert.That(pool.TryGet(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out _), Is.False);
+        Assert.That(pool.TryGetGloas(fuluRoot, Column, out _), Is.False);
     }
 
     /// <summary>Competing blocks can share a slot; a per-slot root would let the later block hide the earlier one's columns.</summary>
@@ -66,11 +62,9 @@ public class DataColumnSidecarPoolGloasTests
         pool.AddGloas(first);
         pool.AddGloas(competing);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out DataColumnSidecarGloas? firstHeld) ? firstHeld : null, Is.SameAs(first));
-            Assert.That(pool.TryGetGloas(competingRoot, Column, out DataColumnSidecarGloas? competingHeld) ? competingHeld : null, Is.SameAs(competing));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out DataColumnSidecarGloas? firstHeld) ? firstHeld : null, Is.SameAs(first));
+        Assert.That(pool.TryGetGloas(competingRoot, Column, out DataColumnSidecarGloas? competingHeld) ? competingHeld : null, Is.SameAs(competing));
     }
 
     [Test]
@@ -85,14 +79,12 @@ public class DataColumnSidecarPoolGloasTests
         bool heldAsPending = PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot).Contains(sidecar);
         pool.AddGloas(sidecar);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(servedWhilePending, Is.False);
-            Assert.That(heldAsPending, Is.True);
-            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out _), Is.True);
-            Assert.That(PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot), Is.Empty, "a verified sidecar clears every candidate for its root and column");
-            Assert.That(pool.PendingGloasCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(servedWhilePending, Is.False);
+        Assert.That(heldAsPending, Is.True);
+        Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out _), Is.True);
+        Assert.That(PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot), Is.Empty, "a verified sidecar clears every candidate for its root and column");
+        Assert.That(pool.PendingGloasCount, Is.Zero);
     }
 
     [Test]
@@ -122,11 +114,9 @@ public class DataColumnSidecarPoolGloasTests
 
         bool parkedPastTheCap = pool.AddPendingGloas(Forged(DataColumnSidecarGloasTestFixture.BlockRoot), Slot);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(parkedPastTheCap, Is.False);
-            Assert.That(PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot), Is.EqualTo(earliest));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(parkedPastTheCap, Is.False);
+        Assert.That(PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot), Is.EqualTo(earliest));
     }
 
     /// <summary>A flood of forgeries, for this (root, column) or for others, must not cost an earlier candidate its place.</summary>
@@ -142,11 +132,9 @@ public class DataColumnSidecarPoolGloasTests
             pool.AddPendingGloas(Forged(sameRootAndColumn ? DataColumnSidecarGloasTestFixture.BlockRoot : RootFor(i)), Slot);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot), Does.Contain(honest));
-            Assert.That(pool.PendingGloasCount, Is.LessThanOrEqualTo(DataColumnSidecarPool.MaxPendingGloasSidecars));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot), Does.Contain(honest));
+        Assert.That(pool.PendingGloasCount, Is.LessThanOrEqualTo(DataColumnSidecarPool.MaxPendingGloasSidecars));
     }
 
     /// <summary>A refusing full pool must free up once its candidates' blocks can no longer be imminent, or one flood would block parking for good.</summary>
@@ -162,12 +150,10 @@ public class DataColumnSidecarPoolGloasTests
 
         DataColumnSidecarGloas later = DataColumnSidecarGloasTestFixture.BuildSidecar(Column, currentSlot);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.AddPendingGloas(later, currentSlot), Is.EqualTo(parked));
-            Assert.That(PendingFor(pool, RootFor(0)), Has.Length.EqualTo(parked ? 0 : 1));
-            Assert.That(pool.PendingGloasCount, Is.EqualTo(parked ? 1 : DataColumnSidecarPool.MaxPendingGloasSidecars));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.AddPendingGloas(later, currentSlot), Is.EqualTo(parked));
+        Assert.That(PendingFor(pool, RootFor(0)), Has.Length.EqualTo(parked ? 0 : 1));
+        Assert.That(pool.PendingGloasCount, Is.EqualTo(parked ? 1 : DataColumnSidecarPool.MaxPendingGloasSidecars));
     }
 
     [Test]
@@ -175,11 +161,9 @@ public class DataColumnSidecarPoolGloasTests
     {
         DataColumnSidecarPool pool = new();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.AddPendingGloas(Forged(DataColumnSidecarGloasTestFixture.BlockRoot), Slot + 2), Is.False);
-            Assert.That(pool.PendingGloasCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.AddPendingGloas(Forged(DataColumnSidecarGloasTestFixture.BlockRoot), Slot + 2), Is.False);
+        Assert.That(pool.PendingGloasCount, Is.Zero);
     }
 
     private static DataColumnSidecarGloas Forged(Hash256 root) =>

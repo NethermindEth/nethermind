@@ -61,11 +61,9 @@ public class BlockSignatureBatchTests
         BlockSignatureBatch batch = new();
         bool accepted = BlockSignatureBatch.Verify(publicKey, signature, Message, deferred ? batch.Defer("outside G2") : null);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(accepted, Is.False, $"S + T pairing-only verification: {pairingOnly}");
-            Assert.That(batch.Count, Is.Zero);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(accepted, Is.False, $"S + T pairing-only verification: {pairingOnly}");
+        Assert.That(batch.Count, Is.Zero);
     }
 
     /// <summary>
@@ -103,13 +101,11 @@ public class BlockSignatureBatchTests
             if (BlockSignatureBatch.Verify(publicKey, signature, Message, batch.Defer("outside G2"))) deferredAccepted++;
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pairingAccepted, Is.Zero, "the pairing alone");
-            Assert.That(serialAccepted, Is.Zero);
-            Assert.That(deferredAccepted, Is.Zero);
-            Assert.That(batch.Count, Is.Zero);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pairingAccepted, Is.Zero, "the pairing alone");
+        Assert.That(serialAccepted, Is.Zero);
+        Assert.That(deferredAccepted, Is.Zero);
+        Assert.That(batch.Count, Is.Zero);
     }
 
     [Test]
@@ -121,12 +117,10 @@ public class BlockSignatureBatchTests
         bool serial = BlockSignatureBatch.Verify(PublicKey(1), undecodable, Message, deferral: null);
         bool deferred = BlockSignatureBatch.Verify(PublicKey(1), undecodable, Message, batch.Defer("undecodable"));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(serial, Is.False);
-            Assert.That(deferred, Is.False);
-            Assert.That(batch.Count, Is.Zero);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(serial, Is.False);
+        Assert.That(deferred, Is.False);
+        Assert.That(batch.Count, Is.Zero);
     }
 
     private static IEnumerable<TestCaseData> PointsOutsideTheBatchConditions()
@@ -151,13 +145,11 @@ public class BlockSignatureBatchTests
         bool serial = BlockSignatureBatch.Verify(publicKey, blsSignature, Message, deferral: null);
         bool deferred = BlockSignatureBatch.Verify(publicKey, blsSignature, Message, batch.Defer("outside"));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(serial, Is.EqualTo(serialVerdict), "fixture bug: the serial verdict this case pins");
-            Assert.That(deferred, Is.EqualTo(serial));
-            Assert.That(batch.Count, Is.Zero, "the set must not be deferred");
-            Assert.That(batch.Verify, Throws.Nothing);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(serial, Is.EqualTo(serialVerdict), "fixture bug: the serial verdict this case pins");
+        Assert.That(deferred, Is.EqualTo(serial));
+        Assert.That(batch.Count, Is.Zero, "the set must not be deferred");
+        Assert.That(batch.Verify, Throws.Nothing);
     }
 
     [Test]

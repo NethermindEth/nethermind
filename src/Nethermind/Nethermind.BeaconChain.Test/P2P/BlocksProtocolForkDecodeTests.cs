@@ -46,11 +46,9 @@ public class BlocksProtocolForkDecodeTests
 
         IReadOnlyList<ForkedSignedBeaconBlock> blocks = await protocol.ReadBlocksAsync(stream, maxBlocks: 2);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(blocks.Select(static b => b.GetType()), Is.EqualTo(new[] { typeof(ForkedSignedBeaconBlock.OfFulu), typeof(ForkedSignedBeaconBlock.OfGloas) }), "one shape per fork");
-            Assert.That(blocks.Select(static b => b.ComputeMessageRoot()), Is.EqualTo(new[] { LastFuluBlock.ComputeMessageRoot(), FirstGloasBlock.ComputeMessageRoot() }), "block roots round-trip");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(blocks.Select(static b => b.GetType()), Is.EqualTo(new[] { typeof(ForkedSignedBeaconBlock.OfFulu), typeof(ForkedSignedBeaconBlock.OfGloas) }), "one shape per fork");
+        Assert.That(blocks.Select(static b => b.ComputeMessageRoot()), Is.EqualTo(new[] { LastFuluBlock.ComputeMessageRoot(), FirstGloasBlock.ComputeMessageRoot() }), "block roots round-trip");
     }
 
     [Test]
@@ -90,13 +88,11 @@ public class BlocksProtocolForkDecodeTests
         IReadOnlyList<ForkedSignedBeaconBlock> byRange = await client.RequestBlocksByRangeAsync(toServer, LastFuluBlock.Slot, 2, token);
         IReadOnlyList<ForkedSignedBeaconBlock> byRoot = await client.RequestBlocksByRootAsync(toServer, [gloasRoot], token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(byRange.Select(static b => b.ComputeMessageRoot()), Is.EqualTo(new[] { fuluRoot, gloasRoot }), "by range crosses the fork");
-            Assert.That(byRange[^1], Is.InstanceOf<ForkedSignedBeaconBlock.OfGloas>(), "by range keeps the Gloas shape");
-            Assert.That(byRoot.Select(static b => b.ComputeMessageRoot()), Is.EqualTo(new[] { gloasRoot }), "by root serves the Gloas block");
-            Assert.That(byRoot[0], Is.InstanceOf<ForkedSignedBeaconBlock.OfGloas>(), "by root keeps the Gloas shape");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(byRange.Select(static b => b.ComputeMessageRoot()), Is.EqualTo(new[] { fuluRoot, gloasRoot }), "by range crosses the fork");
+        Assert.That(byRange[^1], Is.InstanceOf<ForkedSignedBeaconBlock.OfGloas>(), "by range keeps the Gloas shape");
+        Assert.That(byRoot.Select(static b => b.ComputeMessageRoot()), Is.EqualTo(new[] { gloasRoot }), "by root serves the Gloas block");
+        Assert.That(byRoot[0], Is.InstanceOf<ForkedSignedBeaconBlock.OfGloas>(), "by root keeps the Gloas shape");
     }
 
     private static BeaconP2P CreateNode(BeaconChainStore store) =>

@@ -61,12 +61,10 @@ public class DataColumnSidecarPoolPersistenceTests
         System.Collections.Generic.IReadOnlyList<DataColumnSidecar> served =
             await DataColumnSidecarsReqRespTests.RequestRangeAsync(pool, store, CurrentSlot - 3, 2, [5, 6], clock);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.TryGet(RootOf(first), 5, out _), Is.True, "by root, the evicted or pre-restart column");
-            Assert.That(pool.TryGet(RootOf(second), 6, out _), Is.True);
-            Assert.That(served.Select(static s => s.Index), Is.EqualTo(new ulong[] { 5, 6 }), "by range, from the earliest slot the store holds completely");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.TryGet(RootOf(first), 5, out _), Is.True, "by root, the evicted or pre-restart column");
+        Assert.That(pool.TryGet(RootOf(second), 6, out _), Is.True);
+        Assert.That(served.Select(static s => s.Index), Is.EqualTo(new ulong[] { 5, 6 }), "by range, from the earliest slot the store holds completely");
     }
 
     /// <summary>
@@ -113,11 +111,9 @@ public class DataColumnSidecarPoolPersistenceTests
 
         pool.AddGloas(unstorable);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(CurrentSlot - 9));
-            Assert.That(new DataColumnSidecarPool(store: store).EarliestCompletelyServableSlot, Is.EqualTo(CurrentSlot - 9), "a restart must not claim the slot of the lost column complete again");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(CurrentSlot - 9));
+        Assert.That(new DataColumnSidecarPool(store: store).EarliestCompletelyServableSlot, Is.EqualTo(CurrentSlot - 9), "a restart must not claim the slot of the lost column complete again");
     }
 
     [Test]
@@ -149,12 +145,10 @@ public class DataColumnSidecarPoolPersistenceTests
         DataColumnSidecarPool second = new(store: store);
         second.SeedCompletelyServableFloor(store.GetCanonicalIndexTopSlot()).Wait();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.TryGetDataColumnFloor(out ulong stored), Is.True);
-            Assert.That(stored, Is.EqualTo(top + 1), "the recorded floor already carries the seed, so no later start takes the late column's slot for it");
-            Assert.That(second.EarliestCompletelyServableSlot, Is.EqualTo(top + 1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetDataColumnFloor(out ulong stored), Is.True);
+        Assert.That(stored, Is.EqualTo(top + 1), "the recorded floor already carries the seed, so no later start takes the late column's slot for it");
+        Assert.That(second.EarliestCompletelyServableSlot, Is.EqualTo(top + 1));
     }
 
     // fulu/p2p-interface.md: sidecars of a block that finalization left non-canonical are never requested, so they are dropped.
@@ -176,11 +170,9 @@ public class DataColumnSidecarPoolPersistenceTests
 
         pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(0, CurrentSlot, Keccak.Compute("new")));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.TryGetDataColumnSidecarGloas(orphan, 0, out _), Is.False);
-            Assert.That(store.TryGetDataColumnSidecarGloas(winner, 0, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetDataColumnSidecarGloas(orphan, 0, out _), Is.False);
+        Assert.That(store.TryGetDataColumnSidecarGloas(winner, 0, out _), Is.True);
     }
 
     [Test]
@@ -210,12 +202,10 @@ public class DataColumnSidecarPoolPersistenceTests
         });
         db.FailReads = false;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(heldWhileFailing, Is.False);
-            Assert.That(reconstructable, Is.False);
-            Assert.That(gloas ? pool.TryGetGloas(root, 4, out _) : pool.TryGet(root, 4, out _), Is.True, "a transient fault must not mark the record unreadable");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldWhileFailing, Is.False);
+        Assert.That(reconstructable, Is.False);
+        Assert.That(gloas ? pool.TryGetGloas(root, 4, out _) : pool.TryGet(root, 4, out _), Is.True, "a transient fault must not mark the record unreadable");
     }
 
     // A block imported after a restart waits for its columns; one the previous run stored must not keep it waiting for a wake that never comes.
@@ -247,12 +237,10 @@ public class DataColumnSidecarPoolPersistenceTests
             restarted.Add(root, CurrentSlot, fulu1);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(watching, Is.True, "column 1 is missing");
-            Assert.That(woke, Is.True, "the last missing column arrived");
-            Assert.That(allStoredWatching, Is.False, "every column asked for is held already");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(watching, Is.True, "column 1 is missing");
+        Assert.That(woke, Is.True, "the last missing column arrived");
+        Assert.That(allStoredWatching, Is.False, "every column asked for is held already");
     }
 
     // The importer wakes on the callback and reads the store, so the column must be durable before it runs.
@@ -295,12 +283,10 @@ public class DataColumnSidecarPoolPersistenceTests
         restarted.Add(root, CurrentSlot, DataColumnSidecarTestFixture.BuildValidSidecar(required - 1, CurrentSlot));
 
         bool held = restarted.TryGetHeldColumns(root, CurrentSlot, required, out DataColumnSidecar[]? columns);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(held, Is.True);
-            Assert.That(columns!.Select(static c => c.Index), Is.EqualTo(Enumerable.Range(0, required).Select(static i => (ulong)i)));
-            Assert.That(restarted.TryGetHeldColumns(root, CurrentSlot, required + 1, out _), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(held, Is.True);
+        Assert.That(columns!.Select(static c => c.Index), Is.EqualTo(Enumerable.Range(0, required).Select(static i => (ulong)i)));
+        Assert.That(restarted.TryGetHeldColumns(root, CurrentSlot, required + 1, out _), Is.False);
     }
 
     // A slot index that names a column whose record is gone must not count that column as held.
@@ -318,12 +304,10 @@ public class DataColumnSidecarPoolPersistenceTests
         db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars).Remove([.. root.Bytes, 0, 0, 0, 0, 0, 0, 0, 3]);
         DataColumnSidecarPool pool = new(store: store);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, required, out _), Is.False);
-            Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, required - 1, out DataColumnSidecar[]? held), Is.True);
-            Assert.That(held!.Select(static c => c.Index), Is.EqualTo(Enumerable.Range(0, required).Where(static i => i != 3).Select(static i => (ulong)i)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, required, out _), Is.False);
+        Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, required - 1, out DataColumnSidecar[]? held), Is.True);
+        Assert.That(held!.Select(static c => c.Index), Is.EqualTo(Enumerable.Range(0, required).Where(static i => i != 3).Select(static i => (ulong)i)));
     }
 
     [Test]
@@ -345,12 +329,10 @@ public class DataColumnSidecarPoolPersistenceTests
         timestamper.Add(TimeSpan.FromSeconds(Spec.SecondsPerSlot * Spec.SlotsPerEpoch));
         pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(2, CurrentSlot + Spec.SlotsPerEpoch, Keccak.Compute("newer")));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(prunedOnFirstAdd, Is.True, "a stored sidecar below the retention window is deleted");
-            Assert.That(keptWithinTheEpoch, Is.True, "the store is pruned once per epoch, not on every column");
-            Assert.That(store.TryGetDataColumnSidecarGloas(oldToo, 0, out _), Is.False, "and again when the epoch changes");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(prunedOnFirstAdd, Is.True, "a stored sidecar below the retention window is deleted");
+        Assert.That(keptWithinTheEpoch, Is.True, "the store is pruned once per epoch, not on every column");
+        Assert.That(store.TryGetDataColumnSidecarGloas(oldToo, 0, out _), Is.False, "and again when the epoch changes");
     }
 
     [Test]
@@ -366,11 +348,9 @@ public class DataColumnSidecarPoolPersistenceTests
         pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, CurrentSlot, root));
         pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(0, CurrentSlot + 1, Keccak.Compute("evicts")));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(damaged, Is.False);
-            Assert.That(pool.TryGetGloas(root, 3, out _), Is.True, "read from the store once memory evicted it, so the unreadable marker must be gone");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(damaged, Is.False);
+        Assert.That(pool.TryGetGloas(root, 3, out _), Is.True, "read from the store once memory evicted it, so the unreadable marker must be gone");
     }
 
     // A damaged record replaced while a reader decodes it must not stay refused once memory evicts the replacement.
@@ -388,11 +368,9 @@ public class DataColumnSidecarPoolPersistenceTests
         bool servedWhileDamaged = pool.TryGetGloas(root, 3, out _);
         pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(0, CurrentSlot + 1, Keccak.Compute("evicts")));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(servedWhileDamaged, Is.False);
-            Assert.That(pool.TryGetGloas(root, 3, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(servedWhileDamaged, Is.False);
+        Assert.That(pool.TryGetGloas(root, 3, out _), Is.True);
     }
 
     [Test]

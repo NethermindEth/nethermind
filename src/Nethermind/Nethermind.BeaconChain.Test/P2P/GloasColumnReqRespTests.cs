@@ -229,11 +229,9 @@ public class GloasColumnReqRespTests
             DataColumnSidecarsByRootRequest.Encode(new DataColumnSidecarsByRootRequest { Identifiers = request }), token);
         Assert.That(chunks, Has.Count.EqualTo(1), "the pending candidate is not served");
         DataColumnSidecarGloas.Decode(chunks[0].Payload, out DataColumnSidecarGloas served);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chunks[0].ContextBytes, Is.EqualTo(ContextOf(GloasStartSlot + 2)));
-            Assert.That((served.BeaconBlockRoot, served.Index), Is.EqualTo((heldRoot, 3UL)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(chunks[0].ContextBytes, Is.EqualTo(ContextOf(GloasStartSlot + 2)));
+        Assert.That((served.BeaconBlockRoot, served.Index), Is.EqualTo((heldRoot, 3UL)));
     }
 
     private static byte[] ContextOf(ulong slot) => ForkDigest.Compute(Spec, Spec.GetEpoch(slot));

@@ -27,10 +27,8 @@ public class PostStateCacheTests
 
         SlotProcessing.ProcessSlots(lineage, chain.AnchorState.Slot + 1, new EpochCache());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(states.LineageState!.Slot, Is.EqualTo(chain.AnchorState.Slot + 1), "fixture: the lineage moved on in place");
-            Assert.That(states.GetBlockState(chain.AnchorRoot)!.Slot, Is.EqualTo(chain.AnchorState.Slot));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(states.LineageState!.Slot, Is.EqualTo(chain.AnchorState.Slot + 1), "fixture: the lineage moved on in place");
+        Assert.That(states.GetBlockState(chain.AnchorRoot)!.Slot, Is.EqualTo(chain.AnchorState.Slot));
     }
 }

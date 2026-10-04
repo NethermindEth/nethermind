@@ -231,11 +231,9 @@ public class DataColumnSidecarsReqRespTests
 
         Eth2ReqRespException? thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync(good, cut[..(cut.Length / 2)], seen.Add, token: token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(seen.Select(Key), Is.EqualTo(good.Select(Key)), "a chunk fully read is kept when a later chunk is truncated");
-            Assert.That(thrown!.Message, Does.StartWith("Truncated response chunk"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(seen.Select(Key), Is.EqualTo(good.Select(Key)), "a chunk fully read is kept when a later chunk is truncated");
+        Assert.That(thrown!.Message, Does.StartWith("Truncated response chunk"));
     }
 
     /// <summary>A chunk outside the requested slots or columns is a protocol violation and must never reach the caller's pool of kept sidecars.</summary>
@@ -273,11 +271,9 @@ public class DataColumnSidecarsReqRespTests
 
         ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => DialRangeAsync(chunks, [], seen.Add, request, TimeSpan.FromMilliseconds(1_400), token, protocol));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(seen, Has.Count.EqualTo(2), "the third chunk was never read");
-            Assert.That(cut!.Message, Is.EqualTo("timed out after 3.5 s, the bound for the whole response, with 2 chunks read"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(seen, Has.Count.EqualTo(2), "the third chunk was never read");
+        Assert.That(cut!.Message, Is.EqualTo("timed out after 3.5 s, the bound for the whole response, with 2 chunks read"));
     }
 
     private static async Task DialRangeAsync(DataColumnSidecar[] whole, byte[] trailingBytes, Action<DataColumnSidecar> onSidecar, DataColumnSidecarsByRangeRequest? request = null, TimeSpan chunkGap = default, CancellationToken token = default, DataColumnSidecarsByRangeProtocol? protocol = null)

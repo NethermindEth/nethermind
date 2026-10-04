@@ -50,11 +50,9 @@ public class BeaconDiscoveryBootnodesTests
         // The same records listed explicitly, so only the network's own list can match.
         PublicKey[] listed = [.. Discovery(BeaconChainSpec.Mainnet, string.Join(',', spec.Bootnodes)).CreateBootNodes().Select(static n => n.Id)];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(own, Is.Not.Empty, $"chain {chainId} discovery has no bootnode to dial");
-            Assert.That(own, Is.EquivalentTo(listed), $"chain {chainId} dials bootnodes other than its own");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(own, Is.Not.Empty, $"chain {chainId} discovery has no bootnode to dial");
+        Assert.That(own, Is.EquivalentTo(listed), $"chain {chainId} dials bootnodes other than its own");
     }
 
     [Test]

@@ -222,12 +222,10 @@ public class ForkChoiceRunnerReorgTests
         Hash256 boostRoot = runner.ProposerBoostRoot;
         TickTo(runner, slot: parentSlot + 2, test is ProposalTime proposal ? proposal.Seconds : 0);
         if (test is not ProposalTime { ParentVoted: false }) runner.OnAttestation(chain.Vote(voteSlot, parent.Root), verifySignature: false);
-        using (Assert.EnterMultipleScope())
-        {
-            if (test is ArrivalTime) Assert.That(boostRoot, Is.EqualTo(test.Reorg ? Hash256.Zero : head.Root), "only a timely head is boosted");
-            Assert.That(runner.GetHead(), Is.EqualTo(head.Root), "fixture bug: the block must be the head");
-            Assert.That(runner.GetProposerHead(head.Root, proposalSlot: parentSlot + 2), Is.EqualTo(test.Reorg ? parent.Root : head.Root));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (test is ArrivalTime) Assert.That(boostRoot, Is.EqualTo(test.Reorg ? Hash256.Zero : head.Root), "only a timely head is boosted");
+        Assert.That(runner.GetHead(), Is.EqualTo(head.Root), "fixture bug: the block must be the head");
+        Assert.That(runner.GetProposerHead(head.Root, proposalSlot: parentSlot + 2), Is.EqualTo(test.Reorg ? parent.Root : head.Root));
     }
     /// <summary>Two timely slot-1 blocks A and B by the same proposer, with the clock at the start of slot 2 so neither holds the boost.</summary>
     private static (UnsignedChain Chain, ForkChoiceRunner Runner, UnsignedChain.ChainBlock A, UnsignedChain.ChainBlock B) EquivocatingHeadAtSlotTwo()

@@ -71,13 +71,11 @@ public class BeaconApiHeadSnapshotTests
         using JsonDocument after = await GetAsync(host, path);
 
         Assert.That(db.BeforeNextRead, Is.Null, "the head step must have published while the request was reading");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(during.RootElement.GetProperty("finalized").GetBoolean(), Is.False, "finality of the head the request began with");
-            Assert.That(during.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True, "optimism of the head the request began with");
-            Assert.That(after.RootElement.GetProperty("finalized").GetBoolean(), Is.True, "the next request follows the published head");
-            Assert.That(after.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(during.RootElement.GetProperty("finalized").GetBoolean(), Is.False, "finality of the head the request began with");
+        Assert.That(during.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True, "optimism of the head the request began with");
+        Assert.That(after.RootElement.GetProperty("finalized").GetBoolean(), Is.True, "the next request follows the published head");
+        Assert.That(after.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
     }
 
     [TestCaseSource(nameof(EnvelopeRoutes))]
@@ -92,11 +90,9 @@ public class BeaconApiHeadSnapshotTests
 
         using JsonDocument body = await GetAsync(host, path);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True, "finality of the published head");
-            Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False, "optimism of the published head");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True, "finality of the published head");
+        Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False, "optimism of the published head");
     }
 
     [Test]
@@ -111,11 +107,9 @@ public class BeaconApiHeadSnapshotTests
         using JsonDocument body = await GetAsync(host, "/eth/v1/node/syncing");
 
         JsonElement data = body.RootElement.GetProperty("data");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(data.GetProperty("head_slot").GetString(), Is.EqualTo(Slot.ToString()));
-            Assert.That(data.GetProperty("is_optimistic").GetBoolean(), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(data.GetProperty("head_slot").GetString(), Is.EqualTo(Slot.ToString()));
+        Assert.That(data.GetProperty("is_optimistic").GetBoolean(), Is.False);
     }
 
     [Test]
@@ -155,11 +149,9 @@ public class BeaconApiHeadSnapshotTests
         while (line is not null && !line.StartsWith("data: ", StringComparison.Ordinal));
 
         using JsonDocument body = JsonDocument.Parse(line!["data: ".Length..]);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(body.RootElement.GetProperty("block").GetString(), Is.EqualTo(Head.ToString()));
-            Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(body.RootElement.GetProperty("block").GetString(), Is.EqualTo(Head.ToString()));
+        Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
     }
 
     [Test]
@@ -174,11 +166,9 @@ public class BeaconApiHeadSnapshotTests
 
         using JsonDocument body = await GetAsync(host, "/eth/v1/beacon/headers/head");
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.False);
-            Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.False);
+        Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True);
     }
 
     private static void Seed(BeaconApiTestHost host)

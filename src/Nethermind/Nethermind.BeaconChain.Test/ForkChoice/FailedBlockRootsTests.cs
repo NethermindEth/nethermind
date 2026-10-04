@@ -29,13 +29,11 @@ public class FailedBlockRootsTests
             roots.Add(Root(i), (ulong)i);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(roots.Count, Is.EqualTo(FailedBlockRoots.Capacity));
-            Assert.That(roots.Contains(Root(9)), Is.False, "the oldest roots made room");
-            Assert.That(roots.Contains(Root(10)), Is.True);
-            Assert.That(roots.Contains(Root(FailedBlockRoots.Capacity + 9)), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(roots.Count, Is.EqualTo(FailedBlockRoots.Capacity));
+        Assert.That(roots.Contains(Root(9)), Is.False, "the oldest roots made room");
+        Assert.That(roots.Contains(Root(10)), Is.True);
+        Assert.That(roots.Contains(Root(FailedBlockRoots.Capacity + 9)), Is.True);
     }
 
     [Test]
@@ -49,11 +47,9 @@ public class FailedBlockRootsTests
 
         roots.Add(Root(FailedBlockRoots.Capacity - 1), 0);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(roots.Count, Is.EqualTo(FailedBlockRoots.Capacity));
-            Assert.That(roots.Contains(Root(0)), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(roots.Count, Is.EqualTo(FailedBlockRoots.Capacity));
+        Assert.That(roots.Contains(Root(0)), Is.True);
     }
 
     [Test]
@@ -67,12 +63,10 @@ public class FailedBlockRootsTests
 
         roots.Prune(3);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(roots.Count, Is.EqualTo(2));
-            Assert.That(new[] { 0, 1, 2, 3 }, Has.None.Matches<int>(i => roots.Contains(Root(i))));
-            Assert.That(new[] { 4, 5 }, Has.All.Matches<int>(i => roots.Contains(Root(i))));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(roots.Count, Is.EqualTo(2));
+        Assert.That(new[] { 0, 1, 2, 3 }, Has.None.Matches<int>(i => roots.Contains(Root(i))));
+        Assert.That(new[] { 4, 5 }, Has.All.Matches<int>(i => roots.Contains(Root(i))));
     }
 
     [Test]

@@ -65,19 +65,17 @@ public class SyncCommitteeUpdatesTests
             Assert.That(expectedAggregate.TryAggregate(new Bls.P1(ValidatorKey(memberIndices[i])).Compress(), out _), Is.True);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(state.CurrentSyncCommittee, Is.SameAs(oldNext), "current is the old next committee");
-            Assert.That(newNext, Is.Not.SameAs(oldNext), "next is recomputed");
-            Assert.That(newNext.Pubkeys, Has.Length.EqualTo(Presets.SyncCommitteeSize));
-            Assert.That(everyMemberKnown, Is.True, "every member is a registry validator");
-            Assert.That(Array.TrueForAll(memberIndices, i => state.Validators[i].IsActiveValidator(nextEpoch)), Is.True, "every member is active at the next epoch");
-            Assert.That(Array.Exists(memberIndices, i => Array.IndexOf(ActivatingAtNextEpoch, i) >= 0), Is.True, "validators activating at the next epoch are eligible");
-            Assert.That(Array.TrueForAll(memberIndices, i => state.Validators[i].EffectiveBalance > 0), Is.True, "a zero effective balance is never accepted");
-            Assert.That(new HashSet<int>(memberIndices), Has.Count.GreaterThan(ValidatorCount / 2), "members are sampled across the registry");
-            Assert.That(memberIndices, Is.EqualTo(expectedIndices), "members are get_next_sync_committee_indices in order");
-            Assert.That(newNext.AggregatePubkey, Is.EqualTo(new BlsPublicKey(expectedAggregate.PublicKey.Compress())), "aggregate is the BLS sum of the member pubkeys");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.CurrentSyncCommittee, Is.SameAs(oldNext), "current is the old next committee");
+        Assert.That(newNext, Is.Not.SameAs(oldNext), "next is recomputed");
+        Assert.That(newNext.Pubkeys, Has.Length.EqualTo(Presets.SyncCommitteeSize));
+        Assert.That(everyMemberKnown, Is.True, "every member is a registry validator");
+        Assert.That(Array.TrueForAll(memberIndices, i => state.Validators[i].IsActiveValidator(nextEpoch)), Is.True, "every member is active at the next epoch");
+        Assert.That(Array.Exists(memberIndices, i => Array.IndexOf(ActivatingAtNextEpoch, i) >= 0), Is.True, "validators activating at the next epoch are eligible");
+        Assert.That(Array.TrueForAll(memberIndices, i => state.Validators[i].EffectiveBalance > 0), Is.True, "a zero effective balance is never accepted");
+        Assert.That(new HashSet<int>(memberIndices), Has.Count.GreaterThan(ValidatorCount / 2), "members are sampled across the registry");
+        Assert.That(memberIndices, Is.EqualTo(expectedIndices), "members are get_next_sync_committee_indices in order");
+        Assert.That(newNext.AggregatePubkey, Is.EqualTo(new BlsPublicKey(expectedAggregate.PublicKey.Compress())), "aggregate is the BLS sum of the member pubkeys");
     }
 
     [Test]
@@ -91,11 +89,9 @@ public class SyncCommitteeUpdatesTests
 
         fork.Process(state.State);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(state.CurrentSyncCommittee, Is.SameAs(oldCurrent));
-            Assert.That(state.NextSyncCommittee, Is.SameAs(oldNext));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.CurrentSyncCommittee, Is.SameAs(oldCurrent));
+        Assert.That(state.NextSyncCommittee, Is.SameAs(oldNext));
     }
 
     /// <summary>Electra <c>get_next_sync_committee_indices</c>, which Gloas keeps as <c>compute_balance_weighted_selection</c> with <c>shuffle_indices=True</c>.</summary>

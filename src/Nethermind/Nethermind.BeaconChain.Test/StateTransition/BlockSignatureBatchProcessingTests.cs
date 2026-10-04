@@ -176,11 +176,9 @@ public class BlockSignatureBatchProcessingTests
 
     private static void AssertBothRefuse(Outcome serial, Outcome batched, string refusal)
     {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(serial.Refusal, Is.EqualTo(refusal), "serial");
-            Assert.That(batched, Is.EqualTo(serial), "batched against serial");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(serial.Refusal, Is.EqualTo(refusal), "serial");
+        Assert.That(batched, Is.EqualTo(serial), "batched against serial");
     }
 
     [Test]
@@ -192,12 +190,10 @@ public class BlockSignatureBatchProcessingTests
         GloasBlockProcessing.ProcessBlock(fixture.Pre.Clone(), block, new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: true, batch);
 
         Outcome serial = RunGloas(block, batched: false);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(batch.Count, Is.EqualTo(Enum.GetValues<SignedPart>().Length), "every signature is deferred, none verified on the spot");
-            Assert.That(serial.Refusal, Is.Null, "fixture bug: the serial path must accept the block");
-            Assert.That(RunGloas(block, batched: true), Is.EqualTo(serial));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(batch.Count, Is.EqualTo(Enum.GetValues<SignedPart>().Length), "every signature is deferred, none verified on the spot");
+        Assert.That(serial.Refusal, Is.Null, "fixture bug: the serial path must accept the block");
+        Assert.That(RunGloas(block, batched: true), Is.EqualTo(serial));
     }
 
     public enum SignatureFailureOrder
@@ -271,11 +267,9 @@ public class BlockSignatureBatchProcessingTests
 
         GloasBlockProcessing.ProcessBlock(fixture.Pre.Clone(), block, new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: false, batch);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(batch.Count, Is.Zero);
-            Assert.That(() => GloasBlockProcessing.ProcessBlock(fixture.Pre.Clone(), block, new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: false), Throws.Nothing);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(batch.Count, Is.Zero);
+        Assert.That(() => GloasBlockProcessing.ProcessBlock(fixture.Pre.Clone(), block, new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: false), Throws.Nothing);
     }
 
     // ---- Fulu ----
@@ -442,12 +436,10 @@ public class BlockSignatureBatchProcessingTests
         Outcome serial = RunFulu(block, batched: false);
         RunFulu(block, batched: false, batch);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(serial.Refusal, Is.Null, "fixture bug: the serial path must accept the block");
-            Assert.That(batch.Count, Is.EqualTo(FuluParts.Length), "every signature is deferred, none verified on the spot");
-            Assert.That(RunFulu(block, batched: true), Is.EqualTo(serial));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(serial.Refusal, Is.Null, "fixture bug: the serial path must accept the block");
+        Assert.That(batch.Count, Is.EqualTo(FuluParts.Length), "every signature is deferred, none verified on the spot");
+        Assert.That(RunFulu(block, batched: true), Is.EqualTo(serial));
     }
 
     /// <summary>
@@ -488,19 +480,17 @@ public class BlockSignatureBatchProcessingTests
 
         BlockSignatureBatch deferred = new();
         process(deferred);
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(deferred.Count, Is.EqualTo(1), "the exit signature is deferred");
+        if (validSignature)
         {
-            Assert.That(deferred.Count, Is.EqualTo(1), "the exit signature is deferred");
-            if (validSignature)
-            {
-                Assert.That(() => process(null), Throws.Nothing, "fixture bug: the serial path must accept the exit");
-                Assert.That(() => BlockSignatureBatch.Run(batch => process(batch)), Throws.Nothing);
-            }
-            else
-            {
-                Assert.That(() => process(null), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo(refusal));
-                Assert.That(() => BlockSignatureBatch.Run(batch => process(batch)), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo(refusal));
-            }
+            Assert.That(() => process(null), Throws.Nothing, "fixture bug: the serial path must accept the exit");
+            Assert.That(() => BlockSignatureBatch.Run(batch => process(batch)), Throws.Nothing);
+        }
+        else
+        {
+            Assert.That(() => process(null), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo(refusal));
+            Assert.That(() => BlockSignatureBatch.Run(batch => process(batch)), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo(refusal));
         }
     }
 
@@ -547,11 +537,9 @@ public class BlockSignatureBatchProcessingTests
     [Test]
     public void A_proposer_signed_block_is_accepted_through_the_state_transition()
     {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ApplyGloasBlock(SignedByProposer(SignedGloasBlock())), Is.Null, "gloas");
-            Assert.That(ApplyFuluBlock(SignedFuluBlockByProposer(SignedFuluBlock())), Is.Null, "fulu");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ApplyGloasBlock(SignedByProposer(SignedGloasBlock())), Is.Null, "gloas");
+        Assert.That(ApplyFuluBlock(SignedFuluBlockByProposer(SignedFuluBlock())), Is.Null, "fulu");
     }
 
     /// <summary>
@@ -565,12 +553,10 @@ public class BlockSignatureBatchProcessingTests
         BeaconStateGloas state = fixture.BeforeSlots.Clone();
         SignedBeaconBlockGloas signedBlock = new() { Message = SignedGloasBlock(), Signature = WrongSignature };
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => ForkedStateTransition.Apply(new ForkedBeaconState.OfGloas(state), new ForkedSignedBeaconBlock.OfGloas(signedBlock), new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), validateResult: false),
-                Throws.TypeOf<ProposerSignatureException>().With.Message.EqualTo($"Invalid proposer signature for the block at slot {BlockSlot}"));
-            Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(fixture.Pre)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(() => ForkedStateTransition.Apply(new ForkedBeaconState.OfGloas(state), new ForkedSignedBeaconBlock.OfGloas(signedBlock), new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), validateResult: false),
+            Throws.TypeOf<ProposerSignatureException>().With.Message.EqualTo($"Invalid proposer signature for the block at slot {BlockSlot}"));
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(fixture.Pre)));
     }
 
     /// <summary>Checks that proposer verification precedes bad operation signatures and structural failures in both forks.</summary>
@@ -596,11 +582,9 @@ public class BlockSignatureBatchProcessingTests
             notifier = new CountingNotifier();
             refusal = ApplyFuluBlock(new SignedBeaconBlock { Message = block, Signature = WrongSignature }, notifier);
         }
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal, Is.EqualTo($"Invalid proposer signature for the block at slot {(gloas ? BlockSlot : FuluBlockSlot)}"));
-            if (notifier is not null) Assert.That(notifier.Calls, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal, Is.EqualTo($"Invalid proposer signature for the block at slot {(gloas ? BlockSlot : FuluBlockSlot)}"));
+        if (notifier is not null) Assert.That(notifier.Calls, Is.Zero);
     }
     [Test]
     public void A_bad_operation_signature_behind_a_valid_proposer_signature_is_refused_through_the_state_transition()
@@ -610,11 +594,9 @@ public class BlockSignatureBatchProcessingTests
         BeaconBlock fuluBlock = SignedFuluBlock();
         fuluBlock.Body!.RandaoReveal = WrongSignature;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ApplyGloasBlock(SignedByProposer(gloasBlock)), Is.EqualTo(SerialRefusal(SignedPart.SyncAggregate)), "gloas");
-            Assert.That(ApplyFuluBlock(SignedFuluBlockByProposer(fuluBlock)), Is.EqualTo(SerialRefusal(SignedPart.Randao)), "fulu");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ApplyGloasBlock(SignedByProposer(gloasBlock)), Is.EqualTo(SerialRefusal(SignedPart.SyncAggregate)), "gloas");
+        Assert.That(ApplyFuluBlock(SignedFuluBlockByProposer(fuluBlock)), Is.EqualTo(SerialRefusal(SignedPart.Randao)), "fulu");
     }
 
     /// <summary>
@@ -638,13 +620,11 @@ public class BlockSignatureBatchProcessingTests
         int fuluMix = (int)(BeaconStateAccessors.ComputeEpochAtSlot(FuluBlockSlot) % Presets.EpochsPerHistoricalVector);
         string? fuluRefusal = Refusal(() => FuluStateTransition.Apply(fuluState, SignedFuluBlockByProposer(fuluBlock), new EpochCache(), fulu.Pubkeys, new AcceptingNotifier(), fulu.Chain.Spec, validateResult: false));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gloasRefusal, Is.EqualTo(SerialRefusal(SignedPart.Randao)), "gloas");
-            Assert.That(gloasState.RandaoMixes![gloasMix], Is.EqualTo(Mixed(SharedGloas.Value.Pre.RandaoMixes![gloasMix], WrongSignature)), "gloas mix");
-            Assert.That(fuluRefusal, Is.EqualTo(SerialRefusal(SignedPart.Randao)), "fulu");
-            Assert.That(fuluState.RandaoMixes![fuluMix], Is.EqualTo(Mixed(fulu.Anchor.RandaoMixes![fuluMix], WrongSignature)), "fulu mix");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(gloasRefusal, Is.EqualTo(SerialRefusal(SignedPart.Randao)), "gloas");
+        Assert.That(gloasState.RandaoMixes![gloasMix], Is.EqualTo(Mixed(SharedGloas.Value.Pre.RandaoMixes![gloasMix], WrongSignature)), "gloas mix");
+        Assert.That(fuluRefusal, Is.EqualTo(SerialRefusal(SignedPart.Randao)), "fulu");
+        Assert.That(fuluState.RandaoMixes![fuluMix], Is.EqualTo(Mixed(fulu.Anchor.RandaoMixes![fuluMix], WrongSignature)), "fulu mix");
     }
 
     private static string? Refusal(Action apply)

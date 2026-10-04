@@ -128,12 +128,10 @@ public class ForkChoiceRunnerGloasHeadTests
         if (!previousSlot)
             harness.TickTo(first.Slot + 2);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Empty)), Is.EqualTo(previousSlot ? 0 : GloasForkChoiceHarness.CommitteeWeight));
-            Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(GloasForkChoiceHarness.CommitteeWeight));
-            Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(first.Root, previousSlot ? ForkChoicePayloadStatus.Full : ForkChoicePayloadStatus.Empty)));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Empty)), Is.EqualTo(previousSlot ? 0 : GloasForkChoiceHarness.CommitteeWeight));
+        Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(GloasForkChoiceHarness.CommitteeWeight));
+        Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(first.Root, previousSlot ? ForkChoicePayloadStatus.Full : ForkChoicePayloadStatus.Empty)));
     }
 
     public enum BoostCase
@@ -194,15 +192,13 @@ public class ForkChoiceRunnerGloasHeadTests
         bool applies = boostCase != BoostCase.EquivocationBeforePtcDeadline;
         ulong boost = applies ? GloasForkChoiceHarness.ProposerScore : 0;
         ulong parentVotes = boostCase == BoostCase.EquivocationWithStrongParent ? GloasForkChoiceHarness.CommitteeWeight : 0;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(boost));
-            // is_ancestor: the boost reaches the payload nodes the boosted block descends through, never its own or those off the path.
-            Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Empty)), Is.Zero);
-            Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Full)), Is.Zero);
-            Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Empty)), Is.EqualTo(parentVotes + boost));
-            Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Full)), Is.Zero);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(boost));
+        // is_ancestor: the boost reaches the payload nodes the boosted block descends through, never its own or those off the path.
+        Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Empty)), Is.Zero);
+        Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Full)), Is.Zero);
+        Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Empty)), Is.EqualTo(parentVotes + boost));
+        Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Full)), Is.Zero);
     }
 
     /// <summary>
@@ -295,11 +291,9 @@ public class ForkChoiceRunnerGloasHeadTests
 
         harness.Runner.Prune();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Runner.ContainsBlock(fork.Root), Is.False, "fixture bug: the proto-array must have pruned the fork block");
-            Assert.That(harness.Runner.GetWeight(boostedNode), Is.Zero);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Runner.ContainsBlock(fork.Root), Is.False, "fixture bug: the proto-array must have pruned the fork block");
+        Assert.That(harness.Runner.GetWeight(boostedNode), Is.Zero);
     }
 
     /// <summary>

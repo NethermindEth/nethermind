@@ -55,12 +55,10 @@ public class EngineDriverMetricsTests
         foreach (Thread thread in threads) thread.Start();
         foreach (Thread thread in threads) thread.Join();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(failedThreads, Is.Zero, "every call must return a verdict");
-            Assert.That(Metrics.BeaconChainNewPayloadCalls - newPayloadBefore, Is.EqualTo((ulong)(Threads * CallsPerThread)));
-            Assert.That(Metrics.BeaconChainForkchoiceUpdatedCalls - forkchoiceBefore, Is.EqualTo((ulong)(Threads * CallsPerThread)));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(failedThreads, Is.Zero, "every call must return a verdict");
+        Assert.That(Metrics.BeaconChainNewPayloadCalls - newPayloadBefore, Is.EqualTo((ulong)(Threads * CallsPerThread)));
+        Assert.That(Metrics.BeaconChainForkchoiceUpdatedCalls - forkchoiceBefore, Is.EqualTo((ulong)(Threads * CallsPerThread)));
     }
 
     private static EngineDriver CreateDriver()

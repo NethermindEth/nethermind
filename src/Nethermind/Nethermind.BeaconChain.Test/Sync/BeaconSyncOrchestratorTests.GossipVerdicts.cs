@@ -95,12 +95,10 @@ public partial class BeaconSyncOrchestratorTests
 
         await harness.Orchestrator.ProcessSlotAsync(151, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(givenBeforeRetry, outcome is GossipBlockOutcome.ImportedOnceParentPayloadIsVerified ? Is.Empty : Is.EqualTo(expected),
-                "only a block whose signature verified waits, for its parent's payload");
-            Assert.That(given, Is.EqualTo(expected));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(givenBeforeRetry, outcome is GossipBlockOutcome.ImportedOnceParentPayloadIsVerified ? Is.Empty : Is.EqualTo(expected),
+            "only a block whose signature verified waits, for its parent's payload");
+        Assert.That(given, Is.EqualTo(expected));
     }
 
     /// <summary>A block whose verdict waits for its parent's payload is ignored once it is no longer held, so its message waits no longer for a retry that will not come.</summary>
@@ -123,11 +121,9 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessSlotAsync(151, CancellationToken.None);
         await harness.Orchestrator.ProcessSlotAsync(152, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(givenWhileHeld, Is.Empty, "a block whose signature verified waits for its parent's payload");
-            Assert.That(given, Is.EqualTo(new[] { MessageValidity.Ignored }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(givenWhileHeld, Is.Empty, "a block whose signature verified waits for its parent's payload");
+        Assert.That(given, Is.EqualTo(new[] { MessageValidity.Ignored }));
     }
 
     /// <summary>Only a proven invalid slashing penalizes its sender; an unavailable state must not.</summary>
@@ -144,11 +140,9 @@ public partial class BeaconSyncOrchestratorTests
         MessageValidity[] givenBeforeWork = [.. given];
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((routed, givenBeforeWork), Is.EqualTo((MessageValidity.Ignored, System.Array.Empty<MessageValidity>())), "the router hands the verdict to the worker");
-            Assert.That(given, Is.EqualTo(new[] { accepted == true ? MessageValidity.Accepted : accepted == false ? MessageValidity.Rejected : MessageValidity.Ignored }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((routed, givenBeforeWork), Is.EqualTo((MessageValidity.Ignored, System.Array.Empty<MessageValidity>())), "the router hands the verdict to the worker");
+        Assert.That(given, Is.EqualTo(new[] { accepted == true ? MessageValidity.Accepted : accepted == false ? MessageValidity.Rejected : MessageValidity.Ignored }));
     }
 
     [Test]
@@ -187,11 +181,9 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipEnvelopeItem(EnvelopeFor(TestItem.KeccakA, EnvelopeBlockSlot), verdict));
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(given, Is.EqualTo(new[] { expected }));
-            Assert.That(harness.Importer.Envelopes, signed == false ? Is.Empty : Has.Count.EqualTo(1), "a badly signed envelope is not imported");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(given, Is.EqualTo(new[] { expected }));
+        Assert.That(harness.Importer.Envelopes, signed == false ? Is.Empty : Has.Count.EqualTo(1), "a badly signed envelope is not imported");
     }
 
     /// <summary>gloas/p2p-interface.md execution_payload: [IGNORE] a later envelope for a (block root, builder index) that already has a valid one, before its data or engine call.</summary>
@@ -226,11 +218,9 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipEnvelopeItem(envelope, GossipVerdict.Local()));
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Router.IsEnvelopeSeen(TestItem.KeccakA, envelope.Message!.BuilderIndex), Is.False);
-            Assert.That(harness.Importer.Envelopes, Has.Count.EqualTo(1), "the envelope still imports");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Router.IsEnvelopeSeen(TestItem.KeccakA, envelope.Message!.BuilderIndex), Is.False);
+        Assert.That(harness.Importer.Envelopes, Has.Count.EqualTo(1), "the envelope still imports");
     }
 
     [Test]
@@ -363,12 +353,10 @@ public partial class BeaconSyncOrchestratorTests
 
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(importer.IsKnown(child.ComputeMessageRoot()), Is.EqualTo(!invalidImport), "an invalid payload must not enter fork choice");
-            Assert.That(forwarding.VoteSlots, Is.EqualTo(new[] { slot }), "the vote must be consumed before the next queued tick");
-            Assert.That(given, Is.EqualTo(new[] { MessageValidity.Accepted }), "head invalidation must not hide available gossip validation state, even when the import fails");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(importer.IsKnown(child.ComputeMessageRoot()), Is.EqualTo(!invalidImport), "an invalid payload must not enter fork choice");
+        Assert.That(forwarding.VoteSlots, Is.EqualTo(new[] { slot }), "the vote must be consumed before the next queued tick");
+        Assert.That(given, Is.EqualTo(new[] { MessageValidity.Accepted }), "head invalidation must not hide available gossip validation state, even when the import fails");
     }
 
     private sealed class GossipDuringImport(IBlockImporter inner) : IBlockImporter

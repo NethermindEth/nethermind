@@ -60,11 +60,9 @@ public class DataColumnSidecarGloasSizeTests
 
         ulong bound = DataColumnSidecarGloasSize.ComputeMax(SpecWith(schedule, electraMaxBlobs));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bound, Is.EqualTo((ulong)SerializedLength(expectedBlobs)));
-            if (expectedBlobs == 4096) Assert.That(bound, Is.EqualTo(8585272UL));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(bound, Is.EqualTo((ulong)SerializedLength(expectedBlobs)));
+        if (expectedBlobs == 4096) Assert.That(bound, Is.EqualTo(8585272UL));
     }
 
     private static int SerializedLength(int blobs) => DataColumnSidecarGloas.Encode(new DataColumnSidecarGloas

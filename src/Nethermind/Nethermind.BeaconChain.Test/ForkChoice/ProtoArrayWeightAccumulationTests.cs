@@ -39,12 +39,10 @@ public class ProtoArrayWeightAccumulationTests
 
         Hash256 head = fc.GetHead(Anchor, Anchor, JustifiedBalances.FromEffectiveBalances(Balances(1)), null, 1);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head, Is.EqualTo(GetRoot(1)));
-            Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(Gwei32Eth), "voted block");
-            Assert.That(fc.GetWeight(GetRoot(0)), Is.EqualTo(Gwei32Eth), "ancestor receives the vote of its descendant");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head, Is.EqualTo(GetRoot(1)));
+        Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(Gwei32Eth), "voted block");
+        Assert.That(fc.GetWeight(GetRoot(0)), Is.EqualTo(Gwei32Eth), "ancestor receives the vote of its descendant");
     }
 
     [Test]
@@ -66,12 +64,10 @@ public class ProtoArrayWeightAccumulationTests
 
         fc.ProcessAttestation(0, GetRoot(2), 2);
         fc.GetHead(Anchor, Anchor, balances, null, 1);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(0ul), "old branch loses the vote");
-            Assert.That(fc.GetWeight(GetRoot(2)), Is.EqualTo(Gwei32Eth), "new branch gains it");
-            Assert.That(fc.GetWeight(GetRoot(0)), Is.EqualTo(Gwei32Eth), "common ancestor unchanged");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(0ul), "old branch loses the vote");
+        Assert.That(fc.GetWeight(GetRoot(2)), Is.EqualTo(Gwei32Eth), "new branch gains it");
+        Assert.That(fc.GetWeight(GetRoot(0)), Is.EqualTo(Gwei32Eth), "common ancestor unchanged");
     }
 
     [Test]
@@ -87,11 +83,9 @@ public class ProtoArrayWeightAccumulationTests
         fc.ProcessAttestation(0, GetRoot(2), 2);
         fc.GetHead(Anchor, Anchor, balances, null, 1);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(Gwei32Eth), "first vote at the highest epoch sticks");
-            Assert.That(fc.GetWeight(GetRoot(2)), Is.EqualTo(0ul));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(Gwei32Eth), "first vote at the highest epoch sticks");
+        Assert.That(fc.GetWeight(GetRoot(2)), Is.EqualTo(0ul));
     }
 
     [Test]
@@ -133,11 +127,9 @@ public class ProtoArrayWeightAccumulationTests
 
         fc.ProcessAttestation(0, GetRoot(2), 2);
         fc.GetHead(Anchor, Anchor, JustifiedBalances.FromEffectiveBalances([30_000_000_000]), null, 1);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(0ul), "old balance removed from the old root");
-            Assert.That(fc.GetWeight(GetRoot(2)), Is.EqualTo(30_000_000_000ul), "new balance added to the new root");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(0ul), "old balance removed from the old root");
+        Assert.That(fc.GetWeight(GetRoot(2)), Is.EqualTo(30_000_000_000ul), "new balance added to the new root");
     }
 
     [Test]
@@ -155,12 +147,10 @@ public class ProtoArrayWeightAccumulationTests
 
         for (ulong v = 8; v < 16; v++) fc.ProcessAttestation(v, GetRoot(2), 1);
         fc.GetHead(Anchor, Anchor, balances, null, 2);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fc.GetWeight(GetRoot(2)), Is.EqualTo(8 * Gwei32Eth));
-            Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(16 * Gwei32Eth));
-            Assert.That(fc.GetWeight(GetRoot(0)), Is.EqualTo(16 * Gwei32Eth));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fc.GetWeight(GetRoot(2)), Is.EqualTo(8 * Gwei32Eth));
+        Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(16 * Gwei32Eth));
+        Assert.That(fc.GetWeight(GetRoot(0)), Is.EqualTo(16 * Gwei32Eth));
     }
 
     [Test]
@@ -216,20 +206,18 @@ public class ProtoArrayWeightAccumulationTests
         ulong parentThreshold = fc.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgParentWeightThresholdPercent);
         ulong headThreshold = fc.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgHeadWeightThresholdPercent);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head, Is.EqualTo(GetRoot(131)), "F is the LMD head");
-            Assert.That(parentThreshold, Is.EqualTo(409_600_000_000ul), "160% of one committee (8192e9 / 32 * 1.6)");
-            Assert.That(headThreshold, Is.EqualTo(51_200_000_000ul), "20% of one committee");
-            Assert.That(fc.GetWeight(GetRoot(131)), Is.EqualTo(0ul), "late head F has no votes");
-            Assert.That(fc.GetWeight(GetRoot(130)), Is.EqualTo(512_000_000_000ul), "parent E: committees 130 and 131");
-            Assert.That(fc.GetWeight(GetRoot(129)), Is.EqualTo(768_000_000_000ul), "D: committees 129, 130, 131");
-            Assert.That(fc.GetWeight(GetRoot(128)), Is.EqualTo(768_000_000_000ul), "C: same as D");
-            Assert.That(fc.GetWeight(GetRoot(127)), Is.EqualTo(256 * Gwei32Eth), "B: every latest message is B or a descendant");
-            Assert.That(fc.GetWeight(GetRoot(96)), Is.EqualTo(256 * Gwei32Eth), "anchor A");
-            Assert.That(fc.GetWeight(GetRoot(130)), Is.GreaterThan(parentThreshold), "parent_strong");
-            Assert.That(fc.GetWeight(GetRoot(131)), Is.LessThan(headThreshold), "head_weak");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head, Is.EqualTo(GetRoot(131)), "F is the LMD head");
+        Assert.That(parentThreshold, Is.EqualTo(409_600_000_000ul), "160% of one committee (8192e9 / 32 * 1.6)");
+        Assert.That(headThreshold, Is.EqualTo(51_200_000_000ul), "20% of one committee");
+        Assert.That(fc.GetWeight(GetRoot(131)), Is.EqualTo(0ul), "late head F has no votes");
+        Assert.That(fc.GetWeight(GetRoot(130)), Is.EqualTo(512_000_000_000ul), "parent E: committees 130 and 131");
+        Assert.That(fc.GetWeight(GetRoot(129)), Is.EqualTo(768_000_000_000ul), "D: committees 129, 130, 131");
+        Assert.That(fc.GetWeight(GetRoot(128)), Is.EqualTo(768_000_000_000ul), "C: same as D");
+        Assert.That(fc.GetWeight(GetRoot(127)), Is.EqualTo(256 * Gwei32Eth), "B: every latest message is B or a descendant");
+        Assert.That(fc.GetWeight(GetRoot(96)), Is.EqualTo(256 * Gwei32Eth), "anchor A");
+        Assert.That(fc.GetWeight(GetRoot(130)), Is.GreaterThan(parentThreshold), "parent_strong");
+        Assert.That(fc.GetWeight(GetRoot(131)), Is.LessThan(headThreshold), "head_weak");
     }
 
     /// <summary>
@@ -244,11 +232,9 @@ public class ProtoArrayWeightAccumulationTests
         fc.GetHead(justified, finalized, balances, null, 132);
         ulong parentThreshold = fc.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgParentWeightThresholdPercent);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fc.GetWeight(GetRoot(130)), Is.EqualTo(256_000_000_000ul), "parent E: committee 131 only");
-            Assert.That(fc.GetWeight(GetRoot(130)), Is.LessThan(parentThreshold), "parent_strong fails, as observed in the failing vector");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fc.GetWeight(GetRoot(130)), Is.EqualTo(256_000_000_000ul), "parent E: committee 131 only");
+        Assert.That(fc.GetWeight(GetRoot(130)), Is.LessThan(parentThreshold), "parent_strong fails, as observed in the failing vector");
     }
 
     private static (ProtoArrayForkChoice, JustifiedBalances, CheckpointRef, CheckpointRef) BuildFixtureMirror(bool includeBlockBodyVotesForParent)

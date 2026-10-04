@@ -59,12 +59,10 @@ internal static class ReqRespTestChannel
 
         long before = limitFailures();
         Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(async () => await read())!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(thrown.Message, Does.Contain(maximum.ToString()));
-            Assert.That(limitFailures(), Is.EqualTo(before + 1), "limit violation recorded");
-            Assert.That(response.Position, Is.LessThan(response.Length), "trailing response bytes remain unread");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(thrown.Message, Does.Contain(maximum.ToString()));
+        Assert.That(limitFailures(), Is.EqualTo(before + 1), "limit violation recorded");
+        Assert.That(response.Position, Is.LessThan(response.Length), "trailing response bytes remain unread");
     }
 
     // The libp2p host closes the response stream once the handler returns, even when it faults; the dial side reads until then.

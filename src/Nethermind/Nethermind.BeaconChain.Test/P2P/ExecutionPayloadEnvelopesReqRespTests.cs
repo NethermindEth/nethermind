@@ -126,12 +126,10 @@ public class ExecutionPayloadEnvelopesReqRespTests
         chain.AddEnvelopes(root);
         List<ResponseChunk> afterVerified = await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync, request, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((validity, raised), Is.EqualTo((MessageValidity.Ignored, 1)), "the gossip envelope passes every check but its signature and is consumed");
-            Assert.That(beforeVerified, Is.Empty, "an envelope whose signature is unchecked is not served");
-            Assert.That(afterVerified.Select(static c => c.ContextBytes), Is.EqualTo(new[] { ForkDigest.Compute(EnvelopeChain.Spec, EnvelopeChain.Spec.GetEpoch(slot)) }), "served once verified");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((validity, raised), Is.EqualTo((MessageValidity.Ignored, 1)), "the gossip envelope passes every check but its signature and is consumed");
+        Assert.That(beforeVerified, Is.Empty, "an envelope whose signature is unchecked is not served");
+        Assert.That(afterVerified.Select(static c => c.ContextBytes), Is.EqualTo(new[] { ForkDigest.Compute(EnvelopeChain.Spec, EnvelopeChain.Spec.GetEpoch(slot)) }), "served once verified");
     }
 
     [Test]

@@ -94,13 +94,11 @@ public partial class BeaconSyncOrchestratorTests
             "the previous digest is kept one epoch after the boundary");
 
         orchestrator.ReconcileGossipDigests(boundary + 2);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(IsSubscribed(topics, previous, GossipTopics.BeaconBlock), Is.False, "two epochs after the boundary the previous digest is dropped");
-            Assert.That(SubscribedColumnSubnets(topics, previous), Is.Empty, "and so are its column subnets");
-            Assert.That(SubscribedColumnSubnets(topics, next), Is.EquivalentTo(sampledSubnets), "the next digest keeps its column subnets");
-            Assert.That(IsSubscribed(topics, next, GossipTopics.ExecutionPayload), Is.EqualTo(gloas));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(IsSubscribed(topics, previous, GossipTopics.BeaconBlock), Is.False, "two epochs after the boundary the previous digest is dropped");
+        Assert.That(SubscribedColumnSubnets(topics, previous), Is.Empty, "and so are its column subnets");
+        Assert.That(SubscribedColumnSubnets(topics, next), Is.EquivalentTo(sampledSubnets), "the next digest keeps its column subnets");
+        Assert.That(IsSubscribed(topics, next, GossipTopics.ExecutionPayload), Is.EqualTo(gloas));
     }
 
     /// <summary>A slot tick queued behind imports can carry an epoch older than the one gossip started at; it must not drop the next digest.</summary>
@@ -167,12 +165,10 @@ public partial class BeaconSyncOrchestratorTests
 
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         await orchestrator.ProcessSlotAsync(retrySlot, CancellationToken.None);
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        foreach (byte[] digest in live)
         {
-            foreach (byte[] digest in live)
-            {
-                Assert.That(SubscribedColumnSubnets(topics, digest), Is.EquivalentTo(SampledSubnetNames(discovery)), "the next slot tick starts the column subnets on every live digest");
-            }
+            Assert.That(SubscribedColumnSubnets(topics, digest), Is.EquivalentTo(SampledSubnetNames(discovery)), "the next slot tick starts the column subnets on every live digest");
         }
     }
 

@@ -87,20 +87,18 @@ public class TrailingRequestBytesLoopbackTests
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (protocolId == MetaData)
         {
-            if (protocolId == MetaData)
-            {
-                Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.Success), "metadata is answered, not dropped");
-            }
-            else
-            {
-                AssertCleanRequestAnswer(protocolId, chunk);
-            }
-
-            Assert.That(elapsed, Is.LessThan(AtOnce), "served without waiting for the requester to end its stream");
-            peer.DidNotReceiveWithAnyArgs().ReportFailure(default, default);
+            Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.Success), "metadata is answered, not dropped");
         }
+        else
+        {
+            AssertCleanRequestAnswer(protocolId, chunk);
+        }
+
+        Assert.That(elapsed, Is.LessThan(AtOnce), "served without waiting for the requester to end its stream");
+        peer.DidNotReceiveWithAnyArgs().ReportFailure(default, default);
     }
 
     // The empty list is one zero length prefix, alone or with the stream identifier a client may write after it.
@@ -116,11 +114,9 @@ public class TrailingRequestBytesLoopbackTests
 
         (byte[] response, TimeSpan elapsed) = await RequestAsync(server, protocolId, wire, halfClose: false, token, requests: 3);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(response, Is.Empty, "an empty list has nothing to answer with");
-            Assert.That(elapsed, Is.LessThan(AtOnce), "the request is complete without a data frame or an EOF");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(response, Is.Empty, "an empty list has nothing to answer with");
+        Assert.That(elapsed, Is.LessThan(AtOnce), "the request is complete without a data frame or an EOF");
     }
 
     // Metadata has no payload, so bytes sent with it can arrive after the answer is on its way: they are refused only when already buffered.
@@ -137,11 +133,9 @@ public class TrailingRequestBytesLoopbackTests
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chunk?.Result, Is.AnyOf(ReqRespFraming.ResponseCode.Success, ReqRespFraming.ResponseCode.InvalidRequest));
-            Assert.That(elapsed, Is.LessThan(Prompt));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(chunk?.Result, Is.AnyOf(ReqRespFraming.ResponseCode.Success, ReqRespFraming.ResponseCode.InvalidRequest));
+        Assert.That(elapsed, Is.LessThan(Prompt));
     }
 
     [Test]
@@ -172,13 +166,11 @@ public class TrailingRequestBytesLoopbackTests
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reported.Task.Result, Is.EqualTo(PeerFailureReason.ProtocolViolation));
-            Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.Success), "the response to the request itself is still sent");
-            Assert.That(chunk?.Payload, Is.EqualTo(StatusMessageV2.Encode(PeerSessionNodes.Status)));
-            Assert.That(responseStream.Position, Is.EqualTo(response.Length), "a single response_chunk");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reported.Task.Result, Is.EqualTo(PeerFailureReason.ProtocolViolation));
+        Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.Success), "the response to the request itself is still sent");
+        Assert.That(chunk?.Payload, Is.EqualTo(StatusMessageV2.Encode(PeerSessionNodes.Status)));
+        Assert.That(responseStream.Position, Is.EqualTo(response.Length), "a single response_chunk");
     }
 
     [Test]
@@ -219,20 +211,18 @@ public class TrailingRequestBytesLoopbackTests
 
         using MemoryStream responseStream = new(response);
         ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, contextBytesLength: 0, ReqRespFraming.MaxPayloadSize, token);
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (trailingBytes > 0)
         {
-            if (trailingBytes > 0)
-            {
-                Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.InvalidRequest), "bytes after the request payload are invalid input");
-            }
-            else
-            {
-                AssertCleanRequestAnswer(protocolId, chunk);
-                Assert.That(responseStream.Position, Is.EqualTo(response.Length), "the response MUST consist of a single response_chunk");
-            }
-
-            Assert.That(elapsed, Is.LessThan(Prompt), "answered before the listener's own timeout, without waiting for EOF");
+            Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.InvalidRequest), "bytes after the request payload are invalid input");
         }
+        else
+        {
+            AssertCleanRequestAnswer(protocolId, chunk);
+            Assert.That(responseStream.Position, Is.EqualTo(response.Length), "the response MUST consist of a single response_chunk");
+        }
+
+        Assert.That(elapsed, Is.LessThan(Prompt), "answered before the listener's own timeout, without waiting for EOF");
     }
 
     // The exact answer to a request with nothing after it: a missing chunk must not pass for a served one.

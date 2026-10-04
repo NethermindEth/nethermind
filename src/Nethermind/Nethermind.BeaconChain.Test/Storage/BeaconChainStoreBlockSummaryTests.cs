@@ -49,14 +49,12 @@ public class BeaconChainStoreBlockSummaryTests
 
         bool found = _store.TryGetBlockSummary(GloasRoot, out StoredBlockSummary summary);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(found, Is.True);
-            Assert.That(summary.IsGloas, Is.True);
-            Assert.That(summary.Slot, Is.EqualTo(block.Message!.Slot));
-            Assert.That(summary.Commitments.Select(static c => c.AsSpan().ToArray()),
-                Is.EqualTo(DataColumnSidecarGloasTestFixture.Commitments().Select(static c => c.AsSpan().ToArray())));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(found, Is.True);
+        Assert.That(summary.IsGloas, Is.True);
+        Assert.That(summary.Slot, Is.EqualTo(block.Message!.Slot));
+        Assert.That(summary.Commitments.Select(static c => c.AsSpan().ToArray()),
+            Is.EqualTo(DataColumnSidecarGloasTestFixture.Commitments().Select(static c => c.AsSpan().ToArray())));
     }
 
     /// <summary>Checks that a pre-Gloas summary cannot supply a bid for gloas/p2p-interface.md validation.</summary>
@@ -68,13 +66,11 @@ public class BeaconChainStoreBlockSummaryTests
 
         bool found = _store.TryGetBlockSummary(FuluRoot, out StoredBlockSummary summary);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(found, Is.True);
-            Assert.That(summary.IsGloas, Is.False);
-            Assert.That(summary.Slot, Is.EqualTo(FirstGloasSlot - 1));
-            Assert.That(summary.Commitments, Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(found, Is.True);
+        Assert.That(summary.IsGloas, Is.False);
+        Assert.That(summary.Slot, Is.EqualTo(FirstGloasSlot - 1));
+        Assert.That(summary.Commitments, Is.Empty);
     }
 
     /// <summary>Checks that gloas/p2p-interface.md validation retains its block fields across restarts.</summary>
@@ -142,11 +138,9 @@ public class BeaconChainStoreBlockSummaryTests
             if (deletion is not null) Assert.That(deletion.Wait(TimeSpan.FromSeconds(10)), Is.True);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(deletedWhileBackfilling, Is.False);
-            Assert.That(store.TryGetBlockSummary(GloasRoot, out _), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(deletedWhileBackfilling, Is.False);
+        Assert.That(store.TryGetBlockSummary(GloasRoot, out _), Is.False);
     }
 
     /// <summary>Checks that legacy block fields can be persisted for subsequent gloas/p2p-interface.md validation.</summary>
@@ -161,13 +155,11 @@ public class BeaconChainStoreBlockSummaryTests
 
         StoredBlockSummary written = _store.PutBlockSummary(GloasRoot, new ForkedSignedBeaconBlock.OfGloas(block));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(before, Is.False);
-            Assert.That(_store.TryGetBlockSummary(GloasRoot, out StoredBlockSummary read), Is.True);
-            Assert.That((read.Slot, read.IsGloas, read.Commitments.Length), Is.EqualTo((written.Slot, true, written.Commitments.Length)));
-            Assert.That(written.Commitments, Is.Not.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(before, Is.False);
+        Assert.That(_store.TryGetBlockSummary(GloasRoot, out StoredBlockSummary read), Is.True);
+        Assert.That((read.Slot, read.IsGloas, read.Commitments.Length), Is.EqualTo((written.Slot, true, written.Commitments.Length)));
+        Assert.That(written.Commitments, Is.Not.Empty);
     }
 
     /// <summary>Checks that malformed records cannot supply fields for gloas/p2p-interface.md validation.</summary>

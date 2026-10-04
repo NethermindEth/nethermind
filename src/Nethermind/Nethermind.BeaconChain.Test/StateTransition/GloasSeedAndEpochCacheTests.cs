@@ -156,11 +156,9 @@ public class GloasSeedAndEpochCacheTests
         CommitteeCache current = cache.GetCommitteeCache(state, currentEpoch);
         CommitteeCache next = cache.GetCommitteeCache(state, nextEpoch);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(next, Is.Not.SameAs(current), "a decision-root match alone must not serve another epoch's committees");
-            Assert.That(next.Epoch, Is.EqualTo(nextEpoch));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(next, Is.Not.SameAs(current), "a decision-root match alone must not serve another epoch's committees");
+        Assert.That(next.Epoch, Is.EqualTo(nextEpoch));
     }
 
     // ---- One committee LRU across the Fulu -> Gloas upgrade ----

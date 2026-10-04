@@ -47,11 +47,9 @@ public class ProposerBoostDependentRootTests
         TickTo(runner, BoostSlot);
         chain.Import(runner, block);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
-            Assert.That(runner.GetHead(), Is.EqualTo(head.Root));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
+        Assert.That(runner.GetHead(), Is.EqualTo(head.Root));
     }
 
     /// <summary>
@@ -71,11 +69,9 @@ public class ProposerBoostDependentRootTests
         TickTo(runner, BoostSlot);
         chain.Import(runner, block);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(block.Root));
-            Assert.That(runner.GetHead(), Is.EqualTo(block.Root));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(block.Root));
+        Assert.That(runner.GetHead(), Is.EqualTo(block.Root));
     }
 
     /// <summary>
@@ -93,11 +89,9 @@ public class ProposerBoostDependentRootTests
         TickTo(runner, BoostSlot);
         chain.Import(runner, block);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
-            Assert.That(runner.GetHead(), Is.EqualTo(block.Root), "fixture bug: the head after the block must be the block");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
+        Assert.That(runner.GetHead(), Is.EqualTo(block.Root), "fixture bug: the head after the block must be the block");
     }
 
     /// <summary>
@@ -179,15 +173,13 @@ public class ProposerBoostDependentRootTests
         if (!timely)
             runner.OnTick(runner.GenesisTime + (Presets.SlotsPerEpoch + 3) * Presets.SecondsPerSlot - 1);
 
-        using (Assert.EnterMultipleScope())
-        {
-            if (timely)
-                Assert.That(() => chain.Import(runner, block), Throws.TypeOf<ForkChoiceException>());
-            else
-                Assert.That(() => chain.Import(runner, block), Throws.Nothing);
-            Assert.That(runner.ContainsBlock(block.Root), Is.EqualTo(!timely));
-            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (timely)
+            Assert.That(() => chain.Import(runner, block), Throws.TypeOf<ForkChoiceException>());
+        else
+            Assert.That(() => chain.Import(runner, block), Throws.Nothing);
+        Assert.That(runner.ContainsBlock(block.Root), Is.EqualTo(!timely));
+        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
     }
 
     /// <summary>

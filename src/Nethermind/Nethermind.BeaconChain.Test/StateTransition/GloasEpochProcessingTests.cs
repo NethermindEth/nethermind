@@ -254,12 +254,10 @@ public class GloasEpochProcessingTests
         foreach (BlsPublicKey pubkey in committee.Pubkeys!)
             Assert.That(expected.TryAggregate(pubkey.Bytes, out _), Is.True);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(committee.Pubkeys, Has.Length.EqualTo(Presets.SyncCommitteeSize));
-            Assert.That(committee.Pubkeys.Distinct(), Is.EquivalentTo(SyncCommitteeKeys), "members come from the registry, and every registry key is sampled");
-            Assert.That(committee.AggregatePubkey.Bytes.ToArray(), Is.EqualTo(expected.PublicKey.Compress()));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(committee.Pubkeys, Has.Length.EqualTo(Presets.SyncCommitteeSize));
+        Assert.That(committee.Pubkeys.Distinct(), Is.EquivalentTo(SyncCommitteeKeys), "members come from the registry, and every registry key is sampled");
+        Assert.That(committee.AggregatePubkey.Bytes.ToArray(), Is.EqualTo(expected.PublicKey.Compress()));
     }
 
     [Test]

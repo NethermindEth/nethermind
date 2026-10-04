@@ -49,10 +49,8 @@ public class NodePeersSchemaTests
 
         using HttpResponseMessage countsResponse = await host.Client.GetAsync("/eth/v1/node/peer_count");
         using JsonDocument counts = await BeaconApiTestHost.ReadJsonAsync(countsResponse);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(counts.RootElement.GetProperty("data").GetProperty("connecting").GetString(), Is.EqualTo("1"));
-            Assert.That(counts.RootElement.GetProperty("data").GetProperty("connected").GetString(), Is.EqualTo("0"));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(counts.RootElement.GetProperty("data").GetProperty("connecting").GetString(), Is.EqualTo("1"));
+        Assert.That(counts.RootElement.GetProperty("data").GetProperty("connected").GetString(), Is.EqualTo("0"));
     }
 }

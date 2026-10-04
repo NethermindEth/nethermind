@@ -56,13 +56,11 @@ public partial class RangeSyncTests
 
         List<ForkedSignedBeaconBlock> imported = await CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(imported.Select(b => b.Slot), Is.EqualTo(chain.Select(b => b.Message!.Slot)), "import order");
-            Assert.That(imported.Select(b => b.ComputeMessageRoot()), Is.EqualTo(chain.Select(b => SszRoots.HashTreeRoot(b.Message!))), "block roots");
-            Assert.That(badPeer.Failures, Is.GreaterThanOrEqualTo(1), "bad peer penalized");
-            Assert.That(goodPeer.Requests, Is.GreaterThanOrEqualTo(1), "good peer served the refetch");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(imported.Select(b => b.Slot), Is.EqualTo(chain.Select(b => b.Message!.Slot)), "import order");
+        Assert.That(imported.Select(b => b.ComputeMessageRoot()), Is.EqualTo(chain.Select(b => SszRoots.HashTreeRoot(b.Message!))), "block roots");
+        Assert.That(badPeer.Failures, Is.GreaterThanOrEqualTo(1), "bad peer penalized");
+        Assert.That(goodPeer.Requests, Is.GreaterThanOrEqualTo(1), "good peer served the refetch");
     }
 
     /// <summary>
@@ -92,16 +90,14 @@ public partial class RangeSyncTests
 
         List<ForkedSignedBeaconBlock> imported = await CollectAsync(sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => chain.Block.Message!.Slot, token));
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(imported, Has.Count.EqualTo(1), "the one blob block is yielded");
+        Assert.That(peer.ColumnRequests, Is.EqualTo(1), "columns are fetched once for the batch");
+        foreach (ulong column in custody.SampledColumns)
         {
-            Assert.That(imported, Has.Count.EqualTo(1), "the one blob block is yielded");
-            Assert.That(peer.ColumnRequests, Is.EqualTo(1), "columns are fetched once for the batch");
-            foreach (ulong column in custody.SampledColumns)
-            {
-                bool held = sidecarPool.TryGet(chain.BlockRoot, column, out DataColumnSidecar? sidecar);
-                Assert.That(held, Is.True, $"sampled column {column} must be held in the pool after range sync");
-                Assert.That(sidecar!.Index, Is.EqualTo(column));
-            }
+            bool held = sidecarPool.TryGet(chain.BlockRoot, column, out DataColumnSidecar? sidecar);
+            Assert.That(held, Is.True, $"sampled column {column} must be held in the pool after range sync");
+            Assert.That(sidecar!.Index, Is.EqualTo(column));
         }
     }
 
@@ -128,11 +124,9 @@ public partial class RangeSyncTests
 
         List<ForkedSignedBeaconBlock> imported = await CollectAsync(sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => chain.Block.Message!.Slot, token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(imported, Has.Count.EqualTo(1), "the block is yielded whether or not its columns are fetched");
-            Assert.That(peer.ColumnRequests, Is.EqualTo(expectedRequests));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(imported, Has.Count.EqualTo(1), "the block is yielded whether or not its columns are fetched");
+        Assert.That(peer.ColumnRequests, Is.EqualTo(expectedRequests));
     }
 
     /// <summary>

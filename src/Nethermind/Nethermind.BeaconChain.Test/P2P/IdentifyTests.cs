@@ -56,12 +56,10 @@ public class IdentifyTests
         BeaconP2P.SessionInfo info = await client.GetSessionInfoAsync(session, token);
         string[] advertised = client.PeerInfoForTest(server.LocalPeerId!).SupportedProtocols ?? [];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(advertised.Count(static id => id == IdentifyProtocolId), Is.EqualTo(1), "identify is listed once even though the agent probe shares its id");
-            Assert.That(advertised, Does.Contain("/eth2/beacon_chain/req/status/2/ssz_snappy"), "the rest of the stack is still advertised");
-            Assert.That(info.AgentVersion, Is.EqualTo(BeaconP2P.ClientAgentVersion), "the agent string a peer reads is the one the API reports");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(advertised.Count(static id => id == IdentifyProtocolId), Is.EqualTo(1), "identify is listed once even though the agent probe shares its id");
+        Assert.That(advertised, Does.Contain("/eth2/beacon_chain/req/status/2/ssz_snappy"), "the rest of the stack is still advertised");
+        Assert.That(info.AgentVersion, Is.EqualTo(BeaconP2P.ClientAgentVersion), "the agent string a peer reads is the one the API reports");
     }
 
     [Test]
@@ -144,13 +142,11 @@ public class IdentifyTests
 
         BeaconP2P.SessionInfo info = await client.GetSessionInfoAsync(session, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(oneAnswer, Is.Positive, "fixture: an identify answer reads the advertised protocols");
-            Assert.That(info.AgentVersion, Is.EqualTo(ServerAgent));
-            Assert.That(answers.Reads - oneAnswer, Is.EqualTo(oneAnswer), "the session asked for identify once");
-            Assert.That(client.PeerInfoForTest(server.Peer.Identity.PeerId).SupportedProtocols, Does.Contain(IdentifyProtocolId), "the answer is recorded in the peer store");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(oneAnswer, Is.Positive, "fixture: an identify answer reads the advertised protocols");
+        Assert.That(info.AgentVersion, Is.EqualTo(ServerAgent));
+        Assert.That(answers.Reads - oneAnswer, Is.EqualTo(oneAnswer), "the session asked for identify once");
+        Assert.That(client.PeerInfoForTest(server.Peer.Identity.PeerId).SupportedProtocols, Does.Contain(IdentifyProtocolId), "the answer is recorded in the peer store");
     }
 
     [TestCase(Answer.Valid, PeerRecordsVerificationPolicy.RequireCorrect, true)]
@@ -190,16 +186,14 @@ public class IdentifyTests
             return;
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(IdentifyAgentVersionProbe.Apply(message, session, settings, peerStore),
-                answer == Answer.NoAgentVersion ? Is.Null : Is.EqualTo(ServerAgent), "the agent string is unknown only when the answer carries none");
-            Assert.That(peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols, Is.EqualTo(new[] { IdentifyProtocolId }));
-            bool verified = answer is Answer.Valid or Answer.NoAgentVersion;
-            Assert.That(peerStore.GetPeerInfo(remote.PeerId).Seq, Is.EqualTo(verified ? 7UL : null), "only a verified record's sequence is kept");
-            Assert.That(peerStore.GetPeerInfo(remote.PeerId).SignedPeerRecord, verified ? Is.EqualTo(message.SignedPeerRecord) : Is.Null,
-                "pubsub peer exchange hands out the stored record, so only a verified one is stored");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(IdentifyAgentVersionProbe.Apply(message, session, settings, peerStore),
+            answer == Answer.NoAgentVersion ? Is.Null : Is.EqualTo(ServerAgent), "the agent string is unknown only when the answer carries none");
+        Assert.That(peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols, Is.EqualTo(new[] { IdentifyProtocolId }));
+        bool verified = answer is Answer.Valid or Answer.NoAgentVersion;
+        Assert.That(peerStore.GetPeerInfo(remote.PeerId).Seq, Is.EqualTo(verified ? 7UL : null), "only a verified record's sequence is kept");
+        Assert.That(peerStore.GetPeerInfo(remote.PeerId).SignedPeerRecord, verified ? Is.EqualTo(message.SignedPeerRecord) : Is.Null,
+            "pubsub peer exchange hands out the stored record, so only a verified one is stored");
     }
 
     /// <summary>A replayed, older or unverified record must not roll back the stored record, but the protocols the peer lists now always replace the stored ones.</summary>
@@ -221,12 +215,10 @@ public class IdentifyTests
         IdentifyAgentVersionProbe.Apply(later, session, settings, peerStore);
 
         PeerStore.PeerInfo stored = peerStore.GetPeerInfo(remote.PeerId);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stored.SupportedProtocols, Is.EqualTo(new[] { "/later" }));
-            Assert.That(stored.Seq, Is.EqualTo(replaces ? seq : 5UL));
-            Assert.That(stored.SignedPeerRecord, Is.EqualTo(replaces ? later.SignedPeerRecord : first.SignedPeerRecord));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(stored.SupportedProtocols, Is.EqualTo(new[] { "/later" }));
+        Assert.That(stored.Seq, Is.EqualTo(replaces ? seq : 5UL));
+        Assert.That(stored.SignedPeerRecord, Is.EqualTo(replaces ? later.SignedPeerRecord : first.SignedPeerRecord));
     }
 
     /// <summary>Any peer answers identify, so the length it declares must not make the session wait for or buffer an oversized body.</summary>

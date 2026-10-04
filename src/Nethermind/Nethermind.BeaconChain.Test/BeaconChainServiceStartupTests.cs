@@ -198,12 +198,10 @@ public class BeaconChainServiceStartupTests
                 if (recordedBefore) store.PutMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint, record);
             });
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal, Is.Null);
-            Assert.That(pubkeys, Is.EqualTo(ForkCrossingChain.Instance.First.PostState.Validators!.Length), "the run went on past the pubkey cache");
-            Assert.That(resumed!.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.EqualTo(record));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal, Is.Null);
+        Assert.That(pubkeys, Is.EqualTo(ForkCrossingChain.Instance.First.PostState.Validators!.Length), "the run went on past the pubkey cache");
+        Assert.That(resumed!.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.EqualTo(record));
     }
 
     /// <summary>
@@ -267,11 +265,9 @@ public class BeaconChainServiceStartupTests
         StartBeaconChain step = new(container.Resolve<BeaconChainService>(), container.Resolve<IEngineDriver>(), logManager);
 
         Assert.That(() => step.Execute(CancellationToken.None), Throws.Nothing);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.TryGetSchemaVersion(out uint version) ? version : (uint?)null, Is.EqualTo(newerSchema ? newer : null), "no rebuild and no stamp");
-            Assert.That(logManager.Errors, Is.Empty, "the anchor was never read");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetSchemaVersion(out uint version) ? version : (uint?)null, Is.EqualTo(newerSchema ? newer : null), "no rebuild and no stamp");
+        Assert.That(logManager.Errors, Is.Empty, "the anchor was never read");
     }
 
     /// <summary>
@@ -292,11 +288,9 @@ public class BeaconChainServiceStartupTests
 
         await service.Start();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(engine.PubkeysHeldAtCall, Is.EqualTo(new[] { 0 }), "one call, made before the cache was built");
-            Assert.That(pubkeyCache.Count, Is.EqualTo((gloas ? ForkCrossingChain.Instance.First.PostState.Validators : ForkCrossingChain.Instance.AnchorState.Validators)!.Length), "the cache was built after the call");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(engine.PubkeysHeldAtCall, Is.EqualTo(new[] { 0 }), "one call, made before the cache was built");
+        Assert.That(pubkeyCache.Count, Is.EqualTo((gloas ? ForkCrossingChain.Instance.First.PostState.Validators : ForkCrossingChain.Instance.AnchorState.Validators)!.Length), "the cache was built after the call");
     }
 
     /// <summary>
@@ -316,12 +310,10 @@ public class BeaconChainServiceStartupTests
 
         await service.Start();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(engine.PubkeysHeldAtCall, Is.Empty, "no forkchoiceUpdated");
-            Assert.That(pubkeyCache.Count, Is.Zero, "no cache");
-            Assert.That(logManager.Errors.Select(static e => e.Exception), Has.One.TypeOf<ForkChoiceException>().With.Message.Contains("state root does not match"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(engine.PubkeysHeldAtCall, Is.Empty, "no forkchoiceUpdated");
+        Assert.That(pubkeyCache.Count, Is.Zero, "no cache");
+        Assert.That(logManager.Errors.Select(static e => e.Exception), Has.One.TypeOf<ForkChoiceException>().With.Message.Contains("state root does not match"));
     }
 
     /// <summary>
@@ -350,12 +342,10 @@ public class BeaconChainServiceStartupTests
 
         await service.Start();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(engine.PubkeysHeldAtCall, blockMatchesState ? Is.EqualTo(new[] { 0 }) : Is.Empty);
-            Assert.That(pubkeyCache.Count, blockMatchesState ? Is.EqualTo(state.Validators!.Length) : Is.Zero);
-            Assert.That(logManager.Errors.Select(static e => e.Exception), blockMatchesState ? Is.Empty : Has.One.TypeOf<InvalidDataException>().With.Message.Contains("mismatch"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(engine.PubkeysHeldAtCall, blockMatchesState ? Is.EqualTo(new[] { 0 }) : Is.Empty);
+        Assert.That(pubkeyCache.Count, blockMatchesState ? Is.EqualTo(state.Validators!.Length) : Is.Zero);
+        Assert.That(logManager.Errors.Select(static e => e.Exception), blockMatchesState ? Is.Empty : Has.One.TypeOf<InvalidDataException>().With.Message.Contains("mismatch"));
     }
 
     /// <summary>
@@ -376,12 +366,10 @@ public class BeaconChainServiceStartupTests
 
         await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(30));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(run.IsCompletedSuccessfully, Is.True, "the blocked run unwound on cancellation");
-            Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
-            Assert.That(pubkeyCache.Count, Is.Zero, "the run never got past the call");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(run.IsCompletedSuccessfully, Is.True, "the blocked run unwound on cancellation");
+        Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
+        Assert.That(pubkeyCache.Count, Is.Zero, "the run never got past the call");
     }
 
     /// <summary>
@@ -411,11 +399,9 @@ public class BeaconChainServiceStartupTests
         Assert.That(stopping.IsCompleted, Is.False, "the run is still inside the cache build");
         gate.Release();
         await stopping.WaitAsync(TimeSpan.FromSeconds(30));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(run.IsCompletedSuccessfully, Is.True, "the run had unwound when the stop completed");
-            Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(run.IsCompletedSuccessfully, Is.True, "the run had unwound when the stop completed");
+        Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
     }
 
     /// <summary>
@@ -436,13 +422,11 @@ public class BeaconChainServiceStartupTests
 
         await service.Start();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(engine.PubkeysHeldAtCall, Is.EqualTo(new[] { 0 }), "the call was made");
-            Assert.That(pubkeyCache.Count, Is.Zero, "no build");
-            Assert.That(new PubkeyCache().TryLoad(store, (gloas ? ForkCrossingChain.Instance.First.PostState.Validators : ForkCrossingChain.Instance.AnchorState.Validators)!), Is.False, "nothing persisted");
-            Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(engine.PubkeysHeldAtCall, Is.EqualTo(new[] { 0 }), "the call was made");
+        Assert.That(pubkeyCache.Count, Is.Zero, "no build");
+        Assert.That(new PubkeyCache().TryLoad(store, (gloas ? ForkCrossingChain.Instance.First.PostState.Validators : ForkCrossingChain.Instance.AnchorState.Validators)!), Is.False, "nothing persisted");
+        Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
     }
 
     /// <summary>
@@ -478,12 +462,10 @@ public class BeaconChainServiceStartupTests
         service.Stop();
         gate.Release();
         await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(30));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(run.IsCompletedSuccessfully, Is.True);
-            Assert.That(logManager.Errors, Is.Empty);
-            Assert.That(Enumerable.Range(0, validators).All(pubkeyCache.IsInSubgroup), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(run.IsCompletedSuccessfully, Is.True);
+        Assert.That(logManager.Errors, Is.Empty);
+        Assert.That(Enumerable.Range(0, validators).All(pubkeyCache.IsInSubgroup), Is.True);
     }
 
     [Test]
@@ -502,13 +484,11 @@ public class BeaconChainServiceStartupTests
         BeaconChainService service = container.Resolve<BeaconChainService>();
         Assert.That(() => service.Start(), Throws.InvalidOperationException.With.Message.Contains("anchor block").And.Message.Contains("delete the beaconChain database"));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pubkeyCache.Count, Is.Zero, "no build");
-            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null, "no proof is recorded for a blockless anchor");
-            Assert.That(new PubkeyCache().TryLoad(store, ForkCrossingChain.Instance.AnchorState.Validators!), Is.False, "nothing persisted");
-            Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pubkeyCache.Count, Is.Zero, "no build");
+        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null, "no proof is recorded for a blockless anchor");
+        Assert.That(new PubkeyCache().TryLoad(store, ForkCrossingChain.Instance.AnchorState.Validators!), Is.False, "nothing persisted");
+        Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
     }
 
     /// <summary>The warm-up is the run's own work, so a stop must cancel it and only return once it has left the cache.</summary>
@@ -539,12 +519,10 @@ public class BeaconChainServiceStartupTests
         Assert.That(stopping.IsCompleted, Is.False, "the warm-up is still inside the cache");
         pubkeyCache.Release.Set();
         await stopping.WaitAsync(TimeSpan.FromSeconds(30));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pubkeyCache.Ended, Is.True);
-            Assert.That(run.IsCompletedSuccessfully, Is.True);
-            Assert.That(logManager.Errors, Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pubkeyCache.Ended, Is.True);
+        Assert.That(run.IsCompletedSuccessfully, Is.True);
+        Assert.That(logManager.Errors, Is.Empty);
     }
 
     /// <summary>A run that fails without a stop must not leave its warm-up running behind it.</summary>
@@ -573,11 +551,9 @@ public class BeaconChainServiceStartupTests
 
         await run.WaitAsync(TimeSpan.FromSeconds(30));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pubkeyCache.ObservedCancellation, Is.True, "the warm-up was cancelled by the failure, not left to run on");
-            Assert.That(logManager.Errors, Has.Count.EqualTo(1), "only the failure itself is reported");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pubkeyCache.ObservedCancellation, Is.True, "the warm-up was cancelled by the failure, not left to run on");
+        Assert.That(logManager.Errors, Has.Count.EqualTo(1), "only the failure itself is reported");
     }
 
     [Test]
@@ -591,13 +567,11 @@ public class BeaconChainServiceStartupTests
 
         await container.Resolve<BeaconChainService>().Start();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(engine.PubkeysHeldAtCall, Is.Empty, "no forkchoiceUpdated");
-            Assert.That(pubkeyCache.Count, Is.Zero);
-            Assert.That(new PubkeyCache().TryLoad(container.Resolve<BeaconChainStore>(), state.Validators!), Is.False);
-            Assert.That(container.Resolve<BeaconChainStore>().TryGetAnchor(out _, out _), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(engine.PubkeysHeldAtCall, Is.Empty, "no forkchoiceUpdated");
+        Assert.That(pubkeyCache.Count, Is.Zero);
+        Assert.That(new PubkeyCache().TryLoad(container.Resolve<BeaconChainStore>(), state.Validators!), Is.False);
+        Assert.That(container.Resolve<BeaconChainStore>().TryGetAnchor(out _, out _), Is.False);
     }
 
     /// <summary>
@@ -611,14 +585,12 @@ public class BeaconChainServiceStartupTests
 
         (TestLogRecorder logs, KickEngine engine, PubkeyCache pubkeyCache) = await RunFromProviderAsync(provider, TimeSpan.FromMilliseconds(1), waitForCache: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(provider.StateRequests, Is.EqualTo(3), "two failed starts, then the state");
-            Assert.That(engine.PubkeysHeldAtCall, Is.EqualTo(new[] { 0 }), "the driver reached the execution layer");
-            Assert.That(pubkeyCache.Count, Is.EqualTo(ForkCrossingChain.Instance.First.PostState.Validators!.Length));
-            Assert.That(logs.Lines.Where(static l => l.Level == "Warn" && l.Text.Contains("starting it again")), Has.Exactly(2).Items);
-            Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(provider.StateRequests, Is.EqualTo(3), "two failed starts, then the state");
+        Assert.That(engine.PubkeysHeldAtCall, Is.EqualTo(new[] { 0 }), "the driver reached the execution layer");
+        Assert.That(pubkeyCache.Count, Is.EqualTo(ForkCrossingChain.Instance.First.PostState.Validators!.Length));
+        Assert.That(logs.Lines.Where(static l => l.Level == "Warn" && l.Text.Contains("starting it again")), Has.Exactly(2).Items);
+        Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Is.Empty);
     }
 
     /// <summary>A refusal of the checkpoint itself repeats on every start, so it fails the run loudly instead of being retried.</summary>
@@ -631,13 +603,11 @@ public class BeaconChainServiceStartupTests
 
         (TestLogRecorder logs, KickEngine engine, _) = await RunFromProviderAsync(provider, TimeSpan.FromMilliseconds(1), waitForCache: false);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(provider.StateRequests, Is.EqualTo(1));
-            Assert.That(engine.PubkeysHeldAtCall, Is.Empty);
-            Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Has.Exactly(1).Items);
-            Assert.That(logs.Lines.Where(static l => l.Text.Contains("starting it again")), Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(provider.StateRequests, Is.EqualTo(1));
+        Assert.That(engine.PubkeysHeldAtCall, Is.Empty);
+        Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Has.Exactly(1).Items);
+        Assert.That(logs.Lines.Where(static l => l.Text.Contains("starting it again")), Is.Empty);
     }
 
     /// <summary>A state file the operator named and that is not there stays missing on every start, so it fails the run loudly instead of being retried.</summary>
@@ -663,11 +633,9 @@ public class BeaconChainServiceStartupTests
 
         await service.Start().WaitAsync(TimeSpan.FromSeconds(30));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Has.Exactly(1).Items);
-            Assert.That(logs.Lines.Where(static l => l.Text.Contains("starting it again")), Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Has.Exactly(1).Items);
+        Assert.That(logs.Lines.Where(static l => l.Text.Contains("starting it again")), Is.Empty);
     }
 
     /// <summary>The wait before a new start is part of the run, so a stop during it must end the run instead of leaving shutdown waiting.</summary>
@@ -954,12 +922,10 @@ public class BeaconChainServiceStartupTests
 
     private static void AssertRefusedBeforeRun(Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys, IResolveConstraint expected)
     {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal, expected);
-            Assert.That(errors, Is.Empty, "the background run never started");
-            Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal, expected);
+        Assert.That(errors, Is.Empty, "the background run never started");
+        Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
     }
 
     private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> ResumeAsync(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key, Hash256? genesisValidatorsRoot = null,

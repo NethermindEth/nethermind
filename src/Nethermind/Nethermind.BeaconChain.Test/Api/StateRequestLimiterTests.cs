@@ -203,11 +203,9 @@ public class StateRequestLimiterTests
             reached = true;
             return Task.CompletedTask;
         });
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(slow.RequestAborted.IsCancellationRequested, Is.True, "the handler must see the deadline through RequestAborted");
-            Assert.That(reached, Is.True, "both the node-wide and the per-client permit must be free after the deadline");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(slow.RequestAborted.IsCancellationRequested, Is.True, "the handler must see the deadline through RequestAborted");
+        Assert.That(reached, Is.True, "both the node-wide and the per-client permit must be free after the deadline");
     }
 
     [Test]
@@ -222,11 +220,9 @@ public class StateRequestLimiterTests
 
         await limiter.InvokeAsync(download, c => c.Response.Body.WriteAsync(state, c.RequestAborted).AsTask()).WaitAsync(Wait);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reader.Written, Is.EqualTo(state.Length), "every byte reaches a reader that never stalls longer than the idle bound between chunks");
-            Assert.That(download.RequestAborted.IsCancellationRequested, Is.False, "steady writes must complete even when draining 256 KiB takes 1.6 s and the idle bound is 1 s");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reader.Written, Is.EqualTo(state.Length), "every byte reaches a reader that never stalls longer than the idle bound between chunks");
+        Assert.That(download.RequestAborted.IsCancellationRequested, Is.False, "steady writes must complete even when draining 256 KiB takes 1.6 s and the idle bound is 1 s");
     }
 
     [Test]
@@ -249,11 +245,9 @@ public class StateRequestLimiterTests
             reached = true;
             return Task.CompletedTask;
         });
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stalled.RequestAborted.IsCancellationRequested, Is.True, "the handler must see the idle bound through RequestAborted");
-            Assert.That(reached, Is.True, "the permits of a stalled response are free once it is cut");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(stalled.RequestAborted.IsCancellationRequested, Is.True, "the handler must see the idle bound through RequestAborted");
+        Assert.That(reached, Is.True, "the permits of a stalled response are free once it is cut");
     }
 
     [Test]
@@ -270,11 +264,9 @@ public class StateRequestLimiterTests
             await c.Response.Body.WriteAsync(new byte[16], c.RequestAborted);
         }).WaitAsync(Wait);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reader.Written, Is.EqualTo(16), "loading a state is the node's own time, not a stalled reader, so only the total cap bounds it");
-            Assert.That(download.RequestAborted.IsCancellationRequested, Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reader.Written, Is.EqualTo(16), "loading a state is the node's own time, not a stalled reader, so only the total cap bounds it");
+        Assert.That(download.RequestAborted.IsCancellationRequested, Is.False);
     }
 
     [Test]
@@ -437,11 +429,9 @@ public class StateRequestLimiterTests
         release.SetResult();
         await held;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reached, Is.EqualTo(served));
-            Assert.That(probe.Response.StatusCode, Is.EqualTo(served ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reached, Is.EqualTo(served));
+        Assert.That(probe.Response.StatusCode, Is.EqualTo(served ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable));
     }
 
     private sealed class PacedStream(TimeSpan perChunk, int bytesPerChunk = StateRequestLimiter.WriteChunkBytes) : Stream

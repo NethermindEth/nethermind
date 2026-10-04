@@ -36,12 +36,10 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(WallSlot, i), CancellationToken.None);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ByRootRequests(peer), Is.EqualTo(expectedFetches));
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Math.Min(forged, BeaconSyncOrchestrator.MaxHeldRefusedBackfills)),
-                "unknown-parent blocks hold at most their own share of the queue shared with payload-held blocks");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ByRootRequests(peer), Is.EqualTo(expectedFetches));
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Math.Min(forged, BeaconSyncOrchestrator.MaxHeldRefusedBackfills)),
+            "unknown-parent blocks hold at most their own share of the queue shared with payload-held blocks");
     }
 
     // A fetched parent waiting for its data is not fetched again; the children naming it wait with it.
@@ -61,11 +59,9 @@ public partial class BeaconSyncOrchestratorTests
 
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(WallSlot, seed: 1), CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ByRootRequests(peer), Is.EqualTo(2), "one for the repeated parent, one for another parent");
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(4), "every child of the waiting parent is held, and so is the block whose parent no peer returned");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ByRootRequests(peer), Is.EqualTo(2), "one for the repeated parent, one for another parent");
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(4), "every child of the waiting parent is held, and so is the block whose parent no peer returned");
     }
 
     // A parent no peer returned may be fetched again, but each fetch still spends the slot's budget.
@@ -101,12 +97,10 @@ public partial class BeaconSyncOrchestratorTests
         int fetchesBeforeParent = ByRootRequests(peer);
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(parent, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fetchesBeforeParent, Is.EqualTo(BeaconSyncOrchestrator.MaxBackfillsPerSlot), "fixture: the forged blocks spent the slot's budget");
-            Assert.That(harness.Importer.Known, Does.Contain(parent.ComputeMessageRoot()).And.Contain(child.ComputeMessageRoot()));
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Math.Min(BeaconSyncOrchestrator.MaxBackfillsPerSlot + forgedHeld, BeaconSyncOrchestrator.MaxHeldRefusedBackfills - 1)), "the parent's import drained the held child");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fetchesBeforeParent, Is.EqualTo(BeaconSyncOrchestrator.MaxBackfillsPerSlot), "fixture: the forged blocks spent the slot's budget");
+        Assert.That(harness.Importer.Known, Does.Contain(parent.ComputeMessageRoot()).And.Contain(child.ComputeMessageRoot()));
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Math.Min(BeaconSyncOrchestrator.MaxBackfillsPerSlot + forgedHeld, BeaconSyncOrchestrator.MaxHeldRefusedBackfills - 1)), "the parent's import drained the held child");
     }
 
     // The spec marks a (slot, proposer) seen only once its signature verifies, so an unsigned copy must not take the real block's backfill.
@@ -123,11 +117,9 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(forged, CancellationToken.None);
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((forged.Slot, forged.ProposerIndex), Is.EqualTo((child.Slot, child.ProposerIndex)), "fixture: same slot and proposer");
-            Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((forged.Slot, forged.ProposerIndex), Is.EqualTo((child.Slot, child.ProposerIndex)), "fixture: same slot and proposer");
+        Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
     }
 
     [Test]
@@ -163,12 +155,10 @@ public partial class BeaconSyncOrchestratorTests
         harness.Timestamper.Set(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + (WallSlot + 1) * Spec.SecondsPerSlot));
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(childImportedInBudgetSlot, Is.False, "fixture: the forged blocks spent the slot's budget");
-            Assert.That(harness.Importer.Known, Does.Contain(parent.ComputeMessageRoot()).And.Contain(child.ComputeMessageRoot()));
-            Assert.That(ByRootRequests(peer), Is.EqualTo(BeaconSyncOrchestrator.MaxBackfillsPerSlot + 1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(childImportedInBudgetSlot, Is.False, "fixture: the forged blocks spent the slot's budget");
+        Assert.That(harness.Importer.Known, Does.Contain(parent.ComputeMessageRoot()).And.Contain(child.ComputeMessageRoot()));
+        Assert.That(ByRootRequests(peer), Is.EqualTo(BeaconSyncOrchestrator.MaxBackfillsPerSlot + 1));
     }
 
     // A parent held behind a deeper ancestor that waits for the regeneration budget is not fetched again for another child, in the slot or the next.
@@ -184,11 +174,9 @@ public partial class BeaconSyncOrchestratorTests
         walk.Harness.Importer.RegenerationRefused.Remove(walk.Blocks[0].ComputeMessageRoot());
         await walk.Harness.Orchestrator.ProcessSlotAsync(siblingWallSlot, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ByRootRequestsFor(walk.Peer, walk.Blocks[1].ComputeMessageRoot()), Is.EqualTo(1), "the held parent is not fetched again");
-            Assert.That(walk.Harness.Importer.Known, Does.Contain(walk.Blocks[2].ComputeMessageRoot()).And.Contain(sibling.ComputeMessageRoot()), "both children import behind the deferred ancestor");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ByRootRequestsFor(walk.Peer, walk.Blocks[1].ComputeMessageRoot()), Is.EqualTo(1), "the held parent is not fetched again");
+        Assert.That(walk.Harness.Importer.Known, Does.Contain(walk.Blocks[2].ComputeMessageRoot()).And.Contain(sibling.ComputeMessageRoot()), "both children import behind the deferred ancestor");
     }
 
     // A parent whose retry expired is no longer held, so a later child fetches it, also when the slot's budget was renewed while it waited.
@@ -213,12 +201,10 @@ public partial class BeaconSyncOrchestratorTests
         int requestsBeforeExpiry = ByRootRequestsFor(peer, parentRoot);
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(parent, expirySlot), CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(requestsBeforeExpiry, Is.Zero, "fixture: the parent waited for its retry");
-            Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero, "fixture: the parent's retry expired");
-            Assert.That(ByRootRequestsFor(peer, parentRoot), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(requestsBeforeExpiry, Is.Zero, "fixture: the parent waited for its retry");
+        Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero, "fixture: the parent's retry expired");
+        Assert.That(ByRootRequestsFor(peer, parentRoot), Is.EqualTo(1));
     }
 
     // Once the cap of refused backfills evicts the held parent nothing holds it, so later children in the same slot may fetch it, each after the last fetch failed.
@@ -265,11 +251,9 @@ public partial class BeaconSyncOrchestratorTests
         walk.Harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(walk.Blocks[1], rangePeer));
         await walk.Harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(walk.Harness.Importer.Known, Does.Contain(walk.Blocks[0].ComputeMessageRoot()).And.Not.Contain(heldParentRoot), "fixture: the evicted block did not import with its ancestor");
-            rangePeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(walk.Harness.Importer.Known, Does.Contain(walk.Blocks[0].ComputeMessageRoot()).And.Not.Contain(heldParentRoot), "fixture: the evicted block did not import with its ancestor");
+        rangePeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
     }
 
     /// <summary>
@@ -290,11 +274,9 @@ public partial class BeaconSyncOrchestratorTests
         walk.Withheld.Add(heldParentRoot);
         await walk.Harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(ChildOf(walk.Blocks[1], WallSlot - 1), CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(heldParentFailed, Is.True, "fixture: the held parent left the hold without importing");
-            Assert.That(ByRootRequestsFor(walk.Peer, heldParentRoot), Is.EqualTo(2));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(heldParentFailed, Is.True, "fixture: the held parent left the hold without importing");
+        Assert.That(ByRootRequestsFor(walk.Peer, heldParentRoot), Is.EqualTo(2));
     }
 
     private sealed record DeferredAncestorWalk(Harness Harness, IBeaconSyncPeer Peer, ForkedSignedBeaconBlock[] Blocks, HashSet<Hash256> Withheld, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>> OtherParentFetch);

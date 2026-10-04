@@ -106,14 +106,12 @@ public class BeaconChainStoreTests
         Assert.That(readFulu, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
         Assert.That(readGloas, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
         bool hasChildren = store.TryGetChildren(fuluRoot, out Hash256[] children, out _);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(SignedBeaconBlock.Encode(((ForkedSignedBeaconBlock.OfFulu)readFulu!).Block), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
-            Assert.That(SignedBeaconBlockGloas.Encode(((ForkedSignedBeaconBlock.OfGloas)readGloas!).Block), Is.EqualTo(SignedBeaconBlockGloas.Encode(gloas)));
-            Assert.That(SignedBeaconBlock.Encode(adapted!), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
-            Assert.That(hasChildren, Is.True);
-            Assert.That(children, Is.EqualTo(new[] { BlockRoot }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(SignedBeaconBlock.Encode(((ForkedSignedBeaconBlock.OfFulu)readFulu!).Block), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
+        Assert.That(SignedBeaconBlockGloas.Encode(((ForkedSignedBeaconBlock.OfGloas)readGloas!).Block), Is.EqualTo(SignedBeaconBlockGloas.Encode(gloas)));
+        Assert.That(SignedBeaconBlock.Encode(adapted!), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
+        Assert.That(hasChildren, Is.True);
+        Assert.That(children, Is.EqualTo(new[] { BlockRoot }));
     }
 
     [Test]

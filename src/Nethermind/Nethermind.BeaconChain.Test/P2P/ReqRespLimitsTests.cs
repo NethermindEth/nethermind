@@ -43,13 +43,11 @@ public class ReqRespLimitsTests
         TestReqRespProtocol production = new();
 
         // ethereum/consensus-specs p2p-interface Configuration defines TTFB_TIMEOUT and RESP_TIMEOUT.
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(production.TtfbTimeout, Is.EqualTo(TimeSpan.FromSeconds(5)));
-            Assert.That(production.RespTimeout, Is.EqualTo(TimeSpan.FromSeconds(10)));
-            Assert.That(shortened.TtfbTimeout, Is.EqualTo(ShortTtfbTimeout));
-            Assert.That(shortened.RespTimeout, Is.EqualTo(ShortRespTimeout));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(production.TtfbTimeout, Is.EqualTo(TimeSpan.FromSeconds(5)));
+        Assert.That(production.RespTimeout, Is.EqualTo(TimeSpan.FromSeconds(10)));
+        Assert.That(shortened.TtfbTimeout, Is.EqualTo(ShortTtfbTimeout));
+        Assert.That(shortened.RespTimeout, Is.EqualTo(ShortRespTimeout));
     }
 
     [Test]

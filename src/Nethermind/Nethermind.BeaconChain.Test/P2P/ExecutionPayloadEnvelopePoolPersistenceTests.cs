@@ -57,11 +57,9 @@ public class ExecutionPayloadEnvelopePoolPersistenceTests
         List<ResponseChunk> byRange = await ReqRespTestChannel.ReadResponseAsync(new ExecutionPayloadEnvelopesByRangeProtocol(EnvelopeChain.Spec, pool).ListenAsync,
             ExecutionPayloadEnvelopesByRangeRequest.Encode(new ExecutionPayloadEnvelopesByRangeRequest { StartSlot = Base, Count = 3 }), token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ServedRoots(byRoot), Is.EqualTo(added), "every added envelope, the fork and the head included");
-            Assert.That(ServedRoots(byRange), Is.EqualTo(new[] { genesis, onChain }), "the head chain only, without the head, as before");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ServedRoots(byRoot), Is.EqualTo(added), "every added envelope, the fork and the head included");
+        Assert.That(ServedRoots(byRange), Is.EqualTo(new[] { genesis, onChain }), "the head chain only, without the head, as before");
     }
 
     [Test]
@@ -96,14 +94,12 @@ public class ExecutionPayloadEnvelopePoolPersistenceTests
         bool servedOnceAdded = after.TryGet(corruptRoot, out _);
         List<ResponseChunk> readded = await ReqRespTestChannel.ReadResponseAsync(new ExecutionPayloadEnvelopesByRootProtocol(Sepolia, new ExecutionPayloadEnvelopePool(store: store)).ListenAsync, request, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ServedRoots(unreadable), Is.EqualTo(new[] { intactRoot }), "the unreadable record is refused and the rest still served");
-            Assert.That(servedOnRepeat, Is.False, "an unreadable record stays refused");
-            Assert.That(repeatReads, Is.Zero, "an unreadable record is not read again, so each request does not allocate its claimed length again");
-            Assert.That(servedOnceAdded, Is.True, "adding the envelope again lifts the refusal, also once it is evicted from memory");
-            Assert.That(ServedRoots(readded), Is.EqualTo(new[] { corruptRoot, intactRoot }), "adding it again replaces the unreadable record");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ServedRoots(unreadable), Is.EqualTo(new[] { intactRoot }), "the unreadable record is refused and the rest still served");
+        Assert.That(servedOnRepeat, Is.False, "an unreadable record stays refused");
+        Assert.That(repeatReads, Is.Zero, "an unreadable record is not read again, so each request does not allocate its claimed length again");
+        Assert.That(servedOnceAdded, Is.True, "adding the envelope again lifts the refusal, also once it is evicted from memory");
+        Assert.That(ServedRoots(readded), Is.EqualTo(new[] { corruptRoot, intactRoot }), "adding it again replaces the unreadable record");
     }
 
     [Test]

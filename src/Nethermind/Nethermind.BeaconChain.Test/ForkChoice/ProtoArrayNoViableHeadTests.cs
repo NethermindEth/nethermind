@@ -52,12 +52,10 @@ public class ProtoArrayNoViableHeadTests
         forkChoice.ProcessBlock(b, b.Slot, realized, genesis);
         Assert.That(forkChoice.GetHead(realized, genesis, balances, null, b.Slot), Is.EqualTo(b.Root));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(beforeSlashing.Epoch, Is.EqualTo(4UL));
-            Assert.That(afterSlashing.Epoch, Is.EqualTo(1UL));
-            Assert.That(forkChoice.GetHead(beforeSlashing, genesis, balances, null, currentSlot), Is.EqualTo(c.Root));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(beforeSlashing.Epoch, Is.EqualTo(4UL));
+        Assert.That(afterSlashing.Epoch, Is.EqualTo(1UL));
+        Assert.That(forkChoice.GetHead(beforeSlashing, genesis, balances, null, currentSlot), Is.EqualTo(c.Root));
     }
 
     /// <summary>
@@ -88,11 +86,9 @@ public class ProtoArrayNoViableHeadTests
         forkChoice.ProcessAttestation(0, z.Root, 2);
         Hash256 head = forkChoice.GetHead(justified, genesis, balances, null, currentSlot);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstHead, Is.EqualTo(y.Root), "fixture: Y is the best child before it loses viability");
-            Assert.That(head, Is.EqualTo(withViableSibling ? v.Root : GetRoot(0)));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(firstHead, Is.EqualTo(y.Root), "fixture: Y is the best child before it loses viability");
+        Assert.That(head, Is.EqualTo(withViableSibling ? v.Root : GetRoot(0)));
     }
 
     /// <summary>

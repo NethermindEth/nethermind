@@ -175,14 +175,12 @@ public class CheckpointSyncHttpTests
 
         CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(anchor.State, Is.TypeOf<ForkedBeaconState.OfGloas>());
-            Assert.That(anchor.Block, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>(), "the block endpoint answered for the derived anchor root");
-            Assert.That(anchor.BlockRoot, Is.EqualTo(first.Root));
-            Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out _), Is.True);
-            Assert.That(anchorRoot, Is.EqualTo(first.Root));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(anchor.State, Is.TypeOf<ForkedBeaconState.OfGloas>());
+        Assert.That(anchor.Block, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>(), "the block endpoint answered for the derived anchor root");
+        Assert.That(anchor.BlockRoot, Is.EqualTo(first.Root));
+        Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out _), Is.True);
+        Assert.That(anchorRoot, Is.EqualTo(first.Root));
     }
 
     [Test]

@@ -40,12 +40,10 @@ public class ImportEngineCallThreadTests
         engine.Answer.Set();
         BlockImportResult result = await import;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(completedWhileEngineWaited, Is.False, "fixture: the import waits for the engine");
-            Assert.That(engine.CalledOnPoolThread, Is.False, "the engine call runs on a thread of its own");
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(completedWhileEngineWaited, Is.False, "fixture: the import waits for the engine");
+        Assert.That(engine.CalledOnPoolThread, Is.False, "the engine call runs on a thread of its own");
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
     }
 
     /// <summary>Answers newPayload only once <see cref="Answer"/> is set, blocking the calling thread as the in-process engine driver does.</summary>

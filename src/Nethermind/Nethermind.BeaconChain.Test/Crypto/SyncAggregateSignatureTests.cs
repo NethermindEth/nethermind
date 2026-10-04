@@ -58,11 +58,9 @@ public class SyncAggregateSignatureTests
         Bls.P1 cached = new(new long[Bls.P1.Sz]);
         int count = SignatureSets.AggregateSyncParticipants(bits, committee, new EpochCache().GetSyncCommitteeIndices(state.CurrentSyncCommittee, state.Validators!), pubkeys, cached);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(count, Is.EqualTo(Enumerable.Range(0, bits.Length).Count(i => bits[i])));
-            Assert.That(cached.ToAffine().Compress(), Is.EqualTo(decompressed.PublicKey.Compress()));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(count, Is.EqualTo(Enumerable.Range(0, bits.Length).Count(i => bits[i])));
+        Assert.That(cached.ToAffine().Compress(), Is.EqualTo(decompressed.PublicKey.Compress()));
     }
 
     [Test]

@@ -75,21 +75,19 @@ public class ColumnGossipRouterGloasTests
         long reasonBefore = Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(key);
         MessageValidity validity = router.Handle(subnet, gloasTopic: true, Encode(sidecar));
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (expected == MessageValidity.Accepted ? 1UL : 0UL)));
+        Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(droppedBefore + (reason is null ? 0UL : 1UL)));
+        Assert.That(Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(key), Is.EqualTo(reasonBefore + (reason is null ? 0 : 1)));
+        Assert.That(validity, Is.EqualTo(expected));
+        if (reason is { } dropReason)
         {
-            Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (expected == MessageValidity.Accepted ? 1UL : 0UL)));
-            Assert.That(Metrics.BeaconChainGossipDropped, Is.EqualTo(droppedBefore + (reason is null ? 0UL : 1UL)));
-            Assert.That(Metrics.BeaconChainColumnGossipDroppedByReason.GetValueOrDefault(key), Is.EqualTo(reasonBefore + (reason is null ? 0 : 1)));
-            Assert.That(validity, Is.EqualTo(expected));
-            if (reason is { } dropReason)
-            {
-                Assert.That(router.GetDropCount(dropReason), Is.EqualTo(1), "the drop is counted under its reason");
-            }
-
-            Hash256 root = sidecar.BeaconBlockRoot!;
-            Assert.That(pool.TryGetGloas(root, sidecar.Index, out _), Is.EqualTo(outcome == Outcome.Stored), "stored as verified");
-            Assert.That(pool.GetPendingGloas(root, sidecar.Index), Has.Length.EqualTo(outcome == Outcome.Parked ? 1 : 0), "parked as a pending candidate");
+            Assert.That(router.GetDropCount(dropReason), Is.EqualTo(1), "the drop is counted under its reason");
         }
+
+        Hash256 root = sidecar.BeaconBlockRoot!;
+        Assert.That(pool.TryGetGloas(root, sidecar.Index, out _), Is.EqualTo(outcome == Outcome.Stored), "stored as verified");
+        Assert.That(pool.GetPendingGloas(root, sidecar.Index), Has.Length.EqualTo(outcome == Outcome.Parked ? 1 : 0), "parked as a pending candidate");
     }
 
     private static IEnumerable<TestCaseData> UndecodableCases()
@@ -108,12 +106,10 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, message);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(router.GetDropCount(reason), Is.EqualTo(1));
-            Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty, "nothing reaches the pending candidates");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(router.GetDropCount(reason), Is.EqualTo(1));
+        Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty, "nothing reaches the pending candidates");
     }
 
     [Test]
@@ -127,12 +123,10 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, Encode(sidecar));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlobCount), Is.EqualTo(1));
-            Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlobCount), Is.EqualTo(1));
+        Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty);
     }
 
     [Test]
@@ -161,12 +155,10 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: UnknownRoot)));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(expected));
-            Assert.That(router.GetDropCount(reason), Is.EqualTo(1));
-            Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Has.Length.EqualTo(parked));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(expected));
+        Assert.That(router.GetDropCount(reason), Is.EqualTo(1));
+        Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Has.Length.EqualTo(parked));
     }
 
     [Test]
@@ -178,11 +170,9 @@ public class ColumnGossipRouterGloasTests
         MessageValidity first = router.Handle(Column, gloasTopic: true, message);
         MessageValidity second = router.Handle(Column, gloasTopic: true, message);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((first, second), Is.EqualTo((MessageValidity.Accepted, MessageValidity.Ignored)));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((first, second), Is.EqualTo((MessageValidity.Accepted, MessageValidity.Ignored)));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(1));
     }
 
     [Test]
@@ -192,12 +182,10 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.UnsubscribedSubnet), Is.EqualTo(1));
-            Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.UnsubscribedSubnet), Is.EqualTo(1));
+        Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.False);
     }
 
     [Test]
@@ -210,12 +198,10 @@ public class ColumnGossipRouterGloasTests
         // The pinned pubsub library raises the topic's OnMessage for every message its validator Accepts.
         topic.Deliver(message);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Accepted));
-            Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.True);
-            Assert.That(Enum.GetValues<ColumnGossipDropReason>().Sum(router.GetDropCount), Is.Zero, "a second pass would count the sidecar as a duplicate");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Accepted));
+        Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.True);
+        Assert.That(Enum.GetValues<ColumnGossipDropReason>().Sum(router.GetDropCount), Is.Zero, "a second pass would count the sidecar as a duplicate");
     }
 
     /// <summary>The spec orders verify_data_column_sidecar's REJECT after the block-seen IGNORE, so a held block convicts whether or not it was read.</summary>
@@ -230,12 +216,10 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, Encode(Sidecar(index: Column + Eip7594DasConstants.DataColumnSidecarSubnetCount)));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedStructure), Is.EqualTo(1));
-            Assert.That(pool.GetPendingGloas(BlockRoot, Column + Eip7594DasConstants.DataColumnSidecarSubnetCount), Is.Empty);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedStructure), Is.EqualTo(1));
+        Assert.That(pool.GetPendingGloas(BlockRoot, Column + Eip7594DasConstants.DataColumnSidecarSubnetCount), Is.Empty);
     }
 
     /// <summary>Stored pre-Gloas roots are public, so repeating one must not repeat a block decode.</summary>
@@ -258,11 +242,9 @@ public class ColumnGossipRouterGloasTests
             })));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(expectedReads));
-            Assert.That(router.GetDropCount(wellFormed ? ColumnGossipDropReason.SlotMismatch : ColumnGossipDropReason.FailedStructure), Is.EqualTo(3));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(expectedReads));
+        Assert.That(router.GetDropCount(wellFormed ? ColumnGossipDropReason.SlotMismatch : ColumnGossipDropReason.FailedStructure), Is.EqualTo(3));
     }
 
     public enum StoredRoots
@@ -300,12 +282,10 @@ public class ColumnGossipRouterGloasTests
             }
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(expectedReads));
-            Assert.That(verdicts, Has.None.EqualTo(MessageValidity.Accepted));
-            Assert.That(pool.PendingGloasCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(expectedReads));
+        Assert.That(verdicts, Has.None.EqualTo(MessageValidity.Accepted));
+        Assert.That(pool.PendingGloasCount, Is.Zero);
     }
 
     /// <summary>A peer spending the decode budget must not stop sidecars of a block this node already decoded from being accepted.</summary>
@@ -320,13 +300,11 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(forged, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.GreaterThan(0), "the budget is spent");
-            Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
-            Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forged, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.GreaterThan(0), "the budget is spent");
+        Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
+        Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.True);
     }
 
     /// <summary>The budget bounds decode work per slot, so an honest block read after it is spent must be accepted in the next slot.</summary>
@@ -349,14 +327,12 @@ public class ColumnGossipRouterGloasTests
         timestamper.Add(TimeSpan.FromSeconds(Sepolia.SecondsPerSlot));
         MessageValidity nextSlot = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(spent, Is.EqualTo(MessageValidity.Ignored));
-            Assert.That(readsWhileSpent, Is.Zero, "a spent budget reads no block record");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.EqualTo(1));
-            Assert.That(pool.GetPendingGloas(BlockRoot, Column), Is.Empty, "a stored block is never parked for");
-            Assert.That(nextSlot, Is.EqualTo(MessageValidity.Accepted));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(spent, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(readsWhileSpent, Is.Zero, "a spent budget reads no block record");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.EqualTo(1));
+        Assert.That(pool.GetPendingGloas(BlockRoot, Column), Is.Empty, "a stored block is never parked for");
+        Assert.That(nextSlot, Is.EqualTo(MessageValidity.Accepted));
     }
 
     /// <summary>
@@ -380,13 +356,11 @@ public class ColumnGossipRouterGloasTests
         MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
         router.Handle(Column, gloasTopic: true, Encode(Sidecar(slot: BlockSlot + slotsSinceBlock, root: UnknownRoot)));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.SlotMismatch), Is.EqualTo(ColumnGossipRouter.StoreDecodesPerSlot), "the budget is spent");
-            Assert.That(genuine, Is.EqualTo(expected));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.EqualTo(expected == MessageValidity.Accepted ? 0 : 1));
-            Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Has.Length.EqualTo(1), "a block not yet stored costs no decode");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.SlotMismatch), Is.EqualTo(ColumnGossipRouter.StoreDecodesPerSlot), "the budget is spent");
+        Assert.That(genuine, Is.EqualTo(expected));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.EqualTo(expected == MessageValidity.Accepted ? 0 : 1));
+        Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Has.Length.EqualTo(1), "a block not yet stored costs no decode");
     }
 
     /// <summary>The canonical block is the honest case, so decoding it must leave the whole budget for the blocks it does not cover.</summary>
@@ -406,12 +380,10 @@ public class ColumnGossipRouterGloasTests
         MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
         RouteStoredRoots(router, roots);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
-            Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(1 + ColumnGossipRouter.StoreDecodesPerSlot));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
+        Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(1 + ColumnGossipRouter.StoreDecodesPerSlot));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.Zero);
     }
 
     /// <summary>A cached non-Gloas root costs no decode, so repeating one must not spend the budget a held block needs.</summary>
@@ -427,11 +399,9 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.SlotMismatch), Is.EqualTo(ColumnGossipRouter.StoreDecodesPerSlot + 1));
-            Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.SlotMismatch), Is.EqualTo(ColumnGossipRouter.StoreDecodesPerSlot + 1));
+        Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
     }
 
     /// <summary>Unknown roots cost the store a key lookup, not a decode, so a flood of them must not deny the decode of a held block.</summary>
@@ -446,11 +416,9 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.PendingGloasCount, Is.EqualTo(ColumnGossipRouter.StoreDecodesPerSlot + 1), "each unknown block is parked");
-            Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.PendingGloasCount, Is.EqualTo(ColumnGossipRouter.StoreDecodesPerSlot + 1), "each unknown block is parked");
+        Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
     }
 
     /// <summary>
@@ -472,12 +440,10 @@ public class ColumnGossipRouterGloasTests
         }
 
         DataColumnSidecarGloas[] pending = pool.GetPendingGloas(UnknownRoot, Column);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pending.Select(static s => DataColumnSidecarGloas.Encode(s)), Has.Some.EqualTo(DataColumnSidecarGloas.Encode(honest)), "the earlier candidate stays");
-            Assert.That(pending, Has.Length.LessThanOrEqualTo(DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey));
-            Assert.That(pool.PendingGloasCount, Is.LessThanOrEqualTo(DataColumnSidecarPool.MaxPendingGloasSidecars));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pending.Select(static s => DataColumnSidecarGloas.Encode(s)), Has.Some.EqualTo(DataColumnSidecarGloas.Encode(honest)), "the earlier candidate stays");
+        Assert.That(pending, Has.Length.LessThanOrEqualTo(DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey));
+        Assert.That(pool.PendingGloasCount, Is.LessThanOrEqualTo(DataColumnSidecarPool.MaxPendingGloasSidecars));
     }
 
     [TestCase(true, MessageValidity.Rejected, MessageValidity.Accepted, TestName = "Forgery before the genuine sidecar of a held block does not suppress it")]
@@ -491,14 +457,12 @@ public class ColumnGossipRouterGloasTests
         MessageValidity first = router.Handle(Column, gloasTopic: true, forgedFirst ? forged : genuine);
         MessageValidity second = router.Handle(Column, gloasTopic: true, forgedFirst ? genuine : forged);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((first, second), Is.EqualTo((firstExpected, secondExpected)));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(forgedFirst ? 0 : 1), "a seen (root, index) is ignored before its KZG check");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedKzgProofs), Is.EqualTo(forgedFirst ? 1 : 0));
-            Assert.That(pool.TryGetGloas(BlockRoot, Column, out DataColumnSidecarGloas? stored) ? stored.KzgProofs![0].AsSpan().ToArray() : null,
-                Is.EqualTo(Sidecar().KzgProofs![0].AsSpan().ToArray()), "the genuine sidecar is stored");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((first, second), Is.EqualTo((firstExpected, secondExpected)));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(forgedFirst ? 0 : 1), "a seen (root, index) is ignored before its KZG check");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedKzgProofs), Is.EqualTo(forgedFirst ? 1 : 0));
+        Assert.That(pool.TryGetGloas(BlockRoot, Column, out DataColumnSidecarGloas? stored) ? stored.KzgProofs![0].AsSpan().ToArray() : null,
+            Is.EqualTo(Sidecar().KzgProofs![0].AsSpan().ToArray()), "the genuine sidecar is stored");
     }
 
     [Test]
@@ -510,12 +474,10 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, Encode(sidecar));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(DataColumnSidecarGloas.Encode(sidecar), Has.Length.EqualTo(44_072), "56 fixed bytes plus 21 cells and proofs of 2096 bytes");
-            Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
-            Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Has.Length.EqualTo(1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataColumnSidecarGloas.Encode(sidecar), Has.Length.EqualTo(44_072), "56 fixed bytes plus 21 cells and proofs of 2096 bytes");
+        Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Has.Length.EqualTo(1));
     }
 
     [Test]
@@ -531,12 +493,10 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: root, mutate: static s => Widen(s, 22))));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlobCount), Is.EqualTo(1));
-            Assert.That(pool.TryGetGloas(root, Column, out _), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlobCount), Is.EqualTo(1));
+        Assert.That(pool.TryGetGloas(root, Column, out _), Is.False);
     }
 
     /// <summary>A held block's bid is within its epoch's blob limit, so a longer column naming it fails verify_data_column_sidecar.</summary>
@@ -550,12 +510,10 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, Encode(Sidecar(slot: BlockSlot + slotsAhead, mutate: static s => Widen(s, 22))));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(expected));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlobCount), Is.EqualTo(1));
-            Assert.That(pool.GetPendingGloas(BlockRoot, Column), Is.Empty, "a column no bid can match is never parked");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(expected));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlobCount), Is.EqualTo(1));
+        Assert.That(pool.GetPendingGloas(BlockRoot, Column), Is.Empty, "a column no bid can match is never parked");
     }
 
     /// <summary>Fulu and Gloas column topics are both live around the fork, so a flood on one must not spend the store reads of the other.</summary>
@@ -578,12 +536,10 @@ public class ColumnGossipRouterGloasTests
             ? router.Handle(Column, gloasTopic: true, Encode(Sidecar()))
             : router.Handle(Column, gloasTopic: false, FuluMessage(fulu, gloasParents[0], proposer: 1000));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(spending, Is.All.EqualTo(MessageValidity.Rejected), "fixture: every spending message reads a held block and is rejected");
-            Assert.That(probe, Is.EqualTo(spendFuluParentReads ? MessageValidity.Accepted : MessageValidity.Rejected), "the probed rule's budget is still whole");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(spending, Is.All.EqualTo(MessageValidity.Rejected), "fixture: every spending message reads a held block and is rejected");
+        Assert.That(probe, Is.EqualTo(spendFuluParentReads ? MessageValidity.Accepted : MessageValidity.Rejected), "the probed rule's budget is still whole");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.Zero);
     }
 
     [TestCase(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF }, TestName = "Stored record that is not snappy is not treated as an unknown block")]
@@ -605,13 +561,11 @@ public class ColumnGossipRouterGloasTests
             router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: UnknownRoot, mutate: s => s.KzgProofs![0] = DistinctProof(variant))));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
-            Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(1), "an unreadable record is decoded once, not once per message");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.UnknownBlock), Is.EqualTo(3));
-            Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty, "a candidate is kept only for a block this node may still receive");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(1), "an unreadable record is decoded once, not once per message");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.UnknownBlock), Is.EqualTo(3));
+        Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty, "a candidate is kept only for a block this node may still receive");
     }
 
     /// <summary>Checks that gloas/p2p-interface.md validation of indexed blocks survives a stored-root flood.</summary>
@@ -631,14 +585,12 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity genuine = router.Handle(Column, gloasTopic: true, Encode(Sidecar()));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.SlotMismatch), Is.EqualTo(roots.Length));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.Zero);
-            Assert.That(blocks.ReadsCount - readsBefore, Is.Zero, "no block record is read for a sidecar");
-            Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.SlotMismatch), Is.EqualTo(roots.Length));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.Zero);
+        Assert.That(blocks.ReadsCount - readsBefore, Is.Zero, "no block record is read for a sidecar");
+        Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.True);
     }
 
     /// <summary>Stored summaries serve a restarted router without another block decode, including one written from a legacy record.</summary>
@@ -668,16 +620,14 @@ public class ColumnGossipRouterGloasTests
 
         MessageValidity genuine = restarted.Handle(Column, gloasTopic: true, Encode(Sidecar()));
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (legacyBlockIndex)
         {
-            if (legacyBlockIndex)
-            {
-                Assert.That(first, Is.EqualTo(MessageValidity.Accepted));
-                Assert.That(readsForFirst, Is.EqualTo(1), "the old record is decoded to write its summary");
-            }
-            Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
-            Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(legacyBlockIndex ? 1 : 0), "the restarted router reads no block record");
+            Assert.That(first, Is.EqualTo(MessageValidity.Accepted));
+            Assert.That(readsForFirst, Is.EqualTo(1), "the old record is decoded to write its summary");
         }
+        Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
+        Assert.That(blocks.ReadsCount - readsBefore, Is.EqualTo(legacyBlockIndex ? 1 : 0), "the restarted router reads no block record");
     }
 
     private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool) Create(BeaconChainSpec? spec = null, ulong? wallSlot = null, ulong[]? subscribed = null,

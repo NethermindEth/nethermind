@@ -37,14 +37,12 @@ public class GossipDigestWindowTests
         (byte[] Digest, bool Gloas) previous = (ForkDigest.Compute(spec, boundary - 1), boundary - 1 >= spec.GloasForkEpoch);
         (byte[] Digest, bool Gloas) next = (ForkDigest.Compute(spec, boundary), boundary >= spec.GloasForkEpoch);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(GossipTopics.DigestsAround(spec, boundary - 2), Is.EqualTo(new[] { previous }), "two epochs before, only the current digest");
-            Assert.That(GossipTopics.DigestsAround(spec, boundary - 1), Is.EqualTo(new[] { previous, next }), "one epoch before, the next digest is joined");
-            Assert.That(GossipTopics.DigestsAround(spec, boundary), Is.EqualTo(new[] { previous, next }), "at the boundary");
-            Assert.That(GossipTopics.DigestsAround(spec, boundary + 1), Is.EqualTo(new[] { previous, next }), "one epoch after, the previous digest is kept");
-            Assert.That(GossipTopics.DigestsAround(spec, boundary + 2), Is.EqualTo(new[] { next }), "two epochs after, the previous digest is dropped");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(GossipTopics.DigestsAround(spec, boundary - 2), Is.EqualTo(new[] { previous }), "two epochs before, only the current digest");
+        Assert.That(GossipTopics.DigestsAround(spec, boundary - 1), Is.EqualTo(new[] { previous, next }), "one epoch before, the next digest is joined");
+        Assert.That(GossipTopics.DigestsAround(spec, boundary), Is.EqualTo(new[] { previous, next }), "at the boundary");
+        Assert.That(GossipTopics.DigestsAround(spec, boundary + 1), Is.EqualTo(new[] { previous, next }), "one epoch after, the previous digest is kept");
+        Assert.That(GossipTopics.DigestsAround(spec, boundary + 2), Is.EqualTo(new[] { next }), "two epochs after, the previous digest is dropped");
     }
 
     [Test]

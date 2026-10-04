@@ -44,14 +44,12 @@ public partial class GossipRouterTests
         bool applied = fixture.Raised.Single().Complete(validity);
         fixture.Receive(fixture.Neighbor, block);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((forwardedWhilePending, pending), Is.EqualTo((false, 1)), "the router holds a deferred message");
-            Assert.That(applied, Is.True);
-            Assert.That(fixture.SentToNeighbor(block), Is.EqualTo(validity == MessageValidity.Accepted), "only an accepted message is sent on");
-            Assert.That(fixture.Router.GetDropCount(GossipDropReason.Duplicate), Is.Zero, "the router caches the id of a message with a verdict, so a copy is not validated again");
-            Assert.That((fixture.Pubsub.PendingValidationCount, fixture.Validation.PendingBytes), Is.EqualTo((0, 0L)), "a given verdict releases its message");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((forwardedWhilePending, pending), Is.EqualTo((false, 1)), "the router holds a deferred message");
+        Assert.That(applied, Is.True);
+        Assert.That(fixture.SentToNeighbor(block), Is.EqualTo(validity == MessageValidity.Accepted), "only an accepted message is sent on");
+        Assert.That(fixture.Router.GetDropCount(GossipDropReason.Duplicate), Is.Zero, "the router caches the id of a message with a verdict, so a copy is not validated again");
+        Assert.That((fixture.Pubsub.PendingValidationCount, fixture.Validation.PendingBytes), Is.EqualTo((0, 0L)), "a given verdict releases its message");
     }
 
     /// <summary>
@@ -74,12 +72,10 @@ public partial class GossipRouterTests
         fixture.Raised[0].Complete(MessageValidity.Ignored);
         fixture.Receive(fixture.Sender, second);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(raisedWhileFull, Is.EqualTo(1), "the message past the bound is not validated");
-            Assert.That(Metrics.BeaconChainGossipThrottled - throttledBefore, Is.EqualTo(1UL), "the throttled message is counted");
-            Assert.That(fixture.Raised, Has.Count.EqualTo(2), "the throttled message is validated once the bound frees");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(raisedWhileFull, Is.EqualTo(1), "the message past the bound is not validated");
+        Assert.That(Metrics.BeaconChainGossipThrottled - throttledBefore, Is.EqualTo(1UL), "the throttled message is counted");
+        Assert.That(fixture.Raised, Has.Count.EqualTo(2), "the throttled message is validated once the bound frees");
     }
 
     /// <summary>
@@ -105,12 +101,10 @@ public partial class GossipRouterTests
         fixture.Receive(fixture.Neighbor, BlockMessage(CurrentSlot - (ulong)share - 1));
         Message vote = new() { Topic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconAggregateAndProof), Data = ByteString.CopyFrom([1]) };
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((share, raisedFromSender), Is.EqualTo((2, 2)), "the message past the peer's share is throttled");
-            Assert.That(fixture.Raised, Has.Count.EqualTo(3), "another peer's message is still validated");
-            Assert.That(fixture.Validation.Verify(fixture.Sender, vote), Is.EqualTo(MessageValidity.Deferred), "a vote is not held to the peer's share");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((share, raisedFromSender), Is.EqualTo((2, 2)), "the message past the peer's share is throttled");
+        Assert.That(fixture.Raised, Has.Count.EqualTo(3), "another peer's message is still validated");
+        Assert.That(fixture.Validation.Verify(fixture.Sender, vote), Is.EqualTo(MessageValidity.Deferred), "a vote is not held to the peer's share");
     }
 
     /// <summary>
@@ -127,12 +121,10 @@ public partial class GossipRouterTests
 
         MessageValidity block = fixture.Validation.Verify(fixture.Sender, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot)) });
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.Validation.MaxPendingPerSource, Is.LessThan(columns.Length), "fixture: more columns than the peer's share");
-            Assert.That(columns, Is.All.EqualTo(MessageValidity.Deferred));
-            Assert.That(block, Is.EqualTo(MessageValidity.Deferred));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.Validation.MaxPendingPerSource, Is.LessThan(columns.Length), "fixture: more columns than the peer's share");
+        Assert.That(columns, Is.All.EqualTo(MessageValidity.Deferred));
+        Assert.That(block, Is.EqualTo(MessageValidity.Deferred));
     }
 
     /// <summary>
@@ -148,12 +140,10 @@ public partial class GossipRouterTests
 
         MessageValidity block = fixture.Validation.Verify(fixture.Neighbor, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot)) });
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(votes, Is.EqualTo(new[] { MessageValidity.Deferred, MessageValidity.Deferred, MessageValidity.Throttled }));
-            Assert.That(block, Is.EqualTo(MessageValidity.Deferred));
-            Assert.That((fixture.Validation.PendingVotes, fixture.Validation.Pending), Is.EqualTo((2, 1)), "each deferred message is reserved before it is dispatched");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(votes, Is.EqualTo(new[] { MessageValidity.Deferred, MessageValidity.Deferred, MessageValidity.Throttled }));
+        Assert.That(block, Is.EqualTo(MessageValidity.Deferred));
+        Assert.That((fixture.Validation.PendingVotes, fixture.Validation.Pending), Is.EqualTo((2, 1)), "each deferred message is reserved before it is dispatched");
     }
 
     /// <summary>
@@ -181,15 +171,13 @@ public partial class GossipRouterTests
         int pendingAfter = fixture.Pubsub.PendingValidationCount;
         fixture.Receive(fixture.Neighbor, block);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(lateApplied, Is.False);
-            Assert.That(fixture.SentToNeighbor(block), Is.False, "a late verdict forwards nothing");
-            Assert.That((pendingAfter, fixture.Validation.PendingBytes), Is.EqualTo((0, 0L)));
-            Assert.That(Metrics.BeaconChainGossipVerdictsAbandoned - abandonedBefore, Is.EqualTo(1UL));
-            Assert.That(Metrics.BeaconChainGossipVerdictsLate - lateBefore, Is.EqualTo(1UL));
-            Assert.That(fixture.Router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1), "the router validated the copy again, as it cached no id for the abandoned message");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(lateApplied, Is.False);
+        Assert.That(fixture.SentToNeighbor(block), Is.False, "a late verdict forwards nothing");
+        Assert.That((pendingAfter, fixture.Validation.PendingBytes), Is.EqualTo((0, 0L)));
+        Assert.That(Metrics.BeaconChainGossipVerdictsAbandoned - abandonedBefore, Is.EqualTo(1UL));
+        Assert.That(Metrics.BeaconChainGossipVerdictsLate - lateBefore, Is.EqualTo(1UL));
+        Assert.That(fixture.Router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1), "the router validated the copy again, as it cached no id for the abandoned message");
     }
 
     /// <summary>
@@ -211,12 +199,10 @@ public partial class GossipRouterTests
         timestamper.UtcNow = timestamper.UtcNow.AddSeconds(Spec.SecondsPerSlot);
         router.ReleaseDueMessages();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((validity, handedOff, raisedEarly), Is.EqualTo((MessageValidity.Ignored, false, 0)), "the caller gives the early block's IGNORE at once");
-            Assert.That(raised, Has.Count.EqualTo(1), "the held block is raised once its slot starts");
-            Assert.That(raised.SingleOrDefault(), Is.Not.SameAs(verdict), "with a verdict no router waits on");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((validity, handedOff, raisedEarly), Is.EqualTo((MessageValidity.Ignored, false, 0)), "the caller gives the early block's IGNORE at once");
+        Assert.That(raised, Has.Count.EqualTo(1), "the held block is raised once its slot starts");
+        Assert.That(raised.SingleOrDefault(), Is.Not.SameAs(verdict), "with a verdict no router waits on");
     }
 
     /// <summary>
@@ -266,12 +252,10 @@ public partial class GossipRouterTests
         time.Now += TimeSpan.FromSeconds(3);
         fixture.Validation.Verify(fixture.Neighbor, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot - 2)) });
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((pending, votes), Is.EqualTo((1, 1)), "fixture: both messages reserved and never dispatched");
-            Assert.That((pendingBeforeExpiry, votesBeforeExpiry), Is.EqualTo((2, 1)), "a reservation lasts as long as the router may still dispatch its message");
-            Assert.That((fixture.Validation.Pending, fixture.Validation.PendingVotes), Is.EqualTo((2, 0)), "the expired reservations are released, the later ones kept");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((pending, votes), Is.EqualTo((1, 1)), "fixture: both messages reserved and never dispatched");
+        Assert.That((pendingBeforeExpiry, votesBeforeExpiry), Is.EqualTo((2, 1)), "a reservation lasts as long as the router may still dispatch its message");
+        Assert.That((fixture.Validation.Pending, fixture.Validation.PendingVotes), Is.EqualTo((2, 0)), "the expired reservations are released, the later ones kept");
     }
 
     /// <summary>A clock a test moves by hand.</summary>
@@ -312,12 +296,10 @@ public partial class GossipRouterTests
         await validate(await pending.Task.WaitAsync(TimeSpan.FromSeconds(10)));
         await pubsub.Heartbeat();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(given, Is.EqualTo(expected), "the worker must distinguish invalid input from unavailable local data");
-            Assert.That(routing.Mesh[topic].Contains(sender), Is.EqualTo(expected != MessageValidity.Rejected), "invalid-message scoring charges the delivering peer");
-            Assert.That(routing.Mesh[topic], Does.Contain(neighbor), "a peer that did not deliver the invalid message keeps its score");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(given, Is.EqualTo(expected), "the worker must distinguish invalid input from unavailable local data");
+        Assert.That(routing.Mesh[topic].Contains(sender), Is.EqualTo(expected != MessageValidity.Rejected), "invalid-message scoring charges the delivering peer");
+        Assert.That(routing.Mesh[topic], Does.Contain(neighbor), "a peer that did not deliver the invalid message keeps its score");
     }
 
     private static readonly string BlockTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);

@@ -39,12 +39,10 @@ public class ColumnGossipRouterParentSlotTests
 
         MessageValidity validity = router.Handle(Subnet, gloasTopic: false, Message(sidecar, parent, proposer: 0));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(expected));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.NotAboveParentSlot), Is.EqualTo(expected == MessageValidity.Rejected ? 1 : 0));
-            Assert.That(received, Is.EqualTo(expected == MessageValidity.Rejected ? 0 : 1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(expected));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.NotAboveParentSlot), Is.EqualTo(expected == MessageValidity.Rejected ? 1 : 0));
+        Assert.That(received, Is.EqualTo(expected == MessageValidity.Rejected ? 0 : 1));
     }
 
     [Test]
@@ -71,14 +69,12 @@ public class ColumnGossipRouterParentSlotTests
         clock.UtcNow = clock.UtcNow.AddSeconds(Spec.SecondsPerSlot);
         MessageValidity nextSlot = router.Handle(Subnet, gloasTopic: false, Message(sidecar, parents[budget], proposer: 1001));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(verdicts[..budget], Is.All.EqualTo(MessageValidity.Rejected));
-            Assert.That(verdicts[budget], Is.EqualTo(MessageValidity.Ignored), "past the budget the parent is not decoded and the rule is skipped");
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.NotAboveParentSlot), Is.EqualTo(budget + 2));
-            Assert.That(cachedAfterSpent, Is.EqualTo(MessageValidity.Rejected));
-            Assert.That(nextSlot, Is.EqualTo(MessageValidity.Rejected));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdicts[..budget], Is.All.EqualTo(MessageValidity.Rejected));
+        Assert.That(verdicts[budget], Is.EqualTo(MessageValidity.Ignored), "past the budget the parent is not decoded and the rule is skipped");
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.NotAboveParentSlot), Is.EqualTo(budget + 2));
+        Assert.That(cachedAfterSpent, Is.EqualTo(MessageValidity.Rejected));
+        Assert.That(nextSlot, Is.EqualTo(MessageValidity.Rejected));
     }
 
     // Every column of a block names the same parent, so its cached slot must answer the rule without a store lookup.

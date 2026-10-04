@@ -184,13 +184,11 @@ public class GloasForkTransitionTests
         PayloadTimelinessCommittee.MerkleizeVector(nullWindow, out UInt256 nullWindowRoot);
         PayloadTimelinessCommittee.MerkleizeVector(zeroWindow, out UInt256 zeroWindowRoot);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(SszRoots.HashTreeRoot(nullCommittee), Is.EqualTo(SszRoots.HashTreeRoot(zeroCommittee)));
-            Assert.That(PayloadTimelinessCommittee.Encode(nullCommittee), Is.EqualTo(PayloadTimelinessCommittee.Encode(zeroCommittee)));
-            Assert.That(nullWindowRoot, Is.EqualTo(zeroWindowRoot));
-            Assert.That(PayloadTimelinessCommittee.Encode(nullWindow), Is.EqualTo(PayloadTimelinessCommittee.Encode(zeroWindow)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(SszRoots.HashTreeRoot(nullCommittee), Is.EqualTo(SszRoots.HashTreeRoot(zeroCommittee)));
+        Assert.That(PayloadTimelinessCommittee.Encode(nullCommittee), Is.EqualTo(PayloadTimelinessCommittee.Encode(zeroCommittee)));
+        Assert.That(nullWindowRoot, Is.EqualTo(zeroWindowRoot));
+        Assert.That(PayloadTimelinessCommittee.Encode(nullWindow), Is.EqualTo(PayloadTimelinessCommittee.Encode(zeroWindow)));
     }
 
     // get_index_for_new_builder (specs/gloas/beacon-chain.md): a slot is reusable from its withdrawable

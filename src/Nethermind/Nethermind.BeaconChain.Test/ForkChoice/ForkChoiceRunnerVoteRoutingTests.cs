@@ -59,12 +59,10 @@ public class ForkChoiceRunnerVoteRoutingTests
 
         ProtoNode parentNode = runner.EnumerateAncestors(parent.Root).First();
         ProtoNode childNode = runner.EnumerateAncestors(child.Root).First();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((parentNode.IsGloas, childNode.IsGloas), Is.EqualTo((true, true)));
-            Assert.That(child.Bid.ParentBlockHash == parent.Bid.BlockHash, Is.EqualTo(full), "fixture: the child's bid names its parent's payload only when full");
-            Assert.That(childNode.ParentPayloadStatus, Is.EqualTo(full ? ForkChoicePayloadStatus.Full : ForkChoicePayloadStatus.Empty));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((parentNode.IsGloas, childNode.IsGloas), Is.EqualTo((true, true)));
+        Assert.That(child.Bid.ParentBlockHash == parent.Bid.BlockHash, Is.EqualTo(full), "fixture: the child's bid names its parent's payload only when full");
+        Assert.That(childNode.ParentPayloadStatus, Is.EqualTo(full ? ForkChoicePayloadStatus.Full : ForkChoicePayloadStatus.Empty));
     }
 
     [TestCaseSource(nameof(Votes))]
@@ -102,11 +100,9 @@ public class ForkChoiceRunnerVoteRoutingTests
 
         ProtoNode node = runner.EnumerateAncestors(root).First();
         const ulong weight = CommitteeSize * EffectiveBalance;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(node.Weight, Is.EqualTo(weight));
-            Assert.That(node.EmptyWeight, Is.EqualTo(supported == ForkChoicePayloadStatus.Empty ? weight : 0));
-            Assert.That(node.FullWeight, Is.EqualTo(supported == ForkChoicePayloadStatus.Full ? weight : 0));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(node.Weight, Is.EqualTo(weight));
+        Assert.That(node.EmptyWeight, Is.EqualTo(supported == ForkChoicePayloadStatus.Empty ? weight : 0));
+        Assert.That(node.FullWeight, Is.EqualTo(supported == ForkChoicePayloadStatus.Full ? weight : 0));
     }
 }

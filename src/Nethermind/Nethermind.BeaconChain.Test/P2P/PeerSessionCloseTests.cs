@@ -116,12 +116,10 @@ public class PeerSessionCloseTests
 
         manager.AddPeerForTest(session, PeerAddress, Status);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(manager.PeerCount, Is.Zero);
-            Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(dropped + 1));
-            Assert.That(DroppedAsSessionClosed(), Is.EqualTo(droppedAsClosed + 1), "the per-reason series sum to the dropped total");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(manager.PeerCount, Is.Zero);
+        Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(dropped + 1));
+        Assert.That(DroppedAsSessionClosed(), Is.EqualTo(droppedAsClosed + 1), "the per-reason series sum to the dropped total");
     }
 
     public enum Violation
@@ -152,11 +150,9 @@ public class PeerSessionCloseTests
 
         // The ban is set just after the disconnect is counted, which is what the rounds wait for.
         await WaitUntilAsync(() => manager.IsBannedForTest(PeerId), "closing the session after a bad reply escaped the ban", token, ReplacementBound);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(discovery.DialHistory.Quality(PeerAddress), Is.LessThan(0), "its address is not dialed again at once");
-            Assert.That(manager.GetPeerDiagnostics().Single().DisconnectCount, Is.EqualTo(node.Config.FaultDisconnectsBeforeBan), "one disconnect per session");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(discovery.DialHistory.Quality(PeerAddress), Is.LessThan(0), "its address is not dialed again at once");
+        Assert.That(manager.GetPeerDiagnostics().Single().DisconnectCount, Is.EqualTo(node.Config.FaultDisconnectsBeforeBan), "one disconnect per session");
     }
 
     [Test]
@@ -337,12 +333,9 @@ public class PeerSessionCloseTests
             throw new TimeoutException("the dial never reached the status check");
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-
-            Assert.That(admitted, Is.False, "a peer whose session closed during admission is not reported as admitted");
-            Assert.That(manager.PeerCount, Is.Zero, "nor left in the pool");
-            Assert.That(logger.Messages, Has.None.StartsWith("Connected to beacon chain peer"), "nor logged as connected");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(admitted, Is.False, "a peer whose session closed during admission is not reported as admitted");
+        Assert.That(manager.PeerCount, Is.Zero, "nor left in the pool");
+        Assert.That(logger.Messages, Has.None.StartsWith("Connected to beacon chain peer"), "nor logged as connected");
     }
 }

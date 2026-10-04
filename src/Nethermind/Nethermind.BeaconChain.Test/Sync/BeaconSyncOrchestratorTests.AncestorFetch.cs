@@ -51,12 +51,10 @@ public partial class BeaconSyncOrchestratorTests
         await gossip;
 
         Hash256[] chainRoots = [.. blocks.Select(static b => b.ComputeMessageRoot())];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Imports.Select(static i => i.Root).Where(chainRoots.Contains), Is.EqualTo(chainRoots), "the fetched ancestors import oldest first, then the held gossip block");
-            Assert.That(ByRootRequests(peer), Is.EqualTo(2));
-            Assert.That(harness.Orchestrator.AncestorFetchesInFlight, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Imports.Select(static i => i.Root).Where(chainRoots.Contains), Is.EqualTo(chainRoots), "the fetched ancestors import oldest first, then the held gossip block");
+        Assert.That(ByRootRequests(peer), Is.EqualTo(2));
+        Assert.That(harness.Orchestrator.AncestorFetchesInFlight, Is.Zero);
     }
 
     // Blocks whose walks reach one unknown root share one request for it, also once the slot's budget has been renewed, and
@@ -93,11 +91,9 @@ public partial class BeaconSyncOrchestratorTests
         CompleteOutstandingFetches(fetches);
         await harness.Orchestrator.SettleWithinAsync(maxPasses: 10, cts.Token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(requestsWhileWaiting, Is.EqualTo(deeperAncestorFetched ? 2 : 1));
-            Assert.That(harness.Importer.Known, Does.Contain(first.ComputeMessageRoot()).And.Contain(second.ComputeMessageRoot()));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(requestsWhileWaiting, Is.EqualTo(deeperAncestorFetched ? 2 : 1));
+        Assert.That(harness.Importer.Known, Does.Contain(first.ComputeMessageRoot()).And.Contain(second.ComputeMessageRoot()));
     }
 
     [Test]
@@ -115,12 +111,10 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(slot, i), cts.Token);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ByRootRequests(peer), Is.EqualTo(Bound));
-            Assert.That(harness.Orchestrator.AncestorFetchesInFlight, Is.EqualTo(Bound));
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(1), "the block past the bound is held for its parent");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ByRootRequests(peer), Is.EqualTo(Bound));
+        Assert.That(harness.Orchestrator.AncestorFetchesInFlight, Is.EqualTo(Bound));
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(1), "the block past the bound is held for its parent");
     }
 
     // A fetch can outlast the ancestor's arrival by another route; its block then imports at once, though no peer returned the
@@ -152,14 +146,12 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Unavailable.Remove(parentRoot);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, cts.Token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(importedBeforeFetchEnded, Is.EqualTo(!parentWaitsForData), "the block does not wait for the fetch to end");
-            Assert.That(heldAfterFetch, Is.EqualTo(parentWaitsForData ? 1 : 0), "the block waits for its parent's retry");
-            Assert.That(fetchesWhileWaiting, Is.EqualTo(1), "the fetch still running keeps its place in the bound");
-            Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero, "nothing is held for a parent that already imported");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(importedBeforeFetchEnded, Is.EqualTo(!parentWaitsForData), "the block does not wait for the fetch to end");
+        Assert.That(heldAfterFetch, Is.EqualTo(parentWaitsForData ? 1 : 0), "the block waits for its parent's retry");
+        Assert.That(fetchesWhileWaiting, Is.EqualTo(1), "the fetch still running keeps its place in the bound");
+        Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero, "nothing is held for a parent that already imported");
     }
 
     // A forgery of the ancestor queued while its fetch ran does not cost the genuine copy the fetch returns: that copy waits beside
@@ -192,12 +184,10 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Unavailable.Remove(parentRoot);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, cts.Token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(waiting, Is.EqualTo(2), "the fetched copy waits beside the forgery");
-            Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(child.ComputeMessageRoot()));
-            Assert.That(harness.Importer.ByRootImports.Count(r => r == parentRoot), Is.EqualTo(2), "the genuine copy is tried once on arrival and once in the forgery's place");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(waiting, Is.EqualTo(2), "the fetched copy waits beside the forgery");
+        Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(child.ComputeMessageRoot()));
+        Assert.That(harness.Importer.ByRootImports.Count(r => r == parentRoot), Is.EqualTo(2), "the genuine copy is tried once on arrival and once in the forgery's place");
     }
 
     // An ancestor queued from gossip while its fetch ran, and fetched as the same signed block, retries as fetched, also when it
@@ -232,11 +222,9 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.RegenerationRefused.Remove(parentRoot);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, cts.Token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(child.ComputeMessageRoot()));
-            Assert.That(harness.Importer.ByRootImports, Does.Contain(parentRoot), "the waiting copy retries as fetched");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(child.ComputeMessageRoot()));
+        Assert.That(harness.Importer.ByRootImports, Does.Contain(parentRoot), "the waiting copy retries as fetched");
     }
 
     // A fetched ancestor that waits for a retry holds the walk's blocks until it imports, whatever it waits for.
@@ -267,12 +255,10 @@ public partial class BeaconSyncOrchestratorTests
         waitsFor.Remove(parentRoot);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(held, Is.EqualTo(1), "the gossip block waits for its fetched parent's retry");
-            Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(child.ComputeMessageRoot()));
-            Assert.That(harness.Importer.ByRootImports, Does.Contain(parentRoot), "the fetched parent retries as fetched");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(held, Is.EqualTo(1), "the gossip block waits for its fetched parent's retry");
+        Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(child.ComputeMessageRoot()));
+        Assert.That(harness.Importer.ByRootImports, Does.Contain(parentRoot), "the fetched parent retries as fetched");
     }
 
     public enum RetryCause
@@ -301,12 +287,10 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(slot, i), cts.Token);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Orchestrator.AncestorFetchesInFlight, Is.Zero);
-            Assert.That(ByRootRequests(peer), Is.EqualTo(Faults), "faulted fetches do not use up the bound");
-            Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Faults), "each block is held for range sync");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Orchestrator.AncestorFetchesInFlight, Is.Zero);
+        Assert.That(ByRootRequests(peer), Is.EqualTo(Faults), "faulted fetches do not use up the bound");
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Faults), "each block is held for range sync");
     }
 
     /// <summary>A node near the head with one peer whose by-root request for each root waits until the test completes it.</summary>

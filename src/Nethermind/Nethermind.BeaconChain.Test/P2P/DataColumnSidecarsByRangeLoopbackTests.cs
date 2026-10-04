@@ -134,11 +134,9 @@ public class DataColumnSidecarsByRangeLoopbackTests
 
         PartialSidecarsException? partial = Assert.CatchAsync<PartialSidecarsException>(async () => await client.RequestDataColumnSidecarsByRangeAsync(session, 5, 1, [3, 4], default));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(partial!.Received, Is.EqualTo(new[] { delivered }));
-            Assert.That(partial.Message, Does.StartWith("Truncated response chunk"), "the failure text is the cause's, so it is classified as before");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(partial!.Received, Is.EqualTo(new[] { delivered }));
+        Assert.That(partial.Message, Does.StartWith("Truncated response chunk"), "the failure text is the cause's, so it is classified as before");
     }
 
     /// <summary>A stream that never opens must be cut at the fixed request timeout, not at the budget scaled for the chunks it would have carried.</summary>

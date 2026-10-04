@@ -112,12 +112,10 @@ public class GloasCustodySamplingAvailabilityTests
         Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
         bool available = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.True);
-            Assert.That(Custody.SampledColumns.All(c => pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, c, out _)), Is.True, "verified sidecars are served");
-            Assert.That(pool.PendingGloasCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.True);
+        Assert.That(Custody.SampledColumns.All(c => pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, c, out _)), Is.True, "verified sidecars are served");
+        Assert.That(pool.PendingGloasCount, Is.Zero);
     }
 
     /// <summary>
@@ -138,12 +136,10 @@ public class GloasCustodySamplingAvailabilityTests
 
         bool available = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.False);
-            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, column, out _), Is.False, wrongSlot ? null : "an unverified sidecar must never reach req/resp");
-            Assert.That(pool.PendingGloasCount, Is.Zero, wrongSlot ? null : "a candidate that fails against the block's bid can never verify");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.False);
+        Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, column, out _), Is.False, wrongSlot ? null : "an unverified sidecar must never reach req/resp");
+        Assert.That(pool.PendingGloasCount, Is.Zero, wrongSlot ? null : "a candidate that fails against the block's bid can never verify");
     }
 
     /// <summary>
@@ -165,12 +161,10 @@ public class GloasCustodySamplingAvailabilityTests
 
         bool available = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(available, Is.True);
-            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, column, out DataColumnSidecarGloas? served) ? served : null, Is.SameAs(valid));
-            Assert.That(pool.PendingGloasCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(available, Is.True);
+        Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, column, out DataColumnSidecarGloas? served) ? served : null, Is.SameAs(valid));
+        Assert.That(pool.PendingGloasCount, Is.Zero);
     }
 
     /// <summary>
@@ -190,12 +184,10 @@ public class GloasCustodySamplingAvailabilityTests
         timestamper.Add(epoch);
         bool oneEpochPast = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(atGenesis, Is.False, "inside the window, with no identity, the rule fails closed");
-            Assert.That(atTheWindowEdge, Is.False);
-            Assert.That(oneEpochPast, Is.True, "the network no longer guarantees to serve these columns, so none can be demanded");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(atGenesis, Is.False, "inside the window, with no identity, the rule fails closed");
+        Assert.That(atTheWindowEdge, Is.False);
+        Assert.That(oneEpochPast, Is.True, "the network no longer guarantees to serve these columns, so none can be demanded");
     }
 
     /// <summary>Typed as the <see cref="ExecutionPayloadEnvelopeImporter"/> delegate, so the rule's signature cannot drift from it.</summary>

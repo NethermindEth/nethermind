@@ -294,12 +294,10 @@ public class ForkDispatchTests
         byte[] digest = ForkDigest.Compute(Spec, epoch);
 
         (byte[] Digest, bool Gloas)[] window = GossipTopics.DigestsAround(Spec, epoch);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Spec.VersionForEpoch(epoch), Is.EqualTo(version), "fork version");
-            Assert.That(window.Single(d => d.Digest.AsSpan().SequenceEqual(digest)).Gloas, Is.EqualTo(gloasShapes), "gossip message shapes");
-            Assert.That(Forks().Where(other => other != fork).Select(other => ForkDigest.Compute(Spec, Expect(ForkEpochs, other))), Has.None.EqualTo(digest), "digest is unique to the fork");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Spec.VersionForEpoch(epoch), Is.EqualTo(version), "fork version");
+        Assert.That(window.Single(d => d.Digest.AsSpan().SequenceEqual(digest)).Gloas, Is.EqualTo(gloasShapes), "gossip message shapes");
+        Assert.That(Forks().Where(other => other != fork).Select(other => ForkDigest.Compute(Spec, Expect(ForkEpochs, other))), Has.None.EqualTo(digest), "digest is unique to the fork");
     }
 
     [Test]

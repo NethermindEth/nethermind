@@ -248,13 +248,11 @@ public class RandaoMixAndEpochCacheTests
         int[] firstIndices = cache.GetSyncCommitteeIndices(first, validators);
         int[] secondIndices = cache.GetSyncCommitteeIndices(second, validators);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstIndices, Is.EqualTo(new[] { 2, 0, 2 }));
-            Assert.That(secondIndices, Is.EqualTo(new[] { 3, 1 }));
-            Assert.That(cache.GetSyncCommitteeIndices(second, validators), Is.SameAs(secondIndices), "the same committee reuses its indices");
-            Assert.Throws<BeaconStateException>(() => cache.GetSyncCommitteeIndices(new SyncCommittee { Pubkeys = [Pubkey(9)] }, validators));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(firstIndices, Is.EqualTo(new[] { 2, 0, 2 }));
+        Assert.That(secondIndices, Is.EqualTo(new[] { 3, 1 }));
+        Assert.That(cache.GetSyncCommitteeIndices(second, validators), Is.SameAs(secondIndices), "the same committee reuses its indices");
+        Assert.Throws<BeaconStateException>(() => cache.GetSyncCommitteeIndices(new SyncCommittee { Pubkeys = [Pubkey(9)] }, validators));
     }
 
     /// <summary>A member missing from the registry maps to -1 without failing, and that incomplete map is not reused for a later registry.</summary>
@@ -267,12 +265,10 @@ public class RandaoMixAndEpochCacheTests
 
         int[] missing = cache.FindSyncCommitteeIndices(committee, validators);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(missing, Is.EqualTo(new[] { 1, -1 }));
-            Assert.Throws<BeaconStateException>(() => cache.GetSyncCommitteeIndices(committee, validators));
-            Assert.That(cache.GetSyncCommitteeIndices(committee, [.. validators, new Validator { Pubkey = Pubkey(9) }]), Is.EqualTo(new[] { 1, 2 }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(missing, Is.EqualTo(new[] { 1, -1 }));
+        Assert.Throws<BeaconStateException>(() => cache.GetSyncCommitteeIndices(committee, validators));
+        Assert.That(cache.GetSyncCommitteeIndices(committee, [.. validators, new Validator { Pubkey = Pubkey(9) }]), Is.EqualTo(new[] { 1, 2 }));
     }
 
     private static BlsPublicKey Pubkey(byte b)

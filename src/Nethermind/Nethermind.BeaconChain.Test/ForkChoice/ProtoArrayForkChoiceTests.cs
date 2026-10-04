@@ -78,14 +78,12 @@ public class ProtoArrayForkChoiceTests
                 unrealizedJustified: unrealized, unrealizedFinalized: anchor),
             1, anchor, anchor);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(forkChoice.GetParentRoot(GetRoot(2)), Is.EqualTo(GetRoot(0)), "child's parent");
-            Assert.That(forkChoice.GetParentRoot(GetRoot(0)), Is.Null, "anchor has no parent");
-            Assert.That(forkChoice.GetParentRoot(GetRoot(9)), Is.Null, "unknown block");
-            Assert.That(forkChoice.GetUnrealizedJustifiedCheckpoint(GetRoot(2)), Is.EqualTo(unrealized), "carried through from ProcessBlock");
-            Assert.That(forkChoice.GetUnrealizedJustifiedCheckpoint(GetRoot(9)), Is.Null, "unknown block");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forkChoice.GetParentRoot(GetRoot(2)), Is.EqualTo(GetRoot(0)), "child's parent");
+        Assert.That(forkChoice.GetParentRoot(GetRoot(0)), Is.Null, "anchor has no parent");
+        Assert.That(forkChoice.GetParentRoot(GetRoot(9)), Is.Null, "unknown block");
+        Assert.That(forkChoice.GetUnrealizedJustifiedCheckpoint(GetRoot(2)), Is.EqualTo(unrealized), "carried through from ProcessBlock");
+        Assert.That(forkChoice.GetUnrealizedJustifiedCheckpoint(GetRoot(9)), Is.Null, "unknown block");
     }
 
     /// <summary>
@@ -104,11 +102,9 @@ public class ProtoArrayForkChoiceTests
         JustifiedBalances balances = JustifiedBalances.FromEffectiveBalances([3200, 3200]);
 
         // total = 6400; one committee's share = 6400 / 32 = 200; 20% of that = 40, 160% of that = 320.
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(forkChoice.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgHeadWeightThresholdPercent), Is.EqualTo(40ul));
-            Assert.That(forkChoice.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgParentWeightThresholdPercent), Is.EqualTo(320ul));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forkChoice.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgHeadWeightThresholdPercent), Is.EqualTo(40ul));
+        Assert.That(forkChoice.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgParentWeightThresholdPercent), Is.EqualTo(320ul));
     }
 
     /// <summary>

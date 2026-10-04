@@ -112,12 +112,10 @@ public class PeerBandTests
         // A content violation is never kept at the peer floor, so the last failure drops the peer.
         for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new Eth2ReqRespException("malformed reply"), 0, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(admitted, Is.EqualTo((1, 1, connectedBefore + 1)), "after the admission");
-            Assert.That((manager.PeerCount, Metrics.BeaconChainPeerCount), Is.EqualTo((0, 0)), "after the drop");
-            Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(droppedBefore + 1));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(admitted, Is.EqualTo((1, 1, connectedBefore + 1)), "after the admission");
+        Assert.That((manager.PeerCount, Metrics.BeaconChainPeerCount), Is.EqualTo((0, 0)), "after the drop");
+        Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(droppedBefore + 1));
     }
 
     [Test]
@@ -165,15 +163,13 @@ public class PeerBandTests
         manager.RecordDisconnect("peerA", messagesSent: 7, failuresReported: 2, GoodbyeReason.Fault, "repeated failures");
 
         PeerManager.PeerDiagnostics diagnostics = manager.GetPeerDiagnostics().Single(d => d.PeerId == "peerA");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(diagnostics.Connected, Is.False);
-            Assert.That(diagnostics.Banned, Is.True);
-            Assert.That(diagnostics.DisconnectCount, Is.EqualTo(1));
-            Assert.That(diagnostics.MessagesSent, Is.EqualTo(7));
-            Assert.That(diagnostics.FailuresReported, Is.EqualTo(2));
-            Assert.That(diagnostics.LastDisconnectReason, Is.EqualTo("Fault"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(diagnostics.Connected, Is.False);
+        Assert.That(diagnostics.Banned, Is.True);
+        Assert.That(diagnostics.DisconnectCount, Is.EqualTo(1));
+        Assert.That(diagnostics.MessagesSent, Is.EqualTo(7));
+        Assert.That(diagnostics.FailuresReported, Is.EqualTo(2));
+        Assert.That(diagnostics.LastDisconnectReason, Is.EqualTo("Fault"));
     }
 
     public enum CeilingAdmission { SequentialDials, ConcurrentDials, StaticReconnect, InboundSession, InboundWithFaultHistory }
@@ -653,11 +649,9 @@ public class PeerBandTests
             manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "repeated failures, last: request timed out", unresponsive: true);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(manager.IsBannedForTest("peerA"), Is.False);
-            Assert.That(manager.GetPeerDiagnostics().Single(d => d.PeerId == "peerA").DisconnectCount, Is.EqualTo(10), "the drops stay in the diagnostics");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(manager.IsBannedForTest("peerA"), Is.False);
+        Assert.That(manager.GetPeerDiagnostics().Single(d => d.PeerId == "peerA").DisconnectCount, Is.EqualTo(10), "the drops stay in the diagnostics");
     }
 
     [Test]
@@ -758,25 +752,23 @@ public class PeerBandTests
 
         HashSet<string> remaining = [.. manager.GetPeerDiagnostics().Select(d => d.PeerId)];
         bool firstBanIsActive = scenario == BanTableScenario.ActiveBan;
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(remaining.Count, Is.EqualTo(capacity), scenario == BanTableScenario.AllBanned ? "a table of active bans must not grow past the cap" : null);
+        Assert.That(remaining.Contains("peer-0"), Is.EqualTo(firstBanIsActive), scenario switch
         {
-            Assert.That(remaining.Count, Is.EqualTo(capacity), scenario == BanTableScenario.AllBanned ? "a table of active bans must not grow past the cap" : null);
-            Assert.That(remaining.Contains("peer-0"), Is.EqualTo(firstBanIsActive), scenario switch
-            {
-                BanTableScenario.AllBanned => "the ban closest to running out is the one that goes",
-                BanTableScenario.ExpiredBan => "a ban that has run out protects nothing, and this entry is the oldest",
-                BanTableScenario.NoBans => "the oldest tracked non-banned id must be the one evicted",
-                _ => "an active ban protects the oldest entry from eviction",
-            });
-            Assert.That(remaining.Contains("peer-1"), Is.EqualTo(!firstBanIsActive), scenario switch
-            {
-                BanTableScenario.ActiveBan => "the oldest entry that is not banned goes instead",
-                BanTableScenario.NoBans => "only the oldest entry is evicted, not an arbitrary one",
-                _ => null,
-            });
-            Assert.That(remaining.Contains("peer-new"), Is.True);
-            if (firstBanIsActive) Assert.That(manager.IsBannedForTest("peer-0"), Is.True, "a flood of new ids must not push an active ban out of the table");
-        }
+            BanTableScenario.AllBanned => "the ban closest to running out is the one that goes",
+            BanTableScenario.ExpiredBan => "a ban that has run out protects nothing, and this entry is the oldest",
+            BanTableScenario.NoBans => "the oldest tracked non-banned id must be the one evicted",
+            _ => "an active ban protects the oldest entry from eviction",
+        });
+        Assert.That(remaining.Contains("peer-1"), Is.EqualTo(!firstBanIsActive), scenario switch
+        {
+            BanTableScenario.ActiveBan => "the oldest entry that is not banned goes instead",
+            BanTableScenario.NoBans => "only the oldest entry is evicted, not an arbitrary one",
+            _ => null,
+        });
+        Assert.That(remaining.Contains("peer-new"), Is.True);
+        if (firstBanIsActive) Assert.That(manager.IsBannedForTest("peer-0"), Is.True, "a flood of new ids must not push an active ban out of the table");
     }
 
     [Test]

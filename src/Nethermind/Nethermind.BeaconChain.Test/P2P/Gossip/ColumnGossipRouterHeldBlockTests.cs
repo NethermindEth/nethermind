@@ -47,11 +47,9 @@ public class ColumnGossipRouterHeldBlockTests
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, Snappy.CompressToArray(DataColumnSidecarGloas.Encode(sidecar)));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validity, Is.EqualTo(expected));
-            Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedStructure), Is.EqualTo(1));
-            Assert.That(pool.GetPendingGloas(root, outOfRangeIndex), Is.Empty, "a malformed sidecar is never parked");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validity, Is.EqualTo(expected));
+        Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedStructure), Is.EqualTo(1));
+        Assert.That(pool.GetPendingGloas(root, outOfRangeIndex), Is.Empty, "a malformed sidecar is never parked");
     }
 }

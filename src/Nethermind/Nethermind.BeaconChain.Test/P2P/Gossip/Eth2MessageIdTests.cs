@@ -27,11 +27,9 @@ public class Eth2MessageIdTests
     public void Computes_known_vectors(string dataHex, string expectedIdHex)
     {
         byte[] id = Eth2MessageId.Compute(Topic, Bytes.FromHexString(dataHex));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(id, Has.Length.EqualTo(20));
-            Assert.That(id, Is.EqualTo(Bytes.FromHexString(expectedIdHex)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(id, Has.Length.EqualTo(20));
+        Assert.That(id, Is.EqualTo(Bytes.FromHexString(expectedIdHex)));
     }
 
     [Test]
@@ -70,11 +68,9 @@ public class Eth2MessageIdTests
     public void Capped_decompression_reports_the_outcome(string dataHex, SnappyDecodeResult expected, string? decompressedHex)
     {
         SnappyDecodeResult result = Eth2MessageId.TryDecompress(Bytes.FromHexString(dataHex), Eth2MessageId.MaxGossipSize, out byte[]? decompressed);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(expected));
-            Assert.That(decompressed, Is.EqualTo(decompressedHex is null ? null : Bytes.FromHexString(decompressedHex)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(expected));
+        Assert.That(decompressed, Is.EqualTo(decompressedHex is null ? null : Bytes.FromHexString(decompressedHex)));
     }
 
     /// <summary>The expansion bound must never refuse real data: a stream of 3-byte copies of 64 bytes is the densest snappy can encode.</summary>

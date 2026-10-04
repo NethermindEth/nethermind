@@ -211,18 +211,16 @@ public class ForkChoiceRunnerTests
         TickToSlot(runner, 3 * Presets.SlotsPerEpoch);
         Hash256 head = runner.GetHead();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(headAtFork, Is.EqualTo(chain.First.Root));
-            Assert.That(justifiedBeforePullUp, Is.EqualTo(new CheckpointRef(0, chain.AnchorRoot)), "fixture bug: the justification must arrive by the epoch-3 pull-up");
-            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)),
-                "1536 of 2048 epoch-1 target votes justify the first Gloas block");
-            Assert.That(head, Is.EqualTo(chain.Voting[^1].Root));
-            Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(ForkCrossingChain.VotingSlotCount * CommitteeSize * EffectiveBalance));
-            Assert.That(chain.LastFuluVotesStanding, Is.GreaterThan(0), "fixture bug: some slot-31 vote must survive as a latest message");
-            Assert.That(Weight(runner, chain.AnchorRoot) - Weight(runner, chain.First.Root), Is.EqualTo((ulong)chain.LastFuluVotesStanding * EffectiveBalance),
-                "the slot-31 votes the Gloas block carried are weighed on the anchor");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(headAtFork, Is.EqualTo(chain.First.Root));
+        Assert.That(justifiedBeforePullUp, Is.EqualTo(new CheckpointRef(0, chain.AnchorRoot)), "fixture bug: the justification must arrive by the epoch-3 pull-up");
+        Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)),
+            "1536 of 2048 epoch-1 target votes justify the first Gloas block");
+        Assert.That(head, Is.EqualTo(chain.Voting[^1].Root));
+        Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(ForkCrossingChain.VotingSlotCount * CommitteeSize * EffectiveBalance));
+        Assert.That(chain.LastFuluVotesStanding, Is.GreaterThan(0), "fixture bug: some slot-31 vote must survive as a latest message");
+        Assert.That(Weight(runner, chain.AnchorRoot) - Weight(runner, chain.First.Root), Is.EqualTo((ulong)chain.LastFuluVotesStanding * EffectiveBalance),
+            "the slot-31 votes the Gloas block carried are weighed on the anchor");
     }
 
     /// <summary>
@@ -263,13 +261,11 @@ public class ForkChoiceRunnerTests
 
         Assert.That(checkpointState, Is.TypeOf<ForkedBeaconState.OfGloas>());
         BeaconStateGloas actual = ((ForkedBeaconState.OfGloas)checkpointState).State;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(actual.Slot, Is.EqualTo(startSlot));
-            Assert.That(SszRoots.HashTreeRoot(actual), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
-            Assert.That(SszRoots.HashTreeRoot(actual), Is.EqualTo(SszRoots.HashTreeRoot(transitioned)), "the state transition's own crossing lands on the same state");
-            Assert.That(BlockStateRoot(chain, gloasRoot), Is.EqualTo(blockStateRoot), "the block state the providers froze must not be advanced in place");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(actual.Slot, Is.EqualTo(startSlot));
+        Assert.That(SszRoots.HashTreeRoot(actual), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
+        Assert.That(SszRoots.HashTreeRoot(actual), Is.EqualTo(SszRoots.HashTreeRoot(transitioned)), "the state transition's own crossing lands on the same state");
+        Assert.That(BlockStateRoot(chain, gloasRoot), Is.EqualTo(blockStateRoot), "the block state the providers froze must not be advanced in place");
     }
 
     /// <summary>
@@ -302,15 +298,13 @@ public class ForkChoiceRunnerTests
         ForkedBeaconState first = runner.GetCheckpointState(checkpoint);
         ForkedBeaconState repeated = runner.GetCheckpointState(checkpoint);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(defaultHasher, Is.TypeOf<CachedBeaconStateHasher>(), "production advances must hash incrementally");
-            Assert.That(made, Has.Count.EqualTo(1), "one hasher per advance, and none for the cached repeat");
-            Assert.That(made.Single().Calls, Is.EqualTo(distance - 1), "every skipped slot's state root but the block's own comes from that hasher");
-            Assert.That(repeated, Is.SameAs(first));
-            Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)first).State), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
-            Assert.That(SszRoots.HashTreeRoot(blockState), Is.EqualTo(blockStateRoot), "the block state must not be advanced in place");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(defaultHasher, Is.TypeOf<CachedBeaconStateHasher>(), "production advances must hash incrementally");
+        Assert.That(made, Has.Count.EqualTo(1), "one hasher per advance, and none for the cached repeat");
+        Assert.That(made.Single().Calls, Is.EqualTo(distance - 1), "every skipped slot's state root but the block's own comes from that hasher");
+        Assert.That(repeated, Is.SameAs(first));
+        Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)first).State), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
+        Assert.That(SszRoots.HashTreeRoot(blockState), Is.EqualTo(blockStateRoot), "the block state must not be advanced in place");
     }
 
     /// <summary>
@@ -333,11 +327,9 @@ public class ForkChoiceRunnerTests
 
         ForkedBeaconState state = runner.GetCheckpointState(new CheckpointRef(1, checkpointRoot));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(made.Single().Calls, Is.EqualTo(blockInsideTheAdvance ? distance - 1 : 0), "only an advance the later block went through is answered from its roots");
-            Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)state).State), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(made.Single().Calls, Is.EqualTo(blockInsideTheAdvance ? distance - 1 : 0), "only an advance the later block went through is answered from its roots");
+        Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)state).State), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
     }
 
     /// <summary>
@@ -407,11 +399,9 @@ public class ForkChoiceRunnerTests
 
         runner.OnBodyAttestation(BodyVote(chain, target, targetEpoch), including.Root);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(builds.Count, Is.EqualTo(1), "the target's checkpoint state is built");
-            Assert.That(Weight(runner, target.Root), Is.EqualTo(EffectiveBalance), "the vote counts");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(builds.Count, Is.EqualTo(1), "the target's checkpoint state is built");
+        Assert.That(Weight(runner, target.Root), Is.EqualTo(EffectiveBalance), "the vote counts");
     }
 
     /// <summary>
@@ -498,13 +488,11 @@ public class ForkChoiceRunnerTests
         for (ulong tick = 1; tick <= waiting + 8; tick++)
             TickToSlot(runner, now + tick);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(waitingBeforeTicks, Is.EqualTo(waiting));
-            Assert.That(dropped, Is.EqualTo(8), "each vote pushed out of the full queue is counted under its own label, apart from refused votes");
-            Assert.That(builds.Count, Is.EqualTo(MaxOtherShufflingBodyBuilds + waiting));
-            Assert.That(runner.DeferredBodyVoteCount, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(waitingBeforeTicks, Is.EqualTo(waiting));
+        Assert.That(dropped, Is.EqualTo(8), "each vote pushed out of the full queue is counted under its own label, apart from refused votes");
+        Assert.That(builds.Count, Is.EqualTo(MaxOtherShufflingBodyBuilds + waiting));
+        Assert.That(runner.DeferredBodyVoteCount, Is.Zero);
     }
 
     /// <summary>
@@ -557,12 +545,10 @@ public class ForkChoiceRunnerTests
 
         ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnAggregateAndProof(aggregate))!;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal.RejectGossip, Is.False, "missing local head data cannot convict the relay");
-            Assert.That(refusal.Message, Does.Contain(headComputed ? "No held state" : "No cached head"));
-            Assert.That(states.Loads, Is.EqualTo(loadsBefore), "gossip must not call a state accessor that can replay blocks");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal.RejectGossip, Is.False, "missing local head data cannot convict the relay");
+        Assert.That(refusal.Message, Does.Contain(headComputed ? "No held state" : "No cached head"));
+        Assert.That(states.Loads, Is.EqualTo(loadsBefore), "gossip must not call a state accessor that can replay blocks");
     }
 
     [Test]
@@ -576,11 +562,9 @@ public class ForkChoiceRunnerTests
 
         ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnPayloadAttestationMessage(message))!;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal.RejectGossip, Is.False);
-            Assert.That(states.Loads, Is.EqualTo(loadsBefore), "a payload vote must not replay a Fulu block before checking its fork");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal.RejectGossip, Is.False);
+        Assert.That(states.Loads, Is.EqualTo(loadsBefore), "a payload vote must not replay a Fulu block before checking its fork");
     }
 
     [Test]
@@ -599,12 +583,10 @@ public class ForkChoiceRunnerTests
 
         ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnAggregateAndProof(aggregate))!;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal.RejectGossip, Is.True, "the cached committee count still proves the index is invalid");
-            Assert.That(refusal.Message, Does.Contain("out of range"));
-            Assert.That(states.Loads, Is.EqualTo(loadsBefore), "a cached range check must not reload the head");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal.RejectGossip, Is.True, "the cached committee count still proves the index is invalid");
+        Assert.That(refusal.Message, Does.Contain("out of range"));
+        Assert.That(states.Loads, Is.EqualTo(loadsBefore), "a cached range check must not reload the head");
     }
 
     [Test]
@@ -627,11 +609,9 @@ public class ForkChoiceRunnerTests
 
         ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnAggregateAndProof(aggregate))!;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal.RejectGossip, Is.True, "an unavailable decision root cannot hide a provable gossip violation");
-            Assert.That(refusal.Message, Does.Contain(largeRegistry && targetEpoch != ulong.MaxValue ? "does not match its slot" : "out of range"), "committee range precedes the target-epoch check");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal.RejectGossip, Is.True, "an unavailable decision root cannot hide a provable gossip violation");
+        Assert.That(refusal.Message, Does.Contain(largeRegistry && targetEpoch != ulong.MaxValue ? "does not match its slot" : "out of range"), "committee range precedes the target-epoch check");
     }
 
     /// <summary>
@@ -671,15 +651,13 @@ public class ForkChoiceRunnerTests
         int buildsAfterSignedVote = builds.Count;
         runner.GetCheckpointState(new CheckpointRef(targetEpoch, targets[0].Root));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(voteSlot, Is.LessThan(epochStart + 6), "fixture bug: the vote must be from a past slot so it applies at once");
-            Assert.That(refused, Is.EqualTo(targets.Count - 1), "every unsigned aggregate is refused");
-            Assert.That(buildsAfterFlood, Is.EqualTo(1), "only the first target of the shuffling costs a checkpoint state");
-            Assert.That(buildsAfterSignedVote, Is.EqualTo(1), "a signed vote on another target of that shuffling needs no state of its own");
-            Assert.That(weightAfter - weightBefore, Is.EqualTo(EffectiveBalance), "the signed aggregate's vote counts");
-            Assert.That(builds.Count, Is.EqualTo(2), "the refused aggregate's state was not cached as its target's checkpoint state");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(voteSlot, Is.LessThan(epochStart + 6), "fixture bug: the vote must be from a past slot so it applies at once");
+        Assert.That(refused, Is.EqualTo(targets.Count - 1), "every unsigned aggregate is refused");
+        Assert.That(buildsAfterFlood, Is.EqualTo(1), "only the first target of the shuffling costs a checkpoint state");
+        Assert.That(buildsAfterSignedVote, Is.EqualTo(1), "a signed vote on another target of that shuffling needs no state of its own");
+        Assert.That(weightAfter - weightBefore, Is.EqualTo(EffectiveBalance), "the signed aggregate's vote counts");
+        Assert.That(builds.Count, Is.EqualTo(2), "the refused aggregate's state was not cached as its target's checkpoint state");
     }
 
     /// <summary>
@@ -700,14 +678,12 @@ public class ForkChoiceRunnerTests
         (_, ulong voteSlot, int member) = FirstCommitteeMember(headTip, targetEpoch);
         ulong weightBefore = Weight(runner, other.Root);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(head, Is.AnyOf(a.Root, b.Root), "fixture bug: the head must be one of the two branches");
-            Assert.That(() => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, other.Root, targetEpoch, member, signingState: null)),
-                Throws.InstanceOf<Exception>());
-            Assert.That(builds.Count, Is.EqualTo(1), "only the head's target state is built for a peer's aggregate");
-            Assert.That(Weight(runner, other.Root), Is.EqualTo(weightBefore), "the vote does not count");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head, Is.AnyOf(a.Root, b.Root), "fixture bug: the head must be one of the two branches");
+        Assert.That(() => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, other.Root, targetEpoch, member, signingState: null)),
+            Throws.InstanceOf<Exception>());
+        Assert.That(builds.Count, Is.EqualTo(1), "only the head's target state is built for a peer's aggregate");
+        Assert.That(Weight(runner, other.Root), Is.EqualTo(weightBefore), "the vote does not count");
     }
 
     /// <summary>
@@ -794,13 +770,11 @@ public class ForkChoiceRunnerTests
             Assert.That(refusal.RejectGossip, Is.False, "a valid vote with an evicted source cannot convict its relay");
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(FirstCommitteeMember(other, targetEpoch).Member, Is.EqualTo(member), "fixture bug: the siblings must share committees");
-            Assert.That(Weight(runner, other.Root) - weightBefore, Is.EqualTo(sourceHeld ? EffectiveBalance : 0UL), "only a vote whose target state can be checked counts");
-            Assert.That(states.Replays, Is.Zero, "gossip must not regenerate an evicted head or target source");
-            if (sourceHeld) Assert.That(builds.Count, Is.EqualTo(2), "the head's target state and the sibling's own");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(FirstCommitteeMember(other, targetEpoch).Member, Is.EqualTo(member), "fixture bug: the siblings must share committees");
+        Assert.That(Weight(runner, other.Root) - weightBefore, Is.EqualTo(sourceHeld ? EffectiveBalance : 0UL), "only a vote whose target state can be checked counts");
+        Assert.That(states.Replays, Is.Zero, "gossip must not regenerate an evicted head or target source");
+        if (sourceHeld) Assert.That(builds.Count, Is.EqualTo(2), "the head's target state and the sibling's own");
     }
 
     /// <summary>
@@ -845,11 +819,9 @@ public class ForkChoiceRunnerTests
             }
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusedAt, Is.EqualTo(oneAggregator ? 1 : 2), "the aggregate past the budget is refused");
-            Assert.That(builds.Count, Is.EqualTo(1 + refusedAt), "the head's target state and one per aggregate before it");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusedAt, Is.EqualTo(oneAggregator ? 1 : 2), "the aggregate past the budget is refused");
+        Assert.That(builds.Count, Is.EqualTo(1 + refusedAt), "the head's target state and one per aggregate before it");
     }
 
     /// <summary>
@@ -865,13 +837,11 @@ public class ForkChoiceRunnerTests
         List<UnsignedChain.ChainBlock> line = ImportLine(chain, runner, chain.AnchorRoot, 30, 31, 40);
         (BeaconStateFulu signingState, ulong voteSlot, int member) = FirstCommitteeMember(line[^1], targetEpoch);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.GetHead(), Is.EqualTo(line[^1].Root), "fixture bug: the line's tip must be the head");
-            Assert.That(() => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, line[0].Root, targetEpoch, member, signingState)),
-                Throws.TypeOf<ForkChoiceException>().With.Message.Contains("ancestor of the head"));
-            Assert.That(builds.Count, Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.GetHead(), Is.EqualTo(line[^1].Root), "fixture bug: the line's tip must be the head");
+        Assert.That(() => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, line[0].Root, targetEpoch, member, signingState)),
+            Throws.TypeOf<ForkChoiceException>().With.Message.Contains("ancestor of the head"));
+        Assert.That(builds.Count, Is.Zero);
     }
 
     /// <summary>
@@ -959,13 +929,11 @@ public class ForkChoiceRunnerTests
         Assert.That(() => runner.OnAggregateAndProof(GossipAggregate(chain, voteSlot, b.Root, targetEpoch, member, signingState: null)), Throws.InstanceOf<Exception>());
         runner.GetCheckpointState(new CheckpointRef(targetEpoch, b.Root));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(aVoters.Distinct().Count(), Is.EqualTo(2), "fixture bug: A needs two distinct voters");
-            Assert.That(headBefore, Is.EqualTo(a.Root), "fixture bug: two votes put A ahead before");
-            Assert.That(builds.Count - buildsBefore, Is.EqualTo(1), "the aggregate was checked against B's own target state, which the later lookup then finds");
-            Assert.That(runner.GetHead(), Is.EqualTo(b.Root), "fixture bug: B is the head after");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(aVoters.Distinct().Count(), Is.EqualTo(2), "fixture bug: A needs two distinct voters");
+        Assert.That(headBefore, Is.EqualTo(a.Root), "fixture bug: two votes put A ahead before");
+        Assert.That(builds.Count - buildsBefore, Is.EqualTo(1), "the aggregate was checked against B's own target state, which the later lookup then finds");
+        Assert.That(runner.GetHead(), Is.EqualTo(b.Root), "fixture bug: B is the head after");
     }
 
     private enum VoteStateAnchor
@@ -1095,11 +1063,9 @@ public class ForkChoiceRunnerTests
                     throw new ArgumentOutOfRangeException(nameof(step));
             }
         }
-        using (Assert.EnterMultipleScope())
-        {
-            if (gloas is not null) Assert.That(committeeSize, Is.Positive, "fixture bug: slot 96 must have a committee");
-            Assert.That(observed, Is.EqualTo(expected));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (gloas is not null) Assert.That(committeeSize, Is.Positive, "fixture bug: slot 96 must have a committee");
+        Assert.That(observed, Is.EqualTo(expected));
     }
     /// <summary>ethereum/consensus-specs electra/p2p-interface.md checks aggregator membership before finalized ancestry.</summary>
     [Test]
@@ -1136,12 +1102,10 @@ public class ForkChoiceRunnerTests
         };
 
         ForkChoiceException refusal = Assert.Throws<ForkChoiceException>(() => runner.OnAggregateAndProof(aggregate))!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)), "fixture bug: the first Gloas block must be finalized");
-            Assert.That(refusal.Message, Does.Contain("not a member"));
-            Assert.That(refusal.RejectGossip, Is.True, "a provable membership failure precedes the later ancestry ignore");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)), "fixture bug: the first Gloas block must be finalized");
+        Assert.That(refusal.Message, Does.Contain("not a member"));
+        Assert.That(refusal.RejectGossip, Is.True, "a provable membership failure precedes the later ancestry ignore");
     }
 
     /// <summary>
@@ -1271,12 +1235,10 @@ public class ForkChoiceRunnerTests
         ulong weightInItsOwnSlot = Weight(runner, chain.First.Root);
         TickToSlot(runner, currentSlot + 1);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero), "fixture bug: no boost may confound the weight");
-            Assert.That(weightInItsOwnSlot, Is.Zero);
-            Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(CommitteeSize * EffectiveBalance));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero), "fixture bug: no boost may confound the weight");
+        Assert.That(weightInItsOwnSlot, Is.Zero);
+        Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(CommitteeSize * EffectiveBalance));
     }
 
     /// <summary>
@@ -1455,13 +1417,11 @@ public class ForkChoiceRunnerTests
         (ForkChoiceRunner runner, BeaconStateFulu postState) = RunnerAt(chain, justifiedState);
         runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, chain.Columns);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validators, Has.Length.EqualTo(16), "fixture bug");
-            Assert.That(validators.Select(v => v.EffectiveBalance), Is.All.EqualTo(EffectiveBalance), "fixture bug");
-            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(chain.BlockRoot), "fixture bug: the block must be timely");
-            Assert.That(Weight(runner, chain.BlockRoot), Is.EqualTo(6_400_000_000ul));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validators, Has.Length.EqualTo(16), "fixture bug");
+        Assert.That(validators.Select(v => v.EffectiveBalance), Is.All.EqualTo(EffectiveBalance), "fixture bug");
+        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(chain.BlockRoot), "fixture bug: the block must be timely");
+        Assert.That(Weight(runner, chain.BlockRoot), Is.EqualTo(6_400_000_000ul));
     }
 
     /// <summary>
@@ -1477,11 +1437,9 @@ public class ForkChoiceRunnerTests
         states.States[chain.AnchorRoot] = chain.AnchorState;
         ForkChoiceRunner runner = new(BeaconChainSpec.Mainnet, chain.AnchorState, chain.AnchorBlock.Message!, states, chain.Pubkeys);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(BeaconChainSpec.Mainnet.ElectraForkEpoch, Is.GreaterThan(0ul), "fixture bug");
-            Assert.That(runner.GetHead(), Is.EqualTo(chain.AnchorRoot));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(BeaconChainSpec.Mainnet.ElectraForkEpoch, Is.GreaterThan(0ul), "fixture bug");
+        Assert.That(runner.GetHead(), Is.EqualTo(chain.AnchorRoot));
     }
 
     /// <summary>
@@ -1500,13 +1458,11 @@ public class ForkChoiceRunnerTests
 
         Hash256 bidBlockHash = chain.First.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlockHash!;
         ForkChoiceSnapshotNode node = runner.Snapshot().Nodes.Single(n => n.Root == chain.First.Root);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chain.First.PostState.LatestBlockHash, Is.Not.EqualTo(bidBlockHash), "fixture bug: the parent's applied hash must differ from the bid's");
-            Assert.That(node.ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
-            Assert.That(node.ExecutionBlockHash, Is.EqualTo(bidBlockHash));
-            Assert.That(runner.GetExecutionBlockHash(chain.First.Root), Is.EqualTo(bidBlockHash));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(chain.First.PostState.LatestBlockHash, Is.Not.EqualTo(bidBlockHash), "fixture bug: the parent's applied hash must differ from the bid's");
+        Assert.That(node.ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
+        Assert.That(node.ExecutionBlockHash, Is.EqualTo(bidBlockHash));
+        Assert.That(runner.GetExecutionBlockHash(chain.First.Root), Is.EqualTo(bidBlockHash));
     }
 
     /// <summary>
@@ -1523,14 +1479,12 @@ public class ForkChoiceRunnerTests
         SignedBeaconBlock fuluAtFork = TestChain.CreateBlock(GloasTestFixtures.BoundarySlot, chain.AnchorRoot);
         SignedBeaconBlockGloas gloasBeforeFork = new() { Message = new BeaconBlockGloas { Slot = GloasTestFixtures.BoundarySlot - 1, ParentRoot = chain.AnchorRoot } };
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => runner.OnBlock(fuluAtFork, chain.AnchorState, ExecutionStatus.Valid, new RecordingRule(verdict: true)),
-                Throws.TypeOf<ForkChoiceException>().With.Message.Contains(nameof(SignedBeaconBlockGloas)));
-            Assert.That(runner.ContainsBlock(SszRoots.HashTreeRoot(fuluAtFork.Message!)), Is.False);
-            Assert.That(() => runner.OnBlock(gloasBeforeFork, chain.First.PostState),
-                Throws.TypeOf<ForkChoiceException>().With.Message.Contains("before the Gloas fork"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(() => runner.OnBlock(fuluAtFork, chain.AnchorState, ExecutionStatus.Valid, new RecordingRule(verdict: true)),
+            Throws.TypeOf<ForkChoiceException>().With.Message.Contains(nameof(SignedBeaconBlockGloas)));
+        Assert.That(runner.ContainsBlock(SszRoots.HashTreeRoot(fuluAtFork.Message!)), Is.False);
+        Assert.That(() => runner.OnBlock(gloasBeforeFork, chain.First.PostState),
+            Throws.TypeOf<ForkChoiceException>().With.Message.Contains("before the Gloas fork"));
     }
 
     /// <summary>
@@ -1544,12 +1498,10 @@ public class ForkChoiceRunnerTests
         ForkChoiceRunner runner = chain.CreateRunner(withGloasStates: false);
         TickToSlot(runner, GloasTestFixtures.BoundarySlot);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => runner.OnBlock(chain.First.Block, chain.First.PostState),
-                Throws.TypeOf<ForkChoiceException>().With.Message.Contains(nameof(IGloasBlockStateProvider)));
-            Assert.That(runner.ContainsBlock(chain.First.Root), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(() => runner.OnBlock(chain.First.Block, chain.First.PostState),
+            Throws.TypeOf<ForkChoiceException>().With.Message.Contains(nameof(IGloasBlockStateProvider)));
+        Assert.That(runner.ContainsBlock(chain.First.Root), Is.False);
     }
 
     /// <summary>
@@ -1565,13 +1517,11 @@ public class ForkChoiceRunnerTests
         ForkChoiceRunner runner = FinalizedOnFirstGloasBlock(chain);
         ForkChoiceSnapshotNode node = runner.Snapshot().Nodes.Single(n => n.Root == chain.Voting[1].Root);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(DoctoredJustifiedEpoch, chain.Voting[0].Root)));
-            Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)));
-            Assert.That(node.JustifiedEpoch, Is.EqualTo(DoctoredJustifiedEpoch));
-            Assert.That(node.FinalizedEpoch, Is.EqualTo(ForkCrossingChain.ForkEpoch));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(DoctoredJustifiedEpoch, chain.Voting[0].Root)));
+        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)));
+        Assert.That(node.JustifiedEpoch, Is.EqualTo(DoctoredJustifiedEpoch));
+        Assert.That(node.FinalizedEpoch, Is.EqualTo(ForkCrossingChain.ForkEpoch));
     }
 
     /// <summary>
@@ -1601,13 +1551,11 @@ public class ForkChoiceRunnerTests
         };
         int nodesBefore = runner.Snapshot().Nodes.Count;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.CurrentSlot, Is.EqualTo(2 * Presets.SlotsPerEpoch + 2), "fixture bug");
-            Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)), "fixture bug");
-            Assert.That(() => runner.OnBlock(block, chain.Voting[1].PostState), Throws.TypeOf<ForkChoiceException>().With.Message.Contains(refusal));
-            Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.CurrentSlot, Is.EqualTo(2 * Presets.SlotsPerEpoch + 2), "fixture bug");
+        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)), "fixture bug");
+        Assert.That(() => runner.OnBlock(block, chain.Voting[1].PostState), Throws.TypeOf<ForkChoiceException>().With.Message.Contains(refusal));
+        Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
     }
 
     /// <summary>
@@ -1658,11 +1606,9 @@ public class ForkChoiceRunnerTests
 
         Assert.That(() => runner.OnBlock(block.Block, block.PostState, ExecutionStatus.Irrelevant, (IReadOnlyList<DataColumnSidecar>?)null),
             Throws.TypeOf<ForkChoiceException>().With.Message.Contains("execution block hash"));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
-            Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
+        Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
     }
 
     /// <summary><c>ulong.MaxValue / 32</c>, the last epoch whose start slot fits in 64 bits.</summary>
@@ -1763,13 +1709,11 @@ public class ForkChoiceRunnerTests
 
         Assert.That(() => runner.OnBlock(block.Block, doctored, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null),
             Throws.TypeOf<ForkChoiceException>().With.Message.Contains("after its own epoch"));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
-            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(justifiedBefore));
-            Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(finalizedBefore));
-            Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
+        Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(justifiedBefore));
+        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(finalizedBefore));
+        Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
     }
 
     /// <summary>
@@ -1812,15 +1756,13 @@ public class ForkChoiceRunnerTests
         runner.OnBlock(sameProposal.Block, sameProposal.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
         runner.Prune();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.ContainsBlock(fork.Root), Is.False, "fixture bug: the proto-array must have pruned the fork block");
-            Assert.That(fork.Block.Message!.ProposerIndex, Is.EqualTo(sameProposal.Block.Message!.ProposerIndex), "fixture bug");
-            Assert.That(atFinalizedSlot.Block.Message!.ProposerIndex, Is.EqualTo(finalized.Block.Message!.ProposerIndex), "fixture bug");
-            Assert.That(runner.IsProposerEquivocation(sameProposal.Root), Is.True, "slot 289 is after the finalized slot");
-            Assert.That(runner.IsProposerEquivocation(finalized.Root), Is.False, "the rival at the finalized slot 288 is dropped");
-            Assert.That(runner.IsProposerEquivocation(finalizing.Root), Is.False, "a unique proposal is no equivocation");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.ContainsBlock(fork.Root), Is.False, "fixture bug: the proto-array must have pruned the fork block");
+        Assert.That(fork.Block.Message!.ProposerIndex, Is.EqualTo(sameProposal.Block.Message!.ProposerIndex), "fixture bug");
+        Assert.That(atFinalizedSlot.Block.Message!.ProposerIndex, Is.EqualTo(finalized.Block.Message!.ProposerIndex), "fixture bug");
+        Assert.That(runner.IsProposerEquivocation(sameProposal.Root), Is.True, "slot 289 is after the finalized slot");
+        Assert.That(runner.IsProposerEquivocation(finalized.Root), Is.False, "the rival at the finalized slot 288 is dropped");
+        Assert.That(runner.IsProposerEquivocation(finalizing.Root), Is.False, "a unique proposal is no equivocation");
     }
 
     /// <summary>
@@ -1838,11 +1780,9 @@ public class ForkChoiceRunnerTests
 
         runner.OnAttestation(SignedBoundaryVote(signingState, EpochOneVote(chain, GloasTestFixtures.BoundarySlot, target)));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pubkeys.Count, Is.EqualTo(GloasTestFixtures.ValidatorCount));
-            Assert.That(Weight(runner, target), Is.EqualTo(CommitteeSize * EffectiveBalance));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pubkeys.Count, Is.EqualTo(GloasTestFixtures.ValidatorCount));
+        Assert.That(Weight(runner, target), Is.EqualTo(CommitteeSize * EffectiveBalance));
     }
 
     /// <summary>

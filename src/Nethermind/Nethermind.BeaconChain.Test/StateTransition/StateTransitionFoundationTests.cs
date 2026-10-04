@@ -99,14 +99,12 @@ public class StateTransitionFoundationTests
         }
         assigned.Sort();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(cache.CommitteesPerSlot, Is.EqualTo(expectedCommitteesPerSlot));
-            Assert.That(cache.ActiveValidatorCount, Is.EqualTo(activeIndices.Length));
-            Assert.That(assigned, Is.EqualTo(activeIndices), "every active validator must appear exactly once per epoch");
-            Assert.That(maxSize - minSize, Is.LessThanOrEqualTo(1), "committee sizes must be balanced");
-            Assert.That(epochCache.GetCommitteeCache(state, 0), Is.SameAs(cache), "the LRU must reuse the cached shuffling");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(cache.CommitteesPerSlot, Is.EqualTo(expectedCommitteesPerSlot));
+        Assert.That(cache.ActiveValidatorCount, Is.EqualTo(activeIndices.Length));
+        Assert.That(assigned, Is.EqualTo(activeIndices), "every active validator must appear exactly once per epoch");
+        Assert.That(maxSize - minSize, Is.LessThanOrEqualTo(1), "committee sizes must be balanced");
+        Assert.That(epochCache.GetCommitteeCache(state, 0), Is.SameAs(cache), "the LRU must reuse the cached shuffling");
     }
 
     [TestCase(64, 32 * Gwei, 128 * Gwei, 128 * Gwei, 0 * Gwei, Description = "Floored at MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA")]
@@ -116,15 +114,13 @@ public class StateTransitionFoundationTests
         BeaconStateFulu state = CreateState(validatorCount, effectiveBalance);
         EpochCache cache = new();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(state.GetTotalActiveBalance(cache), Is.EqualTo((ulong)validatorCount * effectiveBalance));
-            Assert.That(state.GetBalanceChurnLimit(cache), Is.EqualTo(expectedBalanceChurn));
-            Assert.That(state.GetActivationExitChurnLimit(cache), Is.EqualTo(expectedActivationExitChurn));
-            Assert.That(state.GetConsolidationChurnLimit(cache), Is.EqualTo(expectedConsolidationChurn));
-            Assert.That(state.GetValidatorChurnLimit(cache), Is.EqualTo(Presets.MinPerEpochChurnLimit));
-            Assert.That(state.GetValidatorActivationChurnLimit(cache), Is.EqualTo(Presets.MinPerEpochChurnLimit));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.GetTotalActiveBalance(cache), Is.EqualTo((ulong)validatorCount * effectiveBalance));
+        Assert.That(state.GetBalanceChurnLimit(cache), Is.EqualTo(expectedBalanceChurn));
+        Assert.That(state.GetActivationExitChurnLimit(cache), Is.EqualTo(expectedActivationExitChurn));
+        Assert.That(state.GetConsolidationChurnLimit(cache), Is.EqualTo(expectedConsolidationChurn));
+        Assert.That(state.GetValidatorChurnLimit(cache), Is.EqualTo(Presets.MinPerEpochChurnLimit));
+        Assert.That(state.GetValidatorActivationChurnLimit(cache), Is.EqualTo(Presets.MinPerEpochChurnLimit));
     }
 
     [TestCase("0x000000000000000000000000000000000000000000000000000000000000aaaa", 32 * Gwei, 33 * Gwei, false, false, 32 * Gwei, false)]
@@ -143,16 +139,14 @@ public class StateTransitionFoundationTests
         };
         bool expectExecution = expectCompounding || expectEth1;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validator.HasCompoundingWithdrawalCredential(), Is.EqualTo(expectCompounding));
-            Assert.That(validator.HasEth1WithdrawalCredential(), Is.EqualTo(expectEth1));
-            Assert.That(validator.HasExecutionWithdrawalCredential(), Is.EqualTo(expectExecution));
-            Assert.That(validator.GetMaxEffectiveBalance(), Is.EqualTo(expectedMaxEffectiveBalance));
-            Assert.That(validator.IsPartiallyWithdrawableValidator(balance), Is.EqualTo(expectPartiallyWithdrawable));
-            Assert.That(validator.IsFullyWithdrawableValidator(balance, epoch: 10), Is.EqualTo(expectExecution), "fully withdrawable once withdrawable epoch is reached");
-            Assert.That(validator.IsFullyWithdrawableValidator(balance, epoch: 9), Is.False, "not fully withdrawable before the withdrawable epoch");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validator.HasCompoundingWithdrawalCredential(), Is.EqualTo(expectCompounding));
+        Assert.That(validator.HasEth1WithdrawalCredential(), Is.EqualTo(expectEth1));
+        Assert.That(validator.HasExecutionWithdrawalCredential(), Is.EqualTo(expectExecution));
+        Assert.That(validator.GetMaxEffectiveBalance(), Is.EqualTo(expectedMaxEffectiveBalance));
+        Assert.That(validator.IsPartiallyWithdrawableValidator(balance), Is.EqualTo(expectPartiallyWithdrawable));
+        Assert.That(validator.IsFullyWithdrawableValidator(balance, epoch: 10), Is.EqualTo(expectExecution), "fully withdrawable once withdrawable epoch is reached");
+        Assert.That(validator.IsFullyWithdrawableValidator(balance, epoch: 9), Is.False, "not fully withdrawable before the withdrawable epoch");
     }
 
     [Test]
@@ -189,13 +183,11 @@ public class StateTransitionFoundationTests
         // A fourth 32 ETH exit exceeds the remaining churn and rolls over to epoch 6.
         state.InitiateValidatorExit(5, cache);
         state.InitiateValidatorExit(6, cache);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(validators[5].ExitEpoch, Is.EqualTo(5ul));
-            Assert.That(validators[6].ExitEpoch, Is.EqualTo(6ul));
-            Assert.That(state.EarliestExitEpoch, Is.EqualTo(6ul));
-            Assert.That(state.ExitBalanceToConsume, Is.EqualTo(96 * Gwei));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(validators[5].ExitEpoch, Is.EqualTo(5ul));
+        Assert.That(validators[6].ExitEpoch, Is.EqualTo(6ul));
+        Assert.That(state.EarliestExitEpoch, Is.EqualTo(6ul));
+        Assert.That(state.ExitBalanceToConsume, Is.EqualTo(96 * Gwei));
     }
 
     [Test]
@@ -205,16 +197,14 @@ public class StateTransitionFoundationTests
         state.Slot = 70; // Epoch 2; the lookahead covers epochs 2 and 3 (slots 64..127).
         state.ProposerLookahead = [.. Enumerable.Range(0, 64).Select(static i => (ulong)i)];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(state.GetBeaconProposerIndex(), Is.EqualTo(6ul), "lookahead[state.slot % SLOTS_PER_EPOCH]");
-            Assert.That(state.GetBeaconProposerIndex(64), Is.EqualTo(0ul));
-            Assert.That(state.GetBeaconProposerIndex(95), Is.EqualTo(31ul));
-            Assert.That(state.GetBeaconProposerIndex(96), Is.EqualTo(32ul), "next epoch reads the second half");
-            Assert.That(state.GetBeaconProposerIndex(127), Is.EqualTo(63ul));
-            Assert.That(() => state.GetBeaconProposerIndex(63), Throws.TypeOf<BeaconStateException>(), "past epoch");
-            Assert.That(() => state.GetBeaconProposerIndex(128), Throws.TypeOf<BeaconStateException>(), "beyond the lookahead");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.GetBeaconProposerIndex(), Is.EqualTo(6ul), "lookahead[state.slot % SLOTS_PER_EPOCH]");
+        Assert.That(state.GetBeaconProposerIndex(64), Is.EqualTo(0ul));
+        Assert.That(state.GetBeaconProposerIndex(95), Is.EqualTo(31ul));
+        Assert.That(state.GetBeaconProposerIndex(96), Is.EqualTo(32ul), "next epoch reads the second half");
+        Assert.That(state.GetBeaconProposerIndex(127), Is.EqualTo(63ul));
+        Assert.That(() => state.GetBeaconProposerIndex(63), Throws.TypeOf<BeaconStateException>(), "past epoch");
+        Assert.That(() => state.GetBeaconProposerIndex(128), Throws.TypeOf<BeaconStateException>(), "beyond the lookahead");
     }
 
     [TestCase(1ul, 5ul, 2ul, 5ul, true, Description = "Double vote: same target epoch, different data")]
@@ -226,11 +216,9 @@ public class StateTransitionFoundationTests
         AttestationData data1 = CreateAttestationData(source1, target1, beaconBlockRootByte: 1);
         AttestationData data2 = CreateAttestationData(source2, target2, beaconBlockRootByte: 2);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(BeaconStateAccessors.IsSlashableAttestationData(data1, data2), Is.EqualTo(expected));
-            Assert.That(BeaconStateAccessors.IsSlashableAttestationData(data1, data1), Is.False, "identical data is never slashable");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(BeaconStateAccessors.IsSlashableAttestationData(data1, data2), Is.EqualTo(expected));
+        Assert.That(BeaconStateAccessors.IsSlashableAttestationData(data1, data1), Is.False, "identical data is never slashable");
     }
 
     private static AttestationData CreateAttestationData(ulong sourceEpoch, ulong targetEpoch, byte beaconBlockRootByte) => new()
@@ -390,11 +378,9 @@ public class ImportHotPathAllocationTests
 
     private static void AssertAttestationAllocation(long allocated, byte[] participation)
     {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(allocated, Is.LessThan(AttestationBudgetBytes), "bytes allocated by one slot-wide attestation");
-            Assert.That(participation.Count(static flags => flags != 0), Is.EqualTo(AttestersPerSlot), "every attester must be credited");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(allocated, Is.LessThan(AttestationBudgetBytes), "bytes allocated by one slot-wide attestation");
+        Assert.That(participation.Count(static flags => flags != 0), Is.EqualTo(AttestersPerSlot), "every attester must be credited");
     }
 
     private static long Allocated(Action action)

@@ -125,20 +125,18 @@ public class CheckpointSyncTests
             anchor = await sync.RunAsync(CancellationToken.None);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(anchor.State, Is.TypeOf<ForkedBeaconState.OfGloas>());
-            Assert.That(anchor.BlockRoot, Is.EqualTo(first.Root), "the root derived from the Gloas state's latest header");
-            Assert.That(anchor.StateRoot, Is.EqualTo(SszRoots.HashTreeRoot(first.PostState)));
-            Assert.That(anchor.Block, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
-            Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot), Is.True);
-            Assert.That(anchorRoot, Is.EqualTo(first.Root));
-            Assert.That(anchorSlot, Is.EqualTo(first.Block.Message!.Slot));
-            Assert.That(store.TryGetForkedBlock(first.Root, out ForkedSignedBeaconBlock? stored), Is.True);
-            Assert.That(stored, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
-            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), independentCheckpoint ? Is.Not.Null : Is.Null,
-                "a proven checkpoint is recorded, so a restart accepts it after the anchor follows finality past it");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(anchor.State, Is.TypeOf<ForkedBeaconState.OfGloas>());
+        Assert.That(anchor.BlockRoot, Is.EqualTo(first.Root), "the root derived from the Gloas state's latest header");
+        Assert.That(anchor.StateRoot, Is.EqualTo(SszRoots.HashTreeRoot(first.PostState)));
+        Assert.That(anchor.Block, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
+        Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot), Is.True);
+        Assert.That(anchorRoot, Is.EqualTo(first.Root));
+        Assert.That(anchorSlot, Is.EqualTo(first.Block.Message!.Slot));
+        Assert.That(store.TryGetForkedBlock(first.Root, out ForkedSignedBeaconBlock? stored), Is.True);
+        Assert.That(stored, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
+        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), independentCheckpoint ? Is.Not.Null : Is.Null,
+            "a proven checkpoint is recorded, so a restart accepts it after the anchor follows finality past it");
     }
 
     /// <summary>
@@ -212,14 +210,12 @@ public class CheckpointSyncTests
 
         InvalidDataException refusal = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal.Message, Does.Contain(headerAfterState ? "precedes its latest block header" : $"names state root {first.Block.Message.StateRoot}"));
-            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
-            Assert.That(store.TryGetState(first.Root, out _), Is.False);
-            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
-            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.CheckpointSyncAnchor), Is.Null);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal.Message, Does.Contain(headerAfterState ? "precedes its latest block header" : $"names state root {first.Block.Message.StateRoot}"));
+        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        Assert.That(store.TryGetState(first.Root, out _), Is.False);
+        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
+        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.CheckpointSyncAnchor), Is.Null);
     }
 
     /// <summary>A checkpoint sync persists the anchor, its state and block, and no genesis-root metadata that nothing reads.</summary>

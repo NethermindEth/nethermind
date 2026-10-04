@@ -73,27 +73,25 @@ public class RequestFailureCauseTests
             : Assert.CatchAsync(() => end == ChannelRequestEnd.AlreadyDropped
                 ? node.RequestBlocksByRangeAsync(session, 1, 1, token)
                 : node.RequestBlocksByRootAsync(session, [Hash256.Zero], end == ChannelRequestEnd.CallerCancellation ? stopping.Token : token, end == ChannelRequestEnd.Budget ? timing : null));
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (end == ChannelRequestEnd.Budget)
         {
-            if (end == ChannelRequestEnd.Budget)
-            {
-                Assert.That(failure, Is.TypeOf<ReqRespTimeoutException>());
-                Assert.That(failure!.Message, Does.Match(@"^timed out after 1\.\d s waiting for the channel to open: the request budget ran out$"));
-                Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed));
-                Assert.That(timing.ToString(), Does.StartWith("channel open not reached, first chunk not reached, total "));
-            }
-            else if (end == ChannelRequestEnd.CallerCancellation)
-                Assert.That(failure, Is.InstanceOf<OperationCanceledException>().And.Not.InstanceOf<TimeoutException>());
+            Assert.That(failure, Is.TypeOf<ReqRespTimeoutException>());
+            Assert.That(failure!.Message, Does.Match(@"^timed out after 1\.\d s waiting for the channel to open: the request budget ran out$"));
+            Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed));
+            Assert.That(timing.ToString(), Does.StartWith("channel open not reached, first chunk not reached, total "));
+        }
+        else if (end == ChannelRequestEnd.CallerCancellation)
+            Assert.That(failure, Is.InstanceOf<OperationCanceledException>().And.Not.InstanceOf<TimeoutException>());
+        else
+        {
+            Assert.That(failure, Is.TypeOf<IOException>());
+            Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(5)));
+            if (end == ChannelRequestEnd.AlreadyDropped) Assert.That(failure!.Message, Does.StartWith("peer disconnected after "));
             else
             {
-                Assert.That(failure, Is.TypeOf<IOException>());
-                Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(5)));
-                if (end == ChannelRequestEnd.AlreadyDropped) Assert.That(failure!.Message, Does.StartWith("peer disconnected after "));
-                else
-                {
-                    Assert.That(failure!.Message, Does.Match(@"^peer disconnected after \d+(\.\d)? s waiting for the channel to open: its libp2p session closed$"));
-                    Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.SessionClosed));
-                }
+                Assert.That(failure!.Message, Does.Match(@"^peer disconnected after \d+(\.\d)? s waiting for the channel to open: its libp2p session closed$"));
+                Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.SessionClosed));
             }
         }
     }
@@ -126,11 +124,9 @@ public class RequestFailureCauseTests
         await client.P2P.RequestStatusAsync(session, token, status);
         await client.P2P.RequestBlocksByRootAsync(session, [Hash256.Zero], token, blocks);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(status.ToString(), Does.Match(@"^channel open \d+ ms, first chunk \d+ ms, total \d+ ms, 1 chunks$"));
-            Assert.That(blocks.ToString(), Does.Match(@"^channel open \d+ ms, first chunk not reached, total \d+ ms, 0 chunks$"), "an unknown root is answered with no chunks");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(status.ToString(), Does.Match(@"^channel open \d+ ms, first chunk \d+ ms, total \d+ ms, 1 chunks$"));
+        Assert.That(blocks.ToString(), Does.Match(@"^channel open \d+ ms, first chunk not reached, total \d+ ms, 0 chunks$"), "an unknown root is answered with no chunks");
     }
 
     public enum SlotCancellation { Queued, BeforeChannelOpen, WhileChannelOpen }
@@ -303,14 +299,12 @@ public class RequestFailureCauseTests
         int afterGrace = PeerManager.ConsecutiveFailuresForTest(silent);
         await FailWithoutAnswerAsync(silent, silentSession, 10, token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(afterStall, Is.Zero, "nothing answered while it waited, so the stall is taken as this node's");
-            Assert.That(afterAnswerElsewhere, Is.EqualTo(1), "another peer answered while it waited, so the silence is this peer's");
-            Assert.That(afterGrace, Is.EqualTo(2), "seven more are excused, the eighth unanswered in a row is not");
-            Assert.That(PeerManager.ConsecutiveFailuresForTest(silent), Is.EqualTo(3));
-            Assert.That(logs.Lines.Select(static l => l.Text), Has.Some.Contains("not counted against the peer as no request to any peer was answered meanwhile"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(afterStall, Is.Zero, "nothing answered while it waited, so the stall is taken as this node's");
+        Assert.That(afterAnswerElsewhere, Is.EqualTo(1), "another peer answered while it waited, so the silence is this peer's");
+        Assert.That(afterGrace, Is.EqualTo(2), "seven more are excused, the eighth unanswered in a row is not");
+        Assert.That(PeerManager.ConsecutiveFailuresForTest(silent), Is.EqualTo(3));
+        Assert.That(logs.Lines.Select(static l => l.Text), Has.Some.Contains("not counted against the peer as no request to any peer was answered meanwhile"));
     }
 
     /// <summary>A by-range reply cut by a timeout after some chunks carries what it delivered; the timeout inside must still be excused while no request of ours was answered.</summary>
@@ -340,11 +334,9 @@ public class RequestFailureCauseTests
             : Assert.CatchAsync(async () => await peer.RequestBlocksByRangeAsync(5, 2, token));
         peer.ReportFailure(PeerFailureClassifier.Classify(failure!), failure!.Message);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(failure, columns ? Is.InstanceOf<PartialSidecarsException>() : Is.InstanceOf<PartialBlocksException>(), "fixture: the reply delivered a chunk before the timeout");
-            Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(failure, columns ? Is.InstanceOf<PartialSidecarsException>() : Is.InstanceOf<PartialBlocksException>(), "fixture: the reply delivered a chunk before the timeout");
+        Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
     }
 
     [TestCase(typeof(ReqRespTimeoutException), false, 2, false, ExpectedResult = true)]
@@ -469,14 +461,12 @@ public class RequestFailureCauseTests
 
         string[] lines = [.. logs.Lines.Where(static l => l.Level == "Debug" && l.Text.StartsWith(PeerManager.RequestName.ColumnsByRoot, StringComparison.Ordinal)).Select(static l => l.Text)];
         string timing = @"requests in flight 1, slot wait \d+ ms, channel open not reached, first chunk not reached, total \d+ ms, 0 chunks";
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(lines, Has.Length.EqualTo(3));
-            Assert.That(lines.ElementAtOrDefault(0), Does.Match($"^Data-column-sidecars-by-root to {PeerAddress}: {timing}, served$"));
-            Assert.That(lines.ElementAtOrDefault(1), Does.Match($"^Data-column-sidecars-by-root to {PeerAddress}: {timing}, ended after \\d+(\\.\\d)? s waiting for the channel to open without an answer: the libp2p layer cancelled the exchange, not counted against the peer as no request to any peer was answered meanwhile$"));
-            Assert.That(lines.ElementAtOrDefault(2), Does.Match($"^Data-column-sidecars-by-root to {PeerAddress}: {timing}, cancelled by this node$"));
-            Assert.That(logs.Lines.Select(static l => l.Text), Has.None.Contains("Exception"));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(lines, Has.Length.EqualTo(3));
+        Assert.That(lines.ElementAtOrDefault(0), Does.Match($"^Data-column-sidecars-by-root to {PeerAddress}: {timing}, served$"));
+        Assert.That(lines.ElementAtOrDefault(1), Does.Match($"^Data-column-sidecars-by-root to {PeerAddress}: {timing}, ended after \\d+(\\.\\d)? s waiting for the channel to open without an answer: the libp2p layer cancelled the exchange, not counted against the peer as no request to any peer was answered meanwhile$"));
+        Assert.That(lines.ElementAtOrDefault(2), Does.Match($"^Data-column-sidecars-by-root to {PeerAddress}: {timing}, cancelled by this node$"));
+        Assert.That(logs.Lines.Select(static l => l.Text), Has.None.Contains("Exception"));
     }
 
     [Test]
@@ -499,12 +489,10 @@ public class RequestFailureCauseTests
         busySession.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
         await pending.WaitAsync(token);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(before, Is.EqualTo(new[] { busy.Id, idle.Id }), "test setup: the higher head is first while both are idle");
-            Assert.That(during, Is.EqualTo(new[] { idle.Id, busy.Id }));
-            Assert.That(manager.GetBestPeers(0).Select(static p => p.Id), Is.EqualTo(new[] { busy.Id, idle.Id }));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(before, Is.EqualTo(new[] { busy.Id, idle.Id }), "test setup: the higher head is first while both are idle");
+        Assert.That(during, Is.EqualTo(new[] { idle.Id, busy.Id }));
+        Assert.That(manager.GetBestPeers(0).Select(static p => p.Id), Is.EqualTo(new[] { busy.Id, idle.Id }));
     }
 
     [Test]
@@ -527,14 +515,12 @@ public class RequestFailureCauseTests
             await InvokeStatusAsync(manager, peer, "RefreshStatusAsync", token);
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
-            Assert.That(PeerManager.FailuresReportedForTest(peer), Is.Zero);
-            Assert.That(manager.PeerCount, Is.EqualTo(1));
-            Assert.That(manager.GetBestPeers(0), Has.Count.EqualTo(1));
-            Assert.That(manager.IsBannedForTest(peer.Id), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
+        Assert.That(PeerManager.FailuresReportedForTest(peer), Is.Zero);
+        Assert.That(manager.PeerCount, Is.EqualTo(1));
+        Assert.That(manager.GetBestPeers(0), Has.Count.EqualTo(1));
+        Assert.That(manager.IsBannedForTest(peer.Id), Is.False);
     }
 
     [Test]
@@ -630,19 +616,17 @@ public class RequestFailureCauseTests
         clock.Add(TimeSpan.FromSeconds(1));
         await InvokeStatusAsync(manager, peer, "RefreshStatusAsync", token);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(manager.PeerCount, Is.EqualTo(conflicting ? 0 : 1));
+        Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
+        if (!conflicting)
         {
-            Assert.That(manager.PeerCount, Is.EqualTo(conflicting ? 0 : 1));
-            Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
-            if (!conflicting)
-            {
-                Assert.That(peer.HeadSlot, Is.EqualTo(updated.HeadSlot));
-                Assert.That(peer.GetType().GetProperty("StatusReceivedTicks")!.GetValue(peer), Is.EqualTo(clock.UtcNowOffset.UtcTicks));
-            }
-            else
-            {
-                Assert.That(manager.GetPeerDiagnostics().Single().LastDisconnectDetail, Does.Contain("finalized checkpoint"));
-            }
+            Assert.That(peer.HeadSlot, Is.EqualTo(updated.HeadSlot));
+            Assert.That(peer.GetType().GetProperty("StatusReceivedTicks")!.GetValue(peer), Is.EqualTo(clock.UtcNowOffset.UtcTicks));
+        }
+        else
+        {
+            Assert.That(manager.GetPeerDiagnostics().Single().LastDisconnectDetail, Does.Contain("finalized checkpoint"));
         }
     }
 
@@ -741,11 +725,9 @@ public class RequestFailureCauseTests
         using CancellationTokenSource stopped = new();
         stopped.Cancel();
         for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new OperationCanceledException(), 0, stopped.Token);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(manager.GetBestPeers(0), Has.Count.EqualTo(1));
-            Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(manager.GetBestPeers(0), Has.Count.EqualTo(1));
+        Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
     }
 
     private static Task InvokeStatusAsync(PeerManager manager, IBeaconSyncPeer peer, string method, CancellationToken token) =>

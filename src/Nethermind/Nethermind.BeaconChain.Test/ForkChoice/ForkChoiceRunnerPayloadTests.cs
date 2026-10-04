@@ -57,12 +57,10 @@ public class ForkChoiceRunnerPayloadTests
         Assert.That(() => runner.OnBlock(child, childState),
             accepted ? Throws.Nothing : Throws.TypeOf<ForkChoiceException>().With.Message.Contains("which is not verified"));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.ContainsBlock(childRoot), Is.EqualTo(accepted));
-            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(accepted ? childRoot : Hash256.Zero), "the timely child takes the boost only if accepted");
-            Assert.That(runner.GetParentBlockHash(childRoot), Is.EqualTo(accepted ? bidParentBlockHash : null));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.ContainsBlock(childRoot), Is.EqualTo(accepted));
+        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(accepted ? childRoot : Hash256.Zero), "the timely child takes the boost only if accepted");
+        Assert.That(runner.GetParentBlockHash(childRoot), Is.EqualTo(accepted ? bidParentBlockHash : null));
     }
 
     /// <summary>
@@ -108,15 +106,13 @@ public class ForkChoiceRunnerPayloadTests
         runner.OnExecutionPayloadVerified(chain.First.Root);
         Assert.That(() => runner.OnExecutionPayloadVerified(chain.First.Root), Throws.Nothing);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstVerifiedBefore, Is.False);
-            Assert.That(runner.IsPayloadVerified(chain.First.Root), Is.True);
-            Assert.That(runner.IsPayloadVerified(chain.AnchorRoot), Is.True);
-            Assert.That(runner.IsPayloadVerified(unknown), Is.False);
-            Assert.That(runner.GetParentBlockHash(chain.First.Root), Is.EqualTo(BidOf(chain.First.Block).ParentBlockHash));
-            Assert.That(runner.GetParentBlockHash(chain.AnchorRoot), Is.Null);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(firstVerifiedBefore, Is.False);
+        Assert.That(runner.IsPayloadVerified(chain.First.Root), Is.True);
+        Assert.That(runner.IsPayloadVerified(chain.AnchorRoot), Is.True);
+        Assert.That(runner.IsPayloadVerified(unknown), Is.False);
+        Assert.That(runner.GetParentBlockHash(chain.First.Root), Is.EqualTo(BidOf(chain.First.Block).ParentBlockHash));
+        Assert.That(runner.GetParentBlockHash(chain.AnchorRoot), Is.Null);
     }
 
     /// <summary>
@@ -158,14 +154,12 @@ public class ForkChoiceRunnerPayloadTests
         Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(FinalizedEpoch, finalizedRoot)), "fixture bug");
         runner.Prune();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.ContainsBlock(chain.First.Root), Is.False, "fixture bug: the proto-array must have pruned");
-            Assert.That(runner.GetParentBlockHash(chain.First.Root), Is.Null);
-            Assert.That(runner.GetParentBlockHash(parentRoot), Is.Not.Null, "the unpruned tip keeps its record");
-            Assert.That(runner.GetPtcVotes(chain.First.Root), Is.Null);
-            Assert.That(runner.GetPtcVotes(parentRoot), Is.Not.Null, "the unpruned tip keeps its PTC votes");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.ContainsBlock(chain.First.Root), Is.False, "fixture bug: the proto-array must have pruned");
+        Assert.That(runner.GetParentBlockHash(chain.First.Root), Is.Null);
+        Assert.That(runner.GetParentBlockHash(parentRoot), Is.Not.Null, "the unpruned tip keeps its record");
+        Assert.That(runner.GetPtcVotes(chain.First.Root), Is.Null);
+        Assert.That(runner.GetPtcVotes(parentRoot), Is.Not.Null, "the unpruned tip keeps its PTC votes");
     }
 
     /// <summary>A vote's payload-status index and whether it is refused (the message fragment) or counted (<see langword="null"/>).</summary>
@@ -459,11 +453,9 @@ public class ForkChoiceRunnerPayloadTests
 
         Hash256? payloadRoot = runner.ValidateExecutionChainAndGetPayloadRoot(headRoot, payloadHash);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(payloadRoot, Is.Null, "a pre-Gloas payload needs no envelope verdict and must end the carrier search");
-            Assert.That(runner.GetBlockExecutionStatus(headRoot), Is.EqualTo(ExecutionStatus.Valid));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(payloadRoot, Is.Null, "a pre-Gloas payload needs no envelope verdict and must end the carrier search");
+        Assert.That(runner.GetBlockExecutionStatus(headRoot), Is.EqualTo(ExecutionStatus.Valid));
     }
 
     private static GloasForkChoiceHarness.Block ImportVerifiedFirst(GloasForkChoiceHarness harness)

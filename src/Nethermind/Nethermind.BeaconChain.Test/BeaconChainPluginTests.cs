@@ -125,16 +125,14 @@ public class BeaconChainPluginTests
 
         PubsubSettings settings = p2p.PubsubSettingsForTest;
         double decay = scores[GossipTopics.Topic(ForkDigest.Compute(spec, 0), GossipTopics.BeaconBlock)].InvalidMessageDeliveriesDecay;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(missing, Is.Empty);
-            Assert.That((settings.BehaviorPenaltyWeight, settings.IPColocationFactorWeight, settings.AppSpecificWeight), Is.EqualTo((0d, 0d, 0d)));
-            // One invalid delivery prunes the peer and stops gossip and publication to it, a second graylists it.
-            Assert.That(settings.PublishThreshold, Is.GreaterThan(GossipScoring.InvalidMessageDeliveriesWeight));
-            Assert.That(settings.GraylistThreshold, Is.LessThanOrEqualTo(GossipScoring.InvalidMessageDeliveriesWeight).And.GreaterThan(4 * GossipScoring.InvalidMessageDeliveriesWeight));
-            // The count decays to a hundredth over two epochs: 768 decays of one second on mainnet.
-            Assert.That(Math.Pow(decay, 768), Is.EqualTo(0.01).Within(1e-9));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(missing, Is.Empty);
+        Assert.That((settings.BehaviorPenaltyWeight, settings.IPColocationFactorWeight, settings.AppSpecificWeight), Is.EqualTo((0d, 0d, 0d)));
+        // One invalid delivery prunes the peer and stops gossip and publication to it, a second graylists it.
+        Assert.That(settings.PublishThreshold, Is.GreaterThan(GossipScoring.InvalidMessageDeliveriesWeight));
+        Assert.That(settings.GraylistThreshold, Is.LessThanOrEqualTo(GossipScoring.InvalidMessageDeliveriesWeight).And.GreaterThan(4 * GossipScoring.InvalidMessageDeliveriesWeight));
+        // The count decays to a hundredth over two epochs: 768 decays of one second on mainnet.
+        Assert.That(Math.Pow(decay, 768), Is.EqualTo(0.01).Within(1e-9));
     }
 
     /// <summary>The pending validation bounds come from the config; the router's own bounds are the node's plus the vote queue, so it never drops a deferred message unseen.</summary>
@@ -168,13 +166,11 @@ public class BeaconChainPluginTests
         await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
         PubsubSettings settings = p2p.PubsubSettingsForTest;
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(settings.MaxRpcBytes, Is.EqualTo(12_234_442));
-            Assert.That(settings.MaxIwantResponseBytes, Is.EqualTo(12_234_442));
-            // (64 committees * 16 target aggregators + 512 PTC votes + 128 column subnets + 5 single-message topics) per slot, over 64 slots.
-            Assert.That(settings.MaxSeenMessageIds, Is.EqualTo(106_816));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(settings.MaxRpcBytes, Is.EqualTo(12_234_442));
+        Assert.That(settings.MaxIwantResponseBytes, Is.EqualTo(12_234_442));
+        // (64 committees * 16 target aggregators + 512 PTC votes + 128 column subnets + 5 single-message topics) per slot, over 64 slots.
+        Assert.That(settings.MaxSeenMessageIds, Is.EqualTo(106_816));
     }
 
     /// <summary>Without discovery the peer manager knows no sampled column, so every custodian search and keep rule would be inert.</summary>

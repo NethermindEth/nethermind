@@ -51,15 +51,13 @@ public class BeaconChainServiceGloasAnchorTests
         bool anchored = store.TryGetAnchor(out Hash256? anchorRoot, out _);
         (_, TestErrorLogManager.Error[] resumed, _) = await StartAsync(config, store);
 
-        using (Assert.EnterMultipleScope())
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(anchored, Is.True, "the fresh start checkpoint-synced the Gloas anchor, so the second start resumes");
+        Assert.That(anchorRoot, Is.EqualTo(first.Root));
+        foreach ((TestErrorLogManager.Error[] errors, string start) in new[] { (fresh, "fresh"), (resumed, "resumed") })
         {
-            Assert.That(anchored, Is.True, "the fresh start checkpoint-synced the Gloas anchor, so the second start resumes");
-            Assert.That(anchorRoot, Is.EqualTo(first.Root));
-            foreach ((TestErrorLogManager.Error[] errors, string start) in new[] { (fresh, "fresh"), (resumed, "resumed") })
-            {
-                Assert.That(errors, Has.Length.EqualTo(1), start);
-                Assert.That(errors[0].Exception, Is.TypeOf<InvalidOperationException>().And.Message.Contains("P2P components"), $"{start}: the orchestrator was reached");
-            }
+            Assert.That(errors, Has.Length.EqualTo(1), start);
+            Assert.That(errors[0].Exception, Is.TypeOf<InvalidOperationException>().And.Message.Contains("P2P components"), $"{start}: the orchestrator was reached");
         }
     }
 
@@ -103,16 +101,14 @@ public class BeaconChainServiceGloasAnchorTests
         await service.Start();
 
         Hash256 anchorExecutionHash = first.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(logManager.Errors, Is.Empty);
-            Assert.That(container.Resolve<PubkeyCache>().Count, Is.EqualTo(first.PostState.Validators!.Length));
-            object[] anchorUpdate = [anchorExecutionHash, anchorExecutionHash, anchorExecutionHash];
-            Assert.That(engine.ReceivedCalls().Select(static c => c.GetArguments()), Is.EqualTo(new[] { anchorUpdate }),
-                "the anchor kick; the head update after the replay imported the child, which builds on the anchor's empty payload, is the same state");
-            Assert.That(container.Resolve<BeaconP2P>().LocalPeerId, Is.Not.Null, "the P2P host started");
-            await ipResolver.Received(1).Resolve(Arg.Any<CancellationToken>());
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(logManager.Errors, Is.Empty);
+        Assert.That(container.Resolve<PubkeyCache>().Count, Is.EqualTo(first.PostState.Validators!.Length));
+        object[] anchorUpdate = [anchorExecutionHash, anchorExecutionHash, anchorExecutionHash];
+        Assert.That(engine.ReceivedCalls().Select(static c => c.GetArguments()), Is.EqualTo(new[] { anchorUpdate }),
+            "the anchor kick; the head update after the replay imported the child, which builds on the anchor's empty payload, is the same state");
+        Assert.That(container.Resolve<BeaconP2P>().LocalPeerId, Is.Not.Null, "the P2P host started");
+        await ipResolver.Received(1).Resolve(Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -135,13 +131,11 @@ public class BeaconChainServiceGloasAnchorTests
 
         (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await StartAsync(new BeaconChainConfig { CheckpointSyncUrl = "http://invalid.localhost:1" }, store);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(blockSlot, Is.Not.EqualTo(stateSlot), "fixture: the block slot must be told apart from the state slot");
-            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains($"at slot {blockSlot} is a {(gloasBlock ? BeaconFork.Gloas : BeaconFork.Fulu)} block"));
-            Assert.That(errors, Is.Empty, "the background run never started");
-            Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(blockSlot, Is.Not.EqualTo(stateSlot), "fixture: the block slot must be told apart from the state slot");
+        Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains($"at slot {blockSlot} is a {(gloasBlock ? BeaconFork.Gloas : BeaconFork.Fulu)} block"));
+        Assert.That(errors, Is.Empty, "the background run never started");
+        Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
     }
 
     private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> StartAsync(BeaconChainConfig config, BeaconChainStore store)

@@ -114,11 +114,9 @@ public partial class BeaconSyncOrchestratorTests
         AddColumn(pool, ServeRangeStart + 2);
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(before, Is.EqualTo(ServeRangeStart + 1));
-            Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "the first slot of the range lost its column");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(before, Is.EqualTo(ServeRangeStart + 1));
+        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "the first slot of the range lost its column");
     }
 
     /// <summary>
@@ -150,11 +148,9 @@ public partial class BeaconSyncOrchestratorTests
 
         AddColumn(pool, ServeRangeStart + 2);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "status read");
-            Assert.That(statusHolder.CurrentHead.Status.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "status and head read together");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "status read");
+        Assert.That(statusHolder.CurrentHead.Status.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "status and head read together");
     }
 
     /// <summary>
@@ -243,13 +239,11 @@ public partial class BeaconSyncOrchestratorTests
 
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(FuluAnchorSlot % Spec.SlotsPerEpoch, Is.Zero, "fixture: the anchor offset is its slot in the epoch");
-            Assert.That(atStartup, Is.EqualTo(expectedEpoch), "at startup");
-            Assert.That(statusHolder.CurrentStatus.FinalizedEpoch, Is.EqualTo(expectedEpoch), "after the head step, while fork choice still holds the anchor as finalized");
-            Assert.That(statusHolder.CurrentStatus.FinalizedRoot, Is.EqualTo(storeFinalized.Root));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(FuluAnchorSlot % Spec.SlotsPerEpoch, Is.Zero, "fixture: the anchor offset is its slot in the epoch");
+        Assert.That(atStartup, Is.EqualTo(expectedEpoch), "at startup");
+        Assert.That(statusHolder.CurrentStatus.FinalizedEpoch, Is.EqualTo(expectedEpoch), "after the head step, while fork choice still holds the anchor as finalized");
+        Assert.That(statusHolder.CurrentStatus.FinalizedRoot, Is.EqualTo(storeFinalized.Root));
     }
 
     /// <summary>gloas/p2p-interface.md ExecutionPayloadEnvelopesByRange: the head's envelope is served only while fork choice resolves the head FULL.</summary>

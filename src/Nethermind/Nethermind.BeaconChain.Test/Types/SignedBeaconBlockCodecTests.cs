@@ -39,12 +39,10 @@ public class SignedBeaconBlockCodecTests
 
         ForkedSignedBeaconBlock decoded = SignedBeaconBlockCodec.Decode(ssz, Sepolia);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decoded, gloas ? Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>() : Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
-            Assert.That(decoded.Slot, Is.EqualTo(slot));
-            Assert.That(SignedBeaconBlockCodec.Encode(decoded, Sepolia), Is.EqualTo(ssz));
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(decoded, gloas ? Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>() : Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
+        Assert.That(decoded.Slot, Is.EqualTo(slot));
+        Assert.That(SignedBeaconBlockCodec.Encode(decoded, Sepolia), Is.EqualTo(ssz));
     }
 
     [Test]

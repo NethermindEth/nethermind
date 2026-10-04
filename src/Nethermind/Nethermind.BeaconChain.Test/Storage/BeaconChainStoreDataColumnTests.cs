@@ -55,14 +55,12 @@ public class BeaconChainStoreDataColumnTests
         bool readAsFulu = store.TryGetDataColumnSidecar(root, 5, out DataColumnSidecar? readFulu);
         bool readAsGloas = store.TryGetDataColumnSidecarGloas(root, 5, out DataColumnSidecarGloas? readGloas);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(readAsFulu, Is.EqualTo(fulu));
-            Assert.That(readAsGloas, Is.EqualTo(!fulu));
-            Assert.That(fulu ? DataColumnSidecar.Encode(readFulu!) : DataColumnSidecarGloas.Encode(readGloas!),
-                Is.EqualTo(fulu ? DataColumnSidecar.Encode(fuluSidecar) : DataColumnSidecarGloas.Encode(DataColumnSidecarGloasTestFixture.BuildSidecar(5, FirstSlot, root))));
-            Assert.That(store.TryGetDataColumnSidecar(Root("other"), 5, out _), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(readAsFulu, Is.EqualTo(fulu));
+        Assert.That(readAsGloas, Is.EqualTo(!fulu));
+        Assert.That(fulu ? DataColumnSidecar.Encode(readFulu!) : DataColumnSidecarGloas.Encode(readGloas!),
+            Is.EqualTo(fulu ? DataColumnSidecar.Encode(fuluSidecar) : DataColumnSidecarGloas.Encode(DataColumnSidecarGloasTestFixture.BuildSidecar(5, FirstSlot, root))));
+        Assert.That(store.TryGetDataColumnSidecar(Root("other"), 5, out _), Is.False);
     }
 
     [Test]
@@ -119,15 +117,13 @@ public class BeaconChainStoreDataColumnTests
         Put(store, root, FirstSlot, 127);
         Put(store, sibling, FirstSlot, 5);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.GetStoredDataColumns(FirstSlot, root), Is.EqualTo(UInt128.One | UInt128.One << 127));
-            Assert.That(store.GetStoredDataColumns(FirstSlot, sibling), Is.EqualTo(UInt128.One << 5));
-            Assert.That(store.GetStoredDataColumns(FirstSlot + 1, root), Is.EqualTo(UInt128.Zero));
-            Assert.That(store.HasDataColumnRecord(root, 127), Is.True);
-            Assert.That(store.HasDataColumnRecord(root, 5), Is.False);
-            Assert.That(store.HasDataColumnRecord(root, Eip7594DasConstants.NumberOfColumns), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.GetStoredDataColumns(FirstSlot, root), Is.EqualTo(UInt128.One | UInt128.One << 127));
+        Assert.That(store.GetStoredDataColumns(FirstSlot, sibling), Is.EqualTo(UInt128.One << 5));
+        Assert.That(store.GetStoredDataColumns(FirstSlot + 1, root), Is.EqualTo(UInt128.Zero));
+        Assert.That(store.HasDataColumnRecord(root, 127), Is.True);
+        Assert.That(store.HasDataColumnRecord(root, 5), Is.False);
+        Assert.That(store.HasDataColumnRecord(root, Eip7594DasConstants.NumberOfColumns), Is.False);
     }
 
     // A prune runs on the thread that added a column, so one call must not be held for a whole backlog after a long outage.
@@ -146,12 +142,10 @@ public class BeaconChainStoreDataColumnTests
         store = restart ? new BeaconChainStore(db, Spec) : store;
         store.PruneDataColumnSidecars(currentEpoch, finalizedSlot: 0);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(oldestGoneAfterOne, Is.True);
-            Assert.That(newestKeptAfterOne, Is.True, "the call stops after its batch budget and leaves the rest for the next one");
-            Assert.That(Holds(store, newest), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(oldestGoneAfterOne, Is.True);
+        Assert.That(newestKeptAfterOne, Is.True, "the call stops after its batch budget and leaves the rest for the next one");
+        Assert.That(Holds(store, newest), Is.False);
     }
 
     [Test]
@@ -170,12 +164,10 @@ public class BeaconChainStoreDataColumnTests
         store = restart ? new BeaconChainStore(db, Spec) : store;
         store.PruneDataColumnSidecars(currentEpoch, last + 1);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(earlyGoneAfterOne, Is.True);
-            Assert.That(lateKeptAfterOne, Is.True);
-            Assert.That(Holds(store, lateOrphan), Is.False);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(earlyGoneAfterOne, Is.True);
+        Assert.That(lateKeptAfterOne, Is.True);
+        Assert.That(Holds(store, lateOrphan), Is.False);
     }
 
     // A block that reaches the canonical index after a pass must still have its competing sidecars dropped once it does.
@@ -195,12 +187,10 @@ public class BeaconChainStoreDataColumnTests
         store.ApplyCanonicalIndexChanges([(slot, winner)], slot);
         store.PruneDataColumnSidecars(currentEpoch, finalized);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(keptWhileUnindexed, Is.True, "nothing shows yet which block wins the slot");
-            Assert.That(Holds(store, orphan), Is.False);
-            Assert.That(Holds(store, winner), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(keptWhileUnindexed, Is.True, "nothing shows yet which block wins the slot");
+        Assert.That(Holds(store, orphan), Is.False);
+        Assert.That(Holds(store, winner), Is.True);
     }
 
     // A sidecar verified before finalization can be stored after a pass has already checked its slot.
@@ -219,11 +209,9 @@ public class BeaconChainStoreDataColumnTests
         Put(store, lateOrphan, slot);
         store.PruneDataColumnSidecars(currentEpoch, finalized);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Holds(store, lateOrphan), Is.False);
-            Assert.That(Holds(store, winner), Is.True);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Holds(store, lateOrphan), Is.False);
+        Assert.That(Holds(store, winner), Is.True);
     }
 
     [Test]
@@ -258,14 +246,12 @@ public class BeaconChainStoreDataColumnTests
 
         store.PruneDataColumnSidecars(currentEpoch, finalizedSlot: 0);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Holds(store, below, 0), Is.False);
-            Assert.That(Holds(store, below, 127), Is.False);
-            Assert.That(Holds(store, atEdge), Is.True, "the first slot of the window is still served");
-            Assert.That(Holds(store, newer, 1), Is.True);
-            Assert.That(db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars).GetAllKeys().Count(), Is.EqualTo(2 + 2 + 1), "two records and their slot entries survive, plus the bounds record");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Holds(store, below, 0), Is.False);
+        Assert.That(Holds(store, below, 127), Is.False);
+        Assert.That(Holds(store, atEdge), Is.True, "the first slot of the window is still served");
+        Assert.That(Holds(store, newer, 1), Is.True);
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars).GetAllKeys().Count(), Is.EqualTo(2 + 2 + 1), "two records and their slot entries survive, plus the bounds record");
     }
 
     [Test]
@@ -286,12 +272,10 @@ public class BeaconChainStoreDataColumnTests
         store.PruneDataColumnSidecars(currentEpoch, finalizedSlot: 0);
 
         IDb table = db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Holds(store, Root($"old {first}")), Is.False);
-            Assert.That(Holds(store, kept), Is.True);
-            Assert.That(table.GetAllKeys().Count(), Is.EqualTo(1 + 1 + 1), "the kept record, its slot entry and the bounds record");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Holds(store, Root($"old {first}")), Is.False);
+        Assert.That(Holds(store, kept), Is.True);
+        Assert.That(table.GetAllKeys().Count(), Is.EqualTo(1 + 1 + 1), "the kept record, its slot entry and the bounds record");
     }
 
     [Test]
@@ -311,14 +295,12 @@ public class BeaconChainStoreDataColumnTests
 
         store.PruneDataColumnSidecars(currentEpoch, finalized);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Holds(store, canonical, 4), Is.True);
-            Assert.That(Holds(store, orphan, 4), Is.False, "a block that lost its slot to the canonical one can never become canonical after finalization");
-            Assert.That(Holds(store, orphan, 9), Is.False);
-            Assert.That(Holds(store, unknown), Is.True, "no canonical entry yet, so nothing shows it is orphaned");
-            Assert.That(Holds(store, aboveFinalized), Is.True, "not final yet");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Holds(store, canonical, 4), Is.True);
+        Assert.That(Holds(store, orphan, 4), Is.False, "a block that lost its slot to the canonical one can never become canonical after finalization");
+        Assert.That(Holds(store, orphan, 9), Is.False);
+        Assert.That(Holds(store, unknown), Is.True, "no canonical entry yet, so nothing shows it is orphaned");
+        Assert.That(Holds(store, aboveFinalized), Is.True, "not final yet");
     }
 
     [Test]
@@ -350,11 +332,9 @@ public class BeaconChainStoreDataColumnTests
         store.PruneDataColumnSidecars(currentEpoch, finalizedSlot: 0);
         store.TryGetDataColumnFloor(out ulong afterPrune);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(afterLower, Is.EqualTo(edge - 100));
-            Assert.That(afterPrune, Is.EqualTo(edge), "slots below the window are no longer held, so they cannot count as complete");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(afterLower, Is.EqualTo(edge - 100));
+        Assert.That(afterPrune, Is.EqualTo(edge), "slots below the window are no longer held, so they cannot count as complete");
     }
 
     [Test]
@@ -408,12 +388,10 @@ public class BeaconChainStoreDataColumnTests
         UInt128 stored = store.GetStoredDataColumns(edge - 1, root);
         store.PruneDataColumnSidecars(currentEpoch, finalizedSlot: 0);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stored, Is.EqualTo(UInt128.One << 7));
-            Assert.That(Holds(store, root, 7), Is.False);
-            Assert.That(table.Get(slotKey), Is.Null);
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(stored, Is.EqualTo(UInt128.One << 7));
+        Assert.That(Holds(store, root, 7), Is.False);
+        Assert.That(table.Get(slotKey), Is.Null);
     }
 
     // An older database has an empty column table and no floor, so it is upgraded in place; a newer one is refused (see BeaconChainServiceStartupTests).
@@ -425,11 +403,9 @@ public class BeaconChainStoreDataColumnTests
 
         store.EnsureSchemaVersion();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.TryGetSchemaVersion(out uint version) ? version : 0, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
-            Assert.That(store.TryGetDataColumnFloor(out _), Is.False, "no floor, so the pool seeds one from the canonical index");
-        }
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetSchemaVersion(out uint version) ? version : 0, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+        Assert.That(store.TryGetDataColumnFloor(out _), Is.False, "no floor, so the pool seeds one from the canonical index");
     }
 
     [Test]
