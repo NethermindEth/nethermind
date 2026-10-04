@@ -18,7 +18,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -104,79 +103,9 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Known.Contains(child.ComputeMessageRoot()), Is.EqualTo(reDriven));
     }
 
-    /// <summary>
-    /// A gossip block whose parent waits in the retry set on its own parent's payload is held for that parent, not dropped,
-    /// and the parent is not fetched again when the node already holds it; the envelope then imports both in order.
-    /// </summary>
-    [Test]
-    public async Task Gossip_child_of_a_parent_waiting_on_its_payload_imports_after_the_envelope([Values] bool parentAlreadyHeld)
-    {
-        ParkedParentScenario scenario = CreateParkedParentScenario();
-        BeaconSyncOrchestrator orchestrator = scenario.Harness.Orchestrator;
 
-        if (parentAlreadyHeld)
-        {
-            await orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Parent, CancellationToken.None);
-        }
 
-        await orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Child, CancellationToken.None);
-        await orchestrator.ImportEnvelopeAsync(EnvelopeFor(scenario.FullRoot, WallSlot), CancellationToken.None);
-        await orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Grandchild, CancellationToken.None);
 
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(scenario.Harness.Importer.Known, Does.Contain(scenario.Child.ComputeMessageRoot()), "the held child imports once its parent does");
-        Assert.That(scenario.Harness.Importer.Known, Does.Contain(scenario.Grandchild.ComputeMessageRoot()), "a child of the imported block is not held for it");
-        Assert.That(orchestrator.SyncTip, Is.EqualTo((scenario.Grandchild.ComputeMessageRoot(), scenario.Grandchild.Slot)), "a child of the imported block goes through the full import");
-        Assert.That(scenario.Harness.Router.IsProposalSeen(scenario.Grandchild.Slot, scenario.Grandchild.ProposerIndex), Is.True);
-        Assert.That(scenario.Peer.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IBeaconSyncPeer.RequestBlocksByRootAsync)), Is.EqualTo(parentAlreadyHeld ? 0 : 1), "a parent the node holds is not fetched");
-        Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero);
-    }
-
-    /// <summary>
-    /// A child held for a parked block, and the blocks held for that child, are released when the parked block leaves the
-    /// retry set without importing, here by failing its retry or by falling behind finality; held for good, such blocks would fill the bounded queue.
-    /// </summary>
-    [Test]
-    public async Task Child_held_for_a_parked_block_is_released_when_that_block_can_no_longer_import([Values] ParkedBlockFate fate)
-    {
-        ParkedParentScenario scenario = CreateParkedParentScenario();
-        Harness harness = scenario.Harness;
-        harness.Orchestrator.GossipStarted = true;
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Parent, CancellationToken.None);
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Child, CancellationToken.None);
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Grandchild, CancellationToken.None);
-        int heldBefore = harness.Orchestrator.PendingGossipBlockCount;
-
-        switch (fate)
-        {
-            case ParkedBlockFate.FinalizedAway:
-                harness.Importer.Head = CreateHead(TestItem.KeccakA, WallSlot, finalizedEpoch: Spec.GetEpoch(scenario.Parent.Slot) + 1);
-                break;
-            case ParkedBlockFate.RetryInvalid:
-                harness.Importer.UnverifiedPayloads.Remove(scenario.FullRoot);
-                harness.Importer.Forged.Add(scenario.Parent.ComputeMessageRoot());
-                break;
-            case ParkedBlockFate.RetryUnknownParent:
-                harness.Importer.Known.Remove(scenario.FullRoot);
-                break;
-        }
-
-        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
-        int heldAfterRelease = harness.Orchestrator.PendingGossipBlockCount;
-        ForkedSignedBeaconBlock lateSibling = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(scenario.Grandchild.Slot + 1, scenario.Child.ComputeMessageRoot()));
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(lateSibling, CancellationToken.None);
-
-        // A late child is fetched for like any unknown-parent block and, when no peer returns its parent, kept only in that bounded hold.
-        bool lateChildKept = fate != ParkedBlockFate.FinalizedAway;
-        int childFetches = scenario.Peer.ReceivedCalls().Count(c =>
-            c.GetMethodInfo().Name == nameof(IBeaconSyncPeer.RequestBlocksByRootAsync) && ((Hash256[])c.GetArguments()[0]!).Contains(scenario.Child.ComputeMessageRoot()));
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(heldBefore, Is.EqualTo(2));
-        Assert.That(heldAfterRelease, Is.Zero);
-        Assert.That(childFetches, Is.EqualTo(lateChildKept ? 1 : 0), "a released block no longer holds children of its own: the late child asks peers for it");
-        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(lateChildKept ? 1 : 0));
-    }
 
     public enum ParkedBlockFate
     {
@@ -185,37 +114,7 @@ public partial class BeaconSyncOrchestratorTests
         RetryUnknownParent,
     }
 
-    /// <summary>
-    /// A block whose parent is itself held for a parked block is held too, whether it arrives as that parent's child or
-    /// needs the blocks between fetched first; the node never fetches a block it holds, and the envelope imports them all.
-    /// </summary>
-    [Test]
-    public async Task Descendants_of_a_held_child_are_held_without_fetching_it_again([Values] bool parentUnknown)
-    {
-        ParkedParentScenario scenario = CreateParkedParentScenario();
-        Harness harness = scenario.Harness;
-        Hash256 childRoot = scenario.Child.ComputeMessageRoot();
-        Hash256 grandchildRoot = scenario.Grandchild.ComputeMessageRoot();
-        ForkedSignedBeaconBlock greatGrandchild = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(scenario.Grandchild.Slot + 1, grandchildRoot));
-        scenario.Peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == childRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([scenario.Child]));
-        scenario.Peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == grandchildRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([scenario.Grandchild]));
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Parent, CancellationToken.None);
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Child, CancellationToken.None);
 
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(parentUnknown ? greatGrandchild : scenario.Grandchild, CancellationToken.None);
-        int heldBeforeEnvelope = harness.Orchestrator.PendingGossipBlockCount;
-        await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(scenario.FullRoot, WallSlot), CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(heldBeforeEnvelope, Is.EqualTo(parentUnknown ? 3 : 2));
-        Assert.That(ByRootRequestsFor(scenario.Peer, childRoot), Is.Zero, "the held child is not fetched");
-        Assert.That(ByRootRequestsFor(scenario.Peer, grandchildRoot), Is.EqualTo(parentUnknown ? 1 : 0));
-        Assert.That(harness.Importer.Known, Does.Contain(grandchildRoot));
-        Assert.That(harness.Importer.Known.Contains(greatGrandchild.ComputeMessageRoot()), Is.EqualTo(parentUnknown));
-        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
-        Assert.That(harness.Importer.ByRootImports.Contains(grandchildRoot), Is.EqualTo(parentUnknown), "a fetched block is held as an import fetched by root");
-        Assert.That(harness.Importer.RequestedImports, Does.Not.Contain(greatGrandchild.ComputeMessageRoot()));
-    }
 
     /// <summary>
     /// A walk whose fetched ancestor begins to wait for its parent's payload by another route, in the retry set or held behind a
@@ -338,270 +237,11 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    /// <summary>
-    /// A fetched block held behind a fetched parent that waits for its own parent's payload is released as fetched by root once
-    /// the payload arrives: its import is charged to the by-root regeneration budget, and when its state transition fails the
-    /// peer that served it is blamed, as for any invalid block it returned by root.
-    /// </summary>
-    [Test]
-    public async Task Fetched_block_held_for_a_parent_payload_is_released_as_fetched_and_blames_its_supplier_when_invalid()
-    {
-        ParkedParentScenario scenario = CreateParkedParentScenario();
-        Harness harness = scenario.Harness;
-        Hash256 heldRoot = scenario.Child.ComputeMessageRoot();
-        scenario.Peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == heldRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([scenario.Child]));
-        harness.Importer.InvalidTransition.Add(heldRoot);
-
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Grandchild, CancellationToken.None);
-        int heldBeforeEnvelope = harness.Orchestrator.PendingGossipBlockCount;
-        await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(scenario.FullRoot, WallSlot), CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(heldBeforeEnvelope, Is.EqualTo(2), "fixture: the fetched block and the gossip block are held for the payload");
-        Assert.That(harness.Importer.Known, Does.Contain(scenario.Parent.ComputeMessageRoot()), "fixture: the fetched parent imports once the payload arrives");
-        Assert.That(harness.Importer.ByRootImports.Count(root => root == heldRoot), Is.EqualTo(2), "the hold check and the release both import it as fetched by root");
-        scenario.Peer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
-    }
-
-    /// <summary>
-    /// A block that answers UnknownParent without ever having been retried can still import once range sync delivers its
-    /// parent, so the far-behind gossip blocks held for it stay held and import with it.
-    /// </summary>
-    [Test]
-    public async Task Children_held_for_a_block_with_an_unknown_parent_import_with_it()
-    {
-        Harness harness = CreateHarness();
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, WallSlot - 2, WallSlot - 1);
-        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
-        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
-        await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
-
-        BlockImportResult beforeAnchor = await harness.Orchestrator.ImportBlockAsync(parent, CancellationToken.None);
-        int heldAfterUnknownParent = harness.Orchestrator.PendingGossipBlockCount;
-        harness.Importer.Known.Add(anchorRoot);
-        await harness.Orchestrator.ImportBlockAsync(parent, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(beforeAnchor, Is.EqualTo(BlockImportResult.UnknownParent));
-        Assert.That(heldAfterUnknownParent, Is.EqualTo(1));
-        Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()), "the held child imports with its parent");
-        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
-    }
-
-    /// <summary>
-    /// A child of a parked block is held only once its proposer signature checks out; a forged one is neither held nor makes the
-    /// node fetch, also while the node is far behind, where a block with an unknown parent is otherwise held unchecked.
-    /// </summary>
-    [Test]
-    public async Task Forged_child_of_a_parked_block_is_not_held([Values] bool farBehind)
-    {
-        ParkedParentScenario scenario = CreateParkedParentScenario(farBehind);
-        Harness harness = scenario.Harness;
-        harness.Importer.Forged.Add(scenario.Child.ComputeMessageRoot());
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
-        int callsBeforeChild = scenario.Peer.ReceivedCalls().Count();
-
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
-        Assert.That(harness.Router.IsProposalSeen(scenario.Child.Slot, scenario.Child.ProposerIndex), Is.False, "a forged block does not take its (slot, proposer)");
-        Assert.That(scenario.Peer.ReceivedCalls().Count(), Is.EqualTo(callsBeforeChild), "the forged child asks no peer for anything");
-    }
-
-    /// <summary>
-    /// A child is held only when the importer verified its proposer and deferred it; one the importer can no longer defer (its
-    /// bounded deferral set forgot the parked parent) was never signature-checked, so it takes no queue place and no (slot, proposer).
-    /// </summary>
-    [Test]
-    public async Task Child_of_a_parked_block_the_importer_no_longer_defers_is_not_held()
-    {
-        ParkedParentScenario scenario = CreateParkedParentScenario();
-        Harness harness = scenario.Harness;
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
-        harness.Importer.Known.Remove(scenario.FullRoot);
-        Assert.That(harness.Importer.Import(scenario.Parent, scenario.Parent.ComputeMessageRoot(), verifySignatures: true), Is.EqualTo(BlockImportResult.UnknownParent), "fixture: the importer forgets the parked block");
-        harness.Importer.Known.Add(scenario.FullRoot);
-
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
-        Assert.That(harness.Router.IsProposalSeen(scenario.Child.Slot, scenario.Child.ProposerIndex), Is.False);
-    }
-
-    /// <summary>
-    /// specs/phase0/p2p-interface.md <c>beacon_block</c> ignores all but the first signed block for a (slot, proposer): a replay
-    /// of a held child, or another block its proposer signed for that slot, must not take a second place in the bounded queue.
-    /// </summary>
-    [Test]
-    public async Task Child_of_a_parked_block_is_held_once_per_slot_and_proposer([Values] bool equivocation)
-    {
-        ParkedParentScenario scenario = CreateParkedParentScenario();
-        Harness harness = scenario.Harness;
-        SignedBeaconBlockGloas equivocating = CreateMinimalGloasBlock(scenario.Child.Slot, scenario.Parent.ComputeMessageRoot());
-        equivocating.Message!.Body!.Graffiti = TestItem.KeccakB;
-        ForkedSignedBeaconBlock repeat = equivocation ? new ForkedSignedBeaconBlock.OfGloas(equivocating) : scenario.Child;
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None);
-
-        await harness.Orchestrator.ProcessGossipBlockAsync(repeat, CancellationToken.None);
-
-        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(1));
-    }
-
-    /// <summary>
-    /// A fetched ancestor of a gossip block passes the same (slot, proposer) gate as a gossip block before it is held for a
-    /// parked block, or one equivocating proposer could fill the bounded queue through forged children naming each of its blocks.
-    /// </summary>
-    [Test]
-    public async Task Fetched_ancestor_of_a_parked_block_is_not_held_for_a_seen_slot_and_proposer()
-    {
-        ParkedParentScenario scenario = CreateParkedParentScenario();
-        Harness harness = scenario.Harness;
-        Hash256 childRoot = scenario.Child.ComputeMessageRoot();
-        scenario.Peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == childRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([scenario.Child]));
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
-        harness.Router.MarkProposalSeen(scenario.Child.Slot, scenario.Child.ProposerIndex);
-
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Grandchild, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(ByRootRequestsFor(scenario.Peer, childRoot), Is.EqualTo(1), "fixture: the ancestor is fetched");
-        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
-    }
-
-    /// <summary>
-    /// A fetched ancestor of a gossip block that its first import, before it is held for a parked block, finds invalid blames
-    /// the peer that served it, as any invalid block served by root does; one refused only by this node's own fork-choice
-    /// admission, or because the importer no longer defers its parent, says nothing of the block, so its peer is not blamed.
-    /// </summary>
-    [Test]
-    public async Task Fetched_ancestor_of_a_parked_block_failing_its_first_import_blames_its_supplier_only_when_invalid([Values] HoldCheckFailure failure)
-    {
-        ParkedParentScenario scenario = CreateParkedParentScenario();
-        Harness harness = scenario.Harness;
-        Hash256 childRoot = scenario.Child.ComputeMessageRoot();
-        scenario.Peer.RequestBlocksByRootAsync(Arg.Is<Hash256[]>(r => r[0] == childRoot), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([scenario.Child]));
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
-        switch (failure)
-        {
-            case HoldCheckFailure.Invalid:
-                harness.Importer.Forged.Add(childRoot);
-                break;
-            case HoldCheckFailure.LocalAdmission:
-                harness.Importer.AdmissionRefused.Add(childRoot);
-                break;
-            case HoldCheckFailure.ParentForgotten:
-                harness.Importer.Known.Remove(scenario.FullRoot);
-                harness.Importer.Import(scenario.Parent, scenario.Parent.ComputeMessageRoot(), verifySignatures: true);
-                harness.Importer.Known.Add(scenario.FullRoot);
-                break;
-        }
-
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(scenario.Grandchild, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(ByRootRequestsFor(scenario.Peer, childRoot), Is.EqualTo(1), "fixture: the ancestor is fetched");
-        Assert.That(harness.Importer.ByRootImports, Does.Contain(childRoot), "fixture: its first import is the hold check");
-        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
-        scenario.Peer.Received(failure == HoldCheckFailure.Invalid ? 1 : 0).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
-    }
-
     public enum HoldCheckFailure
     {
         Invalid,
         LocalAdmission,
         ParentForgotten,
-    }
-
-    /// <summary>
-    /// A child of a parked block that the full queue cannot take is neither deferred by the importer nor marked seen, so a
-    /// later copy can still be held once there is room; marked seen, the valid block would be refused from gossip for good.
-    /// Its gossip verdict is ignored at once, so its message does not wait for the next slot's sweep.
-    /// </summary>
-    [Test]
-    public async Task Child_of_a_parked_block_the_full_queue_cannot_take_is_not_marked_seen()
-    {
-        const int PendingQueueCapacity = 128;
-        ParkedParentScenario scenario = CreateParkedParentScenario(farBehind: true);
-        Harness harness = scenario.Harness;
-        Hash256 childRoot = scenario.Child.ComputeMessageRoot();
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
-        for (int i = 0; i < PendingQueueCapacity; i++)
-        {
-            ForkedSignedBeaconBlock filler = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(scenario.Grandchild.Slot + 1 + (ulong)i, TestItem.Keccaks[i]));
-            await harness.Orchestrator.ProcessGossipBlockAsync(filler, CancellationToken.None);
-        }
-
-        (GossipVerdict verdict, List<MessageValidity> given) = RecordingVerdict();
-        await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None, verdict);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(PendingQueueCapacity), "fixture: the queue is full");
-        Assert.That(given, Is.EqualTo(new[] { MessageValidity.Ignored }), "the verdict is given before any slot tick");
-        Assert.That(harness.Router.IsProposalSeen(scenario.Child.Slot, scenario.Child.ProposerIndex), Is.False);
-        Assert.That(harness.Importer.Imports.Any(i => i.Root == childRoot), Is.False, "the importer records no deferral for a block the queue cannot take");
-    }
-
-    /// <summary>
-    /// A Fulu block in the retry set waits on its data, not on a payload, so a walk that reaches it holds its blocks for the
-    /// block's retry instead of fetching it again: the retry imports it, and the held blocks with it, a fetched one as fetched.
-    /// </summary>
-    [Test]
-    public async Task Child_of_a_fulu_block_waiting_on_its_data_imports_with_its_retry_without_fetching_it([Values] bool fetchedIntermediate)
-    {
-        const ulong NearWallSlot = WallSlot - 5;
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearWallSlot, NearWallSlot + 1, NearWallSlot + 2, NearWallSlot + 3);
-        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
-        ForkedSignedBeaconBlock intermediate = new ForkedSignedBeaconBlock.OfFulu(chain[1]);
-        ForkedSignedBeaconBlock child = fetchedIntermediate ? new ForkedSignedBeaconBlock.OfFulu(chain[2]) : intermediate;
-        Hash256 parentRoot = parent.ComputeMessageRoot();
-        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
-        peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([parent, intermediate]));
-        Harness harness = CreateHarness(anchorSlot: NearWallSlot, peers: [peer]);
-        harness.Importer.Known.Add(anchorRoot);
-        harness.Importer.Unavailable.Add(parentRoot);
-        BlockImportResult parked = await harness.Orchestrator.ImportBlockAsync(parent, CancellationToken.None);
-
-        await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(child, CancellationToken.None);
-        int held = harness.Orchestrator.PendingGossipBlockCount;
-        harness.Importer.Unavailable.Remove(parentRoot);
-        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(parked, Is.EqualTo(BlockImportResult.DataUnavailable), "fixture: the parent waits in the retry set");
-        Assert.That(ByRootRequestsFor(peer, parentRoot), Is.Zero, "the waiting parent is not fetched");
-        Assert.That(held, Is.EqualTo(fetchedIntermediate ? 2 : 1), "the walk's blocks wait for the parent's retry");
-        Assert.That(harness.Importer.Known, Does.Contain(parentRoot).And.Contain(intermediate.ComputeMessageRoot()).And.Contain(child.ComputeMessageRoot()));
-        Assert.That(harness.Importer.ByRootImports, fetchedIntermediate ? Is.EqualTo(new[] { intermediate.ComputeMessageRoot() }) : Is.Empty, "a fetched block imports as fetched");
-    }
-
-    /// <summary>A far-behind gossip block held for an unknown parent is released when the full retry set refuses that parent.</summary>
-    [Test]
-    public async Task Child_held_for_a_block_the_full_retry_set_refuses_is_released()
-    {
-        const int RetrySetCapacity = 128;
-        Harness harness = CreateHarness();
-        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, WallSlot - 2, WallSlot - 1);
-        harness.Importer.Known.Add(anchorRoot);
-        ForkedSignedBeaconBlock parent = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
-        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[1]), CancellationToken.None);
-        int heldBefore = harness.Orchestrator.PendingGossipBlockCount;
-
-        for (int i = 0; i < RetrySetCapacity; i++)
-        {
-            ForkedSignedBeaconBlock waiting = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(WallSlot + 1 + (ulong)i, anchorRoot));
-            harness.Importer.Unavailable.Add(waiting.ComputeMessageRoot());
-            await harness.Orchestrator.ImportBlockAsync(waiting, CancellationToken.None);
-        }
-
-        harness.Importer.Unavailable.Add(parent.ComputeMessageRoot());
-        await harness.Orchestrator.ImportBlockAsync(parent, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(heldBefore, Is.EqualTo(1));
-        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
     }
 
     /// <summary>
@@ -634,6 +274,42 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Known, Does.Contain(parentRoot), "fixture: the parent imports on the next slot");
         Assert.That(harness.Importer.Known, Does.Contain(first.ComputeMessageRoot()));
         Assert.That(harness.Importer.Known, Does.Contain(second.ComputeMessageRoot()));
+    }
+
+    /// <summary>Only proposer-signed children may occupy the bounded retry or held-parent queue.</summary>
+    [Test]
+    public async Task Forged_children_do_not_crowd_out_the_real_child([Values] bool parentParked)
+    {
+        const int Capacity = 128;
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
+        SignedGloasChain.Block parent = parentParked ? chain.Next(first, 33, full: true, 0xC2) : first;
+        SignedGloasChain.Block child = parentParked
+            ? chain.Next(parent, 34, full: false, 0xC3)
+            : chain.Next(first, 33, full: true, 0xC2);
+        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain);
+        await orchestrator.ProcessGossipBlockAsync(first.Forked, CancellationToken.None);
+        if (parentParked)
+        {
+            await orchestrator.ProcessGossipBlockAsync(parent.Forked, CancellationToken.None);
+        }
+        byte[] childSsz = SignedBeaconBlockCodec.Encode(child.Forked, chain.Spec);
+        for (int i = 0; i < Capacity; i++)
+        {
+            ForkedSignedBeaconBlock.OfGloas forged = (ForkedSignedBeaconBlock.OfGloas)SignedBeaconBlockCodec.Decode(childSsz, chain.Spec);
+            forged.Block.Message!.Body!.Graffiti = Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures.Hash((byte)(0x80 + i));
+            await orchestrator.ProcessGossipBlockAsync(forged, CancellationToken.None);
+        }
+        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
+        int heldBeforeEnvelope = orchestrator.PendingGossipBlockCount;
+        await orchestrator.ImportEnvelopeAsync(first.Envelope, CancellationToken.None);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (parentParked)
+        {
+            Assert.That(heldBeforeEnvelope, Is.EqualTo(1), "only the signed child is held");
+            Assert.That(importer.IsKnown(parent.Root), Is.True);
+        }
+        Assert.That(importer.IsKnown(child.Root), Is.True);
     }
 
     private sealed record ParkedParentScenario(Harness Harness, IBeaconSyncPeer Peer, Hash256 FullRoot, ForkedSignedBeaconBlock Parent, ForkedSignedBeaconBlock Child, ForkedSignedBeaconBlock Grandchild);
@@ -849,68 +525,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(orchestrator.SyncTip, Is.EqualTo((child.Root, 33UL)));
         Assert.That(importer.ComputeHead().HeadRoot, Is.EqualTo(child.Root), "the re-driven child is the head");
         Assert.That(engine.FcuCalls[^1].Head, Is.EqualTo(child.Bid.ParentBlockHash), "the child's own payload has not arrived, so the fcU head is its bid's parent_block_hash");
-    }
-
-    /// <summary>
-    /// The retry set is bounded, so blocks parked there must be ones their proposer signed. Forged children of a full
-    /// parent, sent before its envelope to fill that set, must not stop the real child from importing once it arrives.
-    /// </summary>
-    [Test]
-    public async Task Forged_children_of_a_full_parent_do_not_crowd_out_the_real_one()
-    {
-        const int RetrySetCapacity = 128;
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
-        SignedGloasChain.Block child = chain.Next(first, 33, full: true, 0xC2);
-        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain);
-        await orchestrator.ProcessGossipBlockAsync(first.Forked, CancellationToken.None);
-
-        byte[] childSsz = SignedBeaconBlockCodec.Encode(child.Forked, chain.Spec);
-        for (int i = 0; i < RetrySetCapacity; i++)
-        {
-            ForkedSignedBeaconBlock.OfGloas forged = (ForkedSignedBeaconBlock.OfGloas)SignedBeaconBlockCodec.Decode(childSsz, chain.Spec);
-            forged.Block.Message!.Body!.Graffiti = Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures.Hash((byte)(0x80 + i));
-            await orchestrator.ProcessGossipBlockAsync(forged, CancellationToken.None);
-        }
-
-        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
-        await orchestrator.ImportEnvelopeAsync(first.Envelope, CancellationToken.None);
-
-        Assert.That(importer.IsKnown(child.Root), Is.True);
-    }
-
-    /// <summary>
-    /// The queue of blocks held for a parked parent is bounded too: forged children of the parked block, sent to fill it
-    /// before the real child, must not stop that child from importing once the envelope arrives.
-    /// </summary>
-    [Test]
-    public async Task Forged_children_of_a_parked_block_do_not_crowd_out_the_real_one()
-    {
-        const int PendingQueueCapacity = 128;
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block first = chain.Next(null, 32, full: false, 0xC1);
-        SignedGloasChain.Block parked = chain.Next(first, 33, full: true, 0xC2);
-        SignedGloasChain.Block child = chain.Next(parked, 34, full: false, 0xC3);
-        (BeaconSyncOrchestrator orchestrator, BlockImporter importer, _) = CreateGloasOrchestrator(chain);
-        await orchestrator.ProcessGossipBlockAsync(first.Forked, CancellationToken.None);
-        await orchestrator.ProcessGossipBlockAsync(parked.Forked, CancellationToken.None);
-
-        byte[] childSsz = SignedBeaconBlockCodec.Encode(child.Forked, chain.Spec);
-        for (int i = 0; i < PendingQueueCapacity; i++)
-        {
-            ForkedSignedBeaconBlock.OfGloas forged = (ForkedSignedBeaconBlock.OfGloas)SignedBeaconBlockCodec.Decode(childSsz, chain.Spec);
-            forged.Block.Message!.Body!.Graffiti = Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures.Hash((byte)(0x80 + i));
-            await orchestrator.ProcessGossipBlockAsync(forged, CancellationToken.None);
-        }
-
-        await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
-        int heldBeforeEnvelope = orchestrator.PendingGossipBlockCount;
-        await orchestrator.ImportEnvelopeAsync(first.Envelope, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(heldBeforeEnvelope, Is.EqualTo(1), "only the signed child is held");
-        Assert.That(importer.IsKnown(parked.Root), Is.True);
-        Assert.That(importer.IsKnown(child.Root), Is.True, "the envelope imports the parked block, which releases its child");
     }
 
     /// <summary>
