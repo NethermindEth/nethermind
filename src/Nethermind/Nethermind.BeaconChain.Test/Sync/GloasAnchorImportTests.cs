@@ -96,8 +96,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Factory_importer_on_a_gloas_anchor_imports_an_empty_child_and_defers_a_full_child_until_the_anchor_envelope([Values] bool full)
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         SignedGloasChain.Block child = chain.Next(anchor, ForkSlot + 1, full, 0xA2);
         IBlockImporter importer = CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), chain.CreateStore());
 
@@ -120,8 +119,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Envelope_newpayload_verdict_decides_whether_its_payload_is_valid([Values(ExecutionStatus.Valid, ExecutionStatus.Optimistic)] ExecutionStatus verdict)
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         SignedGloasChain.Block child = chain.Next(anchor, ForkSlot + 1, full: false, 0xA2);
         ForkChoiceSnapshotHolder snapshots = new();
         IBlockImporter importer = CreateFactory(chain, anchor.PostState.Validators!, new SignedGloasChain.EnvelopeEngine { EnvelopeVerdict = verdict },
@@ -144,8 +142,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Valid_envelope_verdict_on_an_invalidated_block_is_recorded_without_failing_the_import()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         SignedGloasChain.Block child = chain.Next(anchor, ForkSlot + 1, full: false, 0xA2);
         BlockImporter importer = (BlockImporter)CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), chain.CreateStore());
         Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
@@ -164,8 +161,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Gloas_anchor_head_and_checkpoints_map_to_its_bid_parent_block_hash_until_its_envelope_verifies()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         IBlockImporter importer = CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), chain.CreateStore());
 
         HeadView before = importer.ComputeHead();
@@ -191,8 +187,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Gloas_anchor_state_outlives_more_epoch_boundaries_than_the_boundary_tier_holds()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         BeaconChainStore store = chain.CreateStore();
         IBlockImporter importer = CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), store);
         SignedGloasChain.Block unheld = chain.Next(anchor, ForkSlot + 1, full: false, 0xB0);
@@ -227,8 +222,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Justified_gloas_checkpoint_state_outlives_more_epoch_boundaries_than_the_boundary_tier_holds()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         const ulong justifiedEpoch = 2;
         const ulong lastSlot = 12 * ForkSlot;
         TestLogger logger = new();
@@ -276,8 +270,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Justified_gloas_root_first_adopted_after_leaving_both_tiers_is_read_back_from_the_store()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         const ulong justifiedEpoch = 2;
         const ulong forkSlot = 3 * ForkSlot + 24;
         const ulong lastSlot = 13 * ForkSlot;
@@ -324,8 +317,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Evicted_checkpoint_candidate_is_persisted_only_while_above_the_finalized_checkpoint([Values] bool aboveFinalized, [Values] bool gloas)
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block block) = CreateAnchor();
         BeaconChainStore store = chain.CreateStore();
         PostStateCache states = new(store, chain.Spec, null, null, isAboveFinalized: _ => aboveFinalized);
         Hash256 root = gloas ? block.Root : chain.AnchorRoot;
@@ -366,8 +358,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Evicted_checkpoint_candidate_at_the_finalized_start_slot_is_not_persisted()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         const ulong lastSlot = 11 * ForkSlot;
         BeaconChainStore store = chain.CreateStore();
         SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (lastSlot + 1) * chain.Spec.SecondsPerSlot)));
@@ -489,8 +480,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Gloas_anchor_importer_reorgs_between_gloas_branches()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         BeaconChainStore store = chain.CreateStore();
         // Near the chain, so every leaf is viable for the head and no block is timely enough for the proposer boost.
         SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (ForkSlot + 4) * chain.Spec.SecondsPerSlot)));
@@ -520,8 +510,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Pinned_gloas_state_outlives_more_checkpoint_retentions_than_the_boundary_tier_holds()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block block) = CreateAnchor();
         PostStateCache states = new(chain.CreateStore(), chain.Spec, null, null);
         states.PinGloas(TestItem.KeccakA, block.PostState);
         states.RetainGloas(TestItem.KeccakB, block.PostState, checkpointCandidate: true);
@@ -545,8 +534,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Persisted_gloas_state_is_unknown_to_the_fulu_getter_and_read_back_by_the_gloas_getter_only_for_a_held_root([Values] bool held)
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block block) = CreateAnchor();
         BeaconChainStore store = chain.CreateStore();
         store.PutState(block.Root, BeaconStateGloas.Encode(block.PostState));
         PostStateCache states = new(store, chain.Spec, null, null, _ => held);
@@ -569,8 +557,7 @@ public class GloasAnchorImportTests
     [Test]
     public async Task Gloas_finalization_persists_a_gloas_anchor_that_a_restart_resumes_from_and_replays_above()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         SignedGloasChain.Block checkpoint = chain.Next(anchor, 2 * ForkSlot, full: false, 0xA2);
         SignedGloasChain.Block fullChild = chain.Next(checkpoint, 2 * ForkSlot + 1, full: true, 0xA3);
         SignedGloasChain.Block tip = chain.Next(fullChild, 2 * ForkSlot + 2, full: false, 0xA4);
@@ -621,8 +608,7 @@ public class GloasAnchorImportTests
     [Test]
     public async Task Gloas_anchor_execution_hash_is_its_bid_parent_block_hash()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         SignedGloasChain.EnvelopeEngine engine = new();
         IBlockImporter importer = Substitute.For<IBlockImporter>();
         importer.ComputeHead().Returns(new HeadView(anchor.Root, ForkSlot, Keccak.Zero, null, null, new CheckpointRef(1, anchor.Root), new CheckpointRef(1, anchor.Root)));
@@ -644,8 +630,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Gloas_block_on_a_persisted_parent_fork_choice_does_not_hold_costs_no_store_read()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         SignedGloasChain.Block unheld = chain.Next(anchor, ForkSlot + 1, full: false, 0xB0);
         SignedGloasChain.Block child = chain.Next(unheld, ForkSlot + 2, full: false, 0xB1);
         MemColumnsDb<BeaconChainDbColumns> columns = new();
@@ -755,8 +740,7 @@ public class GloasAnchorImportTests
     [Test]
     public void Persisted_gloas_state_read_back_does_not_evict_a_checkpoint_candidate()
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block block) = CreateAnchor();
         BeaconChainStore store = chain.CreateStore();
         store.PutState(block.Root, BeaconStateGloas.Encode(block.PostState));
         PostStateCache states = new(store, chain.Spec, null, null, _ => true);
@@ -818,12 +802,17 @@ public class GloasAnchorImportTests
     [Test]
     public void Factory_refuses_an_anchor_state_and_block_of_different_forks([Values] bool gloasState)
     {
-        SignedGloasChain chain = new();
-        SignedGloasChain.Block gloas = chain.Next(null, ForkSlot, full: false, 0xA1);
+        (SignedGloasChain chain, SignedGloasChain.Block gloas) = CreateAnchor();
         ForkedBeaconState state = gloasState ? new ForkedBeaconState.OfGloas(gloas.PostState) : new ForkedBeaconState.OfFulu(chain.AnchorState);
         ForkedSignedBeaconBlock block = gloasState ? new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock) : gloas.Forked;
 
         Assert.Throws<ArgumentException>(() => CreateFactory(chain, gloas.PostState.Validators!, new SignedGloasChain.EnvelopeEngine(), chain.CreateStore(), new SlotClock(chain.Spec, Timestamper.Default)).Create(state, block, gloas.Root));
+    }
+
+    private static (SignedGloasChain Chain, SignedGloasChain.Block Anchor) CreateAnchor()
+    {
+        SignedGloasChain chain = new();
+        return (chain, chain.Next(null, ForkSlot, full: false, 0xA1));
     }
 
     private static SignedGloasChain.Block Import(IBlockImporter importer, SignedGloasChain.Block block)

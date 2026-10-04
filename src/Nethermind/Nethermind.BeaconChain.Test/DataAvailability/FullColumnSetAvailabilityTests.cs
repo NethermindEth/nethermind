@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
@@ -99,48 +101,32 @@ public class FullColumnSetAvailabilityTests
         return columns;
     }
 
-    [Test]
-    public void MatchesBlock_rejects_a_sidecar_addressed_to_a_different_block()
+    private static IEnumerable<TestCaseData> BlockMatches()
     {
-        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment);
-        DataColumnSidecar sidecar = MatchingSidecar(block, root, commitment, index: 0);
-        sidecar.SignedBlockHeader!.Message!.Slot = 999; // changes the header's own hash tree root
-
-        Assert.That(DataColumnAvailability.MatchesBlock(sidecar, root, block.Body!.BlobKzgCommitments!), Is.False,
+        yield return Case("MatchesBlock_rejects_a_sidecar_addressed_to_a_different_block", s => s.SignedBlockHeader!.Message!.Slot = 999, false,
             "a sidecar's inclusion proof against its OWN header proves nothing if that header is not this block");
-    }
-
-    [Test]
-    public void MatchesBlock_rejects_a_commitment_count_mismatch()
-    {
-        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment);
-        DataColumnSidecar sidecar = MatchingSidecar(block, root, commitment, index: 0);
-        sidecar.KzgCommitments = [commitment, commitment]; // block has one commitment, this sidecar claims two
-
-        Assert.That(DataColumnAvailability.MatchesBlock(sidecar, root, block.Body!.BlobKzgCommitments!), Is.False);
-    }
-
-    [Test]
-    public void MatchesBlock_rejects_a_commitment_value_mismatch()
-    {
-        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment);
-        DataColumnSidecar sidecar = MatchingSidecar(block, root, commitment, index: 0);
-        byte[] wrongCommitment = new byte[SszKzgCommitment.KzgCommitmentLength];
-        wrongCommitment[0] = 0xFF;
-        sidecar.KzgCommitments = [SszKzgCommitment.FromSpan(wrongCommitment)];
-
-        Assert.That(DataColumnAvailability.MatchesBlock(sidecar, root, block.Body!.BlobKzgCommitments!), Is.False,
-            "a sidecar claiming a commitment the block never made must not count towards availability");
-    }
-
-    [Test]
-    public void MatchesBlock_accepts_a_sidecar_that_genuinely_matches()
-    {
-        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment);
-        DataColumnSidecar sidecar = MatchingSidecar(block, root, commitment, index: 0);
-
-        Assert.That(DataColumnAvailability.MatchesBlock(sidecar, root, block.Body!.BlobKzgCommitments!), Is.True,
+        yield return Case("MatchesBlock_rejects_a_commitment_count_mismatch", s => s.KzgCommitments = [s.KzgCommitments![0], s.KzgCommitments[0]], false);
+        yield return Case("MatchesBlock_rejects_a_commitment_value_mismatch", s =>
+        {
+            byte[] wrongCommitment = new byte[SszKzgCommitment.KzgCommitmentLength];
+            wrongCommitment[0] = 0xFF;
+            s.KzgCommitments = [SszKzgCommitment.FromSpan(wrongCommitment)];
+        }, false, "a sidecar claiming a commitment the block never made must not count towards availability");
+        yield return Case("MatchesBlock_accepts_a_sidecar_that_genuinely_matches", _ => { }, true,
             "a same-block, same-commitments sidecar must not be rejected by the addressing check itself");
+
+        static TestCaseData Case(string name, Action<DataColumnSidecar> arrange, bool expected, string? message = null) =>
+            new TestCaseData(arrange, expected, message).SetName(name);
+    }
+
+    [TestCaseSource(nameof(BlockMatches))]
+    public void MatchesBlock_checks_address_and_commitments(Action<DataColumnSidecar> arrange, bool expected, string? message)
+    {
+        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment);
+        DataColumnSidecar sidecar = MatchingSidecar(block, root, commitment, index: 0);
+        arrange(sidecar);
+
+        Assert.That(DataColumnAvailability.MatchesBlock(sidecar, root, block.Body!.BlobKzgCommitments!), Is.EqualTo(expected), message);
     }
 
     private static BeaconBlock BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment)

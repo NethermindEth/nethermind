@@ -100,8 +100,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[2])));
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[0])));
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[1])));
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[101, 102, 103]), "import order");
@@ -133,8 +132,7 @@ public partial class BeaconSyncOrchestratorTests
             harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(block)));
         }
 
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -260,8 +258,7 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.EnqueueSlotTickAsync(slot, CancellationToken.None);
         }
 
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(harness.Importer.Ticks.Skip(ticksBefore), Is.EqualTo((ulong[])[WallSlot + 6]), "only the newest tick reaches fork choice");
@@ -830,8 +827,7 @@ public partial class BeaconSyncOrchestratorTests
             harness.Router.Handle(GossipTopics.AttesterSlashing, gloasTopic: true,
                 GossipMessageValidatorTests.Encode(GossipMessageValidatorTests.GloasSlashing([1, 2], [2, 3], secondSource: 2, secondTarget: 3))),
         ];
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored), "consumed by the router, not forwarded");
@@ -853,8 +849,7 @@ public partial class BeaconSyncOrchestratorTests
         Checkpoint target = aggregate.Message!.Aggregate!.Data!.Target!;
 
         harness.Router.Handle(GossipTopics.BeaconAggregateAndProof, gloasTopic: true, GossipMessageValidatorTests.Encode(aggregate));
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         string[] lines = [.. logger.LogList.Where(static l => l.StartsWith("Import worker spent") && l.Contains(" on a gossip aggregate"))];
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -875,8 +870,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.Add(anchorRoot);
 
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[0])));
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(1), "fixture: one head step ends the pass");
@@ -894,8 +888,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Router.Handle(GossipTopics.BeaconBlock, gloasTopic: false, Snappy.CompressToArray(SignedBeaconBlock.Encode(chain[0])));
         harness.Timestamper.Set(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + (WallSlot + 1) * Spec.SecondsPerSlot));
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo(new[] { WallSlot + 1 }), "no later gossip message is needed to release the held block");
     }
@@ -1145,6 +1138,12 @@ public partial class BeaconSyncOrchestratorTests
         Harness harness = CreateHarness(anchorSlot: anchorSlot, peers: [peer]);
         harness.Importer.Known.Add(anchorRoot);
         return (harness, peer, chain);
+    }
+
+    private static async Task CompleteWorkerAsync(BeaconSyncOrchestrator orchestrator, CancellationToken token)
+    {
+        orchestrator.WorkWriter.Complete();
+        await orchestrator.RunWorkerAsync(token);
     }
 
     private static Harness CreateHarness(

@@ -63,8 +63,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.Add(anchorRoot);
 
         await harness.Orchestrator.FeedRangeSyncRoundAsync(CancellationToken.None);
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo(chain.Select(static b => b.Slot)));
@@ -489,8 +488,7 @@ public partial class BeaconSyncOrchestratorTests
 
         await orchestrator.ImportEnvelopeAsync(EnvelopeFor(TestItem.KeccakA, WallSlot), CancellationToken.None);
         orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipAggregateItem(new SignedAggregateAndProof()));
-        orchestrator.WorkWriter.Complete();
-        await orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(orchestrator, CancellationToken.None);
 
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(expectedFcus));
     }
