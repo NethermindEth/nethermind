@@ -54,44 +54,21 @@ public class ExecutionPayloadEnvelopesReqRespTests
         return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, contextBytes, SignedExecutionPayloadEnvelope.Encode(envelope), default);
     }
 
-    [Test]
-    public async Task Response_exceeding_the_chunk_limit_is_rejected_and_the_stream_closed()
+    [TestCase(true, TestName = "Response_exceeding_the_chunk_limit_is_rejected_and_the_stream_closed")]
+    [TestCase(false, TestName = "Response_at_exactly_the_chunk_limit_is_accepted")]
+    public async Task Response_chunk_count_is_bounded(bool exceeds)
     {
         const int maxEnvelopes = 3;
         TestExecutionPayloadEnvelopesProtocol protocol = new(Spec);
-
         using MemoryStream stream = new();
-        for (int i = 0; i < maxEnvelopes + 2; i++)
+        for (int i = 0; i < maxEnvelopes + (exceeds ? 2 : 0); i++)
         {
-            await WriteEnvelopeChunkAsync(stream, Envelope(4_000 + (ulong)i));
+            await WriteEnvelopeChunkAsync(stream, Envelope((exceeds ? 4_000UL : 5_000UL) + (ulong)i));
         }
 
-        stream.Position = 0;
-
-        long before = FailureCount(TestExecutionPayloadEnvelopesProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded);
-
-        Eth2ReqRespException? thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.ReadEnvelopesAsync(stream, maxEnvelopes));
-        Assert.That(thrown!.Message, Does.Contain(maxEnvelopes.ToString()));
-        Assert.That(FailureCount(TestExecutionPayloadEnvelopesProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded), Is.EqualTo(before + 1), "limit violation recorded");
-        Assert.That(stream.Position, Is.LessThan(stream.Length), "stream was closed to the peer before it was fully drained");
-    }
-
-    [Test]
-    public async Task Response_at_exactly_the_chunk_limit_is_accepted()
-    {
-        const int maxEnvelopes = 3;
-        TestExecutionPayloadEnvelopesProtocol protocol = new(Spec);
-
-        using MemoryStream stream = new();
-        for (int i = 0; i < maxEnvelopes; i++)
-        {
-            await WriteEnvelopeChunkAsync(stream, Envelope(5_000 + (ulong)i));
-        }
-
-        stream.Position = 0;
-
-        IReadOnlyList<SignedExecutionPayloadEnvelope> envelopes = await protocol.ReadEnvelopesAsync(stream, maxEnvelopes);
-        Assert.That(envelopes, Has.Count.EqualTo(maxEnvelopes));
+        await ReqRespTestChannel.AssertChunkLimitAsync(stream, maxEnvelopes, exceeds,
+            () => protocol.ReadEnvelopesAsync(stream, maxEnvelopes),
+            () => FailureCount(TestExecutionPayloadEnvelopesProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded));
     }
 
     [Test]

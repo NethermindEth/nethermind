@@ -197,82 +197,59 @@ public class ReqRespLimitsTests
     {
         const int maxBlocks = 3;
         TestBlocksProtocol protocol = new(Spec);
-        (_, _, SignedBeaconBlock[] chain) =
-            TestChain.BuildLinkedChain(1_000, 1_001, 1_002, 1_003, 1_004, 1_005);
-
+        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(1_000, 1_001, 1_002, 1_003, 1_004, 1_005);
         using MemoryStream wire = new();
         foreach (SignedBeaconBlock block in chain)
         {
             await WriteBlockChunkAsync(wire, block);
         }
 
-        wire.Position = 0;
-
-        long before = FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded);
-
-        Eth2ReqRespException? thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.ReadBlocksAsync(wire, maxBlocks));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(thrown!.Message, Does.Contain(maxBlocks.ToString()));
-            Assert.That(FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded), Is.EqualTo(before + 1), "limit violation recorded");
-            Assert.That(wire.Position, Is.LessThan(wire.Length), "trailing response bytes remain unread");
-        }
+        await ReqRespTestChannel.AssertChunkLimitAsync(wire, maxBlocks, exceeds: true,
+            () => protocol.ReadBlocksAsync(wire, maxBlocks),
+            () => FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded));
     }
 
-    [Test]
+    public enum RangeReplyFault
+    {
+        TooManyChunks,
+        Truncated,
+        OutOfRange,
+    }
+
+    [TestCase(RangeReplyFault.TooManyChunks, TestName = "Range_request_caps_chunks_at_count_before_validating_slots")]
+    [TestCase(RangeReplyFault.Truncated, TestName = "A range reply cut short hands over the blocks read before the cut")]
+    [TestCase(RangeReplyFault.OutOfRange, TestName = "A range reply block outside the requested range is not handed over")]
     [CancelAfter(60_000)]
-    public async Task Range_request_caps_chunks_at_count_before_validating_slots(CancellationToken token)
+    public async Task Range_reply_checks_chunks_before_handing_them_over(RangeReplyFault fault, CancellationToken token)
     {
         Channel channel = new();
         BeaconBlocksByRangeProtocolV2 protocol = new(Spec, null!);
-        byte[] response = await EncodeRangeResponseAsync(4);
-        Task reply = ReplyRangeAsync(channel.Reverse, response, token);
-        long limitsBefore = FailureCount(protocol.Id, ReqRespFailureReason.LimitExceeded);
-        long invalidBefore = FailureCount(protocol.Id, ReqRespFailureReason.InvalidMessage);
-        try
-        {
-            Eth2ReqRespException rejected = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.DialAsync(channel, null!,
-                new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = 3_000, Count = 2, Step = 1 })).WaitAsync(token))!;
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(rejected.Message, Is.EqualTo("Peer responded with more than the requested 2 blocks"));
-                Assert.That(FailureCount(protocol.Id, ReqRespFailureReason.LimitExceeded), Is.EqualTo(limitsBefore + 1));
-                Assert.That(FailureCount(protocol.Id, ReqRespFailureReason.InvalidMessage), Is.EqualTo(invalidBefore));
-            }
-        }
-        finally
-        {
-            try
-            {
-                await channel.ReadAsync(0, ReadBlockingMode.DoNotWait, token);
-                await reply.WaitAsync(token);
-            }
-            finally
-            {
-                await channel.CloseAsync().AsTask().WaitAsync(token);
-            }
-        }
-    }
-
-    /// <summary>Each block is handed over as it is read, so a reply cut short still leaves its blocks; a block outside the requested range is refused, never handed over.</summary>
-    [TestCase(false, TestName = "A range reply cut short hands over the blocks read before the cut")]
-    [TestCase(true, TestName = "A range reply block outside the requested range is not handed over")]
-    [CancelAfter(60_000)]
-    public async Task Range_request_hands_over_each_block_in_the_range_as_it_is_read(bool outOfRange, CancellationToken token)
-    {
-        Channel channel = new();
-        BeaconBlocksByRangeProtocolV2 protocol = new(Spec, null!);
-        byte[] response = [.. await EncodeRangeResponseAsync(1), ReqRespFraming.ResponseCode.Success];
+        byte[] response = fault == RangeReplyFault.TooManyChunks
+            ? await EncodeRangeResponseAsync(4)
+            : [.. await EncodeRangeResponseAsync(1), ReqRespFraming.ResponseCode.Success];
         Task reply = ReplyRangeAsync(channel.Reverse, response, token);
         List<ulong> handed = [];
+        long limitsBefore = fault == RangeReplyFault.TooManyChunks ? FailureCount(protocol.Id, ReqRespFailureReason.LimitExceeded) : 0;
+        long invalidBefore = fault == RangeReplyFault.TooManyChunks ? FailureCount(protocol.Id, ReqRespFailureReason.InvalidMessage) : 0;
         try
         {
-            Eth2ReqRespException rejected = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.DialAsync(channel, null!,
-                new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = outOfRange ? 3_001UL : 3_000UL, Count = 2, Step = 1 }, block => handed.Add(block.Slot))).WaitAsync(token))!;
+            BeaconBlocksByRangeRequest request = new() { StartSlot = fault == RangeReplyFault.OutOfRange ? 3_001UL : 3_000UL, Count = 2, Step = 1 };
+            BeaconBlocksByRangeDial dial = fault == RangeReplyFault.TooManyChunks ? new(request) : new(request, block => handed.Add(block.Slot));
+            Eth2ReqRespException rejected = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.DialAsync(channel, null!, dial).WaitAsync(token))!;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(rejected.Message, outOfRange ? Does.StartWith("Block slot 3000 outside the requested range") : Does.StartWith("Truncated"));
-                Assert.That(handed, Is.EqualTo(outOfRange ? Array.Empty<ulong>() : new[] { 3_000UL }));
+                if (fault == RangeReplyFault.TooManyChunks)
+                {
+                    Assert.That(rejected.Message, Is.EqualTo("Peer responded with more than the requested 2 blocks"));
+                    Assert.That(FailureCount(protocol.Id, ReqRespFailureReason.LimitExceeded), Is.EqualTo(limitsBefore + 1));
+                    Assert.That(FailureCount(protocol.Id, ReqRespFailureReason.InvalidMessage), Is.EqualTo(invalidBefore));
+                }
+                else
+                {
+                    bool outside = fault == RangeReplyFault.OutOfRange;
+                    Assert.That(rejected.Message, outside ? Does.StartWith("Block slot 3000 outside the requested range") : Does.StartWith("Truncated"));
+                    Assert.That(handed, Is.EqualTo(outside ? Array.Empty<ulong>() : new[] { 3_000UL }));
+                }
             }
         }
         finally
