@@ -14,24 +14,9 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// The per-slot state root is computed through <see cref="EpochCache.Hasher"/>, so callers
 /// following a state lineage can make it incremental with a <see cref="CachedBeaconStateHasher"/>.
 /// </remarks>
-public static class SlotProcessing
+public static partial class SlotProcessing
 {
-    /// <summary>Advances the state to <paramref name="targetSlot"/>, running epoch processing at epoch boundaries.</summary>
-    /// <exception cref="BeaconStateException">The state is already at or past <paramref name="targetSlot"/>.</exception>
-    public static void ProcessSlots(BeaconStateFulu state, ulong targetSlot, EpochCache cache)
-    {
-        if (state.Slot >= targetSlot)
-            throw new BeaconStateException($"Cannot advance state at slot {state.Slot} to non-future slot {targetSlot}");
-
-        while (state.Slot < targetSlot)
-        {
-            ProcessSlot(state, cache.Hasher);
-            // Process the epoch on the start slot of the next epoch.
-            if ((state.Slot + 1) % Presets.SlotsPerEpoch == 0)
-                EpochProcessing.ProcessEpoch(state, cache);
-            state.Slot++;
-        }
-    }
+    public static partial void ProcessSlots(BeaconStateFulu state, ulong targetSlot, EpochCache cache);
 
     /// <summary>Caches the state root, completes the latest block header, and caches the block root for the current slot.</summary>
     public static void ProcessSlot(BeaconStateFulu state, IBeaconStateHasher hasher)

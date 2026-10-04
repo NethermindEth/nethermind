@@ -11,8 +11,6 @@ using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Int256;
-using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -31,7 +29,7 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// memo in <see cref="EpochCache"/> stays valid until <see cref="ProcessEffectiveBalanceUpdates"/>
 /// invalidates it, exactly as in the Fulu pipeline.
 /// </remarks>
-public static class GloasEpochProcessing
+public static partial class GloasEpochProcessing
 {
     public static void ProcessEpoch(BeaconStateGloas state, EpochCache cache)
     {
@@ -54,9 +52,7 @@ public static class GloasEpochProcessing
         ProcessPtcWindow(state);
     }
 
-    /// <summary>Altair <c>process_justification_and_finalization</c>, unmodified in Gloas.</summary>
-    public static void ProcessJustificationAndFinalization(BeaconStateGloas state, EpochCache cache) =>
-        ComputeJustificationAndFinalization(state, cache).ApplyTo(state);
+    public static partial void ProcessJustificationAndFinalization(BeaconStateGloas state, EpochCache cache);
 
     /// <summary>
     /// Runs the justification/finalization weighing of <c>process_justification_and_finalization</c>
@@ -94,59 +90,7 @@ public static class GloasEpochProcessing
         EpochProcessing.ProcessInactivityUpdates(state.Validators!, state.InactivityScores!, state.PreviousEpochParticipation ?? [], previousEpoch, isInInactivityLeak);
     }
 
-    /// <summary>Altair <c>process_rewards_and_penalties</c>, unmodified in Gloas; fused per validator like the Fulu port (see <see cref="EpochProcessing.ProcessRewardsAndPenalties"/>).</summary>
-    public static void ProcessRewardsAndPenalties(BeaconStateGloas state, EpochCache cache)
-    {
-        if (state.GetCurrentEpoch() == Presets.GenesisEpoch)
-            return;
-
-        ulong previousEpoch = state.GetPreviousEpoch();
-        ulong totalActiveBalance = state.GetTotalActiveBalance(cache);
-        ulong baseRewardPerIncrement = state.GetBaseRewardPerIncrement(cache);
-        ulong activeIncrements = totalActiveBalance / Presets.EffectiveBalanceIncrement;
-        bool isInInactivityLeak = IsInInactivityLeak(state);
-
-        Validator[] validators = state.Validators!;
-        byte[] previousParticipation = state.PreviousEpochParticipation ?? [];
-
-        Span<ulong> unslashedParticipatingIncrements = stackalloc ulong[Presets.ParticipationFlagWeights.Length];
-        for (int flagIndex = 0; flagIndex < unslashedParticipatingIncrements.Length; flagIndex++)
-        {
-            ulong participatingBalance = 0;
-            for (int i = 0; i < validators.Length; i++)
-            {
-                if (IsUnslashedParticipant(validators[i], previousParticipation[i], flagIndex, previousEpoch))
-                    participatingBalance += validators[i].EffectiveBalance;
-            }
-            unslashedParticipatingIncrements[flagIndex] =
-                Math.Max(Presets.EffectiveBalanceIncrement, participatingBalance) / Presets.EffectiveBalanceIncrement;
-        }
-
-        for (int i = 0; i < validators.Length; i++)
-        {
-            Validator validator = validators[i];
-            if (!IsEligibleValidator(validator, previousEpoch))
-                continue;
-
-            ulong baseReward = validator.EffectiveBalance / Presets.EffectiveBalanceIncrement * baseRewardPerIncrement;
-            for (int flagIndex = 0; flagIndex < Presets.ParticipationFlagWeights.Length; flagIndex++)
-            {
-                ulong weight = Presets.ParticipationFlagWeights[flagIndex];
-                if (IsUnslashedParticipant(validator, previousParticipation[i], flagIndex, previousEpoch))
-                {
-                    if (!isInInactivityLeak)
-                        state.IncreaseBalance(i, baseReward * weight * unslashedParticipatingIncrements[flagIndex] / (activeIncrements * Presets.WeightDenominator));
-                }
-                else if (flagIndex != Presets.TimelyHeadFlagIndex)
-                {
-                    state.DecreaseBalance(i, baseReward * weight / Presets.WeightDenominator);
-                }
-            }
-
-            if (!IsUnslashedParticipant(validator, previousParticipation[i], Presets.TimelyTargetFlagIndex, previousEpoch))
-                state.DecreaseBalance(i, validator.EffectiveBalance * state.InactivityScores![i] / (Presets.InactivityScoreBias * Presets.InactivityPenaltyQuotientBellatrix));
-        }
-    }
+    public static partial void ProcessRewardsAndPenalties(BeaconStateGloas state, EpochCache cache);
 
     /// <summary>Electra <c>process_registry_updates</c>, unmodified in Gloas.</summary>
     public static void ProcessRegistryUpdates(BeaconStateGloas state, EpochCache cache)
@@ -186,13 +130,7 @@ public static class GloasEpochProcessing
         EpochProcessing.ProcessSlashings(state.Validators!, state.Balances!, state.Slashings!, epoch, totalBalance);
     }
 
-    /// <summary>Phase0 <c>process_eth1_data_reset</c>.</summary>
-    public static void ProcessEth1DataReset(BeaconStateGloas state)
-    {
-        ulong nextEpoch = state.GetCurrentEpoch() + 1;
-        if (nextEpoch % Presets.EpochsPerEth1VotingPeriod == 0)
-            state.Eth1DataVotes = [];
-    }
+    public static partial void ProcessEth1DataReset(BeaconStateGloas state);
 
     /// <summary>
     /// Gloas <c>process_pending_deposits</c> (modified, EIP-8061): the queue draws on the
@@ -253,30 +191,9 @@ public static class GloasEpochProcessing
         state.DepositBalanceToConsume = isChurnLimitReached ? availableForProcessing - processedAmount : 0;
     }
 
-    private static Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators)
-    {
-        Dictionary<BlsPublicKey, int> pubkeyToIndex = [];
-        for (int i = 0; i < validators.Length; i++)
-        {
-            pubkeyToIndex.TryAdd(validators[i].Pubkey, i);
-        }
+    private static partial Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators);
 
-        return pubkeyToIndex;
-    }
-
-    /// <summary>Electra <c>apply_pending_deposit</c>, unmodified in Gloas.</summary>
-    private static void ApplyPendingDeposit(BeaconStateGloas state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex)
-    {
-        if (pubkeyToIndex.TryGetValue(deposit.Pubkey, out int index))
-        {
-            state.IncreaseBalance(index, deposit.Amount);
-        }
-        else if (DepositSignatureVerifier.IsValid(state.GenesisValidatorsRoot!, deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
-        {
-            pubkeyToIndex.TryAdd(deposit.Pubkey, state.Validators!.Length);
-            state.AddValidatorToRegistry(deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount);
-        }
-    }
+    private static partial void ApplyPendingDeposit(BeaconStateGloas state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex);
 
     /// <summary>Electra <c>process_pending_consolidations</c>, unmodified in Gloas.</summary>
     public static void ProcessPendingConsolidations(BeaconStateGloas state)
@@ -322,49 +239,15 @@ public static class GloasEpochProcessing
         cache.InvalidateTotalActiveBalance();
     }
 
-    /// <summary>Phase0 <c>process_slashings_reset</c>.</summary>
-    public static void ProcessSlashingsReset(BeaconStateGloas state) =>
-        state.Slashings![(int)((state.GetCurrentEpoch() + 1) % Presets.EpochsPerSlashingsVector)] = 0;
+    public static partial void ProcessSlashingsReset(BeaconStateGloas state);
 
-    /// <summary>Phase0 <c>process_randao_mixes_reset</c>.</summary>
-    public static void ProcessRandaoMixesReset(BeaconStateGloas state)
-    {
-        ulong currentEpoch = state.GetCurrentEpoch();
-        state.RandaoMixes![(int)((currentEpoch + 1) % Presets.EpochsPerHistoricalVector)] = state.GetRandaoMix(currentEpoch);
-    }
+    public static partial void ProcessRandaoMixesReset(BeaconStateGloas state);
 
-    /// <summary>Capella <c>process_historical_summaries_update</c>.</summary>
-    public static void ProcessHistoricalSummariesUpdate(BeaconStateGloas state)
-    {
-        ulong nextEpoch = state.GetCurrentEpoch() + 1;
-        if (nextEpoch % (Presets.SlotsPerHistoricalRoot / Presets.SlotsPerEpoch) == 0)
-        {
-            HistoricalSummary historicalSummary = new()
-            {
-                BlockSummaryRoot = HashTreeRootOfRoots(state.BlockRoots!),
-                StateSummaryRoot = HashTreeRootOfRoots(state.StateRoots!),
-            };
-            state.HistoricalSummaries = [.. state.HistoricalSummaries ?? [], historicalSummary];
-        }
-    }
+    public static partial void ProcessHistoricalSummariesUpdate(BeaconStateGloas state);
 
-    /// <summary>Altair <c>process_participation_flag_updates</c>.</summary>
-    public static void ProcessParticipationFlagUpdates(BeaconStateGloas state)
-    {
-        state.PreviousEpochParticipation = state.CurrentEpochParticipation;
-        state.CurrentEpochParticipation = new byte[state.Validators!.Length];
-    }
+    public static partial void ProcessParticipationFlagUpdates(BeaconStateGloas state);
 
-    /// <summary>Altair <c>process_sync_committee_updates</c> with the Gloas <c>get_next_sync_committee_indices</c> (balance-weighted selection over the shuffled active set).</summary>
-    public static void ProcessSyncCommitteeUpdates(BeaconStateGloas state)
-    {
-        ulong nextEpoch = state.GetCurrentEpoch() + 1;
-        if (nextEpoch % Presets.EpochsPerSyncCommitteePeriod == 0)
-        {
-            state.CurrentSyncCommittee = state.NextSyncCommittee;
-            state.NextSyncCommittee = GetNextSyncCommittee(state);
-        }
-    }
+    public static partial void ProcessSyncCommitteeUpdates(BeaconStateGloas state);
 
     private static SyncCommittee GetNextSyncCommittee(BeaconStateGloas state)
     {
@@ -481,23 +364,11 @@ public static class GloasEpochProcessing
         };
     }
 
-    private static bool IsEligibleValidator(Validator validator, ulong previousEpoch) =>
-        validator.IsActiveValidator(previousEpoch) || (validator.Slashed && previousEpoch + 1 < validator.WithdrawableEpoch);
+    private static partial bool IsEligibleValidator(Validator validator, ulong previousEpoch);
 
-    private static bool IsUnslashedParticipant(Validator validator, byte participation, int flagIndex, ulong epoch) =>
-        validator.IsActiveValidator(epoch) && !validator.Slashed && BeaconStateAccessors.HasParticipationFlag(participation, flagIndex);
+    private static partial bool IsUnslashedParticipant(Validator validator, byte participation, int flagIndex, ulong epoch);
 
-    private static bool IsInInactivityLeak(BeaconStateGloas state) =>
-        state.GetPreviousEpoch() - state.FinalizedCheckpoint!.Epoch > Presets.MinEpochsToInactivityPenalty;
+    private static partial bool IsInInactivityLeak(BeaconStateGloas state);
 
-    private static Hash256 HashTreeRootOfRoots(Hash256[] roots)
-    {
-        byte[] chunks = new byte[roots.Length * Hash256.Size];
-        for (int i = 0; i < roots.Length; i++)
-        {
-            roots[i].Bytes.CopyTo(chunks.AsSpan(i * Hash256.Size));
-        }
-        Merkle.Merkleize(out UInt256 root, chunks);
-        return new Hash256(root.ToLittleEndian());
-    }
+    private static partial Hash256 HashTreeRootOfRoots(Hash256[] roots);
 }
