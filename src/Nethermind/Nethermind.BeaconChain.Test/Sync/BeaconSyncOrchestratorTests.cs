@@ -144,6 +144,97 @@ public partial class BeaconSyncOrchestratorTests
         static Hash256 ExecutionHashOf(ulong slot) => Keccak.Compute(BitConverter.GetBytes(slot));
     }
 
+    /// <summary>A round on an old fork ends when imported gossip advances the tip, without penalizing a canonical reply.</summary>
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [CancelAfter(10_000)]
+    public async Task Gossip_progress_supersedes_a_range_round_on_an_old_fork_without_blaming_its_peer(bool honorsCancellation, bool delayPropagation, CancellationToken token)
+    {
+        (_, Hash256 anchorRoot, _) = TestChain.BuildLinkedChain(AnchorSlot);
+        ForkedSignedBeaconBlock oldTip = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(101, anchorRoot));
+        ForkedSignedBeaconBlock newTip = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(102, anchorRoot));
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(103, newTip.ComputeMessageRoot()));
+        TaskCompletionSource requested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource propagationBlocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim releasePropagation = new();
+        CancellationTokenRegistration propagationGate = default;
+        CancellationToken requestToken = default;
+        TaskCompletionSource reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.Id.Returns("canonical");
+        peer.HeadSlot.Returns(104UL);
+        List<(ulong Start, ulong Count)> requests = [];
+        List<PeerFailureReason> failures = [];
+        peer.RequestBlocksByRangeAsync(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            requestToken = call.ArgAt<CancellationToken>(2);
+            requests.Add((call.ArgAt<ulong>(0), call.ArgAt<ulong>(1)));
+            requested.TrySetResult();
+            await reply.Task.WaitAsync(honorsCancellation ? call.ArgAt<CancellationToken>(2) : token);
+            return (IReadOnlyList<ForkedSignedBeaconBlock>)[newTip, child];
+        });
+        peer.When(p => p.ReportFailure(Arg.Any<PeerFailureReason>(), Arg.Any<string>())).Do(call =>
+        {
+            failures.Add(call.ArgAt<PeerFailureReason>(0));
+            reported.TrySetResult();
+        });
+        Harness harness = CreateHarness(wallSlot: 104, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.OnImported = (block, root) => harness.Importer.Head = CreateHead(root, block.Slot, Spec.GetEpoch(AnchorSlot));
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(oldTip));
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+        Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(oldTip.ComputeMessageRoot()));
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task round = harness.Orchestrator.FeedRangeSyncRoundAsync(stop.Token);
+        try
+        {
+            await requested.Task.WaitAsync(token);
+            Assert.That(requests, Is.EqualTo(new[] { (102UL, 3UL) }), "the live round captured the old fork");
+            if (delayPropagation)
+            {
+                CancellationTokenSource restart = (CancellationTokenSource)typeof(BeaconSyncOrchestrator)
+                    .GetField("_rangeSyncRestart", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .GetValue(harness.Orchestrator)!;
+                // Registered after the linked round token, so LIFO callbacks hold its propagation.
+                propagationGate = restart.Token.Register(() =>
+                {
+                    propagationBlocked.TrySetResult();
+                    releasePropagation.Wait(TimeSpan.FromSeconds(5));
+                });
+            }
+            harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(newTip));
+            harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(child));
+            await harness.Orchestrator.ProcessQueuedAsync(token);
+            Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(child.ComputeMessageRoot()));
+            Assert.That(harness.Importer.Head.HeadRoot, Is.EqualTo(child.ComputeMessageRoot()));
+            if (delayPropagation)
+            {
+                await propagationBlocked.Task.WaitAsync(token);
+                Assert.That(requestToken.IsCancellationRequested, Is.False, "the parent generation ended before its linked request token observes cancellation");
+            }
+            reply.TrySetResult();
+            await Task.WhenAny(round, reported.Task).WaitAsync(token);
+            Assert.That(failures, Is.Empty, "the canonical peer must not be blamed for disagreeing with the superseded fork");
+            Assert.That(await EndsAsync(round, token), Is.True, "gossip progress retires the old round rather than retrying its stale anchor");
+        }
+        finally
+        {
+            releasePropagation.Set();
+            propagationGate.Dispose();
+            await stop.CancelAsync();
+            reply.TrySetResult();
+            try
+            {
+                await round;
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
+            {
+            }
+        }
+    }
+
     public enum RangeRejection
     {
         AtImport,

@@ -98,6 +98,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// <param name="fallback">Marks the anchor as unverified: while no block has linked to it, a first block that does not is not held against its peer, and the run restarts from this one.</param>
     /// <param name="batchSource">Receives the supplying peer before its blocks are yielded.</param>
     /// <param name="beforeRetry">Flushes yielded blocks for verification before retrying a failed reply.</param>
+    /// <param name="superseded">The round generation, checked before attributing a reply while cancellation propagates asynchronously to the request token.</param>
     public async IAsyncEnumerable<ForkedSignedBeaconBlock> Run(
         Hash256 anchorRoot,
         ulong anchorSlot,
@@ -105,7 +106,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         [EnumeratorCancellation] CancellationToken token,
         AnchorFallback? fallback = null,
         Action<IBeaconSyncPeer>? batchSource = null,
-        Func<CancellationToken, Task>? beforeRetry = null)
+        Func<CancellationToken, Task>? beforeRetry = null,
+        CancellationToken superseded = default)
     {
         Hash256 lastRoot = anchorRoot;
         ulong lastSlot = anchorSlot;
@@ -155,7 +157,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             // A peer may answer ResourceUnavailable below its earliest slot (phase0/p2p-interface.md); slots under it are taken as empty and block linkage still checks that.
             ulong from = Math.Max(nextSlot, peer.EarliestAvailableSlot);
             ulong count = Math.Min(batchSize, target - from + 1);
-            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null || from != lastSlot + 1 || (lastSupplier is not null && lastSupplier != peer.Id), token);
+            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null || from != lastSlot + 1 || (lastSupplier is not null && lastSupplier != peer.Id), token, superseded);
             // Resolve an unverified anchor before attributing a mismatch to an empty reply.
             if (batch is { Linked: false } && fallback is null && skippedOnWordOf is { } behind)
             {
@@ -241,7 +243,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         ulong count,
         Hash256 parentRoot,
         bool allowFirstMismatch,
-        CancellationToken token)
+        CancellationToken token,
+        CancellationToken superseded)
     {
         IReadOnlyList<ForkedSignedBeaconBlock> batch;
         if (_logger.IsDebug) _logger.Debug($"Requesting blocks [{startSlot}, {startSlot + count}) ({count}) by range from {peer.Id}");
@@ -252,6 +255,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
+            superseded.ThrowIfCancellationRequested();
             // BeaconBlocksByRange: the blocks a reply delivered before it failed are a prefix of it, kept like a limited reply and checked for linkage below.
             IReadOnlyList<ForkedSignedBeaconBlock> kept = (e as PartialBlocksException)?.Received ?? [];
             Exception cause = e is PartialBlocksException { InnerException: { } inner } ? inner : e;
@@ -266,6 +270,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             batch = kept;
         }
 
+        superseded.ThrowIfCancellationRequested();
         if (_logger.IsDebug) _logger.Debug($"Blocks [{startSlot}, {startSlot + count}) by range from {peer.Id}: {batch.Count} blocks in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms");
 
         // Slot bounds and ordering are already enforced at the protocol layer; verify parent linkage here.
