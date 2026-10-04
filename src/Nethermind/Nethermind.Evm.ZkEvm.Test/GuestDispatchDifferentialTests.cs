@@ -224,29 +224,32 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
-    /// A PUSH1 fused with the opcode after it never writes the pushed word, so the operands lean on the carries, borrows
-    /// and signs the byte meets in the word below it; both words left on the stack are stored to memory.
+    /// A PUSH1 or DUP fused with the opcode after it never writes the pushed or copied word, so the operands lean on the
+    /// carries, borrows and signs that word meets in the one below it; both words left on the stack are stored to memory.
     /// </remarks>
     [Test]
-    public void Pushed_bytes_match_the_shared_handlers(
+    public void Fused_operands_match_the_shared_handlers(
+        [Values(Instruction.PUSH0, Instruction.PUSH1, Instruction.DUP2, Instruction.DUP3, Instruction.DUP5)] Instruction first,
         [Values(Instruction.ADD, Instruction.SUB, Instruction.AND, Instruction.OR, Instruction.XOR, Instruction.SAR, Instruction.SHL,
-            Instruction.SHR, Instruction.SWAP1, Instruction.SWAP2)] Instruction op,
+            Instruction.SHR, Instruction.NOT, Instruction.SIGNEXTEND, Instruction.BYTE, Instruction.SWAP1, Instruction.SWAP2)] Instruction op,
         [Range(0, 3)] int seed)
     {
         List<string> mismatches = [];
-        Random random = new(seed * 7907 + (int)op);
-        for (int i = 0; i < 400 && mismatches.Count < 5; i++)
+        Random random = new(seed * 7907 + (int)op * 31 + (int)first);
+        for (int i = 0; i < 200 && mismatches.Count < 5; i++)
         {
-            byte[] code =
-            [
-                (byte)Instruction.PUSH32, .. EdgeWord(random), (byte)Instruction.PUSH32, .. EdgeWord(random),
-                (byte)Instruction.PUSH1, SmallImmediate(random), (byte)op,
-                (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.PUSH1, 0x20, (byte)Instruction.MSTORE, (byte)Instruction.STOP
-            ];
-            Outcome untraced = Run(100_000, [], 0, new CodeInfo(code), Table.Untraced);
-            Outcome traced = Run(100_000, [], 0, new CodeInfo(code), Table.Traced);
+            List<byte> code = [];
+            for (int word = 0; word < 5; word++)
+                code.AddRange([(byte)Instruction.PUSH32, .. EdgeWord(random)]);
+            code.Add((byte)first);
+            if (first == Instruction.PUSH1) code.Add(SmallImmediate(random));
+            code.AddRange([(byte)op,
+                (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.PUSH1, 0x20, (byte)Instruction.MSTORE, (byte)Instruction.STOP]);
+            byte[] program = [.. code];
+            Outcome untraced = Run(100_000, [], 0, new CodeInfo(program), Table.Untraced);
+            Outcome traced = Run(100_000, [], 0, new CodeInfo(program), Table.Traced);
             if (!Matches(untraced, traced))
-                mismatches.Add($"code {Convert.ToHexString(code)}\n untraced {untraced}\n traced   {traced}");
+                mismatches.Add($"code {Convert.ToHexString(program)}\n untraced {untraced}\n traced   {traced}");
         }
 
         Assert.That(mismatches, Is.Empty);

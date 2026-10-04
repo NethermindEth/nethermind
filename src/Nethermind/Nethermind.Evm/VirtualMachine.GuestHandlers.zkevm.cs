@@ -713,11 +713,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (head > 0 && TryCharge(ref gas, VeryLowGasCost.GasCost))
             {
-                ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head));
-                Unsafe.Add(ref end, -4) = ~Unsafe.Add(ref end, -4);
-                Unsafe.Add(ref end, -3) = ~Unsafe.Add(ref end, -3);
-                Unsafe.Add(ref end, -2) = ~Unsafe.Add(ref end, -2);
-                Unsafe.Add(ref end, -1) = ~Unsafe.Add(ref end, -1);
+                NotStep.Apply(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
                 nint next = handlers[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);

@@ -110,6 +110,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 FuseAfterPush1<SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.SWAP2);
                 FuseAfterPush1<BinaryStep<OrOperation>>(handlers, paired, Instruction.OR);
                 FuseAfterPush1<BinaryStep<XorOperation>>(handlers, paired, Instruction.XOR);
+                FuseAfterPush1<NotStep>(handlers, paired, Instruction.NOT);
+                FuseAfterPush1<BinaryStep<SignExtendOperation>>(handlers, paired, Instruction.SIGNEXTEND);
+                FuseAfterPush1<BinaryStep<ByteOperation>>(handlers, paired, Instruction.BYTE);
+                FuseAfterPush1<DupStep<EvmInstructions.Op6>>(handlers, paired, Instruction.DUP6);
+                FuseAfterPush1<DupStep<EvmInstructions.Op7>>(handlers, paired, Instruction.DUP7);
+                FuseAfterPush1<DupStep<EvmInstructions.Op8>>(handlers, paired, Instruction.DUP8);
+                FuseAfterPush1<DupStep<EvmInstructions.Op9>>(handlers, paired, Instruction.DUP9);
+                FuseAfterPush1<DupStep<EvmInstructions.Op10>>(handlers, paired, Instruction.DUP10);
+                FuseAfterPush1<DupStep<EvmInstructions.Op12>>(handlers, paired, Instruction.DUP12);
+                FuseAfterPush1<SwapStep<EvmInstructions.Op3>>(handlers, paired, Instruction.SWAP3);
+                FuseAfterPush1<SwapStep<EvmInstructions.Op4>>(handlers, paired, Instruction.SWAP4);
+                FuseAfterPush1<SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SWAP5);
+                FuseAfterPush1<SwapStep<EvmInstructions.Op6>>(handlers, paired, Instruction.SWAP6);
                 if (handlers[(int)Instruction.MLOAD] == (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadFromActiveMemory)
                     paired[(int)Instruction.MLOAD] = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecutePush1MLoad;
                 if (handlers[(int)Instruction.MSTORE] == (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMStoreInsideBacking)
@@ -120,6 +133,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 FuseBeforeJump<SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.SWAP1);
                 FuseBeforeJump<PopStep>(handlers, paired, Instruction.POP);
+            }
+
+            if (handlers[(int)Instruction.MSTORE] == (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMStoreInsideBacking)
+            {
+                FuseBeforeMemory<BinaryStep<AddOperation>>(handlers, paired, Instruction.ADD, Instruction.MSTORE, (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMStoreAfter<BinaryStep<AddOperation>>);
+                FuseBeforeMemory<DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP2, Instruction.MSTORE, (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMStoreAfter<DupStep<EvmInstructions.Op2>>);
+            }
+
+            if (handlers[(int)Instruction.MLOAD] == (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadFromActiveMemory)
+            {
+                FuseBeforeMemory<BinaryStep<AddOperation>>(handlers, paired, Instruction.ADD, Instruction.MLOAD, (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadAfter<BinaryStep<AddOperation>>);
+                FuseBeforeMemory<DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP2, Instruction.MLOAD, (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadAfter<DupStep<EvmInstructions.Op2>>);
+                FuseBeforeMemory<DupStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP1, Instruction.MLOAD, (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadAfter<DupStep<EvmInstructions.Op1>>);
             }
 
             Fuse<BinaryStep<AddOperation>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.ADD, Instruction.SWAP1);
@@ -221,6 +247,168 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             Fuse<SwapStep<EvmInstructions.Op2>, SwapStep<EvmInstructions.Op3>>(handlers, paired, Instruction.SWAP2, Instruction.SWAP3);
             Fuse<DupStep<EvmInstructions.Op5>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP5, Instruction.SWAP1);
             Fuse<SwapStep<EvmInstructions.Op6>, PopStep>(handlers, paired, Instruction.SWAP6, Instruction.POP);
+            Fuse<DupStep<EvmInstructions.Op6>, BinaryStep<AndOperation>>(handlers, paired, Instruction.DUP6, Instruction.AND);
+            Fuse<DupStep<EvmInstructions.Op3>, DupStep<EvmInstructions.Op7>>(handlers, paired, Instruction.DUP3, Instruction.DUP7);
+            Fuse<SwapStep<EvmInstructions.Op1>, DupStep<EvmInstructions.Op4>>(handlers, paired, Instruction.SWAP1, Instruction.DUP4);
+            Fuse<DupStep<EvmInstructions.Op10>, BinaryStep<AddOperation>>(handlers, paired, Instruction.DUP10, Instruction.ADD);
+            Fuse<BinaryStep<OrOperation>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.OR, Instruction.SWAP1);
+            Fuse<DupStep<EvmInstructions.Op6>, BinaryStep<SubtractOperation>>(handlers, paired, Instruction.DUP6, Instruction.SUB);
+            Fuse<BinaryStep<AndOperation>, DupStep<EvmInstructions.Op4>>(handlers, paired, Instruction.AND, Instruction.DUP4);
+            Fuse<BinaryStep<AndOperation>, BinaryStep<OrOperation>>(handlers, paired, Instruction.AND, Instruction.OR);
+            Fuse<BinaryStep<AndOperation>, BinaryStep<AddOperation>>(handlers, paired, Instruction.AND, Instruction.ADD);
+            Fuse<DupStep<EvmInstructions.Op6>, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP6, Instruction.DUP2);
+            Fuse<DupStep<EvmInstructions.Op6>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP6, Instruction.SWAP1);
+            Fuse<BinaryStep<SubtractOperation>, SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.SUB, Instruction.SWAP2);
+            Fuse<PopStep, DupStep<EvmInstructions.Op3>>(handlers, paired, Instruction.POP, Instruction.DUP3);
+            Fuse<DupStep<EvmInstructions.Op12>, BinaryStep<AddOperation>>(handlers, paired, Instruction.DUP12, Instruction.ADD);
+            Fuse<SwapStep<EvmInstructions.Op1>, DupStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SWAP1, Instruction.DUP5);
+            Fuse<DupStep<EvmInstructions.Op6>, DupStep<EvmInstructions.Op4>>(handlers, paired, Instruction.DUP6, Instruction.DUP4);
+            Fuse<DupStep<EvmInstructions.Op6>, DupStep<EvmInstructions.Op6>>(handlers, paired, Instruction.DUP6, Instruction.DUP6);
+            Fuse<DupStep<EvmInstructions.Op6>, DupStep<EvmInstructions.Op3>>(handlers, paired, Instruction.DUP6, Instruction.DUP3);
+            Fuse<DupStep<EvmInstructions.Op5>, BinaryStep<AndOperation>>(handlers, paired, Instruction.DUP5, Instruction.AND);
+            Fuse<DupStep<EvmInstructions.Op7>, DupStep<EvmInstructions.Op4>>(handlers, paired, Instruction.DUP7, Instruction.DUP4);
+            Fuse<DupStep<EvmInstructions.Op2>, BinaryStep<XorOperation>>(handlers, paired, Instruction.DUP2, Instruction.XOR);
+            Fuse<SwapStep<EvmInstructions.Op5>, DupStep<EvmInstructions.Op6>>(handlers, paired, Instruction.SWAP5, Instruction.DUP6);
+            Fuse<DupStep<EvmInstructions.Op8>, DupStep<EvmInstructions.Op8>>(handlers, paired, Instruction.DUP8, Instruction.DUP8);
+            Fuse<SwapStep<EvmInstructions.Op6>, SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SWAP6, Instruction.SWAP5);
+            Fuse<SwapStep<EvmInstructions.Op3>, BinaryStep<AndOperation>>(handlers, paired, Instruction.SWAP3, Instruction.AND);
+            Fuse<SwapStep<EvmInstructions.Op7>, PopStep>(handlers, paired, Instruction.SWAP7, Instruction.POP);
+            Fuse<PopStep, BinaryStep<AddOperation>>(handlers, paired, Instruction.POP, Instruction.ADD);
+            Fuse<BinaryStep<AndOperation>, BinaryStep<SubtractOperation>>(handlers, paired, Instruction.AND, Instruction.SUB);
+            Fuse<SwapStep<EvmInstructions.Op2>, DupStep<EvmInstructions.Op4>>(handlers, paired, Instruction.SWAP2, Instruction.DUP4);
+            Fuse<BinaryStep<AddOperation>, SwapStep<EvmInstructions.Op6>>(handlers, paired, Instruction.ADD, Instruction.SWAP6);
+            Fuse<BinaryStep<OrOperation>, BinaryStep<OrOperation>>(handlers, paired, Instruction.OR, Instruction.OR);
+            Fuse<DupStep<EvmInstructions.Op5>, DupStep<EvmInstructions.Op3>>(handlers, paired, Instruction.DUP5, Instruction.DUP3);
+            Fuse<BinaryStep<AddOperation>, DupStep<EvmInstructions.Op6>>(handlers, paired, Instruction.ADD, Instruction.DUP6);
+            Fuse<DupStep<EvmInstructions.Op4>, DupStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP4, Instruction.DUP1);
+            Fuse<DupStep<EvmInstructions.Op3>, DupStep<EvmInstructions.Op6>>(handlers, paired, Instruction.DUP3, Instruction.DUP6);
+            Fuse<BinaryStep<AndOperation>, DupStep<EvmInstructions.Op5>>(handlers, paired, Instruction.AND, Instruction.DUP5);
+            Fuse<DupStep<EvmInstructions.Op5>, DupStep<EvmInstructions.Op4>>(handlers, paired, Instruction.DUP5, Instruction.DUP4);
+            Fuse<SwapStep<EvmInstructions.Op6>, DupStep<EvmInstructions.Op7>>(handlers, paired, Instruction.SWAP6, Instruction.DUP7);
+            Fuse<SwapStep<EvmInstructions.Op4>, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.SWAP4, Instruction.DUP2);
+            Fuse<SwapStep<EvmInstructions.Op2>, DupStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SWAP2, Instruction.DUP5);
+            Fuse<SwapStep<EvmInstructions.Op1>, SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SWAP1, Instruction.SWAP5);
+            Fuse<DupStep<EvmInstructions.Op11>, BinaryStep<AddOperation>>(handlers, paired, Instruction.DUP11, Instruction.ADD);
+            Fuse<DupStep<EvmInstructions.Op7>, BinaryStep<AndOperation>>(handlers, paired, Instruction.DUP7, Instruction.AND);
+            Fuse<SwapStep<EvmInstructions.Op3>, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.SWAP3, Instruction.DUP2);
+            Fuse<BinaryStep<AndOperation>, DupStep<EvmInstructions.Op7>>(handlers, paired, Instruction.AND, Instruction.DUP7);
+            Fuse<SwapStep<EvmInstructions.Op1>, SwapStep<EvmInstructions.Op6>>(handlers, paired, Instruction.SWAP1, Instruction.SWAP6);
+            Fuse<BinaryStep<AndOperation>, DupStep<EvmInstructions.Op6>>(handlers, paired, Instruction.AND, Instruction.DUP6);
+            Fuse<PopStep, DupStep<EvmInstructions.Op5>>(handlers, paired, Instruction.POP, Instruction.DUP5);
+            Fuse<DupStep<EvmInstructions.Op3>, SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP3, Instruction.SWAP2);
+            Fuse<BinaryStep<AddOperation>, SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.ADD, Instruction.SWAP5);
+            Fuse<SwapStep<EvmInstructions.Op5>, BinaryStep<AddOperation>>(handlers, paired, Instruction.SWAP5, Instruction.ADD);
+            Fuse<DupStep<EvmInstructions.Op8>, BinaryStep<AndOperation>>(handlers, paired, Instruction.DUP8, Instruction.AND);
+            Fuse<SwapStep<EvmInstructions.Op3>, SwapStep<EvmInstructions.Op4>>(handlers, paired, Instruction.SWAP3, Instruction.SWAP4);
+            Fuse<BinaryStep<SubtractOperation>, BinaryStep<SubtractOperation>>(handlers, paired, Instruction.SUB, Instruction.SUB);
+            Fuse<PopStep, SwapStep<EvmInstructions.Op4>>(handlers, paired, Instruction.POP, Instruction.SWAP4);
+            Fuse<DupStep<EvmInstructions.Op6>, DupStep<EvmInstructions.Op5>>(handlers, paired, Instruction.DUP6, Instruction.DUP5);
+            Fuse<BinaryStep<SubtractOperation>, DupStep<EvmInstructions.Op1>>(handlers, paired, Instruction.SUB, Instruction.DUP1);
+            Fuse<BinaryStep<AndOperation>, SwapStep<EvmInstructions.Op4>>(handlers, paired, Instruction.AND, Instruction.SWAP4);
+            Fuse<DupStep<EvmInstructions.Op5>, DupStep<EvmInstructions.Op7>>(handlers, paired, Instruction.DUP5, Instruction.DUP7);
+            Fuse<PopStep, SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.POP, Instruction.SWAP5);
+            Fuse<SwapStep<EvmInstructions.Op3>, SwapStep<EvmInstructions.Op6>>(handlers, paired, Instruction.SWAP3, Instruction.SWAP6);
+            Fuse<SwapStep<EvmInstructions.Op7>, SwapStep<EvmInstructions.Op6>>(handlers, paired, Instruction.SWAP7, Instruction.SWAP6);
+            Fuse<DupStep<EvmInstructions.Op11>, BinaryStep<AndOperation>>(handlers, paired, Instruction.DUP11, Instruction.AND);
+            Fuse<DupStep<EvmInstructions.Op6>, DupStep<EvmInstructions.Op8>>(handlers, paired, Instruction.DUP6, Instruction.DUP8);
+            Fuse<SwapStep<EvmInstructions.Op1>, DupStep<EvmInstructions.Op6>>(handlers, paired, Instruction.SWAP1, Instruction.DUP6);
+            Fuse<SwapStep<EvmInstructions.Op8>, SwapStep<EvmInstructions.Op7>>(handlers, paired, Instruction.SWAP8, Instruction.SWAP7);
+            Fuse<BinaryStep<SubtractOperation>, SwapStep<EvmInstructions.Op3>>(handlers, paired, Instruction.SUB, Instruction.SWAP3);
+            Fuse<DupStep<EvmInstructions.Op4>, DupStep<EvmInstructions.Op7>>(handlers, paired, Instruction.DUP4, Instruction.DUP7);
+            Fuse<SwapStep<EvmInstructions.Op8>, PopStep>(handlers, paired, Instruction.SWAP8, Instruction.POP);
+            Fuse<DupStep<EvmInstructions.Op13>, BinaryStep<AddOperation>>(handlers, paired, Instruction.DUP13, Instruction.ADD);
+            Fuse<BinaryStep<SubtractOperation>, DupStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SUB, Instruction.DUP5);
+            Fuse<SwapStep<EvmInstructions.Op6>, BinaryStep<AddOperation>>(handlers, paired, Instruction.SWAP6, Instruction.ADD);
+            Fuse<SwapStep<EvmInstructions.Op4>, DupStep<EvmInstructions.Op4>>(handlers, paired, Instruction.SWAP4, Instruction.DUP4);
+            Fuse<SwapStep<EvmInstructions.Op1>, DupStep<EvmInstructions.Op7>>(handlers, paired, Instruction.SWAP1, Instruction.DUP7);
+            Fuse<DupStep<EvmInstructions.Op7>, DupStep<EvmInstructions.Op6>>(handlers, paired, Instruction.DUP7, Instruction.DUP6);
+            Fuse<SwapStep<EvmInstructions.Op4>, SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.SWAP4, Instruction.SWAP2);
+            Fuse<SwapStep<EvmInstructions.Op7>, DupStep<EvmInstructions.Op8>>(handlers, paired, Instruction.SWAP7, Instruction.DUP8);
+            Fuse<DupStep<EvmInstructions.Op14>, BinaryStep<AddOperation>>(handlers, paired, Instruction.DUP14, Instruction.ADD);
+            Fuse<SwapStep<EvmInstructions.Op4>, BinaryStep<AndOperation>>(handlers, paired, Instruction.SWAP4, Instruction.AND);
+            Fuse<SwapStep<EvmInstructions.Op7>, BinaryStep<AddOperation>>(handlers, paired, Instruction.SWAP7, Instruction.ADD);
+            Fuse<DupStep<EvmInstructions.Op7>, BinaryStep<SubtractOperation>>(handlers, paired, Instruction.DUP7, Instruction.SUB);
+            Fuse<SwapStep<EvmInstructions.Op5>, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.SWAP5, Instruction.DUP2);
+            Fuse<DupStep<EvmInstructions.Op4>, SwapStep<EvmInstructions.Op3>>(handlers, paired, Instruction.DUP4, Instruction.SWAP3);
+            Fuse<SwapStep<EvmInstructions.Op2>, SwapStep<EvmInstructions.Op4>>(handlers, paired, Instruction.SWAP2, Instruction.SWAP4);
+            Fuse<BinaryStep<AddOperation>, BinaryStep<SubtractOperation>>(handlers, paired, Instruction.ADD, Instruction.SUB);
+            Fuse<DupStep<EvmInstructions.Op7>, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP7, Instruction.DUP2);
+            Fuse<DupStep<EvmInstructions.Op9>, DupStep<EvmInstructions.Op9>>(handlers, paired, Instruction.DUP9, Instruction.DUP9);
+            Fuse<DupStep<EvmInstructions.Op7>, DupStep<EvmInstructions.Op5>>(handlers, paired, Instruction.DUP7, Instruction.DUP5);
+            Fuse<SwapStep<EvmInstructions.Op2>, SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SWAP2, Instruction.SWAP5);
+            Fuse<DupStep<EvmInstructions.Op9>, BinaryStep<AndOperation>>(handlers, paired, Instruction.DUP9, Instruction.AND);
+            Fuse<BinaryStep<AndOperation>, SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.AND, Instruction.SWAP5);
+            Fuse<DupStep<EvmInstructions.Op7>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP7, Instruction.SWAP1);
+            Fuse<SwapStep<EvmInstructions.Op4>, SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SWAP4, Instruction.SWAP5);
+            Fuse<SwapStep<EvmInstructions.Op6>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.SWAP6, Instruction.SWAP1);
+            Fuse<SwapStep<EvmInstructions.Op5>, SwapStep<EvmInstructions.Op3>>(handlers, paired, Instruction.SWAP5, Instruction.SWAP3);
+            Fuse<DupStep<EvmInstructions.Op12>, DupStep<EvmInstructions.Op12>>(handlers, paired, Instruction.DUP12, Instruction.DUP12);
+            Fuse<PopStep, SwapStep<EvmInstructions.Op6>>(handlers, paired, Instruction.POP, Instruction.SWAP6);
+            Fuse<BinaryStep<AndOperation>, BinaryStep<XorOperation>>(handlers, paired, Instruction.AND, Instruction.XOR);
+            Fuse<BinaryStep<SubtractOperation>, DupStep<EvmInstructions.Op6>>(handlers, paired, Instruction.SUB, Instruction.DUP6);
+            Fuse<BinaryStep<AddOperation>, DupStep<EvmInstructions.Op7>>(handlers, paired, Instruction.ADD, Instruction.DUP7);
+            Fuse<SwapStep<EvmInstructions.Op5>, BinaryStep<AndOperation>>(handlers, paired, Instruction.SWAP5, Instruction.AND);
+            Fuse<BinaryStep<AddOperation>, SwapStep<EvmInstructions.Op7>>(handlers, paired, Instruction.ADD, Instruction.SWAP7);
+            Fuse<SwapStep<EvmInstructions.Op1>, SwapStep<EvmInstructions.Op7>>(handlers, paired, Instruction.SWAP1, Instruction.SWAP7);
+            Fuse<SwapStep<EvmInstructions.Op5>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.SWAP5, Instruction.SWAP1);
+            Fuse<PopStep, DupStep<EvmInstructions.Op6>>(handlers, paired, Instruction.POP, Instruction.DUP6);
+            Fuse<DupStep<EvmInstructions.Op10>, BinaryStep<AndOperation>>(handlers, paired, Instruction.DUP10, Instruction.AND);
+            Fuse<DupStep<EvmInstructions.Op3>, DupStep<EvmInstructions.Op8>>(handlers, paired, Instruction.DUP3, Instruction.DUP8);
+            Fuse<SwapStep<EvmInstructions.Op2>, DupStep<EvmInstructions.Op1>>(handlers, paired, Instruction.SWAP2, Instruction.DUP1);
+            Fuse<SwapStep<EvmInstructions.Op1>, DupStep<EvmInstructions.Op12>>(handlers, paired, Instruction.SWAP1, Instruction.DUP12);
+            Fuse<BinaryStep<SubtractOperation>, DupStep<EvmInstructions.Op11>>(handlers, paired, Instruction.SUB, Instruction.DUP11);
+            Fuse<DupStep<EvmInstructions.Op9>, SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP9, Instruction.SWAP2);
+            Fuse<SwapStep<EvmInstructions.Op3>, DupStep<EvmInstructions.Op3>>(handlers, paired, Instruction.SWAP3, Instruction.DUP3);
+            Fuse<DupStep<EvmInstructions.Op3>, SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.DUP3, Instruction.SWAP5);
+            Fuse<DupStep<EvmInstructions.Op10>, DupStep<EvmInstructions.Op10>>(handlers, paired, Instruction.DUP10, Instruction.DUP10);
+            Fuse<DupStep<EvmInstructions.Op10>, SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP10, Instruction.SWAP2);
+            Fuse<BinaryStep<OrOperation>, DupStep<EvmInstructions.Op4>>(handlers, paired, Instruction.OR, Instruction.DUP4);
+            Fuse<DupStep<EvmInstructions.Op5>, SwapStep<EvmInstructions.Op4>>(handlers, paired, Instruction.DUP5, Instruction.SWAP4);
+            Fuse<SwapStep<EvmInstructions.Op4>, SwapStep<EvmInstructions.Op6>>(handlers, paired, Instruction.SWAP4, Instruction.SWAP6);
+            Fuse<SwapStep<EvmInstructions.Op2>, BinaryStep<OrOperation>>(handlers, paired, Instruction.SWAP2, Instruction.OR);
+            Fuse<DupStep<EvmInstructions.Op9>, DupStep<EvmInstructions.Op4>>(handlers, paired, Instruction.DUP9, Instruction.DUP4);
+            Fuse<SwapStep<EvmInstructions.Op5>, SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.SWAP5, Instruction.SWAP2);
+            Fuse<SwapStep<EvmInstructions.Op2>, SwapStep<EvmInstructions.Op6>>(handlers, paired, Instruction.SWAP2, Instruction.SWAP6);
+            Fuse<SwapStep<EvmInstructions.Op4>, DupStep<EvmInstructions.Op3>>(handlers, paired, Instruction.SWAP4, Instruction.DUP3);
+            Fuse<DupStep<EvmInstructions.Op9>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP9, Instruction.SWAP1);
+            Fuse<DupStep<EvmInstructions.Op4>, DupStep<EvmInstructions.Op8>>(handlers, paired, Instruction.DUP4, Instruction.DUP8);
+            Fuse<SwapStep<EvmInstructions.Op3>, SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SWAP3, Instruction.SWAP5);
+            Fuse<DupStep<EvmInstructions.Op4>, SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP4, Instruction.SWAP2);
+            Fuse<BinaryStep<AndOperation>, SwapStep<EvmInstructions.Op6>>(handlers, paired, Instruction.AND, Instruction.SWAP6);
+            Fuse<DupStep<EvmInstructions.Op2>, DupStep<EvmInstructions.Op10>>(handlers, paired, Instruction.DUP2, Instruction.DUP10);
+            Fuse<BinaryStep<OrOperation>, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.OR, Instruction.DUP2);
+            Fuse<BinaryStep<XorOperation>, SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.XOR, Instruction.SWAP2);
+            Fuse<DupStep<EvmInstructions.Op8>, DupStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP8, Instruction.DUP1);
+            Fuse<BinaryStep<AddOperation>, DupStep<EvmInstructions.Op8>>(handlers, paired, Instruction.ADD, Instruction.DUP8);
+            Fuse<SwapStep<EvmInstructions.Op6>, SwapStep<EvmInstructions.Op4>>(handlers, paired, Instruction.SWAP6, Instruction.SWAP4);
+            Fuse<SwapStep<EvmInstructions.Op6>, SwapStep<EvmInstructions.Op9>>(handlers, paired, Instruction.SWAP6, Instruction.SWAP9);
+            Fuse<SwapStep<EvmInstructions.Op5>, DupStep<EvmInstructions.Op8>>(handlers, paired, Instruction.SWAP5, Instruction.DUP8);
+            Fuse<DupStep<EvmInstructions.Op12>, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP12, Instruction.DUP2);
+            Fuse<DupStep<EvmInstructions.Op4>, DupStep<EvmInstructions.Op10>>(handlers, paired, Instruction.DUP4, Instruction.DUP10);
+            Fuse<DupStep<EvmInstructions.Op13>, DupStep<EvmInstructions.Op13>>(handlers, paired, Instruction.DUP13, Instruction.DUP13);
+            Fuse<DupStep<EvmInstructions.Op8>, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP8, Instruction.DUP2);
+            Fuse<DupStep<EvmInstructions.Op6>, DupStep<EvmInstructions.Op9>>(handlers, paired, Instruction.DUP6, Instruction.DUP9);
+            Fuse<DupStep<EvmInstructions.Op8>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP8, Instruction.SWAP1);
+            Fuse<SwapStep<EvmInstructions.Op3>, BinaryStep<OrOperation>>(handlers, paired, Instruction.SWAP3, Instruction.OR);
+            Fuse<SwapStep<EvmInstructions.Op9>, PopStep>(handlers, paired, Instruction.SWAP9, Instruction.POP);
+            Fuse<DupStep<EvmInstructions.Op11>, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP11, Instruction.DUP2);
+            Fuse<BinaryStep<SubtractOperation>, SwapStep<EvmInstructions.Op4>>(handlers, paired, Instruction.SUB, Instruction.SWAP4);
+            Fuse<SwapStep<EvmInstructions.Op5>, DupStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SWAP5, Instruction.DUP5);
+            Fuse<ShiftRightStep, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.SHR, Instruction.SWAP1);
+            Fuse<Push0Step, BinaryStep<ByteOperation>>(handlers, paired, Instruction.PUSH0, Instruction.BYTE);
+            Fuse<Push0Step, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.PUSH0, Instruction.SWAP1);
+            Fuse<Push0Step, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.PUSH0, Instruction.DUP2);
+            Fuse<Push0Step, DupStep<EvmInstructions.Op1>>(handlers, paired, Instruction.PUSH0, Instruction.DUP1);
+            Fuse<Push0Step, DupStep<EvmInstructions.Op3>>(handlers, paired, Instruction.PUSH0, Instruction.DUP3);
+            Fuse<Push0Step, SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.PUSH0, Instruction.SWAP2);
+            Fuse<Push0Step, Push0Step>(handlers, paired, Instruction.PUSH0, Instruction.PUSH0);
+            Fuse<Push0Step, SwapStep<EvmInstructions.Op3>>(handlers, paired, Instruction.PUSH0, Instruction.SWAP3);
+            Fuse<Push0Step, DupStep<EvmInstructions.Op4>>(handlers, paired, Instruction.PUSH0, Instruction.DUP4);
+            Fuse<SwapStep<EvmInstructions.Op1>, ShiftRightStep>(handlers, paired, Instruction.SWAP1, Instruction.SHR);
+            Fuse<ShiftRightStep, DupStep<EvmInstructions.Op3>>(handlers, paired, Instruction.SHR, Instruction.DUP3);
+            Fuse<BinaryStep<SubtractOperation>, NotStep>(handlers, paired, Instruction.SUB, Instruction.NOT);
+            Fuse<NotStep, BinaryStep<AndOperation>>(handlers, paired, Instruction.NOT, Instruction.AND);
+            Fuse<NotStep, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.NOT, Instruction.DUP2);
         }
 
         /// <summary>Installs <see cref="ExecutePair{TFirst, TSecond}"/> for <paramref name="first"/> followed by <paramref name="second"/>.</summary>
@@ -296,6 +484,116 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 gas += fusedGas;
+            }
+
+            nint alone = TFirst.Handler;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, alone);
+        }
+
+        /// <summary>Installs <paramref name="fused"/> for <paramref name="first"/> followed by <paramref name="memory"/>.</summary>
+        private static void FuseBeforeMemory<TFirst>(ReadOnlySpan<nint> handlers, nint[] paired, Instruction first, Instruction memory, nint fused)
+            where TFirst : struct, IStackStep
+        {
+            if (handlers[(int)first] == TFirst.Handler)
+                paired[FollowerHandlersLength + ((int)first | (int)memory << 8)] = fused;
+        }
+
+        /// <summary>A stack step fused with an MSTORE after it, which stores the word below the step's result at it.</summary>
+        /// <remarks>
+        /// With too little gas or stack for the step, it runs alone through its own handler. Once it has run, an MSTORE
+        /// that needs new backing or more gas than is left runs through the MSTORE handler, as it would unfused.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteMStoreAfter<TFirst>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+            where TFirst : struct, IStackStep
+        {
+            if (Fits<TFirst>(head, secondInputs: 2, secondGrowth: -2) && TryCharge(ref gas, TFirst.GasCost))
+            {
+                ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head));
+                TFirst.Apply(ref end, ref ip);
+                head += TFirst.Growth;
+                ip = ref Unsafe.Add(ref ip, TFirst.Length);
+                ref ulong offset = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
+                if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0 &&
+                    TryCharge(ref gas, VeryLowGasCost.GasCost))
+                {
+                    // Charged in the carried gas: a separate copy would take a callee-saved register.
+                    ref byte destination = ref state.Memory.TryPrepareWordOverwrite(offset, ref gas);
+                    if (!Unsafe.IsNullRef(ref destination))
+                    {
+                        // The value is the word below the offset; memory holds it big-endian.
+                        Unsafe.WriteUnaligned(ref destination, BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -1)));
+                        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8), BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -2)));
+                        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16), BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -3)));
+                        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 24), BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -4)));
+                        head -= 2;
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint next = handlers[PairAt(ref ip)];
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+                    }
+
+                    gas += VeryLowGasCost.GasCost;
+                }
+
+                nint store = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMStoreInsideBacking;
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, store);
+            }
+
+            nint alone = TFirst.Handler;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, alone);
+        }
+
+        /// <summary>A stack step fused with an MLOAD after it, which replaces the step's result with the word at it.</summary>
+        /// <remarks>
+        /// With too little gas or stack for the step, it runs alone through its own handler. Once it has run, an MLOAD
+        /// outside the active, initialized memory or with too little gas left runs through the MLOAD handler.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteMLoadAfter<TFirst>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+            where TFirst : struct, IStackStep
+        {
+            if (Fits<TFirst>(head, secondInputs: 1, secondGrowth: 0) && TryCharge(ref gas, TFirst.GasCost))
+            {
+                ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head));
+                TFirst.Apply(ref end, ref ip);
+                head += TFirst.Growth;
+                ip = ref Unsafe.Add(ref ip, TFirst.Length);
+                ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
+                if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0 &&
+                    TryCharge(ref gas, VeryLowGasCost.GasCost))
+                {
+                    ref byte source = ref state.Memory.GetActiveInitializedWord(slot);
+                    if (!Unsafe.IsNullRef(ref source))
+                    {
+                        LoadBigEndian(ref slot, ref source);
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint next = handlers[PairAt(ref ip)];
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+                    }
+
+                    gas += VeryLowGasCost.GasCost;
+                }
+
+                nint load = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadFromActiveMemory;
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, load);
             }
 
             nint alone = TFirst.Handler;
@@ -423,6 +721,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     TSecond.ApplyToPushedByte(ref end, Unsafe.Add(ref ip, 1));
                 }
+                else if (typeof(TFirst) == typeof(Push0Step) && TSecond.TakesPushedByte)
+                {
+                    TSecond.ApplyToPushedByte(ref end, 0);
+                }
+                else if (TFirst.DupDepth > 0 && TSecond.TakesDuplicate)
+                {
+                    TSecond.ApplyToDuplicate(ref end, TFirst.DupDepth);
+                }
+                else if (typeof(TSecond) == typeof(PopStep) && TFirst.SwapDepth > 0)
+                {
+                    // The swapped-down word is the one the POP drops, so only the top moves.
+                    ref ulong top = ref Unsafe.Subtract(ref end, LimbsPerWord);
+                    CopyWord(ref top, ref Unsafe.Subtract(ref top, TFirst.SwapDepth * LimbsPerWord));
+                }
                 else
                 {
                     TFirst.Apply(ref end, ref ip);
@@ -439,20 +751,32 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>Whether a stack of <paramref name="head"/> words holds what both steps read, and has room for what they add.</summary>
-        /// <remarks>Both bounds are constants, so a bounded range takes one unsigned test.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool Fits<TFirst, TSecond>(nint head)
             where TFirst : struct, IStackStep
-            where TSecond : struct, IStackStep
+            where TSecond : struct, IStackStep =>
+            Fits<TFirst>(head, TSecond.Inputs, TSecond.Growth);
+
+        /// <summary>
+        /// Whether a stack of <paramref name="head"/> words holds what a step and the opcode after it read, and has room
+        /// for what they add.
+        /// </summary>
+        /// <param name="head">The stack's depth.</param>
+        /// <param name="secondInputs">How many words the second opcode needs.</param>
+        /// <param name="secondGrowth">How many words the second opcode adds, or removes when negative.</param>
+        /// <remarks>Both bounds are constants, so a bounded range takes one unsigned test.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool Fits<TFirst>(nint head, int secondInputs, int secondGrowth)
+            where TFirst : struct, IStackStep
         {
-            int lowest = Math.Max(TFirst.Inputs, TSecond.Inputs - TFirst.Growth);
-            if (TFirst.Growth <= 0 && TSecond.Growth <= 0)
+            int lowest = Math.Max(TFirst.Inputs, secondInputs - TFirst.Growth);
+            if (TFirst.Growth <= 0 && secondGrowth <= 0)
                 return head >= lowest;
 
             // A step that grows the stack needs a free slot above the words it starts from.
             int limit = Math.Min(
                 TFirst.Growth > 0 ? EvmStack.MaxStackSize - 1 : int.MaxValue,
-                TSecond.Growth > 0 ? EvmStack.MaxStackSize - 1 - TFirst.Growth : int.MaxValue);
+                secondGrowth > 0 ? EvmStack.MaxStackSize - 1 - TFirst.Growth : int.MaxValue);
             return (nuint)(head - lowest) < (nuint)(limit - lowest);
         }
 
@@ -473,6 +797,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             /// <summary>How many bytes the opcode takes in the code, its immediates included.</summary>
             static virtual int Length => 1;
+
+            /// <summary>How deep below the top the word a SWAP exchanges it with lies, or 0 for any other opcode.</summary>
+            static virtual int SwapDepth => 0;
+
+            /// <summary>How deep the word a DUP copies lies, counting the top as 1, or 0 for any other opcode.</summary>
+            static virtual int DupDepth => 0;
+
+            /// <summary>Whether <see cref="ApplyToDuplicate"/> runs the opcode after a DUP without the copied word.</summary>
+            static virtual bool TakesDuplicate => false;
+
+            /// <summary>Runs the opcode as if a DUP had just copied the word <paramref name="depth"/> deep onto the stack, without copying it.</summary>
+            /// <param name="end">The limb above the top word before the DUP.</param>
+            /// <param name="depth">The DUP's depth, counting the top as 1.</param>
+            static virtual void ApplyToDuplicate(ref ulong end, int depth) { }
 
             /// <summary>Runs the opcode on the words below <paramref name="end"/>, the limb above the top word.</summary>
             /// <param name="end">The limb above the top word.</param>
@@ -495,6 +833,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static int Inputs => TOpCount.Count;
             public static int Growth => 1;
             public static ulong GasCost => VeryLowGasCost.GasCost;
+            public static int DupDepth => TOpCount.Count;
 
             public static nint Handler
             {
@@ -523,6 +862,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static int Inputs => TOpCount.Count + 1;
             public static int Growth => 0;
             public static ulong GasCost => VeryLowGasCost.GasCost;
+            public static int SwapDepth => TOpCount.Count;
 
             public static nint Handler =>
                 (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteSwap<TOpCount>;
@@ -578,6 +918,54 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end, ref byte opcode) => SetWord(ref end, Unsafe.Add(ref opcode, 1));
+        }
+
+        /// <summary>NOT as a step of a fused pair.</summary>
+        internal readonly struct NotStep : IStackStep
+        {
+            public static int Inputs => 1;
+            public static int Growth => 0;
+            public static ulong GasCost => VeryLowGasCost.GasCost;
+
+            public static nint Handler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteNot;
+
+            public static bool TakesPushedByte => true;
+
+            /// <remarks>The inverted byte lands in the slot the push would have taken.</remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void ApplyToPushedByte(ref ulong end, ulong pushed)
+            {
+                end = ~pushed;
+                Unsafe.Add(ref end, 1) = ulong.MaxValue;
+                Unsafe.Add(ref end, 2) = ulong.MaxValue;
+                Unsafe.Add(ref end, 3) = ulong.MaxValue;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Apply(ref ulong end, ref byte opcode)
+            {
+                Unsafe.Add(ref end, -4) = ~Unsafe.Add(ref end, -4);
+                Unsafe.Add(ref end, -3) = ~Unsafe.Add(ref end, -3);
+                Unsafe.Add(ref end, -2) = ~Unsafe.Add(ref end, -2);
+                Unsafe.Add(ref end, -1) = ~Unsafe.Add(ref end, -1);
+            }
+        }
+
+        /// <summary>PUSH0 as a step of a fused pair.</summary>
+        /// <remarks>Its zero is a pushed byte to the steps that take one.</remarks>
+        internal readonly struct Push0Step : IStackStep
+        {
+            public static int Inputs => 0;
+            public static int Growth => 1;
+            public static ulong GasCost => BaseGasCost.GasCost;
+
+            public static nint Handler =>
+                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                &ExecutePushValue<ZeroValue>;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Apply(ref ulong end, ref byte opcode) => SetWord(ref end, 0);
         }
 
         /// <summary>SHL as a step of a fused pair; a shift of 256 or more clears the word.</summary>
@@ -650,10 +1038,101 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end, ref byte opcode) => TOperation.Apply(ref end);
 
-            public static bool TakesPushedByte =>
-                typeof(TOperation) == typeof(AddOperation) || typeof(TOperation) == typeof(SubtractOperation) ||
-                typeof(TOperation) == typeof(AndOperation) || typeof(TOperation) == typeof(OrOperation) ||
-                typeof(TOperation) == typeof(XorOperation) || typeof(TOperation) == typeof(ArithmeticShiftRightOperation);
+            public static bool TakesDuplicate
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => typeof(TOperation) == typeof(AddOperation) || typeof(TOperation) == typeof(SubtractOperation) ||
+                    typeof(TOperation) == typeof(AndOperation) || typeof(TOperation) == typeof(OrOperation) ||
+                    typeof(TOperation) == typeof(XorOperation);
+            }
+
+            /// <remarks>The copy is the top operand and the old top word the second, which the result replaces.</remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void ApplyToDuplicate(ref ulong end, int depth)
+            {
+                ref ulong word = ref Unsafe.Subtract(ref end, LimbsPerWord);
+                ref ulong copied = ref Unsafe.Subtract(ref end, depth * LimbsPerWord);
+                if (typeof(TOperation) == typeof(AddOperation))
+                {
+                    ulong left = word;
+                    ulong sum = left + copied;
+                    word = sum;
+                    ulong carry = sum < left ? 1UL : 0UL;
+                    // Most additions add an offset or a length below 2^64, so only a carry reaches the limbs above.
+                    if ((Unsafe.Add(ref copied, 1) | Unsafe.Add(ref copied, 2) | Unsafe.Add(ref copied, 3)) == 0)
+                    {
+                        if (carry != 0 && ++Unsafe.Add(ref word, 1) == 0 && ++Unsafe.Add(ref word, 2) == 0)
+                            Unsafe.Add(ref word, 3)++;
+                        return;
+                    }
+
+                    carry = AddLimbs(ref Unsafe.Add(ref word, 1), Unsafe.Add(ref copied, 1), carry);
+                    carry = AddLimbs(ref Unsafe.Add(ref word, 2), Unsafe.Add(ref copied, 2), carry);
+                    Unsafe.Add(ref word, 3) = Unsafe.Add(ref word, 3) + Unsafe.Add(ref copied, 3) + carry;
+                }
+                else if (typeof(TOperation) == typeof(SubtractOperation))
+                {
+                    ulong borrow = 0;
+                    borrow = SubtractLimbs(ref word, Unsafe.Add(ref copied, 0), borrow);
+                    borrow = SubtractLimbs(ref Unsafe.Add(ref word, 1), Unsafe.Add(ref copied, 1), borrow);
+                    borrow = SubtractLimbs(ref Unsafe.Add(ref word, 2), Unsafe.Add(ref copied, 2), borrow);
+                    Unsafe.Add(ref word, 3) = Unsafe.Add(ref copied, 3) - Unsafe.Add(ref word, 3) - borrow;
+                }
+                else if (typeof(TOperation) == typeof(AndOperation))
+                {
+                    word &= copied;
+                    Unsafe.Add(ref word, 1) &= Unsafe.Add(ref copied, 1);
+                    Unsafe.Add(ref word, 2) &= Unsafe.Add(ref copied, 2);
+                    Unsafe.Add(ref word, 3) &= Unsafe.Add(ref copied, 3);
+                }
+                else if (typeof(TOperation) == typeof(OrOperation))
+                {
+                    word |= copied;
+                    Unsafe.Add(ref word, 1) |= Unsafe.Add(ref copied, 1);
+                    Unsafe.Add(ref word, 2) |= Unsafe.Add(ref copied, 2);
+                    Unsafe.Add(ref word, 3) |= Unsafe.Add(ref copied, 3);
+                }
+                else if (typeof(TOperation) == typeof(XorOperation))
+                {
+                    word ^= copied;
+                    Unsafe.Add(ref word, 1) ^= Unsafe.Add(ref copied, 1);
+                    Unsafe.Add(ref word, 2) ^= Unsafe.Add(ref copied, 2);
+                    Unsafe.Add(ref word, 3) ^= Unsafe.Add(ref copied, 3);
+                }
+            }
+
+            /// <summary>Adds <paramref name="addend"/> and <paramref name="carry"/> into <paramref name="limb"/>, and returns the carry out.</summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static ulong AddLimbs(ref ulong limb, ulong addend, ulong carry)
+            {
+                ulong left = limb;
+                ulong sum = left + addend;
+                ulong carryOut = sum < left ? 1UL : 0UL;
+                sum += carry;
+                carryOut += sum < carry ? 1UL : 0UL;
+                limb = sum;
+                return carryOut;
+            }
+
+            /// <summary>Replaces <paramref name="limb"/> with <paramref name="minuend"/> less it and <paramref name="borrow"/>, and returns the borrow out.</summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static ulong SubtractLimbs(ref ulong limb, ulong minuend, ulong borrow)
+            {
+                ulong subtrahend = limb;
+                ulong difference = minuend - subtrahend;
+                ulong borrowOut = minuend < subtrahend ? 1UL : 0UL;
+                borrowOut += difference < borrow ? 1UL : 0UL;
+                limb = difference - borrow;
+                return borrowOut;
+            }
+
+            public static bool TakesPushedByte
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => typeof(TOperation) == typeof(AddOperation) || typeof(TOperation) == typeof(SubtractOperation) ||
+                    typeof(TOperation) == typeof(AndOperation) || typeof(TOperation) == typeof(OrOperation) ||
+                    typeof(TOperation) == typeof(XorOperation) || typeof(TOperation) == typeof(ArithmeticShiftRightOperation);
+            }
 
             /// <remarks>The pushed byte is the top operand and the old top word the second, which the result replaces.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -113,6 +113,19 @@ public class GuestOpcodeHandlerTests
                 JUMPDEST, POP, JUMP),
             3 + 2 * (1 + 3 + 3 + 3 + 8 + 1 + 2 + 8 + 1 + 3 + 3 + 3 + 3 + 3 + 10));
 
+        // ADD, DUP2 and DUP1 dispatched from a handler that reads the opcode after them, so each runs fused with the memory
+        // opcode it computes the offset for.
+        byte[] wordAt32 = [.. new byte[32], .. Word(0x2a)];
+        yield return Succeeds("ADD MSTORE", Code(PUSH1, 0x2a, PUSH1, 0x10, PUSH1, 0x10, JUMPDEST, ADD, MSTORE, STOP), 5 * 3 + 1 + MemoryCost(2), wordAt32);
+        yield return Succeeds("DUP2 MSTORE", Code(PUSH1, 0x20, PUSH1, 0x2a, DUP2, MSTORE, STOP), 4 * 3 + MemoryCost(2), wordAt32);
+        byte[] storedTwice = [.. Word(0x2a), .. Word(0x2a)];
+        yield return Succeeds("ADD MLOAD",
+            Code(PUSH1, 0x2a, PUSH1, 0x20, MSTORE, PUSH1, 0x10, PUSH1, 0x10, ADD, MLOAD, PUSH1, 0, MSTORE, STOP), 9 * 3 + MemoryCost(2), storedTwice);
+        yield return Succeeds("DUP2 MLOAD",
+            Code(PUSH1, 0x2a, PUSH1, 0x20, MSTORE, PUSH1, 0x20, PUSH1, 0, DUP2, MLOAD, PUSH1, 0, MSTORE, STOP), 9 * 3 + MemoryCost(2), storedTwice);
+        yield return Succeeds("DUP1 MLOAD",
+            Code(PUSH1, 0x2a, PUSH1, 0x20, MSTORE, PUSH1, 0x20, JUMPDEST, DUP1, MLOAD, PUSH1, 0, MSTORE, STOP), 8 * 3 + 1 + MemoryCost(2), storedTwice);
+
         // The same loop with PUSH2 destinations: the first jump to each destination runs unfused, the later ones fuse.
         byte[] fusedCountdown = Code(
             PUSH1, 3,
