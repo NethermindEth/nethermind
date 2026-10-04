@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
-using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -64,15 +62,7 @@ public class GuestFrameInitializationTests
             SetBlockExecutionContext(new BlockExecutionContext(Header, spec));
             _txTracer = NullTxTracer.Instance;
             _worldState = Substitute.For<IWorldState>();
-            Type type = typeof(VirtualMachine<EthereumGasPolicy>);
-            type.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
-                .Single(static method => method.Name == "PrepareOpcodes" && method.GetGenericArguments().Length == 1)
-                .MakeGenericMethod(typeof(OffFlag))
-                .Invoke(this, null);
-            // The guest keeps the frame handlers of the first fork it prepares; build this fork's own.
-            Type handlersType = type.GetNestedType("ExecutionHandlers", BindingFlags.NonPublic)!.MakeGenericType(typeof(EthereumGasPolicy));
-            type.GetField("_executionHandlers", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .SetValue(this, Activator.CreateInstance(handlersType, spec));
+            PrepareFrameHandlersForTests();
         }
 
         public void EnterFrame(VmState<EthereumGasPolicy> frame)

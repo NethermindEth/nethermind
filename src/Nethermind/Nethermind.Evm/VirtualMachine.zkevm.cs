@@ -27,6 +27,14 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
     private partial bool ShouldRefreshOpcodes() => false;
 
+    /// <summary>Resolves the untraced dispatch table and the current fork's own frame handlers, for tests that enter a frame directly.</summary>
+    /// <remarks>The shared table keeps the frame handlers of the first fork it prepares, so they are rebuilt for the current spec.</remarks>
+    internal void PrepareFrameHandlersForTests()
+    {
+        PrepareOpcodes<OffFlag>();
+        _executionHandlers = new ExecutionHandlers(Spec);
+    }
+
     public object? ReturnData;
 
     /// <summary>
