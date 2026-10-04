@@ -115,68 +115,140 @@ public class RangeSyncGloasColumnsTests
         Assert.That(peer.Failures, Is.Zero);
     }
 
-    /// <summary>
-    /// Each rule is the only one the sidecar breaks, so removing it lets the sidecar into the pool. The slot rule matters
-    /// because KZG does not bind the slot and the served-map availability path does not re-check it.
-    /// </summary>
-    [TestCase(BadSidecar.WrongSlot)]
-    [TestCase(BadSidecar.RootOutsideBatch)]
-    [TestCase(BadSidecar.UnrequestedColumn)]
-    [TestCase(BadSidecar.TamperedProof)]
-    [TestCase(BadSidecar.MalformedColumn)]
+    // KZG does not bind a sidecar's slot, and served-map availability does not re-check it.
+    // Tampered later copies prove duplicate suppression: verification would otherwise report a failure.
+    // Repeating an invalid pair must cost one KZG verification and one penalty, not one per copy.
+    // A valid earlier reply remains pooled; a later peer's copy is neither verified nor held against that peer.
+    public enum ColumnReply
+    {
+        BadSidecar,
+        BidSlot,
+        Failed,
+        Duplicate,
+        RepeatedBad,
+        CheapRejection,
+        BadThenHonest,
+        AlreadySupplied,
+    }
+
+    /// <summary>The batch's unvalidated bid may name another slot; sidecars must name the block slot.</summary>
+    [TestCase(ColumnReply.BidSlot, BadSidecar.WrongSlot, TestName = "A_range_sidecar_must_name_the_block_slot_even_when_the_bid_names_another")]
+    [TestCase(ColumnReply.BadSidecar, BadSidecar.WrongSlot, TestName = "A_range_sidecar_breaking_one_rule_is_not_pooled_and_penalizes_the_peer(WrongSlot)")]
+    [TestCase(ColumnReply.BadSidecar, BadSidecar.RootOutsideBatch, TestName = "A_range_sidecar_breaking_one_rule_is_not_pooled_and_penalizes_the_peer(RootOutsideBatch)")]
+    [TestCase(ColumnReply.BadSidecar, BadSidecar.UnrequestedColumn, TestName = "A_range_sidecar_breaking_one_rule_is_not_pooled_and_penalizes_the_peer(UnrequestedColumn)")]
+    [TestCase(ColumnReply.BadSidecar, BadSidecar.TamperedProof, TestName = "A_range_sidecar_breaking_one_rule_is_not_pooled_and_penalizes_the_peer(TamperedProof)")]
+    [TestCase(ColumnReply.BadSidecar, BadSidecar.MalformedColumn, TestName = "A_range_sidecar_breaking_one_rule_is_not_pooled_and_penalizes_the_peer(MalformedColumn)")]
+    [TestCase(ColumnReply.Failed, BadSidecar.WrongSlot, TestName = "A_failed_range_request_penalizes_the_peer_and_still_yields_the_batch")]
+    [TestCase(ColumnReply.Duplicate, BadSidecar.TamperedProof, TestName = "A_duplicate_sidecar_within_one_range_response_is_verified_once")]
+    [TestCase(ColumnReply.RepeatedBad, BadSidecar.TamperedProof, TestName = "Repeated_invalid_copies_of_a_column_in_one_range_response_penalize_the_peer_once")]
+    [TestCase(ColumnReply.CheapRejection, BadSidecar.WrongSlot, TestName = "A_range_copy_rejected_before_KZG_does_not_hide_the_valid_copy_after_it(WrongSlot)")]
+    [TestCase(ColumnReply.CheapRejection, BadSidecar.MalformedColumn, TestName = "A_range_copy_rejected_before_KZG_does_not_hide_the_valid_copy_after_it(MalformedColumn)")]
     [CancelAfter(30_000)]
-    public async Task A_range_sidecar_breaking_one_rule_is_not_pooled_and_penalizes_the_peer(BadSidecar bad, CancellationToken token)
+    public Task Range_column_replies_preserve_valid_copies_and_count_failures(ColumnReply reply, BadSidecar bad, CancellationToken token) =>
+        CheckColumnReplyAsync(byRoot: false, reply, bad, token);
+
+    [TestCase(ColumnReply.RepeatedBad, BadSidecar.TamperedProof, TestName = "Repeated_invalid_copies_of_a_column_in_one_by_root_response_penalize_the_peer_once")]
+    [TestCase(ColumnReply.CheapRejection, BadSidecar.WrongSlot, TestName = "A_by_root_copy_rejected_before_KZG_does_not_hide_the_valid_copy_after_it(WrongSlot)")]
+    [TestCase(ColumnReply.CheapRejection, BadSidecar.MalformedColumn, TestName = "A_by_root_copy_rejected_before_KZG_does_not_hide_the_valid_copy_after_it(MalformedColumn)")]
+    [TestCase(ColumnReply.BadThenHonest, BadSidecar.WrongSlot, TestName = "A_bad_by_root_sidecar_penalizes_its_peer_and_another_peers_copy_is_pooled(WrongSlot)")]
+    [TestCase(ColumnReply.BadThenHonest, BadSidecar.RootOutsideBatch, TestName = "A_bad_by_root_sidecar_penalizes_its_peer_and_another_peers_copy_is_pooled(RootOutsideBatch)")]
+    [TestCase(ColumnReply.BadThenHonest, BadSidecar.TamperedProof, TestName = "A_bad_by_root_sidecar_penalizes_its_peer_and_another_peers_copy_is_pooled(TamperedProof)")]
+    [TestCase(ColumnReply.AlreadySupplied, BadSidecar.TamperedProof, TestName = "A_by_root_copy_of_a_column_already_supplied_is_skipped_without_verification")]
+    [TestCase(ColumnReply.Failed, BadSidecar.WrongSlot, TestName = "A_failed_by_root_request_penalizes_its_peer_while_another_peer_serves_the_columns")]
+    public Task By_root_column_replies_preserve_valid_copies_and_count_failures(ColumnReply reply, BadSidecar bad) =>
+        CheckColumnReplyAsync(byRoot: true, reply, bad, CancellationToken.None);
+
+    private static async Task CheckColumnReplyAsync(bool byRoot, ColumnReply reply, BadSidecar bad, CancellationToken token)
     {
         await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
+        StraddlingChain chain = StraddlingChain.Create(bidSlot: reply == ColumnReply.BidSlot ? GloasSlot + 1 : GloasSlot);
         ulong[] sampled = [.. SampledColumns(discovery)];
         ulong victim = bad == BadSidecar.UnrequestedColumn ? UnsampledColumn(sampled) : sampled[0];
-        DataColumnSidecarGloas forged = Forge(bad, chain.GloasSidecar(victim));
-        RangeSyncTests.StubPeer peer = chain.CreatePeer((_, _, columns) => [forged, .. columns.Where(c => c != victim).Select(c => chain.GloasSidecar(c))]);
+        DataColumnSidecarGloas? forged = reply switch
+        {
+            ColumnReply.BidSlot => DataColumnSidecarGloasTestFixture.BuildSidecar(victim, GloasSlot + 1, chain.GloasRoot),
+            ColumnReply.BadSidecar => Forge(bad, chain.GloasSidecar(victim)),
+            _ => null,
+        };
         DataColumnSidecarPool pool = new();
+        Dictionary<ulong, DataColumnSidecarGloas> served = [];
+        List<ulong[]> secondPeerRequests = [];
+        string firstId = byRoot && reply is ColumnReply.RepeatedBad or ColumnReply.BadThenHonest ? "lying"
+            : reply == ColumnReply.Failed ? "failing" : reply == ColumnReply.AlreadySupplied ? "honest" : "peer";
+        RangeSyncTests.StubPeer first = byRoot
+            ? chain.CreateRootPeer(firstId, ids => Serve(ids[0].Columns!))
+            : chain.CreatePeer((_, _, columns) => Serve(columns));
+        bool anotherPeer = byRoot && reply is ColumnReply.BadThenHonest or ColumnReply.AlreadySupplied or ColumnReply.Failed;
+        RangeSyncTests.StubPeer? second = anotherPeer ? chain.CreateRootPeer(reply == ColumnReply.AlreadySupplied ? "late" : "honest", ids =>
+        {
+            secondPeerRequests.Add(ids[0].Columns!);
+            return [.. ids[0].Columns!.Select(c => reply == ColumnReply.AlreadySupplied
+                ? Forge(BadSidecar.TamperedProof, chain.GloasSidecar(c)) : chain.GloasSidecar(c))];
+        }) : null;
 
-        List<ForkedSignedBeaconBlock> yielded = await RunAsync(peer, pool, discovery, clock: null, chain, token);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(yielded, Has.Count.EqualTo(2), "a bad sidecar never fails the batch");
-        Assert.That(pool.TryGetGloas(forged.BeaconBlockRoot!, victim, out _), Is.False, "the bad sidecar is not pooled");
-        Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out _), Is.False);
-        Assert.That(sampled.Where(c => c != victim).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True, "the peer's valid sidecars still count");
-        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-    }
-
-    /// <summary>The batch block is not state-validated, so its bid slot may differ from its slot; the sidecar must name the block slot.</summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_range_sidecar_must_name_the_block_slot_even_when_the_bid_names_another(CancellationToken token)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create(bidSlot: GloasSlot + 1);
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        DataColumnSidecarGloas atBidSlot = DataColumnSidecarGloasTestFixture.BuildSidecar(sampled[0], GloasSlot + 1, chain.GloasRoot);
-        RangeSyncTests.StubPeer peer = chain.CreatePeer((_, _, columns) => [atBidSlot, .. columns.Select(c => chain.GloasSidecar(c))]);
-        DataColumnSidecarPool pool = new();
-
-        await RunAsync(peer, pool, discovery, clock: null, chain, token);
+        bool available = false;
+        List<ForkedSignedBeaconBlock>? yielded = null;
+        if (byRoot)
+            available = await CreateSync(pool, discovery, clock: null, second is null ? [first] : [first, second])
+                .FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, token);
+        else
+            yielded = await RunAsync(first, pool, discovery, clock: null, chain, token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out DataColumnSidecarGloas? held) && held.Slot == GloasSlot), Is.True, "sidecars naming the block slot are pooled");
-        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the sidecar naming the bid slot is rejected");
-    }
+        PeerFailureReason? failure = reply == ColumnReply.Failed ? PeerFailureReason.RequestFailed
+            : reply is ColumnReply.Duplicate or ColumnReply.AlreadySupplied ? null : PeerFailureReason.ProtocolViolation;
+        if (reply != ColumnReply.CheapRejection) Assert.That(first.Reports, Is.EqualTo(failure is { } reason ? new[] { reason } : []));
+        if (reply is ColumnReply.BadSidecar or ColumnReply.Failed && !byRoot)
+            Assert.That(yielded, Has.Count.EqualTo(2), "a bad sidecar or failed request never fails the batch");
+        if (reply == ColumnReply.BadSidecar)
+        {
+            Assert.That(pool.TryGetGloas(forged!.BeaconBlockRoot!, victim, out _), Is.False, "the bad sidecar is not pooled");
+            Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out _), Is.False);
+            Assert.That(sampled.Where(c => c != victim).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True, "the peer's valid sidecars still count");
+        }
+        if (reply is ColumnReply.Duplicate or ColumnReply.CheapRejection or ColumnReply.BidSlot || anotherPeer)
+        {
+            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True, "valid copies remain pooled");
+            if (byRoot) Assert.That(available, Is.True);
+        }
+        if (reply == ColumnReply.CheapRejection && byRoot)
+            Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out _), Is.True, "the valid copy after the rejected ones is pooled");
+        if (reply == ColumnReply.BidSlot)
+            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out DataColumnSidecarGloas? held) && held.Slot == GloasSlot), Is.True);
+        if (reply == ColumnReply.BadThenHonest)
+        {
+            Assert.That(secondPeerRequests, Is.EqualTo(new[] { sampled }), "the peers are asked at once, each for every missing column");
+            Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out DataColumnSidecarGloas? held) ? held : null, Is.Not.Null.And.Property(nameof(DataColumnSidecarGloas.Slot)).EqualTo(GloasSlot));
+            Assert.That(pool.TryGetGloas(OtherRoot, victim, out _), Is.False, "a sidecar for another block is not pooled");
+        }
+        if (second is not null)
+        {
+            if (reply == ColumnReply.AlreadySupplied) Assert.That(second.Reports, Is.Empty, "the tampered copies were never verified");
+            else Assert.That(second.Failures, Is.Zero);
+        }
+        if (reply == ColumnReply.AlreadySupplied)
+            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out DataColumnSidecarGloas? held) && ReferenceEquals(held, served[c])), Is.True, "the first reply's sidecars stay pooled");
 
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_failed_range_request_penalizes_the_peer_and_still_yields_the_batch(CancellationToken token)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        RangeSyncTests.StubPeer peer = chain.CreatePeer(static (_, _, _) => throw new IOException("connection reset"));
-
-        List<ForkedSignedBeaconBlock> yielded = await RunAsync(peer, new DataColumnSidecarPool(), discovery, clock: null, chain, token);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(yielded, Has.Count.EqualTo(2));
-        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
+        DataColumnSidecarGloas[] Serve(ulong[] columns)
+        {
+            if (reply == ColumnReply.Failed) throw new IOException("connection reset");
+            if (reply == ColumnReply.AlreadySupplied)
+            {
+                foreach (ulong column in columns) served[column] = chain.GloasSidecar(column);
+                return [.. columns.Select(c => served[c])];
+            }
+            // A cheap rejection must not shadow the later valid copy; a KZG-reaching rejection spends one attempt per pair.
+            return reply switch
+            {
+                ColumnReply.BadSidecar => [forged!, .. columns.Where(c => c != victim).Select(chain.GloasSidecar)],
+                ColumnReply.BadThenHonest => [.. columns.Select(c => c == victim ? Forge(bad, chain.GloasSidecar(c)) : chain.GloasSidecar(c))],
+                ColumnReply.BidSlot => [forged!, .. columns.Select(chain.GloasSidecar)],
+                ColumnReply.Duplicate => [.. columns.Select(chain.GloasSidecar), .. columns.Select(c => Forge(BadSidecar.TamperedProof, chain.GloasSidecar(c)))],
+                ColumnReply.RepeatedBad => [.. columns.Where(c => c != victim).Select(chain.GloasSidecar), .. Enumerable.Range(0, 50).Select(_ => Forge(BadSidecar.TamperedProof, chain.GloasSidecar(victim)))],
+                ColumnReply.CheapRejection => [.. Enumerable.Range(0, 3).Select(_ => Forge(bad, chain.GloasSidecar(victim))), .. columns.Select(chain.GloasSidecar)],
+                _ => throw new ArgumentOutOfRangeException(nameof(reply)),
+            };
+        }
     }
 
     [TestCase(WindowClock.None, 1)]
@@ -237,89 +309,6 @@ public class RangeSyncGloasColumnsTests
         Assert.That(peers.SelectMany(static p => p.RequestedGloasColumns).SelectMany(static c => c), Is.EquivalentTo(sampled.Except(held)), "every missing column is asked of exactly one custodian and held ones are not asked");
         Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
         Assert.That(peers.Sum(static p => p.Failures), Is.Zero);
-    }
-
-    /// <summary>Verifying the second copy of a column would fail (tampered proof) and penalize the peer, so no report shows it was skipped.</summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_duplicate_sidecar_within_one_range_response_is_verified_once(CancellationToken token)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        RangeSyncTests.StubPeer peer = chain.CreatePeer((_, _, columns) =>
-            [.. columns.Select(c => chain.GloasSidecar(c)), .. columns.Select(c => Forge(BadSidecar.TamperedProof, chain.GloasSidecar(c)))]);
-        DataColumnSidecarPool pool = new();
-
-        await RunAsync(peer, pool, discovery, clock: null, chain, token);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(peer.Reports, Is.Empty, "the second copy of each column was not verified");
-        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-    }
-
-    /// <summary>A reply repeating one invalid (root, index) is verified and penalized once, not once per copy: each copy would cost a KZG verification.</summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task Repeated_invalid_copies_of_a_column_in_one_range_response_penalize_the_peer_once(CancellationToken token)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong victim = SampledColumns(discovery)[0];
-        RangeSyncTests.StubPeer peer = chain.CreatePeer((_, _, columns) =>
-            [.. columns.Where(c => c != victim).Select(c => chain.GloasSidecar(c)), .. Enumerable.Range(0, 50).Select(_ => Forge(BadSidecar.TamperedProof, chain.GloasSidecar(victim)))]);
-
-        await RunAsync(peer, new DataColumnSidecarPool(), discovery, clock: null, chain, token);
-
-        Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-    }
-
-    [Test]
-    public async Task Repeated_invalid_copies_of_a_column_in_one_by_root_response_penalize_the_peer_once()
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong victim = SampledColumns(discovery)[0];
-        RangeSyncTests.StubPeer lying = chain.CreateRootPeer("lying", ids =>
-            [.. ids[0].Columns!.Where(c => c != victim).Select(c => chain.GloasSidecar(c)), .. Enumerable.Range(0, 50).Select(_ => Forge(BadSidecar.TamperedProof, chain.GloasSidecar(victim)))]);
-
-        await CreateSync(new DataColumnSidecarPool(), discovery, clock: null, lying).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
-
-        Assert.That(lying.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-    }
-
-    /// <summary>Only a copy that reached KZG shadows later copies: a cheap rejection must not hide the valid copy that follows it in the same reply.</summary>
-    [Test]
-    public async Task A_by_root_copy_rejected_before_KZG_does_not_hide_the_valid_copy_after_it([Values(BadSidecar.WrongSlot, BadSidecar.MalformedColumn)] BadSidecar bad)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong victim = SampledColumns(discovery)[0];
-        RangeSyncTests.StubPeer peer = chain.CreateRootPeer("peer", ids =>
-            [.. Enumerable.Range(0, 3).Select(_ => Forge(bad, chain.GloasSidecar(victim))), .. ids[0].Columns!.Select(c => chain.GloasSidecar(c))]);
-        DataColumnSidecarPool pool = new();
-
-        bool available = await CreateSync(pool, discovery, clock: null, peer).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(available, Is.True, "the valid copy after the rejected ones is pooled");
-        Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out _), Is.True);
-    }
-
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_range_copy_rejected_before_KZG_does_not_hide_the_valid_copy_after_it([Values(BadSidecar.WrongSlot, BadSidecar.MalformedColumn)] BadSidecar bad, CancellationToken token)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        RangeSyncTests.StubPeer peer = chain.CreatePeer((_, _, columns) =>
-            [.. Enumerable.Range(0, 3).Select(_ => Forge(bad, chain.GloasSidecar(sampled[0]))), .. columns.Select(c => chain.GloasSidecar(c))]);
-        DataColumnSidecarPool pool = new();
-
-        await RunAsync(peer, pool, discovery, clock: null, chain, token);
-
-        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True, "the valid copy after the rejected ones is pooled");
     }
 
     /// <summary>A later round asks exactly the window from the first slot still missing a column to the last one.</summary>
@@ -548,81 +537,6 @@ public class RangeSyncGloasColumnsTests
         }
         if (coverage != RootColumnCoverage.AllHeld)
             Assert.That(sampled.Where(c => coverage != RootColumnCoverage.OneWithheld || c != sampled[^1]).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-    }
-
-    [Test]
-    public async Task A_bad_by_root_sidecar_penalizes_its_peer_and_another_peers_copy_is_pooled([Values(BadSidecar.WrongSlot, BadSidecar.RootOutsideBatch, BadSidecar.TamperedProof)] BadSidecar bad)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        ulong victim = sampled[0];
-        List<ulong[]> secondPeerRequests = [];
-        RangeSyncTests.StubPeer lying = chain.CreateRootPeer("lying", ids =>
-            [.. ids[0].Columns!.Select(c => c == victim ? Forge(bad, chain.GloasSidecar(c)) : chain.GloasSidecar(c))]);
-        RangeSyncTests.StubPeer honest = chain.CreateRootPeer("honest", ids =>
-        {
-            secondPeerRequests.Add(ids[0].Columns!);
-            return [.. ids[0].Columns!.Select(c => chain.GloasSidecar(c))];
-        });
-        DataColumnSidecarPool pool = new();
-
-        bool available = await CreateSync(pool, discovery, clock: null, lying, honest).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(available, Is.True);
-        Assert.That(lying.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-        Assert.That(secondPeerRequests, Is.EqualTo(new[] { sampled }), "the peers are asked at once, each for every missing column");
-        Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out DataColumnSidecarGloas? held) ? held : null, Is.Not.Null.And.Property(nameof(DataColumnSidecarGloas.Slot)).EqualTo(GloasSlot), "the honest sidecar is pooled");
-        Assert.That(pool.TryGetGloas(OtherRoot, victim, out _), Is.False, "a sidecar for another block is not pooled");
-        Assert.That(honest.Failures, Is.Zero);
-    }
-
-    /// <summary>A column an earlier reply of the same fetch supplied is neither verified again nor held against a later peer's copy.</summary>
-    [Test]
-    public async Task A_by_root_copy_of_a_column_already_supplied_is_skipped_without_verification()
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        Dictionary<ulong, DataColumnSidecarGloas> served = [];
-        RangeSyncTests.StubPeer honest = chain.CreateRootPeer("honest", ids =>
-        {
-            foreach (ulong column in ids[0].Columns!)
-            {
-                served[column] = chain.GloasSidecar(column);
-            }
-
-            return [.. ids[0].Columns!.Select(c => served[c])];
-        });
-        RangeSyncTests.StubPeer late = chain.CreateRootPeer("late", ids => [.. ids[0].Columns!.Select(c => Forge(BadSidecar.TamperedProof, chain.GloasSidecar(c)))]);
-        DataColumnSidecarPool pool = new();
-
-        bool available = await CreateSync(pool, discovery, clock: null, honest, late).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(available, Is.True);
-        Assert.That(late.Reports, Is.Empty, "the tampered copies were never verified");
-        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out DataColumnSidecarGloas? held) && ReferenceEquals(held, served[c])), Is.True, "the first reply's sidecars stay pooled");
-    }
-
-    [Test]
-    public async Task A_failed_by_root_request_penalizes_its_peer_while_another_peer_serves_the_columns()
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create();
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        RangeSyncTests.StubPeer failing = chain.CreateRootPeer("failing", static _ => throw new IOException("connection reset"));
-        RangeSyncTests.StubPeer honest = chain.CreateRootPeer("honest", ids => [.. ids[0].Columns!.Select(c => chain.GloasSidecar(c))]);
-        DataColumnSidecarPool pool = new();
-
-        bool available = await CreateSync(pool, discovery, clock: null, failing, honest).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(available, Is.True);
-        Assert.That(failing.Reports, Is.EqualTo(new[] { PeerFailureReason.RequestFailed }));
-        Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
-        Assert.That(honest.Failures, Is.Zero);
     }
 
     /// <summary>The by-root requests of one fetch run together, so peers that never answer cost one request timeout between them, not one each.</summary>
