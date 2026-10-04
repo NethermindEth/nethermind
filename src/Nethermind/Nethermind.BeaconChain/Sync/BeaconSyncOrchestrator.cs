@@ -238,6 +238,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Cancelled and replaced to restart range sync; see <see cref="ResumeRangeSyncFromHead"/>.</summary>
     private CancellationTokenSource _rangeSyncRestart = new();
     private ulong? _rangeSyncResumedAtSlot;
+    private int _activeRangeSyncRounds;
 
     /// <summary>Cancelled and replaced to end the feed's wait between rounds without ending a round in flight; see <see cref="WakeRangeSyncForAncestors"/>.</summary>
     private CancellationTokenSource _rangeSyncWake = new();
@@ -1152,7 +1153,7 @@ public sealed class BeaconSyncOrchestrator(
                 RecoverColumns(root, recovery, slotClock.CurrentSlot, token);
             }
 
-            await OnImportedAsync(root, block.Slot, token);
+            await OnImportedAsync(root, block.Slot, token, supersedesRange: origin == ImportOrigin.Gossip);
             // After the held children imported or deferred in turn, so a child that waits takes the chain over first.
             ReleaseRangeHeld(root);
         }
@@ -2037,11 +2038,15 @@ public sealed class BeaconSyncOrchestrator(
         return await ImportEnvelopeAsync(item.Envelope, token, item.Source);
     }
 
-    private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token)
+    private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token, bool supersedesRange = false)
     {
         if (slot > _syncTip.Slot)
         {
             _syncTip = new Tip(root, slot);
+            if (supersedesRange && Volatile.Read(ref _activeRangeSyncRounds) > 0)
+            {
+                EndRangeSyncRound();
+            }
         }
 
         _importedSinceHeadStep = true;
@@ -3061,58 +3066,66 @@ public sealed class BeaconSyncOrchestrator(
     /// </remarks>
     internal async Task FeedRangeSyncRoundAsync(CancellationToken token)
     {
-        // Before the tip, so a resume that moves the tip after this read also ends this round.
-        CancellationToken restart = Volatile.Read(ref _rangeSyncRestart).Token;
-        Tip tip = _syncTip;
-        RangeSync.AnchorFallback? fallback = null;
-        if (_rangeHeld is { } held && held.Tip.Slot > tip.Slot)
+        Interlocked.Increment(ref _activeRangeSyncRounds);
+        try
         {
-            // Nothing past the held blocks can be held once the share is full, so fetching it would only repeat.
-            if (Volatile.Read(ref _pendingCount) >= MaxRangeHeldBlocks)
+            // Before the tip, so a resume that moves the tip after this read also ends this round.
+            CancellationToken restart = Volatile.Read(ref _rangeSyncRestart).Token;
+            Tip tip = _syncTip;
+            RangeSync.AnchorFallback? fallback = null;
+            if (_rangeHeld is { } held && held.Tip.Slot > tip.Slot)
+            {
+                // Nothing past the held blocks can be held once the share is full, so fetching it would only repeat.
+                if (Volatile.Read(ref _pendingCount) >= MaxRangeHeldBlocks)
+                {
+                    return;
+                }
+
+                if (_logger.IsDebug) _logger.Debug($"Range sync round starts past the blocks held for a deferred block, at slot {held.Tip.Slot} instead of {tip.Slot}");
+                // The held blocks are not signature-checked, so a round whose first block does not link to them starts over from the tip.
+                fallback = new RangeSync.AnchorFallback(tip.Root, tip.Slot, () => { if (ReferenceEquals(_rangeHeld, held)) _rangeHeld = null; });
+                tip = held.Tip;
+            }
+
+            if (slotClock.CurrentSlot <= tip.Slot)
             {
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Range sync round starts past the blocks held for a deferred block, at slot {held.Tip.Slot} instead of {tip.Slot}");
-            // The held blocks are not signature-checked, so a round whose first block does not link to them starts over from the tip.
-            fallback = new RangeSync.AnchorFallback(tip.Root, tip.Slot, () => { if (ReferenceEquals(_rangeHeld, held)) _rangeHeld = null; });
-            tip = held.Tip;
-        }
+            using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(token, restart);
+            token = round.Token;
 
-        if (slotClock.CurrentSlot <= tip.Slot)
+            List<ForkedSignedBeaconBlock.OfGloas> gloasRun = [];
+            List<IBeaconSyncPeer> sources = [];
+            IBeaconSyncPeer source = null!;
+            await foreach (ForkedSignedBeaconBlock block in rangeSync.Run(tip.Root, tip.Slot, () => slotClock.CurrentSlot, token, fallback, peer => source = peer, retryToken => WriteGloasRunAsync(gloasRun, sources, restart, retryToken), superseded: restart))
+            {
+                if (block is not ForkedSignedBeaconBlock.OfGloas gloas)
+                {
+                    await WriteGloasRunAsync(gloasRun, sources, restart, token);
+                    await _work.Writer.WriteAsync(new RangeBlockItem(block, source, restart), token);
+                    continue;
+                }
+
+                if (gloasRun.Count > 0 && gloas.Slot - gloasRun[0].Slot >= ExecutionPayloadEnvelopesProtocolBase.MaxRequestPayloads)
+                {
+                    await WriteGloasRunAsync(gloasRun, sources, restart, token);
+                }
+
+                gloasRun.Add(gloas);
+                sources.Add(source);
+                if ((ulong)gloasRun.Count >= RangeSync.DefaultBatchSize)
+                {
+                    await WriteGloasRunAsync(gloasRun, sources, restart, token);
+                }
+            }
+
+            await WriteGloasRunAsync(gloasRun, sources, restart, token);
+        }
+        finally
         {
-            return;
+            Interlocked.Decrement(ref _activeRangeSyncRounds);
         }
-
-        using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(token, restart);
-        token = round.Token;
-
-        List<ForkedSignedBeaconBlock.OfGloas> gloasRun = [];
-        List<IBeaconSyncPeer> sources = [];
-        IBeaconSyncPeer source = null!;
-        await foreach (ForkedSignedBeaconBlock block in rangeSync.Run(tip.Root, tip.Slot, () => slotClock.CurrentSlot, token, fallback, peer => source = peer, retryToken => WriteGloasRunAsync(gloasRun, sources, restart, retryToken)))
-        {
-            if (block is not ForkedSignedBeaconBlock.OfGloas gloas)
-            {
-                await WriteGloasRunAsync(gloasRun, sources, restart, token);
-                await _work.Writer.WriteAsync(new RangeBlockItem(block, source, restart), token);
-                continue;
-            }
-
-            if (gloasRun.Count > 0 && gloas.Slot - gloasRun[0].Slot >= ExecutionPayloadEnvelopesProtocolBase.MaxRequestPayloads)
-            {
-                await WriteGloasRunAsync(gloasRun, sources, restart, token);
-            }
-
-            gloasRun.Add(gloas);
-            sources.Add(source);
-            if ((ulong)gloasRun.Count >= RangeSync.DefaultBatchSize)
-            {
-                await WriteGloasRunAsync(gloasRun, sources, restart, token);
-            }
-        }
-
-        await WriteGloasRunAsync(gloasRun, sources, restart, token);
     }
 
     /// <summary>Writes each block of <paramref name="run"/> in order, each followed by its envelope when the chain carries that payload, then clears the run.</summary>
