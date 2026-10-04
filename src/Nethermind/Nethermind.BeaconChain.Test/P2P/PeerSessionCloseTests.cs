@@ -273,10 +273,7 @@ public class PeerSessionCloseTests
 
     [Test]
     [CancelAfter(60_000)]
-    public Task A_dialed_peer_that_breaks_the_protocol_and_closes_after_its_admission_backs_its_address_off(CancellationToken token) =>
-        RetryStalledAsync(ViolationAfterDialAsync, token, TimeSpan.FromSeconds(20));
-
-    private static async Task ViolationAfterDialAsync(CancellationToken token)
+    public async Task A_dialed_peer_that_breaks_the_protocol_and_closes_after_its_admission_backs_its_address_off(CancellationToken token)
     {
         Node remote = Create();
         Node local = Create();
@@ -286,11 +283,7 @@ public class PeerSessionCloseTests
         await hosts.StartAsync(token, remote.P2P, local.P2P);
         PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, discovery);
         string address = LoopbackAddressText(remote.P2P);
-        if (!await manager.TryAddPeerAsync(address, token))
-        {
-            ThrowIfIdentifyStalled(local.P2P, remote.P2P);
-            throw new TimeoutException("the dial was not admitted");
-        }
+        Assert.That(await manager.TryAddPeerAsync(address, token), Is.True, "the dial was not admitted");
 
         manager.GetBestPeers(0).Single().ReportFailure(PeerFailureReason.ProtocolViolation, "a block failed its parent-root check");
         Assert.That(local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? session), Is.True);
@@ -302,10 +295,7 @@ public class PeerSessionCloseTests
 
     [Test]
     [CancelAfter(60_000)]
-    public Task A_session_that_closes_while_its_status_is_checked_is_not_admitted(CancellationToken token) =>
-        RetryStalledAsync(SessionClosedDuringAdmissionAsync, token, TimeSpan.FromSeconds(20));
-
-    private static async Task SessionClosedDuringAdmissionAsync(CancellationToken token)
+    public async Task A_session_that_closes_while_its_status_is_checked_is_not_admitted(CancellationToken token)
     {
         Node remote = Create();
         Node local = Create();
@@ -327,13 +317,8 @@ public class PeerSessionCloseTests
 
         bool admitted = await manager.TryAddPeerAsync(LoopbackAddressText(remote.P2P), token);
 
-        if (closing.Requests == 0)
-        {
-            ThrowIfIdentifyStalled(local.P2P, remote.P2P);
-            throw new TimeoutException("the dial never reached the status check");
-        }
-
         using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(closing.Requests, Is.Not.Zero, "the dial never reached the status check");
         Assert.That(admitted, Is.False, "a peer whose session closed during admission is not reported as admitted");
         Assert.That(manager.PeerCount, Is.Zero, "nor left in the pool");
         Assert.That(logger.Messages, Has.None.StartsWith("Connected to beacon chain peer"), "nor logged as connected");
