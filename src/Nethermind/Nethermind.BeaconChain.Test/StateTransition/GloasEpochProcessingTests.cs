@@ -211,8 +211,7 @@ public class GloasEpochProcessingTests
 
     private static IEnumerable<TestCaseData> InvalidSyncCommitteeKeys()
     {
-        byte[] infinity = new byte[BlsPublicKey.Length];
-        infinity[0] = 0xc0;
+        byte[] infinity = G1PointAtInfinity();
         // ethereum/bls12-381-tests deserialization_fails_not_in_G1: decodes on-curve and non-infinity, outside the prime-order subgroup.
         byte[] notInG1 = Bytes.FromHexString("0x8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
         foreach (bool gloas in new[] { false, true })

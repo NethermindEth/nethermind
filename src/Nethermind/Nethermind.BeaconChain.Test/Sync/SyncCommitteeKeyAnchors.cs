@@ -3,6 +3,7 @@
 
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Test.ForkChoice;
+using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -76,9 +77,7 @@ internal static class SyncCommitteeKeyAnchors
         switch (key)
         {
             case InvalidSyncCommitteeKey.Infinity:
-                byte[] infinity = new byte[BlsPublicKey.Length];
-                infinity[0] = 0xc0;
-                return infinity;
+                return GloasTestFixtures.G1PointAtInfinity();
             default:
                 // ethereum/bls12-381-tests deserialization_fails_not_in_G1: on-curve and not infinity, outside the prime-order subgroup.
                 return Bytes.FromHexString("0x8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");

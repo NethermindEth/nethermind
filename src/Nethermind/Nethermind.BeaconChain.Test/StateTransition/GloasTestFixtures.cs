@@ -589,6 +589,14 @@ internal static class GloasTestFixtures
 
     public static BlsPublicKey Pubkey(byte value) => new(Enumerable.Repeat(value, BlsPublicKey.Length).ToArray());
 
+    /// <summary>The canonical compressed BLS G1 point at infinity, in a fresh mutable array.</summary>
+    public static byte[] G1PointAtInfinity()
+    {
+        byte[] bytes = new byte[BlsPublicKey.Length];
+        bytes[0] = 0xc0;
+        return bytes;
+    }
+
     /// <summary>The compressed BLS G2 point at infinity - duplicated as bytes here rather than reaching into <c>Crypto.SignatureSets</c>'s internal constant from a test assembly.</summary>
     public static byte[] G2PointAtInfinity()
     {
