@@ -596,19 +596,9 @@ internal static class GloasTestFixtures
     public static Bls.SecretKey DeriveKey(int index) =>
         new(DerivedKeys.GetOrAdd(index, static i => new Bls.SecretKey(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)i)).ToLendian()), Bls.ByteOrder.LittleEndian);
 
-    public static Hash256 Hash(byte value)
-    {
-        byte[] bytes = new byte[32];
-        bytes.AsSpan().Fill(value);
-        return new Hash256(bytes);
-    }
+    public static Hash256 Hash(byte value) => new(Enumerable.Repeat(value, 32).ToArray());
 
-    public static BlsPublicKey Pubkey(byte value)
-    {
-        byte[] bytes = new byte[BlsPublicKey.Length];
-        bytes.AsSpan().Fill(value);
-        return new BlsPublicKey(bytes);
-    }
+    public static BlsPublicKey Pubkey(byte value) => new(Enumerable.Repeat(value, BlsPublicKey.Length).ToArray());
 
     /// <summary>The compressed BLS G2 point at infinity - duplicated as bytes here rather than reaching into <c>Crypto.SignatureSets</c>'s internal constant from a test assembly.</summary>
     public static byte[] G2PointAtInfinity()
