@@ -14,6 +14,8 @@ using NUnit.Framework;
 using Snappier;
 using Transaction = Nethermind.BeaconChain.Types.Transaction;
 
+using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
+
 namespace Nethermind.BeaconChain.Test.Storage;
 
 /// <summary>
@@ -82,15 +84,15 @@ public class BeaconChainStoreChildrenIndexTests
     {
         foreach (IndexStep step in IndexScenarios[index].Steps)
         {
-            Hash256 root = TestRoot(step.Root);
+            Hash256 root = FromLow(step.Root);
             ulong slot = 99UL + step.Root;
             switch (step.Action)
             {
                 case IndexAction.Store:
-                    _store.PutBlock(root, CreateBlock(slot, TestRoot(step.Parent)));
+                    _store.PutBlock(root, CreateBlock(slot, FromLow(step.Parent)));
                     break;
                 case IndexAction.Legacy:
-                    WriteLegacyBlock(root, CreateBlock(slot, TestRoot(step.Parent)));
+                    WriteLegacyBlock(root, CreateBlock(slot, FromLow(step.Parent)));
                     break;
                 case IndexAction.Delete:
                     _store.DeleteBlock(root);
@@ -100,7 +102,7 @@ public class BeaconChainStoreChildrenIndexTests
                     break;
                 case IndexAction.Children:
                     Assert.That(_store.TryGetChildren(root, out Hash256[] children, out bool complete), Is.EqualTo(step.Exists));
-                    if (step.Children is not null) Assert.That(children, Is.EqualTo(step.Children.Select(TestRoot).ToArray()));
+                    if (step.Children is not null) Assert.That(children, Is.EqualTo(step.Children.Select(marker => FromLow(marker)).ToArray()));
                     if (step.Complete is { } expected) Assert.That(complete, Is.EqualTo(expected));
                     break;
                 case IndexAction.SetCanonical:
@@ -119,11 +121,11 @@ public class BeaconChainStoreChildrenIndexTests
     [Test]
     public void Opening_a_database_from_before_the_index_rebuilds_every_child_list_as_complete()
     {
-        Hash256 grandparent = TestRoot(0);
-        Hash256 parent = TestRoot(1);
-        Hash256 legacyChild = TestRoot(2);
-        Hash256 indexedChild = TestRoot(3);
-        Hash256 deletedLegacy = TestRoot(4);
+        Hash256 grandparent = FromLow(0);
+        Hash256 parent = FromLow(1);
+        Hash256 legacyChild = FromLow(2);
+        Hash256 indexedChild = FromLow(3);
+        Hash256 deletedLegacy = FromLow(4);
         WriteLegacyBlock(parent, CreateBlock(100, grandparent));
         WriteLegacyBlock(legacyChild, CreateBlock(101, parent));
         _store.PutBlock(indexedChild, CreateBlock(102, parent)); // a build that had the index but not yet the rebuild
@@ -154,8 +156,8 @@ public class BeaconChainStoreChildrenIndexTests
     [Test]
     public void A_database_already_at_the_current_schema_version_keeps_its_index_as_is()
     {
-        Hash256 legacy = TestRoot(1);
-        WriteLegacyBlock(legacy, CreateBlock(100, parent: TestRoot(0)));
+        Hash256 legacy = FromLow(1);
+        WriteLegacyBlock(legacy, CreateBlock(100, parent: FromLow(0)));
         _store.SetSchemaVersion(BeaconChainStore.CurrentSchemaVersion);
 
         BeaconChainStore reopened = new(_db);
@@ -260,10 +262,10 @@ public class BeaconChainStoreChildrenIndexTests
     [Test]
     public void Deleting_a_block_whose_own_entry_is_unreadable_still_unlinks_it_from_its_parent()
     {
-        Hash256 parent = TestRoot(1);
-        Hash256 child = TestRoot(2);
-        Hash256 sibling = TestRoot(3);
-        _store.PutBlock(parent, CreateBlock(100, parent: TestRoot(0)));
+        Hash256 parent = FromLow(1);
+        Hash256 child = FromLow(2);
+        Hash256 sibling = FromLow(3);
+        _store.PutBlock(parent, CreateBlock(100, parent: FromLow(0)));
         _store.PutBlock(child, CreateBlock(101, parent));
         _store.PutBlock(sibling, CreateBlock(102, parent));
         byte[] ownKey = [0x01, .. child.Bytes.ToArray()];
@@ -292,13 +294,6 @@ public class BeaconChainStoreChildrenIndexTests
     }
 
     private static Hash256 BlockRoot(int index) => BeaconChainStoreStateSlotIndexTests.Root(index);
-
-    private static Hash256 TestRoot(byte marker)
-    {
-        byte[] bytes = new byte[32];
-        bytes[31] = marker;
-        return new Hash256(bytes);
-    }
 
     private static SignedBeaconBlock CreateBlock(ulong slot, Hash256 parent, int transactionBytes = 0)
     {

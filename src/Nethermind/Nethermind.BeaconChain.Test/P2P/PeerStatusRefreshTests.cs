@@ -39,7 +39,7 @@ public class PeerStatusRefreshTests
             peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
 
             Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy, Reason);
-            await WaitUntilAsync(() => peerManager.GetBestPeers(head + 1).Count == 1, token, "the peer's status was not asked again");
+            await PeerSessionNodes.WaitUntilAsync(() => peerManager.GetBestPeers(head + 1).Count == 1, "the peer's status was not asked again", token);
             peerManager.MinStatusRefreshInterval = TimeSpan.FromHours(1);
             Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy + 1, Reason);
 
@@ -70,7 +70,7 @@ public class PeerStatusRefreshTests
             peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
 
             Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy, Reason);
-            await WaitUntilAsync(() => peerManager.GetBestPeers(head + 1).Count == 1, token, "a peer whose refresh failed stayed out of range sync");
+            await PeerSessionNodes.WaitUntilAsync(() => peerManager.GetBestPeers(head + 1).Count == 1, "a peer whose refresh failed stayed out of range sync", token);
 
             Assert.That(peerManager.GetBestPeers(head + ChainAheadBy + 1), Is.Empty, "nothing shows the chain past the signalled slot");
         }
@@ -96,7 +96,7 @@ public class PeerStatusRefreshTests
             int admissionRequests = source.Requests;
 
             Pool(peerManager).RefreshStatusesBelow(head + ChainAheadBy, Reason);
-            await WaitUntilAsync(() => source.Requests > admissionRequests, token, "fixture: the peer's status was not asked again");
+            await PeerSessionNodes.WaitUntilAsync(() => source.Requests > admissionRequests, "fixture: the peer's status was not asked again", token);
 
             // The failure is recorded just after the refused reply, so the peer is watched for a while rather than checked once.
             using CancellationTokenSource watch = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -128,11 +128,11 @@ public class PeerStatusRefreshTests
             peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
             // A refresh starts only once the one before it ended, so the ninth start means eight refreshes failed.
             const int failedRefreshes = 8;
-            await WaitUntilAsync(() =>
+            await PeerSessionNodes.WaitUntilAsync(() =>
             {
                 Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy, Reason);
                 return log.Messages.Count(static l => l.Contains(Reason, StringComparison.Ordinal)) > failedRefreshes;
-            }, token, "the refreshes did not run one after another", TimeSpan.FromSeconds(60));
+            }, "the refreshes did not run one after another", token, TimeSpan.FromSeconds(60));
 
             IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
             int failuresAfterRefreshes = PeerManager.ConsecutiveFailuresForTest(peer);
@@ -172,7 +172,7 @@ public class PeerStatusRefreshTests
             Assert.That(peerManager.NextMaintenanceIntervalForTest, Is.GreaterThanOrEqualTo(TimeSpan.FromSeconds(30)), "fixture: no second maintenance round within the wait");
             run = peerManager.Run(stop.Token);
 
-            await WaitUntilAsync(() => peerManager.GetBestPeers(0).SingleOrDefault()?.HeadSlot == head + ChainAheadBy, token, "the status was not refreshed before the next maintenance round", TimeSpan.FromSeconds(15));
+            await PeerSessionNodes.WaitUntilAsync(() => peerManager.GetBestPeers(0).SingleOrDefault()?.HeadSlot == head + ChainAheadBy, "the status was not refreshed before the next maintenance round", token, TimeSpan.FromSeconds(15));
         }
         finally
         {
@@ -194,19 +194,4 @@ public class PeerStatusRefreshTests
     }
 
     private static IBeaconSyncPeerPool Pool(PeerManager peerManager) => peerManager;
-
-    private static async Task WaitUntilAsync(Func<bool> condition, CancellationToken token, string failure, TimeSpan? bound = null)
-    {
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(bound ?? TimeSpan.FromSeconds(20));
-        while (!condition())
-        {
-            if (timeout.IsCancellationRequested)
-            {
-                Assert.Fail(failure);
-            }
-
-            await Task.Delay(20, CancellationToken.None);
-        }
-    }
 }
