@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -115,6 +116,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     paired[(int)Instruction.MSTORE] = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecutePush1MStore;
             }
 
+            if (handlers[(int)Instruction.JUMP] == (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteJumpToAnalyzedDestination)
+            {
+                FuseBeforeJump<SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.SWAP1);
+                FuseBeforeJump<PopStep>(handlers, paired, Instruction.POP);
+            }
 
             Fuse<BinaryStep<AddOperation>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.ADD, Instruction.SWAP1);
             Fuse<SwapStep<EvmInstructions.Op1>, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.SWAP1, Instruction.DUP2);
@@ -237,6 +243,63 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 paired[(int)second] =
                     (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                     &ExecutePair<Push1Step, TSecond>;
+        }
+
+        /// <summary>Installs <see cref="ExecuteJumpAfter{TFirst}"/> for <paramref name="first"/> followed by JUMP.</summary>
+        private static void FuseBeforeJump<TFirst>(ReadOnlySpan<nint> handlers, nint[] paired, Instruction first)
+            where TFirst : struct, IStackStep
+        {
+            if (handlers[(int)first] == TFirst.Handler)
+                paired[FollowerHandlersLength + ((int)first | (int)Instruction.JUMP << 8)] = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteJumpAfter<TFirst>;
+        }
+
+        /// <summary>
+        /// SWAP1 or POP, fused with a JUMP after it onto a destination the incremental bitmap already holds, with the
+        /// JUMPDEST it lands on.
+        /// </summary>
+        /// <remarks>
+        /// Compilers return from an internal function with either: both leave the word the call pushed below the top,
+        /// its return address, on top for the JUMP. Every other case, a short stack or gas included, runs the first
+        /// opcode alone through its own handler.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteJumpAfter<TFirst>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+            where TFirst : struct, IStackStep
+        {
+            Debug.Assert(typeof(TFirst) == typeof(SwapStep<EvmInstructions.Op1>) || typeof(TFirst) == typeof(PopStep));
+            ulong fusedGas = TFirst.GasCost + JumpGasCost.GasCost + JumpDestGasCost.GasCost;
+            if (head > 1 && TryCharge(ref gas, fusedGas))
+            {
+                // The second word becomes the top for the JUMP either way.
+                ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
+                nuint target = (nuint)destination;
+                if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3)) == 0 &&
+                    target < (nuint)stack.CodeLength && stack.IsAnalyzedJumpDestination(target))
+                {
+                    // SWAP1 leaves the old top where the JUMP pops the destination from under it.
+                    if (TFirst.Growth == 0)
+                        CopyWord(ref Unsafe.Add(ref destination, LimbsPerWord), ref destination);
+
+                    head += TFirst.Growth - 1;
+                    ip = ref Unsafe.Add(ref code, (nint)target + 1);
+                    nint next = handlers[PairAt(ref ip)];
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+                }
+
+                gas += fusedGas;
+            }
+
+            nint alone = TFirst.Handler;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, alone);
         }
 
         /// <summary>PUSH1 fused with an MLOAD after it of a word inside the active, initialized memory.</summary>

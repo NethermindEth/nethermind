@@ -103,6 +103,16 @@ public class GuestOpcodeHandlerTests
         const ulong countdownGas = 3 + 2 * (countdownIteration + 3 + 8) + countdownIteration + 1;
         yield return Succeeds("JUMP back to an analyzed destination", countdown, countdownGas);
 
+        // An internal function called twice returns with SWAP1 JUMP or POP JUMP, the second time to an analyzed destination.
+        yield return Succeeds("SWAP1 JUMP returns to an analyzed destination",
+            Code(PUSH1, 2, JUMPDEST, PUSH1, 10, PUSH1, 7, PUSH1, 21, JUMP, JUMPDEST, POP, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 2, JUMPI, STOP,
+                JUMPDEST, SWAP1, JUMP),
+            3 + 2 * (1 + 3 + 3 + 3 + 8 + 1 + 3 + 8 + 1 + 2 + 3 + 3 + 3 + 3 + 3 + 10));
+        yield return Succeeds("POP JUMP returns to an analyzed destination",
+            Code(PUSH1, 2, JUMPDEST, PUSH1, 10, PUSH1, 7, PUSH1, 20, JUMP, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 2, JUMPI, STOP,
+                JUMPDEST, POP, JUMP),
+            3 + 2 * (1 + 3 + 3 + 3 + 8 + 1 + 2 + 8 + 1 + 3 + 3 + 3 + 3 + 3 + 10));
+
         // The same loop with PUSH2 destinations: the first jump to each destination runs unfused, the later ones fuse.
         byte[] fusedCountdown = Code(
             PUSH1, 3,
