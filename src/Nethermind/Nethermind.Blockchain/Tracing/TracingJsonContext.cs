@@ -20,7 +20,8 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Blockchain.Tracing;
 
 /// <summary>
-/// Metadata for tracer output that RPC signatures expose only as <see cref="object"/>, so no generated RPC context roots it.
+/// Metadata for tracer output that RPC signatures expose only as <see cref="object"/>, so no generated RPC context roots it,
+/// and for the traces and receipts written to files.
 /// </summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(GethLikeCustomTrace))]
@@ -37,6 +38,14 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSerializable(typeof(ParityVmOperationTrace))]
 [JsonSerializable(typeof(IReadOnlyList<ParityVmOperationTrace>))]
 [JsonSerializable(typeof(RenderedJson))]
+[JsonSerializable(typeof(GethTxFileTraceEntry))]
+[JsonSerializable(typeof(List<GethTxTraceEntry>))]
+[JsonSerializable(typeof(GethLikeBlockFileTracer.TxTraceSummary))]
+[JsonSerializable(typeof(List<ParityLikeTxTrace>))]
+[JsonSerializable(typeof(IReadOnlyCollection<ParityLikeTxTrace>))]
+[JsonSerializable(typeof(TxReceipt[]))]
+[JsonSerializable(typeof(UInt256?))]
+[JsonSerializable(typeof(byte[][]))]
 [JsonSerializable(typeof(Memory<NativeCallTracerLogEntry>))]
 [JsonSerializable(typeof(Dictionary<Hash256, byte[]>))]
 [JsonSerializable(typeof(Dictionary<string, int>))]

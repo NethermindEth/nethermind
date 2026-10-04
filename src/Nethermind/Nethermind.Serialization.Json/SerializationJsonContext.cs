@@ -6,6 +6,8 @@ using System.Text.Json.Serialization;
 namespace Nethermind.Serialization.Json;
 
 [JsonSerializable(typeof(double[]))]
+[JsonSerializable(typeof(string[]))]
+[JsonSerializable(typeof(System.Collections.Generic.IEnumerable<string>))]
 [JsonSerializable(typeof(object))]
 [JsonSerializable(typeof(Nethermind.Core.TxReceipt))]
 internal partial class SerializationJsonContext : JsonSerializerContext;

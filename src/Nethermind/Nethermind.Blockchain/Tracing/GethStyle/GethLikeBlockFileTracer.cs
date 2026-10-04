@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -27,7 +28,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private Utf8JsonWriter? _jsonWriter;
     private readonly GethTraceOptions _options;
     private readonly IReleaseSpec _spec;
-    private readonly JsonSerializerOptions _serializerOptions = new();
+    private readonly JsonSerializerOptions _serializerOptions = new() { TypeInfoResolver = TracingJsonContext.Default };
 
     /// <summary>
     /// Creates a file tracer for the transactions in a block.
@@ -70,11 +71,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         GethLikeTxTrace trace = txTracer.BuildResult();
 
         TypeInfoJsonSerializer.Serialize(_jsonWriter,
-            new
-            {
-                output = trace.ReturnValue.ToHexString(true),
-                gasUsed = $"0x{trace.Gas:x}"
-            },
+            new TxTraceSummary(trace.ReturnValue.ToHexString(true), $"0x{trace.Gas:x}"),
             _serializerOptions);
 
         DisposeFileStreamIfAny();
@@ -128,4 +125,8 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     }
 
     public void Dispose() => DisposeFileStreamIfAny();
+
+    internal sealed record TxTraceSummary(
+        [property: JsonPropertyName("output")] string Output,
+        [property: JsonPropertyName("gasUsed")] string GasUsed);
 }
