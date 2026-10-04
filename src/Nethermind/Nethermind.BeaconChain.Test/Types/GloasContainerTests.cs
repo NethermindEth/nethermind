@@ -605,12 +605,7 @@ public class GloasContainerTests
     private delegate void DecodeDelegate<T>(ReadOnlySpan<byte> data, out T value);
     private delegate void MerkleizeDelegate<T>(T value, out UInt256 root);
 
-    private static byte[] Filled(int length, byte value)
-    {
-        byte[] bytes = new byte[length];
-        bytes.AsSpan().Fill(value);
-        return bytes;
-    }
+    private static byte[] Filled(int length, byte value) => Enumerable.Repeat(value, length).ToArray();
 
     private static Hash256 Hash(byte value) => new(Filled(Hash256.Size, value));
 

@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -150,35 +151,15 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         return new Hash256(bytes);
     }
 
-    public static Hash256 FilledHash(byte fill)
-    {
-        byte[] bytes = new byte[32];
-        Array.Fill(bytes, fill);
-        return new Hash256(bytes);
-    }
+    public static Hash256 FilledHash(byte fill) => new(Filled(32, fill));
 
-    public static BlsPublicKey FilledPubkey(byte fill)
-    {
-        byte[] bytes = new byte[48];
-        Array.Fill(bytes, fill);
-        return new BlsPublicKey(bytes);
-    }
+    public static BlsPublicKey FilledPubkey(byte fill) => new(Filled(48, fill));
 
-    public static BlsSignature FilledSignature(byte fill)
-    {
-        byte[] bytes = new byte[96];
-        Array.Fill(bytes, fill);
-        return new BlsSignature(bytes);
-    }
+    public static BlsSignature FilledSignature(byte fill) => new(Filled(96, fill));
 
     public static string Hex(int length, byte fill) => Bytes.ToHexString(Filled(length, fill), withZeroX: true);
 
-    private static byte[] Filled(int length, byte fill)
-    {
-        byte[] bytes = new byte[length];
-        Array.Fill(bytes, fill);
-        return bytes;
-    }
+    private static byte[] Filled(int length, byte fill) => Enumerable.Repeat(fill, length).ToArray();
 
     /// <summary>A block with one of every body operation populated, so a field the writer forgets or mislabels has somewhere to be missed from.</summary>
     public static SignedBeaconBlock RichBlock(ulong slot, Hash256 parent)
