@@ -765,7 +765,8 @@ public sealed class BeaconP2P : IAsyncDisposable
     {
         string waitingFor = timing?.WaitingFor is { Length: > 0 } what ? $" {what}" : "";
         string after = $"after {ReqRespProtocolBase.Seconds(elapsed)}";
-        if (SessionClosedToken(session).IsCancellationRequested && !IsExchangeFailure(e))
+        if ((SessionClosedToken(session).IsCancellationRequested || session is LocalPeer.Session { ConnectionToken.IsCancellationRequested: true })
+            && !IsExchangeFailure(e))
         {
             return new IOException($"peer disconnected {after}{waitingFor}: its libp2p session closed", e);
         }

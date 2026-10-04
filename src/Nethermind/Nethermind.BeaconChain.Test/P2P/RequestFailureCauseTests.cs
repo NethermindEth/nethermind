@@ -207,6 +207,45 @@ public class RequestFailureCauseTests
 
     [Test]
     [CancelAfter(30_000)]
+    public async Task Connection_cancellation_is_a_disconnect_before_the_session_is_removed(CancellationToken token)
+    {
+        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(20));
+        await node.StartAsync(token);
+        LocalPeer.Session session = AddWedgedSession(node);
+        TaskCompletionSource cancelling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim release = new();
+        bool released = false;
+        // Registered before the dial: cancellation completes the dial first, then holds session removal here.
+        using CancellationTokenRegistration registration = session.ConnectionToken.Register(() =>
+        {
+            cancelling.TrySetResult();
+            released = release.Wait(TimeSpan.FromSeconds(10));
+        });
+        Task<IReadOnlyList<DataColumnSidecar>> request = node.RequestDataColumnSidecarsByRootAsync(session,
+            [new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = [0] }], token, new RequestTiming());
+        Task disconnected = Task.Run(session.DisconnectAsync, CancellationToken.None);
+        try
+        {
+            await cancelling.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+            IOException? lost = Assert.ThrowsAsync<IOException>(async () => await request.WaitAsync(TimeSpan.FromSeconds(5), token));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lost!.Message, Does.Contain("peer disconnected"));
+                Assert.That(node.SessionClosedToken(session).IsCancellationRequested, Is.False);
+                Assert.That(session.ConnectionToken.IsCancellationRequested, Is.True);
+            }
+        }
+        finally
+        {
+            release.Set();
+            await disconnected.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        Assert.That(released, Is.True, "the cancellation callback must be released before its bound expires");
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
     public async Task A_request_waiting_for_a_slot_ends_when_its_session_closes_before_the_running_protocols_end(CancellationToken token)
     {
         Node node = Create();
