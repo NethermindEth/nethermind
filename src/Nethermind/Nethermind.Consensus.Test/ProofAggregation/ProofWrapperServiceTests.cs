@@ -283,6 +283,87 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
+    public void Unchanged_background_refresh_does_not_allocate_an_encoded_wrapper_copy()
+    {
+        (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(1, 1024 * 1024);
+        Assert.That(service.RefreshWrapper(), Is.EqualTo(Result.Success));
+        byte[] initial = service.GetLatestWrapper().Data!;
+        Assert.That(initial.Length, Is.GreaterThan(1024 * 1024));
+        Assert.That(service.RefreshWrapper(), Is.EqualTo(Result.Success));
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Result refreshed = service.RefreshWrapper();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refreshed, Is.EqualTo(Result.Success));
+            Assert.That(allocated, Is.LessThan(initial.Length / 2), "unchanged refresh does not copy the large encoded bytes");
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            Assert.That(service.GetLatestWrapper().Data, Is.EqualTo(initial));
+        }
+    }
+
+    [Test]
+    public void Known_hash_refresh_skips_bytes_but_rechecks_membership_and_changed_snapshots_are_owned()
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction first = CreateTransaction(dependency, TestItem.KeccakA);
+        Transaction second = CreateTransaction(dependency, TestItem.KeccakB);
+        Transaction[] pending = [first];
+        ITxPool pool = Substitute.For<ITxPool>();
+        LeanProofStore store = new();
+        store.AddVerified([dependency], [[1]], null);
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
+        pool.GetPendingTransactions().Returns(_ => pending);
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        Result<byte[]> initial = service.GetLatestWrapper(null, out ValueHash256 firstHash);
+        Assert.That(firstHash, Is.EqualTo(ValueKeccak.Compute(initial.Data!)));
+        initial.Data![0] ^= 0xff;
+        Assert.That(ValueKeccak.Compute(service.GetLatestWrapper().Data!), Is.EqualTo(firstHash));
+        Assert.That(service.GetLatestWrapper(firstHash, out ValueHash256 unchanged).Data, Is.Empty);
+        Assert.That(unchanged, Is.EqualTo(firstHash));
+        pending = [first, second];
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        Result<byte[]> changed = service.GetLatestWrapper(firstHash, out ValueHash256 secondHash);
+        Assert.That(changed.Data, Is.Not.Empty);
+        Assert.That(secondHash, Is.EqualTo(ValueKeccak.Compute(changed.Data!)));
+        Assert.That(secondHash, Is.Not.EqualTo(firstHash));
+        pending = [];
+        Assert.That(service.GetLatestWrapper(secondHash, out _).IsSuccess, Is.False);
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "transaction changes sharing the same dependency reuse the proof");
+    }
+
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    public void Completed_proving_is_authenticated_once_for_cached_and_custom_backends(bool decorated, bool valid)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        LeanProofStore store = new();
+        store.AddVerified([dependency], [[1]], null);
+        FakeLeanProofVerifier backend = new(valid);
+        ILeanProofVerifier verifier = decorated ? new ProductionProofCache(backend) : backend;
+        ProofWrapperService service = CreateService([CreateTransaction(dependency, TestItem.KeccakA)], store, verifier);
+        Assert.That(service.BuildWrapper().IsSuccess, Is.EqualTo(valid));
+        Assert.That(backend.VerificationCalls, Is.EqualTo(1));
+        Assert.That(backend.ProofCalls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Exact_parent_shortcut_remains_authenticated_with_the_completed_work_cache()
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
+        FakeLeanProofVerifier backend = new(false);
+        ProductionProofCache verifier = new(backend);
+        AggregationInput input = new() { RecursiveProofs = [new([dependency], [1])] };
+        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash));
+        Assert.That(backend.VerificationCalls, Is.EqualTo(1));
+        Assert.That(backend.ProofCalls, Is.Zero);
+    }
+
+    [Test]
     public async Task Pool_removal_during_proving_prevents_publication_but_retains_verified_work()
     {
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);

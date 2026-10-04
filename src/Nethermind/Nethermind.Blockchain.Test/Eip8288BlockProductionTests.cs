@@ -72,6 +72,32 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
+    public async Task Rejected_optional_cache_proof_is_replaced_from_selected_witnesses()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("rejected-cache"), default);
+        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        proofs.AddVerified([dependency], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        proofs.AddCachedRecursive([dependency], [0xee]);
+
+        Block? block = await chain.BlockProducer.BuildBlock();
+
+        Assert.That(block, Is.Not.Null);
+        Assert.That(block!.Transactions, Has.Length.EqualTo(1));
+        ValueHash256 hash = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, block.Header.RecursiveStark!.StarkProof), Is.True);
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a rejected optional cache entry cannot stall fresh proving");
+        Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
+        Assert.That(replacement, Is.EqualTo(block.Header.RecursiveStark.StarkProof));
+        Block? repeated = await chain.BlockProducer.BuildBlock();
+        Assert.That(repeated!.Header.RecursiveStark!.StarkProof, Is.EqualTo(replacement));
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+    }
+
+    [Test]
     public async Task Concurrent_identical_work_is_shared_and_cached_results_do_not_wait_for_unrelated_proving()
     {
         FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("shared-first"), default);
@@ -236,7 +262,7 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
-            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(3));
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(2));
             Assert.That(second.Header.RecursiveStark!.StarkProof,
                 Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(second).ToByteArray()));
         }

@@ -448,6 +448,21 @@ public sealed class LeanProofStore
         return true;
     }
 
+    /// <summary>Removes a generated cache entry only while it still matches the rejected proof.</summary>
+    public bool RemoveCachedRecursive(IReadOnlyList<FrameDependency> dependencies, ReadOnlySpan<byte> rejectedProof)
+    {
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
+        lock (_lock)
+        {
+            if (!_recursiveByDeps.TryGetValue(hash, out ProofRecord? cached)
+                || !rejectedProof.SequenceEqual(cached.RecursiveProof)) return false;
+            _recursiveCache.Remove(cached.Node!);
+            _recursiveByDeps.Remove(hash);
+            _cachedBytes -= cached.Size;
+            return true;
+        }
+    }
+
     /// <summary>Retrieves an already verified recursive proof for the exact canonical dependency set.</summary>
     public bool TryGetRecursiveProof(IReadOnlyList<FrameDependency> dependencies, out byte[]? proof)
     {

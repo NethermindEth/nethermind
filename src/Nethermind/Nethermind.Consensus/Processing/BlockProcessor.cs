@@ -53,7 +53,8 @@ public partial class BlockProcessor(
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
     protected readonly ISpecProvider _specProvider = specProvider;
-    private readonly ProductionProofCache _productionProofCache = new(leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier)));
+    private readonly ProductionProofCache _productionProofCache = leanProofVerifier as ProductionProofCache
+        ?? new(leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier)));
     private (ValueHash256 Dependencies, ValueHash256 VerificationKey)? _productionProofKey;
     private byte[]? _productionProof;
     protected readonly IWorldState _stateProvider = stateProvider;
@@ -219,12 +220,14 @@ public partial class BlockProcessor(
                 proof = _productionProof;
             else
             {
-                if (leanProofStore?.TryGetRecursiveProof(deps, out byte[]? prepared) == true)
+                byte[]? prepared = null;
+                if (leanProofStore?.TryGetRecursiveProof(deps, out prepared) == true
+                    && !leanProofVerifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, prepared!))
                 {
-                    proof = prepared!;
-                    if (!leanProofVerifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof))
-                        throw new InvalidOperationException("Cached EIP-8288 proof failed verification.");
+                    leanProofStore.RemoveCachedRecursive(deps, prepared!);
+                    prepared = null;
                 }
+                if (prepared is not null) proof = prepared;
                 else
                 {
                     AggregationInput input = new();

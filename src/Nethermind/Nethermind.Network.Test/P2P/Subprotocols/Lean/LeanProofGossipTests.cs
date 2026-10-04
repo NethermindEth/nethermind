@@ -385,6 +385,61 @@ public class LeanProofGossipTests
             UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
     };
 
+    [Test]
+    public async Task Delayed_unchanged_refresh_cannot_replace_a_newer_completed_wrapper()
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction a = CreateTransaction(dependency, TestItem.KeccakA);
+        Transaction b = CreateTransaction(dependency, TestItem.KeccakB);
+        Transaction[] pending = [a];
+        ITxPool pool = Substitute.For<ITxPool>();
+        LeanProofStore store = new();
+        store.AddVerified([dependency], [[1]], null);
+        ProofWrapperService service = CreateService(pending, store, new Verifier(), pool);
+        pool.GetPendingTransactions().Returns(_ => Volatile.Read(ref pending));
+        Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+        ManualTimeProvider time = new();
+        await using LeanProofGossip gossip = new(service, LimboLogs.Instance, time);
+        TaskCompletionSource initial = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        gossip.AddPeer((_, _, _) => { initial.TrySetResult(); return new(true); });
+        await initial.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int blockOnce = 1;
+        pool.TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            if (Interlocked.Exchange(ref blockOnce, 0) == 1)
+            {
+                entered.TrySetResult();
+                if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Refresh release timed out");
+            }
+            Transaction? found = Array.Find(Volatile.Read(ref pending), transaction => transaction.Hash!.ValueHash256 == call.Arg<ValueHash256>());
+            call[1] = found;
+            return found is not null;
+        });
+        Task delayed = Task.Run(() => gossip.AddPeer((_, _, _) => new(true)));
+        Task newer = Task.CompletedTask;
+        ValueHash256 expected = default;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Volatile.Write(ref pending, [a, b]);
+            Assert.That(service.BuildWrapper().IsSuccess, Is.True);
+            expected = ValueKeccak.Compute(service.GetLatestWrapper().Data!);
+            newer = Task.Run(() => gossip.AddPeer((_, _, _) => new(true)));
+        }
+        finally { release.Set(); }
+        await Task.WhenAll(delayed, newer).WaitAsync(TimeSpan.FromSeconds(5));
+        TaskCompletionSource<ValueHash256> observed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        gossip.AddPeer((bytes, hash, _) =>
+        {
+            Assert.That(ValueKeccak.Compute(bytes.Span), Is.EqualTo(hash));
+            observed.TrySetResult(hash);
+            return new(true);
+        });
+        Assert.That(await observed.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(expected));
+    }
+
     private static ProofWrapperService CreateService()
     {
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);

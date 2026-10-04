@@ -26,7 +26,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private int _admissionActive;
     private readonly Dictionary<ValueHash256, string?> _verifiedWrappers = [];
     private readonly Queue<ValueHash256> _verifiedWrapperOrder = [];
-    private sealed record WrapperSnapshot(ValueHash256 Selection, Hash256[] Transactions, byte[] Encoded, RecursiveProofInput Parent);
+    private sealed record WrapperSnapshot(ValueHash256 Selection, Hash256[] Transactions, byte[] Encoded, ValueHash256 Hash, RecursiveProofInput Parent);
     private WrapperSnapshot? _cachedWrapper;
 
     /// <summary>Verifies a wrapper and admits its proof-backed transactions.</summary>
@@ -230,27 +230,43 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Builds a recursive wrapper over the current proof-backed pool view.</summary>
     public Result<byte[]> BuildWrapper(bool skipEmpty = false, CancellationToken cancellationToken = default)
+        => BuildWrapper(skipEmpty, true, cancellationToken);
+
+    /// <summary>Advances background aggregation without copying the encoded result for an unused return value.</summary>
+    public Result RefreshWrapper(CancellationToken cancellationToken = default)
+    {
+        Result<byte[]> result = BuildWrapper(true, false, cancellationToken);
+        return result.IsSuccess ? Result.Success : Result.Fail(result.Error!);
+    }
+
+    private Result<byte[]> BuildWrapper(bool skipEmpty, bool returnEncoded, CancellationToken cancellationToken)
     {
         if (!Monitor.TryEnter(_aggregationLock)) return Result<byte[]>.Fail("Proof aggregation is busy; retry later.");
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             using IDisposable request = ProductionProofCache.Background(cancellationToken);
-            return BuildWrapperCore(skipEmpty, cancellationToken);
+            return BuildWrapperCore(skipEmpty, returnEncoded, cancellationToken);
         }
         finally { Monitor.Exit(_aggregationLock); }
     }
 
     /// <summary>Returns the latest background-produced wrapper without invoking the prover.</summary>
-    public Result<byte[]> GetLatestWrapper()
+    public Result<byte[]> GetLatestWrapper() => GetLatestWrapper(null, out _);
+
+    /// <summary>Rechecks pending membership and returns an empty array when the supplied hash is current.</summary>
+    public Result<byte[]> GetLatestWrapper(ValueHash256? knownHash, out ValueHash256 hash)
     {
+        hash = default;
         if (!IsEnabled) return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
         WrapperSnapshot? wrapper = Volatile.Read(ref _cachedWrapper);
-        return wrapper is null || !ArePending(wrapper.Transactions) ? Result<byte[]>.Fail("Proof wrapper is not ready; retry after the next background cycle.")
-            : Result<byte[]>.Success((byte[])wrapper.Encoded.Clone());
+        if (wrapper is null || !ArePending(wrapper.Transactions))
+            return Result<byte[]>.Fail("Proof wrapper is not ready; retry after the next background cycle.");
+        hash = wrapper.Hash;
+        return Result<byte[]>.Success(knownHash == hash ? [] : (byte[])wrapper.Encoded.Clone());
     }
 
-    private Result<byte[]> BuildWrapperCore(bool skipEmpty, CancellationToken cancellationToken)
+    private Result<byte[]> BuildWrapperCore(bool skipEmpty, bool returnEncoded, CancellationToken cancellationToken)
     {
         if (!IsEnabled)
             return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
@@ -315,7 +331,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         for (int i = 0; i < hashes.Length; i++) hashes[i] = transactions[i].Full!.Hash!;
         WrapperSnapshot? cached = Volatile.Read(ref _cachedWrapper);
         if (cached?.Selection == selectionHash && ArePending(hashes))
-            return Result<byte[]>.Success((byte[])cached.Encoded.Clone());
+            return Result<byte[]>.Success(returnEncoded ? (byte[])cached.Encoded.Clone() : []);
         try
         {
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
@@ -329,7 +345,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                         selectedInput = incremental;
                 }
                 proof = RecursiveStarkAggregator.Prove(selectedInput, leanProofVerifier, in hash, cancellationToken);
-                if (!leanProofVerifier.VerifyRecursiveStark(in hash, Eip8288Constants.AggregatedVk, proof))
+                if (leanProofVerifier is not ProductionProofCache
+                    && !leanProofVerifier.VerifyRecursiveStark(in hash, Eip8288Constants.AggregatedVk, proof))
                     return Result<byte[]>.Fail("Produced dependency proof failed verification.");
             }
             cancellationToken.ThrowIfCancellationRequested();
@@ -347,8 +364,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (!ArePending(hashes))
                 return Result<byte[]>.Fail("Proof wrapper selection changed while aggregating; retry with the current pool.");
             RecursiveProofInput parent = new(deps, proof!);
-            Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), parent));
-            return Result<byte[]>.Success(encoded);
+            Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent));
+            return Result<byte[]>.Success(returnEncoded ? encoded : []);
         }
         catch (InvalidOperationException exception)
         {
