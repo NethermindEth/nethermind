@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -53,7 +52,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     {
         int count = state.Length + 1;
         int bucketCount = (int)BitOperations.RoundUpToPowerOf2((uint)count);
-        // Locals rather than the fields, which the loop would reload after every keccak call.
+        // Locals rather than the fields, which the loop would reload after every call out of it.
         int bucketMask = _bucketMask = bucketCount - 1;
         int[] heads = _heads = new int[bucketCount];
         int[] next = _next = new int[count];
@@ -62,11 +61,12 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         state.CopyTo(values);
         values[state.Length] = [128];
         keys[state.Length] = EmptyRootKey;
+        // Hashed in a method of its own so the bucketing loop keeps its locals in registers.
+        HashNodes(state, keys);
+
         int[] lengths = new int[bucketCount];
         for (int i = 0; i < count; i++)
         {
-            // Hashed straight into the key array: a returned hash would be copied twice on the way there.
-            if (i != state.Length) KeccakHash.ComputeHashBytesToSpan(state[i], MemoryMarshal.AsBytes(keys.AsSpan(i, 1)));
             ref readonly NodeKey key = ref keys[i];
             int bucket = key.Bucket(bucketMask);
             int head = heads[bucket];
@@ -83,6 +83,15 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
                 _overflow[keys[entry - 1]] = values[entry - 1];
             heads[bucket] = Overflowed;
         }
+    }
+
+    /// <summary>Keys each of <paramref name="nodes"/> by its keccak, at the same index of <paramref name="keys"/>.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void HashNodes(ReadOnlySpan<byte[]> nodes, Span<NodeKey> keys)
+    {
+        keys = keys[..nodes.Length];
+        for (int i = 0; i < nodes.Length; i++)
+            keys[i] = new NodeKey(ValueKeccak.Compute(nodes[i]));
     }
 
     /// <inheritdoc/>
