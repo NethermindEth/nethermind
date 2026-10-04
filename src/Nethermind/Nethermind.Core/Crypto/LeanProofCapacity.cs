@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Crypto;
 
-/// <summary>Public count and output-capacity accounting for one mixed recursive proof.</summary>
+/// <summary>Public claim-count accounting for one mixed recursive proof.</summary>
 public static class LeanProofCapacity
 {
     /// <summary>Checks the distinct required claims against the prototype proof bounds.</summary>
@@ -65,8 +65,6 @@ public static class LeanProofCapacity
     {
         if (count > Eip8288Constants.MaxProofDependencies) return "Dependency proof count limit exceeded";
         if (generic > Eip8288Constants.MaxGenericStarkProofs) return "Generic STARK proof count limit exceeded";
-        long reserved = 12 + (long)count * Eip8288Constants.DependencyTripleLength
-            + (count == 0 ? 0 : Eip8288Constants.MaxMixedGuestProofBytes);
-        return reserved > Eip8288Constants.MaxProofBytes ? "Dependency proof output limit exceeded" : null;
+        return null;
     }
 }
