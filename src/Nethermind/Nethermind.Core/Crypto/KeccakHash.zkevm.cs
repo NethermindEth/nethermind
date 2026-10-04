@@ -502,6 +502,15 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbBlock(ref ulong lane, byte* data, bool intoZeroState)
     {
+        if (intoZeroState)
+        {
+            // A whole rate block written into zero lanes is a plain 136-byte copy: past the inline copy
+            // threshold the guest's Memmove is the ZisK DMA idiom (a few executed instructions), where
+            // seventeen explicit lane writes cost a load and a store each.
+            Unsafe.CopyBlockUnaligned(ref Unsafe.As<ulong, byte>(ref lane), ref *data, HASH_DATA_AREA);
+            return;
+        }
+
         AbsorbLane(ref lane, data, 0, intoZeroState);
         AbsorbLane(ref lane, data, 1, intoZeroState);
         AbsorbLane(ref lane, data, 2, intoZeroState);
@@ -602,6 +611,10 @@ public sealed partial class KeccakHash
             return;
         }
 
+        // See AbsorbBlock: one DMA-backed copy instead of seventeen lane writes.
+        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(state), ref MemoryMarshal.GetReference(block), HASH_DATA_AREA);
+        return;
+#pragma warning disable CS0162 // Unreachable code kept as the documented lane-by-lane form
         ref ulong st = ref Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(state));
         ref byte inRef = ref MemoryMarshal.GetReference(block);
         st = Unsafe.ReadUnaligned<ulong>(ref inRef);
@@ -621,5 +634,6 @@ public sealed partial class KeccakHash
         Unsafe.Add(ref st, 14) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
         Unsafe.Add(ref st, 15) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
         Unsafe.Add(ref st, 16) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
+#pragma warning restore CS0162
     }
 }
