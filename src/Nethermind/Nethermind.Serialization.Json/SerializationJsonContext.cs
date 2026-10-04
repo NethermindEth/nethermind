@@ -6,4 +6,5 @@ using System.Text.Json.Serialization;
 namespace Nethermind.Serialization.Json;
 
 [JsonSerializable(typeof(double[]))]
+[JsonSerializable(typeof(object))]
 internal partial class SerializationJsonContext : JsonSerializerContext;
