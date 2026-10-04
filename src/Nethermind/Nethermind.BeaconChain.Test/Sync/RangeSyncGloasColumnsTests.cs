@@ -336,25 +336,44 @@ public class RangeSyncGloasColumnsTests
         Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True, "the valid copy after the rejected ones is pooled");
     }
 
-    /// <summary>A later round starts at the first slot lacking a column and ends at the last one, so a slot still lacking one is never skipped and none past it is asked.</summary>
-    [TestCase(true, 2UL)]
-    [TestCase(false, 1UL)]
+    /// <summary>A later round asks exactly the window from the first slot still missing a column to the last one.</summary>
+    [TestCase(false, true, GloasSlot, 2UL, TestName = "A_later_range_round_spans_exactly_the_slots_still_lacking_a_column(True,2UL)")]
+    [TestCase(false, false, GloasSlot, 1UL, TestName = "A_later_range_round_spans_exactly_the_slots_still_lacking_a_column(False,1UL)")]
+    [TestCase(true, true, SecondGloasSlot, 1UL, TestName = "A_later_range_round_requests_only_from_the_first_slot_still_missing_a_column")]
     [CancelAfter(30_000)]
-    public async Task A_later_range_round_spans_exactly_the_slots_still_lacking_a_column(bool secondSlotLacksToo, ulong expectedCount, CancellationToken token)
+    public async Task A_later_range_round_requests_the_remaining_column_window(
+        bool firstSlotComplete, bool secondSlotLacksToo, ulong expectedStart, ulong expectedCount, CancellationToken token)
     {
         await using BeaconDiscovery discovery = CreateDiscovery();
         StraddlingChain chain = StraddlingChain.Create(withSecondGloas: true, anchorSlot: FuluSlot - 1);
         ulong[] sampled = [.. SampledColumns(discovery)];
-        DataColumnSidecarPool pool = new();
-        foreach (ulong column in sampled.Skip(1))
+        DataColumnSidecarPool pool;
+        if (firstSlotComplete)
         {
-            pool.AddGloas(chain.GloasSidecar(column));
-            pool.AddGloas(chain.SecondGloasSidecar(column));
+            ulong lacking = sampled[0];
+            pool = new();
+            foreach (ulong column in sampled)
+            {
+                pool.AddGloas(chain.GloasSidecar(column));
+                if (column != lacking)
+                {
+                    pool.AddGloas(chain.SecondGloasSidecar(column));
+                }
+            }
         }
-
-        if (!secondSlotLacksToo)
+        else
         {
-            pool.AddGloas(chain.SecondGloasSidecar(sampled[0]));
+            pool = new();
+            foreach (ulong column in sampled.Skip(1))
+            {
+                pool.AddGloas(chain.GloasSidecar(column));
+                pool.AddGloas(chain.SecondGloasSidecar(column));
+            }
+
+            if (!secondSlotLacksToo)
+            {
+                pool.AddGloas(chain.SecondGloasSidecar(sampled[0]));
+            }
         }
 
         List<(ulong Start, ulong Count)> requests = [];
@@ -366,7 +385,8 @@ public class RangeSyncGloasColumnsTests
 
         await RunAsync(pool, discovery, clock: null, chain, SecondGloasSlot, token, peers);
 
-        Assert.That(requests, Is.EqualTo(new[] { (GloasSlot, 2UL), (GloasSlot, expectedCount) }));
+        Assert.That(requests, Is.EqualTo(new[] { (GloasSlot, 2UL), (expectedStart, expectedCount) }),
+            firstSlotComplete ? "round 0 covers the Gloas blocks, the next round only the slot still lacking the column" : null);
     }
 
     /// <summary>The advertised supernode is preferred by custody, so without the per-peer bound it takes every sampled column while the floor custodians idle.</summary>
@@ -445,77 +465,17 @@ public class RangeSyncGloasColumnsTests
         }
     }
 
-    /// <summary>A later round must ask only for the slots still lacking a column, not the whole batch window again.</summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_later_range_round_requests_only_from_the_first_slot_still_missing_a_column(CancellationToken token)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create(withSecondGloas: true, anchorSlot: FuluSlot - 1);
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        ulong lacking = sampled[0];
-        DataColumnSidecarPool pool = new();
-        foreach (ulong column in sampled)
-        {
-            pool.AddGloas(chain.GloasSidecar(column));
-            if (column != lacking)
-            {
-                pool.AddGloas(chain.SecondGloasSidecar(column));
-            }
-        }
-
-        List<(ulong Start, ulong Count)> requests = [];
-        RangeSyncTests.StubPeer[] peers = [.. Enumerable.Range(0, 2).Select(i => chain.CreatePeer((start, count, _) =>
-        {
-            requests.Add((start, count));
-            return [];
-        }, id: $"peer-{i}", headSlot: SecondGloasSlot))];
-
-        await RunAsync(pool, discovery, clock: null, chain, SecondGloasSlot, token, peers);
-
-        Assert.That(requests, Is.EqualTo(new[] { (GloasSlot, 2UL), (SecondGloasSlot, 1UL) }), "round 0 covers the Gloas blocks, the next round only the slot still lacking the column");
-    }
-
-    /// <summary>The batch peer custodies nothing, so the column request goes to the custodian instead of the peer that served the blocks.</summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task Gloas_range_asks_a_custodian_rather_than_the_batch_peer(CancellationToken token)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create(withSecondGloas: true);
-        ulong[] sampled = [.. SampledColumns(discovery)];
-        List<(ulong StartSlot, ulong Count, ulong[] Columns)> windows = [];
-        RangeSyncTests.StubPeer blocksOnly = chain.CreatePeer(static (_, _, _) => [], id: "blocks", custody: PeerColumnCustody.None, headSlot: SecondGloasSlot);
-        RangeSyncTests.StubPeer late = chain.CreatePeer((startSlot, count, columns) =>
-        {
-            windows.Add((startSlot, count, columns));
-            return [.. columns.Select(c => chain.SecondGloasSidecar(c))];
-        }, id: "late", earliestAvailableSlot: SecondGloasSlot, headSlot: SecondGloasSlot);
-        DataColumnSidecarPool pool = new();
-
-        // Round-robin gives the second batch to the block-only peer, so a request to the batch peer would miss the custodian.
-        List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, SecondGloasSlot, token, late, blocksOnly);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(yielded, Has.Count.EqualTo(3));
-            Assert.That(windows.Select(static w => (w.StartSlot, w.Count)), Is.EqualTo(new[] { (SecondGloasSlot, 1UL) }));
-            Assert.That(windows[0].Columns, Is.EquivalentTo(sampled));
-            Assert.That(sampled.All(c => pool.TryGetGloas(chain.SecondGloasRoot!, c, out _)), Is.True);
-            Assert.That(late.Failures + blocksOnly.Failures, Is.Zero, "the block peer is never asked for columns it does not custody");
-        }
-    }
-
     /// <summary>
-    /// No custodian serves from the first blob slot of the batch, so the one whose earliest slot lies inside the range is asked from that slot
-    /// (phase0/p2p-interface.md: slots below a peer's earliest slot may be empty), and the blocks below it are left to the by-root retry.
+    /// The block-only peer supplies no columns. The custodian serves the second Gloas block, either after the batch peer
+    /// lacks custody or from inside the requested range; blocks below its earliest slot are left to the by-root retry.
     /// </summary>
-    [Test]
+    [TestCase(false, TestName = "Gloas_range_asks_a_custodian_rather_than_the_batch_peer")]
+    [TestCase(true, TestName = "Gloas_range_falls_back_to_a_custodian_serving_from_inside_the_range")]
     [CancelAfter(30_000)]
-    public async Task Gloas_range_falls_back_to_a_custodian_serving_from_inside_the_range(CancellationToken token)
+    public async Task Gloas_range_requests_columns_from_the_available_custodian(bool fromInside, CancellationToken token)
     {
         await using BeaconDiscovery discovery = CreateDiscovery();
-        StraddlingChain chain = StraddlingChain.Create(withSecondGloas: true, anchorSlot: FuluSlot - 1);
+        StraddlingChain chain = StraddlingChain.Create(withSecondGloas: true, anchorSlot: fromInside ? FuluSlot - 1 : AnchorSlot);
         ulong[] sampled = [.. SampledColumns(discovery)];
         List<(ulong StartSlot, ulong Count, ulong[] Columns)> windows = [];
         RangeSyncTests.StubPeer blocksOnly = chain.CreatePeer(static (_, _, _) => [], id: "blocks", custody: PeerColumnCustody.None, headSlot: SecondGloasSlot);
@@ -526,16 +486,19 @@ public class RangeSyncGloasColumnsTests
         }, id: "late", earliestAvailableSlot: SecondGloasSlot, headSlot: SecondGloasSlot);
         DataColumnSidecarPool pool = new();
 
-        List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, SecondGloasSlot, token, blocksOnly, late);
+        // With the Fulu anchor, round-robin gives the second batch to the block-only peer.
+        RangeSyncTests.StubPeer[] peers = fromInside ? [blocksOnly, late] : [late, blocksOnly];
+        List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, SecondGloasSlot, token, peers);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(yielded, Has.Count.EqualTo(3), "one batch carries all three blocks");
-            Assert.That(windows.Select(static w => (w.StartSlot, w.Count)), Is.EqualTo(new[] { (SecondGloasSlot, 1UL) }), "the request starts at the custodian's earliest slot");
+            Assert.That(yielded, Has.Count.EqualTo(3), fromInside ? "one batch carries all three blocks" : null);
+            Assert.That(windows.Select(static w => (w.StartSlot, w.Count)), Is.EqualTo(new[] { (SecondGloasSlot, 1UL) }), fromInside ? "the request starts at the custodian's earliest slot" : null);
             Assert.That(windows[0].Columns, Is.EquivalentTo(sampled));
             Assert.That(sampled.All(c => pool.TryGetGloas(chain.SecondGloasRoot!, c, out _)), Is.True);
-            Assert.That(sampled.Any(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.False, "the block below the custodian's earliest slot was not requested");
-            Assert.That(late.Failures + blocksOnly.Failures, Is.Zero);
+            if (fromInside)
+                Assert.That(sampled.Any(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.False, "the block below the custodian's earliest slot was not requested");
+            Assert.That(late.Failures + blocksOnly.Failures, Is.Zero, fromInside ? null : "the block peer is never asked for columns it does not custody");
         }
     }
 

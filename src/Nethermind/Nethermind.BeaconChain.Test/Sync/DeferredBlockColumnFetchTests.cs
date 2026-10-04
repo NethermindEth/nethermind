@@ -317,19 +317,24 @@ public class DeferredBlockColumnFetchTests
         }
     }
 
-    /// <summary>A block's fetch rotation lives only while the block waits for a retry, so the rotations stay bounded by the retry set.</summary>
-    [Test]
+    /// <summary>A block's pool watch and fetch rotation live only while it waits for a retry, ending on import or expiry.</summary>
+    [TestCase(true, true, TestName = "A_blocks_fetch_rotation_is_forgotten_once_it_imports_or_its_retry_expires(True)")]
+    [TestCase(true, false, TestName = "A_blocks_fetch_rotation_is_forgotten_once_it_imports_or_its_retry_expires(False)")]
+    [TestCase(false, true, TestName = "A_blocks_pool_watch_ends_once_it_imports_or_its_retry_expires(True)")]
+    [TestCase(false, false, TestName = "A_blocks_pool_watch_ends_once_it_imports_or_its_retry_expires(False)")]
     [CancelAfter(30_000)]
-    public async Task A_blocks_fetch_rotation_is_forgotten_once_it_imports_or_its_retry_expires([Values] bool imports, CancellationToken token)
+    public async Task A_deferred_blocks_tracking_ends_on_import_or_expiry(bool tracksRotation, bool imports, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
         BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
-        fixture.Peers.Add(fixture.SilentPeer("silent", fixture.Sampled));
+        if (tracksRotation)
+            fixture.Peers.Add(fixture.SilentPeer("silent", fixture.Sampled));
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
-        await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        if (tracksRotation)
+            await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
 
         await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
-        int whileDeferred = orchestrator.ColumnFetchRotationCount;
+        int whileDeferred = tracksRotation ? orchestrator.ColumnFetchRotationCount : fixture.SidecarPool.WatchCount;
         if (imports)
         {
             fixture.Peers.Add(fixture.Peer("custodian", fixture.Sampled));
@@ -345,7 +350,7 @@ public class DeferredBlockColumnFetchTests
         {
             Assert.That(whileDeferred, Is.EqualTo(1));
             Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.EqualTo(imports));
-            Assert.That(orchestrator.ColumnFetchRotationCount, Is.Zero);
+            Assert.That(tracksRotation ? orchestrator.ColumnFetchRotationCount : fixture.SidecarPool.WatchCount, Is.Zero);
         }
     }
 

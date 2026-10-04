@@ -256,35 +256,6 @@ public class ColumnArrivalRetryTests
         }
     }
 
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_blocks_pool_watch_ends_once_it_imports_or_its_retry_expires([Values] bool imports, CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
-        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
-        await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
-        int whileDeferred = fixture.SidecarPool.WatchCount;
-
-        if (imports)
-        {
-            fixture.Peers.Add(fixture.Peer("custodian", fixture.Sampled));
-            await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
-        }
-        else
-        {
-            fixture.AdvanceSlots(2 * fixture.Chain.Spec.SlotsPerEpoch + 1);
-            await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(whileDeferred, Is.EqualTo(1));
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.EqualTo(imports));
-            Assert.That(fixture.SidecarPool.WatchCount, Is.Zero);
-        }
-    }
-
     /// <summary>A custodian whose by-root answer is held until the test gives it, or that faults before it is asked.</summary>
     private sealed class AsyncRootPeer(string id, ulong[] custodied, ulong headSlot, bool faultsBeforeAsking = false) : IBeaconSyncPeer
     {
