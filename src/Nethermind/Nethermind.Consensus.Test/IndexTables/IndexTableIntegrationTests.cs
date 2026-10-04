@@ -6,11 +6,11 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Evm;
@@ -204,18 +204,24 @@ public class IndexTableIntegrationTests
             Eip8304ContractAddress = TestItem.AddressA
         };
 
+        ulong activationTimestamp = ulong.MaxValue;
         ISpecProvider specProvider = new OverridableSpecProvider(
             new TestSpecProvider(Amsterdam.Instance),
-            (spec, activation) => activation.Timestamp >= 1000 ? postSpec : preSpec);
+            (spec, activation) => activation.Timestamp >= activationTimestamp ? postSpec : preSpec);
 
         using BasicTestBlockchain chain = await CreateChain(specProvider: specProvider);
         IIndexTableStore store = chain.Container.Resolve<IIndexTableStore>();
 
         Block parent = chain.BlockTree.Head!;
-        Block b1 = Build.A.Block.WithParent(parent).WithTimestamp(10).TestObject;
-        Block b2 = Build.A.Block.WithParent(b1).WithTimestamp(20).TestObject;
-        Block b3 = Build.A.Block.WithParent(b2).WithTimestamp(30).TestObject;
-        Block block4 = Build.A.Block.WithParent(b3).WithTimestamp(1050).TestObject;
+        activationTimestamp = parent.Timestamp + 1000;
+        Block b1 = Build.A.Block.WithParent(parent).WithTimestamp(parent.Timestamp + 10).TestObject;
+        Block b2 = Build.A.Block.WithParent(b1).WithTimestamp(parent.Timestamp + 20).TestObject;
+        Block b3 = Build.A.Block.WithParent(b2).WithTimestamp(parent.Timestamp + 30).TestObject;
+        Block block4 = Build.A.Block.WithParent(b3).WithTimestamp(parent.Timestamp + 1050).TestObject;
+        foreach (Block ancestor in (Block[])[b1, b2, b3])
+        {
+            chain.BlockTree.SuggestBlock(ancestor, BlockTreeSuggestOptions.None);
+        }
 
         Block[] processed = chain.BranchProcessor.Process(parent.Header, [b1, b2, b3, block4], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
 

@@ -9,11 +9,12 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Consensus.IndexTables;
 
 /// <summary>
-/// In-memory implementation of <see cref="IIndexTableStore"/> with per-level ring buffer eviction.
+/// In-memory implementation of <see cref="IIndexTableStore"/> with per-level eviction.
 /// </summary>
 /// <remarks>
-/// Each level maintains up to <see cref="Eip8304Constants.TablesPerLevel"/> tables.
-/// When the limit is exceeded, the table with the smallest first block at that level
+/// Level 0 retains up to <see cref="MaxLevel0Heights"/> heights and levels 1–4 up to <see cref="MaxHigherLevelHeights"/>,
+/// far fewer than the <see cref="Eip8304Constants.TablesPerLevel"/> roots the contract keeps.
+/// When a limit is exceeded, the table with the smallest first block at that level
 /// is evicted. This implementation is thread-safe for concurrent reads and writes
 /// but does not persist across node restarts (missing entries can be recovered historically
 /// from block headers and receipts; a persistent database store can replace this for production use).

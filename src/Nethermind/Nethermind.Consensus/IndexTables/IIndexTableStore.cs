@@ -11,9 +11,8 @@ namespace Nethermind.Consensus.IndexTables;
 /// table merging and proof generation.
 /// </summary>
 /// <remarks>
-/// Each level maintains a ring buffer of <see cref="Nethermind.Core.Eip8304Constants.TablesPerLevel"/>
-/// tables. When a new table is stored and the ring buffer is full, the oldest table at
-/// that level is evicted. A production implementation should persist across node restarts.
+/// An implementation may retain only the tables still needed for upcoming merges and recent proofs;
+/// a missing table is rebuilt from the level below or from historical blocks and receipts.
 /// <para>See <see href="https://eips.ethereum.org/EIPS/eip-8304">EIP-8304</see>.</para>
 /// </remarks>
 public interface IIndexTableStore

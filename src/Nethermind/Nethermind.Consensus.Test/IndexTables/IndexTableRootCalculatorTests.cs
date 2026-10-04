@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.IndexTables;

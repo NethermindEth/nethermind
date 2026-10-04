@@ -2,19 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Consensus.IndexTables;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Facade.Simulate;
+namespace Nethermind.Consensus.IndexTables;
 
 /// <summary>
-/// Serves the node's EIP-8304 index tables to a simulation while keeping the simulation's own tables apart.
+/// Serves the node's EIP-8304 index tables to a re-execution while keeping the tables it produces apart.
 /// </summary>
 /// <remarks>
 /// The base store is the node's live one, so every mutator must stay on the local store.
 /// </remarks>
-public class SimulateIndexTableStore(IIndexTableStore? baseStore) : IIndexTableStore, IClearableCache
+public class OverlayIndexTableStore(IIndexTableStore? baseStore) : IIndexTableStore, IClearableCache
 {
     private IndexTableStore _localStore = new();
 

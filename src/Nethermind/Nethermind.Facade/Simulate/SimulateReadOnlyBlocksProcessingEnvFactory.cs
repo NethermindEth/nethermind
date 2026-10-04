@@ -53,7 +53,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         BlockTree tempBlockTree = CreateTempBlockTree(specProvider, logManager, editableDbProvider,
             tmpHeaderStore, tmpBlockStore, tmpChainLevelInfoRepository, mainBalStore);
         BlockTreeOverlay overrideBlockTree = new(baseBlockTree, tempBlockTree);
-        SimulateIndexTableStore tmpIndexTableStore = new(rootLifetimeScope.ResolveOptional<IIndexTableStore>());
+        OverlayIndexTableStore tmpIndexTableStore = new(rootLifetimeScope.ResolveOptional<IIndexTableStore>());
         IReceiptStorage baseReceiptStorage = rootLifetimeScope.ResolveOptional<IReceiptStorage>() ?? NullReceiptStorage.Instance;
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder

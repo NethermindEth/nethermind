@@ -15,6 +15,9 @@ namespace Nethermind.JsonRpc.Modules.IndexProof;
 /// storage slot, this enables full verification against the world state root.
 /// The <c>level</c> parameter selects the table hierarchy level (0–4); the block number
 /// identifies any block the table covers and is aligned down to the table's first block.
+/// Proofs are served from the in-memory tables only: about the last <c>320</c> level-0 tables and the last <c>5</c> tables
+/// of each higher level, while the contract keeps <c>1024</c> roots per level. An older table returns <c>ResourceNotFound</c>
+/// even though its root is still committed on-chain.
 /// <para>See <see href="https://eips.ethereum.org/EIPS/eip-8304">EIP-8304</see>.</para>
 /// </remarks>
 [RpcModule(ModuleType.IndexProof)]

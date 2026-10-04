@@ -85,6 +85,14 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         bool recordsTransactionDiffs = finalSpec.IsEip7906Enabled && finalSpec.BlockLevelAccessListsEnabled;
 
+        // Re-execution reads the node's index tables and receipts, but must not write or roll back the live tables.
+        IndexTableHandlerFactory indexTableHandlerFactory = new(
+            new OverlayIndexTableStore(rootLifetimeScope.ResolveOptional<IIndexTableStore>()),
+            specProvider,
+            rootLifetimeScope.ResolveOptional<IBlockTree>(),
+            rootLifetimeScope.ResolveOptional<IReceiptStorage>(),
+            logManager);
+
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder =>
         {
             builder
@@ -93,6 +101,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                 .AddScoped<IHeaderFinder>(capturingHeaderFinder)
                 .AddScoped<IBlockhashCache, BlockhashCache>()
                 .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddScoped<IIndexTableHandlerFactory>(indexTableHandlerFactory)
                 .AddScoped<ICodeCache>(NoopCodeCache.Instance)
                 // Block witness generation brings its own recorder, so it takes the undecorated state.
                 .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(

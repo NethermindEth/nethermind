@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -158,11 +157,12 @@ public class IndexTableHandler(
         if (firstBlock < 0)
             return false;
 
-        BlockHeader? header = FindAncestorHeader(currentHeader, firstBlock, ancestorCache);
-        if (header is not null)
-            return specProvider.GetSpec(header).IsEip8304Enabled;
+        // Without the header a timestamp activation cannot be evaluated, and guessing would silently skip a commitment.
+        BlockHeader header = FindAncestorHeader(currentHeader, firstBlock, ancestorCache)
+            ?? throw new InvalidOperationException(
+                $"Cannot determine whether EIP-8304 was active at block {firstBlock}: the header of that ancestor of block {currentHeader.Number} is unavailable.");
 
-        return specProvider.GetSpec((ulong)firstBlock, null).IsEip8304Enabled;
+        return specProvider.GetSpec(header).IsEip8304Enabled;
     }
 
     /// <summary>

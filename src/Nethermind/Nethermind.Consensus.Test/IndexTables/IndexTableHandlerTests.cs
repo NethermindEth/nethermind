@@ -19,7 +19,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -37,11 +36,12 @@ public class IndexTableHandlerTests
     public void Higher_level_table_is_rebuilt_from_the_level_below_when_sub_tables_are_missing()
     {
         IndexTableStore store = new();
-        StoreLevel0Tables(store, 0, 16);
+        BlockTree blockTree = BuildChain(Level2PublicationBlock);
+        StoreLevel0Tables(store, blockTree, 0, 16);
 
-        (IndexTableHandler handler, ITransactionProcessor processor) = BuildHandler(store);
+        (IndexTableHandler handler, ITransactionProcessor processor) = BuildHandler(store, blockTree);
 
-        handler.CommitIndexTableRoots(BuildBlock(Level2PublicationBlock), [], BuildSpec(), NullTxTracer.Instance);
+        handler.CommitIndexTableRoots(blockTree.FindBlock(Level2PublicationBlock, BlockTreeLookupOptions.None)!, [], BuildSpec(), NullTxTracer.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -55,13 +55,14 @@ public class IndexTableHandlerTests
     public void Higher_level_table_that_cannot_be_built_throws_InvalidOperationException()
     {
         IndexTableStore store = new();
+        BlockTree blockTree = BuildChain(Level2PublicationBlock);
         // One block short of the range the level-2 table covers.
-        StoreLevel0Tables(store, 1, 16);
+        StoreLevel0Tables(store, blockTree, 1, 16);
 
-        (IndexTableHandler handler, ITransactionProcessor processor) = BuildHandler(store);
+        (IndexTableHandler handler, ITransactionProcessor processor) = BuildHandler(store, blockTree);
 
         Assert.Throws<InvalidOperationException>(() =>
-            handler.CommitIndexTableRoots(BuildBlock(Level2PublicationBlock), [], BuildSpec(), NullTxTracer.Instance));
+            handler.CommitIndexTableRoots(blockTree.FindBlock(Level2PublicationBlock, BlockTreeLookupOptions.None)!, [], BuildSpec(), NullTxTracer.Instance));
 
         // The level-2 root must not be committed against an incomplete table.
         processor.Received(1).Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
@@ -91,10 +92,11 @@ public class IndexTableHandlerTests
         CustomSpecProvider specProvider = new(((ForkActivation)0, BuildSpec(enabled: false)), ((ForkActivation)100, activeSpec));
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IndexTableHandler handler = new(processor, store, specProvider);
+        BlockTree blockTree = BuildChain(104);
+        IndexTableHandler handler = new(processor, store, specProvider, blockTree: blockTree);
 
         // Block 100: candidate level-1 table covers 96-99 (firstBlock = 96), which was pre-activation
-        Block block100 = BuildBlock(100);
+        Block block100 = blockTree.FindBlock(100, BlockTreeLookupOptions.None)!;
         handler.CommitIndexTableRoots(block100, [], activeSpec, NullTxTracer.Instance);
 
         using (Assert.EnterMultipleScope())
@@ -105,13 +107,10 @@ public class IndexTableHandlerTests
         }
 
         // Store level-0 tables for post-activation blocks 100-103
-        for (long b = 100; b <= 103; b++)
-        {
-            store.Store(0, b, [IndexEntry.CreateBlock(TestItem.Keccaks[(int)b], (ulong)b)]);
-        }
+        StoreLevel0Tables(store, blockTree, 100, 4);
 
         // Block 104 publishes level-1 covering 100-103
-        Block block104 = BuildBlock(104);
+        Block block104 = blockTree.FindBlock(104, BlockTreeLookupOptions.None)!;
         handler.CommitIndexTableRoots(block104, [], activeSpec, NullTxTracer.Instance);
 
         using (Assert.EnterMultipleScope())
@@ -283,11 +282,13 @@ public class IndexTableHandlerTests
         Assert.That(logAddressLengths, Is.EqualTo(new Dictionary<ulong, int> { [4] = 38, [7] = 40 }));
     }
 
-    private static (IndexTableHandler, ITransactionProcessor) BuildHandler(IIndexTableStore store)
+    private static (IndexTableHandler, ITransactionProcessor) BuildHandler(IIndexTableStore store, IBlockTree? blockTree = null)
     {
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        return (new IndexTableHandler(processor, store, BuildSpecProvider()), processor);
+        return (new IndexTableHandler(processor, store, BuildSpecProvider(), blockTree: blockTree), processor);
     }
+
+    private static BlockTree BuildChain(ulong headNumber) => Build.A.BlockTree().OfChainLength((int)headNumber + 1).TestObject;
 
     private static ISpecProvider BuildSpecProvider() => new TestSpecProvider(BuildSpec());
 
@@ -302,12 +303,12 @@ public class IndexTableHandlerTests
     private static Block BuildBlock(ulong number) =>
         Build.A.Block.WithNumber(number).WithParentHash(TestItem.KeccakA).TestObject;
 
-    private static void StoreLevel0Tables(IIndexTableStore store, long firstBlock, int count)
+    private static void StoreLevel0Tables(IIndexTableStore store, IBlockTree blockTree, long firstBlock, int count)
     {
         for (long block = firstBlock; block < firstBlock + count; block++)
         {
             List<IndexEntry> entries = [IndexEntry.CreateBlock(TestItem.Keccaks[(int)block], (ulong)block)];
-            store.Store(0, block, entries);
+            store.Store(0, block, entries, blockTree.FindHeader((ulong)block, BlockTreeLookupOptions.None)!.Hash);
         }
     }
 
@@ -315,15 +316,16 @@ public class IndexTableHandlerTests
     public void Missing_history_on_higher_level_table_throws_InvalidOperationException()
     {
         IndexTableStore store = new();
+        BlockTree blockTree = BuildChain(Level2PublicationBlock);
         // Only store block 16 onward — blocks 0–15 are missing (post-sync scenario)
-        StoreLevel0Tables(store, 16, 4);
+        StoreLevel0Tables(store, blockTree, 16, 4);
 
-        (IndexTableHandler handler, _) = BuildHandler(store);
+        (IndexTableHandler handler, _) = BuildHandler(store, blockTree);
 
         // Block 19 triggers level-2 publication for blocks 0–15. When those cannot be built,
         // it must throw InvalidOperationException rather than silently skipping the state-mutating system call.
         Assert.Throws<InvalidOperationException>(() =>
-            handler.CommitIndexTableRoots(BuildBlock(Level2PublicationBlock), [], BuildSpec(), NullTxTracer.Instance));
+            handler.CommitIndexTableRoots(blockTree.FindBlock(Level2PublicationBlock, BlockTreeLookupOptions.None)!, [], BuildSpec(), NullTxTracer.Instance));
     }
 
     [Test]

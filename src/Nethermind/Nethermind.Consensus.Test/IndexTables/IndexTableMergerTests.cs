@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Consensus.IndexTables;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
