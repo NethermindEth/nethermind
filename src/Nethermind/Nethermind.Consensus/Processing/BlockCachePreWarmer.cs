@@ -1240,12 +1240,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// Reads the accounts in <paramref name="addresses"/> from <paramref name="start"/> up to <paramref name="end"/>, stopping
     /// once <paramref name="cancellationToken"/> is cancelled: the prewarming session drains this work before it ends.
     /// </summary>
-    internal static void WarmCalldataRange(ArrayPoolList<Address> addresses, int start, int end, IWorldState worldState, CancellationToken cancellationToken)
+    internal static void WarmCalldataRange<TState>(ArrayPoolList<Address> addresses, int start, int end, TState state,
+        Action<TState, Address> warmUp, CancellationToken cancellationToken)
     {
         for (int i = start; i < end; i++)
         {
             if (cancellationToken.IsCancellationRequested) return;
-            AddressWarmer.WarmupSender(addresses[i], null, worldState);
+            warmUp(state, addresses[i]);
         }
     }
 
@@ -1432,8 +1433,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// <remarks>
         /// A batch transfer lists its recipients in calldata and touches each one, and the transaction warm reads them
         /// one after another in a single job, which a chain of such transactions leaves far behind the main thread. A
-        /// word counts as an address when its top twelve bytes are zero and the address's top four bytes are not, so
-        /// amounts, offsets and lengths never match; a word that only looks like an address costs one account read.
+        /// word counts as an address when its top twelve bytes are zero and the address's top four bytes are not. This is
+        /// a heuristic that excludes small integers, which is what offsets, lengths and most amounts are; a larger value
+        /// can still pass (a uint256 of 2^128 does), and a word that only looks like an address costs one account read.
         /// </remarks>
         private static void WarmCalldataAddresses(ParallelOptions parallelOptions, Block block, ObjectPool<IPrewarmerEnv> envPool)
         {
@@ -1452,7 +1454,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 static (range, state) =>
                 {
                     (ArrayPoolList<Address> addresses, int rangeSize, CancellationToken token) = state.Payload;
-                    WarmCalldataRange(addresses, range * rangeSize, Math.Min((range + 1) * rangeSize, addresses.Count), state.Scope!.WorldState, token);
+                    WarmCalldataRange(addresses, range * rangeSize, Math.Min((range + 1) * rangeSize, addresses.Count), state.Scope!.WorldState,
+                        static (worldState, address) => AddressWarmer.WarmupSender(address, null, worldState), token);
                     return state;
                 },
                 WarmingState<(ArrayPoolList<Address>, int, CancellationToken)>.FinallyAction);

@@ -247,28 +247,30 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// The accounts that large calldata names as ABI address words are read at the start of the block, while
-    /// amounts and offsets in the same calldata are never taken for addresses.
+    /// The accounts that large calldata names as ABI address words are read at the start of the block, while the
+    /// small integers in the same calldata (here an amount and an offset) are not taken for addresses.
     /// </summary>
     [Test]
     public async Task PreWarmCaches_WarmsTheAccountsLargeCalldataNames()
     {
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
-
-        Block block = BuildCalldataAddressBlock(out Address first, out Address second, out Address small);
-        using (ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block))
+        using (preWarmer)
         {
-            Assert.That(collected, Is.EqualTo(new[] { first, second }), "a repeated word is collected once");
-        }
+            Block block = BuildCalldataAddressBlock(out Address first, out Address second, out Address small);
+            using (ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block))
+            {
+                Assert.That(collected, Is.EqualTo(new[] { first, second }), "a repeated word is collected once");
+            }
 
-        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+            await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(preBlockCaches.StateCache.TryGetValue(first, out _), Is.True, "a recipient named in calldata is read");
-            Assert.That(preBlockCaches.StateCache.TryGetValue(second, out _), Is.True, "a recipient named in calldata is read");
-            Assert.That(preBlockCaches.StateCache.TryGetValue(small, out _), Is.False, "a small integer is not an address");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preBlockCaches.StateCache.TryGetValue(first, out _), Is.True, "a recipient named in calldata is read");
+                Assert.That(preBlockCaches.StateCache.TryGetValue(second, out _), Is.True, "a recipient named in calldata is read");
+                Assert.That(preBlockCaches.StateCache.TryGetValue(small, out _), Is.False, "a small integer is not an address");
+            }
         }
     }
 
@@ -319,13 +321,16 @@ public class BlockCachePreWarmerTests
     public void WarmCalldataRange_StopsAtTheFirstAccountAfterCancellation()
     {
         using CancellationTokenSource cancellation = new();
-        IWorldState worldState = Substitute.For<IWorldState>();
-        worldState.When(state => state.WarmUp(Arg.Any<Address>())).Do(_ => cancellation.Cancel());
         using ArrayPoolList<Address> addresses = new(4) { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD };
+        List<Address> read = [];
 
-        BlockCachePreWarmer.WarmCalldataRange(addresses, 0, addresses.Count, worldState, cancellation.Token);
+        BlockCachePreWarmer.WarmCalldataRange(addresses, 0, addresses.Count, cancellation, (source, address) =>
+        {
+            read.Add(address);
+            source.Cancel();
+        }, cancellation.Token);
 
-        worldState.Received(1).WarmUp(Arg.Any<Address>());
+        Assert.That(read, Is.EqualTo(new[] { TestItem.AddressA }));
     }
 
     [TestCase("0000000000000000000000000000000000000000000000000000000000000000", false, TestName = "IsAddressWord_Zero_IsNot")]
