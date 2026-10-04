@@ -310,87 +310,103 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    /// <summary>
-    /// Range sync fetches the envelopes of consecutive Gloas blocks with one ExecutionPayloadEnvelopesByRange request per
-    /// <see cref="RangeSync.DefaultBatchSize"/> blocks and queues each envelope right after its block, so every full child finds its
-    /// parent's payload recorded and none waits in the bounded retry set.
-    /// </summary>
-    [Test]
-    public async Task Range_feed_requests_envelopes_once_per_run_and_imports_each_right_after_its_block()
+    private sealed record RangePeerCase(int[]? Envelopes = null, ulong Head = WallSlot, ulong Earliest = 0,
+        int? Calls = 1, int Failures = 0, (ulong, ulong)[]? Requests = null, bool RepeatFirst = false);
+    private sealed record RangeEnvelopeCase(string Name, RangePeerCase[] Peers, int Blocks = 2, ulong Step = 1,
+        ulong FirstSlot = AnchorSlot + 1, int[]? EmptyAt = null, bool FilterHead = false, bool Retry = false,
+        bool CheckOrder = true, bool AwaitPayloads = true, int[]? Recorded = null, int? TotalRequests = null, bool NoRootRequests = false,
+        bool CheckTip = false, RangeEnvelopeFault? Fault = null);
+    private static readonly RangeEnvelopeCase[] RangeEnvelopeScenarios =
+    [
+        new("Batch envelopes immediately after their blocks", [new(Requests: [(AnchorSlot + 1, RangeSync.DefaultBatchSize), (AnchorSlot + 1 + RangeSync.DefaultBatchSize, 20 - RangeSync.DefaultBatchSize)], Calls: 2)], Blocks: 20, NoRootRequests: true, CheckTip: true),
+        new("128-slot envelope request", [new(Head: 228, Requests: [(101, 128)])], Step: 127, AwaitPayloads: false),
+        new("129-slot run splits", [new(Head: 229, Requests: [(101, 1), (229, 1)], Calls: 2)], Step: 128, AwaitPayloads: false),
+        new("201-slot run splits", [new(Head: 301, Requests: [(101, 1), (301, 1)], Calls: 2)], Step: 200, AwaitPayloads: false),
+        new("First signed envelope copy wins", [new(RepeatFirst: true)], AwaitPayloads: false),
+        new("Off-chain payload is omitted", [new()], EmptyAt: [1], AwaitPayloads: false, Recorded: [1]),
+        new("Envelope names no block", [new([1], Failures: 1)], EmptyAt: [1], AwaitPayloads: false, Recorded: [], Fault: RangeEnvelopeFault.BlockOutsideTheRun),
+        new("Envelope has wrong slot", [new([1], Failures: 1)], EmptyAt: [1], AwaitPayloads: false, Recorded: [], Fault: RangeEnvelopeFault.WrongSlot),
+        new("Envelope has wrong builder", [new([1], Failures: 1)], EmptyAt: [1], AwaitPayloads: false, Recorded: [], Fault: RangeEnvelopeFault.WrongBuilderIndex),
+        new("Envelope has wrong payload hash", [new([1], Failures: 1)], EmptyAt: [1], AwaitPayloads: false, Recorded: [], Fault: RangeEnvelopeFault.WrongBlockHash),
+        new("Three requests bound five empty peers", [new([], Calls: null), new([], Calls: null), new([], Calls: null), new([], Calls: null), new([], Calls: null)], CheckOrder: false, AwaitPayloads: false, TotalRequests: 3),
+        new("Fourth peer is reached next slot", [new([]), new([]), new([]), new()], Blocks: 3, Retry: true, CheckOrder: false),
+        new("Empty reply falls through", [new([]), new()], Blocks: 3),
+        new("Short reply falls through", [new([0]), new()], Blocks: 3),
+        new("Skipped on-chain payload blames supplier", [new([1], Failures: 1), new()], Blocks: 3),
+        new("Peer serving start is preferred", [new(Earliest: 101), new(Calls: 0)]),
+        new("Peer starting late is skipped", [new(Earliest: 102, Calls: 0), new()]),
+        new("Peer reaching first slot can serve run", [new(Head: 102), new(Calls: 0)], Blocks: 3, FilterHead: true),
+        new("Partial availability beats no envelopes", [new(Head: 101, Calls: 0), new(Earliest: 104, Calls: 0), new(Earliest: 103, Requests: [(102, 2)])], FirstSlot: 102, FilterHead: true),
+        new("Complete reply stops peer requests", [new(), new([], Calls: 0)]),
+    ];
+    private static IEnumerable<TestCaseData> RangeEnvelopeCases()
     {
-        const int Blocks = 20;
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, Blocks);
-        Harness harness = CreateRangeHarness(chain, EnvelopesOf(chain), out EnvelopeServingPeer peer);
-        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
-
-        await RunRangeRoundAsync(harness);
-
-        using (Assert.EnterMultipleScope())
+        for (int i = 0; i < RangeEnvelopeScenarios.Length; i++)
+            yield return new TestCaseData(i).SetName(RangeEnvelopeScenarios[i].Name);
+    }
+    [TestCaseSource(nameof(RangeEnvelopeCases))]
+    public async Task Range_envelope_requests_preserve_order_availability_and_peer_blame(int index)
+    {
+        RangeEnvelopeCase test = RangeEnvelopeScenarios[index];
+        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), test.FirstSlot, test.Blocks, test.Step, test.EmptyAt);
+        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
+        if (test.Fault is { } fault)
         {
-            Assert.That(peer.RangeRequests, Is.EqualTo(new[] { (AnchorSlot + 1, RangeSync.DefaultBatchSize), (AnchorSlot + 1 + RangeSync.DefaultBatchSize, (ulong)Blocks - RangeSync.DefaultBatchSize) }));
-            Assert.That(harness.Importer.ImportOrder, Is.EqualTo(chain.SelectMany(static b => new[] { (false, b.ComputeMessageRoot()), (true, b.ComputeMessageRoot()) })));
-            Assert.That(peer.RootRequests, Is.Empty, "no child waited for its parent's envelope");
-            Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(chain[^1].Slot));
+            SignedExecutionPayloadEnvelope bad = envelopes[1];
+            switch (fault)
+            {
+                case RangeEnvelopeFault.BlockOutsideTheRun: bad.Message!.BeaconBlockRoot = TestItem.KeccakF; break;
+                case RangeEnvelopeFault.WrongSlot: bad.Message!.Payload!.SlotNumber++; break;
+                case RangeEnvelopeFault.WrongBuilderIndex: bad.Message!.BuilderIndex++; break;
+                case RangeEnvelopeFault.WrongBlockHash: bad.Message!.Payload!.BlockHash = TestItem.KeccakF; break;
+            }
         }
-    }
-
-    /// <summary>gloas/p2p-interface.md ExecutionPayloadEnvelopesByRange v1: <c>count</c> is at most <c>MAX_REQUEST_PAYLOADS</c> (128).</summary>
-    [TestCase(127UL, true)]
-    [TestCase(128UL, false)]
-    [TestCase(200UL, false)]
-    public async Task Range_feed_writes_out_a_run_before_it_spans_more_slots_than_one_request_may_ask_for(ulong slotStep, bool oneRequest)
-    {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2, slotStep: slotStep);
-        Harness harness = CreateRangeHarness(chain, EnvelopesOf(chain), out EnvelopeServingPeer peer, wallSlot: chain[^1].Slot);
-
-        await RunRangeRoundAsync(harness);
-
-        Assert.That(peer.RangeRequests, Is.EqualTo(oneRequest
-            ? new[] { (chain[0].Slot, slotStep + 1) }
-            : new[] { (chain[0].Slot, 1UL), (chain[1].Slot, 1UL) }));
-    }
-
-    /// <summary>A block's envelope served twice keeps the first copy, so a later copy cannot displace the one already matched.</summary>
-    [Test]
-    public async Task Range_feed_imports_the_first_copy_of_an_envelope_served_twice()
-    {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2);
-        SignedExecutionPayloadEnvelope first = EnvelopeFor(chain[0]);
-        SignedExecutionPayloadEnvelope repeat = EnvelopeFor(chain[0]);
-        Harness harness = CreateRangeHarness(chain, [first, repeat, EnvelopeFor(chain[1])], out EnvelopeServingPeer peer);
+        EnvelopeServingPeer[] peers = [.. test.Peers.Select((reply, peerIndex) =>
+        {
+            SignedExecutionPayloadEnvelope[] served = reply.Envelopes is null ? envelopes : [.. reply.Envelopes.Select(i => envelopes[i])];
+            if (reply.RepeatFirst) served = [served[0], EnvelopeFor(chain[0]), .. served.Skip(1)];
+            return RangeServingPeer($"peer-{peerIndex}", reply.Head, chain, served, reply.Earliest, serveEveryEnvelope: test.Fault is not null);
+        })];
+        Harness harness = CreateHarness(wallSlot: Math.Max(WallSlot, chain[^1].Slot), peers: peers, filterPoolByHead: test.FilterHead);
+        harness.Importer.Known.Add(AnchorRoot());
+        if (test.AwaitPayloads) harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
         List<SignedExecutionPayloadEnvelope> imported = [];
-        harness.Importer.EnvelopeVerdict = e =>
+        harness.Importer.EnvelopeVerdict = envelope => { imported.Add(envelope); return ExecutionPayloadEnvelopeImportResult.Valid; };
+        if (test.Retry)
         {
-            imported.Add(e);
-            return ExecutionPayloadEnvelopeImportResult.Valid;
-        };
-
+            await harness.Orchestrator.FeedRangeSyncRoundAsync(CancellationToken.None);
+            Assert.That(peers[^1].RangeRequests, Is.Empty, "the first three peers consume this slot's request budget");
+            harness.Timestamper.Set(SlotStart(WallSlot + 1));
+        }
         await RunRangeRoundAsync(harness);
-
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(imported, Has.Count.EqualTo(2));
-            Assert.That(imported[0], Is.SameAs(first));
-            Assert.That(peer.Reports, Is.Empty, "a repeat is not a protocol violation");
+            for (int p = 0; p < peers.Length; p++)
+            {
+                RangePeerCase expected = test.Peers[p];
+                if (expected.Calls is { } calls) Assert.That(peers[p].RangeRequests, Has.Count.EqualTo(calls), peers[p].Id);
+                if (expected.Requests is { } requests) Assert.That(peers[p].RangeRequests, Is.EqualTo(requests), peers[p].Id);
+                Assert.That(peers[p].Reports, Is.EqualTo(Enumerable.Repeat(PeerFailureReason.ProtocolViolation, expected.Failures)), peers[p].Id);
+                if (test.NoRootRequests) Assert.That(peers[p].RootRequests, Is.Empty, "no child waited for its parent's envelope");
+            }
+            if (test.TotalRequests is { } total) Assert.That(peers.Sum(static p => p.RangeRequests.Count), Is.EqualTo(total));
+            if (test.CheckTip) Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(chain[^1].Slot));
+            if (test.CheckOrder)
+            {
+                int[] recorded = test.Recorded ?? [.. Enumerable.Range(0, chain.Count)];
+                Assert.That(harness.Importer.ImportOrder, Is.EqualTo(chain.SelectMany((b, i) => recorded.Contains(i)
+                    ? new[] { (false, b.ComputeMessageRoot()), (true, b.ComputeMessageRoot()) } : [(false, b.ComputeMessageRoot())])));
+            }
+            if (test.Fault is not null) Assert.That(harness.Importer.Envelopes, Is.Empty, "an unmatched envelope is discarded before import");
+            if (test.Retry) Assert.That(harness.Importer.ImportOrder, Does.Contain((true, chain[0].ComputeMessageRoot())));
+            if (test.TotalRequests is not null) Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo(chain.Select(static b => b.Slot)), "the run is written out");
+            if (test.Peers.Any(static p => p.RepeatFirst))
+            {
+                Assert.That(imported, Has.Count.EqualTo(2));
+                Assert.That(imported[0], Is.SameAs(envelopes[0]), "the first signed copy is retained");
+            }
         }
     }
-
-    /// <summary>gloas/p2p-interface.md ExecutionPayloadEnvelopesByRange v1: a payload the next block does not build on is not on the chain.</summary>
-    [Test]
-    public async Task Range_feed_skips_an_envelope_the_next_block_does_not_build_on()
-    {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2, emptyAt: [1]);
-        Harness harness = CreateRangeHarness(chain, EnvelopesOf(chain), out EnvelopeServingPeer peer);
-
-        await RunRangeRoundAsync(harness);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.ImportOrder, Is.EqualTo(new[] { (false, chain[0].ComputeMessageRoot()), (false, chain[1].ComputeMessageRoot()), (true, chain[1].ComputeMessageRoot()) }));
-            Assert.That(peer.Reports, Is.Empty);
-        }
-    }
-
     public enum RangeEnvelopeFault
     {
         BlockOutsideTheRun,
@@ -398,39 +414,6 @@ public partial class BeaconSyncOrchestratorTests
         WrongBuilderIndex,
         WrongBlockHash,
     }
-
-    [Test]
-    public async Task Range_feed_counts_an_envelope_that_matches_no_block_of_the_run_as_a_protocol_violation([Values] RangeEnvelopeFault fault)
-    {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2, emptyAt: [1]);
-        SignedExecutionPayloadEnvelope bad = EnvelopeFor(chain[1]);
-        switch (fault)
-        {
-            case RangeEnvelopeFault.BlockOutsideTheRun:
-                bad.Message!.BeaconBlockRoot = TestItem.KeccakF;
-                break;
-            case RangeEnvelopeFault.WrongSlot:
-                bad.Message!.Payload!.SlotNumber++;
-                break;
-            case RangeEnvelopeFault.WrongBuilderIndex:
-                bad.Message!.BuilderIndex++;
-                break;
-            case RangeEnvelopeFault.WrongBlockHash:
-                bad.Message!.Payload!.BlockHash = TestItem.KeccakF;
-                break;
-        }
-
-        Harness harness = CreateRangeHarness(chain, [bad], out EnvelopeServingPeer peer, serveEveryEnvelope: true);
-
-        await RunRangeRoundAsync(harness);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-            Assert.That(harness.Importer.Envelopes, Is.Empty, "the envelope is discarded before import");
-        }
-    }
-
     [Test]
     public async Task Envelope_waiting_on_its_data_or_the_engine_is_retried_on_the_tick_and_dropped_past_finality(
         [Values(ExecutionPayloadEnvelopeImportResult.DataUnavailable, ExecutionPayloadEnvelopeImportResult.EngineUnavailable)] ExecutionPayloadEnvelopeImportResult waiting,
@@ -591,119 +574,79 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(pool.TryGet(TestItem.KeccakA, out _), Is.True);
     }
 
-    /// <summary>
-    /// A Gloas sidecar that arrives before its block carries no source peer to bound, so a flood can take a column's every candidate
-    /// place with forgeries; the block's sampled columns must then come by DataColumnSidecarsByRoot (gloas/p2p-interface.md), at most
-    /// once per block per slot.
-    /// </summary>
-    [Test]
-    public async Task Block_whose_column_candidates_were_all_forged_becomes_available_from_peers()
+    private sealed record ColumnRecoveryCase(string Name, int SilentPeers, int EmptyReplies, bool FloodCandidates,
+        bool SameSlotTick, ulong Age, bool Finalized, int Requests, bool? InitiallyAvailable, bool? FinallyAvailable,
+        bool SettleOnImport = true, bool SettleAfterSameSlot = true);
+    private static readonly ColumnRecoveryCase[] ColumnRecoveryScenarios =
+    [
+        new("Forged candidates cannot suppress column recovery", 0, 0, true, true, 0, false, 1, true, null, SettleOnImport: false, SettleAfterSameSlot: false),
+        new("One recovery per slot, then retry", 0, 1, false, true, 1, false, 2, null, true),
+        new("Recovery rotates past three silent custodians", 3, 0, false, false, 1, false, 1, false, true),
+        new("Finality ends column recovery", 0, int.MaxValue, false, true, 1, true, 1, null, null, SettleAfterSameSlot: false),
+        new("Retry age ends column recovery", 0, int.MaxValue, false, true, RetryAgeSlots + 1, false, 1, null, null, SettleAfterSameSlot: false),
+    ];
+    private static IEnumerable<TestCaseData> ColumnRecoveryCases()
     {
+        for (int i = 0; i < ColumnRecoveryScenarios.Length; i++)
+            yield return new TestCaseData(i).SetName(ColumnRecoveryScenarios[i].Name);
+    }
+    [TestCaseSource(nameof(ColumnRecoveryCases))]
+    public async Task Column_recovery_is_bounded_by_arrival_slot_peer_rotation_finality_and_age(int index)
+    {
+        ColumnRecoveryCase test = ColumnRecoveryScenarios[index];
         await using BeaconDiscovery discovery = CreateDiscovery();
-        Hash256 anchorRoot = AnchorRoot();
-        ulong columnSlot = ColumnSlot;
-        ForkedSignedBeaconBlock block = GloasBlobBlock(EnvelopeBlockSlot, anchorRoot, columnSlot);
+        ForkedSignedBeaconBlock block = GloasBlobBlock(EnvelopeBlockSlot, AnchorRoot(), ColumnSlot);
         ExecutionPayloadBid bid = ((ForkedSignedBeaconBlock.OfGloas)block).Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
         Hash256 root = block.ComputeMessageRoot();
         DataColumnSidecarPool sidecars = new();
-        IReadOnlyList<ulong> sampled = new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns;
-        for (int candidate = 0; candidate < DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey; candidate++)
+        DiscoveryNodeCustodySource custody = new(discovery);
+        if (test.FloodCandidates)
         {
-            foreach (ulong column in sampled)
+            for (int candidate = 0; candidate < DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey; candidate++)
             {
-                DataColumnSidecarGloas forged = DataColumnSidecarGloasTestFixture.BuildSidecar(column, columnSlot, root);
-                forged.KzgProofs = [forged.KzgProofs![1], forged.KzgProofs[0]];
-                sidecars.AddPendingGloas(forged, columnSlot);
+                foreach (ulong column in custody.Current!.SampledColumns)
+                {
+                    DataColumnSidecarGloas forged = DataColumnSidecarGloasTestFixture.BuildSidecar(column, ColumnSlot, root);
+                    forged.KzgProofs = [forged.KzgProofs![1], forged.KzgProofs[0]];
+                    sidecars.AddPendingGloas(forged, ColumnSlot);
+                }
             }
         }
-
-        EnvelopeServingPeer peer = new("peer", WallSlot, gloasColumnsByRoot: ids => [.. ids[0].Columns!.Select(c => DataColumnSidecarGloasTestFixture.BuildSidecar(c, columnSlot, root))]);
-        Harness harness = CreateHarness(peers: [peer], sidecarPool: sidecars, discovery: discovery);
-        harness.Importer.Known.Add(anchorRoot);
-        GloasCustodySamplingAvailability availability = new(new DiscoveryNodeCustodySource(discovery), sidecars, RangeSyncTests.ClockAtGenesis(Spec), Spec);
-
-        await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
-        bool availableOnImport = availability.IsDataAvailable(root, bid);
-        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(availableOnImport, Is.True, "fetched when the block imports, not a slot later");
-            Assert.That(peer.ColumnRootRequests, Has.Count.EqualTo(1), "one request, for the one block");
-            Assert.That(peer.ColumnRootRequests[0][0].BlockRoot, Is.EqualTo(root));
-        }
-    }
-
-    [Test]
-    public async Task Column_recovery_asks_when_its_block_imports_and_again_only_in_a_later_slot()
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        Hash256 anchorRoot = AnchorRoot();
-        ForkedSignedBeaconBlock block = GloasBlobBlock(EnvelopeBlockSlot, anchorRoot, ColumnSlot);
-        ExecutionPayloadBid bid = ((ForkedSignedBeaconBlock.OfGloas)block).Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
-        Hash256 root = block.ComputeMessageRoot();
-        DataColumnSidecarPool sidecars = new();
+        EnvelopeServingPeer[] silent = [.. Enumerable.Range(0, test.SilentPeers).Select(i => new EnvelopeServingPeer($"silent-{i}", WallSlot))];
         int calls = 0;
-        // The columns are not out yet on the first request.
-        EnvelopeServingPeer peer = new("peer", WallSlot, gloasColumnsByRoot: ids => ++calls == 1
-            ? []
-            : [.. ids[0].Columns!.Select(c => DataColumnSidecarGloasTestFixture.BuildSidecar(c, ColumnSlot, root))]);
-        Harness harness = CreateHarness(peers: [peer], sidecarPool: sidecars, discovery: discovery);
-        harness.Importer.Known.Add(anchorRoot);
-        GloasCustodySamplingAvailability availability = new(new DiscoveryNodeCustodySource(discovery), sidecars, RangeSyncTests.ClockAtGenesis(Spec), Spec);
-
+        EnvelopeServingPeer serving = new("serving", WallSlot, gloasColumnsByRoot: ids => ++calls <= test.EmptyReplies
+            ? [] : [.. ids[0].Columns!.Select(c => DataColumnSidecarGloasTestFixture.BuildSidecar(c, ColumnSlot, root))]);
+        Harness harness = CreateHarness(peers: [.. silent, serving],
+            sidecarPool: test.InitiallyAvailable is not null || test.FinallyAvailable is not null ? sidecars : null, discovery: discovery);
+        harness.Importer.Known.Add(AnchorRoot());
+        GloasCustodySamplingAvailability availability = new(custody, sidecars, RangeSyncTests.ClockAtGenesis(Spec), Spec);
         await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
-        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
-        int requestsOnImport = peer.ColumnRootRequests.Count;
-        // A tick queued behind the import runs in the slot the block imported in.
-        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
-        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
-        int requestsInImportSlot = peer.ColumnRootRequests.Count;
-        harness.Timestamper.Set(SlotStart(WallSlot + 1));
-        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
-        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
-
+        if (test.SettleOnImport) await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
+        bool availableOnImport = test.InitiallyAvailable is not null && availability.IsDataAvailable(root, bid);
+        int onImport = serving.ColumnRootRequests.Count;
+        if (test.SameSlotTick)
+        {
+            await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+            if (test.SettleAfterSameSlot) await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
+            Assert.That(serving.ColumnRootRequests.Count, Is.EqualTo(onImport), "at most once per block per slot");
+        }
+        if (test.Finalized) harness.Importer.Head = CreateHead(TestItem.KeccakB, AnchorSlot, finalizedEpoch: Spec.GetEpoch(ColumnSlot) + 1);
+        if (test.Age > 0)
+        {
+            harness.Timestamper.Set(SlotStart(WallSlot + test.Age));
+            await harness.Orchestrator.ProcessSlotAsync(WallSlot + test.Age, CancellationToken.None);
+            await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
+        }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(requestsOnImport, Is.EqualTo(1));
-            Assert.That(requestsInImportSlot, Is.EqualTo(1), "at most once per block per slot");
-            Assert.That(peer.ColumnRootRequests, Has.Count.EqualTo(2), "the next slot retries");
-            Assert.That(availability.IsDataAvailable(root, bid), Is.True);
+            Assert.That(onImport, Is.EqualTo(test.SilentPeers == 0 ? 1 : 0), "recovery starts at import");
+            Assert.That(serving.ColumnRootRequests, Has.Count.EqualTo(test.Requests));
+            Assert.That(silent.Select(static p => p.ColumnRootRequests.Count), Is.All.EqualTo(1), "each silent custodian is asked once");
+            if (test.InitiallyAvailable is { } initial) Assert.That(availableOnImport, Is.EqualTo(initial));
+            if (test.FinallyAvailable is { } final) Assert.That(availability.IsDataAvailable(root, bid), Is.EqualTo(final));
+            if (test.FloodCandidates) Assert.That(serving.ColumnRootRequests[0][0].BlockRoot, Is.EqualTo(root));
         }
     }
-
-    /// <summary>Column recovery rotates through the peers across slots, so peers answering with nothing do not hide one that serves the columns.</summary>
-    [Test]
-    public async Task Column_recovery_asks_in_a_later_slot_the_peers_not_asked_yet()
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        Hash256 anchorRoot = AnchorRoot();
-        ForkedSignedBeaconBlock block = GloasBlobBlock(EnvelopeBlockSlot, anchorRoot, ColumnSlot);
-        ExecutionPayloadBid bid = ((ForkedSignedBeaconBlock.OfGloas)block).Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
-        Hash256 root = block.ComputeMessageRoot();
-        DataColumnSidecarPool sidecars = new();
-        EnvelopeServingPeer[] silent = [.. Enumerable.Range(0, 3).Select(i => new EnvelopeServingPeer($"silent-{i}", WallSlot, gloasColumnsByRoot: static _ => []))];
-        EnvelopeServingPeer serving = new("serving", WallSlot, gloasColumnsByRoot: ids => [.. ids[0].Columns!.Select(c => DataColumnSidecarGloasTestFixture.BuildSidecar(c, ColumnSlot, root))]);
-        Harness harness = CreateHarness(peers: [.. silent, serving], sidecarPool: sidecars, discovery: discovery);
-        harness.Importer.Known.Add(anchorRoot);
-        GloasCustodySamplingAvailability availability = new(new DiscoveryNodeCustodySource(discovery), sidecars, RangeSyncTests.ClockAtGenesis(Spec), Spec);
-
-        await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
-        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
-        bool availableOnImport = availability.IsDataAvailable(root, bid);
-        harness.Timestamper.Set(SlotStart(WallSlot + 1));
-        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
-        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(availableOnImport, Is.False);
-            Assert.That(silent.Select(static p => p.ColumnRootRequests.Count), Is.All.EqualTo(1), "each silent peer is asked once");
-            Assert.That(serving.ColumnRootRequests, Has.Count.EqualTo(1), "the next slot asks the peer the import did not");
-            Assert.That(availability.IsDataAvailable(root, bid), Is.True);
-        }
-    }
-
     /// <summary>A range whose Gloas blocks are followed by a pre-Gloas one still reaches the worker in slot order.</summary>
     [Test]
     public async Task Range_feed_writes_out_buffered_gloas_blocks_before_a_later_pre_gloas_block()
@@ -884,170 +827,6 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    /// <summary>ExecutionPayloadEnvelopesByRange is asked of at most three peers per run, however many serve no envelopes.</summary>
-    [Test]
-    public async Task Range_feed_asks_at_most_three_peers_for_the_envelopes_of_a_run()
-    {
-        const int Peers = 5;
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2);
-        EnvelopeServingPeer[] peers = [.. Enumerable.Range(0, Peers).Select(i => new EnvelopeServingPeer($"bare{i}", WallSlot, blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]))];
-        Harness harness = CreateHarness(peers: peers);
-        harness.Importer.Known.Add(AnchorRoot());
-
-        await RunRangeRoundAsync(harness);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo(chain.Select(static b => b.Slot)), "fixture: the run is written out");
-            Assert.That(peers.Sum(static p => p.RangeRequests.Count), Is.EqualTo(3));
-        }
-    }
-
-    [Test]
-    public async Task Range_envelope_recovery_reaches_the_fourth_peer_after_empty_replies()
-    {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 3);
-        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
-        EnvelopeServingPeer[] silent = [.. Enumerable.Range(0, 3).Select(i => new EnvelopeServingPeer($"silent-{i}", WallSlot,
-            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]))];
-        EnvelopeServingPeer serving = new("serving", WallSlot, byRange: (_, _) => envelopes,
-            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
-        Harness harness = CreateHarness(peers: [.. silent, serving]);
-        harness.Importer.Known.Add(AnchorRoot());
-        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
-
-        await harness.Orchestrator.FeedRangeSyncRoundAsync(CancellationToken.None);
-        Assert.That(serving.RangeRequests, Is.Empty);
-        harness.Timestamper.Set(SlotStart(WallSlot + 1));
-        await RunRangeRoundAsync(harness);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(serving.RangeRequests, Has.Count.EqualTo(1));
-            Assert.That(silent.SelectMany(static p => p.Reports), Is.Empty);
-            Assert.That(harness.Importer.ImportOrder, Does.Contain((true, chain[0].ComputeMessageRoot())));
-        }
-    }
-
-    /// <summary>
-    /// Networking BeaconBlocksByRange, which envelopes by range follow: a reply may stop early or be empty, but skipping an
-    /// on-chain payload before one it serves is a violation. The next peer is asked for what is missing in every case.
-    /// </summary>
-    [TestCase(new int[0], false)]
-    [TestCase(new[] { 0 }, false)]
-    [TestCase(new[] { 1 }, true)]
-    public async Task Range_feed_asks_the_next_peer_for_envelopes_the_first_did_not_serve(int[] servedByFirst, bool skipIsPenalized)
-    {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 3);
-        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
-        EnvelopeServingPeer bare = new("bare", WallSlot,
-            byRange: (_, _) => [.. servedByFirst.Select(i => envelopes[i])],
-            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
-        Harness harness = CreateRangeHarness(chain, envelopes, out EnvelopeServingPeer serving, extraPeer: bare);
-        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
-
-        await RunRangeRoundAsync(harness);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bare.RangeRequests, Has.Count.EqualTo(1));
-            Assert.That(bare.Reports, skipIsPenalized ? Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }) : Is.Empty);
-            Assert.That(serving.Reports, Is.Empty);
-            Assert.That(serving.RangeRequests, Has.Count.EqualTo(1));
-            Assert.That(harness.Importer.ImportOrder, Is.EqualTo(chain.SelectMany(static b => new[] { (false, b.ComputeMessageRoot()), (true, b.ComputeMessageRoot()) })));
-        }
-    }
-
-    /// <summary>fulu/p2p-interface.md Status v2: a peer whose <c>earliest_available_slot</c> is past the start of the range cannot serve it, and one at the start can.</summary>
-    [TestCase(0UL, true)]
-    [TestCase(1UL, false)]
-    public async Task Range_feed_asks_for_envelopes_only_peers_that_serve_from_the_start_of_the_run(ulong earliestPastStart, bool candidateIsAsked)
-    {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2);
-        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
-        EnvelopeServingPeer candidate = RangeServingPeer("candidate", WallSlot, chain, envelopes, chain[0].Slot + earliestPastStart);
-        EnvelopeServingPeer fallback = RangeServingPeer("fallback", WallSlot, chain, envelopes);
-        Harness harness = CreateHarness(peers: [candidate, fallback]);
-        harness.Importer.Known.Add(AnchorRoot());
-        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
-
-        await RunRangeRoundAsync(harness);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(candidate.RangeRequests, Has.Count.EqualTo(candidateIsAsked ? 1 : 0));
-            Assert.That(fallback.RangeRequests, Has.Count.EqualTo(candidateIsAsked ? 0 : 1));
-            Assert.That(harness.Importer.ImportOrder, Is.EqualTo(chain.SelectMany(static b => new[] { (false, b.ComputeMessageRoot()), (true, b.ComputeMessageRoot()) })));
-        }
-    }
-
-    /// <summary>The envelopes of a run are asked of the peers that reach its first slot, so a peer whose head is inside the run, short of its last slot, is asked before the one ahead.</summary>
-    [Test]
-    public async Task Range_feed_asks_for_envelopes_the_peers_that_reach_the_start_of_the_run()
-    {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 3);
-        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
-        EnvelopeServingPeer inside = RangeServingPeer("inside", chain[1].Slot, chain, envelopes);
-        EnvelopeServingPeer ahead = RangeServingPeer("ahead", WallSlot, chain, envelopes);
-        Harness harness = CreateHarness(peers: [inside, ahead], filterPoolByHead: true);
-        harness.Importer.Known.Add(AnchorRoot());
-        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
-
-        await RunRangeRoundAsync(harness);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(inside.RangeRequests, Has.Count.EqualTo(1));
-            Assert.That(ahead.RangeRequests, Is.Empty, "the first peer served every envelope");
-        }
-    }
-
-    /// <summary>fulu/p2p-interface.md Status v2: when no peer serves from the start of the run, one whose <c>earliest_available_slot</c> is inside the run is still asked, so the run does not go without envelopes.</summary>
-    [Test]
-    public async Task Range_feed_asks_for_envelopes_a_peer_serving_from_inside_the_run_when_none_serves_its_start()
-    {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 2, 2);
-        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
-        // Serves the blocks from before the run but its head is short of the run, so only the late-starting peer reaches it.
-        EnvelopeServingPeer behind = RangeServingPeer("behind", AnchorSlot + 1, chain, envelopes);
-        EnvelopeServingPeer beyond = RangeServingPeer("beyond", WallSlot, chain, envelopes, chain[^1].Slot + 1);
-        EnvelopeServingPeer late = RangeServingPeer("late", WallSlot, chain, envelopes, chain[^1].Slot);
-        Harness harness = CreateHarness(peers: [behind, beyond, late], filterPoolByHead: true);
-        harness.Importer.Known.Add(AnchorRoot());
-        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
-
-        await RunRangeRoundAsync(harness);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(behind.RangeRequests, Is.Empty);
-            Assert.That(beyond.RangeRequests, Is.Empty, "it serves nothing of the run");
-            Assert.That(late.RangeRequests, Is.EqualTo(new[] { (chain[0].Slot, 2UL) }));
-            Assert.That(harness.Importer.ImportOrder, Is.EqualTo(chain.SelectMany(static b => new[] { (false, b.ComputeMessageRoot()), (true, b.ComputeMessageRoot()) })));
-        }
-    }
-
-    /// <summary>Once one peer has served every envelope the run builds on, asking more peers only costs them requests.</summary>
-    [Test]
-    public async Task Range_feed_stops_asking_peers_once_every_on_chain_envelope_is_found()
-    {
-        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2);
-        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
-        EnvelopeServingPeer serving = RangeServingPeer("serving", WallSlot, chain, envelopes);
-        EnvelopeServingPeer second = new("second", WallSlot, blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
-        Harness harness = CreateHarness(peers: [serving, second]);
-        harness.Importer.Known.Add(AnchorRoot());
-        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
-
-        await RunRangeRoundAsync(harness);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(serving.RangeRequests, Has.Count.EqualTo(1));
-            Assert.That(second.RangeRequests, Is.Empty, "the first peer already served every on-chain envelope");
-        }
-    }
-
     /// <summary>The newest blocks are the ones whose envelopes are due next, so a full set of blocks recovering columns gives way oldest first.</summary>
     [Test]
     public async Task Column_recovery_keeps_the_newest_blocks_when_full()
@@ -1073,31 +852,6 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
 
         Assert.That(peer.ColumnRootRequests.Skip(requestsOnImport).Select(static r => r[0].BlockRoot), Is.EquivalentTo(roots.Skip(1)));
-    }
-
-    [Test]
-    public async Task Column_recovery_stops_once_its_block_is_finalized_or_past_its_age([Values] bool finalized)
-    {
-        await using BeaconDiscovery discovery = CreateDiscovery();
-        Hash256 anchorRoot = AnchorRoot();
-        EnvelopeServingPeer peer = new("peer", WallSlot);
-        Harness harness = CreateHarness(peers: [peer], discovery: discovery);
-        harness.Importer.Known.Add(anchorRoot);
-        await harness.Orchestrator.ImportBlockAsync(GloasBlobBlock(EnvelopeBlockSlot, anchorRoot, ColumnSlot), CancellationToken.None);
-        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
-        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
-
-        ulong nextTick = finalized ? WallSlot + 1 : WallSlot + RetryAgeSlots + 1;
-        if (finalized)
-        {
-            harness.Importer.Head = CreateHead(TestItem.KeccakB, AnchorSlot, finalizedEpoch: Spec.GetEpoch(ColumnSlot) + 1);
-        }
-
-        harness.Timestamper.Set(SlotStart(nextTick));
-        await harness.Orchestrator.ProcessSlotAsync(nextTick, CancellationToken.None);
-        await harness.Orchestrator.SettleColumnFetchesAsync(CancellationToken.None);
-
-        Assert.That(peer.ColumnRootRequests, Has.Count.EqualTo(1));
     }
 
     /// <summary>The first slot of the data availability window of a clock at genesis, which starts at the Fulu fork.</summary>
@@ -1189,24 +943,6 @@ public partial class BeaconSyncOrchestratorTests
             byRange: (start, count) => [.. envelopes.Where(e => serveEveryEnvelope || (e.Message!.Payload!.SlotNumber >= start && e.Message.Payload.SlotNumber - start < count))],
             blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)],
             earliestAvailableSlot: earliestAvailableSlot);
-
-    /// <summary>
-    /// A harness over a peer serving <paramref name="chain"/> and <paramref name="envelopes"/> by range, each in the requested window
-    /// unless <paramref name="serveEveryEnvelope"/>, after <paramref name="extraPeer"/> when given; the anchor is known.
-    /// </summary>
-    private static Harness CreateRangeHarness(
-        List<ForkedSignedBeaconBlock.OfGloas> chain,
-        SignedExecutionPayloadEnvelope[] envelopes,
-        out EnvelopeServingPeer peer,
-        ulong wallSlot = WallSlot,
-        bool serveEveryEnvelope = false,
-        IBeaconSyncPeer? extraPeer = null)
-    {
-        peer = RangeServingPeer("peer", wallSlot, chain, envelopes, serveEveryEnvelope: serveEveryEnvelope);
-        Harness harness = CreateHarness(wallSlot: wallSlot, peers: extraPeer is null ? [peer] : [extraPeer, peer]);
-        harness.Importer.Known.Add(AnchorRoot());
-        return harness;
-    }
 
     private static async Task RunRangeRoundAsync(Harness harness)
     {
