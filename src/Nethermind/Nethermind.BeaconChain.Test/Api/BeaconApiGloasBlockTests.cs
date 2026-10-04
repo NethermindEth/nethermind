@@ -137,8 +137,7 @@ public class BeaconApiGloasBlockTests
     public async Task Block_json_carries_every_gloas_body_field_and_none_the_fork_removed()
     {
         HttpResponseMessage response = await _host.GetAsync($"/eth/v2/beacon/blocks/{Root}", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement envelope = JsonDocument.Parse(raw).RootElement;
         JsonElement message = envelope.GetProperty("data").GetProperty("message");
         JsonElement body = message.GetProperty("body");
@@ -232,8 +231,7 @@ public class BeaconApiGloasBlockTests
     public async Task Block_attestations_are_the_gloas_attestations_under_the_gloas_version()
     {
         HttpResponseMessage response = await _host.GetAsync($"/eth/v2/beacon/blocks/{Root}/attestations", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement envelope = JsonDocument.Parse(raw).RootElement;
         JsonElement attestation = envelope.GetProperty("data").EnumerateArray().Single();
 
@@ -253,8 +251,7 @@ public class BeaconApiGloasBlockTests
     public async Task Execution_payload_envelope_json_carries_every_envelope_and_payload_field()
     {
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/execution_payload_envelopes/{Root}", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement envelope = JsonDocument.Parse(raw).RootElement;
         JsonElement data = envelope.GetProperty("data");
         JsonElement message = data.GetProperty("message");
@@ -402,8 +399,7 @@ public class BeaconApiGloasBlockTests
     public async Task Execution_payload_envelope_errors_follow_the_published_responses(string blockId, string accept, HttpStatusCode expected)
     {
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/execution_payload_envelopes/{blockId}", accept);
-        Assert.That(response.StatusCode, Is.EqualTo(expected));
-        Assert.That((await ReadJsonAsync(response)).RootElement.GetProperty("code").GetInt32(), Is.EqualTo((int)expected));
+        await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
     private static SignedExecutionPayloadEnvelope RichEnvelope(Hash256 blockRoot, Hash256 parent, ulong slot) => new()

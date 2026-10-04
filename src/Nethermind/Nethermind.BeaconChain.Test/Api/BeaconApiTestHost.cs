@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -27,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Snappier;
+using NUnit.Framework;
 using ExecutionPayload = Nethermind.BeaconChain.Types.ExecutionPayload;
 using Transaction = Nethermind.BeaconChain.Types.Transaction;
 using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
@@ -124,6 +126,22 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
 
     public static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    /// <summary>Reads the complete body and checks success before the caller decodes it.</summary>
+    public static async Task<string> ReadSuccessfulBodyAsync(HttpResponseMessage response)
+    {
+        string raw = await response.Content.ReadAsStringAsync();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        return raw;
+    }
+
+    /// <summary>Checks that the HTTP status and JSON error code name the same failure.</summary>
+    public static async Task AssertErrorAsync(HttpResponseMessage response, HttpStatusCode expected)
+    {
+        Assert.That(response.StatusCode, Is.EqualTo(expected));
+        using JsonDocument body = await ReadJsonAsync(response);
+        Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo((int)expected));
+    }
 
     public static Hash256 TestRoot(byte marker)
     {

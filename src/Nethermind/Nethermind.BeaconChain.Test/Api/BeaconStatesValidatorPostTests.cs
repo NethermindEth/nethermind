@@ -186,9 +186,7 @@ public class BeaconStatesValidatorPostTests
         };
 
         using HttpResponseMessage response = await Post(endpoint, body, accept, contentType, stateId);
-        Assert.That(response.StatusCode, Is.EqualTo(expected));
-        using JsonDocument error = await BeaconApiTestHost.ReadJsonAsync(response);
-        Assert.That(error.RootElement.GetProperty("code").GetInt32(), Is.EqualTo((int)expected));
+        await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
     /// <summary>apis/beacon/states/validators.yaml makes statuses uniqueItems; a repeat would multiply the per-validator matching.</summary>
@@ -219,8 +217,7 @@ public class BeaconStatesValidatorPostTests
 
     private static async Task<JsonElement> ReadEnvelope(HttpResponseMessage response, bool expectedFinalized)
     {
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
 
         JsonElement root = JsonDocument.Parse(raw).RootElement;

@@ -33,8 +33,7 @@ public class DepositContractEndpointTests
         await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(spec);
 
         HttpResponseMessage response = await host.GetAsync(Endpoint, "application/json");
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement data = JsonDocument.Parse(raw).RootElement.GetProperty("data");
         using (Assert.EnterMultipleScope())
         {

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Text.Json;
@@ -41,8 +40,7 @@ public class ConfigSpecEndpointTests
     {
         await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(spec);
         HttpResponseMessage response = await host.GetAsync("/eth/v1/config/spec", "application/json");
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         return JsonDocument.Parse(raw).RootElement.GetProperty("data").Clone();
     }
 

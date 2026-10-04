@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -109,9 +108,7 @@ public class HeadersByParentSlotFilterTests
         _host.Store.EnsureSchemaVersion();
 
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={legacyParent}", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").EnumerateArray().Select(entry => entry.GetProperty("root").GetString()),
             Is.EquivalentTo(new[] { legacyChild.ToString(), laterChild.ToString() }), "after the rebuild the index covers every stored block, so the list is complete");
     }
@@ -149,8 +146,7 @@ public class HeadersByParentSlotFilterTests
     private async Task<List<string>> ListedRootsAsync(string slotQuery)
     {
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={Parent}{slotQuery}", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         return JsonDocument.Parse(raw).RootElement.GetProperty("data").EnumerateArray()
             .Select(entry => entry.GetProperty("root").GetString()!)
             .ToList();
