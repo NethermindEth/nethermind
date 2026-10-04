@@ -1496,7 +1496,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             if (_wasCleared) return true;
 
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
             {
                 if (!balChanges.TryGetDeclaredSlotChanges(kvp.Key, out ReadOnlySlotChanges? slotChanges) || slotChanges is null) return true;
             }
