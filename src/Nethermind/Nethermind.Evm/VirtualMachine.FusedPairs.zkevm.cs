@@ -75,9 +75,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         /// <summary>The index of the handler for the opcode at <paramref name="ip"/> in a table <see cref="PairHandlers"/> built.</summary>
         /// <remarks>
-        /// ZisK charges a two-byte read about three times a one-byte one, so handlers whose next opcode seldom starts a
-        /// fused pair index by the opcode alone instead: that is the entry for the opcode followed by STOP, which no pair
-        /// ends in, so it holds the opcode's own handler.
+        /// A handler that has read the next opcode alone, to test it for a fusion of its own, indexes by that byte instead
+        /// of reading two: that is the entry for the opcode followed by STOP, which no pair ends in, so it holds the
+        /// opcode's own handler.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static nint PairAt(ref byte ip) => Unsafe.ReadUnaligned<ushort>(ref ip);

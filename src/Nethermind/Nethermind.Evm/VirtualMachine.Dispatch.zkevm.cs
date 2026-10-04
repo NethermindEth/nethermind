@@ -239,7 +239,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // Padded code reads STOP past its end, so wherever a successful opcode leaves the counter it resolves to a
             // handler. A failed one can leave it anywhere, so this read waits for the status.
             ip = ref Unsafe.Add(ref code, pc);
-            nint next = handlers[ip];
+            nint next = handlers[PairAt(ref ip)];
 
             Debug.Assert(state.Vm.ReturnData is null,
                 "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
