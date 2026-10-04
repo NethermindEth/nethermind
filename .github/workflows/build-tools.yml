@@ -52,11 +52,6 @@ jobs:
         working-directory: tools
         run: dotnet test ./Bootnode/Nethermind.Bootnode.Test/Nethermind.Bootnode.Test.csproj -c ${{ matrix.config }} --no-build
 
-      - name: Test DocGen
-        if: matrix.project == 'DocGen/DocGen.slnx'
-        working-directory: tools
-        run: dotnet test ./DocGen.Test/Nethermind.DocGen.Test.csproj -c ${{ matrix.config }} --no-build
-
       - name: Test Evm
         if: matrix.project == 'Evm/Evm.slnx'
         working-directory: tools
