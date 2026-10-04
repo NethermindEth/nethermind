@@ -306,14 +306,10 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     /// <summary>A Fulu state with a few validators and every list non-empty, so each list field is exercised with real elements.</summary>
     public static BeaconStateFulu RichState(BeaconChainSpec spec, ulong slot)
     {
-        Hash256[] randaoMixes = new Hash256[(int)Presets.EpochsPerHistoricalVector];
-        Array.Fill(randaoMixes, FilledHash(0x42));
-        Hash256[] blockRoots = new Hash256[8192];
-        Array.Fill(blockRoots, FilledHash(0x43));
-        Hash256[] stateRoots = new Hash256[8192];
-        Array.Fill(stateRoots, FilledHash(0x44));
-        BlsPublicKey[] committee = new BlsPublicKey[512];
-        Array.Fill(committee, FilledPubkey(0x45));
+        Hash256[] randaoMixes = Enumerable.Repeat(FilledHash(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
+        Hash256[] blockRoots = Enumerable.Repeat(FilledHash(0x43), 8192).ToArray();
+        Hash256[] stateRoots = Enumerable.Repeat(FilledHash(0x44), 8192).ToArray();
+        BlsPublicKey[] committee = Enumerable.Repeat(FilledPubkey(0x45), 512).ToArray();
         BitArray justificationBits = new(4);
         justificationBits[0] = true;
         justificationBits[3] = true;

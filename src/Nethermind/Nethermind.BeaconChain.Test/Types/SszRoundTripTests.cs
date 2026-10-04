@@ -187,8 +187,7 @@ public class SszRoundTripTests
 
     private static T CreateSyntheticState<T>() where T : BeaconStateElectra, new()
     {
-        Hash256[] randaoMixes = new Hash256[65_536];
-        Array.Fill(randaoMixes, Hash256.Zero);
+        Hash256[] randaoMixes = Enumerable.Repeat(Hash256.Zero, 65_536).ToArray();
         randaoMixes[0] = Hash(0x80);
         randaoMixes[65_535] = Hash(0x81);
 
@@ -284,12 +283,7 @@ public class SszRoundTripTests
         };
     }
 
-    private static byte[] Filled(int length, byte value)
-    {
-        byte[] bytes = new byte[length];
-        bytes.AsSpan().Fill(value);
-        return bytes;
-    }
+    private static byte[] Filled(int length, byte value) => Enumerable.Repeat(value, length).ToArray();
 
     private static Hash256 Hash(byte value) => new(Filled(Hash256.Size, value));
 
