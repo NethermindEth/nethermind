@@ -15,7 +15,10 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 [JsonSerializable(typeof(ulong))]
 internal partial class ChainSpecJsonContext : JsonSerializerContext
 {
+#if !ZK_EVM
+    // The zkEVM guest serializes no JSON; registering would build the serializer at its startup.
     [ModuleInitializer]
     [SuppressMessage("Usage", "CA2255", Justification = "Registers the metadata before any code in this assembly serializes.")]
     internal static void Register() => EthereumJsonSerializer.AddTypeInfoResolver(Default, JsonTypeInfoResolverPriority.External);
+#endif
 }
