@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -21,7 +22,7 @@ namespace Nethermind.Core.Test;
 /// <remarks>
 /// Native AOT has no reflection-based metadata, so such a type fails to serialize there. A collection whose runtime type is
 /// uncovered still serializes through a covered collection interface it implements, so a non-public one with such an interface,
-/// such as a compiler-generated iterator, is not reported; a public collection is rooted, as its interface may change the JSON shape.
+/// such as a compiler-generated iterator, is not reported; a public collection must be rooted, as its interface may change the JSON shape.
 /// NUnit runs only the set-up fixtures declared in the assembly under test, so each test assembly derives its own.
 /// </remarks>
 /// <param name="testOnly">Uncovered types only test code serializes, each with the reason no production path needs them.</param>
@@ -31,9 +32,18 @@ public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, 
 
     private sealed class Recorder(IReadOnlyDictionary<Type, string>[] testOnly) : IJsonTypeInfoResolver
     {
+        // Guarded so a concurrent request for a shape waits until its members are known.
+        private readonly HashSet<Type> _testShapeMembers = [];
+        private readonly Lock _lock = new();
+
         public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options)
         {
-            if (!IsTestOwned(type) && !IsClearScript(type) && !testOnly.Any(t => t.ContainsKey(type)))
+            if (IsTestOwned(type) || testOnly.Any(t => t.ContainsKey(type)))
+            {
+                // Members of a shape only tests serialize are asked for next; they are part of that shape, not production roots.
+                AddMembers(type, options);
+            }
+            else if (!IsClearScript(type) && !IsTestShapeMember(type))
             {
                 string stackTrace = Environment.StackTrace;
                 // The serializer asks about every ancestor of a polymorphic value while looking for a declared base; absence is the answer it expects.
@@ -48,6 +58,35 @@ public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, 
 
             return null;
         }
+
+        private bool IsTestShapeMember(Type type)
+        {
+            lock (_lock) return _testShapeMembers.Contains(type);
+        }
+
+        private void AddMembers(Type root, JsonSerializerOptions options)
+        {
+            lock (_lock) AddMembersLocked(root, options);
+        }
+
+        private void AddMembersLocked(Type root, JsonSerializerOptions options)
+        {
+            DefaultJsonTypeInfoResolver reflection = new();
+            Queue<Type> pending = new([root]);
+            while (pending.TryDequeue(out Type? type))
+            {
+                if (!_testShapeMembers.Add(type) ||
+                    options.TypeInfoResolverChain.OfType<JsonSerializerContext>().Any(c => ((IJsonTypeInfoResolver)c).GetTypeInfo(type, options) is not null))
+                {
+                    continue;
+                }
+
+                JsonTypeInfo info = reflection.GetTypeInfo(type, options);
+                foreach (JsonPropertyInfo property in info.Properties) pending.Enqueue(property.PropertyType);
+                if (info.ElementType is { } elementType) pending.Enqueue(elementType);
+                if (info.KeyType is { } keyType) pending.Enqueue(keyType);
+            }
+        }
     }
 
     [OneTimeSetUp]
@@ -61,6 +100,13 @@ public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, 
         {
             File.WriteAllLines(path, Uncovered.Select(static kv => $"{kv.Key}{Environment.NewLine}{kv.Value}{Environment.NewLine}----"));
         }
+
+        // Production code that catches the exception, such as a fallback on a failed request, would otherwise hide the type.
+        // The test platform ignores failures in assembly teardown, so only ending the process fails the run.
+        if (!Uncovered.IsEmpty)
+        {
+            Environment.FailFast($"Types without source-generated JSON metadata: {string.Join(", ", Uncovered.Select(static kv => kv.Key))}");
+        }
     }
 
     private static bool IsRuntimeTypeDispatch(string stackTrace) =>
@@ -72,6 +118,7 @@ public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, 
         type.IsGenericType && type.GetGenericArguments().Any(IsTestOwned) ||
         type.IsArray && IsTestOwned(type.GetElementType()!);
 
+    // The JavaScript tracer runs on V8 through ClearScript, which binds host objects by reflection, so script values are not trim-safe either way.
     private static bool IsClearScript(Type type) => type.Assembly.GetName().Name!.StartsWith("ClearScript", StringComparison.Ordinal);
 
     private static bool HasCoveredCollectionInterface(Type type, JsonSerializerOptions options)

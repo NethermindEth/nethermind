@@ -11,7 +11,7 @@ namespace Nethermind.JsonRpc.Test.Data;
 [Parallelizable(ParallelScope.All)]
 public class GethTraceOptionsDeserializationTests
 {
-    // The node reads RPC parameters through the source-generated EthRpcJsonContext, which assigns every init-only member;
+    // The node reads RPC parameters through source-generated metadata, which assigns every init-only member;
     // the legacy disableMemory alias must decide memory capture as reflection did: the last of the two in the JSON wins.
     [TestCase("{}", false)]
     [TestCase("""{"disableMemory":false}""", true)]
