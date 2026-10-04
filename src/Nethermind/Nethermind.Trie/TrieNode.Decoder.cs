@@ -999,16 +999,12 @@ namespace Nethermind.Trie
                 int runStart = cursor;
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
-                // The unchanged children after the last changed one need no walk: they run up to the value,
-                // which is the last byte. A non-empty value ending in 0x80 would break this, but branches
-                // carry no value here (see Value), and the encoder drops it anyway.
+                // The unchanged children after the last changed one go out in the tail run, so they are only
+                // walked to find where the value starts.
                 ref object? last = ref end;
-                if (nodeRlp.Data[^1] == 128)
+                while (Unsafe.IsAddressGreaterThan(ref last, ref child) && Unsafe.Add(ref last, -1) is null)
                 {
-                    while (Unsafe.IsAddressGreaterThan(ref last, ref child) && Unsafe.Add(ref last, -1) is null)
-                    {
-                        last = ref Unsafe.Add(ref last, -1);
-                    }
+                    last = ref Unsafe.Add(ref last, -1);
                 }
 
                 for (; Unsafe.IsAddressLessThan(ref child, ref last); child = ref Unsafe.Add(ref child, 1))
@@ -1061,11 +1057,22 @@ namespace Nethermind.Trie
                     }
                 }
 
-                if (!Unsafe.AreSame(ref last, ref end))
+                // Every item takes at least a byte, so once the bytes left match the items left, each child is
+                // one byte and the value is the last byte. That ends the walk early on a run of empty trailing
+                // slots, without trusting the last byte, which a value such as 0x80 (81 80) also ends in.
+                int valuePosition = nodeRlp.Data.Length - 1;
+                for (int remaining = BranchesCount - ChildIndex(ref last, ref end); remaining != 0; remaining--)
                 {
-                    cursor = nodeRlp.Data.Length - 1;
-                    Debug.Assert(item.SeekChildPosition(nodeRlp, BranchesCount) == cursor, "Branch value is not empty");
+                    if (valuePosition - cursor == remaining)
+                    {
+                        cursor = valuePosition;
+                        break;
+                    }
+
+                    cursor += nodeRlp.PeekNextRlpLength(cursor);
                 }
+
+                Debug.Assert(item.SeekChildPosition(nodeRlp, BranchesCount) == cursor, "The tail does not end at the branch value");
 
                 int tailLength = cursor - runStart;
                 if (tailLength != 0)
