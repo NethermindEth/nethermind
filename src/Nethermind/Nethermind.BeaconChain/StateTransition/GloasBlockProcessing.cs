@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
@@ -66,7 +65,7 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// for the reason given on <see cref="GloasStateAccessors"/>; their signature checks live in
 /// <see cref="GloasSignatureSets"/>.
 /// </remarks>
-public static class GloasBlockProcessing
+public static partial class GloasBlockProcessing
 {
     /// <summary>Spec <c>process_block</c> (Gloas). See this type's remarks for the step order and why.</summary>
     /// <remarks>The operation signatures are verified as one <see cref="BlockSignatureBatch"/>, with the serial verdicts and messages.</remarks>
@@ -138,23 +137,7 @@ public static class GloasBlockProcessing
             throw new BeaconStateException($"Proposer {block.ProposerIndex} is slashed");
     }
 
-    /// <summary>Spec <c>process_randao</c>: unchanged from Fulu except for the Gloas body type.</summary>
-    public static void ProcessRandao(BeaconStateGloas state, BeaconBlockBodyGloas body, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
-    {
-        const string invalidSignature = "Invalid RANDAO reveal";
-        ulong epoch = state.GetCurrentEpoch();
-        if (verifySignature && !VerifyRandaoReveal(state, state.GetBeaconProposerIndex(), epoch, body.RandaoReveal, pubkeys, batch?.Defer(invalidSignature)))
-            throw new BeaconStateException(invalidSignature);
-
-        Span<byte> mix = stackalloc byte[32];
-        SHA256.HashData(body.RandaoReveal.Bytes, mix);
-        ReadOnlySpan<byte> currentMix = state.GetRandaoMix(epoch).Bytes;
-        for (int i = 0; i < mix.Length; i++)
-        {
-            mix[i] ^= currentMix[i];
-        }
-        state.RandaoMixes![(int)(epoch % Presets.EpochsPerHistoricalVector)] = new Hash256(mix);
-    }
+    public static partial void ProcessRandao(BeaconStateGloas state, BeaconBlockBodyGloas body, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
 
     private static bool VerifyRandaoReveal(BeaconStateGloas state, ulong proposerIndex, ulong epoch, BlsSignature reveal, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral)
     {
@@ -280,113 +263,17 @@ public static class GloasBlockProcessing
         return !verifySignature || GloasSignatureSets.VerifyIndexedPayloadAttestation(state, attestation, pubkeys, deferral);
     }
 
-    /// <summary>
-    /// Spec <c>process_proposer_slashing</c> (Gloas): the Electra checks and slashing, plus the
-    /// EIP-7732 clearing of the pending builder payment for the equivocated proposal, when that
-    /// payment is still in the two-epoch window and was recorded for this same proposer.
-    /// </summary>
-    public static void ProcessProposerSlashing(BeaconStateGloas state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null)
-    {
-        BeaconBlockHeader header1 = slashing.SignedHeader1!.Message!;
-        BeaconBlockHeader header2 = slashing.SignedHeader2!.Message!;
+    public static partial void ProcessProposerSlashing(BeaconStateGloas state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null);
 
-        if (header1.Slot != header2.Slot)
-            throw new BeaconStateException("Proposer slashing header slots do not match");
-        if (header1.ProposerIndex != header2.ProposerIndex)
-            throw new BeaconStateException("Proposer slashing proposer indices do not match");
-        if (HeaderEquals(header1, header2))
-            throw new BeaconStateException("Proposer slashing headers are identical");
-        if (header1.ProposerIndex >= (ulong)state.Validators!.Length)
-            throw new BeaconStateException($"Proposer slashing index {header1.ProposerIndex} is out of range");
-        if (!state.Validators[(int)header1.ProposerIndex].IsSlashableValidator(state.GetCurrentEpoch()))
-            throw new BeaconStateException($"Proposer {header1.ProposerIndex} is not slashable");
-
-        if (verifySignatures)
-        {
-            const string invalidSignature1 = "Invalid proposer slashing signature 1";
-            const string invalidSignature2 = "Invalid proposer slashing signature 2";
-            if (!GloasSignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader1, pubkeys, batch?.Defer(invalidSignature1)))
-                throw new BeaconStateException(invalidSignature1);
-            if (!GloasSignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader2, pubkeys, batch?.Defer(invalidSignature2)))
-                throw new BeaconStateException(invalidSignature2);
-        }
-
-        // Only the payment recorded for this proposer is cleared: an unrelated same-slot
-        // equivocation must not grief an honest proposer's payment.
-        ulong proposalEpoch = BeaconStateAccessors.ComputeEpochAtSlot(header1.Slot);
-        int? paymentIndex = proposalEpoch == state.GetCurrentEpoch()
-            ? (int)(Presets.SlotsPerEpoch + header1.Slot % Presets.SlotsPerEpoch)
-            : proposalEpoch == state.GetPreviousEpoch()
-                ? (int)(header1.Slot % Presets.SlotsPerEpoch)
-                : null;
-        if (paymentIndex is int index && state.BuilderPendingPayments![index].ProposerIndex == header1.ProposerIndex)
-            state.BuilderPendingPayments[index] = EmptyBuilderPendingPayment();
-
-        state.SlashValidator((int)header1.ProposerIndex, cache);
-    }
-
-    private static bool HeaderEquals(BeaconBlockHeader a, BeaconBlockHeader b) =>
-        a.Slot == b.Slot
-        && a.ProposerIndex == b.ProposerIndex
-        && a.ParentRoot == b.ParentRoot
-        && a.StateRoot == b.StateRoot
-        && a.BodyRoot == b.BodyRoot;
+    private static partial bool HeaderEquals(BeaconBlockHeader a, BeaconBlockHeader b);
 
     /// <summary>Spec <c>BuilderPendingPayment.empty()</c>, in the shape <see cref="GloasEpochProcessing.ProcessBuilderPendingPayments"/> and <see cref="SettleBuilderPayment"/> write.</summary>
     private static BuilderPendingPayment EmptyBuilderPendingPayment() =>
         new() { Withdrawal = new BuilderPendingWithdrawal() };
 
-    /// <summary>Spec <c>process_attester_slashing</c> (unmodified in Gloas): slashes every still-slashable validator attesting in both votes.</summary>
-    public static void ProcessAttesterSlashing(BeaconStateGloas state, AttesterSlashingGloas slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null)
-    {
-        const string invalidAttestation1 = "Attester slashing attestation 1 is invalid";
-        const string invalidAttestation2 = "Attester slashing attestation 2 is invalid";
-        IndexedAttestationGloas attestation1 = slashing.Attestation1!;
-        IndexedAttestationGloas attestation2 = slashing.Attestation2!;
+    public static partial void ProcessAttesterSlashing(BeaconStateGloas state, AttesterSlashingGloas slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null);
 
-        if (!BeaconStateAccessors.IsSlashableAttestationData(attestation1.Data!, attestation2.Data!))
-            throw new BeaconStateException("Attester slashing votes are not slashable");
-        if (!IsValidIndexedAttestation(state, attestation1, pubkeys, verifySignatures, batch?.Defer(invalidAttestation1)))
-            throw new BeaconStateException(invalidAttestation1);
-        if (!IsValidIndexedAttestation(state, attestation2, pubkeys, verifySignatures, batch?.Defer(invalidAttestation2)))
-            throw new BeaconStateException(invalidAttestation2);
-
-        ulong currentEpoch = state.GetCurrentEpoch();
-        HashSet<ulong> indices2 = [.. attestation2.AttestingIndices!];
-        bool slashedAny = false;
-        // attestation_1's indices are validated ascending, so the intersection is visited in sorted order.
-        foreach (ulong index in attestation1.AttestingIndices!)
-        {
-            if (indices2.Contains(index) && state.Validators![(int)index].IsSlashableValidator(currentEpoch))
-            {
-                state.SlashValidator((int)index, cache);
-                slashedAny = true;
-            }
-        }
-        if (!slashedAny)
-            throw new BeaconStateException("Attester slashing slashed no validator");
-    }
-
-    /// <summary>
-    /// Spec <c>is_valid_indexed_attestation</c> (Gloas): indices must be non-empty, within the
-    /// EIP-7688 bound that replaced the list's SSZ limit, sorted, unique and in range, and the
-    /// aggregate signature must verify.
-    /// </summary>
-    /// <param name="deferral">Defers the signature to a batch; <c>null</c> verifies it now.</param>
-    public static bool IsValidIndexedAttestation(BeaconStateGloas state, IndexedAttestationGloas attestation, PubkeyCache pubkeys, bool verifySignature, BlockSignatureBatch.Deferral? deferral = null)
-    {
-        ulong[] indices = attestation.AttestingIndices ?? [];
-        if (indices.Length == 0 || indices.Length > Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot)
-            return false;
-        for (int i = 0; i < indices.Length; i++)
-        {
-            if (i > 0 && indices[i - 1] >= indices[i])
-                return false;
-            if (indices[i] >= (ulong)state.Validators!.Length)
-                return false;
-        }
-        return !verifySignature || GloasSignatureSets.VerifyIndexedAttestation(state, attestation, pubkeys, deferral);
-    }
+    public static partial bool IsValidIndexedAttestation(BeaconStateGloas state, IndexedAttestationGloas attestation, PubkeyCache pubkeys, bool verifySignature, BlockSignatureBatch.Deferral? deferral = null);
 
     /// <summary>
     /// Spec <c>process_attestation</c> (Gloas): the Electra aggregate validation, participation
@@ -515,94 +402,11 @@ public static class GloasBlockProcessing
         return flags;
     }
 
-    /// <summary>Spec <c>process_voluntary_exit</c> (Electra, unmodified in Gloas); the exit it initiates draws on the EIP-8061 exit churn.</summary>
-    public static void ProcessVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
-    {
-        VoluntaryExit exit = signedExit.Message!;
-        if (exit.ValidatorIndex >= (ulong)state.Validators!.Length)
-            throw new BeaconStateException($"Voluntary exit validator index {exit.ValidatorIndex} is out of range");
+    public static partial void ProcessVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
 
-        Validator validator = state.Validators[(int)exit.ValidatorIndex];
-        ulong currentEpoch = state.GetCurrentEpoch();
-        if (!validator.IsActiveValidator(currentEpoch))
-            throw new BeaconStateException($"Exiting validator {exit.ValidatorIndex} is not active");
-        if (validator.ExitEpoch != Presets.FarFutureEpoch)
-            throw new BeaconStateException($"Validator {exit.ValidatorIndex} already initiated an exit");
-        if (currentEpoch < exit.Epoch)
-            throw new BeaconStateException($"Voluntary exit is not valid before epoch {exit.Epoch}");
-        if (currentEpoch < validator.ActivationEpoch + Presets.ShardCommitteePeriod)
-            throw new BeaconStateException($"Validator {exit.ValidatorIndex} has not been active long enough");
-        if (state.GetPendingBalanceToWithdraw((int)exit.ValidatorIndex) != 0)
-            throw new BeaconStateException($"Validator {exit.ValidatorIndex} has pending partial withdrawals");
-        const string invalidSignature = "Invalid voluntary exit signature";
-        if (verifySignature && !GloasSignatureSets.VerifyVoluntaryExit(state, signedExit, pubkeys, batch?.Defer(invalidSignature)))
-            throw new BeaconStateException(invalidSignature);
+    public static partial void ProcessBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null);
 
-        state.InitiateValidatorExit((int)exit.ValidatorIndex, cache);
-    }
-
-    /// <summary>Spec <c>process_bls_to_execution_change</c> (Capella, unmodified in Gloas).</summary>
-    public static void ProcessBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null)
-    {
-        BlsToExecutionChange change = signedChange.Message!;
-        if (change.ValidatorIndex >= (ulong)state.Validators!.Length)
-            throw new BeaconStateException($"BLS change validator index {change.ValidatorIndex} is out of range");
-
-        Validator validator = state.Validators[(int)change.ValidatorIndex];
-        ReadOnlySpan<byte> credentials = validator.WithdrawalCredentials!.Bytes;
-        if (credentials[0] != Presets.BlsWithdrawalPrefix)
-            throw new BeaconStateException($"Validator {change.ValidatorIndex} does not have BLS withdrawal credentials");
-        if (!credentials[1..].SequenceEqual(SHA256.HashData(change.FromBlsPubkey.Bytes).AsSpan(1)))
-            throw new BeaconStateException("BLS change pubkey does not match the withdrawal credentials");
-        const string invalidSignature = "Invalid BLS to execution change signature";
-        if (verifySignature && !GloasSignatureSets.VerifyBlsToExecutionChange(state, signedChange, batch?.Defer(invalidSignature)))
-            throw new BeaconStateException(invalidSignature);
-
-        Span<byte> newCredentials = stackalloc byte[32];
-        newCredentials[0] = Presets.EthWithdrawalPrefix;
-        change.ToExecutionAddress!.Bytes.CopyTo(newCredentials[12..]);
-        Validator updated = validator.Clone();
-        updated.WithdrawalCredentials = new Hash256(newCredentials);
-        state.Validators[(int)change.ValidatorIndex] = updated;
-    }
-
-    /// <summary>
-    /// Spec <c>process_sync_aggregate</c> (Altair): unchanged semantics, ported to
-    /// <see cref="BeaconStateGloas"/> because this step runs unconditionally in every
-    /// <c>process_block</c>, Gloas included.
-    /// </summary>
-    public static void ProcessSyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
-    {
-        BlockProcessing.EnsureSyncCommitteeWidth(syncAggregate);
-
-        const string invalidSignature = "Invalid sync aggregate signature";
-        if (verifySignature && !VerifySyncAggregate(state, syncAggregate, cache.FindSyncCommitteeIndices(state.CurrentSyncCommittee!, state.Validators!), pubkeys, batch?.Defer(invalidSignature)))
-            throw new BeaconStateException(invalidSignature);
-
-        ulong totalActiveIncrements = state.GetTotalActiveBalance(cache) / Presets.EffectiveBalanceIncrement;
-        ulong totalBaseRewards = state.GetBaseRewardPerIncrement(cache) * totalActiveIncrements;
-        ulong maxParticipantRewards = totalBaseRewards * Presets.SyncRewardWeight / Presets.WeightDenominator / Presets.SlotsPerEpoch;
-        ulong participantReward = maxParticipantRewards / (ulong)Presets.SyncCommitteeSize;
-        ulong proposerReward = participantReward * Presets.ProposerWeight / (Presets.WeightDenominator - Presets.ProposerWeight);
-
-        int[] participantIndices = cache.GetSyncCommitteeIndices(state.CurrentSyncCommittee!, state.Validators!);
-
-        int proposerIndex = (int)state.GetBeaconProposerIndex();
-        System.Collections.BitArray bits = syncAggregate.SyncCommitteeBits!;
-        for (int i = 0; i < participantIndices.Length; i++)
-        {
-            int participantIndex = participantIndices[i];
-            if (bits[i])
-            {
-                state.IncreaseBalance(participantIndex, participantReward);
-                state.IncreaseBalance(proposerIndex, proposerReward);
-            }
-            else
-            {
-                state.DecreaseBalance(participantIndex, participantReward);
-            }
-        }
-    }
+    public static partial void ProcessSyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
 
     private static bool VerifySyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, int[] committeeIndices, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral)
     {
@@ -940,139 +744,13 @@ public static class GloasBlockProcessing
         state.BuilderPendingPayments[(int)paymentIndex] = EmptyBuilderPendingPayment();
     }
 
-    /// <summary>Spec <c>process_deposit_request</c> (EIP-6110): unchanged from Fulu, ported to <see cref="BeaconStateGloas"/>.</summary>
-    internal static void ProcessDepositRequest(BeaconStateGloas state, DepositRequest request)
-    {
-        if (state.DepositRequestsStartIndex == Presets.UnsetDepositRequestsStartIndex)
-            state.DepositRequestsStartIndex = request.Index;
+    internal static partial void ProcessDepositRequest(BeaconStateGloas state, DepositRequest request);
 
-        state.PendingDeposits = [.. state.PendingDeposits!, new PendingDeposit
-        {
-            Pubkey = request.Pubkey,
-            WithdrawalCredentials = request.WithdrawalCredentials,
-            Amount = request.Amount,
-            Signature = request.Signature,
-            Slot = state.Slot,
-        }];
-    }
+    internal static partial void ProcessWithdrawalRequest(BeaconStateGloas state, WithdrawalRequest request, EpochCache cache);
 
-    /// <summary>Spec <c>process_withdrawal_request</c> (EIP-7002/EIP-7251): unchanged from Fulu, ported to <see cref="BeaconStateGloas"/>.</summary>
-    internal static void ProcessWithdrawalRequest(BeaconStateGloas state, WithdrawalRequest request, EpochCache cache)
-    {
-        bool isFullExitRequest = request.Amount == Presets.FullExitRequestAmount;
+    internal static partial void ProcessConsolidationRequest(BeaconStateGloas state, ConsolidationRequest request, EpochCache cache);
 
-        if (state.PendingPartialWithdrawals!.Length == Presets.PendingPartialWithdrawalsLimit && !isFullExitRequest)
-            return;
-
-        if (FindValidatorIndex(state, request.ValidatorPubkey) is not int index)
-            return;
-        Validator validator = state.Validators![index];
-
-        bool isCorrectSourceAddress = validator.WithdrawalCredentials!.Bytes[12..].SequenceEqual(request.SourceAddress!.Bytes);
-        if (!validator.HasExecutionWithdrawalCredential() || !isCorrectSourceAddress)
-            return;
-        ulong currentEpoch = state.GetCurrentEpoch();
-        if (!validator.IsActiveValidator(currentEpoch))
-            return;
-        if (validator.ExitEpoch != Presets.FarFutureEpoch)
-            return;
-        if (currentEpoch < validator.ActivationEpoch + Presets.ShardCommitteePeriod)
-            return;
-
-        ulong pendingBalanceToWithdraw = state.GetPendingBalanceToWithdraw(index);
-
-        if (isFullExitRequest)
-        {
-            if (pendingBalanceToWithdraw == 0)
-                state.InitiateValidatorExit(index, cache);
-            return;
-        }
-
-        bool hasSufficientEffectiveBalance = validator.EffectiveBalance >= Presets.MinActivationBalance;
-        bool hasExcessBalance = state.Balances![index] > Presets.MinActivationBalance + pendingBalanceToWithdraw;
-
-        if (validator.HasCompoundingWithdrawalCredential() && hasSufficientEffectiveBalance && hasExcessBalance)
-        {
-            ulong toWithdraw = Math.Min(state.Balances[index] - Presets.MinActivationBalance - pendingBalanceToWithdraw, request.Amount);
-            ulong exitQueueEpoch = state.ComputeExitEpochAndUpdateChurn(toWithdraw, cache);
-            state.PendingPartialWithdrawals = [.. state.PendingPartialWithdrawals, new PendingPartialWithdrawal
-            {
-                ValidatorIndex = (ulong)index,
-                Amount = toWithdraw,
-                WithdrawableEpoch = exitQueueEpoch + Presets.MinValidatorWithdrawabilityDelay,
-            }];
-        }
-    }
-
-    /// <summary>Spec <c>process_consolidation_request</c> (EIP-7251): unchanged from Fulu, ported to <see cref="BeaconStateGloas"/>.</summary>
-    internal static void ProcessConsolidationRequest(BeaconStateGloas state, ConsolidationRequest request, EpochCache cache)
-    {
-        if (IsValidSwitchToCompoundingRequest(state, request))
-        {
-            SwitchToCompoundingValidator(state, FindValidatorIndex(state, request.SourcePubkey)!.Value);
-            return;
-        }
-
-        if (request.SourcePubkey == request.TargetPubkey)
-            return;
-        if (state.PendingConsolidations!.Length == Presets.PendingConsolidationsLimit)
-            return;
-        if (state.GetConsolidationChurnLimit(cache) <= Presets.MinActivationBalance)
-            return;
-
-        if (FindValidatorIndex(state, request.SourcePubkey) is not int sourceIndex)
-            return;
-        if (FindValidatorIndex(state, request.TargetPubkey) is not int targetIndex)
-            return;
-        Validator sourceValidator = state.Validators![sourceIndex];
-        Validator targetValidator = state.Validators[targetIndex];
-
-        bool isCorrectSourceAddress = sourceValidator.WithdrawalCredentials!.Bytes[12..].SequenceEqual(request.SourceAddress!.Bytes);
-        if (!sourceValidator.HasExecutionWithdrawalCredential() || !isCorrectSourceAddress)
-            return;
-        if (!targetValidator.HasCompoundingWithdrawalCredential())
-            return;
-        ulong currentEpoch = state.GetCurrentEpoch();
-        if (!sourceValidator.IsActiveValidator(currentEpoch) || !targetValidator.IsActiveValidator(currentEpoch))
-            return;
-        if (sourceValidator.ExitEpoch != Presets.FarFutureEpoch || targetValidator.ExitEpoch != Presets.FarFutureEpoch)
-            return;
-        if (currentEpoch < sourceValidator.ActivationEpoch + Presets.ShardCommitteePeriod)
-            return;
-        if (state.GetPendingBalanceToWithdraw(sourceIndex) > 0)
-            return;
-
-        Validator updatedSource = sourceValidator.Clone();
-        updatedSource.ExitEpoch = state.ComputeConsolidationEpochAndUpdateChurn(sourceValidator.EffectiveBalance, cache);
-        updatedSource.WithdrawableEpoch = updatedSource.ExitEpoch + Presets.MinValidatorWithdrawabilityDelay;
-        state.Validators[sourceIndex] = updatedSource;
-
-        state.PendingConsolidations = [.. state.PendingConsolidations, new PendingConsolidation
-        {
-            SourceIndex = (ulong)sourceIndex,
-            TargetIndex = (ulong)targetIndex,
-        }];
-    }
-
-    private static bool IsValidSwitchToCompoundingRequest(BeaconStateGloas state, ConsolidationRequest request)
-    {
-        if (request.SourcePubkey != request.TargetPubkey)
-            return false;
-        if (FindValidatorIndex(state, request.SourcePubkey) is not int sourceIndex)
-            return false;
-
-        Validator sourceValidator = state.Validators![sourceIndex];
-        if (!sourceValidator.WithdrawalCredentials!.Bytes[12..].SequenceEqual(request.SourceAddress!.Bytes))
-            return false;
-        if (!sourceValidator.HasEth1WithdrawalCredential())
-            return false;
-        if (!sourceValidator.IsActiveValidator(state.GetCurrentEpoch()))
-            return false;
-        if (sourceValidator.ExitEpoch != Presets.FarFutureEpoch)
-            return false;
-
-        return true;
-    }
+    private static partial bool IsValidSwitchToCompoundingRequest(BeaconStateGloas state, ConsolidationRequest request);
 
     private static void SwitchToCompoundingValidator(BeaconStateGloas state, int index)
     {
@@ -1185,16 +863,7 @@ public static class GloasBlockProcessing
         };
     }
 
-    private static int? FindValidatorIndex(BeaconStateGloas state, BlsPublicKey pubkey)
-    {
-        Validator[] validators = state.Validators!;
-        for (int i = 0; i < validators.Length; i++)
-        {
-            if (validators[i].Pubkey == pubkey)
-                return i;
-        }
-        return null;
-    }
+    private static partial int? FindValidatorIndex(BeaconStateGloas state, BlsPublicKey pubkey);
 
     // ---- Withdrawals (EIP-7732: builder balances withdraw alongside validators) ----
 
@@ -1386,16 +1055,7 @@ public static class GloasBlockProcessing
         }
     }
 
-    private static ulong TotalWithdrawn(List<Withdrawal> withdrawals, ulong validatorIndex)
-    {
-        ulong total = 0;
-        foreach (Withdrawal withdrawal in withdrawals)
-        {
-            if (withdrawal.ValidatorIndex == validatorIndex)
-                total += withdrawal.Amount;
-        }
-        return total;
-    }
+    private static partial ulong TotalWithdrawn(List<Withdrawal> withdrawals, ulong validatorIndex);
 
     /// <summary>Spec <c>apply_withdrawals</c> (Gloas): a builder-flagged withdrawal debits the builder registry instead of a validator balance, and saturates rather than throwing on underflow.</summary>
     private static void ApplyWithdrawals(BeaconStateGloas state, Withdrawal[] withdrawals)

@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <ItemGroup>
+    <Compile Remove="StateTransition/*.forks.cs" />
+    <AdditionalFiles Include="StateTransition/*.forks.cs" />
+  </ItemGroup>
+
   <PropertyGroup>
     <RootNamespace>Nethermind.BeaconChain</RootNamespace>
     <Nullable>enable</Nullable>
