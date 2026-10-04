@@ -49,6 +49,10 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     private readonly Lock _lock = new();
     private readonly List<TrieNodeLogGeneration> _generations = []; // oldest first; every generation still in memory
+    // Held shared by a reader from pinning the live generations to binding to its snapshot, exclusively while a
+    // merged generation leaves the list: a generation committed before that snapshot and merged right after it
+    // is otherwise in neither the snapshot nor the reader's pins.
+    private readonly ReaderWriterLockSlim _retention = new(LockRecursionPolicy.NoRecursion);
     private TrieNodeLogGeneration? _active;
     private ulong _nextGeneration;
     private ulong _version;
@@ -80,6 +84,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         ColumnLabel = TrieNodeLogLabel.Column(columns[0]);
         VersionKey = Keccak.Compute($"TrieNodeLogVersion:{name}").BytesToArray();
         FlushedGenerationKey = Keccak.Compute($"TrieNodeLogFlushedGeneration:{name}").BytesToArray();
+        GenerationKey = Keccak.Compute($"TrieNodeLogGeneration:{name}").BytesToArray();
         _basePath = basePath;
         _db = db;
         _logger = logManager.GetClassLogger<TrieNodeLogShard>();
@@ -107,13 +112,28 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     internal byte[] FlushedGenerationKey { get; }
 
+    /// <summary>Metadata key of the newest generation a committed batch wrote to; its file must exist until merged.</summary>
+    internal byte[] GenerationKey { get; }
+
     internal TrieNodeLogLabel Label => _label;
 
+    /// <summary>Pins every live generation for a new reader; the reader must then <see cref="TrieNodeLogView.Bind"/> or dispose the view on this same thread.</summary>
     public TrieNodeLogView PinLiveGenerations()
     {
-        using Lock.Scope _ = _lock.EnterScope();
-        return new TrieNodeLogView(this, PinAllNoLock());
+        _retention.EnterReadLock();
+        try
+        {
+            using Lock.Scope _ = _lock.EnterScope();
+            return new TrieNodeLogView(this, PinAllNoLock());
+        }
+        catch
+        {
+            _retention.ExitReadLock();
+            throw;
+        }
     }
+
+    internal void EndOpening() => _retention.ExitReadLock();
 
     public TrieNodeLogWriteBatch StartWriteBatch()
     {
@@ -206,15 +226,29 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     internal void ClearExclusive()
     {
         using SemaphoreSlimExtensions.Scope _ = _flushLock.EnterScope();
-        using Lock.Scope __ = _lock.EnterScope();
-        foreach (TrieNodeLogGeneration generation in _generations)
+        // Forget the generation the database expects a file for before deleting the files, durably, so a crash in
+        // between is not taken for a lost log directory.
+        IDb metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
+        metadata.Remove(GenerationKey);
+        metadata.FlushOrThrow();
+
+        _retention.EnterWriteLock();
+        try
         {
-            generation.IsFlushed = true;
-            generation.Dispose();
+            using Lock.Scope __ = _lock.EnterScope();
+            foreach (TrieNodeLogGeneration generation in _generations)
+            {
+                generation.IsFlushed = true;
+                generation.Dispose();
+            }
+            _generations.Clear();
+            _active = null;
+            RefreshGaugesNoLock();
         }
-        _generations.Clear();
-        _active = null;
-        RefreshGaugesNoLock();
+        finally
+        {
+            _retention.ExitWriteLock();
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -235,6 +269,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         }
         _cancellation.Dispose();
         _merged.Dispose();
+        _retention.Dispose();
     }
 
     private ArrayPoolList<TrieNodeLogGeneration> PinAllNoLock()
@@ -467,11 +502,17 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             Metrics.TrieNodeLogFlushedGeneration[_label] = (long)generation.Number;
         }
 
-        using (_lock.EnterScope())
+        _retention.EnterWriteLock();
+        try
         {
+            using Lock.Scope _ = _lock.EnterScope();
             generation.IsFlushed = true;
             _generations.Remove(generation);
             RefreshGaugesNoLock();
+        }
+        finally
+        {
+            _retention.ExitWriteLock();
         }
         generation.Dispose(); // the log's own lease
         Metrics.TrieNodeLogMergeTime.Observe(Stopwatch.GetTimestamp() - sw);
@@ -514,6 +555,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         IReadOnlyKeyValueStore metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
         ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
         ulong flushedGeneration = ReadUInt64(metadata.Get(FlushedGenerationKey));
+        ulong committedGeneration = ReadUInt64(metadata.Get(GenerationKey));
         bool wiped = BasePersistence.ReadWipedForSync(metadata);
         _version = committedVersion;
         _nextGeneration = flushedGeneration + 1;
@@ -525,6 +567,17 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             if (ulong.TryParse(name.AsSpan(FilePrefix.Length), out ulong number)) files.Add((number, path));
         }
         files.Sort();
+
+        // The database holds nodes only up to the merged marker; the generations it confirmed beyond it live in
+        // this directory alone, so a database restored without it must not start with those nodes silently gone.
+        if (!wiped)
+        {
+            for (ulong number = flushedGeneration + 1; number <= committedGeneration; number++)
+            {
+                if (!files.Exists(file => file.Number == number))
+                    throw new InvalidDataException($"Trie node log shard {Name}: the database confirms generation {number} but its file is missing from {_basePath}; the trie node log directory must be kept or restored together with the database");
+            }
+        }
 
         foreach ((ulong number, string path) in files)
         {

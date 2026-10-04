@@ -18,25 +18,40 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<Trie
 
     private ulong _version;
     private ulong _flushedGeneration;
+    private bool _bound;
     private long _hits;
     private long _chainHits;
     private long _misses;
 
+    /// <summary>Binds the view to its snapshot's version; on the thread that pinned, which holds the shard's retention until this returns.</summary>
     public void Bind(IReadOnlyKeyValueStore metadata)
     {
-        _version = ReadUInt64(metadata.Get(shard.VersionKey));
-        _flushedGeneration = ReadUInt64(metadata.Get(shard.FlushedGenerationKey));
-        shard.PinNewer(pinned);
-
-        while (pinned.Count > 0 && pinned[0].Number <= _flushedGeneration)
+        try
         {
-            pinned[0].Dispose();
-            pinned.RemoveAt(0);
+            _version = ReadUInt64(metadata.Get(shard.VersionKey));
+            _flushedGeneration = ReadUInt64(metadata.Get(shard.FlushedGenerationKey));
+            shard.PinNewer(pinned);
+
+            while (pinned.Count > 0 && pinned[0].Number <= _flushedGeneration)
+            {
+                pinned[0].Dispose();
+                pinned.RemoveAt(0);
+            }
+        }
+        finally
+        {
+            _bound = true;
+            shard.EndOpening();
         }
     }
 
     public void Dispose()
     {
+        if (!_bound)
+        {
+            _bound = true;
+            shard.EndOpening();
+        }
         pinned.DisposeRecursive();
         if (_hits != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Hit, _hits);
         if (_chainHits != 0) Metrics.TrieNodeLogReads.AddBy(TrieNodeLogLabel.Chain, _chainHits);

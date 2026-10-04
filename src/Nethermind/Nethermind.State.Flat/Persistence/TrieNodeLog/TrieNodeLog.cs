@@ -55,7 +55,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             (StatePartitionName, StateColumns, config.TrieNodeLogStateBytes, config.TrieNodeLogStateShardCount, nameof(IFlatDbConfig.TrieNodeLogStateShardCount), 64),
             (StoragePartitionName, StorageColumns, config.TrieNodeLogStorageBytes, config.TrieNodeLogStorageShardCount, nameof(IFlatDbConfig.TrieNodeLogStorageShardCount), 32),
         ];
-        List<TrieNodeLogShard> shards = [];
+        using ArrayPoolListRef<TrieNodeLogShard> shards = new(PartitionCount);
         try
         {
             for (int partition = 0; partition < PartitionCount; partition++)
@@ -168,30 +168,26 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         // Pinned before the snapshot so a generation merged and deleted in between stays readable, bound after it
         // so the view serves exactly the log version the snapshot's metadata confirms.
         ArrayPoolList<TrieNodeLogView> views = new(_shards.Length);
-        foreach (TrieNodeLogShard shard in _shards) views.Add(shard.PinLiveGenerations());
-        IColumnDbSnapshot<FlatDbColumns> snapshot;
+        IColumnDbSnapshot<FlatDbColumns>? snapshot = null;
         try
         {
+            foreach (TrieNodeLogShard shard in _shards) views.Add(shard.PinLiveGenerations());
             snapshot = db.CreateSnapshot(flags);
+            IReadOnlyKeyValueStore metadata = snapshot.GetColumn(FlatDbColumns.Metadata);
+            foreach (TrieNodeLogView view in views) view.Bind(metadata);
+            return new View(this, snapshot, views);
         }
         catch
         {
             views.DisposeRecursive();
+            snapshot?.Dispose();
             throw;
         }
-
-        IReadOnlyKeyValueStore metadata = snapshot.GetColumn(FlatDbColumns.Metadata);
-        foreach (TrieNodeLogView view in views) view.Bind(metadata);
-        return new View(this, snapshot, views);
     }
 
     public ITrieNodeLog.IWriteBatch StartWriteBatch(IColumnsWriteBatch<FlatDbColumns> batch, bool bypass)
     {
-        if (bypass)
-        {
-            Drain();
-            return NullTrieNodeLog.Instance;
-        }
+        if (bypass) return NullTrieNodeLog.Instance;
 
         ArrayPoolList<TrieNodeLogWriteBatch> batches = new(_shards.Length);
         try
@@ -331,6 +327,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             }
             catch
             {
+                // Every append worker has stopped before its generation is truncated.
+                foreach (ShardWriter writer in _writers) writer.Dispose();
                 foreach (TrieNodeLogWriteBatch batch in _batches) batch.Abort();
                 throw;
             }

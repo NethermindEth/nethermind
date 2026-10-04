@@ -33,8 +33,8 @@ public interface ITrieNodeLog
     /// batch whose RocksDB write never happened.
     /// </param>
     /// <param name="bypass">
-    /// When true the log is drained first and the returned batch passes every column through unchanged; used for
-    /// sync and import batches, whose range scans must see every node in RocksDB.
+    /// When true the returned batch passes every column through unchanged; used for sync and import batches, which
+    /// <see cref="Drain"/> the log before taking the snapshot their range scans use, so those see every node in RocksDB.
     /// </param>
     IWriteBatch StartWriteBatch(IColumnsWriteBatch<FlatDbColumns> batch, bool bypass);
 

@@ -236,6 +236,11 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         Span<byte> versionBytes = stackalloc byte[8];
         BinaryPrimitives.WriteUInt64BigEndian(versionBytes, version);
         metadataBatch.PutSpan(shard.VersionKey, versionBytes);
+        if (_current is not null)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(versionBytes, _current.Number);
+            metadataBatch.PutSpan(shard.GenerationKey, versionBytes);
+        }
         Metrics.TrieNodeLogVersion[shard.Label] = (long)version;
     }
 

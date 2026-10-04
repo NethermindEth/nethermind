@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Persistence;
@@ -483,12 +485,115 @@ public class TrieNodeLogTests
         Assert.That(() => Batch(0, 1), Throws.InvalidOperationException.With.Message.Contains("restart"));
     }
 
+    [Test]
+    public void A_sync_batch_range_delete_removes_nodes_the_log_held()
+    {
+        WriteTop(0, 1, Rlp1);
+        using (IPersistence.IWriteBatch sync = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            sync.DeleteStateTrieNodeRange(new ValueHash256("0x1000000000000000000000000000000000000000000000000000000000000000"), new ValueHash256("0x2000000000000000000000000000000000000000000000000000000000000000"));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "the drain preceded the snapshot the range delete scanned");
+            Assert.That(ReadTop(), Is.Null);
+        }
+    }
+
+    [Test]
+    public void A_generation_committed_before_the_snapshot_and_merged_right_after_stays_readable()
+    {
+        // Between a reader pinning the live generations and binding to its snapshot: a batch commits into a new
+        // generation, the snapshot is taken, and a drain merges and deletes that generation.
+        Task drain = Task.CompletedTask;
+        IColumnsDb<FlatDbColumns> db = HookedDb(() =>
+        {
+            WriteTop(0, 1, Rlp1);
+            IColumnDbSnapshot<FlatDbColumns> snapshot = _db.CreateSnapshot();
+            drain = Task.Run(() => _log.Drain());
+            SpinWait.SpinUntil(() => drain.IsCompleted, TimeSpan.FromMilliseconds(500));
+            return snapshot;
+        });
+
+        using (ITrieNodeLog.IView view = _log.OpenView(db, ReaderFlags.None))
+        {
+            Assert.That(view.GetColumn(FlatDbColumns.StateTopNodes).Get(Bytes.FromHexString("0x123455")), Is.EqualTo(Rlp1)); // TopPath's column key
+        }
+        Assert.That(() => drain.Wait(TimeSpan.FromSeconds(5)), Throws.Nothing);
+    }
+
+    [Test]
+    public void A_view_that_fails_to_bind_releases_its_generations()
+    {
+        WriteTop(0, 1, Rlp1);
+        IColumnDbSnapshot<FlatDbColumns> snapshot = Substitute.For<IColumnDbSnapshot<FlatDbColumns>>();
+        snapshot.GetColumn(Arg.Any<FlatDbColumns>()).Returns(static _ => throw new IOException("metadata read failed"));
+
+        Assert.That(() => _log.OpenView(HookedDb(() => snapshot), ReaderFlags.None), Throws.TypeOf<IOException>());
+        _log.Drain();
+        Assert.That(LogFiles, Is.Empty.After(5000, 20), "a leaked lease would keep the merged file");
+    }
+
+    [Test]
+    public void A_failed_log_commit_releases_the_RocksDB_batch()
+    {
+        FailingMetadataBatch? batch = null;
+        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call => _db.GetColumnDb(call.Arg<FlatDbColumns>()));
+        db.CreateSnapshot().Returns(_ => _db.CreateSnapshot());
+        db.StartWriteBatch().Returns(_ => batch = new FailingMetadataBatch(_db.StartWriteBatch()));
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, _log);
+
+        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(State(0), State(1), WriteFlags.None);
+        writeBatch.SetStateTrieNode(TopPath, Rlp1);
+        Assert.That(writeBatch.Dispose, Throws.TypeOf<IOException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch!.Cleared, Is.True);
+            Assert.That(batch.Disposed, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task A_database_restored_without_its_log_directory_is_refused()
+    {
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+        foreach (string file in LogFiles()) File.Delete(file);
+
+        Assert.That(Open, Throws.TypeOf<InvalidDataException>().With.Message.Contains("missing"));
+    }
+
+    /// <summary>The test database with its snapshots supplied by <paramref name="snapshot"/>.</summary>
+    private IColumnsDb<FlatDbColumns> HookedDb(Func<IColumnDbSnapshot<FlatDbColumns>> snapshot)
+    {
+        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call => _db.GetColumnDb(call.Arg<FlatDbColumns>()));
+        db.CreateSnapshot().Returns(_ => snapshot());
+        db.CreateSnapshot(Arg.Any<bool>()).Returns(_ => snapshot());
+        return db;
+    }
+
     /// <summary>A RocksDB batch whose metadata column rejects every write.</summary>
     private sealed class FailingMetadataBatch(IColumnsWriteBatch<FlatDbColumns> inner) : IColumnsWriteBatch<FlatDbColumns>
     {
+        public bool Cleared { get; private set; }
+        public bool Disposed { get; private set; }
+
         public IWriteBatch GetColumnBatch(FlatDbColumns key) => key == FlatDbColumns.Metadata ? new FailingBatch() : inner.GetColumnBatch(key);
-        public void Clear() => inner.Clear();
-        public void Dispose() => inner.Dispose();
+
+        public void Clear()
+        {
+            Cleared = true;
+            inner.Clear();
+        }
+
+        public void Dispose()
+        {
+            Disposed = true;
+            inner.Dispose();
+        }
 
         private sealed class FailingBatch : IWriteBatch
         {

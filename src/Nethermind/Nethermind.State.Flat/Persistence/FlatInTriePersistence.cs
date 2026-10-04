@@ -68,6 +68,11 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
     {
+        // Sync and import batches scan the trie columns for range deletes, so the log is merged into RocksDB before
+        // the snapshot they scan is taken, and they bypass it.
+        bool bypass = from == StateId.Sync || to == StateId.Sync || flags.HasFlag(WriteFlags.DisableWAL);
+        if (bypass) trieNodeLog.Drain();
+
         IColumnDbSnapshot<FlatDbColumns> dbSnap = db.CreateSnapshot();
         StateId currentState = BasePersistence.ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
         if (from != StateId.Sync && to != StateId.Sync && currentState != from)
@@ -77,11 +82,10 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
         }
 
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
-        // Sync and import batches scan the trie columns for range deletes, so they go straight to RocksDB.
         ITrieNodeLog.IWriteBatch logBatch;
         try
         {
-            logBatch = trieNodeLog.StartWriteBatch(batch, bypass: from == StateId.Sync || to == StateId.Sync || flags.HasFlag(WriteFlags.DisableWAL));
+            logBatch = trieNodeLog.StartWriteBatch(batch, bypass);
         }
         catch
         {
@@ -127,6 +131,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
             {
                 // The log is made durable and its version put into this batch's metadata before RocksDB commits, and
                 // confirmed to the log only once RocksDB has committed and flushed its WAL.
+                bool batchWritten = false;
                 try
                 {
                     logBatch.Commit();
@@ -134,6 +139,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
                         BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
                     if (_rlpWrapSlots)
                         BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.FlatInTrie);
+                    batchWritten = true;
                     batch.Dispose();
                     if (!flags.HasFlag(WriteFlags.DisableWAL))
                     {
@@ -143,6 +149,12 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
                 }
                 finally
                 {
+                    if (!batchWritten)
+                    {
+                        // The log side failed, so nothing of this batch may reach RocksDB.
+                        batch.Clear();
+                        batch.Dispose();
+                    }
                     dbSnap.Dispose();
                     _adjuster.OnBatchDisposed();
                     logBatch.Dispose();
