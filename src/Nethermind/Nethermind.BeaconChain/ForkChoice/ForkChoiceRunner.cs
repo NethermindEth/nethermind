@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
@@ -57,6 +58,7 @@ public sealed class ForkChoiceRunner
     private readonly PubkeyCache _pubkeys;
     private readonly ForkChoiceStore _store;
     private readonly ProtoArrayForkChoice _protoArray;
+    private readonly CheckpointRef _bootstrapCheckpoint;
     private readonly HashSet<ulong> _equivocatingIndices = [];
     private readonly List<QueuedAttestation> _queuedAttestations = [];
     private readonly Dictionary<CheckpointRef, ForkedBeaconState> _checkpointStates = [];
@@ -242,6 +244,7 @@ public sealed class ForkChoiceRunner
         Time = GenesisTime + spec.SecondsPerSlot * anchor.StateSlot;
 
         CheckpointRef anchorCheckpoint = new(anchor.Epoch, anchor.Root);
+        _bootstrapCheckpoint = anchorCheckpoint;
         _store = new ForkChoiceStore(spec.SlotsPerEpoch, anchor.StateSlot, anchorCheckpoint, anchorCheckpoint);
         _protoArray = new ProtoArrayForkChoice(
             currentSlot: anchor.StateSlot,
@@ -1784,8 +1787,22 @@ public sealed class ForkChoiceRunner
 
     /// <summary>The spec's <c>get_checkpoint_block</c>: the ancestor of <paramref name="root"/> at the start of <paramref name="epoch"/>.</summary>
     private Hash256 GetCheckpointBlock(Hash256 root, ulong epoch) =>
-        _protoArray.GetAncestor(root, BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch))
-            ?? throw new ForkChoiceException($"Block {root} is unknown to fork choice");
+        _protoArray.GetAncestor(root, BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch)) ?? ResolveMissingCheckpointBlock(root, epoch);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Hash256 ResolveMissingCheckpointBlock(Hash256 root, ulong epoch)
+    {
+        if (epoch == _bootstrapCheckpoint.Epoch && IsBootstrapCheckpointDescendant(root, _bootstrapCheckpoint))
+            return _bootstrapCheckpoint.Root;
+        throw new ForkChoiceException($"Block {root} is unknown to fork choice");
+    }
+
+    /// <summary>Recognizes the trusted startup checkpoint while its epoch start precedes the retained block tree.</summary>
+    internal bool IsBootstrapCheckpointDescendant(Hash256 root, CheckpointRef checkpoint) =>
+        checkpoint == _bootstrapCheckpoint && _store.FinalizedCheckpoint == _bootstrapCheckpoint
+        && _protoArray.GetBlockSlot(checkpoint.Root) is ulong slot
+        && slot > BeaconStateAccessors.ComputeStartSlotAtEpoch(checkpoint.Epoch)
+        && _protoArray.IsDescendant(checkpoint.Root, root);
 
     /// <summary>
     /// The spec's <c>store.block_states[root]</c>, typed by the fork of the block's own slot so that a

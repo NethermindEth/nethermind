@@ -710,9 +710,8 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
 
             if (node.Parent is not int parentIndex)
             {
-                // Proto-array only prunes blocks prior to the finalized block, so a missing parent
-                // above the finalized slot means the chain conflicts with finality.
-                return false;
+                // A startup anchor after its epoch start has no retained parent at the synthetic checkpoint slot.
+                return node.Root == finalizedRoot && node.FinalizedCheckpoint == finalizedCheckpoint;
             }
 
             node = Nodes[parentIndex];
