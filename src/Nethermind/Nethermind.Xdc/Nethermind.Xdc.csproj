@@ -3,6 +3,7 @@
   <PropertyGroup>
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
   </PropertyGroup>
 
   <ItemGroup>
