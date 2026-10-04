@@ -20,7 +20,8 @@ BLOCK_FIELDS = (
     "dependencyHash", "receiptStatus", "gossipWaitSeconds", "buildSeconds", "importSeconds",
 )
 MIXED_FIELDS = ("nativeProofsVerified", "completedFinality", "peerPoolPropagationObserved", "freshMixedParentInOneBlock")
-LOG_NAMES = ("node1", "node2", "driver", "driver-sphincs64", "mixed-reuse", "mixed-merge")
+LOG_NAMES = ("node1", "node2", "driver", "driver-sphincs64", "mixed-reuse", "mixed-merge",
+             "mixed-reuse-observed", "mixed-merge-observed")
 SENSITIVE = re.compile(r"jwt|secret|private.?key|sender.?key|password|authorization", re.I)
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 JWT = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
@@ -142,7 +143,9 @@ def combined_report(root):
     larger_path = root / "runtime/driver-sphincs64/report.json"
     larger_started = larger_path.parent.exists()
     mixed_paths = (("Mixed root reuse", root / "runtime/mixed-reuse/report.json"),
-                   ("Mixed parent merge", root / "runtime/mixed-merge/report.json"))
+                   ("Mixed parent merge", root / "runtime/mixed-merge/report.json"),
+                   ("Mixed root reuse observation", root / "runtime/mixed-reuse-observed/report.json"),
+                   ("Mixed parent merge observation", root / "runtime/mixed-merge-observed/report.json"))
     mixed_started = any(path.parent.exists() for _, path in mixed_paths)
     phases = []
     if smoke_path.parent.exists() or not mixed_started:

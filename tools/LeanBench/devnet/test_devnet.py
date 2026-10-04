@@ -209,7 +209,38 @@ class DevnetChecks(unittest.TestCase):
             self.assertFalse(combined['completed'])
             self.assertEqual(combined['phases'][1]['error'], 'Unknown payload')
             self.assertEqual(combined['phases'][2]['state'], 'Waiting for the driver report')
-            self.assertEqual(status.LOG_NAMES[-2:], ('mixed-reuse', 'mixed-merge'))
+            self.assertEqual(status.LOG_NAMES[-4:], ('mixed-reuse', 'mixed-merge',
+                'mixed-reuse-observed', 'mixed-merge-observed'))
+            observed = root / 'runtime/mixed-merge-observed'
+            observed.mkdir()
+            (observed / 'report.json').write_text(json.dumps({'mode': 'merge', 'completed': True,
+                'nativeProofsVerified': True, 'completedFinality': True, 'blocks': []}))
+            recovered = status.combined_report(root)
+            self.assertEqual(recovered['phase'], 'Mixed parent merge observation')
+            self.assertTrue(recovered['completed'])
+            self.assertEqual(recovered['phases'][1]['error'], 'Unknown payload')
+
+    def test_mixed_export_preserves_failed_and_observed_reports_without_opening_payloads(self):
+        capture = load('capture')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, completed in [('mixed-merge', False), ('mixed-merge-observed', True)]:
+                base = root / 'runtime' / name
+                base.mkdir(parents=True)
+                (base / 'payload-000.json').write_text('not JSON: secret private payload')
+                (base / 'report.json').write_text(json.dumps({'completed': completed,
+                    'error': 'preserved failure' if not completed else None,
+                    'params': ['private Engine payload'], 'admissions': [],
+                    'blocks': [{'blockHash': '0x33', 'rawProof': 'private proof',
+                        'nativeInspection': {'originalNativeProofValid': True, 'inputs': ['private witness']}}]}))
+            encoded = json.dumps(capture.export_mixed(root))
+            for omitted in ('secret private payload', 'private Engine payload', 'private proof', 'private witness'):
+                self.assertNotIn(omitted, encoded)
+            runs = capture.export_mixed(root)['runs']
+            self.assertFalse(runs['mixed-merge']['completed'])
+            self.assertTrue(runs['mixed-merge-observed']['completed'])
+            self.assertEqual(runs['mixed-merge']['error'], 'preserved failure')
+            self.assertEqual(len(runs['mixed-merge-observed']['reportSha256']), 64)
 
     def test_prepare_uses_separate_identities_shared_genesis_without_local_jwt(self):
         prepare = load('prepare')

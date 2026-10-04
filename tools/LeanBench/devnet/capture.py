@@ -31,6 +31,44 @@ def dependency_set(requests):
     return {(item["scheme"], item["dataHash"], item["verificationKey"]) for request in requests for item in request["dependencies"]}
 
 
+def export_mixed(root):
+    evidence = {"schemaVersion": 1, "testKind": "real consensus mixed recursion", "runs": {}}
+    for directory in ("mixed-reuse", "mixed-merge", "mixed-reuse-observed", "mixed-merge-observed"):
+        path = root / "runtime" / directory / "report.json"
+        if not path.exists():
+            continue
+        data = read_json(path)
+        run = select(data, ("startedUtc", "finishedUtc", "mode", "sourceRevision", "driverSha256",
+                            "completed", "nativeProofsVerified", "completedFinality", "measurementScope",
+                            "manifests", "peerPoolPropagationObserved", "freshMixedParentInOneBlock",
+                            "receiptsCompletedUtc", "drainedNonces", "error", "originalReportSha256"))
+        run["reportSha256"] = digest(path)
+        profile = data.get("nativeProfile", {})
+        run["nativeProfile"] = select(profile, ("abi", "recursiveGuestKey", "bounds"))
+        run["admissions"] = []
+        for admission in data.get("admissions", []):
+            item = select(admission, ("transactionHash", "nonce", "offeredUtc", "accepted", "acceptedUtc",
+                                      "gossipSeenBeforeReceipt"))
+            item["receipts"] = [select(receipt, ("transactionHash", "status", "blockHash", "blockNumber", "gasUsed"))
+                                for receipt in admission.get("receipts", [])]
+            run["admissions"].append(item)
+        run["blocks"] = []
+        for block in data.get("blocks", []):
+            item = select(block, ("blockHash", "number", "slot", "proofBytes", "proofSha256", "payloadSha256",
+                                  "beaconAnchoredBoth", "finalizedBoth"))
+            item["aggregation"] = select(block.get("aggregation", {}),
+                ("rawDeclarations", "canonicalDependencies", "signatures", "genericStarks", "canonicalTriplesSha256"))
+            item["nativeInspection"] = select(block.get("nativeInspection", {}),
+                ("method", "mutation", "originalBlockHash", "blockHash", "canonicalHeaderHashMatches",
+                 "originalNativeProofValid", "resultingNativeProofValid", "signatures", "starks",
+                 "proofBytes", "blockDepsHash", "transactionHashes"))
+            run["blocks"].append(item)
+        run["finalityCheckpoints"] = [select(checkpoint, ("epoch", "root"))
+                                     for checkpoint in data.get("finalityCheckpoints", [])]
+        evidence["runs"][directory] = run
+    return evidence
+
+
 def export(root):
     evidence = {"schemaVersion": 1, "testKind": "functional two-Runner Engine driver", "runs": {}, "manifests": {}}
     for directory in ("driver", "driver-sphincs64-original-deadline", "driver-sphincs64"):
@@ -102,5 +140,6 @@ def export(root):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime-root", type=Path, required=True)
+    parser.add_argument("--mixed", action="store_true", help="Export fixed mixed-consensus reports without opening payload files")
     args = parser.parse_args()
-    print(json.dumps(export(args.runtime_root), indent=2, sort_keys=True))
+    print(json.dumps((export_mixed if args.mixed else export)(args.runtime_root), indent=2, sort_keys=True))
