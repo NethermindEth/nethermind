@@ -43,18 +43,24 @@ public class BeaconP2PLoopbackTests
     /// <remarks>Nethermind.Libp2p 1.0.0 kept such a dial as the pending dial of the peer id for good.</remarks>
     [Test]
     [CancelAfter(60_000)]
-    public async Task A_cancelled_dial_does_not_lose_the_peer(CancellationToken token)
+    public async Task A_cancelled_dial_does_not_lose_the_peer([Values] bool alreadyConnected, CancellationToken token)
     {
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
         await using BeaconP2P client = PeerSessionNodes.Create().P2P;
         await server.StartAsync(token);
         await client.StartAsync(token);
         Multiaddress address = PeerSessionNodes.LoopbackAddress(server);
+        ISession? established = alreadyConnected ? await PeerSessionNodes.DialAsync(client, server, token) : null;
         using CancellationTokenSource cancelled = new();
         await cancelled.CancelAsync();
 
         Assert.That(async () => await client.DialPeerAsync(address, cancelled.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the dial is cancelled");
-        Assert.That(await client.DialPeerAsync(address, token).WaitAsync(TimeSpan.FromSeconds(20), token), Is.Not.Null);
+        ISession resumed = await client.DialPeerAsync(address, token).WaitAsync(TimeSpan.FromSeconds(20), token);
+        Assert.That(resumed, Is.Not.Null);
+        if (alreadyConnected)
+        {
+            Assert.That(resumed, Is.SameAs(established), "a cancelled dial must leave the established session usable");
+        }
     }
 
     /// <summary>A dial still running when its host is disposed leaves no session open: disposal does not end a dial in flight.</summary>
