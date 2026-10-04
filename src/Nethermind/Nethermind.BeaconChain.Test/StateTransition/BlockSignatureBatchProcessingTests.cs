@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
@@ -199,55 +200,64 @@ public class BlockSignatureBatchProcessingTests
         }
     }
 
-    [Test]
-    public void One_bad_signature_anywhere_in_a_gloas_block_is_refused_with_the_serial_message([Values] SignedPart part)
+    public enum SignatureFailureOrder
     {
-        BeaconBlockGloas block = SignedGloasBlock();
-        Replace(block, part, WrongSignature);
-
-        AssertBothRefuse(RunGloas(block, batched: false), RunGloas(block, batched: true), SerialRefusal(part));
+        SignatureOnly,
+        SignatureBeforeOperation,
+        OperationBeforeSignature,
+        SignatureBeforeException,
     }
 
-    /// <summary>
-    /// Serial verification stops at the bad signature, so a later failing operation is never reached; the
-    /// batch reaches it first and must still report the signature.
-    /// </summary>
-    [Test]
-    public void A_bad_signature_ahead_of_a_failing_operation_is_the_reported_refusal(
-        [Values(SignedPart.Bid, SignedPart.Randao, SignedPart.ProposerSlashing1, SignedPart.ProposerSlashing2, SignedPart.AttesterSlashing1,
-            SignedPart.AttesterSlashing2, SignedPart.Attestation, SignedPart.BlsChange)] SignedPart part)
+    private static IEnumerable<TestCaseData> SignatureFailureCases()
     {
-        BeaconBlockGloas block = SignedGloasBlock();
-        Replace(block, part, WrongSignature);
-        block.Body!.PayloadAttestations![0].Data!.Slot = ParentSlot - 1;
-
-        AssertBothRefuse(RunGloas(block, batched: false), RunGloas(block, batched: true), SerialRefusal(part));
+        foreach (bool gloas in new[] { true, false })
+        {
+            SignedPart[] parts = gloas ? Enum.GetValues<SignedPart>() : FuluParts;
+            foreach (SignedPart part in parts)
+                yield return new TestCaseData(gloas, part, SignatureFailureOrder.SignatureOnly).SetName($"{(gloas ? "Gloas" : "Fulu")} refuses {part} with the serial message");
+            foreach (SignedPart part in parts.Where(part => part is not (SignedPart.PayloadAttestation or SignedPart.SyncAggregate) && (gloas || part != SignedPart.BlsChange)))
+                yield return new TestCaseData(gloas, part, SignatureFailureOrder.SignatureBeforeOperation).SetName($"{(gloas ? "Gloas" : "Fulu")} reports {part} before a later failing operation");
+            yield return new TestCaseData(gloas, SignedPart.SyncAggregate, SignatureFailureOrder.OperationBeforeSignature).SetName($"{(gloas ? "Gloas" : "Fulu")} reports a failed operation before a later signature");
+        }
+        yield return new TestCaseData(true, SignedPart.Randao, SignatureFailureOrder.SignatureBeforeException).SetName("Gloas reports RANDAO before a later unexpected exception");
     }
 
-    [Test]
-    public void A_failing_operation_ahead_of_a_bad_signature_is_the_reported_refusal()
+    /// <summary>Checks every signed operation and refusal ordering against real serial and batched processing.</summary>
+    /// <remarks>The batch must report an earlier signature failure even when it reaches a later operation failure or unexpected exception first.</remarks>
+    [TestCaseSource(nameof(SignatureFailureCases))]
+    public void Block_signature_failures_preserve_serial_refusal_order(bool gloas, SignedPart part, SignatureFailureOrder order)
     {
-        BeaconBlockGloas block = SignedGloasBlock();
-        block.Body!.Attestations![0].Data!.Index = 2;
-        Replace(block, SignedPart.SyncAggregate, WrongSignature);
-
-        AssertBothRefuse(RunGloas(block, batched: false), RunGloas(block, batched: true), "Attestation data index 2 must encode a payload status (0 or 1)");
+        if (!Enum.IsDefined(order)) throw new ArgumentOutOfRangeException(nameof(order));
+        Func<bool, Outcome> run;
+        string refusal = SerialRefusal(part);
+        if (gloas)
+        {
+            BeaconBlockGloas block = SignedGloasBlock();
+            if (order == SignatureFailureOrder.OperationBeforeSignature)
+            {
+                block.Body!.Attestations![0].Data!.Index = 2;
+                refusal = "Attestation data index 2 must encode a payload status (0 or 1)";
+            }
+            Replace(block, part, WrongSignature);
+            if (order == SignatureFailureOrder.SignatureBeforeOperation) block.Body!.PayloadAttestations![0].Data!.Slot = ParentSlot - 1;
+            if (order == SignatureFailureOrder.SignatureBeforeException) block.Body!.Attestations![0].Data = null;
+            run = batched => RunGloas(block, batched);
+        }
+        else
+        {
+            BeaconBlock block = SignedFuluBlock();
+            if (order == SignatureFailureOrder.OperationBeforeSignature)
+            {
+                block.Body!.Attestations = [StructurallyInvalidAttestation()];
+                refusal = "Attestation data index 1 must be zero";
+            }
+            Replace(block, part, WrongSignature);
+            if (order == SignatureFailureOrder.SignatureBeforeOperation) block.Body!.BlsToExecutionChanges![0].Message!.ValidatorIndex = ulong.MaxValue;
+            if (order == SignatureFailureOrder.SignatureBeforeException) throw new ArgumentOutOfRangeException(nameof(order));
+            run = batched => RunFulu(block, batched);
+        }
+        AssertBothRefuse(run(false), run(true), refusal);
     }
-
-    /// <summary>
-    /// The import path catches only <see cref="BeaconStateException"/>, so any other failure after a deferred bad
-    /// signature must still surface as that signature's refusal, as the serial path stops there.
-    /// </summary>
-    [Test]
-    public void A_bad_signature_ahead_of_an_unexpected_exception_is_the_reported_refusal()
-    {
-        BeaconBlockGloas block = SignedGloasBlock();
-        Replace(block, SignedPart.Randao, WrongSignature);
-        block.Body!.Attestations![0].Data = null;
-
-        AssertBothRefuse(RunGloas(block, batched: false), RunGloas(block, batched: true), SerialRefusal(SignedPart.Randao));
-    }
-
     [Test]
     public void Without_signature_verification_nothing_is_deferred_or_refused()
     {
@@ -440,37 +450,6 @@ public class BlockSignatureBatchProcessingTests
         }
     }
 
-    [Test]
-    public void One_bad_signature_anywhere_in_a_fulu_block_is_refused_with_the_serial_message([ValueSource(nameof(FuluParts))] SignedPart part)
-    {
-        BeaconBlock block = SignedFuluBlock();
-        Replace(block, part, WrongSignature);
-
-        AssertBothRefuse(RunFulu(block, batched: false), RunFulu(block, batched: true), SerialRefusal(part));
-    }
-
-    [Test]
-    public void A_bad_fulu_signature_ahead_of_a_failing_operation_is_the_reported_refusal(
-        [Values(SignedPart.Randao, SignedPart.ProposerSlashing1, SignedPart.ProposerSlashing2, SignedPart.AttesterSlashing1,
-            SignedPart.AttesterSlashing2, SignedPart.Attestation)] SignedPart part)
-    {
-        BeaconBlock block = SignedFuluBlock();
-        Replace(block, part, WrongSignature);
-        block.Body!.BlsToExecutionChanges![0].Message!.ValidatorIndex = ulong.MaxValue;
-
-        AssertBothRefuse(RunFulu(block, batched: false), RunFulu(block, batched: true), SerialRefusal(part));
-    }
-
-    [Test]
-    public void A_failing_fulu_operation_ahead_of_a_bad_signature_is_the_reported_refusal()
-    {
-        BeaconBlock block = SignedFuluBlock();
-        block.Body!.Attestations = [StructurallyInvalidAttestation()];
-        Replace(block, SignedPart.SyncAggregate, WrongSignature);
-
-        AssertBothRefuse(RunFulu(block, batched: false), RunFulu(block, batched: true), "Attestation data index 1 must be zero");
-    }
-
     /// <summary>
     /// A voluntary exit needs <c>SHARD_COMMITTEE_PERIOD</c> epochs of activity, which no block of these fixtures
     /// reaches, so its deferral is checked on the operation against a state moved past that period.
@@ -594,47 +573,35 @@ public class BlockSignatureBatchProcessingTests
         }
     }
 
-    /// <summary>
-    /// <c>verify_block_signature</c> runs before <c>process_block</c>, so a bad proposer signature is the refusal
-    /// whatever else in the block is bad.
-    /// </summary>
+    /// <summary>Checks that proposer verification precedes bad operation signatures and structural failures in both forks.</summary>
+    /// <remarks>Fulu must reject before its payload reaches the execution layer; proposer signatures are never deferred.</remarks>
     [Test]
-    public void A_bad_gloas_proposer_signature_is_refused_ahead_of_everything_the_block_does([Values] bool badOperationSignature, [Values] bool failingOperation)
+    public void A_bad_proposer_signature_precedes_operations_and_execution(
+        [Values] bool gloas, [Values] bool badOperationSignature, [Values] bool failingOperation)
     {
-        BeaconBlockGloas block = SignedGloasBlock();
-        if (badOperationSignature)
-            Replace(block, SignedPart.Attestation, WrongSignature);
-        if (failingOperation)
-            block.Body!.PayloadAttestations![0].Data!.Slot = ParentSlot - 1;
-
-        SignedBeaconBlockGloas signedBlock = new() { Message = block, Signature = WrongSignature };
-
-        Assert.That(ApplyGloasBlock(signedBlock), Is.EqualTo($"Invalid proposer signature for the block at slot {BlockSlot}"));
-    }
-
-    /// <summary>
-    /// Fulu <c>process_block</c> sends the payload to the execution layer, so the proposer signature is verified
-    /// before it, not deferred: a block no proposer signed must never reach the execution layer.
-    /// </summary>
-    [Test]
-    public void A_bad_fulu_proposer_signature_is_refused_before_the_payload_reaches_the_execution_layer([Values] bool badRandao, [Values] bool failingAttestation)
-    {
-        BeaconBlock block = SignedFuluBlock();
-        if (badRandao)
-            block.Body!.RandaoReveal = WrongSignature;
-        if (failingAttestation)
-            block.Body!.Attestations = [StructurallyInvalidAttestation()];
-
-        SignedBeaconBlock signedBlock = new() { Message = block, Signature = WrongSignature };
-        CountingNotifier notifier = new();
-
+        string? refusal;
+        CountingNotifier? notifier = null;
+        if (gloas)
+        {
+            BeaconBlockGloas block = SignedGloasBlock();
+            if (badOperationSignature) Replace(block, SignedPart.Attestation, WrongSignature);
+            if (failingOperation) block.Body!.PayloadAttestations![0].Data!.Slot = ParentSlot - 1;
+            refusal = ApplyGloasBlock(new SignedBeaconBlockGloas { Message = block, Signature = WrongSignature });
+        }
+        else
+        {
+            BeaconBlock block = SignedFuluBlock();
+            if (badOperationSignature) block.Body!.RandaoReveal = WrongSignature;
+            if (failingOperation) block.Body!.Attestations = [StructurallyInvalidAttestation()];
+            notifier = new CountingNotifier();
+            refusal = ApplyFuluBlock(new SignedBeaconBlock { Message = block, Signature = WrongSignature }, notifier);
+        }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ApplyFuluBlock(signedBlock, notifier), Is.EqualTo($"Invalid proposer signature for the block at slot {FuluBlockSlot}"));
-            Assert.That(notifier.Calls, Is.Zero);
+            Assert.That(refusal, Is.EqualTo($"Invalid proposer signature for the block at slot {(gloas ? BlockSlot : FuluBlockSlot)}"));
+            if (notifier is not null) Assert.That(notifier.Calls, Is.Zero);
         }
     }
-
     [Test]
     public void A_bad_operation_signature_behind_a_valid_proposer_signature_is_refused_through_the_state_transition()
     {
