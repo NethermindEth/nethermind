@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
+using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test.Api;
@@ -372,8 +373,7 @@ public class BeaconApiHostTests
         _statusHolder.JustifiedRoot = root;
 
         HttpResponseMessage justified = await _client.GetAsync("/eth/v1/beacon/headers/justified");
-        string raw = await justified.Content.ReadAsStringAsync();
-        Assert.That(justified.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(justified);
         Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").GetProperty("root").GetString(), Is.EqualTo(root.ToString()));
     }
 
@@ -516,14 +516,4 @@ public class BeaconApiHostTests
             }
         }
     }
-
-    private static Hash256 TestRoot(byte marker)
-    {
-        byte[] bytes = new byte[32];
-        bytes[31] = marker;
-        return new Hash256(bytes);
-    }
-
-    private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response) =>
-        JsonDocument.Parse(await response.Content.ReadAsStringAsync());
 }

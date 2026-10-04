@@ -140,9 +140,7 @@ public class BeaconStatesQueuesTests
         };
 
         using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{stateId}/{endpoint}", accept);
-        Assert.That(response.StatusCode, Is.EqualTo(expected));
-        using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
-        Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo((int)expected));
+        await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
     /// <summary>
@@ -173,8 +171,7 @@ public class BeaconStatesQueuesTests
 
     private static async Task<JsonElement> ReadVersionedEnvelope(HttpResponseMessage response, bool expectedFinalized)
     {
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
         Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
 

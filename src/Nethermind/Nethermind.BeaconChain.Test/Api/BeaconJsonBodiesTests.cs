@@ -55,8 +55,7 @@ public class BeaconJsonBodiesTests
         _host.Store.SetCanonicalRoot(Slot, root);
 
         HttpResponseMessage response = await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
         Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
 
@@ -317,8 +316,7 @@ public class BeaconJsonBodiesTests
         }
 
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement body = JsonDocument.Parse(raw).RootElement;
         using (Assert.EnterMultipleScope())
         {
@@ -341,8 +339,7 @@ public class BeaconJsonBodiesTests
         _host.Store.SetCanonicalRoot(Slot + 2, childB);
 
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
         JsonElement body = JsonDocument.Parse(raw).RootElement;
         Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False);
@@ -378,8 +375,7 @@ public class BeaconJsonBodiesTests
         _host.Db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(parent.Bytes, [9]);
 
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement data = JsonDocument.Parse(raw).RootElement.GetProperty("data");
         Assert.That(data.GetArrayLength(), Is.EqualTo(1));
         Assert.That(data[0].GetProperty("root").GetString(), Is.EqualTo(child.ToString()));
@@ -470,8 +466,7 @@ public class BeaconJsonBodiesTests
         _host.Store.PutBlock(parent, parentBlock);
 
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
-        string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").EnumerateArray().Select(entry => entry.GetProperty("root").GetString()),
             Is.EqualTo(new[] { child.ToString() }));
     }
@@ -533,8 +528,7 @@ public class BeaconJsonBodiesGloasTests
         _host.Store.PutForkedBlock(gloasChild, new ForkedSignedBeaconBlock.OfGloas(SignedBeaconBlockBuilders.CreateMinimalGloasBlock(gloasSlot + 1, parent)));
 
         HttpResponseMessage mixed = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", "application/json");
-        string raw = await mixed.Content.ReadAsStringAsync();
-        Assert.That(mixed.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(mixed);
         Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(2));
         Assert.That(mixed.Headers.Contains("Eth-Consensus-Version"), Is.False, "children straddle the Gloas boundary, so no single fork name is true of the list");
 
