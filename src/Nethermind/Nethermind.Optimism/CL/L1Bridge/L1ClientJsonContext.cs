@@ -10,11 +10,12 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Optimism.CL.L1Bridge;
 
-/// <summary>Metadata for the responses the L1 bridge reads through the JSON-RPC client.</summary>
+/// <summary>Metadata for the responses the L1 bridge reads through the JSON-RPC client and the beacon API.</summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(JsonRpcResponse<ReceiptForRpc[]>))]
 [JsonSerializable(typeof(JsonRpcResponse<L1Block?>))]
 [JsonSerializable(typeof(JsonRpcResponse<ulong?>))]
+[JsonSerializable(typeof(EthereumBeaconApi.GetBlobSidecarsResponse))]
 internal partial class L1ClientJsonContext : JsonSerializerContext
 {
     [ModuleInitializer]
