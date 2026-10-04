@@ -24,6 +24,8 @@ namespace Nethermind.Core.Test;
 /// uncovered still serializes through a covered collection interface it implements, so a non-public one with such an interface,
 /// such as a compiler-generated iterator, is not reported; a public collection must be rooted, as its interface may change the JSON shape.
 /// NUnit runs only the set-up fixtures declared in the assembly under test, so each test assembly derives its own.
+/// The serializer caches metadata per options, so a type first resolved as part of a test-only shape is not checked again when
+/// production code later serializes it in the same process; keep test-only shapes to types production code does not write.
 /// </remarks>
 /// <param name="testOnly">Uncovered types only test code serializes, each with the reason no production path needs them.</param>
 public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, string>[] testOnly)
@@ -40,7 +42,7 @@ public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, 
         {
             if (IsTestOwned(type) || testOnly.Any(t => t.ContainsKey(type)))
             {
-                // Members of a shape only tests serialize are asked for next; they are part of that shape, not production roots.
+                // The members of a shape only tests serialize are asked for next, so they are exempt for the rest of the run.
                 AddMembers(type, options);
             }
             else if (!IsClearScript(type) && !IsTestShapeMember(type))
@@ -71,22 +73,40 @@ public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, 
 
         private void AddMembersLocked(Type root, JsonSerializerOptions options)
         {
+            if (_testShapeMembers.Contains(root))
+            {
+                return;
+            }
+
+            // Collected apart and added at the end, so a walk that throws leaves no shape half exempt.
             DefaultJsonTypeInfoResolver reflection = new();
+            HashSet<Type> members = [];
             Queue<Type> pending = new([root]);
             while (pending.TryDequeue(out Type? type))
             {
-                if (!_testShapeMembers.Add(type) ||
+                if (_testShapeMembers.Contains(type) || !members.Add(type) ||
                     options.TypeInfoResolverChain.OfType<JsonSerializerContext>().Any(c => ((IJsonTypeInfoResolver)c).GetTypeInfo(type, options) is not null))
                 {
                     continue;
                 }
 
                 JsonTypeInfo info = reflection.GetTypeInfo(type, options);
-                foreach (JsonPropertyInfo property in info.Properties) pending.Enqueue(property.PropertyType);
+                // A member that is never written asks for no metadata; one a converter writes may, through the options.
+                foreach (JsonPropertyInfo property in info.Properties.Where(static p => !IsIgnored(p)))
+                {
+                    pending.Enqueue(property.PropertyType);
+                }
+
                 if (info.ElementType is { } elementType) pending.Enqueue(elementType);
                 if (info.KeyType is { } keyType) pending.Enqueue(keyType);
             }
+
+            _testShapeMembers.UnionWith(members);
         }
+
+        private static bool IsIgnored(JsonPropertyInfo property) =>
+            property.AttributeProvider?.GetCustomAttributes(typeof(JsonIgnoreAttribute), true)
+                .Any(static a => ((JsonIgnoreAttribute)a).Condition == JsonIgnoreCondition.Always) == true;
     }
 
     [OneTimeSetUp]
@@ -95,17 +115,22 @@ public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, 
     [OneTimeTearDown]
     public void TearDown()
     {
-        string? path = Environment.GetEnvironmentVariable("JSON_COVERAGE_OUT");
-        if (path is not null)
+        try
         {
-            File.WriteAllLines(path, Uncovered.Select(static kv => $"{kv.Key}{Environment.NewLine}{kv.Value}{Environment.NewLine}----"));
+            string? path = Environment.GetEnvironmentVariable("JSON_COVERAGE_OUT");
+            if (path is not null)
+            {
+                File.WriteAllLines(path, Uncovered.Select(static kv => $"{kv.Key}{Environment.NewLine}{kv.Value}{Environment.NewLine}----"));
+            }
         }
-
-        // Production code that catches the exception, such as a fallback on a failed request, would otherwise hide the type.
-        // The test platform ignores failures in assembly teardown, so only ending the process fails the run.
-        if (!Uncovered.IsEmpty)
+        finally
         {
-            Environment.FailFast($"Types without source-generated JSON metadata: {string.Join(", ", Uncovered.Select(static kv => kv.Key))}");
+            // A miss that production code catches, such as a fallback on a failed request, fails no test. The test platform ignores
+            // failures in assembly teardown, so only ending the process fails that run; a run with failed tests already fails.
+            if (!Uncovered.IsEmpty && TestContext.CurrentContext.Result.FailCount == 0)
+            {
+                Environment.FailFast($"Types without source-generated JSON metadata: {string.Join(", ", Uncovered.Select(static kv => kv.Key))}");
+            }
         }
     }
 
