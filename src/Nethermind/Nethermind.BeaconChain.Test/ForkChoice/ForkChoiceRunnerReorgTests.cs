@@ -165,112 +165,70 @@ public class ForkChoiceRunnerReorgTests
             Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
     }
 
-    /// <summary>
-    /// The late-head branch: a late, vote-less slot-2 head on a slot-1 parent is re-orged for a slot-3 proposal only
-    /// when <c>is_parent_strong</c> holds (the parent has one vote) and the clock is at most
-    /// <c>get_proposer_reorg_cutoff_ms</c> (2000 ms of a 12 s slot) into the slot.
-    /// </summary>
-    [TestCase(0ul, true, true)]
-    [TestCase(2ul, true, true)]
-    [TestCase(3ul, true, false)]
-    [TestCase(0ul, false, false)]
-    public void Late_weak_head_is_reorged_only_while_proposing_on_time(ulong secondsIntoSlot, bool parentVoted, bool expectReorg)
+    private abstract record LateHeadCase(string Name, bool Reorg);
+    private sealed record ProposalTime(ulong Seconds, bool ParentVoted, bool Expected) : LateHeadCase($"Late head at proposal +{Seconds}s, parent voted {ParentVoted}", Expected);
+    private sealed record ArrivalTime(ulong Seconds, bool Expected) : LateHeadCase($"Head arrives at +{Seconds}s", Expected);
+    private sealed record EpochBoundary(string CaseName, ulong ParentSlot, ulong VoteSlot) : LateHeadCase(CaseName, true);
+    private sealed record ParentStrength(string CaseName, long TotalOffsetGwei, bool Expected) : LateHeadCase(CaseName, Expected);
+    private static readonly LateHeadCase[] LateHeadScenarios =
+    [
+        new ProposalTime(0, true, true),
+        new ProposalTime(2, true, true),
+        new ProposalTime(3, true, false),
+        new ProposalTime(0, false, false),
+        new ArrivalTime(3, false),
+        new ArrivalTime(4, true),
+        new EpochBoundary("proposal_in_the_last_slot_of_the_epoch", 29, 29),
+        new EpochBoundary("proposal_in_the_first_slot_of_the_next_epoch", 30, 31),
+        new ParentStrength("score_above_the_threshold_is_strong", -3200, true),
+        new ParentStrength("score_equal_to_the_threshold_is_not_strong", 0, false),
+        new ParentStrength("score_below_the_threshold_is_not_strong", 3200, false),
+    ];
+    private static IEnumerable<TestCaseData> LateHeadCases()
     {
-        UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = CreateRunner(chain);
-        (UnsignedChain.ChainBlock parent, UnsignedChain.ChainBlock head) = LateHeadOnParent(chain, runner, parentVoted, secondsIntoSlot);
-
-        Assert.That(runner.GetProposerHead(head.Root, proposalSlot: 3), Is.EqualTo(expectReorg ? parent.Root : head.Root));
+        for (int i = 0; i < LateHeadScenarios.Length; i++) yield return new TestCaseData(i).SetName(LateHeadScenarios[i].Name);
     }
 
-    /// <summary>
-    /// <c>record_block_timeliness</c> times the head by the store time it arrived at: before <c>get_attestation_due_ms</c>
-    /// (3999 ms of a 12 s slot) it is timely and boosted, so <c>is_head_late</c> keeps it; from 4 s it is late, unboosted
-    /// and re-orged. The store time has whole-second resolution, so 3 s and 4 s straddle the deadline.
-    /// </summary>
-    [TestCase(3ul, false)]
-    [TestCase(4ul, true)]
-    public void Head_arriving_after_the_attestation_deadline_is_unboosted_and_reorged(ulong headArrivalSeconds, bool expectReorg)
+    /// <summary>Checks late-head reorg cutoffs with real votes and justified balances.</summary>
+    /// <remarks>
+    /// Arrival at 3 s is timely and 4 s is late; proposing at 2 s is allowed and 3 s is past the cutoff.
+    /// specs/fulu/fork-choice.md (EIP-7917) permits reorg across an epoch boundary; slot 30 uses slot 31's committee because its own is empty.
+    /// A parent's score must exceed its threshold strictly.
+    /// </remarks>
+    [TestCaseSource(nameof(LateHeadCases))]
+    public void Late_head_reorg_preserves_arrival_proposal_epoch_and_parent_strength_boundaries(int index)
     {
+        LateHeadCase test = LateHeadScenarios[index];
         UnsignedChain chain = UnsignedChain.Create();
-        ForkChoiceRunner runner = CreateRunner(chain);
-        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
-        UnsignedChain.ChainBlock head = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0xa2);
-        TickTo(runner, slot: 1);
-        Import(runner, parent);
-        TickTo(runner, slot: 2, headArrivalSeconds);
-        Import(runner, head);
-        Hash256 boostRoot = runner.ProposerBoostRoot;
-        TickTo(runner, slot: 3);
-        runner.OnAttestation(chain.Vote(1, parent.Root), verifySignature: false);
-
-        Assert.Multiple(() =>
+        ulong parentSlot = test is EpochBoundary boundary ? boundary.ParentSlot : 1;
+        ulong voteSlot = test is EpochBoundary epoch ? epoch.VoteSlot : 1;
+        if (test is EpochBoundary) Assert.That(chain.Committee(voteSlot), Is.Not.Empty, "fixture bug: the parent's vote needs a committee member");
+        IForkChoiceStateProvider? states = null;
+        if (test is ParentStrength strength)
         {
-            Assert.That(boostRoot, Is.EqualTo(expectReorg ? Hash256.Zero : head.Root), "only a timely head is boosted");
-            Assert.That(runner.GetHead(), Is.EqualTo(head.Root), "fixture bug: the head must be the slot-2 block");
-            Assert.That(runner.GetProposerHead(head.Root, proposalSlot: 3), Is.EqualTo(expectReorg ? parent.Root : head.Root));
-        });
-    }
-
-    /// <summary>
-    /// Fulu's <c>get_proposer_head</c> (specs/fulu/fork-choice.md, EIP-7917) has no <c>is_shuffling_stable</c>, so a late,
-    /// weak head in the last slot of an epoch is re-orged for a proposal in the first slot of the next, as one slot earlier.
-    /// The slot-30 committee is empty, so the parent's vote there comes from the slot-31 committee.
-    /// </summary>
-    [TestCase(29ul, 29ul, TestName = "proposal_in_the_last_slot_of_the_epoch")]
-    [TestCase(30ul, 31ul, TestName = "proposal_in_the_first_slot_of_the_next_epoch")]
-    public void Late_weak_head_is_reorged_on_either_side_of_an_epoch_boundary(ulong parentSlot, ulong voteSlot)
-    {
-        UnsignedChain chain = UnsignedChain.Create();
-        Assert.That(chain.Committee(voteSlot), Is.Not.Empty, "fixture bug: the parent's vote needs a committee member");
-        ForkChoiceRunner runner = CreateRunner(chain);
-        (UnsignedChain.ChainBlock parent, UnsignedChain.ChainBlock head) = LateHeadOnParent(chain, runner, parentVoted: true, secondsIntoSlot: 0, parentSlot, voteSlot);
-
-        Assert.That(runner.GetProposerHead(head.Root, proposalSlot: parentSlot + 2), Is.EqualTo(parent.Root));
-    }
-
-    /// <summary>
-    /// <c>is_parent_strong</c> needs the parent's score strictly above the threshold. A heavy validator outside the
-    /// voting committee sets the justified total to 640 ETH plus <paramref name="totalOffsetGwei"/>, which puts the
-    /// threshold exactly on the parent's single 32 ETH vote at offset 0, and 160 Gwei either side of it otherwise.
-    /// </summary>
-    [TestCase(-3200L, true, TestName = "score_above_the_threshold_is_strong")]
-    [TestCase(0L, false, TestName = "score_equal_to_the_threshold_is_not_strong")]
-    [TestCase(3200L, false, TestName = "score_below_the_threshold_is_not_strong")]
-    public void Parent_is_strong_only_strictly_above_the_threshold(long totalOffsetGwei, bool expectReorg)
-    {
-        const ulong Gwei = 1_000_000_000;
-        UnsignedChain chain = UnsignedChain.Create();
-        Validator[] registry = chain.Anchor.AnchorState.Validators!;
-        Assert.That(registry, Has.Length.EqualTo(16).And.All.Property(nameof(Validator.EffectiveBalance)).EqualTo(32 * Gwei), "fixture bug: the registry must be 16 validators of 32 ETH");
-        Assert.That(chain.Committee(1), Has.Length.EqualTo(1), "fixture bug: the parent's vote must be a single validator");
-        ulong ballastBalance = (ulong)((long)(160 * Gwei) + totalOffsetGwei);
-        ForkChoiceRunner runner = CreateRunner(chain, new AnchorWithBallast(chain, ballastBalance));
-        (UnsignedChain.ChainBlock parent, UnsignedChain.ChainBlock head) = LateHeadOnParent(chain, runner, parentVoted: true, secondsIntoSlot: 0);
-
-        Assert.That(runner.GetProposerHead(head.Root, proposalSlot: 3), Is.EqualTo(expectReorg ? parent.Root : head.Root));
-    }
-
-    /// <summary>
-    /// A late, vote-less head at <paramref name="parentSlot"/> + 1 on a timely parent, with the clock <paramref name="secondsIntoSlot"/>
-    /// into the slot after the head. The parent's vote is cast by the committee of <paramref name="voteSlot"/>, the parent's slot by default.
-    /// </summary>
-    private static (UnsignedChain.ChainBlock Parent, UnsignedChain.ChainBlock Head) LateHeadOnParent(UnsignedChain chain, ForkChoiceRunner runner, bool parentVoted, ulong secondsIntoSlot, ulong parentSlot = 1, ulong? voteSlot = null)
-    {
-        ulong headSlot = parentSlot + 1;
+            const ulong Gwei = 1_000_000_000;
+            Validator[] registry = chain.Anchor.AnchorState.Validators!;
+            Assert.That(registry, Has.Length.EqualTo(16).And.All.Property(nameof(Validator.EffectiveBalance)).EqualTo(32 * Gwei), "fixture bug: the registry must be 16 validators of 32 ETH");
+            Assert.That(chain.Committee(1), Has.Length.EqualTo(1), "fixture bug: the parent's vote must be a single validator");
+            states = new AnchorWithBallast(chain, (ulong)((long)(160 * Gwei) + strength.TotalOffsetGwei));
+        }
+        ForkChoiceRunner runner = CreateRunner(chain, states);
         UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: parentSlot, payloadHashByte: 0xa1);
-        UnsignedChain.ChainBlock head = chain.Extend(parent.Root, slot: headSlot, payloadHashByte: 0xa2);
+        UnsignedChain.ChainBlock head = chain.Extend(parent.Root, slot: parentSlot + 1, payloadHashByte: 0xa2);
         TickTo(runner, slot: parentSlot);
         Import(runner, parent);
-        // Past the attestation deadline of the head's slot, so the head is late and gets no boost.
-        TickTo(runner, slot: headSlot, secondsIntoSlot: 5);
+        TickTo(runner, slot: parentSlot + 1, test is ArrivalTime arrival ? arrival.Seconds : 5);
         Import(runner, head);
-        TickTo(runner, slot: headSlot + 1, secondsIntoSlot);
-        if (parentVoted) runner.OnAttestation(chain.Vote(voteSlot ?? parentSlot, parent.Root), verifySignature: false);
-        Assert.That(runner.GetHead(), Is.EqualTo(head.Root), "fixture bug: the late block must be the head");
-        return (parent, head);
+        Hash256 boostRoot = runner.ProposerBoostRoot;
+        TickTo(runner, slot: parentSlot + 2, test is ProposalTime proposal ? proposal.Seconds : 0);
+        if (test is not ProposalTime { ParentVoted: false }) runner.OnAttestation(chain.Vote(voteSlot, parent.Root), verifySignature: false);
+        using (Assert.EnterMultipleScope())
+        {
+            if (test is ArrivalTime) Assert.That(boostRoot, Is.EqualTo(test.Reorg ? Hash256.Zero : head.Root), "only a timely head is boosted");
+            Assert.That(runner.GetHead(), Is.EqualTo(head.Root), "fixture bug: the block must be the head");
+            Assert.That(runner.GetProposerHead(head.Root, proposalSlot: parentSlot + 2), Is.EqualTo(test.Reorg ? parent.Root : head.Root));
+        }
     }
-
     /// <summary>Two timely slot-1 blocks A and B by the same proposer, with the clock at the start of slot 2 so neither holds the boost.</summary>
     private static (UnsignedChain Chain, ForkChoiceRunner Runner, UnsignedChain.ChainBlock A, UnsignedChain.ChainBlock B) EquivocatingHeadAtSlotTwo()
     {
