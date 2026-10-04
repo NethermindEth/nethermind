@@ -63,13 +63,14 @@ namespace Nethermind.Consensus.Processing
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
+                HashSet<AddressAsKey>? unpaidFrameTxSenders = null;
                 int i = 0;
                 foreach (Transaction currentTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
+                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx, ref unpaidFrameTxSenders);
                     if (action == TxAction.Stop) break;
 
                     consideredTx.Add(currentTx);
@@ -97,8 +98,21 @@ namespace Nethermind.Consensus.Processing
                 int index,
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions,
-                HashSet<Transaction> transactionsInBlock)
+                HashSet<Transaction> transactionsInBlock,
+                ref HashSet<AddressAsKey>? unpaidFrameTxSenders)
             {
+                // VERIFY may read only tx.sender's own state, so once one of a sender's frame transactions fails
+                // validation in this build, that state has moved since the pool simulated it and the sender's other
+                // frame transactions would likely fail too, each burning up to MAX_VERIFY_GAS unpaid. They are not
+                // evicted: a later head may make them valid again.
+                if (currentTx.SupportsFrames && unpaidFrameTxSenders?.Contains(currentTx.SenderAddress!) == true)
+                {
+                    if (_logger.IsDebug)
+                        DebugSkipReason(currentTx, new AddingTxEventArgs(transactionsInBlock.Count, currentTx, block, transactionsInBlock)
+                            .Set(TxAction.Skip, "Sender's earlier frame transaction in this block failed validation"));
+                    return TxAction.Skip;
+                }
+
                 AddingTxEventArgs args = txPicker.CanAddTransaction(
                     block,
                     currentTx,
@@ -126,7 +140,11 @@ namespace Nethermind.Consensus.Processing
                     {
                         balManager.Rollback();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
-                        EvictUnpaidFrameTx(currentTx, result);
+                        if (IsUnpaidFrameTx(currentTx, result))
+                        {
+                            (unpaidFrameTxSenders ??= []).Add(currentTx.SenderAddress!);
+                            EvictUnpaidFrameTx(currentTx, result);
+                        }
                     }
                 }
 
@@ -145,11 +163,12 @@ namespace Nethermind.Consensus.Processing
             /// the sender must resubmit if the transaction becomes valid again.</remarks>
             private void EvictUnpaidFrameTx(Transaction tx, in TransactionResult result)
             {
-                if (!tx.SupportsFrames || result.Error != TransactionResult.ErrorType.MalformedTransaction) return;
-
                 if (txPool.EvictTransaction(tx) && _logger.IsDebug)
                     _logger.Debug($"Evicted frame transaction {tx.ToShortString()} from the pool: {result.ErrorDescription}.");
             }
+
+            private static bool IsUnpaidFrameTx(Transaction tx, in TransactionResult result) =>
+                tx.SupportsFrames && result.Error == TransactionResult.ErrorType.MalformedTransaction;
         }
     }
 }

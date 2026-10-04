@@ -19,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
@@ -561,11 +562,7 @@ namespace Nethermind.Blockchain.Test
             };
             frameTx.Hash = frameTx.CalculateHash();
 
-            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-            ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
-                BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine,
-                new EthereumCodeInfoRepository(stateProvider), LimboLogs.Instance);
-            CountingTxProcessorAdapter adapter = new(new BuildUpTransactionProcessorAdapter(transactionProcessor));
+            CountingTxProcessorAdapter adapter = new(new BuildUpTransactionProcessorAdapter(CreateTransactionProcessor(specProvider, stateProvider)));
 
             // Stands in for the pool: once evicted, the source stops offering the transaction, which is
             // what turns one eviction into one execution.
@@ -612,13 +609,113 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
+        [Test]
+        public void Frame_transactions_from_a_sender_that_failed_verify_are_skipped_for_the_rest_of_the_build()
+        {
+            IReleaseSpec spec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true };
+            ISpecProvider specProvider = new TestSpecProvider(spec);
+
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 100.Ether);
+            stateProvider.InsertCode(TestItem.AddressA, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done, spec);
+            stateProvider.CreateAccount(TestItem.AddressB, 100.Ether);
+            stateProvider.InsertCode(TestItem.AddressB,
+                Prepare.EvmCode.PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done,
+                spec);
+            stateProvider.Commit(spec);
+            stateProvider.CommitTree(0);
+
+            // Distinct nonce keys keep both of the sender's transactions executable at once.
+            Transaction failing = VerifyOnlyFrameTx(TestItem.AddressA, [1]);
+            Transaction sameSender = VerifyOnlyFrameTx(TestItem.AddressA, [2]);
+            Transaction otherSender = VerifyOnlyFrameTx(TestItem.AddressB, null);
+
+            CountingTxProcessorAdapter adapter = new(new BuildUpTransactionProcessorAdapter(CreateTransactionProcessor(specProvider, stateProvider)));
+            List<Transaction> evicted = [];
+            ITxPool txPool = Substitute.For<ITxPool>();
+            txPool.EvictTransaction(Arg.Do<Transaction>(evicted.Add)).Returns(true);
+
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                adapter,
+                stateProvider,
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider),
+                LimboLogs.Instance,
+                NullBlockAccessListManager.Instance,
+                txPool);
+
+            Transaction[] included = ProduceBlock(txExecutor, spec, 1, failing, otherSender, sameSender);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(adapter.Executed, Is.EqualTo(new[] { failing, otherSender }), "the sender's later frame transaction must not execute");
+                Assert.That(evicted, Is.EqualTo(new[] { failing }), "a skipped transaction is left to the pool's head revalidation");
+                Assert.That(included, Is.EqualTo(new[] { otherSender }));
+            }
+
+            adapter.Executed.Clear();
+            ProduceBlock(txExecutor, spec, 2, sameSender);
+            Assert.That(adapter.Executed, Is.EqualTo(new[] { sameSender }), "a new build starts with no failed senders");
+        }
+
+        private static Transaction VerifyOnlyFrameTx(Address sender, UInt256[]? nonceKeys)
+        {
+            const ulong verifyGas = 100_000;
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = TestBlockchainIds.ChainId,
+                Nonce = 0,
+                NonceKeys = nonceKeys,
+                SenderAddress = sender,
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
+                FrameSignatures = [],
+                GasLimit = verifyGas,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1,
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+
+        private static Transaction[] ProduceBlock(
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor,
+            IReleaseSpec spec,
+            ulong number,
+            params Transaction[] transactions)
+        {
+            Block block = Build.A.Block
+                .WithNumber(number)
+                .WithBaseFeePerGas(UInt256.Zero)
+                .WithGasLimit(30_000_000)
+                .TestObject;
+            BlockToProduce blockToProduce = new(block.Header, transactions, block.Uncles);
+
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.StartNewBlockTrace(blockToProduce);
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(blockToProduce.Header, spec));
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
+            receiptsTracer.EndBlockTrace();
+
+            return blockToProduce.Transactions.ToArray();
+        }
+
+        private static ITransactionProcessor CreateTransactionProcessor(ISpecProvider specProvider, IWorldState stateProvider)
+        {
+            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+            return new EthereumTransactionProcessor(
+                BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine,
+                new EthereumCodeInfoRepository(stateProvider), LimboLogs.Instance);
+        }
+
         private sealed class CountingTxProcessorAdapter(ITransactionProcessorAdapter inner) : ITransactionProcessorAdapter
         {
-            public int Attempts { get; private set; }
+            public List<Transaction> Executed { get; } = [];
+
+            public int Attempts => Executed.Count;
 
             public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
             {
-                Attempts++;
+                Executed.Add(transaction);
                 return inner.Execute(transaction, txTracer);
             }
 
