@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -86,13 +87,10 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     }
 
     /// <summary>Keys each of <paramref name="nodes"/> by its keccak, at the same index of <paramref name="keys"/>.</summary>
+    /// <remarks>The nodes are retained by the keccak, which lets the commit re-hash an edited branch from its first changed rate block.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void HashNodes(ReadOnlySpan<byte[]> nodes, Span<NodeKey> keys)
-    {
-        keys = keys[..nodes.Length];
-        for (int i = 0; i < nodes.Length; i++)
-            keys[i] = new NodeKey(ValueKeccak.Compute(nodes[i]));
-    }
+    private static void HashNodes(ReadOnlySpan<byte[]> nodes, Span<NodeKey> keys) =>
+        KeccakHash.ComputeHash256OfRetained(nodes, MemoryMarshal.Cast<NodeKey, ValueHash256>(keys[..nodes.Length]));
 
     /// <inheritdoc/>
     /// <remarks>The scheme is fixed: only <c>FullPruner</c> reassigns it, and it does not run in the guest.</remarks>

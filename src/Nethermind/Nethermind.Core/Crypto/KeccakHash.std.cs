@@ -45,6 +45,13 @@ public sealed partial class KeccakHash
         return keccak;
     }
 
+    /// <inheritdoc cref="KeccakHash.ComputeHash256OfRetained" />
+    internal static partial void ComputeHash256OfRetained(ReadOnlySpan<byte[]> inputs, Span<ValueHash256> hashes)
+    {
+        for (int i = 0; i < inputs.Length; i++)
+            hashes[i] = ComputeHash256(inputs[i]);
+    }
+
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
     {
