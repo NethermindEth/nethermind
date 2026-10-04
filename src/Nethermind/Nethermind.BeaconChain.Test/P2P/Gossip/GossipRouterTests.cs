@@ -686,19 +686,6 @@ public partial class GossipRouterTests
             Router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true, Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope)));
     }
 
-    private static SignedExecutionPayloadEnvelope CreateEnvelope(ulong builderIndex = 3) => new()
-    {
-        Message = new ExecutionPayloadEnvelope
-        {
-            Payload = new ExecutionPayloadGloas { SlotNumber = CurrentSlot },
-            ExecutionRequests = new ExecutionRequestsGloas(),
-            BuilderIndex = builderIndex,
-            BeaconBlockRoot = Hash256.Zero,
-            ParentBeaconBlockRoot = Hash256.Zero,
-        },
-        Signature = new BlsSignature(new byte[BlsSignature.Length]),
-    };
-
     private static SignedAggregateAndProof CreateAggregate(ulong slot) => new()
     {
         Message = new AggregateAndProof
