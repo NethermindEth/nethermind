@@ -28,6 +28,9 @@ public static class ExperimentKnobs
     /// <summary>Parked threads that fan-outs wake directly instead of through the thread pool (0 = off).</summary>
     public static readonly int DirectRunners = Int("NETHERMIND_EXP_DIRECT_RUNNERS", 0);
 
+    /// <summary>Block processing runs its loop on a dedicated thread instead of on thread-pool workers.</summary>
+    public static readonly bool DedicatedProcessingThread = On("NETHERMIND_EXP_DEDICATED_PROCESSING_THREAD");
+
     /// <summary>RocksDB compaction threads (background compactions and the low-priority pool); 0 keeps ProcessorCount.</summary>
     public static readonly int RocksCompactionThreads = Int("NETHERMIND_EXP_ROCKS_COMPACTION_THREADS", 0);
 

@@ -432,7 +432,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
-        _processorTask = RunProcessing();
+        _processorTask = Core.Diagnostics.ExperimentKnobs.DedicatedProcessingThread ? RunProcessingOnThread() : RunProcessing();
 
         if (_logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} started.");
 
@@ -587,6 +587,70 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     }
 
     private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
+
+    // Experiment (NETHERMIND_EXP_DEDICATED_PROCESSING_THREAD): the loop on a thread of its own, waiting synchronously, so
+    // block processing never runs on a pool worker and can keep its priority while the pool's are lowered.
+    private Task RunProcessingOnThread()
+    {
+        TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Thread thread = new(() =>
+        {
+            try
+            {
+                RunProcessingLoopBlocking();
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
+            }
+            finally
+            {
+                done.TrySetResult();
+            }
+        })
+        { IsBackground = true, Name = "Block processor" };
+        thread.Start();
+        return done.Task;
+    }
+
+    private void RunProcessingLoopBlocking()
+    {
+        FireProcessingQueueEmpty();
+
+        GCScheduler.Instance.SwitchOnBackgroundGC(0);
+        while (_blockQueue.Reader.WaitToReadAsync(CancellationToken).AsTask().GetAwaiter().GetResult())
+        {
+            _pauseGate.WaitWhilePausedAsync(CancellationToken).AsTask().GetAwaiter().GetResult();
+
+            using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores, _logger);
+            using (BlockTreeMutationLock.Scope mutation = _mutationLock.Enter())
+            {
+                if (_pauseGate.IsPaused) continue;
+                IsProcessingBlock = true;
+            }
+            bool previousMainThread = IsBlockProcessingThread;
+            IsBlockProcessingThread = true;
+            try
+            {
+                GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
+                ProcessBlocks();
+            }
+            finally
+            {
+                IsBlockProcessingThread = previousMainThread;
+                IsProcessingBlock = false;
+                GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
+            }
+
+            FireProcessingQueueEmpty();
+        }
+
+        if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+    }
 
     private async Task RunProcessingLoop()
     {
