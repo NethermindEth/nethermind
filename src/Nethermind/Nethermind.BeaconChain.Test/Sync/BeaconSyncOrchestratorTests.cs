@@ -345,42 +345,94 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    /// <summary>
-    /// An unchanged fork choice state tells the EL nothing, so it is not re-sent every head step; it is re-sent after
-    /// <see cref="BeaconSyncOrchestrator.ForkchoiceResendInterval"/>, since the EL counts a silent CL as gone.
-    /// </summary>
-    [TestCase(false, 1, 1, TestName = "Unchanged head within the resend interval is not re-sent")]
-    [TestCase(false, 61, 2, TestName = "Unchanged head is re-sent once the resend interval has passed")]
-    [TestCase(true, 1, 2, TestName = "A changed head is sent at once")]
-    public async Task Forkchoice_updated_is_sent_when_the_state_changes_or_the_resend_interval_passes(bool changeHead, int secondsLater, int expectedFcus)
+    public enum ExecutionSend
     {
-        Harness harness = CreateHarness();
-        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 3, execHash: TestItem.KeccakB);
-        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        harness.Timestamper.Add(TimeSpan.FromSeconds(secondsLater));
-        if (changeHead) harness.Importer.Head = CreateHead(TestItem.KeccakC, 101, finalizedEpoch: 3, execHash: TestItem.KeccakD);
-        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(expectedFcus));
+        Unchanged,
+        Resend,
+        Changed,
+        PayloadFlip,
+        Anchor,
+        FailedSend,
+        FailedHeadUnavailable,
+        FailedHeadThrown,
+        AnchorUnavailable,
+        AnchorThrown,
+        Invalid,
     }
 
-    /// <summary>The head root does not change when get_head flips its payload status, only its execution hash does; the resend window must not hide that.</summary>
     [Test]
-    public async Task Forkchoice_updated_is_sent_when_the_same_head_root_flips_its_payload_status()
+    public async Task Execution_head_sends_retry_and_cache_only_answered_noninvalid_states([Values] ExecutionSend scenario)
     {
         Harness harness = CreateHarness();
-        HeadView empty = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 3, execHash: TestItem.KeccakB);
-        HeadView full = empty with { HeadExecutionHash = TestItem.KeccakD };
-
-        foreach (HeadView head in new[] { empty, full, empty })
+        bool anchor = scenario is ExecutionSend.Anchor or ExecutionSend.AnchorUnavailable or ExecutionSend.AnchorThrown;
+        bool headFailure = scenario is ExecutionSend.FailedHeadUnavailable or ExecutionSend.FailedHeadThrown;
+        if (scenario is ExecutionSend.AnchorThrown or ExecutionSend.FailedHeadThrown)
+            harness.Engine.FcuFailure = new InvalidOperationException("storage failure");
+        if (anchor)
         {
-            harness.Importer.Head = head;
-            harness.Timestamper.Add(TimeSpan.FromSeconds(1));
+            if (scenario != ExecutionSend.Anchor) harness.Engine.FailingFcuCalls = 1;
+            PayloadStatusV1? kick = await harness.Orchestrator.KickExecutionAsync(TestItem.KeccakA);
+            Hash256 anchorExecutionHash = harness.Engine.FcuCalls.Single().Head;
+            harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot, finalizedEpoch: 0, execHash: anchorExecutionHash) with { JustifiedExecutionHash = null, FinalizedExecutionHash = null };
             await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                if (scenario == ExecutionSend.Anchor)
+                    Assert.That(harness.Engine.FcuCalls, Is.EqualTo((List<(Hash256, Hash256, Hash256)>)[(anchorExecutionHash, anchorExecutionHash, anchorExecutionHash)]));
+                else
+                {
+                    Assert.That(kick, Is.Null);
+                    Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(2));
+                }
+            }
+            return;
         }
-
-        Assert.That(harness.Engine.FcuCalls.Select(static call => call.Head), Is.EqualTo(new[] { TestItem.KeccakB, TestItem.KeccakD, TestItem.KeccakB }));
+        HeadView initial = CreateHead(TestItem.KeccakA, scenario == ExecutionSend.Invalid ? 103UL : 100UL, finalizedEpoch: 3, execHash: TestItem.KeccakB);
+        harness.Importer.Head = initial;
+        if (headFailure) harness.Engine.FcuResponses.Enqueue(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB });
+        if (scenario == ExecutionSend.FailedSend) harness.Engine.FailingFcuCalls = 1;
+        if (scenario == ExecutionSend.Invalid)
+        {
+            harness.Importer.HeadAfterInvalidation = initial;
+            harness.Engine.FcuResponses.Enqueue(PayloadStatusV1.Invalid(TestItem.KeccakF));
+            harness.Engine.FcuResponses.Enqueue(PayloadStatusV1.Invalid(TestItem.KeccakF));
+        }
+        int steps = headFailure || scenario is ExecutionSend.PayloadFlip or ExecutionSend.FailedSend ? 3 : 2;
+        for (int step = 0; step < steps; step++)
+        {
+            if (scenario is ExecutionSend.PayloadFlip or ExecutionSend.FailedSend ||
+                step == 1 && scenario is (ExecutionSend.Unchanged or ExecutionSend.Resend or ExecutionSend.Changed))
+                harness.Timestamper.Add(TimeSpan.FromSeconds(scenario == ExecutionSend.Resend ? 61 : 1));
+            if (step == 1)
+            {
+                if (scenario == ExecutionSend.PayloadFlip) harness.Importer.Head = initial with { HeadExecutionHash = TestItem.KeccakD };
+                else if (headFailure || scenario == ExecutionSend.Changed)
+                    harness.Importer.Head = CreateHead(TestItem.KeccakC, 101, finalizedEpoch: 3, execHash: TestItem.KeccakD);
+                if (headFailure) harness.Engine.FailingFcuCalls = 1;
+            }
+            else if (step == 2) harness.Importer.Head = initial;
+            await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+            if (headFailure && step == 1)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(harness.StatusHolder.ExecutionInSync, Is.False);
+                    Assert.That(Metrics.BeaconChainElInSync, Is.Zero);
+                    Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(TestItem.KeccakC));
+                }
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            if (scenario == ExecutionSend.PayloadFlip)
+                Assert.That(harness.Engine.FcuCalls.Select(static call => call.Head), Is.EqualTo(new[] { TestItem.KeccakB, TestItem.KeccakD, TestItem.KeccakB }));
+            else
+            {
+                int expectedCalls = scenario == ExecutionSend.Unchanged ? 1 : headFailure || scenario == ExecutionSend.Invalid ? 3 : 2;
+                Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(expectedCalls));
+            }
+            if (headFailure) Assert.That(harness.StatusHolder.ExecutionInSync, Is.False, "the fresh SYNCING answer is used, not the cached VALID");
+        }
     }
 
     /// <summary>Stopping before or during the anchor kick skips the public-key cache build that follows it.</summary>
@@ -404,73 +456,6 @@ public partial class BeaconSyncOrchestratorTests
         {
             Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(duringKick ? 1 : 0));
             Assert.That(cacheBuilds, Is.Zero);
-        }
-    }
-
-    /// <summary>
-    /// The anchor kick goes through the same send state as the head steps, so a head step that finds the anchor still the head
-    /// does not send it again within the resend interval.
-    /// </summary>
-    [Test]
-    public async Task The_anchor_kick_is_not_repeated_by_a_head_step_that_finds_the_anchor_still_the_head()
-    {
-        Harness harness = CreateHarness();
-
-        await harness.Orchestrator.KickExecutionAsync(TestItem.KeccakA);
-        Hash256 anchorExecutionHash = harness.Engine.FcuCalls.Single().Head;
-        harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot, finalizedEpoch: 0, execHash: anchorExecutionHash) with { JustifiedExecutionHash = null, FinalizedExecutionHash = null };
-        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Engine.FcuCalls, Is.EqualTo((List<(Hash256, Hash256, Hash256)>)[(anchorExecutionHash, anchorExecutionHash, anchorExecutionHash)]), "head, safe and finalized are all the anchor payload, sent once");
-        }
-    }
-
-    /// <summary>A failed call is no answer: caching it would hold the resend window shut, so the EL would not see the head for a full interval.</summary>
-    [Test]
-    public async Task A_failed_forkchoice_update_is_retried_by_the_next_head_step_and_the_retry_is_then_remembered()
-    {
-        Harness harness = CreateHarness();
-        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 3, execHash: TestItem.KeccakB);
-        harness.Engine.FailingFcuCalls = 1;
-
-        foreach (int _ in new int[3])
-        {
-            harness.Timestamper.Add(TimeSpan.FromSeconds(1));
-            await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-        }
-
-        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(2), "failed, sent again at once, then the answered send is inside the resend interval");
-    }
-
-    [Test]
-    public async Task A_failed_forkchoice_update_clears_execution_sync_and_still_publishes_the_head([Values] bool thrownFault)
-    {
-        Harness harness = CreateHarness();
-        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 3, execHash: TestItem.KeccakB);
-        harness.Engine.FcuResponses.Enqueue(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB });
-        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-        harness.Importer.Head = CreateHead(TestItem.KeccakC, 101, finalizedEpoch: 3, execHash: TestItem.KeccakD);
-        harness.Engine.FailingFcuCalls = 1;
-        if (thrownFault) harness.Engine.FcuFailure = new InvalidOperationException("storage failure");
-
-        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.StatusHolder.ExecutionInSync, Is.False);
-            Assert.That(Metrics.BeaconChainElInSync, Is.Zero);
-            Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(TestItem.KeccakC), "the status still advertises the new head");
-        }
-
-        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 3, execHash: TestItem.KeccakB);
-        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(3), "the head answered VALID before the failure is sent again");
-            Assert.That(harness.StatusHolder.ExecutionInSync, Is.False, "the fresh SYNCING answer is used, not the cached VALID");
         }
     }
 
@@ -536,42 +521,6 @@ public partial class BeaconSyncOrchestratorTests
         {
             answer.TrySetResult(PayloadStatusV1.Syncing);
         }
-    }
-
-    [Test]
-    public async Task A_failed_anchor_kick_is_sent_again_by_the_next_head_step([Values] bool thrownFault)
-    {
-        Harness harness = CreateHarness();
-        harness.Engine.FailingFcuCalls = 1;
-        if (thrownFault) harness.Engine.FcuFailure = new InvalidOperationException("storage failure");
-
-        PayloadStatusV1? kick = await harness.Orchestrator.KickExecutionAsync(TestItem.KeccakA);
-        Hash256 anchorExecutionHash = harness.Engine.FcuCalls.Single().Head;
-        harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot, finalizedEpoch: 0, execHash: anchorExecutionHash) with { JustifiedExecutionHash = null, FinalizedExecutionHash = null };
-        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(kick, Is.Null);
-            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(2));
-        }
-    }
-
-    [Test]
-    public async Task An_invalid_verdict_is_never_reused_for_an_unchanged_head()
-    {
-        Harness harness = CreateHarness();
-        HeadView head = CreateHead(TestItem.KeccakA, 103, finalizedEpoch: 3, execHash: TestItem.KeccakB);
-        harness.Importer.Head = head;
-        harness.Importer.HeadAfterInvalidation = head;
-        harness.Engine.FcuResponses.Enqueue(PayloadStatusV1.Invalid(TestItem.KeccakF));
-        harness.Engine.FcuResponses.Enqueue(PayloadStatusV1.Invalid(TestItem.KeccakF));
-
-        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        // The first step sends and retries once after INVALID; the second asks again rather than reusing the verdict.
-        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(3));
     }
 
     [Test]
