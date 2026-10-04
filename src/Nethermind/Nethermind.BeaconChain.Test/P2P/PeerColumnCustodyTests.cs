@@ -88,28 +88,24 @@ public class PeerColumnCustodyTests
         using PrivateKey serverKey = new("1c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f29111");
         server.Store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, serverKey.KeyBytes);
 
-        await using (client.P2P)
-        await using (server.P2P)
+        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await hosts.StartAsync(token, server.P2P, client.P2P);
+        Hash256 serverNodeId = serverKey.PublicKey.Hash;
+
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        Assert.That(await peerManager.TryAddPeerAsync(PeerBandTests.LoopbackAddress(server.P2P), token), Is.True);
+        PeerColumnCustody admitted = peerManager.GetBestPeers(0).Single().Custody;
+
+        server.Metadata.Current.CustodyGroupCount = 32;
+        server.Metadata.Current.SeqNumber++;
+        await peerManager.RunMaintenanceRoundAsync(token);
+        PeerColumnCustody refreshed = peerManager.GetBestPeers(0).Single().Custody;
+
+        using (Assert.EnterMultipleScope())
         {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
-            Hash256 serverNodeId = serverKey.PublicKey.Hash;
-
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            Assert.That(await peerManager.TryAddPeerAsync(PeerBandTests.LoopbackAddress(server.P2P), token), Is.True);
-            PeerColumnCustody admitted = peerManager.GetBestPeers(0).Single().Custody;
-
-            server.Metadata.Current.CustodyGroupCount = 32;
-            server.Metadata.Current.SeqNumber++;
-            await peerManager.RunMaintenanceRoundAsync(token);
-            PeerColumnCustody refreshed = peerManager.GetBestPeers(0).Single().Custody;
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(admitted.IsAdvertised, Is.True);
-                Assert.That(Columns(admitted), Is.EqualTo(Columns(PeerColumnCustody.ForNode(serverNodeId, 8))));
-                Assert.That(Columns(refreshed), Is.EqualTo(Columns(PeerColumnCustody.ForNode(serverNodeId, 32))));
-            }
+            Assert.That(admitted.IsAdvertised, Is.True);
+            Assert.That(Columns(admitted), Is.EqualTo(Columns(PeerColumnCustody.ForNode(serverNodeId, 8))));
+            Assert.That(Columns(refreshed), Is.EqualTo(Columns(PeerColumnCustody.ForNode(serverNodeId, 32))));
         }
     }
 
