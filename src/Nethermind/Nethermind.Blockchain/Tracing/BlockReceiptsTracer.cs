@@ -216,7 +216,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         return txReceipt;
     }
 
-    /// <summary>The transaction hash a built receipt carries.</summary>
+    /// <summary>The transaction hash a built receipt carries; <see langword="null"/> when the build does not populate it.</summary>
     private static partial Hash256? ReceiptTxHash(Transaction transaction);
 
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
