@@ -51,9 +51,9 @@ namespace Nethermind.Network.Test;
 /// stuffing. The controller reads only the verdict, so the wire transactions are plain signed legacy ones.</item>
 /// <item>The flood controller's clock, swapped for a <see cref="ManualTimestamper"/> so the 60 s window runs
 /// in simulated time.</item>
-/// <item>The session, which records the first disconnect. The harness then stops delivering messages, as
-/// <c>Session.ReceiveMessage</c> drops them once the session is closing; the rest of the message in flight
-/// is still processed, as on this branch.</item>
+/// <item>The session, which records the first disconnect and reports closing from then on, so the handler
+/// drops the rest of the message in flight. The harness then stops delivering messages, as
+/// <c>Session.ReceiveMessage</c> drops them once the session is closing.</item>
 /// </list>
 /// "Processed" counts the verdicts that cost this node verification work (failed simulations and invalid
 /// signatures); a deferral is assumed to cost none. Gas per second is processed tx/s times the ceiling C.
