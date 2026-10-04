@@ -33,30 +33,83 @@ public class CheckpointSyncRetryTests
     /// <summary>Bounds a run that must end on its own, so a read that waits forever fails the test instead of hanging the run.</summary>
     private static readonly TimeSpan RunBound = TimeSpan.FromSeconds(60);
 
-    /// <param name="stalls">The provider stops sending but keeps the connection open, as when its reset never arrives.</param>
-    [Test]
-    public async Task A_state_download_dropped_mid_transfer_is_retried_from_the_start_and_anchored([Values] bool stalls)
+    public enum DownloadFailure
     {
-        StateResponse drop = stalls ? StateResponse.StallMidBody : StateResponse.DropMidBody;
-        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(n => n == 1 ? drop : StateResponse.Serve);
+        StateDrop,
+        StateStall,
+        AnchorDrop,
+        AnchorStall,
+        HeadersStall,
+        ServerError,
+        RepeatedDrop,
+        MissingEndpoint,
+        UnsupportedFork,
+    }
+
+    [Test]
+    public async Task Checkpoint_download_retries_only_transient_failures_without_redownloading_completed_state([Values] DownloadFailure failure)
+    {
+        bool anchorFailure = failure is DownloadFailure.AnchorDrop or DownloadFailure.AnchorStall;
+        StateResponse response = failure switch
+        {
+            DownloadFailure.StateStall or DownloadFailure.AnchorStall => StateResponse.StallMidBody,
+            DownloadFailure.HeadersStall => StateResponse.NoHeaders,
+            DownloadFailure.ServerError => StateResponse.ServerError,
+            DownloadFailure.MissingEndpoint => StateResponse.NotFound,
+            _ => StateResponse.DropMidBody,
+        };
+        StateResponse Reply(int attempt) => failure == DownloadFailure.UnsupportedFork ? StateResponse.Serve
+            : (failure is DownloadFailure.RepeatedDrop or DownloadFailure.MissingEndpoint || attempt == 1) ? response : StateResponse.Serve;
+        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(
+            anchorFailure ? static _ => StateResponse.Serve : Reply,
+            blockResponseFor: anchorFailure ? Reply : null,
+            consensusVersion: failure == DownloadFailure.UnsupportedFork ? "heze" : null);
         LevelCapturingLogManager logs = new();
         BeaconChainStore store = NewStore();
-        using CheckpointSync sync = NewSync(provider, store, logs);
-
-        CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None).WaitAsync(RunBound);
-
+        using CheckpointSync sync = NewSync(provider, store, logs,
+            maxDownloadAttempts: failure == DownloadFailure.RepeatedDrop ? 3 : 5,
+            responseHeadersTimeout: failure == DownloadFailure.HeadersStall ? TimeSpan.FromSeconds(2) : null);
+        if (failure is DownloadFailure.RepeatedDrop or DownloadFailure.MissingEndpoint or DownloadFailure.UnsupportedFork)
+        {
+            if (failure == DownloadFailure.RepeatedDrop)
+            {
+                Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None));
+                Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+            }
+            else if (failure == DownloadFailure.MissingEndpoint)
+            {
+                HttpRequestException refusal = Assert.ThrowsAsync<HttpRequestException>(() => sync.RunAsync(CancellationToken.None))!;
+                Assert.That(refusal.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+            }
+            else Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None));
+            Assert.That(provider.StateRequests, Is.EqualTo(failure == DownloadFailure.RepeatedDrop ? 3 : 1));
+            return;
+        }
+        Task<CheckpointAnchor> run = sync.RunAsync(CancellationToken.None);
+        CheckpointAnchor anchor = failure == DownloadFailure.ServerError ? await run : await run.WaitAsync(RunBound);
         (string Level, string Text)[] retries = [.. logs.Lines.Where(static l => l.Text.Contains("failed on attempt"))];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(anchor.BlockRoot, Is.EqualTo(ForkCrossingChain.Instance.First.Root));
-            Assert.That(provider.StateRequests, Is.EqualTo(2), "the whole state is requested again");
-            Assert.That(store.TryGetAnchor(out _, out _), Is.True);
-            Assert.That(retries, Has.Length.EqualTo(1));
-            Assert.That(retries[0].Level, Is.EqualTo("Info"));
-            Assert.That(retries[0].Text, Does.Not.Contain("Exception").And.Not.Contain("\n").And.Not.Contain(" at "), "one line with the cause, no stack");
-            if (stalls)
+            Assert.That(provider.StateRequests, Is.EqualTo(anchorFailure ? 1 : 2));
+            if (anchorFailure)
             {
-                Assert.That(retries[0].Text, Does.Contain("No data arrived for 10 s"), "a stall names its cause, not a bare cancellation");
+                Assert.That(anchor.Block, Is.Not.Null);
+                Assert.That(provider.BlockRequests, Is.EqualTo(2));
+                Assert.That(logs.Lines.Where(static l => l.Text.Contains("anchor block download failed on attempt 1")), Has.Exactly(1).Items);
+            }
+            else if (failure != DownloadFailure.ServerError)
+            {
+                Assert.That(anchor.BlockRoot, Is.EqualTo(ForkCrossingChain.Instance.First.Root));
+                Assert.That(retries, Has.Length.EqualTo(1));
+                if (failure == DownloadFailure.HeadersStall)
+                    Assert.That(retries[0].Text, Is.EqualTo("Checkpoint state download failed on attempt 1 of 5: No response headers arrived for 2 s; retrying in 0 s."));
+                else
+                {
+                    Assert.That(store.TryGetAnchor(out _, out _), Is.True);
+                    Assert.That(retries[0].Level, Is.EqualTo("Info"));
+                    Assert.That(retries[0].Text, Does.Not.Contain("Exception").And.Not.Contain("\n").And.Not.Contain(" at "));
+                    if (failure == DownloadFailure.StateStall) Assert.That(retries[0].Text, Does.Contain("No data arrived for 10 s"));
+                }
             }
         }
     }
@@ -78,75 +131,6 @@ public class CheckpointSyncRetryTests
             Assert.That(provider.StateRequests, Is.EqualTo(1), "a slow but steady state is read in one request");
             Assert.That(logs.Lines.Where(static l => l.Text.Contains("failed on attempt")), Is.Empty);
         }
-    }
-
-    [Test]
-    public async Task A_provider_that_accepts_the_request_and_never_answers_is_asked_again_after_the_headers_timeout()
-    {
-        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static n => n == 1 ? StateResponse.NoHeaders : StateResponse.Serve);
-        LevelCapturingLogManager logs = new();
-        using CheckpointSync sync = NewSync(provider, NewStore(), logs, responseHeadersTimeout: TimeSpan.FromSeconds(2));
-
-        CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None).WaitAsync(RunBound);
-
-        (string Level, string Text)[] retries = [.. logs.Lines.Where(static l => l.Text.Contains("failed on attempt"))];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(anchor.BlockRoot, Is.EqualTo(ForkCrossingChain.Instance.First.Root));
-            Assert.That(provider.StateRequests, Is.EqualTo(2));
-            Assert.That(retries, Has.Length.EqualTo(1));
-            Assert.That(retries[0].Text, Is.EqualTo("Checkpoint state download failed on attempt 1 of 5: No response headers arrived for 2 s; retrying in 0 s."), "the cause names the headers bound");
-        }
-    }
-
-    [Test]
-    public async Task A_provider_that_keeps_dropping_the_download_is_asked_the_named_maximum_of_times_and_its_failure_is_thrown()
-    {
-        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.DropMidBody);
-        BeaconChainStore store = NewStore();
-        using CheckpointSync sync = NewSync(provider, store, new LevelCapturingLogManager(), maxDownloadAttempts: 3);
-
-        Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None));
-
-        Assert.That(provider.StateRequests, Is.EqualTo(3));
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
-    }
-
-    [Test]
-    public async Task A_server_error_is_retried()
-    {
-        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static n => n == 1 ? StateResponse.ServerError : StateResponse.Serve);
-        using CheckpointSync sync = NewSync(provider, NewStore(), new LevelCapturingLogManager());
-
-        await sync.RunAsync(CancellationToken.None);
-
-        Assert.That(provider.StateRequests, Is.EqualTo(2));
-    }
-
-    [Test]
-    public async Task A_missing_endpoint_is_not_asked_again()
-    {
-        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.NotFound);
-        using CheckpointSync sync = NewSync(provider, NewStore(), new LevelCapturingLogManager());
-
-        HttpRequestException refusal = Assert.ThrowsAsync<HttpRequestException>(() => sync.RunAsync(CancellationToken.None))!;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(refusal.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
-            Assert.That(provider.StateRequests, Is.EqualTo(1), "a 404 does not change on a second ask");
-        }
-    }
-
-    [Test]
-    public async Task A_checkpoint_of_an_unsupported_fork_is_not_asked_for_again()
-    {
-        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.Serve, consensusVersion: "heze");
-        using CheckpointSync sync = NewSync(provider, NewStore(), new LevelCapturingLogManager());
-
-        Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None));
-
-        Assert.That(provider.StateRequests, Is.EqualTo(1));
     }
 
     [Test]
@@ -230,26 +214,6 @@ public class CheckpointSyncRetryTests
         stopped.Cancel();
 
         Assert.That(CheckpointSync.IsTransientDownloadFailure(new OperationCanceledException(stopped.Token), stopped.Token), Is.False);
-    }
-
-    [Test]
-    public async Task An_anchor_block_dropped_mid_transfer_is_retried_without_asking_for_the_state_again([Values] bool stalls)
-    {
-        StateResponse drop = stalls ? StateResponse.StallMidBody : StateResponse.DropMidBody;
-        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.Serve,
-            blockResponseFor: n => n == 1 ? drop : StateResponse.Serve);
-        LevelCapturingLogManager logs = new();
-        using CheckpointSync sync = NewSync(provider, NewStore(), logs);
-
-        CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None).WaitAsync(RunBound);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(anchor.Block, Is.Not.Null);
-            Assert.That(provider.StateRequests, Is.EqualTo(1));
-            Assert.That(provider.BlockRequests, Is.EqualTo(2));
-            Assert.That(logs.Lines.Where(static l => l.Text.Contains("anchor block download failed on attempt 1")), Has.Exactly(1).Items);
-        }
     }
 
     [Test]
