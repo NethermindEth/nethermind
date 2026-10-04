@@ -85,218 +85,95 @@ public class DataColumnSidecarsReqRespTests
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, new(request, Gloas: false)));
     }
 
-    [Test]
-    public async Task By_range_serves_only_the_canonical_block_at_each_slot_whatever_the_arrival_order([Values] bool canonicalArrivesFirst)
+    private const ulong RangeSlot = 13_410_304;
+    private sealed record RangeServingCase(string Name, ulong Count = 2, int StartOffset = 0,
+        int HeldOffset = 0, ulong HeldCount = 2, ulong[]? Columns = null, ulong[]? HeldColumns = null,
+        ulong? ClockSlot = null, (int Offset, ulong Column)[]? Expected = null, bool Unavailable = false,
+        bool CheckFailureMetric = false, bool? CanonicalFirst = null, bool RepeatSidecar = false, bool Largest = false);
+
+    private static ulong ServeRangeClock(ulong epochsBelow) =>
+        (Spec.GetEpoch(RangeSlot) - epochsBelow + Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests) * Spec.SlotsPerEpoch;
+
+    private static readonly RangeServingCase[] RangeServingScenarios =
+    [
+        new("Canonical sidecar wins when it arrived first", Count: 3, HeldCount: 3, CanonicalFirst: true, Expected: [(0, 5), (2, 5)]),
+        new("Canonical sidecar wins when it arrived last", Count: 3, HeldCount: 3, CanonicalFirst: false, Expected: [(0, 5), (2, 5)]),
+        new("Requested columns are unique and ordered by slot then column", Columns: [7, 9, 5, 5], HeldColumns: [5, 7], Expected: [(0, 5), (0, 7), (1, 5), (1, 7)]),
+        new("Sidecars serve past the block request slot limit", Count: BlocksProtocolBase.MaxRequestBlocks + 1, HeldCount: BlocksProtocolBase.MaxRequestBlocks + 1, RepeatSidecar: true),
+        new("An unbounded requested count still serves past the block limit", Count: ulong.MaxValue, HeldCount: BlocksProtocolBase.MaxRequestBlocks + 1, RepeatSidecar: true),
+        new("A held sidecar beyond the slot walk is resource unavailable", Count: DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars + 1, HeldOffset: (int)DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars, HeldCount: 1, Unavailable: true),
+        new("Inside serve range from one slot below complete columns", StartOffset: -1, ClockSlot: ServeRangeClock(1), Unavailable: true, CheckFailureMetric: true),
+        new("Inside serve range at the single slot below complete columns", Count: 1, StartOffset: -1, ClockSlot: ServeRangeClock(1), Unavailable: true, CheckFailureMetric: true),
+        new("Inside serve range from the first complete slot", ClockSlot: ServeRangeClock(1)),
+        new("Inside serve range across slots below complete columns", Count: 5, StartOffset: -3, ClockSlot: ServeRangeClock(1), Unavailable: true, CheckFailureMetric: true),
+        new("Wholly below the serve range", Count: 3, StartOffset: -3, ClockSlot: ServeRangeClock(0), Expected: []),
+        new("Below serve range up to complete columns", Count: 5, StartOffset: -3, ClockSlot: ServeRangeClock(0)),
+        new("Ending one slot below serve range", Count: 3, StartOffset: -35, ClockSlot: ServeRangeClock(1), Expected: []),
+        new("Held columns below serve range remain served", StartOffset: -1, HeldOffset: -1, ClockSlot: ServeRangeClock(0), Expected: [(-1, 5), (0, 5)]),
+        new("Future request is empty with no held columns", Count: 4, StartOffset: 1, HeldCount: 0, ClockSlot: RangeSlot, Expected: []),
+        new("Future request is empty even with held future columns", Count: 4, StartOffset: 1, HeldOffset: 1, HeldCount: 1, ClockSlot: RangeSlot, Expected: []),
+        new("Largest incompressible sidecar round trips whole", Count: 1, HeldCount: 1, Columns: [100], HeldColumns: [100], Expected: [(0, 100)], Largest: true),
+    ];
+
+    private static IEnumerable<TestCaseData> RangeServingCases()
     {
-        const ulong startSlot = 13_410_304;
-        const ulong column = 5;
-        const ulong canonicalProposer = 1;
-        const ulong competingProposer = 2;
-        DataColumnSidecarPool pool = new();
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-
-        // The middle slot has only a competing block; the last slot reverses the first slot's arrival order.
-        AddCompetingBlocks(pool, store, startSlot, canonicalArrivesFirst, hasCanonical: true);
-        AddCompetingBlocks(pool, store, startSlot + 1, canonicalArrivesFirst, hasCanonical: false);
-        AddCompetingBlocks(pool, store, startSlot + 2, !canonicalArrivesFirst, hasCanonical: true);
-
-        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, startSlot, count: 3, [column]);
-
-        Assert.That(served.Select(static s => (s.SignedBlockHeader!.Message!.Slot, s.SignedBlockHeader.Message.ProposerIndex)),
-            Is.EqualTo(new[] { (startSlot, canonicalProposer), (startSlot + 2, canonicalProposer) }));
-
-        static void AddCompetingBlocks(DataColumnSidecarPool pool, BeaconChainStore store, ulong slot, bool canonicalFirst, bool hasCanonical)
-        {
-            Hash256 canonicalRoot = Keccak.Compute($"canonical {slot}");
-            Hash256 competingRoot = Keccak.Compute($"competing {slot}");
-            DataColumnSidecar canonical = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, canonicalProposer, blobCount: 1, seed: 0x21);
-            DataColumnSidecar competing = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, competingProposer, blobCount: 1, seed: 0x22);
-            if (canonicalFirst) pool.Add(canonicalRoot, slot, canonical);
-            pool.Add(competingRoot, slot, competing);
-            if (!canonicalFirst) pool.Add(canonicalRoot, slot, canonical);
-            if (hasCanonical) store.SetCanonicalRoot(slot, canonicalRoot);
-        }
+        for (int i = 0; i < RangeServingScenarios.Length; i++)
+            yield return new TestCaseData(i).SetName(RangeServingScenarios[i].Name);
     }
 
-    [Test]
-    public async Task By_range_serves_each_requested_column_once_in_slot_then_column_order()
+    [TestCaseSource(nameof(RangeServingCases))]
+    public async Task Range_serving_preserves_canonical_order_limits_and_availability(int index)
     {
-        const ulong startSlot = 13_410_304;
+        RangeServingCase test = RangeServingScenarios[index];
         DataColumnSidecarPool pool = new();
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        for (ulong slot = startSlot; slot < startSlot + 2; slot++)
+        DataColumnSidecar? repeated = test.RepeatSidecar ? DataColumnSidecarTestFixture.BuildValidSidecar(5, RangeSlot, blobCount: 1) : null;
+        byte[]? largestSsz = null;
+        for (ulong i = 0; i < test.HeldCount; i++)
         {
+            ulong slot = (ulong)((long)RangeSlot + test.HeldOffset) + i;
             Hash256 root = Keccak.Compute($"canonical {slot}");
-            pool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(5, slot, blobCount: 1));
-            pool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(7, slot, blobCount: 1));
-            store.SetCanonicalRoot(slot, root);
-        }
-
-        // Column 9 is not held, so it is skipped.
-        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, startSlot, count: 2, [7, 9, 5, 5]);
-
-        Assert.That(served.Select(static s => (s.SignedBlockHeader!.Message!.Slot, s.Index)),
-            Is.EqualTo(new[] { (startSlot, 5UL), (startSlot, 7UL), (startSlot + 1, 5UL), (startSlot + 1, 7UL) }));
-    }
-
-    [Test]
-    public async Task By_range_serves_past_MaxRequestBlocks_slots_since_only_sidecars_are_capped([Values(BlocksProtocolBase.MaxRequestBlocks + 1, ulong.MaxValue)] ulong requestedCount)
-    {
-        const ulong startSlot = 13_410_304;
-        const ulong column = 5;
-        const ulong slotCount = BlocksProtocolBase.MaxRequestBlocks + 1;
-        DataColumnSidecarPool pool = new();
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, startSlot, blobCount: 1);
-        for (ulong slot = startSlot; slot < startSlot + slotCount; slot++)
-        {
-            Hash256 root = Keccak.Compute($"canonical {slot}");
-            pool.Add(root, slot, sidecar);
-            store.SetCanonicalRoot(slot, root);
-        }
-
-        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, startSlot, requestedCount, [column]);
-
-        Assert.That(served, Has.Count.EqualTo(slotCount));
-    }
-
-    [Test]
-    public void By_range_is_resource_unavailable_when_no_sidecar_lies_in_the_slots_it_walks()
-    {
-        const ulong startSlot = 13_410_304;
-        const ulong column = 5;
-        ulong heldSlot = startSlot + DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars;
-        DataColumnSidecarPool pool = new();
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        Hash256 root = Keccak.Compute("past the walk");
-        pool.Add(root, heldSlot, DataColumnSidecarTestFixture.BuildValidSidecar(column, heldSlot, blobCount: 1));
-        store.SetCanonicalRoot(heldSlot, root);
-
-        Eth2ReqRespException? refused = Assert.ThrowsAsync<Eth2ReqRespException>(() => RequestRangeAsync(pool, store, startSlot, heldSlot - startSlot + 1, [column]));
-
-        Assert.That(refused!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "an empty reply would claim the held sidecar's slot is empty");
-    }
-
-    /// <summary>
-    /// fulu/p2p-interface.md: a peer unable to reply within <c>data_column_serve_range</c> SHOULD answer ResourceUnavailable,
-    /// so a requester asks elsewhere instead of reading an incomplete response as the columns that exist.
-    /// </summary>
-    [TestCase(-1, 2, 1UL, true, TestName = "Inside the serve range from one slot below the complete columns")]
-    [TestCase(-1, 1, 1UL, true, TestName = "Inside the serve range at the single slot below the complete columns")]
-    [TestCase(0, 2, 1UL, false, TestName = "Inside the serve range from the first complete slot")]
-    [TestCase(-3, 5, 1UL, true, TestName = "Inside the serve range across slots below the complete columns")]
-    [TestCase(-3, 3, 0UL, false, TestName = "Wholly below the serve range")]
-    [TestCase(-3, 5, 0UL, false, TestName = "Below the serve range up to the complete columns")]
-    [TestCase(-35, 3, 1UL, false, TestName = "Ending one slot below the serve range")]
-    public async Task By_range_answers_resource_unavailable_only_when_the_serve_range_part_starts_below_the_complete_columns(int startOffset, int count, ulong serveRangeEpochsBelowFirstHeld, bool unavailable)
-    {
-        const ulong firstHeldSlot = 13_410_304;
-        const ulong column = 5;
-        DataColumnSidecarPool pool = new();
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        for (ulong slot = firstHeldSlot; slot < firstHeldSlot + 2; slot++)
-        {
-            Hash256 root = Keccak.Compute($"canonical {slot}");
-            pool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: 1));
-            store.SetCanonicalRoot(slot, root);
-        }
-
-        // firstHeldSlot opens an epoch, so the serve range starts at it or whole epochs below it.
-        ulong currentEpoch = Spec.GetEpoch(firstHeldSlot) - serveRangeEpochsBelowFirstHeld + Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests;
-        SlotClock clock = new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + currentEpoch * Spec.SlotsPerEpoch * Spec.SecondsPerSlot)).UtcDateTime));
-        long invalidBefore = FailureCount(ByRangeId, ReqRespFailureReason.InvalidMessage);
-        ulong startSlot = (ulong)((long)firstHeldSlot + startOffset);
-
-        Task<IReadOnlyList<DataColumnSidecar>> request = RequestRangeAsync(pool, store, startSlot, (ulong)count, [column], clock);
-
-        if (unavailable)
-        {
-            Eth2ReqRespException? error = Assert.ThrowsAsync<Eth2ReqRespException>(async () => await request);
-            using (Assert.EnterMultipleScope())
+            foreach (ulong column in test.HeldColumns ?? [5UL])
             {
-                Assert.That(error!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable));
-                Assert.That(FailureCount(ByRangeId, ReqRespFailureReason.InvalidMessage), Is.EqualTo(invalidBefore), "an honest request for columns this node lacks is not the requester's fault");
+                DataColumnSidecar canonical = repeated ?? DataColumnSidecarTestFixture.BuildValidSidecar(column, slot,
+                    proposerIndex: test.CanonicalFirst is not null ? 1UL : 0UL,
+                    blobCount: test.Largest ? (int)Spec.GetBlobParameters(Spec.GetEpoch(slot))!.Value.MaxBlobsPerBlock : 1,
+                    seed: test.Largest ? (byte)1 : test.CanonicalFirst is not null ? (byte)0x21 : (byte)0x10);
+                if (test.CanonicalFirst is { } first)
+                {
+                    bool canonicalFirst = i == 2 ? !first : first;
+                    Hash256 competingRoot = Keccak.Compute($"competing {slot}");
+                    DataColumnSidecar competing = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, 2, blobCount: 1, seed: 0x22);
+                    if (canonicalFirst) pool.Add(root, slot, canonical);
+                    pool.Add(competingRoot, slot, competing);
+                    if (!canonicalFirst) pool.Add(root, slot, canonical);
+                }
+                else pool.Add(root, slot, canonical);
+                if (test.Largest)
+                {
+                    largestSsz = DataColumnSidecar.Encode(canonical);
+                    Assert.That(Snappy.CompressToArray(largestSsz), Has.Length.GreaterThan(largestSsz.Length * 99 / 100), "fixture: cells must be incompressible to approach the wire bound");
+                }
             }
+            if (test.CanonicalFirst is null || i != 1) store.SetCanonicalRoot(slot, root);
+        }
+        SlotClock? clock = test.ClockSlot is { } now ? new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + now * Spec.SecondsPerSlot)).UtcDateTime)) : null;
+        long invalidBefore = FailureCount(ByRangeId, ReqRespFailureReason.InvalidMessage);
+        Task<IReadOnlyList<DataColumnSidecar>> request = RequestRangeAsync(pool, store, (ulong)((long)RangeSlot + test.StartOffset), test.Count, test.Columns ?? [5UL], clock);
+        if (test.Unavailable)
+        {
+            Eth2ReqRespException? refused = Assert.ThrowsAsync<Eth2ReqRespException>(async () => await request);
+            Assert.That(refused!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable));
+            if (test.CheckFailureMetric) Assert.That(FailureCount(ByRangeId, ReqRespFailureReason.InvalidMessage), Is.EqualTo(invalidBefore), "an honest request for missing columns is not the requester's fault");
         }
         else
         {
-            ulong firstServed = Math.Max(startSlot, firstHeldSlot);
-            ulong lastServed = Math.Min(startSlot + (ulong)count - 1, firstHeldSlot + 1);
-            ulong[] expected = firstServed <= lastServed ? [.. Enumerable.Range(0, (int)(lastServed - firstServed + 1)).Select(i => firstServed + (ulong)i)] : [];
-            Assert.That((await request).Select(static s => s.SignedBlockHeader!.Message!.Slot), Is.EqualTo(expected));
+            IReadOnlyList<DataColumnSidecar> served = await request;
+            if (test.RepeatSidecar) Assert.That(served, Has.Count.EqualTo(test.HeldCount));
+            else Assert.That(served.Select(static s => Key(s)), Is.EqualTo((test.Expected ?? [(0, 5UL), (1, 5UL)]).Select(e => ((ulong)((long)RangeSlot + e.Offset), e.Column))));
+            if (test.CanonicalFirst is not null) Assert.That(served.Select(static s => s.SignedBlockHeader!.Message!.ProposerIndex), Is.All.EqualTo(1));
+            if (test.Largest) Assert.That(served.Select(static s => DataColumnSidecar.Encode(s)), Is.EqualTo(new[] { largestSsz! }));
         }
-    }
-
-    // fulu/p2p-interface.md DataColumnSidecarsByRange: held sidecars below the required serve range may still be served.
-    [Test]
-    public async Task By_range_serves_held_columns_below_the_serve_range()
-    {
-        const ulong serveFrom = 13_410_304;
-        const ulong column = 5;
-        DataColumnSidecarPool pool = new();
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        for (ulong slot = serveFrom - 1; slot <= serveFrom; slot++)
-        {
-            Hash256 root = Keccak.Compute($"canonical {slot}");
-            pool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: 1));
-            store.SetCanonicalRoot(slot, root);
-        }
-
-        ulong currentEpoch = Spec.GetEpoch(serveFrom) + Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests;
-        SlotClock clock = new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + currentEpoch * Spec.SlotsPerEpoch * Spec.SecondsPerSlot)).UtcDateTime));
-
-        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, serveFrom - 1, 2, [column], clock);
-
-        Assert.That(served.Select(static s => s.SignedBlockHeader!.Message!.Slot), Is.EqualTo(new[] { serveFrom - 1, serveFrom }));
-    }
-
-    /// <summary>
-    /// <c>data_column_serve_range</c> ends at the current slot, so a request wholly after it asks nothing this node must serve:
-    /// even a node that holds no columns answers it with an empty response, not ResourceUnavailable.
-    /// </summary>
-    [Test]
-    public async Task By_range_serves_a_request_wholly_after_the_current_slot_empty([Values] bool held)
-    {
-        const ulong currentSlot = 13_410_304;
-        SlotClock clock = new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + currentSlot * Spec.SecondsPerSlot)).UtcDateTime));
-
-        DataColumnSidecarPool pool = new();
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        if (held)
-        {
-            Hash256 root = Keccak.Compute("future columns");
-            pool.Add(root, currentSlot + 1, DataColumnSidecarTestFixture.BuildValidSidecar(5, currentSlot + 1, blobCount: 1));
-            store.SetCanonicalRoot(currentSlot + 1, root);
-        }
-
-        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, currentSlot + 1, 4, [5], clock);
-
-        Assert.That(served, Is.Empty);
-    }
-
-    /// <summary>
-    /// The reader bounds a chunk's wire bytes by a function of its declared SSZ length; the largest sidecar its epoch
-    /// permits, of incompressible cells, is the honest worst case that bound must still admit.
-    /// </summary>
-    [Test]
-    public async Task The_largest_sidecar_its_epoch_permits_is_served_and_read_back_whole()
-    {
-        const ulong slot = 13_410_304;
-        // An extension-half column: its cells are erasure-coded, so they do not compress like the blob's own half.
-        const ulong column = 100;
-        int maxBlobs = (int)Spec.GetBlobParameters(Spec.GetEpoch(slot))!.Value.MaxBlobsPerBlock;
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: maxBlobs, seed: 1);
-        byte[] ssz = DataColumnSidecar.Encode(sidecar);
-        Assert.That(Snappy.CompressToArray(ssz), Has.Length.GreaterThan(ssz.Length * 99 / 100), "fixture: the cells must not compress, or the wire bound is never approached");
-        DataColumnSidecarPool pool = new();
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        Hash256 root = Keccak.Compute("canonical");
-        pool.Add(root, slot, sidecar);
-        store.SetCanonicalRoot(slot, root);
-
-        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, slot, 1, [column]);
-
-        Assert.That(served.Select(static s => DataColumnSidecar.Encode(s)), Is.EqualTo(new[] { ssz }));
     }
 
     [Test]
