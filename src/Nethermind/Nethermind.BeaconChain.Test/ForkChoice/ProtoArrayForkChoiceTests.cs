@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
+using static Nethermind.BeaconChain.Test.ForkChoice.ProtoArrayTestBlocks;
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
@@ -56,17 +57,7 @@ public class ProtoArrayForkChoiceTests
         Assert.That(forkChoice.GetHead(anchor, anchor, balances, null, 0), Is.EqualTo(GetRoot(1)), "slashed validator stays out");
         Assert.That(forkChoice.GetWeight(GetRoot(2)), Is.EqualTo(0ul), "no repeat counting");
 
-        ProtoBlock NewBlock(Hash256 root) => new(
-            Slot: 1,
-            Root: root,
-            ParentRoot: GetRoot(0),
-            StateRoot: Hash256.Zero,
-            JustifiedCheckpoint: anchor,
-            FinalizedCheckpoint: anchor,
-            ExecutionStatus: ExecutionStatus.Optimistic,
-            ExecutionBlockHash: root,
-            UnrealizedJustifiedCheckpoint: null,
-            UnrealizedFinalizedCheckpoint: null);
+        ProtoBlock NewBlock(Hash256 root) => CreateProtoBlock(1, root, GetRoot(0), anchor, anchor, ExecutionStatus.Optimistic, root);
     }
 
     /// <summary>
@@ -83,17 +74,8 @@ public class ProtoArrayForkChoiceTests
         ProtoArrayForkChoice forkChoice = new(0, 0, Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, Hash256.Zero);
 
         forkChoice.ProcessBlock(
-            new ProtoBlock(
-                Slot: 1,
-                Root: GetRoot(2),
-                ParentRoot: GetRoot(0),
-                StateRoot: Hash256.Zero,
-                JustifiedCheckpoint: anchor,
-                FinalizedCheckpoint: anchor,
-                ExecutionStatus: ExecutionStatus.Optimistic,
-                ExecutionBlockHash: GetRoot(2),
-                UnrealizedJustifiedCheckpoint: unrealized,
-                UnrealizedFinalizedCheckpoint: anchor),
+            CreateProtoBlock(1, GetRoot(2), GetRoot(0), anchor, anchor, ExecutionStatus.Optimistic, GetRoot(2),
+                unrealizedJustified: unrealized, unrealizedFinalized: anchor),
             1, anchor, anchor);
 
         using (Assert.EnterMultipleScope())
@@ -164,17 +146,8 @@ public class ProtoArrayForkChoiceTests
         CheckpointRef anchor = new(0, GetRoot(0));
         CheckpointRef beyond = new(epoch, GetRoot(0));
         ProtoArrayForkChoice forkChoice = new(0, 0, Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, Hash256.Zero, slotsPerEpoch: 32);
-        ProtoBlock block = new(
-            Slot: 1,
-            Root: GetRoot(1),
-            ParentRoot: GetRoot(0),
-            StateRoot: Hash256.Zero,
-            JustifiedCheckpoint: field == 0 ? beyond : anchor,
-            FinalizedCheckpoint: field == 1 ? beyond : anchor,
-            ExecutionStatus: ExecutionStatus.Optimistic,
-            ExecutionBlockHash: GetRoot(1),
-            UnrealizedJustifiedCheckpoint: field == 2 ? beyond : anchor,
-            UnrealizedFinalizedCheckpoint: field == 3 ? beyond : anchor);
+        ProtoBlock block = CreateProtoBlock(1, GetRoot(1), GetRoot(0), field == 0 ? beyond : anchor, field == 1 ? beyond : anchor, ExecutionStatus.Optimistic, GetRoot(1),
+            unrealizedJustified: field == 2 ? beyond : anchor, unrealizedFinalized: field == 3 ? beyond : anchor);
 
         if (refused)
             Assert.That(() => forkChoice.ProcessBlock(block, 1, anchor, anchor), Throws.TypeOf<ProtoArrayException>());

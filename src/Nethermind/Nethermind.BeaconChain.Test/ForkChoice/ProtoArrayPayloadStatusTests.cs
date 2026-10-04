@@ -5,6 +5,7 @@ using System.Linq;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
+using static Nethermind.BeaconChain.Test.ForkChoice.ProtoArrayTestBlocks;
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
@@ -21,19 +22,9 @@ public class ProtoArrayPayloadStatusTests
     private static readonly CheckpointRef Anchor = new(0, GetRoot(0));
     private static readonly Hash256 OtherHash = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
-    private static ProtoBlock Block(ulong slot, Hash256 root, Hash256? parent, ExecutionStatus status = ExecutionStatus.Optimistic, bool isGloas = false, Hash256? parentBlockHash = null) => new(
-        Slot: slot,
-        Root: root,
-        ParentRoot: parent,
-        StateRoot: Hash256.Zero,
-        JustifiedCheckpoint: Anchor,
-        FinalizedCheckpoint: Anchor,
-        ExecutionStatus: status,
-        ExecutionBlockHash: root,
-        UnrealizedJustifiedCheckpoint: null,
-        UnrealizedFinalizedCheckpoint: null,
-        IsGloas: isGloas,
-        ParentBlockHash: parentBlockHash);
+    private static ProtoBlock Block(ulong slot, Hash256 root, Hash256? parent, ExecutionStatus status = ExecutionStatus.Optimistic, bool isGloas = false, Hash256? parentBlockHash = null) =>
+        CreateProtoBlock(slot, root, parent, Anchor, Anchor, status, root,
+            isGloas: isGloas, parentBlockHash: parentBlockHash);
 
     private static ProtoArrayForkChoice NewForkChoice(bool gloasAnchor = false) =>
         new(0, 0, Hash256.Zero, Anchor, Anchor, ExecutionStatus.Optimistic, GetRoot(0), SlotsPerEpoch, isGloas: gloasAnchor);

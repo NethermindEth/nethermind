@@ -248,7 +248,7 @@ public class ForkChoiceRunnerTests
 
         Hash256 blockStateRoot = BlockStateRoot(chain, gloasRoot);
         ulong startSlot = epoch * Presets.SlotsPerEpoch;
-        BeaconStateGloas expected = gloasRoot ? chain.First.PostState.Clone() : UpgradedAnchor(chain);
+        BeaconStateGloas expected = gloasRoot ? chain.First.PostState.Clone() : chain.UpgradedAnchor();
         if (expected.Slot < startSlot)
             GloasSlotProcessing.ProcessSlots(expected, startSlot, new EpochCache());
 
@@ -1245,7 +1245,7 @@ public class ForkChoiceRunnerTests
         runner.OnBlock(chain.First.Block, justifiesAnchorAtForkEpoch);
 
         Hash256 blockStateDomain = chain.AnchorState.GetDomain(DomainType.BeaconAttester, ForkCrossingChain.ForkEpoch);
-        Hash256 checkpointStateDomain = UpgradedAnchor(chain).GetDomain(DomainType.BeaconAttester, ForkCrossingChain.ForkEpoch);
+        Hash256 checkpointStateDomain = chain.UpgradedAnchor().GetDomain(DomainType.BeaconAttester, ForkCrossingChain.ForkEpoch);
         Hash256 domain = signedUnderBlockStateFork ? blockStateDomain : checkpointStateDomain;
         ulong[] signers = chain.Committee32[..8];
         AttesterSlashingGloas slashing = new()
@@ -1986,7 +1986,7 @@ public class ForkChoiceRunnerTests
         ForkChoiceRunner runner = chain.CreateRunner(pubkeys: pubkeys);
         TickToSlot(runner, GloasTestFixtures.BoundarySlot + 1);
         if (!targetFirstGloasBlock)
-            return (runner, chain.AnchorRoot, UpgradedAnchor(chain));
+            return (runner, chain.AnchorRoot, chain.UpgradedAnchor());
 
         runner.OnBlock(chain.First.Block, chain.First.PostState);
         return (runner, chain.First.Root, chain.First.PostState);
@@ -2017,14 +2017,6 @@ public class ForkChoiceRunnerTests
 
     private static IndexedAttestation ToFuluIndexed(IndexedAttestationGloas attestation) =>
         new() { AttestingIndices = attestation.AttestingIndices, Data = attestation.Data, Signature = attestation.Signature };
-
-    /// <summary>The anchor state taken across the fork by hand: Fulu slot processing to the boundary, then the upgrade.</summary>
-    private static BeaconStateGloas UpgradedAnchor(ForkCrossingChain chain)
-    {
-        BeaconStateFulu fulu = chain.AnchorState.Clone();
-        SlotProcessing.ProcessSlots(fulu, GloasTestFixtures.BoundarySlot, new EpochCache());
-        return GloasForkTransition.UpgradeToGloas(fulu, chain.Spec);
-    }
 
     private static Hash256 BlockStateRoot(ForkCrossingChain chain, bool gloasRoot) =>
         gloasRoot ? SszRoots.HashTreeRoot(chain.First.PostState) : SszRoots.HashTreeRoot(chain.AnchorState);
