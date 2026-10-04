@@ -702,13 +702,6 @@ public partial class GossipRouterTests
             Router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true, Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope)));
     }
 
-    private static SignedExecutionPayloadEnvelope PreGloasEnvelope(ulong builderIndex = 3)
-    {
-        SignedExecutionPayloadEnvelope envelope = CreateEnvelope(builderIndex);
-        envelope.Message!.Payload!.SlotNumber = FirstGloasSlot - 1;
-        return envelope;
-    }
-
     private static SignedExecutionPayloadEnvelope CreateEnvelope(ulong builderIndex = 3) => new()
     {
         Message = new ExecutionPayloadEnvelope
