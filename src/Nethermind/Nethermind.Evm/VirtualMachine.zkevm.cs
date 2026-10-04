@@ -30,6 +30,25 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     public object? ReturnData;
 
     /// <summary>
+    /// <see cref="InitializeFrameCore{Eip158}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.
+    /// </summary>
+    /// <remarks>
+    /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator
+    /// to it; under DELEGATECALL and CALLCODE it is the caller, itself running code or a creation whose nonce is already 1.
+    /// Crediting it zero neither creates nor touches it, yet costs two account lookups on every value-less call.
+    /// Not selected under EIP-7928, whose access-list tracking observes the credit.
+    /// </remarks>
+    private static void InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
+    {
+        ExecutionEnvironment env = state.Env;
+        ExecutionType executionType = state.ExecutionType;
+        if (!executionType.IsAnyCreate() && env.CodeInfo.CodeLength != 0 && executionType.GetBalanceCredit(in env.Value).IsZero)
+            return;
+
+        InitializeFrameCore<OnFlag>(vm, state);
+    }
+
+    /// <summary>
     /// Inline handling of a CALL whose target is a precompile. Precompiles run
     /// no bytecode, so instead of handing a child frame to the ExecuteTransaction
     /// dispatch loop we run the precompile and resume the calling frame here.
