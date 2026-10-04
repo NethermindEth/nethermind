@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm;
+using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.JsonRpc.Data;
@@ -22,4 +25,9 @@ namespace Nethermind.JsonRpc.Data;
 [JsonSerializable(typeof(GethTraceOptions))]
 // trace_ types
 [JsonSerializable(typeof(ParityLikeTxTrace))]
-public partial class EthRpcJsonContext : JsonSerializerContext;
+public partial class EthRpcJsonContext : JsonSerializerContext
+{
+    [ModuleInitializer]
+    [SuppressMessage("Usage", "CA2255", Justification = "Registers the metadata before any code in this assembly serializes.")]
+    internal static void Register() => EthereumJsonSerializer.AddTypeInfoResolver(Default, JsonTypeInfoResolverPriority.EthRpc);
+}

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
@@ -41,4 +43,9 @@ namespace Nethermind.Merge.Plugin.Data;
 [JsonSerializable(typeof(ClientVersionV1))]
 [JsonSerializable(typeof(NewPayloadWithWitnessV1Result))]
 [JsonSerializable(typeof(Witness))]
-internal partial class EngineApiJsonContext : JsonSerializerContext;
+internal partial class EngineApiJsonContext : JsonSerializerContext
+{
+    [ModuleInitializer]
+    [SuppressMessage("Usage", "CA2255", Justification = "Registers the metadata before any code in this assembly serializes.")]
+    internal static void Register() => EthereumJsonSerializer.AddTypeInfoResolver(Default, JsonTypeInfoResolverPriority.EngineApi);
+}

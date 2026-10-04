@@ -334,12 +334,12 @@ namespace Nethermind.Serialization.Json
             IJsonTypeInfoResolver? reflectionResolver = CreateReflectionResolver();
             int additionalResolversCount = additionalResolvers.Count;
             IJsonTypeInfoResolver[] resolverChain = new IJsonTypeInfoResolver[additionalResolversCount + (reflectionResolver is null ? 1 : 2)];
+            resolverChain[0] = SerializationJsonContext.Default;
             for (int i = 0; i < additionalResolversCount; i++)
             {
-                resolverChain[i] = additionalResolvers[i].Resolver;
+                resolverChain[i + 1] = additionalResolvers[i].Resolver;
             }
 
-            resolverChain[additionalResolversCount] = SerializationJsonContext.Default;
             if (reflectionResolver is not null)
             {
                 resolverChain[additionalResolversCount + 1] = reflectionResolver;
