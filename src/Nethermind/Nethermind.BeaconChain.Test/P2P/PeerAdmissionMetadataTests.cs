@@ -38,24 +38,20 @@ public class PeerAdmissionMetadataTests
         Node other = CreateNode();
         SetMatchingStatus(client, other);
 
-        await using (client.P2P)
-        await using (other.P2P)
+        await using PeerHostScope hosts = new(client.P2P, other.P2P);
+        await hosts.StartAsync(token, client.P2P, other.P2P);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        List<(IBeaconSyncPeer Peer, bool InPool, bool CustodyKnown)> announced = [];
+        peerManager.PeerAdmitted += peer => announced.Add((peer, peerManager.GetBestPeers(0).Contains(peer), peer.Custody.IsAdvertised));
+
+        bool admitted = await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token);
+
+        using (Assert.EnterMultipleScope())
         {
-            await client.P2P.StartAsync(token);
-            await other.P2P.StartAsync(token);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            List<(IBeaconSyncPeer Peer, bool InPool, bool CustodyKnown)> announced = [];
-            peerManager.PeerAdmitted += peer => announced.Add((peer, peerManager.GetBestPeers(0).Contains(peer), peer.Custody.IsAdvertised));
-
-            bool admitted = await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(admitted, Is.True);
-                Assert.That(announced, Has.Count.EqualTo(1));
-                Assert.That(announced[0].InPool, Is.True);
-                Assert.That(announced[0].CustodyKnown, Is.True, "the peer's MetaData was read before the announcement");
-            }
+            Assert.That(admitted, Is.True);
+            Assert.That(announced, Has.Count.EqualTo(1));
+            Assert.That(announced[0].InPool, Is.True);
+            Assert.That(announced[0].CustodyKnown, Is.True, "the peer's MetaData was read before the announcement");
         }
     }
 
@@ -71,34 +67,30 @@ public class PeerAdmissionMetadataTests
         await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
             new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
 
-        await using (client.P2P)
-        await using (other.P2P)
+        await using PeerHostScope hosts = new(client.P2P, other.P2P);
+        await hosts.StartAsync(token, client.P2P, other.P2P);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        string silentAddress = silent.Address.ToString();
+        if (!silentAddress.Contains("/p2p/", StringComparison.Ordinal))
         {
-            await client.P2P.StartAsync(token);
-            await other.P2P.StartAsync(token);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            string silentAddress = silent.Address.ToString();
-            if (!silentAddress.Contains("/p2p/", StringComparison.Ordinal))
-            {
-                silentAddress += $"/p2p/{silent.Peer.Identity.PeerId}";
-            }
+            silentAddress += $"/p2p/{silent.Peer.Identity.PeerId}";
+        }
 
-            Task<bool> silentAdmission = peerManager.TryAddPeerAsync(silentAddress, token);
-            await PeerSessionNodes.WaitUntilAsync(() => peerManager.PeerCount == 1, "fixture: the silent peer was never recorded", token);
-            bool usableWhileMetadataPends = !silentAdmission.IsCompleted && peerManager.GetBestPeers(0).Count == 1;
-            Task<bool> otherAdmission = peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token);
+        Task<bool> silentAdmission = peerManager.TryAddPeerAsync(silentAddress, token);
+        await PeerSessionNodes.WaitUntilAsync(() => peerManager.PeerCount == 1, "fixture: the silent peer was never recorded", token);
+        bool usableWhileMetadataPends = !silentAdmission.IsCompleted && peerManager.GetBestPeers(0).Count == 1;
+        Task<bool> otherAdmission = peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token);
 
-            Task both = Task.WhenAll(silentAdmission, otherAdmission);
-            bool inTime = await Task.WhenAny(both, Task.Delay(Within, token)) == both;
+        Task both = Task.WhenAll(silentAdmission, otherAdmission);
+        bool inTime = await Task.WhenAny(both, Task.Delay(Within, token)) == both;
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(usableWhileMetadataPends, Is.True, "the peer is in the pool while its metadata is awaited");
-                Assert.That(inTime, Is.True, "the admission ends within the metadata timeout, so the next dial gets the slot");
-                Assert.That(inTime && silentAdmission.Result, Is.True);
-                Assert.That(inTime && otherAdmission.Result, Is.True);
-                Assert.That(peerManager.PeerCount, Is.EqualTo(2));
-            }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(usableWhileMetadataPends, Is.True, "the peer is in the pool while its metadata is awaited");
+            Assert.That(inTime, Is.True, "the admission ends within the metadata timeout, so the next dial gets the slot");
+            Assert.That(inTime && silentAdmission.Result, Is.True);
+            Assert.That(inTime && otherAdmission.Result, Is.True);
+            Assert.That(peerManager.PeerCount, Is.EqualTo(2));
         }
     }
 
@@ -114,30 +106,28 @@ public class PeerAdmissionMetadataTests
         await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
             new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
 
-        await using (client.P2P)
+        await using PeerHostScope hosts = new(client.P2P);
+        await client.P2P.StartAsync(token);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+        string silentAddress = silent.Address.ToString();
+        if (!silentAddress.Contains("/p2p/", StringComparison.Ordinal))
         {
-            await client.P2P.StartAsync(token);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-            string silentAddress = silent.Address.ToString();
-            if (!silentAddress.Contains("/p2p/", StringComparison.Ordinal))
-            {
-                silentAddress += $"/p2p/{silent.Peer.Identity.PeerId}";
-            }
+            silentAddress += $"/p2p/{silent.Peer.Identity.PeerId}";
+        }
 
-            Task<bool> admission = peerManager.TryAddPeerAsync(silentAddress, token);
-            await PeerSessionNodes.WaitUntilAsync(() => peerManager.PeerCount == 1, "fixture: the silent peer was never recorded", token);
-            Assert.That(admission.IsCompleted, Is.False, "fixture: the metadata is still awaited");
-            peerManager.GetBestPeers(0).Single().ReportFailure(PeerFailureReason.ProtocolViolation, "a block failed its parent-root check");
-            Assert.That(client.P2P.TryGetEstablishedSession(silent.Peer.Identity.PeerId, out ISession? session), Is.True);
-            await session!.DisconnectAsync();
+        Task<bool> admission = peerManager.TryAddPeerAsync(silentAddress, token);
+        await PeerSessionNodes.WaitUntilAsync(() => peerManager.PeerCount == 1, "fixture: the silent peer was never recorded", token);
+        Assert.That(admission.IsCompleted, Is.False, "fixture: the metadata is still awaited");
+        peerManager.GetBestPeers(0).Single().ReportFailure(PeerFailureReason.ProtocolViolation, "a block failed its parent-root check");
+        Assert.That(client.P2P.TryGetEstablishedSession(silent.Peer.Identity.PeerId, out ISession? session), Is.True);
+        await session!.DisconnectAsync();
 
-            bool admitted = await admission.WaitAsync(Within, token);
+        bool admitted = await admission.WaitAsync(Within, token);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(admitted, Is.False, "the session closed before the admission ended");
-                Assert.That(discovery.DialHistory.Quality(silentAddress), Is.EqualTo(-1), "the address stays backed off, one step for one failed dial");
-            }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admitted, Is.False, "the session closed before the admission ended");
+            Assert.That(discovery.DialHistory.Quality(silentAddress), Is.EqualTo(-1), "the address stays backed off, one step for one failed dial");
         }
     }
 }

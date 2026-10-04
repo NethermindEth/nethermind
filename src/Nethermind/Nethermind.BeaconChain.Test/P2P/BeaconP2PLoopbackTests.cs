@@ -312,45 +312,41 @@ public class BeaconP2PLoopbackTests
             EarliestAvailableSlot = AnchorSlot,
         };
 
-        await using (client.P2P)
-        await using (server.P2P)
+        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await hosts.StartAsync(token, server.P2P, client.P2P);
+
+        ISession toServer = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
+        ISession toClient = await PeerSessionNodes.DialAsync(server.P2P, client.P2P, token);
+
+        StatusMessageV2 statusSeenByClient = await client.P2P.RequestStatusAsync(toServer, token);
+        StatusMessageV2 statusSeenByServer = await server.P2P.RequestStatusAsync(toClient, token);
+        AssertStatus(statusSeenByClient, serverStatus);
+        AssertStatus(statusSeenByServer, client.StatusHolder.CurrentStatus);
+
+        IReadOnlyList<ForkedSignedBeaconBlock> blocks = await client.P2P.RequestBlocksByRangeAsync(toServer, AnchorSlot + 1, 8, token);
+        Assert.That(blocks.Select(b => b.ComputeMessageRoot()), Is.EqualTo(chainRoots), "blocks by range roots");
+
+        IReadOnlyList<ForkedSignedBeaconBlock> byRoot = await client.P2P.RequestBlocksByRootAsync(toServer, [chainRoots[1]], token);
+        Assert.That(byRoot.Select(b => b.ComputeMessageRoot()), Is.EqualTo(new[] { chainRoots[1] }), "blocks by root");
+
+        Assert.That(await client.P2P.PingAsync(toServer, token), Is.EqualTo(42ul), "ping returns the server metadata seq");
+
+        MetaDataV3 metadata = await client.P2P.RequestMetaDataAsync(toServer, token);
+        using (Assert.EnterMultipleScope())
         {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
-
-            ISession toServer = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
-            ISession toClient = await PeerSessionNodes.DialAsync(server.P2P, client.P2P, token);
-
-            StatusMessageV2 statusSeenByClient = await client.P2P.RequestStatusAsync(toServer, token);
-            StatusMessageV2 statusSeenByServer = await server.P2P.RequestStatusAsync(toClient, token);
-            AssertStatus(statusSeenByClient, serverStatus);
-            AssertStatus(statusSeenByServer, client.StatusHolder.CurrentStatus);
-
-            IReadOnlyList<ForkedSignedBeaconBlock> blocks = await client.P2P.RequestBlocksByRangeAsync(toServer, AnchorSlot + 1, 8, token);
-            Assert.That(blocks.Select(b => b.ComputeMessageRoot()), Is.EqualTo(chainRoots), "blocks by range roots");
-
-            IReadOnlyList<ForkedSignedBeaconBlock> byRoot = await client.P2P.RequestBlocksByRootAsync(toServer, [chainRoots[1]], token);
-            Assert.That(byRoot.Select(b => b.ComputeMessageRoot()), Is.EqualTo(new[] { chainRoots[1] }), "blocks by root");
-
-            Assert.That(await client.P2P.PingAsync(toServer, token), Is.EqualTo(42ul), "ping returns the server metadata seq");
-
-            MetaDataV3 metadata = await client.P2P.RequestMetaDataAsync(toServer, token);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(metadata.SeqNumber, Is.EqualTo(42ul), "metadata seq");
-                Assert.That(metadata.CustodyGroupCount, Is.EqualTo(128ul), "metadata custody group count");
-                Assert.That(metadata.Attnets, Is.EqualTo(new BitArray(64)), "metadata attnets");
-            }
-
-            // Peer manager: one maintenance round over a static peer entry connects and records its status.
-            client.Config.StaticPeers = PeerSessionNodes.LoopbackAddress(server.P2P).ToString();
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            await peerManager.RunMaintenanceRoundAsync(token);
-            IBeaconSyncPeer syncPeer = peerManager.GetBestPeers(AnchorSlot + 4).Single();
-            Assert.That(syncPeer.HeadSlot, Is.EqualTo(AnchorSlot + 4), "peer manager records the peer head");
-
-            await client.P2P.GoodbyeAsync(toServer, GoodbyeReason.ClientShutdown, token);
+            Assert.That(metadata.SeqNumber, Is.EqualTo(42ul), "metadata seq");
+            Assert.That(metadata.CustodyGroupCount, Is.EqualTo(128ul), "metadata custody group count");
+            Assert.That(metadata.Attnets, Is.EqualTo(new BitArray(64)), "metadata attnets");
         }
+
+        // Peer manager: one maintenance round over a static peer entry connects and records its status.
+        client.Config.StaticPeers = PeerSessionNodes.LoopbackAddress(server.P2P).ToString();
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        await peerManager.RunMaintenanceRoundAsync(token);
+        IBeaconSyncPeer syncPeer = peerManager.GetBestPeers(AnchorSlot + 4).Single();
+        Assert.That(syncPeer.HeadSlot, Is.EqualTo(AnchorSlot + 4), "peer manager records the peer head");
+
+        await client.P2P.GoodbyeAsync(toServer, GoodbyeReason.ClientShutdown, token);
     }
 
     [Test]
@@ -382,38 +378,34 @@ public class BeaconP2PLoopbackTests
         Node client = CreateNode(spec);
         client.StatusHolder.CurrentStatus = status;
 
-        await using (client.P2P)
-        await using (server.P2P)
-        {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
+        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await hosts.StartAsync(token, server.P2P, client.P2P);
 
-            client.Config.StaticPeers = PeerSessionNodes.LoopbackAddress(server.P2P).ToString();
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            await peerManager.RunMaintenanceRoundAsync(token);
-            IBeaconSyncPeer peer = peerManager.GetBestPeers(gloasSlot).Single();
-            long messagesSent = PeerManager.MessagesSentForTest(peer);
+        client.Config.StaticPeers = PeerSessionNodes.LoopbackAddress(server.P2P).ToString();
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        await peerManager.RunMaintenanceRoundAsync(token);
+        IBeaconSyncPeer peer = peerManager.GetBestPeers(gloasSlot).Single();
+        long messagesSent = PeerManager.MessagesSentForTest(peer);
 
-            IReadOnlyList<DataColumnSidecarGloas> byRoot = await peer.RequestGloasDataColumnSidecarsByRootAsync(
-                [new DataColumnsByRootIdentifier { BlockRoot = heldRoot, Columns = [7, 5, 3] }, new DataColumnsByRootIdentifier { BlockRoot = pendingRoot, Columns = [3] }], token);
-            Assert.That(byRoot.Select(static s => (s.BeaconBlockRoot, s.Index, s.Slot)), Is.EqualTo(new[] { (heldRoot, 7UL, gloasSlot), (heldRoot, 3UL, gloasSlot) }),
-                "served verified Gloas columns in request order under the Gloas digest, never the pending candidate");
-            Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 1), "the by-root ask counts as a message sent");
+        IReadOnlyList<DataColumnSidecarGloas> byRoot = await peer.RequestGloasDataColumnSidecarsByRootAsync(
+            [new DataColumnsByRootIdentifier { BlockRoot = heldRoot, Columns = [7, 5, 3] }, new DataColumnsByRootIdentifier { BlockRoot = pendingRoot, Columns = [3] }], token);
+        Assert.That(byRoot.Select(static s => (s.BeaconBlockRoot, s.Index, s.Slot)), Is.EqualTo(new[] { (heldRoot, 7UL, gloasSlot), (heldRoot, 3UL, gloasSlot) }),
+            "served verified Gloas columns in request order under the Gloas digest, never the pending candidate");
+        Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 1), "the by-root ask counts as a message sent");
 
-            IReadOnlyList<DataColumnSidecarGloas> byRange = await peer.RequestGloasDataColumnSidecarsByRangeAsync(gloasSlot, 1, [3], token);
-            Assert.That(byRange.Select(static s => (s.BeaconBlockRoot, s.Index, s.Slot)), Is.EqualTo(new[] { (heldRoot, 3UL, gloasSlot) }),
-                "served the canonical block's verified Gloas column by range, read in the Gloas shape");
-            Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 2), "the by-range ask counts as a message sent");
+        IReadOnlyList<DataColumnSidecarGloas> byRange = await peer.RequestGloasDataColumnSidecarsByRangeAsync(gloasSlot, 1, [3], token);
+        Assert.That(byRange.Select(static s => (s.BeaconBlockRoot, s.Index, s.Slot)), Is.EqualTo(new[] { (heldRoot, 3UL, gloasSlot) }),
+            "served the canonical block's verified Gloas column by range, read in the Gloas shape");
+        Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 2), "the by-range ask counts as a message sent");
 
-            ISession toServer = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
-            IReadOnlyList<DataColumnSidecar> fuluByRoot = await client.P2P.RequestDataColumnSidecarsByRootAsync(toServer, [new DataColumnsByRootIdentifier { BlockRoot = fuluRoot, Columns = [3] }], token);
-            Assert.That(fuluByRoot.Select(static s => s.Index), Is.EqualTo(new[] { 3UL }), "the Fulu dial still reads Fulu chunks");
+        ISession toServer = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
+        IReadOnlyList<DataColumnSidecar> fuluByRoot = await client.P2P.RequestDataColumnSidecarsByRootAsync(toServer, [new DataColumnsByRootIdentifier { BlockRoot = fuluRoot, Columns = [3] }], token);
+        Assert.That(fuluByRoot.Select(static s => s.Index), Is.EqualTo(new[] { 3UL }), "the Fulu dial still reads Fulu chunks");
 
-            using CancellationTokenSource quick = CancellationTokenSource.CreateLinkedTokenSource(token);
-            quick.CancelAfter(TimeSpan.FromSeconds(5));
-            Assert.That(await peer.RequestGloasDataColumnSidecarsByRootAsync([], quick.Token), Is.Empty, "an empty ask returns at once, not after the response timeout");
-            Assert.That(await client.P2P.RequestDataColumnSidecarsByRootAsync(toServer, [], quick.Token), Is.Empty, "an empty ask returns at once, not after the response timeout");
-        }
+        using CancellationTokenSource quick = CancellationTokenSource.CreateLinkedTokenSource(token);
+        quick.CancelAfter(TimeSpan.FromSeconds(5));
+        Assert.That(await peer.RequestGloasDataColumnSidecarsByRootAsync([], quick.Token), Is.Empty, "an empty ask returns at once, not after the response timeout");
+        Assert.That(await client.P2P.RequestDataColumnSidecarsByRootAsync(toServer, [], quick.Token), Is.Empty, "an empty ask returns at once, not after the response timeout");
     }
 
     [Test]
@@ -423,18 +415,14 @@ public class BeaconP2PLoopbackTests
         Node server = CreateNode();
         Node client = CreateNode();
 
-        await using (client.P2P)
-        await using (server.P2P)
-        {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
-            ISession toServer = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
+        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await hosts.StartAsync(token, server.P2P, client.P2P);
+        ISession toServer = await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token);
 
-            using CancellationTokenSource quick = CancellationTokenSource.CreateLinkedTokenSource(token);
-            quick.CancelAfter(TimeSpan.FromSeconds(5));
-            Assert.That(await client.P2P.RequestExecutionPayloadEnvelopesByRootAsync(toServer, [], quick.Token), Is.Empty, "envelopes by root");
-            Assert.That(await client.P2P.RequestBlocksByRootAsync(toServer, [], quick.Token), Is.Empty, "blocks by root");
-        }
+        using CancellationTokenSource quick = CancellationTokenSource.CreateLinkedTokenSource(token);
+        quick.CancelAfter(TimeSpan.FromSeconds(5));
+        Assert.That(await client.P2P.RequestExecutionPayloadEnvelopesByRootAsync(toServer, [], quick.Token), Is.Empty, "envelopes by root");
+        Assert.That(await client.P2P.RequestBlocksByRootAsync(toServer, [], quick.Token), Is.Empty, "blocks by root");
     }
 
     public enum ColumnDial
@@ -499,15 +487,13 @@ public class BeaconP2PLoopbackTests
             return Task.FromException<IReadOnlyList<ForkedSignedBeaconBlock>>(new Eth2ReqRespException("Truncated response chunk: Unable to read beyond the end of the stream."));
         });
         Node node = CreateNode();
-        await using (node.P2P)
-        {
-            Exception? thrown = Assert.CatchAsync(async () => await node.P2P.RequestBlocksByRangeAsync(session, 5, 2, default));
+        await using PeerHostScope hosts = new(node.P2P);
+        Exception? thrown = Assert.CatchAsync(async () => await node.P2P.RequestBlocksByRangeAsync(session, 5, 2, default));
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That((thrown as PartialBlocksException)?.Received, delivered ? Is.EqualTo(new[] { block }) : Is.Null);
-                Assert.That(thrown!.Message, Does.StartWith("Truncated response chunk"));
-            }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((thrown as PartialBlocksException)?.Received, delivered ? Is.EqualTo(new[] { block }) : Is.Null);
+            Assert.That(thrown!.Message, Does.StartWith("Truncated response chunk"));
         }
     }
 

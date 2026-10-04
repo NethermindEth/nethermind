@@ -55,35 +55,30 @@ public class SampledColumnCustodianTests
         client.Config.TargetPeerCount = 1;
         await using BeaconDiscovery discovery = CreateDiscovery();
 
-        await using (client.P2P)
-        await using (partial.P2P)
-        await using (bystander.P2P)
-        await using (supernode.P2P)
+        await using PeerHostScope hosts = new(client.P2P, partial.P2P, bystander.P2P, supernode.P2P);
+        await StartAsync(token, partial, bystander, supernode, client);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token, Enr(partialKey, partial, Eip7594DasConstants.CustodyRequirement)), Is.True);
+
+        PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
+        ulong[] uncustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
+        IReadOnlyList<ulong> wantedWithOnePeer = [.. discovery.WantedColumns];
+        Task admission = peerManager.WaitForAdmissionCapacityAsync(token);
+        await Task.WhenAny(admission, Task.Delay(TimeSpan.FromSeconds(5), token));
+
+        // The bystander is announced with the partial custodian's record, so it custodies no column still wanted.
+        bool bystanderAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(bystander.P2P), token, Enr(partialKey, bystander, Eip7594DasConstants.CustodyRequirement));
+        bool supernodeAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(supernode.P2P), token, Enr(supernodeKey, supernode, Eip7594DasConstants.NumberOfCustodyGroups));
+
+        using (Assert.EnterMultipleScope())
         {
-            await StartAsync(token, partial, bystander, supernode, client);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token, Enr(partialKey, partial, Eip7594DasConstants.CustodyRequirement)), Is.True);
-
-            PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
-            ulong[] uncustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
-            IReadOnlyList<ulong> wantedWithOnePeer = [.. discovery.WantedColumns];
-            Task admission = peerManager.WaitForAdmissionCapacityAsync(token);
-            await Task.WhenAny(admission, Task.Delay(TimeSpan.FromSeconds(5), token));
-
-            // The bystander is announced with the partial custodian's record, so it custodies no column still wanted.
-            bool bystanderAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(bystander.P2P), token, Enr(partialKey, bystander, Eip7594DasConstants.CustodyRequirement));
-            bool supernodeAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(supernode.P2P), token, Enr(supernodeKey, supernode, Eip7594DasConstants.NumberOfCustodyGroups));
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(uncustodied, Is.Not.Empty, "a CUSTODY_REQUIREMENT peer custodies fewer columns than this node samples");
-                Assert.That(wantedWithOnePeer, Is.EqualTo(uncustodied), "discovery is asked for exactly the sampled columns no connected peer custodies");
-                Assert.That(admission.IsCompletedSuccessfully, Is.True, "at the target, a missing custodian still opens room for a dial");
-                Assert.That(bystanderAdmitted, Is.False, "past the target, a candidate custodying no wanted column is not dialed");
-                Assert.That(supernodeAdmitted, Is.True, "past the target, a candidate custodying a wanted column is dialed");
-                Assert.That(peerManager.PeerCount, Is.EqualTo(2));
-                Assert.That(discovery.WantedColumns, Is.Empty, "the supernode custodies every column");
-            }
+            Assert.That(uncustodied, Is.Not.Empty, "a CUSTODY_REQUIREMENT peer custodies fewer columns than this node samples");
+            Assert.That(wantedWithOnePeer, Is.EqualTo(uncustodied), "discovery is asked for exactly the sampled columns no connected peer custodies");
+            Assert.That(admission.IsCompletedSuccessfully, Is.True, "at the target, a missing custodian still opens room for a dial");
+            Assert.That(bystanderAdmitted, Is.False, "past the target, a candidate custodying no wanted column is not dialed");
+            Assert.That(supernodeAdmitted, Is.True, "past the target, a candidate custodying a wanted column is dialed");
+            Assert.That(peerManager.PeerCount, Is.EqualTo(2));
+            Assert.That(discovery.WantedColumns, Is.Empty, "the supernode custodies every column");
         }
     }
 
@@ -105,18 +100,16 @@ public class SampledColumnCustodianTests
             address += $"/p2p/{silent.Peer.Identity.PeerId}";
         }
 
-        await using (client.P2P)
+        await using PeerHostScope hosts = new(client.P2P);
+        await client.P2P.StartAsync(token);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+
+        bool admitted = await peerManager.TryAddPeerAsync(address, token, Enr(supernodeKey, PortOf(address), Eip7594DasConstants.NumberOfCustodyGroups));
+
+        using (Assert.EnterMultipleScope())
         {
-            await client.P2P.StartAsync(token);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-
-            bool admitted = await peerManager.TryAddPeerAsync(address, token, Enr(supernodeKey, PortOf(address), Eip7594DasConstants.NumberOfCustodyGroups));
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(admitted, Is.True);
-                Assert.That(discovery.WantedColumns, Is.Empty, "the ENR advertises custody of every column");
-            }
+            Assert.That(admitted, Is.True);
+            Assert.That(discovery.WantedColumns, Is.Empty, "the ENR advertises custody of every column");
         }
     }
 
@@ -179,24 +172,21 @@ public class SampledColumnCustodianTests
         serverStatus.Status = server.StatusHolder.CurrentStatus;
         RangeSyncPeerSelectionTests.AllLevelsCapture logger = new() { IsDebug = false, IsTrace = false };
 
-        await using (client.P2P)
-        await using (server.P2P)
+        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await StartAsync(token, server, client);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, new OneLoggerLogManager(new ILogger(logger)));
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
+        ReportFailuresShortOfADrop(peerManager.GetBestPeers(0).Single());
+
+        serverStatus.Refuse = true;
+        await peerManager.RunMaintenanceRoundAsync(token);
+
+        string[] drops = [.. logger.Lines.Where(static l => l.StartsWith("Dropping beacon chain peer", StringComparison.Ordinal))];
+        using (Assert.EnterMultipleScope())
         {
-            await StartAsync(token, server, client);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, new OneLoggerLogManager(new ILogger(logger)));
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
-            ReportFailuresShortOfADrop(peerManager.GetBestPeers(0).Single());
-
-            serverStatus.Refuse = true;
-            await peerManager.RunMaintenanceRoundAsync(token);
-
-            string[] drops = [.. logger.Lines.Where(static l => l.StartsWith("Dropping beacon chain peer", StringComparison.Ordinal))];
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(peerManager.PeerCount, Is.Zero, "the failed health check that makes eight consecutive failures drops the peer");
-                Assert.That(drops, Has.Length.EqualTo(1));
-                Assert.That(drops.Single(), Does.Match(@"repeated failures, last: .+"), "the drop names the failure that caused it");
-            }
+            Assert.That(peerManager.PeerCount, Is.Zero, "the failed health check that makes eight consecutive failures drops the peer");
+            Assert.That(drops, Has.Length.EqualTo(1));
+            Assert.That(drops.Single(), Does.Match(@"repeated failures, last: .+"), "the drop names the failure that caused it");
         }
     }
 
@@ -216,41 +206,37 @@ public class SampledColumnCustodianTests
         client.Config.MaxPeerCount = 4;
         await using BeaconDiscovery discovery = CreateDiscovery();
 
-        await using (client.P2P)
-        await using (partial.P2P)
-        await using (supernode.P2P)
+        await using PeerHostScope hosts = new(client.P2P, partial.P2P, supernode.P2P);
+        await StartAsync(token, supernode, partial, client);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(supernode.P2P), token), Is.True);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
+        IReadOnlyList<ulong> wantedWhileHealthy = [.. discovery.WantedColumns];
+        Stopwatch parked = Stopwatch.StartNew();
+        Task admission = peerManager.WaitForAdmissionCapacityAsync(token);
+        bool parkedWhileHealthy = !admission.IsCompleted;
+        ReportFailuresShortOfADrop(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(supernode.P2P)));
+
+        supernodeStatus.Refuse = true;
+        for (int round = 0; round < 8 && peerManager.PeerCount > 1; round++)
         {
-            await StartAsync(token, supernode, partial, client);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(supernode.P2P), token), Is.True);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
-            IReadOnlyList<ulong> wantedWhileHealthy = [.. discovery.WantedColumns];
-            Stopwatch parked = Stopwatch.StartNew();
-            Task admission = peerManager.WaitForAdmissionCapacityAsync(token);
-            bool parkedWhileHealthy = !admission.IsCompleted;
-            ReportFailuresShortOfADrop(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(supernode.P2P)));
+            await peerManager.RunMaintenanceRoundAsync(token);
+        }
 
-            supernodeStatus.Refuse = true;
-            for (int round = 0; round < 8 && peerManager.PeerCount > 1; round++)
-            {
-                await peerManager.RunMaintenanceRoundAsync(token);
-            }
+        // The admission poll interval is 30 s, so a wake well inside that came from the shortfall, however long the rounds took under load.
+        await admission.WaitAsync(token);
+        bool wokenByShortfall = parked.Elapsed < TimeSpan.FromSeconds(25);
+        PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
+        ulong[] onlySupernodeCustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
 
-            // The admission poll interval is 30 s, so a wake well inside that came from the shortfall, however long the rounds took under load.
-            await admission.WaitAsync(token);
-            bool wokenByShortfall = parked.Elapsed < TimeSpan.FromSeconds(25);
-            PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
-            ulong[] onlySupernodeCustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(wantedWhileHealthy, Is.Empty, "the supernode custodies every sampled column");
-                Assert.That(parkedWhileHealthy, Is.True, "at the target with every sampled column custodied, no room is opened");
-                Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a peer failing its health checks cannot serve columns, so being the last custodian does not keep it");
-                Assert.That(onlySupernodeCustodied, Is.Not.Empty);
-                Assert.That(discovery.WantedColumns, Is.EqualTo(onlySupernodeCustodied), "the columns only the dropped peer custodied are sought through discovery");
-                Assert.That(wokenByShortfall, Is.True, "the parked admission wait wakes once a sampled column loses its custodian");
-            }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wantedWhileHealthy, Is.Empty, "the supernode custodies every sampled column");
+            Assert.That(parkedWhileHealthy, Is.True, "at the target with every sampled column custodied, no room is opened");
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a peer failing its health checks cannot serve columns, so being the last custodian does not keep it");
+            Assert.That(onlySupernodeCustodied, Is.Not.Empty);
+            Assert.That(discovery.WantedColumns, Is.EqualTo(onlySupernodeCustodied), "the columns only the dropped peer custodied are sought through discovery");
+            Assert.That(wokenByShortfall, Is.True, "the parked admission wait wakes once a sampled column loses its custodian");
         }
     }
 
@@ -273,36 +259,31 @@ public class SampledColumnCustodianTests
         client.Config.MaxPeerCount = 4;
         await using BeaconDiscovery discovery = CreateDiscovery();
 
-        await using (client.P2P)
-        await using (failing.P2P)
-        await using (partial.P2P)
-        await using (replacement.P2P)
+        await using PeerHostScope hosts = new(client.P2P, failing.P2P, partial.P2P, replacement.P2P);
+        await StartAsync(token, failing, partial, replacement, client);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
+        IReadOnlyList<ulong> uncustodiedWhileHealthy = peerManager.UncustodiedSampledColumns();
+        ReportFailuresUpToTheLimit(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P)));
+
+        PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
+        ulong[] onlyFailingCustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
+        string[] picked = [.. peerManager.GetBestPeers(0).Select(static p => p.Id)];
+        IReadOnlyList<ulong> uncustodied = peerManager.UncustodiedSampledColumns();
+        int connected = peerManager.PeerCount;
+        bool replacementAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(replacement.P2P), token, Enr(replacementKey, replacement, Eip7594DasConstants.NumberOfCustodyGroups));
+        await peerManager.RunMaintenanceRoundAsync(token);
+
+        using (Assert.EnterMultipleScope())
         {
-            await StartAsync(token, failing, partial, replacement, client);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
-            IReadOnlyList<ulong> uncustodiedWhileHealthy = peerManager.UncustodiedSampledColumns();
-            ReportFailuresUpToTheLimit(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P)));
-
-            PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
-            ulong[] onlyFailingCustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
-            string[] picked = [.. peerManager.GetBestPeers(0).Select(static p => p.Id)];
-            IReadOnlyList<ulong> uncustodied = peerManager.UncustodiedSampledColumns();
-            int connected = peerManager.PeerCount;
-            bool replacementAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(replacement.P2P), token, Enr(replacementKey, replacement, Eip7594DasConstants.NumberOfCustodyGroups));
-            await peerManager.RunMaintenanceRoundAsync(token);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(uncustodiedWhileHealthy, Is.Empty);
-                Assert.That(onlyFailingCustodied, Is.Not.Empty);
-                Assert.That(picked, Is.EqualTo(new[] { LoopbackAddress(partial.P2P) }), "a peer at the failure limit is not picked for requests");
-                Assert.That(connected, Is.EqualTo(2), "the last custodian of a sampled column stays connected");
-                Assert.That(uncustodied, Is.EqualTo(onlyFailingCustodied), "the columns only the failing peer custodies are sought");
-                Assert.That(replacementAdmitted, Is.True, "at the target, a custodian of those columns is admitted");
-                Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Does.Not.Contain(LoopbackAddress(failing.P2P)), "a passing health check does not make the peer selectable again");
-            }
+            Assert.That(uncustodiedWhileHealthy, Is.Empty);
+            Assert.That(onlyFailingCustodied, Is.Not.Empty);
+            Assert.That(picked, Is.EqualTo(new[] { LoopbackAddress(partial.P2P) }), "a peer at the failure limit is not picked for requests");
+            Assert.That(connected, Is.EqualTo(2), "the last custodian of a sampled column stays connected");
+            Assert.That(uncustodied, Is.EqualTo(onlyFailingCustodied), "the columns only the failing peer custodies are sought");
+            Assert.That(replacementAdmitted, Is.True, "at the target, a custodian of those columns is admitted");
+            Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Does.Not.Contain(LoopbackAddress(failing.P2P)), "a passing health check does not make the peer selectable again");
         }
     }
 
@@ -327,39 +308,34 @@ public class SampledColumnCustodianTests
         Node replacement = CreateNode(replacementKey, Eip7594DasConstants.NumberOfCustodyGroups);
         SetMatchingStatus(replacement);
 
-        await using (client.P2P)
-        await using (failing.P2P)
-        await using (bystander.P2P)
-        await using (replacement.P2P)
+        await using PeerHostScope hosts = new(client.P2P, failing.P2P, bystander.P2P, replacement.P2P);
+        await StartAsync(token, failing, bystander, replacement, client);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(bystander.P2P), token), Is.True);
+        IBeaconSyncPeer failingPeer = peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P));
+        string[] expected;
+        if (overTheCeiling)
         {
-            await StartAsync(token, failing, bystander, replacement, client);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(bystander.P2P), token), Is.True);
-            IBeaconSyncPeer failingPeer = peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P));
-            string[] expected;
-            if (overTheCeiling)
-            {
-                client.Config.MaxPeerCount = 1;
-                client.Config.TargetPeerCount = 1;
-                ReportFailuresUpToTheLimit(failingPeer);
-                await peerManager.RunMaintenanceRoundAsync(token);
-                expected = [PeerIdOf(failing)];
-            }
-            else
-            {
-                client.Config.MaxPeerCount = 2;
-                client.Config.TargetPeerCount = 2;
-                ReportFailuresUpToTheLimit(failingPeer);
-                Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(replacement.P2P), token, Enr(replacementKey, replacement, Eip7594DasConstants.NumberOfCustodyGroups)), Is.True);
-                expected = [PeerIdOf(bystander), PeerIdOf(replacement)];
-            }
-
-            string[] connected = [.. peerManager.Peers.Where(static p => p.State == PeerConnectionState.Connected).Select(static p => p.PeerId)];
-            Assert.That(connected, Is.EquivalentTo(expected), overTheCeiling
-                ? "the last custodian of a sampled column is kept and the bystander, custodying none, is trimmed"
-                : "the peer at the failure limit, no longer the last custodian once the candidate joins, makes room rather than the bystander");
+            client.Config.MaxPeerCount = 1;
+            client.Config.TargetPeerCount = 1;
+            ReportFailuresUpToTheLimit(failingPeer);
+            await peerManager.RunMaintenanceRoundAsync(token);
+            expected = [PeerIdOf(failing)];
         }
+        else
+        {
+            client.Config.MaxPeerCount = 2;
+            client.Config.TargetPeerCount = 2;
+            ReportFailuresUpToTheLimit(failingPeer);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(replacement.P2P), token, Enr(replacementKey, replacement, Eip7594DasConstants.NumberOfCustodyGroups)), Is.True);
+            expected = [PeerIdOf(bystander), PeerIdOf(replacement)];
+        }
+
+        string[] connected = [.. peerManager.Peers.Where(static p => p.State == PeerConnectionState.Connected).Select(static p => p.PeerId)];
+        Assert.That(connected, Is.EquivalentTo(expected), overTheCeiling
+            ? "the last custodian of a sampled column is kept and the bystander, custodying none, is trimmed"
+            : "the peer at the failure limit, no longer the last custodian once the candidate joins, makes room rather than the bystander");
     }
 
     /// <summary>
@@ -389,39 +365,35 @@ public class SampledColumnCustodianTests
         client.Config.TargetPeerCount = 1;
         client.Config.MaxPeerCount = 1;
 
-        await using (client.P2P)
-        await using (connected.P2P)
-        await using (candidate.P2P)
+        await using PeerHostScope hosts = new(client.P2P, connected.P2P, candidate.P2P);
+        await StartAsync(token, connected, candidate, client);
+        string candidateAddress = LoopbackAddress(candidate.P2P);
+        string candidateEnr = Enr(candidateKey, candidate, Eip7594DasConstants.CustodyRequirement);
+        if (ceilingCase == CeilingCase.CandidateUnreachable)
         {
-            await StartAsync(token, connected, candidate, client);
-            string candidateAddress = LoopbackAddress(candidate.P2P);
-            string candidateEnr = Enr(candidateKey, candidate, Eip7594DasConstants.CustodyRequirement);
-            if (ceilingCase == CeilingCase.CandidateUnreachable)
-            {
-                // The candidate's identity at a port nothing listens on.
-                candidateAddress = Regex.Replace(candidateAddress, "/tcp/[0-9]+/", "/tcp/1/");
-            }
+            // The candidate's identity at a port nothing listens on.
+            candidateAddress = Regex.Replace(candidateAddress, "/tcp/[0-9]+/", "/tcp/1/");
+        }
 
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(connected.P2P), token), Is.True);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(connected.P2P), token), Is.True);
 
-            Task admission = peerManager.WaitForAdmissionCapacityAsync(token);
-            bool admissionOpened = await Task.WhenAny(admission, Task.Delay(TimeSpan.FromSeconds(5), token)) == admission;
-            bool candidateAdmitted = await peerManager.TryAddPeerAsync(candidateAddress, token, candidateEnr);
-            bool replaces = ceilingCase == CeilingCase.ConnectedCustodiesNoSampledColumn;
+        Task admission = peerManager.WaitForAdmissionCapacityAsync(token);
+        bool admissionOpened = await Task.WhenAny(admission, Task.Delay(TimeSpan.FromSeconds(5), token)) == admission;
+        bool candidateAdmitted = await peerManager.TryAddPeerAsync(candidateAddress, token, candidateEnr);
+        bool replaces = ceilingCase == CeilingCase.ConnectedCustodiesNoSampledColumn;
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(admissionOpened, Is.True, "at the ceiling, a sampled column without a custodian still opens room for a dial");
-                Assert.That(candidateAdmitted, Is.EqualTo(replaces));
-                Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Is.EqualTo(new[] { replaces ? candidateAddress : LoopbackAddress(connected.P2P) }),
-                    ceilingCase switch
-                    {
-                        CeilingCase.ConnectedIsLastCustodian => "the last custodian of a sampled column is not dropped to make room",
-                        CeilingCase.CandidateUnreachable => "a candidate that cannot be reached takes no connected peer's place",
-                        _ => "the peer custodying no sampled column made room for the candidate",
-                    });
-            }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admissionOpened, Is.True, "at the ceiling, a sampled column without a custodian still opens room for a dial");
+            Assert.That(candidateAdmitted, Is.EqualTo(replaces));
+            Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Is.EqualTo(new[] { replaces ? candidateAddress : LoopbackAddress(connected.P2P) }),
+                ceilingCase switch
+                {
+                    CeilingCase.ConnectedIsLastCustodian => "the last custodian of a sampled column is not dropped to make room",
+                    CeilingCase.CandidateUnreachable => "a candidate that cannot be reached takes no connected peer's place",
+                    _ => "the peer custodying no sampled column made room for the candidate",
+                });
         }
     }
 
@@ -442,26 +414,22 @@ public class SampledColumnCustodianTests
         client.Config.TargetPeerCount = 2;
         client.Config.MaxPeerCount = 2;
 
-        await using (client.P2P)
-        await using (connected.P2P)
-        await using (late.P2P)
+        await using PeerHostScope hosts = new(client.P2P, connected.P2P, late.P2P);
+        await StartAsync(token, connected, late, client);
+        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(connected.P2P), token), Is.True);
+
+        // The late peer answers the admission's status request after the reservation, so the ceiling drops under the dial in flight.
+        lateStatus.OnNextRead = () => client.Config.MaxPeerCount = 1;
+        bool lateAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(late.P2P), token);
+        int afterLanding = peerManager.PeerCount;
+        await peerManager.RunMaintenanceRoundAsync(token);
+
+        using (Assert.EnterMultipleScope())
         {
-            await StartAsync(token, connected, late, client);
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(connected.P2P), token), Is.True);
-
-            // The late peer answers the admission's status request after the reservation, so the ceiling drops under the dial in flight.
-            lateStatus.OnNextRead = () => client.Config.MaxPeerCount = 1;
-            bool lateAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(late.P2P), token);
-            int afterLanding = peerManager.PeerCount;
-            await peerManager.RunMaintenanceRoundAsync(token);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(lateAdmitted, Is.True);
-                Assert.That(afterLanding, Is.EqualTo(2), "a dial that replaces no peer drops none");
-                Assert.That(peerManager.PeerCount, Is.EqualTo(1), "the trim brings the pool back to the ceiling");
-            }
+            Assert.That(lateAdmitted, Is.True);
+            Assert.That(afterLanding, Is.EqualTo(2), "a dial that replaces no peer drops none");
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "the trim brings the pool back to the ceiling");
         }
     }
 

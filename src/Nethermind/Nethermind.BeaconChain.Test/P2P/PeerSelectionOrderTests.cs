@@ -74,14 +74,12 @@ public class PeerSelectionOrderTests
     {
         LevelCapturingLogManager logs = new();
         Node node = Create();
-        await using (node.P2P)
-        {
-            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, logs);
-            manager.AddPeerForTest(Substitute.For<ISession>(), "/ip4/10.0.0.1/tcp/9000/p2p/16Uiu2HAmPeer");
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, logs);
+        manager.AddPeerForTest(Substitute.For<ISession>(), "/ip4/10.0.0.1/tcp/9000/p2p/16Uiu2HAmPeer");
 
-            manager.GetBestPeers(minHeadSlot);
+        manager.GetBestPeers(minHeadSlot);
 
-            Assert.That(logs.Lines.Select(static l => l.Text), Has.Some.StartsWith(expected));
-        }
+        Assert.That(logs.Lines.Select(static l => l.Text), Has.Some.StartsWith(expected));
     }
 }

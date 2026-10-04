@@ -118,23 +118,19 @@ public class RequestFailureCauseTests
     {
         Node server = Create();
         Node client = Create();
-        await using (server.P2P)
-        await using (client.P2P)
+        await using PeerHostScope hosts = new(server.P2P, client.P2P);
+        await hosts.StartAsync(token, server.P2P, client.P2P);
+        ISession session = await client.P2P.DialPeerAsync(LoopbackAddress(server.P2P), token);
+        RequestTiming status = new();
+        RequestTiming blocks = new();
+
+        await client.P2P.RequestStatusAsync(session, token, status);
+        await client.P2P.RequestBlocksByRootAsync(session, [Hash256.Zero], token, blocks);
+
+        using (Assert.EnterMultipleScope())
         {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
-            ISession session = await client.P2P.DialPeerAsync(LoopbackAddress(server.P2P), token);
-            RequestTiming status = new();
-            RequestTiming blocks = new();
-
-            await client.P2P.RequestStatusAsync(session, token, status);
-            await client.P2P.RequestBlocksByRootAsync(session, [Hash256.Zero], token, blocks);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(status.ToString(), Does.Match(@"^channel open \d+ ms, first chunk \d+ ms, total \d+ ms, 1 chunks$"));
-                Assert.That(blocks.ToString(), Does.Match(@"^channel open \d+ ms, first chunk not reached, total \d+ ms, 0 chunks$"), "an unknown root is answered with no chunks");
-            }
+            Assert.That(status.ToString(), Does.Match(@"^channel open \d+ ms, first chunk \d+ ms, total \d+ ms, 1 chunks$"));
+            Assert.That(blocks.ToString(), Does.Match(@"^channel open \d+ ms, first chunk not reached, total \d+ ms, 0 chunks$"), "an unknown root is answered with no chunks");
         }
     }
 
@@ -150,59 +146,57 @@ public class RequestFailureCauseTests
         LevelCapturingLogManager logs = new();
         HeldSession held = new(opensChannels: cancellation == SlotCancellation.WhileChannelOpen);
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = cancellation == SlotCancellation.Queued
+            ? new(node.P2P, node.Config, node.StatusHolder, logs) : node.CreatePeerManager();
+        IBeaconSyncPeer peer = manager.AddPeerForTest(held.Session, PeerAddress);
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<IReadOnlyList<DataColumnSidecar>> first = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(0), cancellation == SlotCancellation.Queued ? token : stopping.Token);
+        Task<IReadOnlyList<DataColumnSidecar>> second = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
+        Task<IReadOnlyList<DataColumnSidecar>> third = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
+        Task<IReadOnlyList<ForkedSignedBeaconBlock>>? otherProtocol = null;
+        bool openedBeforeReadingStopped = false;
+        if (cancellation == SlotCancellation.Queued)
         {
-            PeerManager manager = cancellation == SlotCancellation.Queued
-                ? new(node.P2P, node.Config, node.StatusHolder, logs) : node.CreatePeerManager();
-            IBeaconSyncPeer peer = manager.AddPeerForTest(held.Session, PeerAddress);
-            using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
-            Task<IReadOnlyList<DataColumnSidecar>> first = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(0), cancellation == SlotCancellation.Queued ? token : stopping.Token);
-            Task<IReadOnlyList<DataColumnSidecar>> second = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
-            Task<IReadOnlyList<DataColumnSidecar>> third = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
-            Task<IReadOnlyList<ForkedSignedBeaconBlock>>? otherProtocol = null;
-            bool openedBeforeReadingStopped = false;
-            if (cancellation == SlotCancellation.Queued)
+            int dialedAtOnce = held.ColumnDials.Count;
+            otherProtocol = peer.RequestBlocksByRootAsync([Hash256.Zero], token);
+            using (Assert.EnterMultipleScope())
             {
-                int dialedAtOnce = held.ColumnDials.Count;
-                otherProtocol = peer.RequestBlocksByRootAsync([Hash256.Zero], token);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(dialedAtOnce, Is.EqualTo(2));
-                    Assert.That(held.BlockDials, Is.EqualTo(1), "another protocol has its own slots");
-                    Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "a slot wait counts as in flight");
-                }
-                Task<IReadOnlyList<DataColumnSidecar>> abandoned = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(3), stopping.Token);
-                await stopping.CancelAsync();
-                Assert.CatchAsync<OperationCanceledException>(() => abandoned);
-                Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "cancelled slot wait releases its count");
-                Assert.That(logs.Lines.Where(static l => l.Text.Contains("request not sent, cancelled by this node")).Select(static l => l.Text), Has.Some.Contains("requests in flight 4,"));
-                held.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
-                await first.WaitAsync(token);
+                Assert.That(dialedAtOnce, Is.EqualTo(2));
+                Assert.That(held.BlockDials, Is.EqualTo(1), "another protocol has its own slots");
+                Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "a slot wait counts as in flight");
             }
-            else
-            {
-                await stopping.CancelAsync();
-                Assert.CatchAsync<OperationCanceledException>(() => first);
-                if (cancellation == SlotCancellation.WhileChannelOpen)
-                {
-                    openedBeforeReadingStopped = await EventuallyAsync(() => held.ColumnDials.Count == 3, TimeSpan.FromMilliseconds(500), token);
-                    held.Exchanges[0].Dispose();
-                }
-            }
-            await WaitUntilAsync(() => held.ColumnDials.Count == 3, token);
-            if (cancellation == SlotCancellation.BeforeChannelOpen)
-                Assert.Throws<OperationCanceledException>(() => RequestTiming.Open(held.ColumnRequests[0]), "an abandoned request is refused when its channel opens late");
-            foreach (TaskCompletionSource<ForkedDataColumnSidecars> dial in held.ColumnDials) dial.TrySetResult(new ForkedDataColumnSidecars([], []));
-            await Task.WhenAll(second, third).WaitAsync(token);
-            if (otherProtocol is not null)
-            {
-                held.BlockDial.SetResult([]);
-                await otherProtocol.WaitAsync(token);
-            }
-            if (cancellation == SlotCancellation.WhileChannelOpen)
-                Assert.That(openedBeforeReadingStopped, Is.False, "a third channel cannot open while two are still open");
-            else Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.Zero);
+            Task<IReadOnlyList<DataColumnSidecar>> abandoned = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(3), stopping.Token);
+            await stopping.CancelAsync();
+            Assert.CatchAsync<OperationCanceledException>(() => abandoned);
+            Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "cancelled slot wait releases its count");
+            Assert.That(logs.Lines.Where(static l => l.Text.Contains("request not sent, cancelled by this node")).Select(static l => l.Text), Has.Some.Contains("requests in flight 4,"));
+            held.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
+            await first.WaitAsync(token);
         }
+        else
+        {
+            await stopping.CancelAsync();
+            Assert.CatchAsync<OperationCanceledException>(() => first);
+            if (cancellation == SlotCancellation.WhileChannelOpen)
+            {
+                openedBeforeReadingStopped = await EventuallyAsync(() => held.ColumnDials.Count == 3, TimeSpan.FromMilliseconds(500), token);
+                held.Exchanges[0].Dispose();
+            }
+        }
+        await WaitUntilAsync(() => held.ColumnDials.Count == 3, token);
+        if (cancellation == SlotCancellation.BeforeChannelOpen)
+            Assert.Throws<OperationCanceledException>(() => RequestTiming.Open(held.ColumnRequests[0]), "an abandoned request is refused when its channel opens late");
+        foreach (TaskCompletionSource<ForkedDataColumnSidecars> dial in held.ColumnDials) dial.TrySetResult(new ForkedDataColumnSidecars([], []));
+        await Task.WhenAll(second, third).WaitAsync(token);
+        if (otherProtocol is not null)
+        {
+            held.BlockDial.SetResult([]);
+            await otherProtocol.WaitAsync(token);
+        }
+        if (cancellation == SlotCancellation.WhileChannelOpen)
+            Assert.That(openedBeforeReadingStopped, Is.False, "a third channel cannot open while two are still open");
+        else Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.Zero);
     }
 
     [Test]
@@ -249,36 +243,34 @@ public class RequestFailureCauseTests
     public async Task A_request_waiting_for_a_slot_ends_when_its_session_closes_before_the_running_protocols_end(CancellationToken token)
     {
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        await node.P2P.StartAsync(token);
+        LocalPeer.Session session = AddWedgedSession(node.P2P);
+        IBeaconSyncPeer peer = node.CreatePeerManager().AddPeerForTest(session, PeerAddress);
+        Task<IReadOnlyList<DataColumnSidecar>> first = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(0), token);
+        Task<IReadOnlyList<DataColumnSidecar>> second = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
+        BlockingCollection<UpgradeOptions> requests = (BlockingCollection<UpgradeOptions>)typeof(LocalPeer.Session)
+            .GetField("SubDialRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
+        RequestTiming.Exchange[] running = [.. requests.Select(static request => RequestTiming.Open(((DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>)request.Argument!).Request))];
+        Assert.That(running, Has.Length.EqualTo(2));
+        Task<IReadOnlyList<DataColumnSidecar>> queued = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
+        try
         {
-            await node.P2P.StartAsync(token);
-            LocalPeer.Session session = AddWedgedSession(node.P2P);
-            IBeaconSyncPeer peer = node.CreatePeerManager().AddPeerForTest(session, PeerAddress);
-            Task<IReadOnlyList<DataColumnSidecar>> first = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(0), token);
-            Task<IReadOnlyList<DataColumnSidecar>> second = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
-            BlockingCollection<UpgradeOptions> requests = (BlockingCollection<UpgradeOptions>)typeof(LocalPeer.Session)
-                .GetField("SubDialRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
-            RequestTiming.Exchange[] running = [.. requests.Select(static request => RequestTiming.Open(((DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>)request.Argument!).Request))];
-            Assert.That(running, Has.Length.EqualTo(2));
-            Task<IReadOnlyList<DataColumnSidecar>> queued = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
-            try
-            {
-                await session.DisconnectAsync();
+            await session.DisconnectAsync();
 
-                IOException? lost = Assert.ThrowsAsync<IOException>(async () => await queued.WaitAsync(TimeSpan.FromSeconds(2), token));
+            IOException? lost = Assert.ThrowsAsync<IOException>(async () => await queued.WaitAsync(TimeSpan.FromSeconds(2), token));
 
-                Assert.That(lost!.Message, Does.Contain("waiting for a request slot"));
-            }
-            finally
-            {
-                foreach (RequestTiming.Exchange exchange in running)
-                {
-                    exchange.Dispose();
-                }
-            }
-
-            Assert.CatchAsync<IOException>(() => Task.WhenAll(first, second, queued));
+            Assert.That(lost!.Message, Does.Contain("waiting for a request slot"));
         }
+        finally
+        {
+            foreach (RequestTiming.Exchange exchange in running)
+            {
+                exchange.Dispose();
+            }
+        }
+
+        Assert.CatchAsync<IOException>(() => Task.WhenAll(first, second, queued));
     }
 
     [Test]
@@ -289,38 +281,36 @@ public class RequestFailureCauseTests
         HeldSession silentSession = new();
         HeldSession answeringSession = new();
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, logs);
+        IBeaconSyncPeer silent = manager.AddPeerForTest(silentSession.Session, PeerAddress);
+        IBeaconSyncPeer answering = manager.AddPeerForTest(answeringSession.Session, "/ip4/10.0.0.2/tcp/9000/p2p/16Uiu2HAmIdle");
+
+        await FailWithoutAnswerAsync(silent, silentSession, 0, token);
+        int afterStall = PeerManager.ConsecutiveFailuresForTest(silent);
+
+        Task<IReadOnlyList<DataColumnSidecar>> failing = silent.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
+        Task<IReadOnlyList<DataColumnSidecar>> answered = answering.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
+        answeringSession.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
+        await answered.WaitAsync(token);
+        await FailAsync(failing, silent, silentSession.ColumnDials[1]);
+        int afterAnswerElsewhere = PeerManager.ConsecutiveFailuresForTest(silent);
+
+        for (int i = 2; i < 2 + 8; i++)
         {
-            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, logs);
-            IBeaconSyncPeer silent = manager.AddPeerForTest(silentSession.Session, PeerAddress);
-            IBeaconSyncPeer answering = manager.AddPeerForTest(answeringSession.Session, "/ip4/10.0.0.2/tcp/9000/p2p/16Uiu2HAmIdle");
+            await FailWithoutAnswerAsync(silent, silentSession, i, token);
+        }
 
-            await FailWithoutAnswerAsync(silent, silentSession, 0, token);
-            int afterStall = PeerManager.ConsecutiveFailuresForTest(silent);
+        int afterGrace = PeerManager.ConsecutiveFailuresForTest(silent);
+        await FailWithoutAnswerAsync(silent, silentSession, 10, token);
 
-            Task<IReadOnlyList<DataColumnSidecar>> failing = silent.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
-            Task<IReadOnlyList<DataColumnSidecar>> answered = answering.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
-            answeringSession.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
-            await answered.WaitAsync(token);
-            await FailAsync(failing, silent, silentSession.ColumnDials[1]);
-            int afterAnswerElsewhere = PeerManager.ConsecutiveFailuresForTest(silent);
-
-            for (int i = 2; i < 2 + 8; i++)
-            {
-                await FailWithoutAnswerAsync(silent, silentSession, i, token);
-            }
-
-            int afterGrace = PeerManager.ConsecutiveFailuresForTest(silent);
-            await FailWithoutAnswerAsync(silent, silentSession, 10, token);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(afterStall, Is.Zero, "nothing answered while it waited, so the stall is taken as this node's");
-                Assert.That(afterAnswerElsewhere, Is.EqualTo(1), "another peer answered while it waited, so the silence is this peer's");
-                Assert.That(afterGrace, Is.EqualTo(2), "seven more are excused, the eighth unanswered in a row is not");
-                Assert.That(PeerManager.ConsecutiveFailuresForTest(silent), Is.EqualTo(3));
-                Assert.That(logs.Lines.Select(static l => l.Text), Has.Some.Contains("not counted against the peer as no request to any peer was answered meanwhile"));
-            }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterStall, Is.Zero, "nothing answered while it waited, so the stall is taken as this node's");
+            Assert.That(afterAnswerElsewhere, Is.EqualTo(1), "another peer answered while it waited, so the silence is this peer's");
+            Assert.That(afterGrace, Is.EqualTo(2), "seven more are excused, the eighth unanswered in a row is not");
+            Assert.That(PeerManager.ConsecutiveFailuresForTest(silent), Is.EqualTo(3));
+            Assert.That(logs.Lines.Select(static l => l.Text), Has.Some.Contains("not counted against the peer as no request to any peer was answered meanwhile"));
         }
     }
 
@@ -342,21 +332,19 @@ public class RequestFailureCauseTests
             return Task.FromCanceled<ForkedDataColumnSidecars>(new CancellationToken(true));
         });
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+        IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress);
+
+        Exception? failure = columns
+            ? Assert.CatchAsync(async () => await peer.RequestDataColumnSidecarsByRangeAsync(5, 1, [3], token))
+            : Assert.CatchAsync(async () => await peer.RequestBlocksByRangeAsync(5, 2, token));
+        peer.ReportFailure(PeerFailureClassifier.Classify(failure!), failure!.Message);
+
+        using (Assert.EnterMultipleScope())
         {
-            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
-            IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress);
-
-            Exception? failure = columns
-                ? Assert.CatchAsync(async () => await peer.RequestDataColumnSidecarsByRangeAsync(5, 1, [3], token))
-                : Assert.CatchAsync(async () => await peer.RequestBlocksByRangeAsync(5, 2, token));
-            peer.ReportFailure(PeerFailureClassifier.Classify(failure!), failure!.Message);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(failure, columns ? Is.InstanceOf<PartialSidecarsException>() : Is.InstanceOf<PartialBlocksException>(), "fixture: the reply delivered a chunk before the timeout");
-                Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
-            }
+            Assert.That(failure, columns ? Is.InstanceOf<PartialSidecarsException>() : Is.InstanceOf<PartialBlocksException>(), "fixture: the reply delivered a chunk before the timeout");
+            Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
         }
     }
 
@@ -382,77 +370,75 @@ public class RequestFailureCauseTests
     public async Task Concurrent_health_timeouts_do_not_drop_peers_below_the_floor(CancellationToken token)
     {
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        using ManualResetEventSlim releaseFirst = new();
+        TaskCompletionSource firstFloorRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource bothPingsFailed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int floorReads = 0;
+        int failedPings = 0;
+        IBeaconChainConfig config = Substitute.For<IBeaconChainConfig>();
+        config.MaxPeerCount.Returns(8);
+        config.TargetPeerCount.Returns(4);
+        config.MinPeerCount.Returns(_ =>
         {
-            using ManualResetEventSlim releaseFirst = new();
-            TaskCompletionSource firstFloorRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            TaskCompletionSource bothPingsFailed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            int floorReads = 0;
-            int failedPings = 0;
-            IBeaconChainConfig config = Substitute.For<IBeaconChainConfig>();
-            config.MaxPeerCount.Returns(8);
-            config.TargetPeerCount.Returns(4);
-            config.MinPeerCount.Returns(_ =>
+            if (Interlocked.Increment(ref floorReads) == 1)
             {
-                if (Interlocked.Increment(ref floorReads) == 1)
+                firstFloorRead.TrySetResult();
+                releaseFirst.Wait(token);
+            }
+
+            return 2;
+        });
+        PeerManager manager = new(node.P2P, config, node.StatusHolder, LimboLogs.Instance);
+        List<IBeaconSyncPeer> peers = [];
+        List<TaskCompletionSource<ulong>> timeouts = [];
+        for (int i = 0; i < 3; i++)
+        {
+            ISession session = Substitute.For<ISession>();
+            session.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default)
+                .ReturnsForAnyArgs(Task.FromResult(node.StatusHolder.CurrentStatus));
+            TaskCompletionSource<ulong> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (i < 2) timeouts.Add(pending);
+            Task<ulong> response = i == 2 ? Task.FromResult(0UL) : pending.Task;
+            session.DialAsync<Eth2PingProtocol, ulong, ulong>(default, default).ReturnsForAnyArgs(_ =>
+            {
+                if (!response.IsCompleted && Interlocked.Increment(ref failedPings) == 2)
                 {
-                    firstFloorRead.TrySetResult();
-                    releaseFirst.Wait(token);
+                    bothPingsFailed.TrySetResult();
                 }
 
-                return 2;
+                return response;
             });
-            PeerManager manager = new(node.P2P, config, node.StatusHolder, LimboLogs.Instance);
-            List<IBeaconSyncPeer> peers = [];
-            List<TaskCompletionSource<ulong>> timeouts = [];
-            for (int i = 0; i < 3; i++)
-            {
-                ISession session = Substitute.For<ISession>();
-                session.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default)
-                    .ReturnsForAnyArgs(Task.FromResult(node.StatusHolder.CurrentStatus));
-                TaskCompletionSource<ulong> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                if (i < 2) timeouts.Add(pending);
-                Task<ulong> response = i == 2 ? Task.FromResult(0UL) : pending.Task;
-                session.DialAsync<Eth2PingProtocol, ulong, ulong>(default, default).ReturnsForAnyArgs(_ =>
-                {
-                    if (!response.IsCompleted && Interlocked.Increment(ref failedPings) == 2)
-                    {
-                        bothPingsFailed.TrySetResult();
-                    }
-
-                    return response;
-                });
-                IBeaconSyncPeer peer = manager.AddPeerForTest(session, $"/ip4/10.0.0.{i + 1}/tcp/9000/p2p/16Uiu2HAmPeer{i}");
-                peers.Add(peer);
-            }
-
-            await InvokeStatusAsync(manager, peers[2], "UpdateStatusAsync", token);
-            // Seed the independent health-timeout budget, which sync failures no longer consume.
-            foreach (IBeaconSyncPeer peer in peers.Take(2))
-            {
-                for (int failures = 0; failures < 7; failures++)
-                {
-                    await manager.HandleHealthFailureAsync(peer, new TimeoutException("request timed out"), 0, token);
-                }
-            }
-
-            Task maintenance = manager.RunMaintenanceRoundAsync(token);
-            try
-            {
-                await bothPingsFailed.Task.WaitAsync(token);
-                await InvokeStatusAsync(manager, peers[2], "UpdateStatusAsync", token);
-                foreach (TaskCompletionSource<ulong> timeout in timeouts) timeout.SetException(new TimeoutException("request timed out"));
-                await firstFloorRead.Task.WaitAsync(token);
-                await EventuallyAsync(() => manager.PeerCount == 2, TimeSpan.FromSeconds(2), token);
-            }
-            finally
-            {
-                releaseFirst.Set();
-            }
-
-            await maintenance.WaitAsync(token);
-            Assert.That(manager.PeerCount, Is.EqualTo(2));
+            IBeaconSyncPeer peer = manager.AddPeerForTest(session, $"/ip4/10.0.0.{i + 1}/tcp/9000/p2p/16Uiu2HAmPeer{i}");
+            peers.Add(peer);
         }
+
+        await InvokeStatusAsync(manager, peers[2], "UpdateStatusAsync", token);
+        // Seed the independent health-timeout budget, which sync failures no longer consume.
+        foreach (IBeaconSyncPeer peer in peers.Take(2))
+        {
+            for (int failures = 0; failures < 7; failures++)
+            {
+                await manager.HandleHealthFailureAsync(peer, new TimeoutException("request timed out"), 0, token);
+            }
+        }
+
+        Task maintenance = manager.RunMaintenanceRoundAsync(token);
+        try
+        {
+            await bothPingsFailed.Task.WaitAsync(token);
+            await InvokeStatusAsync(manager, peers[2], "UpdateStatusAsync", token);
+            foreach (TaskCompletionSource<ulong> timeout in timeouts) timeout.SetException(new TimeoutException("request timed out"));
+            await firstFloorRead.Task.WaitAsync(token);
+            await EventuallyAsync(() => manager.PeerCount == 2, TimeSpan.FromSeconds(2), token);
+        }
+        finally
+        {
+            releaseFirst.Set();
+        }
+
+        await maintenance.WaitAsync(token);
+        Assert.That(manager.PeerCount, Is.EqualTo(2));
     }
 
     [Test]
@@ -501,26 +487,24 @@ public class RequestFailureCauseTests
         HeldSession busySession = new();
         HeldSession idleSession = new();
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = node.CreatePeerManager();
+        StatusMessageV2 ahead = Status;
+        ahead.HeadSlot += 10;
+        IBeaconSyncPeer busy = manager.AddPeerForTest(busySession.Session, PeerAddress, ahead);
+        IBeaconSyncPeer idle = manager.AddPeerForTest(idleSession.Session, "/ip4/10.0.0.2/tcp/9000/p2p/16Uiu2HAmIdle", Status);
+        string[] before = [.. manager.GetBestPeers(0).Select(static p => p.Id)];
+
+        Task<IReadOnlyList<DataColumnSidecar>> pending = busy.RequestDataColumnSidecarsByRootAsync(Identifiers(0), token);
+        string[] during = [.. manager.GetBestPeers(0).Select(static p => p.Id)];
+        busySession.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
+        await pending.WaitAsync(token);
+
+        using (Assert.EnterMultipleScope())
         {
-            PeerManager manager = node.CreatePeerManager();
-            StatusMessageV2 ahead = Status;
-            ahead.HeadSlot += 10;
-            IBeaconSyncPeer busy = manager.AddPeerForTest(busySession.Session, PeerAddress, ahead);
-            IBeaconSyncPeer idle = manager.AddPeerForTest(idleSession.Session, "/ip4/10.0.0.2/tcp/9000/p2p/16Uiu2HAmIdle", Status);
-            string[] before = [.. manager.GetBestPeers(0).Select(static p => p.Id)];
-
-            Task<IReadOnlyList<DataColumnSidecar>> pending = busy.RequestDataColumnSidecarsByRootAsync(Identifiers(0), token);
-            string[] during = [.. manager.GetBestPeers(0).Select(static p => p.Id)];
-            busySession.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
-            await pending.WaitAsync(token);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(before, Is.EqualTo(new[] { busy.Id, idle.Id }), "test setup: the higher head is first while both are idle");
-                Assert.That(during, Is.EqualTo(new[] { idle.Id, busy.Id }));
-                Assert.That(manager.GetBestPeers(0).Select(static p => p.Id), Is.EqualTo(new[] { busy.Id, idle.Id }));
-            }
+            Assert.That(before, Is.EqualTo(new[] { busy.Id, idle.Id }), "test setup: the higher head is first while both are idle");
+            Assert.That(during, Is.EqualTo(new[] { idle.Id, busy.Id }));
+            Assert.That(manager.GetBestPeers(0).Select(static p => p.Id), Is.EqualTo(new[] { busy.Id, idle.Id }));
         }
     }
 
@@ -534,25 +518,23 @@ public class RequestFailureCauseTests
         session.DialAsync<StatusProtocolV1, StatusMessageV2, StatusMessageV2>(default!, default).ReturnsForAnyArgs(_ =>
             Task.FromException<StatusMessageV2>(new ReqRespTimeoutException("timed out waiting for the response")));
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = node.CreatePeerManager();
+        IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress, Status);
+        manager.CountEveryTimeoutForTest();
+
+        for (int i = 0; i < 9; i++)
         {
-            PeerManager manager = node.CreatePeerManager();
-            IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress, Status);
-            manager.CountEveryTimeoutForTest();
+            await InvokeStatusAsync(manager, peer, "RefreshStatusAsync", token);
+        }
 
-            for (int i = 0; i < 9; i++)
-            {
-                await InvokeStatusAsync(manager, peer, "RefreshStatusAsync", token);
-            }
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
-                Assert.That(PeerManager.FailuresReportedForTest(peer), Is.Zero);
-                Assert.That(manager.PeerCount, Is.EqualTo(1));
-                Assert.That(manager.GetBestPeers(0), Has.Count.EqualTo(1));
-                Assert.That(manager.IsBannedForTest(peer.Id), Is.False);
-            }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
+            Assert.That(PeerManager.FailuresReportedForTest(peer), Is.Zero);
+            Assert.That(manager.PeerCount, Is.EqualTo(1));
+            Assert.That(manager.GetBestPeers(0), Has.Count.EqualTo(1));
+            Assert.That(manager.IsBannedForTest(peer.Id), Is.False);
         }
     }
 
@@ -573,34 +555,32 @@ public class RequestFailureCauseTests
             return answer.Task;
         });
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = node.CreatePeerManager();
+        IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress, Status);
+        Task first = InvokeStatusAsync(manager, peer, "UpdateStatusAsync", token);
+        Task second = InvokeStatusAsync(manager, peer, "UpdateStatusAsync", token);
+        Task refresh = InvokeStatusAsync(manager, peer, "RefreshStatusAsync", token);
+
+        using (Assert.EnterMultipleScope())
         {
-            PeerManager manager = node.CreatePeerManager();
-            IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress, Status);
-            Task first = InvokeStatusAsync(manager, peer, "UpdateStatusAsync", token);
-            Task second = InvokeStatusAsync(manager, peer, "UpdateStatusAsync", token);
-            Task refresh = InvokeStatusAsync(manager, peer, "RefreshStatusAsync", token);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(answers, Has.Count.EqualTo(2));
-                Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(3));
-            }
-
-            answers[0].SetResult(Status);
-            await first.WaitAsync(token);
-            await WaitUntilAsync(() =>
-            {
-                lock (answers)
-                {
-                    return answers.Count == 3;
-                }
-            }, token);
-            answers[1].SetResult(Status);
-            answers[2].SetResult(Status);
-            await Task.WhenAll(second, refresh).WaitAsync(token);
-            Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.Zero);
+            Assert.That(answers, Has.Count.EqualTo(2));
+            Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(3));
         }
+
+        answers[0].SetResult(Status);
+        await first.WaitAsync(token);
+        await WaitUntilAsync(() =>
+        {
+            lock (answers)
+            {
+                return answers.Count == 3;
+            }
+        }, token);
+        answers[1].SetResult(Status);
+        answers[2].SetResult(Status);
+        await Task.WhenAll(second, refresh).WaitAsync(token);
+        Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.Zero);
     }
 
     [Test]
@@ -632,39 +612,37 @@ public class RequestFailureCauseTests
     public async Task Status_refresh_checks_finalized_roots_and_keeps_status_fresh([Values] bool conflicting, CancellationToken token)
     {
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        ManualTimestamper clock = new();
+        StatusMessageV2 local = node.StatusHolder.CurrentStatus;
+        local.FinalizedEpoch = 1;
+        local.FinalizedRoot = Keccak.Compute("local finalized");
+        StatusMessageV2 updated = new()
         {
-            ManualTimestamper clock = new();
-            StatusMessageV2 local = node.StatusHolder.CurrentStatus;
-            local.FinalizedEpoch = 1;
-            local.FinalizedRoot = Keccak.Compute("local finalized");
-            StatusMessageV2 updated = new()
-            {
-                ForkDigest = local.ForkDigest,
-                FinalizedEpoch = local.FinalizedEpoch,
-                FinalizedRoot = conflicting ? Keccak.Compute("other finalized") : local.FinalizedRoot,
-                HeadSlot = local.HeadSlot + 10,
-            };
-            ISession session = Substitute.For<ISession>();
-            session.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default).ReturnsForAnyArgs(Task.FromResult(updated));
-            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: clock);
-            IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress, local);
-            clock.Add(TimeSpan.FromSeconds(1));
-            await InvokeStatusAsync(manager, peer, "RefreshStatusAsync", token);
+            ForkDigest = local.ForkDigest,
+            FinalizedEpoch = local.FinalizedEpoch,
+            FinalizedRoot = conflicting ? Keccak.Compute("other finalized") : local.FinalizedRoot,
+            HeadSlot = local.HeadSlot + 10,
+        };
+        ISession session = Substitute.For<ISession>();
+        session.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default).ReturnsForAnyArgs(Task.FromResult(updated));
+        PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: clock);
+        IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress, local);
+        clock.Add(TimeSpan.FromSeconds(1));
+        await InvokeStatusAsync(manager, peer, "RefreshStatusAsync", token);
 
-            using (Assert.EnterMultipleScope())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.PeerCount, Is.EqualTo(conflicting ? 0 : 1));
+            Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
+            if (!conflicting)
             {
-                Assert.That(manager.PeerCount, Is.EqualTo(conflicting ? 0 : 1));
-                Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
-                if (!conflicting)
-                {
-                    Assert.That(peer.HeadSlot, Is.EqualTo(updated.HeadSlot));
-                    Assert.That(peer.GetType().GetProperty("StatusReceivedTicks")!.GetValue(peer), Is.EqualTo(clock.UtcNowOffset.UtcTicks));
-                }
-                else
-                {
-                    Assert.That(manager.GetPeerDiagnostics().Single().LastDisconnectDetail, Does.Contain("finalized checkpoint"));
-                }
+                Assert.That(peer.HeadSlot, Is.EqualTo(updated.HeadSlot));
+                Assert.That(peer.GetType().GetProperty("StatusReceivedTicks")!.GetValue(peer), Is.EqualTo(clock.UtcNowOffset.UtcTicks));
+            }
+            else
+            {
+                Assert.That(manager.GetPeerDiagnostics().Single().LastDisconnectDetail, Does.Contain("finalized checkpoint"));
             }
         }
     }
@@ -679,31 +657,29 @@ public class RequestFailureCauseTests
     public async Task Health_selection_recovers_without_forgiving_sync_failures(HealthRecovery recovery, int syncFailures)
     {
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        ManualTimestamper clock = new();
+        PeerManager manager = recovery == HealthRecovery.Reset ? node.CreatePeerManager()
+            : new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: clock);
+        HeldSession held = new();
+        IBeaconSyncPeer peer = manager.AddPeerForTest(recovery == HealthRecovery.Reset ? Substitute.For<ISession>() : held.Session, PeerAddress, Status);
+        manager.AddPeerForTest(Substitute.For<ISession>(), UsablePeerAddress, Status);
+        for (int i = 0; i < syncFailures; i++) peer.ReportFailure(PeerFailureReason.RequestFailed);
+        for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
+        Assert.That(manager.GetBestPeers(0), Does.Not.Contain(peer));
+        if (recovery == HealthRecovery.Reset)
+            typeof(PeerManager).GetNestedType("ManagedPeer", BindingFlags.NonPublic)!.GetMethod("ResetHealthCheckFailures")!.Invoke(peer, null);
+        else if (recovery == HealthRecovery.ServedRequest)
         {
-            ManualTimestamper clock = new();
-            PeerManager manager = recovery == HealthRecovery.Reset ? node.CreatePeerManager()
-                : new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: clock);
-            HeldSession held = new();
-            IBeaconSyncPeer peer = manager.AddPeerForTest(recovery == HealthRecovery.Reset ? Substitute.For<ISession>() : held.Session, PeerAddress, Status);
-            manager.AddPeerForTest(Substitute.For<ISession>(), UsablePeerAddress, Status);
-            for (int i = 0; i < syncFailures; i++) peer.ReportFailure(PeerFailureReason.RequestFailed);
-            for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
+            held.BlockDial.SetResult([]);
+            await peer.RequestBlocksByRootAsync([Hash256.Zero], default);
+        }
+        else clock.Add(PeerManager.RequestFailureDecayInterval);
+        Assert.That(manager.GetBestPeers(0).Contains(peer), Is.EqualTo(syncFailures < 8));
+        if (recovery != HealthRecovery.Reset)
+        {
+            await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
             Assert.That(manager.GetBestPeers(0), Does.Not.Contain(peer));
-            if (recovery == HealthRecovery.Reset)
-                typeof(PeerManager).GetNestedType("ManagedPeer", BindingFlags.NonPublic)!.GetMethod("ResetHealthCheckFailures")!.Invoke(peer, null);
-            else if (recovery == HealthRecovery.ServedRequest)
-            {
-                held.BlockDial.SetResult([]);
-                await peer.RequestBlocksByRootAsync([Hash256.Zero], default);
-            }
-            else clock.Add(PeerManager.RequestFailureDecayInterval);
-            Assert.That(manager.GetBestPeers(0).Contains(peer), Is.EqualTo(syncFailures < 8));
-            if (recovery != HealthRecovery.Reset)
-            {
-                await manager.HandleHealthFailureAsync(peer, new TimeoutException(), long.MaxValue, default);
-                Assert.That(manager.GetBestPeers(0), Does.Not.Contain(peer));
-            }
         }
     }
 
@@ -711,71 +687,65 @@ public class RequestFailureCauseTests
     public async Task Health_timeout_grace_preserves_peers_but_unusable_sessions_are_dropped([Values] bool channelNeverOpened, [Values] bool notBlamed)
     {
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = node.CreatePeerManager();
+        IBeaconSyncPeer peer = manager.AddPeerForTest(Substitute.For<ISession>(), PeerAddress, Status);
+        for (int i = 0; i < 7; i++) peer.ReportFailure(PeerFailureReason.RequestFailed);
+        node.Config.MinPeerCount = 2;
+        ISession answering = Substitute.For<ISession>();
+        answering.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default).ReturnsForAnyArgs(Task.FromResult(node.StatusHolder.CurrentStatus));
+        IBeaconSyncPeer other = manager.AddPeerForTest(answering, PeerAddress + "Other", Status);
+        await InvokeStatusAsync(manager, other, "RefreshStatusAsync", default);
+        for (int i = 0; i < 8 && manager.PeerCount == 2; i++)
         {
-            PeerManager manager = node.CreatePeerManager();
-            IBeaconSyncPeer peer = manager.AddPeerForTest(Substitute.For<ISession>(), PeerAddress, Status);
-            for (int i = 0; i < 7; i++) peer.ReportFailure(PeerFailureReason.RequestFailed);
-            node.Config.MinPeerCount = 2;
-            ISession answering = Substitute.For<ISession>();
-            answering.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default).ReturnsForAnyArgs(Task.FromResult(node.StatusHolder.CurrentStatus));
-            IBeaconSyncPeer other = manager.AddPeerForTest(answering, PeerAddress + "Other", Status);
-            await InvokeStatusAsync(manager, other, "RefreshStatusAsync", default);
-            for (int i = 0; i < 8 && manager.PeerCount == 2; i++)
-            {
-                ReqRespTimeoutException timeout = new("timed out") { ChannelNeverOpened = channelNeverOpened, NotBlamed = notBlamed };
-                await manager.HandleHealthFailureAsync(peer, timeout, 0, default);
-            }
-
-            Assert.That(manager.PeerCount, Is.EqualTo(channelNeverOpened && !notBlamed ? 1 : 2));
+            ReqRespTimeoutException timeout = new("timed out") { ChannelNeverOpened = channelNeverOpened, NotBlamed = notBlamed };
+            await manager.HandleHealthFailureAsync(peer, timeout, 0, default);
         }
+
+        Assert.That(manager.PeerCount, Is.EqualTo(channelNeverOpened && !notBlamed ? 1 : 2));
     }
 
     [Test]
     public async Task A_successful_status_refresh_confirms_health_timeouts_with_an_independent_budget_and_drop_backoff()
     {
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        ManualTimestamper clock = new();
+        node.Config.MinPeerCount = 0;
+        PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: clock);
+        IBeaconSyncPeer failed = manager.AddPeerForTest(Substitute.For<ISession>(), PeerAddress, Status);
+        ISession answering = Substitute.For<ISession>();
+        answering.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default).ReturnsForAnyArgs(Task.FromResult(node.StatusHolder.CurrentStatus));
+        IBeaconSyncPeer other = manager.AddPeerForTest(answering, PeerAddress + "Other", Status);
+        for (int i = 0; i < 8; i++) failed.ReportFailure(PeerFailureReason.RequestFailed);
+        long startedAt = clock.UtcNow.Ticks;
+        clock.Add(TimeSpan.FromSeconds(1));
+        await InvokeStatusAsync(manager, other, "RefreshStatusAsync", default);
+        for (int i = 0; i < 8; i++)
         {
-            ManualTimestamper clock = new();
-            node.Config.MinPeerCount = 0;
-            PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: clock);
-            IBeaconSyncPeer failed = manager.AddPeerForTest(Substitute.For<ISession>(), PeerAddress, Status);
-            ISession answering = Substitute.For<ISession>();
-            answering.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(default!, default).ReturnsForAnyArgs(Task.FromResult(node.StatusHolder.CurrentStatus));
-            IBeaconSyncPeer other = manager.AddPeerForTest(answering, PeerAddress + "Other", Status);
-            for (int i = 0; i < 8; i++) failed.ReportFailure(PeerFailureReason.RequestFailed);
-            long startedAt = clock.UtcNow.Ticks;
-            clock.Add(TimeSpan.FromSeconds(1));
-            await InvokeStatusAsync(manager, other, "RefreshStatusAsync", default);
-            for (int i = 0; i < 8; i++)
-            {
-                await manager.HandleHealthFailureAsync(failed, new TimeoutException(), startedAt, default);
-                Assert.That(manager.PeerCount, Is.EqualTo(i == 7 ? 1 : 2));
-            }
-
-            ulong attempts = Metrics.BeaconChainDialAttempts;
-            Assert.That(await manager.TryAddPeerAsync(failed.Id, default), Is.False, "the dropped address must observe backoff before another dial");
-            Assert.That(Metrics.BeaconChainDialAttempts, Is.EqualTo(attempts), "a cooling endpoint must not consume a dial slot");
+            await manager.HandleHealthFailureAsync(failed, new TimeoutException(), startedAt, default);
+            Assert.That(manager.PeerCount, Is.EqualTo(i == 7 ? 1 : 2));
         }
+
+        ulong attempts = Metrics.BeaconChainDialAttempts;
+        Assert.That(await manager.TryAddPeerAsync(failed.Id, default), Is.False, "the dropped address must observe backoff before another dial");
+        Assert.That(Metrics.BeaconChainDialAttempts, Is.EqualTo(attempts), "a cooling endpoint must not consume a dial slot");
     }
 
     [Test]
     public async Task A_cancelled_health_check_does_not_change_peer_selection()
     {
         Node node = Create();
-        await using (node.P2P)
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = node.CreatePeerManager();
+        IBeaconSyncPeer peer = manager.AddPeerForTest(Substitute.For<ISession>(), PeerAddress, Status);
+        using CancellationTokenSource stopped = new();
+        stopped.Cancel();
+        for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new OperationCanceledException(), 0, stopped.Token);
+        using (Assert.EnterMultipleScope())
         {
-            PeerManager manager = node.CreatePeerManager();
-            IBeaconSyncPeer peer = manager.AddPeerForTest(Substitute.For<ISession>(), PeerAddress, Status);
-            using CancellationTokenSource stopped = new();
-            stopped.Cancel();
-            for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new OperationCanceledException(), 0, stopped.Token);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(manager.GetBestPeers(0), Has.Count.EqualTo(1));
-                Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
-            }
+            Assert.That(manager.GetBestPeers(0), Has.Count.EqualTo(1));
+            Assert.That(PeerManager.ConsecutiveFailuresForTest(peer), Is.Zero);
         }
     }
 
