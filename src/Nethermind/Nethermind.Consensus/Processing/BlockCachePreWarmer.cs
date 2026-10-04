@@ -144,11 +144,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private static BlockCachePreWarmer? s_mainPreWarmer;
     private EarlyPrewarm? _earlyPrewarm;
 
-    private sealed class EarlyPrewarm(Hash256 parentHash, Transaction[] transactions, IDisposable session, CancellationTokenSource cancellation) : IDisposable
+    private sealed class EarlyPrewarm(Hash256 parentHash, Hash256? blockHash, int txCount, IDisposable session, CancellationTokenSource cancellation) : IDisposable
     {
         private CancellationTokenRegistration _link;
         public Hash256 ParentHash => parentHash;
-        public Transaction[] Transactions => transactions;
+        public Hash256? BlockHash => blockHash;
+        public int TxCount => txCount;
 
         public void Link(CancellationToken token) => _link = token.Register(static c => ((CancellationTokenSource)c!).Cancel(), cancellation);
 
@@ -197,7 +198,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 cancellation.Dispose();
                 return;
             }
-            _earlyPrewarm = new EarlyPrewarm(parent.Hash, block.Transactions, session, cancellation);
+            _earlyPrewarm = new EarlyPrewarm(parent.Hash, block.Hash, block.Transactions.Length, session, cancellation);
         }
         if (Core.Diagnostics.NewPayloadTrace.Enabled) Core.Diagnostics.NewPayloadTrace.Note($"early@{Core.Diagnostics.NewPayloadTrace.NowUs()}");
     }
@@ -219,12 +220,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Volatile.Write(ref s_mainPreWarmer, this);
             if (TakeEarly() is { } early)
             {
-                if (parent?.Hash == early.ParentHash && ReferenceEquals(early.Transactions, suggestedBlock.Transactions))
+                // The processed block is another instance than the request's provisional one, so it is matched by hash.
+                if (parent?.Hash == early.ParentHash && early.BlockHash is not null && suggestedBlock.Hash == early.BlockHash
+                    && suggestedBlock.Transactions.Length == early.TxCount)
                 {
                     early.Link(cancellationToken);
                     if (Core.Diagnostics.NewPayloadTrace.Enabled) Core.Diagnostics.NewPayloadTrace.Note($"adopted@{Core.Diagnostics.NewPayloadTrace.NowUs()}");
                     return early;
                 }
+                if (Core.Diagnostics.NewPayloadTrace.Enabled) Core.Diagnostics.NewPayloadTrace.Note($"earlymiss:{(parent?.Hash == early.ParentHash ? 1 : 0)}{(suggestedBlock.Hash == early.BlockHash ? 1 : 0)}{(suggestedBlock.Transactions.Length == early.TxCount ? 1 : 0)}");
                 early.Dispose();
             }
         }
