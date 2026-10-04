@@ -52,8 +52,11 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
         Assert.That(chain.ServedRoots(Base, count), Is.EqualTo(new[] { genesis }), "the head's bid names the grandparent's payload, so its parent's is EMPTY");
     }
 
-    [Test]
-    public void Withholds_an_empty_head_even_when_its_verified_envelope_is_held([Values] bool held)
+    [TestCase(false, false, TestName = "Withholds_an_empty_head_even_when_its_verified_envelope_is_held(False)")]
+    [TestCase(false, true, TestName = "Withholds_an_empty_head_even_when_its_verified_envelope_is_held(True)")]
+    [TestCase(true, false, TestName = "Serves_a_full_head_only_when_its_envelope_is_held(False)")]
+    [TestCase(true, true, TestName = "Serves_a_full_head_only_when_its_envelope_is_held(True)")]
+    public void Head_is_served_only_when_full_and_its_envelope_is_held(bool full, bool held)
     {
         EnvelopeChain chain = new();
         (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
@@ -64,26 +67,10 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
             chain.AddEnvelopes(head);
         }
 
-        chain.SetHead(head, Base + 1);
+        chain.SetHead(head, Base + 1, full);
 
-        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(new[] { genesis }), "a held envelope does not make the head FULL; only fork choice can");
-    }
-
-    [Test]
-    public void Serves_a_full_head_only_when_its_envelope_is_held([Values] bool held)
-    {
-        EnvelopeChain chain = new();
-        (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
-        (Hash256 head, _) = chain.Put(Base + 1, genesis, genesisHash);
-        chain.AddEnvelopes(genesis);
-        if (held)
-        {
-            chain.AddEnvelopes(head);
-        }
-
-        chain.SetHead(head, Base + 1, full: true);
-
-        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(held ? new[] { genesis, head } : new[] { genesis }));
+        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(full && held ? new[] { genesis, head } : new[] { genesis }),
+            full ? null : "a held envelope does not make the head FULL; only fork choice can");
     }
 
     [Test]
