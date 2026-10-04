@@ -1,6 +1,6 @@
 participants:
   - el_type: nethermind
-    el_image: nethermind:lean8288-devnet
+    el_image: nethermind:lean8288-mixed-devnet
     el_max_cpu: 2000
     el_max_mem: 5120
     el_extra_params:
@@ -21,7 +21,7 @@ participants:
     count: 2
 network_params:
   network: kurtosis
-  network_id: "10088288"
+  network_id: "10088289"
   num_validator_keys_per_node: 16
   genesis_delay: 60
   genesis_gaslimit: 30000000
@@ -38,7 +38,7 @@ additional_services: [dora]
 dora_params:
   image: ethpandaops/dora:latest
 ethereum_genesis_generator_params:
-  image: ethpandaops/ethereum-genesis-generator:lean8288
+  image: ethpandaops/ethereum-genesis-generator:lean8288-mixed
 port_publisher:
   el: {enabled: true, public_port_start: 19403}
   cl: {enabled: true, public_port_start: 19711}

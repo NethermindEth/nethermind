@@ -14,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -22,7 +21,6 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.TxPool;
 
 namespace Nethermind.Tools.LeanBench;
 
@@ -30,7 +28,7 @@ public static partial class Program
 {
     private const long MaxProtocolPreparedBytes = 512L * 1024 * 1024;
     private const int MaxProtocolPreparedObjects = 4096;
-    private const string BackendCommit = "f33f31bf7c1191667e29a68a3acae63b9164c1c6";
+    private const string BackendCommit = "854997bd156f47f1b1ce2192c4499741f29bd0df";
     private static readonly List<BenchmarkRow> Rows = [];
     private static readonly List<BatchSample> Samples = [];
     private static readonly BenchCase[] Cases = [new("sphincs1", 1, 0), new("sphincs4", 4, 0),
@@ -41,6 +39,9 @@ public static partial class Program
     public static async Task Main(string[] args)
     {
         string Value(string name, string fallback) => args.FirstOrDefault(a => a.StartsWith("--" + name + "=", StringComparison.Ordinal))?.Split('=', 2)[1] ?? fallback;
+        if (args.Any(argument => argument == "--duplicate-normalization"
+            || argument.StartsWith("--duplicate-normalization=", StringComparison.Ordinal)))
+            throw new ArgumentException("Duplicate-witness normalization is archived; use the capture's recorded source revision.");
         if (Value("devnet-block", "") != "")
         {
             InspectDevnetBlock(args);
@@ -59,11 +60,6 @@ public static partial class Program
         if (Value("transport-checks", "false") == "true")
         {
             await TransportChecks.RunAsync();
-            return;
-        }
-        if (Value("duplicate-normalization", "false") == "true")
-        {
-            RunDuplicateNormalization(args);
             return;
         }
         if (Value("mixed-traffic", "false") == "true")

@@ -21,12 +21,12 @@ public static partial class Program
         string Value(string name, string fallback) => args.FirstOrDefault(a => a.StartsWith("--" + name + "=", StringComparison.Ordinal))?.Split('=', 2)[1] ?? fallback;
         string output = Path.GetFullPath(Value("out", "/tmp/lean-devnet-transactions"));
         string fixtureDirectory = Path.GetFullPath(Value("fixtures", "tools/lean-ffi/target/bench-vectors"));
-        ulong chainId = ulong.Parse(Value("chain-id", "10088288"), CultureInfo.InvariantCulture);
+        ulong chainId = ulong.Parse(Value("chain-id", "10088289"), CultureInfo.InvariantCulture);
         ulong firstNonce = ulong.Parse(Value("nonce", "0"), CultureInfo.InvariantCulture);
         int rounds = int.Parse(Value("rounds", "1"), CultureInfo.InvariantCulture);
         bool sharedDependency = Value("shared-dependency", "false") == "true";
         int fixtureOffset = int.Parse(Value("fixture-offset", "0"), CultureInfo.InvariantCulture);
-        string[] cases = Value("cases", "sphincs1,stark1,mixed4,sphincs16").Split(',');
+        string[] cases = Value("cases", "mixed1,stark1").Split(',');
         string[] modes = Value("wrapper-modes", "direct,recursive").Split(',');
         if (fixtureOffset < 0 || rounds is < 1 or > 32 || cases.Length is < 1 or > 16 || modes.Length is < 1 or > 2
             || modes.Distinct().Count() != modes.Length || modes.Any(m => m is not ("direct" or "recursive")))
@@ -177,10 +177,28 @@ public static partial class Program
                 senderCode = "0x",
                 senderBalanceWei = "100000000000000000000",
                 nonce = firstNonce,
-                forks = "Activate EIP-8288 together with the master Frame8250/8272/7906 composite; initialize native ABI 4 and the pinned guest key."
+                forks = "Activate EIP-8288 together with the master Frame8250/8272/7906 composite; initialize the matching native ABI, mixed guest key and acceptance bounds."
             },
             rpc = new { method = "eth_sendProofWrapper", parameter = "one 0x-prefixed RLP wrapper byte string", negativeOrder = "Submit invalid-proof requests before the corresponding valid nonce; expect RPC rejection and no pool entry." },
-            genericCompression = "Generic STARKs are genuinely verified and carried in the aggregate; SPHINCS is recursively compressed.",
+            nativeProfile = new
+            {
+                abi = NativeLeanProofVerifier.AbiVersion,
+                recursiveGuestKey = Hex(NativeLeanProofVerifier.AggregatedVerificationKey),
+                boundsSource = "Matched against nlean_limits by EnsureAvailable before fixture verification",
+                bounds = new
+                {
+                    proofBytes = Eip8288Constants.MaxProofBytes,
+                    dependencies = Eip8288Constants.MaxProofDependencies,
+                    recursiveChildren = 16,
+                    sphincsWitnessBytes = Eip8288Constants.LeanSphincsWitnessBytes,
+                    genericClaims = Eip8288Constants.MaxGenericStarkProofs,
+                    instructions = Eip8288Constants.MaxLeanStarkInstructions,
+                    operandOffset = 65535,
+                    aggregationInputBytes = Eip8288Constants.MaxAggregationInputBytes,
+                    mixedGuestProofBytes = Eip8288Constants.MaxMixedGuestProofBytes
+                }
+            },
+            genericCompression = "SPHINCS and generic STARK claims share one mixed recursive guest proof; recursive wrappers carry no raw generic witness trailer.",
             requests
         };
         File.WriteAllText(Path.Combine(output, "manifest.json"), JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));

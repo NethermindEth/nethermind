@@ -4,7 +4,7 @@
 
 This standalone tool measures the pinned native leanVM/SPHINCS backend and production RLPx Snappy/AES/MAC codecs over localhost TCP. It uses a real production transaction pool through the test node's DI setup. Session secrets are preset; capability exchange, Internet latency and TCP/IP headers are outside the wire-byte measurement.
 
-Current builds use the NiceTry/Daisugi Keccak signature profile at LeanVM commit `f33f31bf7c1191667e29a68a3acae63b9164c1c6`. The earlier captures retain their original BLAKE2s backend and binary hashes. Large signature batches are proved through small native leaves and recursive combinations inside the timed proving call; measurements include the entire tree's work.
+Current builds use the mixed-recursion profile at temporary LeanVM fork commit `854997bd156f47f1b1ce2192c4499741f29bd0df`: ABI 5, guest key `9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace`, Daisugi/Keccak signatures and one recursive proof for both schemes. The profile accepts 256 dependencies, 16 generic claims, 2048 instructions and inverse-rate log 1. Earlier captures retain their original profiles and binary hashes; they do not measure this guest. Large signature batches use small native leaves and recursive combinations inside the timed proving call, including the entire tree's work. Raw generic proving requires substantial memory; use the bounded, preproved [fresh-devnet plan](devnet/consensus/README.md) before live testing.
 
 Requires .NET 10 and Rust 1.99. Run from the repository root:
 
@@ -31,7 +31,7 @@ For a short smoke run:
 dotnet run --project tools/LeanBench -c Release -p:BuildLeanFfi=true -- --fixtures=/tmp/lean-bench-vectors --out=/tmp/lean-bench-smoke --seconds=1 --warmups=1 --repetitions=1 --rates=10 --cases=sphincs1,sphincs16,stark1,mixed16 --protocol-rates=10 --object-rates=1 --object-sizes=10485760
 ```
 
-Controls use `--name=value`: `seconds`, `queue`, `warmups`, `repetitions`, `rates`, `cases`, `block-counts` (1–4096), `protocol-cases`, `protocol-rates`, `object-rates`, and `object-sizes`. Empty case lists disable that group. The loopback result is a local CPU/codec/admission baseline, not a prediction of WAN throughput.
+Controls use `--name=value`: `seconds`, `queue`, `warmups`, `repetitions`, `rates`, `cases`, `block-counts` (1–256), `protocol-cases`, `protocol-rates`, `object-rates`, and `object-sizes`. Empty case lists disable that group. The loopback result is a local CPU/codec/admission baseline, not a prediction of WAN throughput.
 
 ## Chunked mixed traffic
 
@@ -61,10 +61,9 @@ select the maximum for small samples. Archived mixed rows already use nearest-ra
 runs use nearest-rank uniformly. With fewer than twenty samples, nearest-rank p95 is the maximum; these short captures do not estimate a stable tail distribution. Graphs plot the stored percentiles rather than recomputing or
 silently changing historical measurements.
 
-Shortest generic-witness normalization can require an extra native prune/prove call for each
-recursive parent carrying a nonselected duplicate (including equal-length ties), before the bounded merge. This avoids an
-intermediate oversized proof while retaining authenticated claims. The [separate exploratory duplicate capture](results/2026-10-03/generic-duplicates/README.md)
-measures a small two-claim example; fresh-claim curves do not establish its production latency.
+The earlier carried-generic profile selected the shortest retained witness for duplicate
+claims. Its [exploratory duplicate capture](results/2026-10-03/generic-duplicates/README.md)
+measures that historical policy; it does not describe the current single mixed-root profile.
 
 Large captured JSON files are stored as deterministic `.json.gz`; decompression preserves every
 byte of their original metadata and samples. [Archive checksums](results/archive-integrity.json)
@@ -78,28 +77,13 @@ python3 tools/LeanBench/plot.py tools/LeanBench/results/2026-10-03/daisugi/full/
 The Daisugi full and mixed captures share the identical [fixture timing CSV](results/2026-10-03/daisugi/fixture-generation.csv).
 Packaging changes do not change the captured source revisions or measured values.
 
-## Duplicate generic-witness normalization
+## Historical duplicate generic-witness normalization
 
-[Measured samples and scope](results/2026-10-03/generic-duplicates/README.md).
-
-Generate two genuine CPU proofs for one claim using expansion factors 1/2 and one unique claim:
-
-```sh
-(cd tools/lean-ffi && RUSTFLAGS='-C target-cpu=native' cargo build --release --locked --example bench_fixtures)
-tools/lean-ffi/target/release/examples/bench_fixtures /tmp/lean-duplicate-vectors 0 0 --duplicate-generic
-dotnet run --project tools/LeanBench -c Release -p:BuildLeanFfi=true -- --duplicate-normalization=true --fixtures=/tmp/lean-duplicate-vectors --out=/tmp/lean-duplicate-results --warmups=1 --repetitions=3 --source-revision=RECORDED_SOURCE_REVISION
-```
-
-This mode authenticates all genuine witnesses and prepares parents before timing. It compares
-managed aggregation of two unique parents, three parents with equal short witnesses, and
-three distinct parents where a longer witness precedes the shortest. Rows report fold wall/CPU
-time, native prove-call count, final verification time and retained witness sizes. The two-parent
-reference uses the fast path; both three-parent cases exercise the slow fold. The equal-short
-case intentionally repeats an identical parent as a controlled direct-input comparison;
-production `Combine` would deduplicate that identical hash. This measures generic verification,
-pruning and folding, without pool, transport or signature work. It does not measure a near-8 MiB
-capacity edge or generic recursive compression. Capture metadata records source and binaries;
-fixture generation and parent preparation are excluded from fold timing.
+[Measured samples, recorded source and reproduction scope](results/2026-10-03/generic-duplicates/README.md)
+remain unchanged. Reproduce them only from their recorded source revision. The current
+mixed-root profile carries no generic witness trailer and accepts inverse-rate log 1 only;
+the old rate-1/rate-2 shortest-witness benchmark and fixture mode are removed. Requests
+for `--duplicate-normalization` or `--duplicate-generic` fail explicitly.
 
 ## Native prover sizing
 
