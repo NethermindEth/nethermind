@@ -25,7 +25,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.RangeSyncTests;
-using static Nethermind.BeaconChain.Test.Sync.RangeSyncPeerSelectionTests;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -246,7 +245,7 @@ public partial class ColumnBackfillTests
     [CancelAfter(120_000)]
     public async Task HistoryFixture_throwing_peers_do_not_end_the_backfill_or_log_the_word([Values(0, 1, 2)] int kind, [Values] bool columnsOnly, CancellationToken token)
     {
-        AllLevelsCapture log = new();
+        TestLogRecorder log = new();
         await using HistoryFixture p = HistoryFixture.Build([2, 5], 7);
         p.LogManager = new OneLoggerLogManager(new ILogger(log));
         Func<Exception> make = kind switch
@@ -260,7 +259,7 @@ public partial class ColumnBackfillTests
         Task run = p.Start(token, bad, honest);
         await p.UntilFloor(0, token);
         await run.WaitAsync(token);
-        string[] lines = log.Lines;
+        string[] lines = log.Messages;
 
         using (Assert.EnterMultipleScope())
         {

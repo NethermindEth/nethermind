@@ -64,7 +64,7 @@ public class CheckpointSyncRetryTests
             anchorFailure ? static _ => StateResponse.Serve : Reply,
             blockResponseFor: anchorFailure ? Reply : null,
             consensusVersion: failure == DownloadFailure.UnsupportedFork ? "heze" : null);
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         BeaconChainStore store = NewStore();
         using CheckpointSync sync = NewSync(provider, store, logs,
             maxDownloadAttempts: failure == DownloadFailure.RepeatedDrop ? 3 : 5,
@@ -119,7 +119,7 @@ public class CheckpointSyncRetryTests
     {
         await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.Trickle);
         TimeSpan bound = FlakyCheckpointProvider.TrickleDuration / 2;
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         // The headers bound is below the transfer time too, so it must not cover the body either.
         using CheckpointSync sync = NewSync(provider, NewStore(), logs, readStallTimeout: bound, responseHeadersTimeout: bound);
 
@@ -138,7 +138,7 @@ public class CheckpointSyncRetryTests
     public async Task Stopping_ends_the_wait_between_attempts(CancellationToken token)
     {
         await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.DropMidBody);
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         using CheckpointSync sync = NewSync(provider, NewStore(), logs, retryBaseDelay: TimeSpan.FromHours(1));
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task run = sync.RunAsync(stop.Token);
@@ -157,7 +157,7 @@ public class CheckpointSyncRetryTests
     public async Task Stopping_during_a_stalled_read_is_a_cancellation_and_not_a_drop(CancellationToken token)
     {
         await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.StallMidBody);
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         OutstandingArrayPool pool = new();
         using CheckpointSync sync = NewSync(provider, NewStore(), logs, bufferPool: pool, readStallTimeout: TimeSpan.FromHours(1));
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -234,7 +234,7 @@ public class CheckpointSyncRetryTests
     public async Task Each_wait_between_attempts_is_twice_the_one_before()
     {
         await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static n => n <= 2 ? StateResponse.DropMidBody : StateResponse.Serve);
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         using CheckpointSync sync = NewSync(provider, NewStore(), logs, retryBaseDelay: TimeSpan.FromSeconds(1));
 
         await sync.RunAsync(CancellationToken.None);
@@ -248,7 +248,7 @@ public class CheckpointSyncRetryTests
     {
         await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static n => n == 1 ? StateResponse.DropMidBody : StateResponse.Serve);
         OutstandingArrayPool pool = new();
-        using CheckpointSync sync = NewSync(provider, NewStore(), new LevelCapturingLogManager(), bufferPool: pool);
+        using CheckpointSync sync = NewSync(provider, NewStore(), new TestLogRecorder(), bufferPool: pool);
 
         await sync.RunAsync(CancellationToken.None);
 
@@ -279,7 +279,7 @@ public class CheckpointSyncRetryTests
         await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.Trickle);
         double trickleRate = BeaconStateGloas.Encode(ForkCrossingChain.Instance.First.PostState).Length / FlakyCheckpointProvider.TrickleDuration.TotalSeconds;
         OutstandingArrayPool pool = new();
-        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = provider.Url }, GloasCheckpointFiles.Spec, NewStore(), new LevelCapturingLogManager())
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = provider.Url }, GloasCheckpointFiles.Spec, NewStore(), new TestLogRecorder())
         {
             MaxDownloadAttempts = 1,
             ReadStallTimeout = ReadStall,
@@ -307,7 +307,7 @@ public class CheckpointSyncRetryTests
     {
         await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static _ => StateResponse.StallMidBody);
         OutstandingArrayPool pool = new();
-        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = provider.Url }, GloasCheckpointFiles.Spec, NewStore(), new LevelCapturingLogManager())
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = provider.Url }, GloasCheckpointFiles.Spec, NewStore(), new TestLogRecorder())
         {
             MaxDownloadAttempts = 1,
             ReadStallTimeout = TimeSpan.FromHours(1),
@@ -328,7 +328,7 @@ public class CheckpointSyncRetryTests
     {
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(ForkCrossingChain.Instance.First.PostState, null);
         OutstandingArrayPool pool = new();
-        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, NewStore(), new LevelCapturingLogManager())
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, NewStore(), new TestLogRecorder())
         {
             MaxBodyBytes = 16,
             BufferPool = pool,
@@ -343,7 +343,7 @@ public class CheckpointSyncRetryTests
     public void An_oversized_declared_body_is_refused_before_renting([Values(17L, 2147483648L)] long declared)
     {
         OutstandingArrayPool pool = new();
-        using CheckpointSync sync = new(new BeaconChainConfig(), GloasCheckpointFiles.Spec, NewStore(), new LevelCapturingLogManager())
+        using CheckpointSync sync = new(new BeaconChainConfig(), GloasCheckpointFiles.Spec, NewStore(), new TestLogRecorder())
         {
             MaxBodyBytes = 16,
             BufferPool = pool,
@@ -360,7 +360,7 @@ public class CheckpointSyncRetryTests
     public async Task Body_reads_respect_the_limit_even_when_the_pool_returns_a_larger_array([Values(17, 18)] int bytes)
     {
         OutstandingArrayPool pool = new();
-        using CheckpointSync sync = new(new BeaconChainConfig(), GloasCheckpointFiles.Spec, NewStore(), new LevelCapturingLogManager())
+        using CheckpointSync sync = new(new BeaconChainConfig(), GloasCheckpointFiles.Spec, NewStore(), new TestLogRecorder())
         {
             MaxBodyBytes = 17,
             BufferPool = pool,
@@ -385,7 +385,7 @@ public class CheckpointSyncRetryTests
         }
     }
 
-    private static CheckpointSync NewSync(FlakyCheckpointProvider provider, BeaconChainStore store, LevelCapturingLogManager logs, int maxDownloadAttempts = 5, TimeSpan? retryBaseDelay = null, ArrayPool<byte>? bufferPool = null, TimeSpan? readStallTimeout = null, TimeSpan? responseHeadersTimeout = null) =>
+    private static CheckpointSync NewSync(FlakyCheckpointProvider provider, BeaconChainStore store, TestLogRecorder logs, int maxDownloadAttempts = 5, TimeSpan? retryBaseDelay = null, ArrayPool<byte>? bufferPool = null, TimeSpan? readStallTimeout = null, TimeSpan? responseHeadersTimeout = null) =>
         new(new BeaconChainConfig { CheckpointSyncUrl = provider.Url }, GloasCheckpointFiles.Spec, store, logs)
         {
             MaxDownloadAttempts = maxDownloadAttempts,
