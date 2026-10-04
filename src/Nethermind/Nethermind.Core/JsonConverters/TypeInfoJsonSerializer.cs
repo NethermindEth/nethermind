@@ -83,7 +83,7 @@ public static class TypeInfoJsonSerializer
         JsonSerializer.DeserializeAsync(utf8Json, GetTypeInfo<TValue>(options), cancellationToken);
 
     /// <summary>Gets the metadata the options resolve for <typeparamref name="T"/>.</summary>
-    public static JsonTypeInfo<T> GetTypeInfo<T>(JsonSerializerOptions options) => (JsonTypeInfo<T>)GetTypeInfo(options, typeof(T));
+    public static JsonTypeInfo<T> GetTypeInfo<T>(JsonSerializerOptions options) => TypeInfoCache<T>.Get(options);
 
     private static JsonTypeInfo GetTypeInfo(JsonSerializerOptions options, Type type)
     {
@@ -94,6 +94,34 @@ public static class TypeInfoJsonSerializer
         }
 
         return options.GetTypeInfo(type);
+    }
+
+    /// <remarks>
+    /// Converters call into the serializer once per nested value, so a lookup in the options' metadata cache on every call is
+    /// measurable; one remembered entry per type serves the common case of a single options instance.
+    /// </remarks>
+    private static class TypeInfoCache<T>
+    {
+        private static Entry? _entry;
+
+        public static JsonTypeInfo<T> Get(JsonSerializerOptions options)
+        {
+            Entry? entry = _entry;
+            if (entry is not null && ReferenceEquals(entry.Options, options))
+            {
+                return entry.TypeInfo;
+            }
+
+            JsonTypeInfo<T> typeInfo = (JsonTypeInfo<T>)GetTypeInfo(options, typeof(T));
+            _entry = new Entry(options, typeInfo);
+            return typeInfo;
+        }
+
+        private sealed class Entry(JsonSerializerOptions options, JsonTypeInfo<T> typeInfo)
+        {
+            public readonly JsonSerializerOptions Options = options;
+            public readonly JsonTypeInfo<T> TypeInfo = typeInfo;
+        }
     }
 
     [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode", Justification = "Adds the reflection resolver only when the reflection feature switch is on, as JsonSerializer does.")]
