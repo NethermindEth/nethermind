@@ -55,12 +55,7 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
         TestState.CommitTree(0);
     }
 
-    protected override TestAllTracerWithOutput CreateTracer()
-    {
-        TestAllTracerWithOutput tracer = new SpecializationTracer(tracing, cancelable);
-        tracer.IsTracingAccess = false;
-        return tracer;
-    }
+    protected override TestAllTracerWithOutput CreateTracer() => new SpecializationTracer(tracing, cancelable);
 
     private sealed class SpecializationTracer(bool tracing, bool cancelable) : TestAllTracerWithOutput, ITxTracer
     {

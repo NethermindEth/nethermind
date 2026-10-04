@@ -13,8 +13,6 @@ namespace Nethermind.Evm.Test
 {
     public class TestAllTracerWithOutput : TxTracer
     {
-        public TestAllTracerWithOutput() => IsTracingAccess = true;
-
         public override bool IsTracingReceipt => true;
         public override bool IsTracingActions => true;
         public override bool IsTracingOpLevelStorage => true;
@@ -26,6 +24,7 @@ namespace Nethermind.Evm.Test
         public override bool IsTracingState => true;
         public override bool IsTracingStorage => true;
         public override bool IsTracingBlockHash => true;
+        /// <summary>Enables access-list simulation, which pre-warms accesses before charging gas.</summary>
         public new bool IsTracingAccess { get { return base.IsTracingAccess; } set { base.IsTracingAccess = value; } }
         public override bool IsTracingFees => true;
 
