@@ -1614,6 +1614,11 @@ namespace Nethermind.TxPool
                     _pendingPaymasters.Decrement(paymaster);
                 }
 
+                if (state.PayerExposureReserved)
+                {
+                    _payerExposure.Subtract(tx.Hash!);
+                }
+
                 state.SenderAdmissionGate?.Exit();
                 _newHeadLock.ExitReadLock();
             }
@@ -1811,6 +1816,7 @@ namespace Nethermind.TxPool
 
                 // Settled either way by here, so the caller's own release must not run again.
                 state.PaymasterReserved = false;
+                state.PayerExposureReserved = false;
             }
         }
 
