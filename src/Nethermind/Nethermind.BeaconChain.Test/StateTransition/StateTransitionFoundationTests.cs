@@ -17,6 +17,8 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
+
+using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
@@ -224,21 +226,14 @@ public class StateTransitionFoundationTests
     private static AttestationData CreateAttestationData(ulong sourceEpoch, ulong targetEpoch, byte beaconBlockRootByte) => new()
     {
         Slot = 100,
-        BeaconBlockRoot = Hash(beaconBlockRootByte),
-        Source = new Checkpoint { Epoch = sourceEpoch, Root = Hash(0x0A) },
-        Target = new Checkpoint { Epoch = targetEpoch, Root = Hash(0x0B) },
+        BeaconBlockRoot = FromFirstByte(beaconBlockRootByte),
+        Source = new Checkpoint { Epoch = sourceEpoch, Root = FromFirstByte(0x0A) },
+        Target = new Checkpoint { Epoch = targetEpoch, Root = FromFirstByte(0x0B) },
     };
 
     /// <summary>Creates a minimal Fulu state with active validators at epoch 0 and non-zero RANDAO mixes.</summary>
     private static BeaconStateFulu CreateState(int validatorCount, ulong effectiveBalance = 32 * Gwei, int inactiveEvery = 0) =>
-        CreateMinimalFuluState(validatorCount, Hash(0x42), effectiveBalance, inactiveEvery);
-
-    private static Hash256 Hash(byte b)
-    {
-        byte[] bytes = new byte[32];
-        bytes[0] = b;
-        return new Hash256(bytes);
-    }
+        CreateMinimalFuluState(validatorCount, FromFirstByte(0x42), effectiveBalance, inactiveEvery);
 
     private sealed class ParallelLoopCounter : EventListener
     {

@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
+using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
@@ -256,7 +257,7 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
 
     private void PutState(Hash256 root, Validator[] validators, ulong[] balances)
     {
-        Hash256[] randaoMixes = Enumerable.Repeat(TestHash(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
+        Hash256[] randaoMixes = Enumerable.Repeat(FromFirstByte(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
 
         BeaconStateFulu state = MinimalState(Spec, StateSlot,
             new Fork { PreviousVersion = [5, 0, 0, 0], CurrentVersion = [6, 0, 0, 0], Epoch = StateEpoch },
@@ -280,7 +281,7 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         return new Validator
         {
             Pubkey = new BlsPublicKey(pubkeyBytes),
-            WithdrawalCredentials = TestHash((byte)marker),
+            WithdrawalCredentials = FromFirstByte((byte)marker),
             EffectiveBalance = effectiveBalance,
             Slashed = slashed,
             ActivationEligibilityEpoch = activationEligibility,
@@ -288,12 +289,5 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
             ExitEpoch = exit,
             WithdrawableEpoch = withdrawable,
         };
-    }
-
-    private static Hash256 TestHash(byte marker)
-    {
-        byte[] bytes = new byte[32];
-        bytes[0] = marker;
-        return new Hash256(bytes);
     }
 }

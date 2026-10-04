@@ -512,20 +512,8 @@ public class PeerBandTests
     }
 
     /// <summary>Polls a condition with a short cadence; the caller's token bounds the wait.</summary>
-    private static async Task WaitUntilAsync(Func<bool> condition, CancellationToken token, string failure)
-    {
-        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
-        bounded.CancelAfter(TimeSpan.FromSeconds(20));
-        while (!condition())
-        {
-            if (bounded.IsCancellationRequested)
-            {
-                Assert.Fail(failure);
-            }
-
-            await Task.Delay(50, CancellationToken.None);
-        }
-    }
+    private static Task WaitUntilAsync(Func<bool> condition, CancellationToken token, string failure) =>
+        PeerSessionNodes.WaitUntilAsync(condition, failure, token, pollDelayMilliseconds: 50);
 
     [Test]
     public async Task Admission_capacity_wait_returns_immediately_below_target()
