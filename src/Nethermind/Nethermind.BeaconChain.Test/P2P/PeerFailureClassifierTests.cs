@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -19,4 +20,23 @@ public class PeerFailureClassifierTests
     [TestCase("", PeerFailureReason.RequestFailed)]
     public void Classifies_by_the_failure_message(string message, PeerFailureReason expected) =>
         Assert.That(PeerFailureClassifier.Classify(new Exception(message)), Is.EqualTo(expected));
+
+    public enum Reply { None, PartialBlocks, PartialSidecars }
+
+    [Test]
+    public void Timeout_exemptions_belong_to_the_failed_request([Values] Reply reply, [Values] bool notBlamed, [Values] bool sessionClosed)
+    {
+        Exception timeout = new ReqRespTimeoutException(sessionClosed ? "its libp2p session closed" : "timed out") { NotBlamed = notBlamed };
+        Exception failure = reply switch
+        {
+            Reply.None => timeout,
+            Reply.PartialBlocks => new PartialBlocksException(timeout, []),
+            Reply.PartialSidecars => new PartialSidecarsException(timeout, []),
+            _ => throw new ArgumentOutOfRangeException(nameof(reply)),
+        };
+
+        PeerFailureReason expected = sessionClosed ? PeerFailureReason.SessionClosed
+            : notBlamed ? PeerFailureReason.RequestNotBlamed : PeerFailureReason.RequestFailed;
+        Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(expected));
+    }
 }

@@ -307,6 +307,57 @@ public class RequestFailureCauseTests
         Assert.That(logs.Lines.Select(static l => l.Text), Has.Some.Contains("not counted against the peer as no request to any peer was answered meanwhile"));
     }
 
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Reversed_reports_keep_each_concurrent_requests_timeout_exemption(CancellationToken token)
+    {
+        HeldSession silentSession = new(opensChannels: true);
+        HeldSession answeringSession = new();
+        Node node = Create();
+        await using PeerHostScope hosts = new(node.P2P);
+        PeerManager manager = node.CreatePeerManager();
+        IBeaconSyncPeer silent = manager.AddPeerForTest(silentSession.Session, PeerAddress);
+        IBeaconSyncPeer answering = manager.AddPeerForTest(answeringSession.Session, "/ip4/10.0.0.2/tcp/9000/p2p/16Uiu2HAmAnswering");
+        Task<IReadOnlyList<DataColumnSidecar>> first = silent.RequestDataColumnSidecarsByRootAsync(Identifiers(0), token);
+        Task<IReadOnlyList<DataColumnSidecar>> second = silent.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
+        try
+        {
+            Assert.That(PeerManager.RequestsInFlightForTest(silent), Is.EqualTo(2));
+            silentSession.ColumnDials[0].SetCanceled();
+            ReqRespTimeoutException? exempt = Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await first.WaitAsync(token));
+
+            Task<IReadOnlyList<DataColumnSidecar>> answered = answering.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
+            answeringSession.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
+            await answered.WaitAsync(token);
+            silentSession.ColumnDials[1].SetCanceled();
+            ReqRespTimeoutException? blamed = Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await second.WaitAsync(token));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exempt!.NotBlamed, Is.True, "no request was answered before the first timeout");
+                Assert.That(blamed!.NotBlamed, Is.False, "another peer answered before the second timeout");
+                Assert.That(PeerManager.RequestsInFlightForTest(silent), Is.EqualTo(2), "ended callers retain their permits until the protocols settle");
+            }
+
+            silent.ReportFailure(PeerFailureClassifier.Classify(blamed!), blamed!.Message);
+            int afterBlamedReport = PeerManager.ConsecutiveFailuresForTest(silent);
+            silent.ReportFailure(PeerFailureClassifier.Classify(exempt!), exempt!.Message);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(afterBlamedReport, Is.EqualTo(1), "the second request must not consume the first request's exemption");
+                Assert.That(PeerManager.ConsecutiveFailuresForTest(silent), Is.EqualTo(1), "reporting the exempt request must not add a failure");
+                Assert.That(PeerManager.FailuresReportedForTest(silent), Is.EqualTo(2), "both reports remain visible in diagnostics");
+            }
+        }
+        finally
+        {
+            foreach (RequestTiming.Exchange exchange in silentSession.Exchanges) exchange.Dispose();
+        }
+
+        await WaitUntilAsync(() => PeerManager.RequestsInFlightForTest(silent) == 0, token);
+        Assert.That(PeerManager.RequestsInFlightForTest(silent), Is.Zero);
+    }
+
     /// <summary>A by-range reply cut by a timeout after some chunks carries what it delivered; the timeout inside must still be excused while no request of ours was answered.</summary>
     [Test]
     [CancelAfter(30_000)]
