@@ -211,10 +211,12 @@ public class PersistenceManager(
     /// </remarks>
     private Snapshot? TryFindByteBudgetPersist(StateId latestSnapshot, StateId currentPersistedState)
     {
+        StateId? committedHead = snapshotRepository.GetLastCommittedStateId();
+        StateId seed = committedHead ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
         (PersistedSnapshot? persisted, Snapshot? inMemory) =
-            snapshotRepository.FindSnapshotToPersist(ForcedPersistSeed(latestSnapshot), currentPersistedState, _compactSize);
+            snapshotRepository.FindSnapshotToPersist(seed, currentPersistedState, _compactSize);
         persisted?.Dispose();
-        if (inMemory is not null && latestSnapshot.BlockNumber.SaturatingSub(inMemory.To.BlockNumber) >= _minReorgDepth)
+        if (inMemory is not null && (committedHead ?? latestSnapshot).BlockNumber.SaturatingSub(inMemory.To.BlockNumber) >= _minReorgDepth)
             return inMemory;
 
         inMemory?.Dispose();

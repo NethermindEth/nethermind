@@ -683,19 +683,27 @@ public class PersistenceManagerTests
     [TestCase(1UL, 65UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsAfterFold")]
     [TestCase(1UL, 79UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsOneBelowBoundary")]
     [TestCase(1UL, 80UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_PersistsAtBoundary")]
-    public void DetermineSnapshotAction_ByteBudget_ForcesBackstopWhenFinalityStalled(ulong byteBudget, ulong latestBlock, bool expectPersist)
+    [TestCase(1UL, 80UL, false, 79UL, TestName = "DetermineSnapshotAction_OverByteBudget_QueuedHeightAboveCommittedHead_KeepsFloor")]
+    [TestCase(1UL, 81UL, true, 80UL, TestName = "DetermineSnapshotAction_OverByteBudget_QueuedHeightAboveCommittedHead_PersistsAtFloor")]
+    public void DetermineSnapshotAction_ByteBudget_ForcesBackstopWhenFinalityStalled(ulong byteBudget, ulong latestBlock, bool expectPersist, ulong? committedBlock = null)
     {
         using PersistenceManager pm = CreateByteBudgetManager(byteBudget, enableLongFinality: false);
 
         StateId tierTip = CreateStateId(16);
         using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
         _finalizedStateProvider.SetFinalizedBlockNumber(5);
+        if (committedBlock is { } headBlock)
+        {
+            StateId head = CreateStateId(headBlock);
+            CreateSnapshot(tierTip, head);
+            _snapshotRepository.SetLastCommittedStateId(head);
+        }
         string leasesBefore = expected.ToString();
 
         (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(latestBlock));
 
         Assert.That(toConvert, Is.Null);
-        AssertPersistKeepsMinReorgDepth(toPersist, latestBlock, expectPersist);
+        AssertPersistKeepsMinReorgDepth(toPersist, committedBlock ?? latestBlock, expectPersist);
         Assert.That(expected.ToString(), Is.EqualTo(leasesBefore), "a rejected or returned candidate must not keep a lease");
     }
 
