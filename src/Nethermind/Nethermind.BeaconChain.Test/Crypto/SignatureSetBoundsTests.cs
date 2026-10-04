@@ -8,6 +8,7 @@ using System.Linq;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -65,7 +66,7 @@ public class SignatureSetBoundsTests
     public bool A_randao_reveal_by_an_index_outside_the_registry_is_refused_without_a_fault(int proposerIndex)
     {
         BeaconStateFulu state = CreateFuluState(KeyCount);
-        BlsSignature reveal = Sign(ValidatorKey(proposerIndex is >= 0 and < KeyCount ? proposerIndex : 0), Domains.ComputeSigningRoot(EpochRoot(3), state.GetDomain(DomainType.Randao, 3)));
+        BlsSignature reveal = Sign(ValidatorKey(proposerIndex is >= 0 and < KeyCount ? proposerIndex : 0), Domains.ComputeSigningRoot(ImportableBlobBlock.EpochRoot(3), state.GetDomain(DomainType.Randao, 3)));
 
         return SignatureSets.VerifyRandaoReveal(state, proposerIndex, 3, reveal, Cache());
     }
@@ -197,13 +198,6 @@ public class SignatureSetBoundsTests
         point.Decode(Sign(ValidatorKey(0), signingRoot).Bytes);
         point.Mult(scalar);
         return new BlsSignature(point.Compress());
-    }
-
-    private static Hash256 EpochRoot(ulong epoch)
-    {
-        byte[] root = new byte[32];
-        BinaryPrimitives.WriteUInt64LittleEndian(root, epoch);
-        return new Hash256(root);
     }
 
     /// <summary>Runs <paramref name="verifier"/> on a message naming <paramref name="index"/>, signed by validator <paramref name="signer"/>.</summary>

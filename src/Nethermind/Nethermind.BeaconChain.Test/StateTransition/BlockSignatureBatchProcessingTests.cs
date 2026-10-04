@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -89,7 +88,7 @@ public class BlockSignatureBatchProcessingTests
         ulong epoch = pre.GetCurrentEpoch();
         Hash256 parentRoot = pre.GetBlockRootAtSlot(ParentSlot);
 
-        body.RandaoReveal = Sign(ValidatorKey((int)block.ProposerIndex), Domains.ComputeSigningRoot(EpochRoot(epoch), pre.GetDomain(DomainType.Randao, epoch)));
+        body.RandaoReveal = Sign(ValidatorKey((int)block.ProposerIndex), Domains.ComputeSigningRoot(ImportableBlobBlock.EpochRoot(epoch), pre.GetDomain(DomainType.Randao, epoch)));
         body.ProposerSlashings = [Equivocation(pre, slot: ParentSlot, Equivocator)];
         body.AttesterSlashings =
         [
@@ -649,12 +648,5 @@ public class BlockSignatureBatchProcessingTests
             mixed[i] ^= mix.Bytes[i];
         }
         return new Hash256(mixed);
-    }
-
-    private static Hash256 EpochRoot(ulong epoch)
-    {
-        byte[] root = new byte[32];
-        BinaryPrimitives.WriteUInt64LittleEndian(root, epoch);
-        return new Hash256(root);
     }
 }
