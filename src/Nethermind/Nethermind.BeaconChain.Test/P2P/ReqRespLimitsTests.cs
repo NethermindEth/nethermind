@@ -254,7 +254,7 @@ public class ReqRespLimitsTests
         {
             try
             {
-                await channel.ReadAsync(0, ReadBlockingMode.DontWait, token);
+                await channel.ReadAsync(0, ReadBlockingMode.DoNotWait, token);
                 await reply.WaitAsync(token);
             }
             finally
