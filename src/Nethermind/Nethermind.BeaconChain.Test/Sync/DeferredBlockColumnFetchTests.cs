@@ -150,123 +150,76 @@ public class DeferredBlockColumnFetchTests
         };
     }
 
-    [Test]
+    public enum CustodianDistribution { SingleColumn, Silent, ConnectsLater, Churns }
+    private static IEnumerable<TestCaseData> CustodianRotationCases()
+    {
+        yield return new TestCaseData(CustodianDistribution.SingleColumn, 0).SetName("Single-column custodians are all reached within bounded imports");
+        yield return new TestCaseData(CustodianDistribution.Churns, CustodiansPerImport).SetName("Fresh peer IDs cannot displace an earlier custodian");
+        foreach (int count in new[] { 1, 4, 10, 40 })
+        {
+            yield return new TestCaseData(CustodianDistribution.Silent, count).SetName($"Rotation reaches a serving custodian behind {count} silent custodians");
+            yield return new TestCaseData(CustodianDistribution.ConnectsLater, count).SetName($"A newly connected custodian precedes {count} silent custodians");
+        }
+    }
+
+    /// <summary>Checks the three-custodian request bound, same-slot fairness, and priority for custodians joining after a deferral.</summary>
+    [TestCaseSource(nameof(CustodianRotationCases))]
     [CancelAfter(30_000)]
-    public async Task A_sample_spread_over_single_column_custodians_is_retrieved_a_bounded_number_of_custodians_per_attempt(CancellationToken token)
+    public async Task Custodian_rotation_reaches_serving_peers_without_repeating_or_multiplying_requests(
+        CustodianDistribution distribution, int silentCount, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
-        StubPeer[] custodians = [.. fixture.Sampled.Select(c => fixture.Peer($"custodian-{c}", [c]))];
+        StubPeer[] initial = distribution == CustodianDistribution.SingleColumn
+            ? [.. fixture.Sampled.Select(c => fixture.Peer($"custodian-{c}", [c]))]
+            : distribution == CustodianDistribution.Churns ? []
+            : [.. Enumerable.Range(0, silentCount).Select(i => fixture.SilentPeer($"silent-{i}", fixture.Sampled))];
+        StubPeer honest = fixture.Peer("honest", fixture.Sampled);
         BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
-        fixture.Peers.AddRange(custodians);
+        fixture.Peers.AddRange(initial);
+        if (distribution == CustodianDistribution.Silent) fixture.Peers.Add(honest);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
-        int attemptsNeeded = (custodians.Length + CustodiansPerImport - 1) / CustodiansPerImport;
-
+        List<StubPeer> queried = [.. initial];
         List<BlockImportResult> results = [];
         List<int> requestsPerAttempt = [];
-        for (int attempt = 0; attempt < attemptsNeeded; attempt++)
-        {
-            int before = custodians.Sum(static p => p.RootColumnRequests);
-            results.Add(await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token));
-            requestsPerAttempt.Add(custodians.Sum(static p => p.RootColumnRequests) - before);
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(custodians, Has.Length.GreaterThan(CustodiansPerImport), "more single-column custodians than one import asks");
-            Assert.That(results[^1], Is.EqualTo(BlockImportResult.Imported), "the rotation reaches every custodian within the same slot");
-            Assert.That(results[..^1], Is.All.EqualTo(BlockImportResult.DataUnavailable));
-            Assert.That(requestsPerAttempt, Is.All.LessThanOrEqualTo(CustodiansPerImport));
-            Assert.That(custodians.Select(static p => p.RootColumnRequests), Is.All.EqualTo(1), "each custodian is asked once");
-        }
-    }
-
-    /// <summary>
-    /// Peers answering by root with no sidecars must neither hide a serving custodian nor multiply the cost of one import:
-    /// the rotation asks a bounded number per import, reaches a custodian present from the start within <c>ceil(N / 3)</c>
-    /// imports, and one that connects later on the next import.
-    /// </summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task Silent_custodians_cost_a_bounded_number_of_requests_per_import_and_do_not_hide_a_serving_custodian(
-        [Values(1, 4, 10, 40)] int silentCount,
-        [Values] bool connectsAfterDeferral,
-        CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        StubPeer[] silent = [.. Enumerable.Range(0, silentCount).Select(i => fixture.SilentPeer($"silent-{i}", fixture.Sampled))];
-        StubPeer honest = fixture.Peer("honest", fixture.Sampled);
-        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
-        fixture.Peers.AddRange(silent);
-        if (!connectsAfterDeferral)
-        {
-            fixture.Peers.Add(honest);
-        }
-
-        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
-        int custodianCount = silentCount + 1;
+        int custodianCount = distribution == CustodianDistribution.SingleColumn ? initial.Length : silentCount + 1;
         int maxAttempts = (custodianCount + CustodiansPerImport - 1) / CustodiansPerImport;
-        List<int> requestsPerAttempt = [];
-        int attempts = 0;
-        BlockImportResult result = BlockImportResult.DataUnavailable;
-        while (result != BlockImportResult.Imported && attempts < custodianCount)
+        int limit = distribution == CustodianDistribution.SingleColumn ? maxAttempts
+            : distribution == CustodianDistribution.Churns ? 10 : custodianCount;
+        for (int attempt = 0; attempt < limit && (distribution == CustodianDistribution.SingleColumn
+            || results.Count == 0 || results[^1] != BlockImportResult.Imported); attempt++)
         {
-            if (connectsAfterDeferral && attempts == 1)
+            if (distribution == CustodianDistribution.ConnectsLater && attempt == 1) fixture.Peers.Add(honest);
+            if (distribution == CustodianDistribution.Churns)
             {
+                StubPeer[] fresh = [.. Enumerable.Range(0, CustodiansPerImport).Select(i => fixture.SilentPeer($"churned-{queried.Count + i}", fixture.Sampled))];
+                queried.AddRange(fresh);
+                fixture.Peers.Clear();
+                fixture.Peers.AddRange(fresh);
                 fixture.Peers.Add(honest);
             }
-
-            int before = silent.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests;
-            result = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
-            requestsPerAttempt.Add(silent.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests - before);
-            attempts++;
+            int before = queried.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests;
+            results.Add(await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token));
+            requestsPerAttempt.Add(queried.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests - before);
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the pool holds a custodian serving every sampled column");
-            Assert.That(requestsPerAttempt, Is.All.LessThanOrEqualTo(CustodiansPerImport), "one import asks a bounded number of custodians however many are connected");
-            Assert.That(attempts, connectsAfterDeferral ? Is.EqualTo(2) : Is.LessThanOrEqualTo(maxAttempts),
-                connectsAfterDeferral ? "a custodian that connected since the last import is asked first" : "the rotation reaches every custodian within ceil(N / 3) imports");
-            Assert.That(honest.RootColumnRequests, Is.EqualTo(1));
-            Assert.That(silent.Select(static p => p.RootColumnRequests), Is.All.LessThanOrEqualTo(1), "a peer is asked once per slot for a block");
-        }
-    }
-
-    /// <summary>
-    /// New peer ids are cheap, so custodians presenting fresh ones before every import must not take every place of each import:
-    /// a custodian seen at the previous import keeps one, and is asked on the next import.
-    /// </summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task Custodians_churning_their_peer_ids_do_not_keep_an_earlier_custodian_from_being_asked(CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        StubPeer honest = fixture.Peer("honest", fixture.Sampled);
-        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
-        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
-        const int MaxImports = 10;
-        List<StubPeer> churned = [];
-        List<int> requestsPerImport = [];
-        BlockImportResult result = BlockImportResult.DataUnavailable;
-        while (result != BlockImportResult.Imported && requestsPerImport.Count < MaxImports)
-        {
-            StubPeer[] fresh = [.. Enumerable.Range(0, CustodiansPerImport).Select(i => fixture.SilentPeer($"churned-{churned.Count + i}", fixture.Sampled))];
-            churned.AddRange(fresh);
-            fixture.Peers.Clear();
-            fixture.Peers.AddRange(fresh);
-            // Last, so the pool's own order would put it behind every newcomer.
-            fixture.Peers.Add(honest);
-            int before = churned.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests;
-            result = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
-            requestsPerImport.Add(churned.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests - before);
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(requestsPerImport, Has.Count.EqualTo(2), "the custodian seen at the first import is asked at the second");
-            Assert.That(requestsPerImport, Is.All.LessThanOrEqualTo(CustodiansPerImport));
-            Assert.That(honest.RootColumnRequests, Is.EqualTo(1));
+            Assert.That(results[^1], Is.EqualTo(BlockImportResult.Imported), "the rotation reaches the serving custodians in the same slot");
+            Assert.That(requestsPerAttempt, Is.All.LessThanOrEqualTo(CustodiansPerImport), "each import asks at most three custodians");
+            if (distribution == CustodianDistribution.SingleColumn)
+            {
+                Assert.That(initial, Has.Length.GreaterThan(CustodiansPerImport));
+                Assert.That(results[..^1], Is.All.EqualTo(BlockImportResult.DataUnavailable));
+                Assert.That(initial.Select(static p => p.RootColumnRequests), Is.All.EqualTo(1));
+            }
+            else
+            {
+                Assert.That(results, distribution is CustodianDistribution.ConnectsLater or CustodianDistribution.Churns
+                    ? Has.Count.EqualTo(2) : Has.Count.LessThanOrEqualTo(maxAttempts), "a new or previously overlooked custodian is reached on the next import");
+                Assert.That(honest.RootColumnRequests, Is.EqualTo(1));
+                if (distribution != CustodianDistribution.Churns)
+                    Assert.That(initial.Select(static p => p.RootColumnRequests), Is.All.LessThanOrEqualTo(1), "a peer is asked once per block and slot");
+            }
         }
     }
 
@@ -1507,37 +1460,35 @@ public class DeferredBlockColumnFetchTests
         }
     }
 
-    /// <summary>
-    /// A deferred block the full retry set refuses still gets its by-root column fetch and one import attempt from its result, so it
-    /// imports without waiting for range sync; that attempt does not fetch again, and the set stays at its cap.
-    /// </summary>
-    [Test]
+    /// <summary>A full retry set gives a refused data block one fetch and one import attempt; an engine deferral needs no column request.</summary>
+    [TestCase(BlockImportResult.DataUnavailable, false)]
+    [TestCase(BlockImportResult.DataUnavailable, true)]
+    [TestCase(BlockImportResult.EngineUnavailable, false)]
     [CancelAfter(30_000)]
-    public async Task A_deferred_block_the_full_retry_set_refuses_still_fetches_its_columns_and_imports_once(
-        [Values] bool importerStaysUnavailable,
-        CancellationToken token)
+    public async Task A_refused_block_fetches_only_missing_data_without_retaining_a_rotation_or_watch(
+        BlockImportResult waiting, bool remainsUnavailable, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
         StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
         fixture.Peers.Add(custodian);
-        Hash256 blockRoot = fixture.Chain.BlockRoot;
+        Hash256 root = fixture.Chain.BlockRoot;
         (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token);
+        if (remainsUnavailable) importer.Stuck.Add(root);
+        if (waiting == BlockImportResult.EngineUnavailable) importer.EngineDown.Add(root);
 
-        if (importerStaysUnavailable)
-        {
-            importer.Stuck.Add(blockRoot);
-        }
-
-        BlockImportResult refused = await orchestrator.ImportAndSettleAsync(fixture.Importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+        BlockImportResult result = await orchestrator.ImportAndSettleAsync(
+            waiting == BlockImportResult.EngineUnavailable ? importer : fixture.Importer,
+            new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "the set stays at its cap");
-            Assert.That(custodian.RootColumnRequests, Is.EqualTo(1), "the refused block's columns are fetched once, and the import attempt after them does not fetch again");
-            Assert.That(refused, Is.EqualTo(importerStaysUnavailable ? BlockImportResult.DataUnavailable : BlockImportResult.Imported));
-            Assert.That(fixture.Importer.IsKnown(blockRoot), Is.EqualTo(!importerStaysUnavailable));
+            Assert.That(custodian.RootColumnRequests, Is.EqualTo(waiting == BlockImportResult.DataUnavailable ? 1 : 0), "only missing data needs a fetch, once");
+            Assert.That(result, Is.EqualTo(waiting == BlockImportResult.DataUnavailable && !remainsUnavailable ? BlockImportResult.Imported : waiting));
+            Assert.That(fixture.Importer.IsKnown(root), Is.EqualTo(waiting == BlockImportResult.DataUnavailable && !remainsUnavailable));
             Assert.That(orchestrator.ColumnFetchRotationCount, Is.Zero, "a refused block keeps no rotation");
             Assert.That(fixture.SidecarPool.WatchCount, Is.Zero, "a refused block keeps no pool watch");
+            if (waiting == BlockImportResult.EngineUnavailable) Assert.That(importer.ImportCalls.Count(c => c == root), Is.EqualTo(1));
         }
     }
 
@@ -1628,27 +1579,6 @@ public class DeferredBlockColumnFetchTests
         {
             Assert.That(otherRoute, Is.EqualTo(BlockImportResult.Imported), "fixture: the block imports once its columns are held");
             Assert.That(importer.ImportCalls.Count(c => c == blockRoot), Is.EqualTo(1), "only the attempt the retry set refused");
-        }
-    }
-
-    /// <summary>A block deferred for the engine, not for columns, has nothing to fetch even when the full retry set refuses it.</summary>
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task An_engine_unavailable_block_the_full_retry_set_refuses_asks_no_custodian(CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
-        fixture.Peers.Add(custodian);
-        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token);
-        importer.EngineDown.Add(fixture.Chain.BlockRoot);
-
-        BlockImportResult result = await orchestrator.ImportAndSettleAsync(importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.EngineUnavailable));
-            Assert.That(custodian.RootColumnRequests, Is.Zero);
-            Assert.That(importer.ImportCalls.Count(c => c == fixture.Chain.BlockRoot), Is.EqualTo(1));
         }
     }
 
