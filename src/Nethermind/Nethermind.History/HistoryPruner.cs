@@ -283,6 +283,45 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
+    /// <summary>Runs pruning passes back to back until nothing more is owed under the current configuration.</summary>
+    /// <remarks>
+    /// Ignores <see cref="IHistoryConfig.PruningInterval"/> and <see cref="IHistoryConfig.PruningTimeoutSeconds"/>.
+    /// For offline use by the <c>prune-history</c> command. Stops on lack of progress rather than on
+    /// <see cref="ShouldPruneHistory"/>, which stays true while the sync pivot is below the cutoff.
+    /// </remarks>
+    /// <exception cref="HistoryPrunerException">
+    /// Pruning is disabled, the pruning boundary could not be established (no head, no sync pivot, or the ancient
+    /// bodies backfill is still descending), or the transaction index sweep stopped making progress.
+    /// </exception>
+    public void PruneToCompletion(CancellationToken cancellationToken)
+    {
+        if (!_enabled) throw new HistoryPrunerException("History pruning is disabled.");
+
+        while (true)
+        {
+            (ulong, ulong, ulong, ulong) pointersBeforePass = (_blocksDeletePointer, _blocksReclaimCursor, _balsDeletePointer, _sliceCleanupCursor);
+            byte[]? sweepCursorBeforePass = _txIndexSweepCursor;
+
+            Volatile.Write(ref _initialPruningPassPending, 1);
+            TryPruneHistory(cancellationToken);
+
+            if (!_hasLoadedDeletePointers)
+                throw new HistoryPrunerException("Could not establish the history pruning boundary: the block tree has no head or sync pivot, or the ancient bodies backfill is still descending.");
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            bool progressed = pointersBeforePass != (_blocksDeletePointer, _blocksReclaimCursor, _balsDeletePointer, _sliceCleanupCursor)
+                || !Bytes.AreEqual(sweepCursorBeforePass, _txIndexSweepCursor);
+            if (progressed) continue;
+
+            // A failed sweep logs and leaves its cursor in place, so without this a persistent failure would never end.
+            if (_txIndexSweepCursor is not null)
+                throw new HistoryPrunerException("Transaction index sweep made no progress.");
+
+            return;
+        }
+    }
+
     internal void TryPruneHistory(CancellationToken cancellationToken)
     {
         // Trustworthy only once loaded: on in-memory defaults a collapsed cutoff would hide a persisted backlog.
