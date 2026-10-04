@@ -165,8 +165,7 @@ public partial class BeaconSyncOrchestratorTests
         SignedExecutionPayloadEnvelope envelope = EnvelopeFor(TestItem.KeccakA, FirstGloasSlot + 1);
 
         MessageValidity validity = router.HandleExecutionPayloadEnvelope(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope)));
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(validity, Is.EqualTo(MessageValidity.Ignored), "fixture: the envelope names a block the router does not hold, so it is consumed");
@@ -492,8 +491,7 @@ public partial class BeaconSyncOrchestratorTests
         SignedExecutionPayloadEnvelope envelope = EnvelopeFor(TestItem.KeccakA, EnvelopeBlockSlot);
 
         harness.Orchestrator.WorkWriter.TryWrite(fromPeer ? new BeaconSyncOrchestrator.FetchedEnvelopeItem(envelope, peer) : new BeaconSyncOrchestrator.GossipEnvelopeItem(envelope));
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
         await TickAtAgeAsync(harness, 1, () => 0);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -519,8 +517,7 @@ public partial class BeaconSyncOrchestratorTests
 
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipEnvelopeItem(envelope));
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(block));
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(harness.Importer.Known, Does.Contain(block.ComputeMessageRoot()), "the next item is still processed");
@@ -907,7 +904,6 @@ public partial class BeaconSyncOrchestratorTests
     private static async Task RunRangeRoundAsync(Harness harness)
     {
         await harness.Orchestrator.FeedRangeSyncRoundAsync(CancellationToken.None);
-        harness.Orchestrator.WorkWriter.Complete();
-        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
     }
 }
