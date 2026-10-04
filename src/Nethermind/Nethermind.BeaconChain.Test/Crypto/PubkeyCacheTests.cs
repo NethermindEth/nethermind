@@ -41,18 +41,16 @@ public class PubkeyCacheTests
         PubkeyCache mismatched = new();
         bool mismatchedResult = mismatched.TryLoad(store, validators[..2]);
 
-        Assert.Multiple(() =>
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(cache.Count, Is.EqualTo(3));
+        Assert.That(loadResult, Is.True);
+        Assert.That(loaded.Count, Is.EqualTo(3));
+        for (int i = 0; i < validators.Length; i++)
         {
-            Assert.That(cache.Count, Is.EqualTo(3));
-            Assert.That(loadResult, Is.True);
-            Assert.That(loaded.Count, Is.EqualTo(3));
-            for (int i = 0; i < validators.Length; i++)
-            {
-                Assert.That(cache.GetPublicKey(i).Compress(), Is.EqualTo(compressed[i]), $"built pubkey {i}");
-                Assert.That(loaded.GetPublicKey(i).Compress(), Is.EqualTo(compressed[i]), $"loaded pubkey {i}");
-            }
-            Assert.That(mismatchedResult, Is.False, "count mismatch must force a rebuild");
-        });
+            Assert.That(cache.GetPublicKey(i).Compress(), Is.EqualTo(compressed[i]), $"built pubkey {i}");
+            Assert.That(loaded.GetPublicKey(i).Compress(), Is.EqualTo(compressed[i]), $"loaded pubkey {i}");
+        }
+        Assert.That(mismatchedResult, Is.False, "count mismatch must force a rebuild");
     }
 
     /// <summary>

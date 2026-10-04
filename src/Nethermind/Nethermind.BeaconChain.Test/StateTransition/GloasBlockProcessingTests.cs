@@ -107,14 +107,12 @@ public class GloasBlockProcessingTests
 
         GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.LatestExecutionPayloadBid, Is.SameAs(bid.Message));
-            BuilderPendingPayment payment = state.BuilderPendingPayments![(int)(Presets.SlotsPerEpoch + bid.Message!.Slot % Presets.SlotsPerEpoch)];
-            Assert.That(payment.Withdrawal!.Amount, Is.EqualTo(value));
-            Assert.That(payment.Withdrawal.BuilderIndex, Is.EqualTo(0ul));
-            Assert.That(payment.Withdrawal.FeeRecipient, Is.EqualTo(bid.Message.FeeRecipient));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.LatestExecutionPayloadBid, Is.SameAs(bid.Message));
+        BuilderPendingPayment payment = state.BuilderPendingPayments![(int)(Presets.SlotsPerEpoch + bid.Message!.Slot % Presets.SlotsPerEpoch)];
+        Assert.That(payment.Withdrawal!.Amount, Is.EqualTo(value));
+        Assert.That(payment.Withdrawal.BuilderIndex, Is.EqualTo(0ul));
+        Assert.That(payment.Withdrawal.FeeRecipient, Is.EqualTo(bid.Message.FeeRecipient));
     }
 
     [Test]
@@ -318,15 +316,13 @@ public class GloasBlockProcessingTests
         ApplyBlock(state, block2, cache);
 
         Hash256 rootAfterBlock2 = SszRoots.HashTreeRoot(state);
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.LatestBlockHash, Is.EqualTo(bid1.Message.BlockHash), "the parent payload must be applied exactly one block later");
-            Assert.That(state.BuilderPendingPayments[(int)paymentIndex].Withdrawal!.Amount, Is.EqualTo(0ul), "the settled payment slot must be cleared");
-            Assert.That(state.BuilderPendingWithdrawals, Is.Empty, "the settled withdrawal must have been paid out by this same block's own withdrawals step");
-            Assert.That(state.Builders![0].Balance, Is.EqualTo(builderStartingBalance - bidValue), "the builder must actually have been paid the bid value");
-            Assert.That(rootAfterBlock2, Is.EqualTo(SszRoots.HashTreeRoot(state)), "hash_tree_root must still be stable after the second block");
-            Assert.That(rootAfterBlock2, Is.Not.EqualTo(rootAfterBlock1First), "settling and paying out the builder must actually change the state root");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.LatestBlockHash, Is.EqualTo(bid1.Message.BlockHash), "the parent payload must be applied exactly one block later");
+        Assert.That(state.BuilderPendingPayments[(int)paymentIndex].Withdrawal!.Amount, Is.EqualTo(0ul), "the settled payment slot must be cleared");
+        Assert.That(state.BuilderPendingWithdrawals, Is.Empty, "the settled withdrawal must have been paid out by this same block's own withdrawals step");
+        Assert.That(state.Builders![0].Balance, Is.EqualTo(builderStartingBalance - bidValue), "the builder must actually have been paid the bid value");
+        Assert.That(rootAfterBlock2, Is.EqualTo(SszRoots.HashTreeRoot(state)), "hash_tree_root must still be stable after the second block");
+        Assert.That(rootAfterBlock2, Is.Not.EqualTo(rootAfterBlock1First), "settling and paying out the builder must actually change the state root");
     }
 
     // ---- Withdrawals computed from state alone ----
@@ -348,15 +344,13 @@ public class GloasBlockProcessingTests
 
         GloasBlockProcessing.ProcessWithdrawals(state);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Balances[validatorIndex], Is.EqualTo(0ul), "a fully withdrawable validator's whole balance must be swept");
-            Assert.That(state.PayloadExpectedWithdrawals, Has.Length.EqualTo(1));
-            Withdrawal withdrawal = state.PayloadExpectedWithdrawals![0];
-            Assert.That(withdrawal.ValidatorIndex, Is.EqualTo((ulong)validatorIndex));
-            Assert.That(withdrawal.Amount, Is.EqualTo(startingBalance));
-            Assert.That(withdrawal.Address, Is.EqualTo(new Address(validator.WithdrawalCredentials.Bytes[12..])));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Balances[validatorIndex], Is.EqualTo(0ul), "a fully withdrawable validator's whole balance must be swept");
+        Assert.That(state.PayloadExpectedWithdrawals, Has.Length.EqualTo(1));
+        Withdrawal withdrawal = state.PayloadExpectedWithdrawals![0];
+        Assert.That(withdrawal.ValidatorIndex, Is.EqualTo((ulong)validatorIndex));
+        Assert.That(withdrawal.Amount, Is.EqualTo(startingBalance));
+        Assert.That(withdrawal.Address, Is.EqualTo(new Address(validator.WithdrawalCredentials.Bytes[12..])));
     }
 
     /// <summary>

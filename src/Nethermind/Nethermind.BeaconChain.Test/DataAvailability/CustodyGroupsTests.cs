@@ -86,13 +86,11 @@ public class CustodyGroupsTests
     {
         ulong[] groups = CustodyGroups.GetCustodyGroups(NodeId(fill), Eip7594DasConstants.CustodyRequirement);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(groups, Has.Length.EqualTo((int)Eip7594DasConstants.CustodyRequirement));
-            Assert.That(groups.Distinct().Count(), Is.EqualTo(groups.Length), "custody groups must be distinct");
-            Assert.That(groups, Is.All.LessThan(Eip7594DasConstants.NumberOfCustodyGroups));
-            Assert.That(groups, Is.Ordered, "get_custody_groups returns sorted(custody_groups)");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(groups, Has.Length.EqualTo((int)Eip7594DasConstants.CustodyRequirement));
+        Assert.That(groups.Distinct().Count(), Is.EqualTo(groups.Length), "custody groups must be distinct");
+        Assert.That(groups, Is.All.LessThan(Eip7594DasConstants.NumberOfCustodyGroups));
+        Assert.That(groups, Is.Ordered, "get_custody_groups returns sorted(custody_groups)");
     }
 
     [Test]
@@ -152,11 +150,9 @@ public class CustodyGroupsTests
         // only retains/serves 4 long-term. See 'deviations' for why this count, not just its value.
         ulong samplingSize = Math.Max(Eip7594DasConstants.SamplesPerSlot, Eip7594DasConstants.CustodyRequirement);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(samplingSize, Is.EqualTo(8ul));
-            Assert.That(Eip7594DasConstants.CustodyRequirement, Is.EqualTo(4ul));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(samplingSize, Is.EqualTo(8ul));
+        Assert.That(Eip7594DasConstants.CustodyRequirement, Is.EqualTo(4ul));
     }
 
     [TestCase(0ul)]
@@ -169,11 +165,9 @@ public class CustodyGroupsTests
 
         // Mainnet has NUMBER_OF_COLUMNS == NUMBER_OF_CUSTODY_GROUPS == 128, so columns_per_group is 1
         // and custody_group == its one column - a preset coincidence the implementation must not assume.
-        Assert.Multiple(() =>
-        {
-            Assert.That(columns, Has.Length.EqualTo(1));
-            Assert.That(columns[0], Is.EqualTo(custodyGroup));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(columns, Has.Length.EqualTo(1));
+        Assert.That(columns[0], Is.EqualTo(custodyGroup));
     }
 
     [Test]

@@ -58,12 +58,10 @@ public class DiscoveryNodeCustodySourceTests
 
         NodeColumnCustody second = source.Current!;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(second.NodeId, Is.EqualTo(discovery.LocalCustody.NodeId), "the custody demanded must follow the identity discovery currently advertises");
-            Assert.That(second.CustodyColumns, Is.Not.EqualTo(first.CustodyColumns), "a stale custody would demand the previous identity's columns");
-            Assert.That(source.Current, Is.SameAs(second), "an unchanged identity is not re-derived on every read");
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(second.NodeId, Is.EqualTo(discovery.LocalCustody.NodeId), "the custody demanded must follow the identity discovery currently advertises");
+        Assert.That(second.CustodyColumns, Is.Not.EqualTo(first.CustodyColumns), "a stale custody would demand the previous identity's columns");
+        Assert.That(source.Current, Is.SameAs(second), "an unchanged identity is not re-derived on every read");
     }
 
     [Test]
@@ -73,12 +71,10 @@ public class DiscoveryNodeCustodySourceTests
         LocalCustody advertised = new(nodeId, Eip7594DasConstants.CustodyRequirement);
         NodeColumnCustody demanded = new(nodeId, advertised.CustodyGroupCount);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(demanded.CustodyColumns, Is.EqualTo(advertised.CustodyGroups.SelectMany(CustodyGroups.ComputeColumnsForCustodyGroup).Order()));
-            Assert.That(demanded.CustodyColumns, Is.SubsetOf(demanded.SampledColumns), "the per-slot sample always covers the node's own custody");
-            Assert.That(demanded.SampledColumns, Has.Count.EqualTo((int)Eip7594DasConstants.SamplesPerSlot));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(demanded.CustodyColumns, Is.EqualTo(advertised.CustodyGroups.SelectMany(CustodyGroups.ComputeColumnsForCustodyGroup).Order()));
+        Assert.That(demanded.CustodyColumns, Is.SubsetOf(demanded.SampledColumns), "the per-slot sample always covers the node's own custody");
+        Assert.That(demanded.SampledColumns, Has.Count.EqualTo((int)Eip7594DasConstants.SamplesPerSlot));
     }
 
     [Test]

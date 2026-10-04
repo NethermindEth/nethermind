@@ -20,12 +20,10 @@ public class DataColumnSidecarVerifierTests
     {
         DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.True);
-            Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.True);
-            Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.True);
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.True);
+        Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.True);
+        Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.True);
     }
 
     [Test]
@@ -38,11 +36,9 @@ public class DataColumnSidecarVerifierTests
 
         // The tamper does not change any array length, so structure still looks fine; only the
         // cryptographic check must catch it.
-        Assert.Multiple(() =>
-        {
-            Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.True);
-            Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.True);
+        Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
     }
 
     [Test]
@@ -69,13 +65,11 @@ public class DataColumnSidecarVerifierTests
         sidecar.Column![0] = DataColumnKzgFixture.CellAt(unrelatedBlob, ColumnIndex);
         sidecar.KzgProofs![0] = DataColumnKzgFixture.ProofAt(unrelatedBlob, ColumnIndex);
 
-        Assert.Multiple(() =>
-        {
-            // Its own cells are still internally consistent with its own (now-swapped) commitments.
-            Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.True);
-            // But the swapped commitments list's root no longer matches the stale inclusion proof.
-            Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.False);
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        // Its own cells are still internally consistent with its own (now-swapped) commitments.
+        Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.True);
+        // But the swapped commitments list's root no longer matches the stale inclusion proof.
+        Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.False);
     }
 
     [Test]
@@ -118,15 +112,13 @@ public class DataColumnSidecarVerifierTests
         // lockstep off the commitment count, so this must be refused rather than indexed.
         sidecar.KzgProofs = [sidecar.KzgProofs![0]];
 
-        Assert.Multiple(() =>
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
+        if (verifyKzg)
         {
-            Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
-            if (verifyKzg)
-            {
-                Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
-                Assert.That(DataColumnSidecarVerifier.Verify(sidecar, BeaconChainSpec.Mainnet), Is.False);
-            }
-        });
+            Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
+            Assert.That(DataColumnSidecarVerifier.Verify(sidecar, BeaconChainSpec.Mainnet), Is.False);
+        }
     }
 
     [TestCase(false, TestName = "VerifyBlobCount_rejects_a_sidecar_with_no_commitments")]
@@ -153,15 +145,13 @@ public class DataColumnSidecarVerifierTests
         DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
         sidecar.KzgCommitments = new SszKzgCommitment[10];
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(sidecar, mainnet, mainnet.FuluForkEpoch), mainnet), Is.False,
-                "before any BPO fork, Fulu still inherits Electra's max_blobs_per_block of 9");
-            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(sidecar, mainnet, 412672 - 1), mainnet), Is.False,
-                "the epoch immediately before BPO1 activates must still use the pre-BPO bound of 9");
-            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(sidecar, mainnet, 412672), mainnet), Is.True,
-                "BPO1's own activation epoch raises the bound to 15, admitting 10 commitments");
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(sidecar, mainnet, mainnet.FuluForkEpoch), mainnet), Is.False,
+            "before any BPO fork, Fulu still inherits Electra's max_blobs_per_block of 9");
+        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(sidecar, mainnet, 412672 - 1), mainnet), Is.False,
+            "the epoch immediately before BPO1 activates must still use the pre-BPO bound of 9");
+        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(sidecar, mainnet, 412672), mainnet), Is.True,
+            "BPO1's own activation epoch raises the bound to 15, admitting 10 commitments");
     }
 
     [Test]
@@ -173,11 +163,9 @@ public class DataColumnSidecarVerifierTests
         DataColumnSidecar overMax = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
         overMax.KzgCommitments = new SszKzgCommitment[10];
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(atMax, mainnet, mainnet.FuluForkEpoch), mainnet), Is.True);
-            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(overMax, mainnet, mainnet.FuluForkEpoch), mainnet), Is.False);
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(atMax, mainnet, mainnet.FuluForkEpoch), mainnet), Is.True);
+        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(overMax, mainnet, mainnet.FuluForkEpoch), mainnet), Is.False);
     }
 
     private static BeaconChainSpec SmallBoundedBlobSpec() => new()
@@ -208,13 +196,11 @@ public class DataColumnSidecarVerifierTests
         BeaconChainSpec spec = SmallBoundedBlobSpec();
         DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex, blobCount: 2);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(DataColumnSidecarVerifier.Verify(AtEpoch(sidecar, spec, 19), spec), Is.False,
-                "one epoch before the BPO, the schedule still caps max_blobs_per_block at 1");
-            Assert.That(DataColumnSidecarVerifier.Verify(AtEpoch(sidecar, spec, 20), spec), Is.True,
-                "at the BPO's own activation epoch the cap rises to 2, admitting this sidecar");
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(DataColumnSidecarVerifier.Verify(AtEpoch(sidecar, spec, 19), spec), Is.False,
+            "one epoch before the BPO, the schedule still caps max_blobs_per_block at 1");
+        Assert.That(DataColumnSidecarVerifier.Verify(AtEpoch(sidecar, spec, 20), spec), Is.True,
+            "at the BPO's own activation epoch the cap rises to 2, admitting this sidecar");
     }
 
     /// <summary>Moves a sidecar's block header to <paramref name="epoch"/>, which is the only

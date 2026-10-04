@@ -180,12 +180,10 @@ public class GloasContainerTests
         Assert.That(ExecutionPayloadBid.Encode(decoded), Is.EqualTo(encoded));
         ExecutionPayloadBid.Merkleize(bid, out UInt256 root);
         ExecutionPayloadBid.Merkleize(decoded, out UInt256 decodedRoot);
-        Assert.Multiple(() =>
-        {
-            Assert.That(decodedRoot, Is.EqualTo(root));
-            Assert.That(root, Is.Not.EqualTo(UInt256.Zero));
-            Assert.That(decoded.BlobKzgCommitments, Has.Length.EqualTo(1));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(decodedRoot, Is.EqualTo(root));
+        Assert.That(root, Is.Not.EqualTo(UInt256.Zero));
+        Assert.That(decoded.BlobKzgCommitments, Has.Length.EqualTo(1));
     }
 
     /// <summary>consensus-spec-tests v1.7.0-alpha.13 mainnet/gloas/ssz_static/SignedExecutionPayloadBid/ssz_random/case_3.</summary>
@@ -599,11 +597,9 @@ public class GloasContainerTests
         merkleize(value, out UInt256 originalRoot);
         merkleize(decoded, out UInt256 decodedRoot);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(reEncoded, Is.EqualTo(encoded));
-            Assert.That(decodedRoot, Is.EqualTo(originalRoot));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reEncoded, Is.EqualTo(encoded));
+        Assert.That(decodedRoot, Is.EqualTo(originalRoot));
     }
 
     private delegate void DecodeDelegate<T>(ReadOnlySpan<byte> data, out T value);

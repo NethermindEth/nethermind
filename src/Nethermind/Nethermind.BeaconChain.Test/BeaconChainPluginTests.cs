@@ -34,18 +34,16 @@ public class BeaconChainPluginTests
     {
         using IContainer container = BeaconChainTestContainer.Builder().Build();
 
-        Assert.Multiple(() =>
-        {
-            // Pulls the whole driver graph: orchestrator -> importer factory/engine driver and
-            // P2P (peer pool -> peer manager -> libp2p host -> status/metadata sources, discv5).
-            Assert.That(container.Resolve<BeaconChainService>(), Is.Not.Null);
-            Assert.That(container.Resolve<IColumnsDb<BeaconChainDbColumns>>(), Is.Not.Null);
-            Assert.That(container.Resolve<BeaconSyncOrchestrator>(), Is.Not.Null);
-            // The spec is derived from the execution layer's chain id, not a separate config knob.
-            Assert.That(container.Resolve<BeaconChainSpec>(), Is.SameAs(BeaconChainSpec.Mainnet));
-            Assert.That(new BeaconChainPlugin(new BeaconChainConfig()).Enabled, Is.False);
-            Assert.That(new BeaconChainPlugin(new BeaconChainConfig { Enabled = true }).Enabled, Is.True);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        // Pulls the whole driver graph: orchestrator -> importer factory/engine driver and
+        // P2P (peer pool -> peer manager -> libp2p host -> status/metadata sources, discv5).
+        Assert.That(container.Resolve<BeaconChainService>(), Is.Not.Null);
+        Assert.That(container.Resolve<IColumnsDb<BeaconChainDbColumns>>(), Is.Not.Null);
+        Assert.That(container.Resolve<BeaconSyncOrchestrator>(), Is.Not.Null);
+        // The spec is derived from the execution layer's chain id, not a separate config knob.
+        Assert.That(container.Resolve<BeaconChainSpec>(), Is.SameAs(BeaconChainSpec.Mainnet));
+        Assert.That(new BeaconChainPlugin(new BeaconChainConfig()).Enabled, Is.False);
+        Assert.That(new BeaconChainPlugin(new BeaconChainConfig { Enabled = true }).Enabled, Is.True);
     }
 
     [Test]
@@ -211,10 +209,8 @@ public class BeaconChainPluginTests
         DependencyResolutionException wrapped = Assert.Throws<DependencyResolutionException>(
             () => container.Resolve<BeaconChainSpec>())!;
         UnsupportedBeaconNetworkException ex = (UnsupportedBeaconNetworkException)wrapped.GetBaseException();
-        Assert.Multiple(() =>
-        {
-            Assert.That(ex.ChainId, Is.EqualTo(unmodelledChainId));
-            Assert.That(ex.Message, Does.Contain(unmodelledChainId.ToString()));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ex.ChainId, Is.EqualTo(unmodelledChainId));
+        Assert.That(ex.Message, Does.Contain(unmodelledChainId.ToString()));
     }
 }

@@ -27,18 +27,16 @@ public class LocalCustodyTests
 
         LocalCustody custody = new(KnownNodeId, Eip7594DasConstants.CustodyRequirement);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(custody.NodeId, Is.EqualTo(KnownNodeId), "the id the groups were derived from, so a consumer re-deriving from it lands on the same groups");
-            Assert.That(custody.CustodyGroupCount, Is.EqualTo(Eip7594DasConstants.CustodyRequirement));
-            Assert.That(custody.CustodyGroups, Is.EqualTo(expectedGroups));
-            // Group == column == subnet under the mainnet preset coincidence, so the subnet set
-            // must equal the group set exactly (same count, same values, same order).
-            Assert.That(custody.Subnets, Is.EqualTo(expectedGroups));
-            Assert.That(custody.Subnets, Is.Ordered);
-            Assert.That(custody.Subnets.Distinct().Count(), Is.EqualTo(custody.Subnets.Count));
-            Assert.That(custody.Subnets, Is.All.LessThan(Eip7594DasConstants.DataColumnSidecarSubnetCount));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(custody.NodeId, Is.EqualTo(KnownNodeId), "the id the groups were derived from, so a consumer re-deriving from it lands on the same groups");
+        Assert.That(custody.CustodyGroupCount, Is.EqualTo(Eip7594DasConstants.CustodyRequirement));
+        Assert.That(custody.CustodyGroups, Is.EqualTo(expectedGroups));
+        // Group == column == subnet under the mainnet preset coincidence, so the subnet set
+        // must equal the group set exactly (same count, same values, same order).
+        Assert.That(custody.Subnets, Is.EqualTo(expectedGroups));
+        Assert.That(custody.Subnets, Is.Ordered);
+        Assert.That(custody.Subnets.Distinct().Count(), Is.EqualTo(custody.Subnets.Count));
+        Assert.That(custody.Subnets, Is.All.LessThan(Eip7594DasConstants.DataColumnSidecarSubnetCount));
     }
 
     [Test]
@@ -47,11 +45,9 @@ public class LocalCustodyTests
         LocalCustody first = new(KnownNodeId, Eip7594DasConstants.SamplesPerSlot);
         LocalCustody second = new(KnownNodeId, Eip7594DasConstants.SamplesPerSlot);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(first.Subnets, Is.EqualTo(new ulong[] { 40, 57, 61, 84, 102, 105, 113, 120 }));
-            Assert.That(second.Subnets, Is.EqualTo(first.Subnets));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(first.Subnets, Is.EqualTo(new ulong[] { 40, 57, 61, 84, 102, 105, 113, 120 }));
+        Assert.That(second.Subnets, Is.EqualTo(first.Subnets));
     }
 
     [Test]

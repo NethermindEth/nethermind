@@ -56,13 +56,11 @@ public class FullColumnSetAvailabilityTests
         BeaconBlock block = chain.Block.Message!;
         DataColumnSidecar[] allButOne = [.. chain.Columns.Where(c => c.Index != 77)];
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(new FullColumnSetAvailability(chain.Columns).IsDataAvailable(block, chain.BlockRoot, chain.Spec), Is.True,
-                "a real, fully verifying 128-column matrix is the one thing this rule accepts");
-            Assert.That(new FullColumnSetAvailability(allButOne).IsDataAvailable(block, chain.BlockRoot, chain.Spec), Is.False,
-                "127 verified columns are still not the supernode's full set");
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(new FullColumnSetAvailability(chain.Columns).IsDataAvailable(block, chain.BlockRoot, chain.Spec), Is.True,
+            "a real, fully verifying 128-column matrix is the one thing this rule accepts");
+        Assert.That(new FullColumnSetAvailability(allButOne).IsDataAvailable(block, chain.BlockRoot, chain.Spec), Is.False,
+            "127 verified columns are still not the supernode's full set");
     }
 
     [Test]
