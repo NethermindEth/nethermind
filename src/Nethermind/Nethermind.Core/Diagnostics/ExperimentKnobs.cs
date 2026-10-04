@@ -8,6 +8,14 @@ namespace Nethermind.Core.Diagnostics;
 /// <summary>Experiment switches read once from the environment; every one defaults to the current behaviour.</summary>
 public static class ExperimentKnobs
 {
+    static ExperimentKnobs() => ThreadNicer.Start(PoolNice, RocksNice);
+
+    /// <summary>Nice value for thread-pool workers (0 leaves them alone); see <see cref="ThreadNicer"/>.</summary>
+    public static readonly int PoolNice = Int("NETHERMIND_EXP_POOL_NICE", 0);
+
+    /// <summary>Nice value for RocksDB background threads (0 leaves them alone).</summary>
+    public static readonly int RocksNice = Int("NETHERMIND_EXP_ROCKS_NICE", 0);
+
     private static bool On(string name) => Environment.GetEnvironmentVariable(name) == "1";
 
     private static int Int(string name, int fallback) =>

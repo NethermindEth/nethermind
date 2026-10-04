@@ -174,6 +174,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // while computed hashes could incorrectly blacklist a valid block.
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
+        NewPayloadTrace.Stamp(NewPayloadTrace.HashChecked);
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
@@ -197,6 +198,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
 
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        NewPayloadTrace.Stamp(NewPayloadTrace.ParentFound);
         if (parentHeader is null)
         {
             // Keep full orphan validation because ValidateOrphanedBlock is also used without this handler's hash gate.
@@ -278,6 +280,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
         // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
         if (!await WaitForParentCommitAsync(parentHeader, deadline)) return NewPayloadV1Result.Syncing;
+        NewPayloadTrace.Stamp(NewPayloadTrace.ParentReady);
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
@@ -317,6 +320,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Syncing;
         }
 
+        NewPayloadTrace.Stamp(NewPayloadTrace.ShouldProcess);
         // A failed re-execution of a head ancestor would mark the chain invalid and delete blocks up to the head,
         // so only a stale marker proven outside that ancestry is processed.
         if (isCanonicalBehindHead && IsAncestorOfHead(block.Header) is not false)
@@ -749,6 +753,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
+        NewPayloadTrace.Stamp(NewPayloadTrace.Validated);
 
         ValidationCompletion blockProcessed = _blockValidationTasks.GetOrAdd(block.Hash!, static _ => new());
         completion = blockProcessed;

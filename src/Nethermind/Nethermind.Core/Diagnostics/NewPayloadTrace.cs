@@ -24,15 +24,18 @@ public static class NewPayloadTrace
         ProcessOneEnd = 14, Verdict = 15, HandlerResumed = 16, HandleEnd = 17, ResponseDone = 18, CommitDone = 19, BranchEnd = 20,
         RecDecoded = 21, RecStarted = 22, TxsDecoded = 23, TxRootJoined = 24,
         // Block-end state work on the processing thread: commit with roots, then the state root.
-        MerkleStart = 25, JournalDone = 26, StorageRootsDone = 27, AccountsFlushed = 28, AccountsInserted = 29, StateRootDone = 30;
+        MerkleStart = 25, JournalDone = 26, StorageRootsDone = 27, AccountsFlushed = 28, AccountsInserted = 29, StateRootDone = 30,
+        // Request-thread checkpoints between the decoded block and its suggestion.
+        HashChecked = 31, ParentFound = 32, ParentReady = 33, ShouldProcess = 34, Validated = 35;
 
-    private const int Count = 31;
+    private const int Count = 36;
     private static readonly string[] Names =
     [
         "http", "body", "entry", "locked", "gcregion", "handle", "decoded", "presuggest", "suggested", "enqueue", "dequeued",
         "branch", "p1start", "txsdone", "p1end", "verdict", "resumed", "handleend", "response", "commit", "branchend",
         "recdecoded", "recstarted", "txsdecoded", "txrootjoined",
-        "mstart", "mjournal", "mstorage", "mflush", "minsert", "mroot"
+        "mstart", "mjournal", "mstorage", "mflush", "minsert", "mroot",
+        "hashok", "parent", "parentok", "shouldok", "validated"
     ];
 
     public const int StorageTries = 0, StorageSlots = 1, AccountsWritten = 2;
@@ -58,6 +61,8 @@ public static class NewPayloadTrace
         public long Block = -1;
         // The processing thread's /proc schedstat across ProcessOne: nanoseconds run and waited on a runqueue.
         public long RunStart, WaitStart, RunNs = -1, WaitNs = -1, Slices = -1, SlicesStart;
+        // Whole-process CPU time (all threads) from the HTTP request and from ProcessOne's start, to ProcessOne's end.
+        public long ProcCpuRequestStart, ProcCpuP1Start, ProcCpuRequestNs = -1, ProcCpuP1Ns = -1;
         // Collections and GC pause time between the HTTP request's start and its response being written.
         public int Gc0Start, Gc1Start, Gc2Start, Gc0 = -1, Gc1 = -1, Gc2 = -1;
         public long PauseStartTicks, PauseUs = -1;
@@ -81,6 +86,7 @@ public static class NewPayloadTrace
         if (Enabled && Volatile.Read(ref s_active) is { } record && ReadSchedStat(out long run, out long wait, out long slices))
         {
             record.RunStart = run; record.WaitStart = wait; record.SlicesStart = slices;
+            record.ProcCpuP1Start = ProcessCpuNs();
         }
     }
 
@@ -90,6 +96,28 @@ public static class NewPayloadTrace
         if (Enabled && Volatile.Read(ref s_active) is { } record && record.RunStart != 0 && ReadSchedStat(out long run, out long wait, out long slices))
         {
             record.RunNs = run - record.RunStart; record.WaitNs = wait - record.WaitStart; record.Slices = slices - record.SlicesStart;
+            long cpu = ProcessCpuNs();
+            if (cpu > 0 && record.ProcCpuP1Start > 0) record.ProcCpuP1Ns = cpu - record.ProcCpuP1Start;
+            if (cpu > 0 && record.ProcCpuRequestStart > 0) record.ProcCpuRequestNs = cpu - record.ProcCpuRequestStart;
+        }
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct Timespec { public long Seconds; public long Nanoseconds; }
+
+    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "clock_gettime")]
+    private static extern int ClockGetTime(int clockId, out Timespec time);
+
+    /// <summary>CPU time of every thread of the process (CLOCK_PROCESS_CPUTIME_ID), or 0 where unavailable.</summary>
+    private static long ProcessCpuNs()
+    {
+        try
+        {
+            return ClockGetTime(2, out Timespec t) == 0 ? t.Seconds * 1_000_000_000 + t.Nanoseconds : 0;
+        }
+        catch (Exception)
+        {
+            return 0;
         }
     }
 
@@ -115,6 +143,7 @@ public static class NewPayloadTrace
         if (!Enabled) return;
         Record record = new();
         record.GcStart();
+        record.ProcCpuRequestStart = ProcessCpuNs();
         record.Stamps[HttpStart] = Stopwatch.GetTimestamp();
         s_request.Value = record;
     }
@@ -222,7 +251,9 @@ public static class NewPayloadTrace
             .Append(" gc0=").Append(record.Gc0 < 0 ? "na" : record.Gc0.ToString())
             .Append(" gc1=").Append(record.Gc1 < 0 ? "na" : record.Gc1.ToString())
             .Append(" gc2=").Append(record.Gc2 < 0 ? "na" : record.Gc2.ToString())
-            .Append(" gcpause=").Append(record.PauseUs < 0 ? "na" : record.PauseUs.ToString());
+            .Append(" gcpause=").Append(record.PauseUs < 0 ? "na" : record.PauseUs.ToString())
+            .Append(" pcpu=").Append(record.ProcCpuP1Ns < 0 ? "na" : (record.ProcCpuP1Ns / 1000).ToString())
+            .Append(" pcpureq=").Append(record.ProcCpuRequestNs < 0 ? "na" : (record.ProcCpuRequestNs / 1000).ToString());
         for (int i = 0; i < CounterCount; i++)
             line.Append(' ').Append(CounterNames[i]).Append('=').Append(record.Counters[i] < 0 ? "na" : record.Counters[i].ToString());
 
