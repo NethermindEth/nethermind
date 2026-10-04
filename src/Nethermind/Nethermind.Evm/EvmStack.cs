@@ -117,7 +117,7 @@ public ref partial struct EvmStack
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static EvmWord CreateAcceleratedWordFromUInt64(ulong value)
-        => Vector256.Create(value, 0UL, 0UL, 0UL).AsByte();
+        => Vector256.CreateScalar(value).AsByte();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteScalarWordFromUInt64(ref EvmWord word, ulong value)

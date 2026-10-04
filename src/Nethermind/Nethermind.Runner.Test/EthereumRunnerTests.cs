@@ -20,12 +20,14 @@ using Autofac.Core.Lifetime;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -214,7 +216,7 @@ public class EthereumRunnerTests
         bool nestedWarmupRan = false;
         bool liveRpcInfoPreserved = false;
         int outerPort = 0;
-        IJsonRpcLocalStats? warmRpcStats = null;
+        SuccessCountingRpcStats? warmRpcStats = null;
         using NodeInfoScope? nodeInfo = throughStartRpc ? new NodeInfoScope() : null;
         await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication,
             configureContainer: builder =>
@@ -227,10 +229,11 @@ public class EthereumRunnerTests
                         return config;
                     });
                 }
+                builder.AddDecorator<IJsonRpcLocalStats>((_, stats) => new SuccessCountingRpcStats(stats, "eth_call"));
                 builder.RegisterBuildCallback(container =>
                 {
                     warmAuthentication = container.Resolve<IRpcAuthentication>();
-                    warmRpcStats = container.Resolve<IJsonRpcLocalStats>();
+                    warmRpcStats = (SuccessCountingRpcStats)container.Resolve<IJsonRpcLocalStats>();
                     outerPort = container.Resolve<IJsonRpcConfig>().Port;
                 });
                 if (throughStartRpc)
@@ -273,7 +276,7 @@ public class EthereumRunnerTests
         ThreadPool.GetMinThreads(out int warmedWorkerThreads, out int warmedCompletionPortThreads);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(warmRpcStats!.GetMethodStats("eth_call").Successes, Is.EqualTo(1), "warmup must execute a contract call through RPC");
+            Assert.That(warmRpcStats!.Successes, Is.EqualTo(1), "warmup must execute a contract call through RPC");
             Assert.That((warmedWorkerThreads, warmedCompletionPortThreads), Is.EqualTo((minWorkerThreads, minCompletionPortThreads)));
             AssertRpcLimit(RpcLimits.Default.AcquireQueuedSlot, RpcLimits.Default.DecrementQueuedCalls, 7);
             AssertRpcLimit(RpcLimits.Default.AcquireSharedSlot, RpcLimits.Default.DecrementSharedCalls, 11);
@@ -564,6 +567,21 @@ public class EthereumRunnerTests
         }
     }
 
+    private sealed class SuccessCountingRpcStats(IJsonRpcLocalStats inner, string method) : IJsonRpcLocalStats
+    {
+        private int _successes;
+
+        public int Successes => Volatile.Read(ref _successes);
+
+        public bool IsEnabled => inner.IsEnabled;
+
+        public void ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
+        {
+            if (report.Success && report.Method == method) Interlocked.Increment(ref _successes);
+            inner.ReportCall(report, elapsedMicroseconds, size);
+        }
+    }
+
     private static IConfigProvider WarmupConfig(string dataDirectory) => new ConfigProvider(new InitConfig { BaseDbPath = dataDirectory });
 
     private static Action<ContainerBuilder> CancelWhenRpcStarts(CancellationTokenSource cancellation, Action? beforeCancel = null) =>
@@ -791,6 +809,52 @@ public class EthereumRunnerTests
         finally
         {
             await runner.StopAsync();
+        }
+    }
+
+    [TestCase("gnosis", true)]
+    [TestCase("xdc", true)]
+    [TestCase("mainnet", false)]
+    public async Task Pool_initializer_retains_simulator_and_registers_shutdown_disposal(string network, bool chainSpecific)
+    {
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
+        configProvider.Initialize();
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        pluginLoader.Load();
+        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+        TxPool.TxPool? pool = null;
+        try
+        {
+            INethermindApi api = runner.Api;
+            api.TransactionComparerProvider = new TransactionComparerProvider(api.SpecProvider!, api.BlockTree!.AsReadOnly());
+            IFrameTxPrefixSimulator simulator = api.Context.Resolve<IFrameTxPrefixSimulator>();
+            IEthereumStepsLoader loader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
+            foreach (StepInfo step in loader.ResolveStepsImplementations())
+            {
+                if (!typeof(InitializeBlockchain).IsAssignableFrom(step.StepType)) continue;
+                Assert.That(step.StepType != typeof(InitializeBlockchain), Is.EqualTo(chainSpecific));
+                object initializer = runner.LifetimeScope.Resolve(step.StepType);
+                MethodInfo createPool = step.StepType.GetMethod("CreateTxPool", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                pool = (TxPool.TxPool)createPool.Invoke(initializer, [api.Context.Resolve<IChainHeadInfoProvider>()])!;
+                FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Assert.That(simulatorField.GetValue(pool), Is.SameAs(simulator));
+                return;
+            }
+            Assert.Fail("No blockchain initializer resolved");
+        }
+        finally
+        {
+            await using TxPool.TxPool? poolCleanup = pool;
+            await runner.StopAsync();
+            if (pool is not null)
+            {
+                FieldInfo disposedField = typeof(TxPool.TxPool).GetField("_isDisposed", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Assert.That(disposedField.GetValue(pool), Is.True);
+            }
         }
     }
 

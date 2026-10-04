@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -53,7 +54,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);
-                Assert.That(output.ToArray(), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(output, Is.SequenceEqualTo(Array.Empty<byte>()));
             }
         }
 
@@ -64,7 +65,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);
-                Assert.That(output.ToArray(), Is.EqualTo(ValidResult));
+                Assert.That(output, Is.SequenceEqualTo(ValidResult));
             }
         }
 
