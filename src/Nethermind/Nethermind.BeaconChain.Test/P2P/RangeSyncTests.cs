@@ -54,11 +54,7 @@ public partial class RangeSyncTests
         StubPeer goodPeer = new("good", headSlot: TargetSlot, (startSlot, count) => ServeRange(chain, startSlot, count));
         RangeSync sync = new(new StubPool(badPeer, goodPeer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
-        List<ForkedSignedBeaconBlock> imported = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
-        {
-            imported.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> imported = await CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -94,11 +90,7 @@ public partial class RangeSyncTests
         DataColumnSidecarPool sidecarPool = new();
         RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, sidecarPool, chain.Spec, chain.ClockAtEpoch(0), discovery);
 
-        List<ForkedSignedBeaconBlock> imported = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => chain.Block.Message!.Slot, token))
-        {
-            imported.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> imported = await CollectAsync(sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => chain.Block.Message!.Slot, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -134,11 +126,7 @@ public partial class RangeSyncTests
             (startSlot, count, columns) => [.. columns.Select(c => chain.Columns[(int)c])]);
         RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, new DataColumnSidecarPool(), chain.Spec, chain.ClockAtEpoch(currentEpoch), discovery);
 
-        List<ForkedSignedBeaconBlock> imported = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => chain.Block.Message!.Slot, token))
-        {
-            imported.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> imported = await CollectAsync(sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => chain.Block.Message!.Slot, token));
 
         using (Assert.EnterMultipleScope())
         {
@@ -193,6 +181,24 @@ public partial class RangeSyncTests
 
     private static ForkedSignedBeaconBlock[] ServeRange(SignedBeaconBlock[] chain, ulong startSlot, ulong count) =>
         [.. chain.Where(b => b.Message!.Slot >= startSlot && b.Message.Slot < startSlot + count).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+
+    internal static async Task<List<ForkedSignedBeaconBlock>> CollectAsync(IAsyncEnumerable<ForkedSignedBeaconBlock> blocks)
+    {
+        List<ForkedSignedBeaconBlock> yielded = [];
+        await foreach (ForkedSignedBeaconBlock block in blocks)
+        {
+            yielded.Add(block);
+        }
+
+        return yielded;
+    }
+
+    internal static async Task DrainAsync(IAsyncEnumerable<ForkedSignedBeaconBlock> blocks)
+    {
+        await foreach (ForkedSignedBeaconBlock _ in blocks)
+        {
+        }
+    }
 
     internal sealed class StubPeer(
         string id,

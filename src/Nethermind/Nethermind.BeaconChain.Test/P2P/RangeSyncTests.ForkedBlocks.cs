@@ -51,11 +51,7 @@ public partial class RangeSyncTests
         DataColumnSidecarPool sidecarPool = new();
         RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, sidecarPool, chain.Spec, chain.ClockAtEpoch(0), discovery);
 
-        List<ForkedSignedBeaconBlock> yielded = [];
-        await foreach (ForkedSignedBeaconBlock block in sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => gloasChild.Slot, token))
-        {
-            yielded.Add(block);
-        }
+        List<ForkedSignedBeaconBlock> yielded = await CollectAsync(sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => gloasChild.Slot, token));
 
         using (Assert.EnterMultipleScope())
         {
