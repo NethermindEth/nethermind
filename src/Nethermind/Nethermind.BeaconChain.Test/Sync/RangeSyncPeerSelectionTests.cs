@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -193,15 +192,15 @@ public class RangeSyncPeerSelectionTests
         ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
         int calls = 0;
         StubPeer peer = new("slow", 13, (start, count) => ++calls <= 1 ? throw new TimeoutException("slow") : chainBlocks, earliestAvailableSlot: 0);
-        AllLevelsCapture log = new();
+        TestLogRecorder log = new();
         RangeSync sync = new(new StubPool(peer), new OneLoggerLogManager(new ILogger(log)), new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
         await RangeSyncTests.DrainAsync(sync.Run(anchorRoot, AnchorSlot, () => 13, token));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log.Lines, Has.Some.Contains("request timed out"), "the failed batch is logged");
-            Assert.That(log.Lines, Has.None.Contains("Exception"));
+            Assert.That(log.Messages, Has.Some.Contains("request timed out"), "the failed batch is logged");
+            Assert.That(log.Messages, Has.None.Contains("Exception"));
         }
     }
 
@@ -211,7 +210,7 @@ public class RangeSyncPeerSelectionTests
     {
         const int Writers = 8;
         const int LinesPerWriter = 20_000;
-        AllLevelsCapture log = new();
+        TestLogRecorder log = new();
 
         Parallel.For(0, Writers + 1, new ParallelOptions { MaxDegreeOfParallelism = Writers + 1 }, writer =>
         {
@@ -220,11 +219,11 @@ public class RangeSyncPeerSelectionTests
                 if (writer < Writers)
                     log.Debug($"{writer}:{i}");
                 else if (i % 200 == 0)
-                    _ = log.Lines.Length;
+                    _ = log.Messages.Length;
             }
         });
 
-        string[] lines = log.Lines;
+        string[] lines = log.Messages;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(lines, Has.Length.EqualTo(Writers * LinesPerWriter));
@@ -232,26 +231,6 @@ public class RangeSyncPeerSelectionTests
         }
     }
 
-    /// <summary>Keeps every enabled line; safe to write from concurrent threads and to read while they write.</summary>
-    internal sealed class AllLevelsCapture : InterfaceLogger
-    {
-        private readonly ConcurrentQueue<string> _lines = new();
-
-        /// <summary>A snapshot of the lines logged so far, in order.</summary>
-        public string[] Lines => [.. _lines];
-
-        public bool IsInfo { get; init; } = true;
-        public bool IsWarn { get; init; } = true;
-        public bool IsDebug { get; init; } = true;
-        public bool IsTrace { get; init; } = true;
-        public bool IsError { get; init; } = true;
-
-        public void Info(string text) => _lines.Enqueue(text);
-        public void Warn(string text) => _lines.Enqueue(text);
-        public void Debug(string text) => _lines.Enqueue(text);
-        public void Trace(string text) => _lines.Enqueue(text);
-        public void Error(string text, Exception? ex = null) => _lines.Enqueue(text);
-    }
 
     /// <summary>Failures shrink the batch; the fallback window stays the default batch, so the peer serving from slot 20 is still asked after the shrink.</summary>
     [Test]

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P;
-using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.Libp2p.Core;
 using NSubstitute;
 using NUnit.Framework;
@@ -72,7 +71,7 @@ public class PeerSelectionOrderTests
     [TestCase(5UL, "Sync peers for head slot 5: 0 usable; left out 1 without status")]
     public async Task The_selection_log_names_the_head_asked_for_or_any_head(ulong minHeadSlot, string expected)
     {
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         Node node = Create();
         await using PeerHostScope hosts = new(node.P2P);
         PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, logs);

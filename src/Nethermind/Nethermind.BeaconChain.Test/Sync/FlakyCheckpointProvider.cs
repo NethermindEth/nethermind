@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,7 +12,6 @@ using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -162,32 +159,5 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
         await _stopping.CancelAsync();
         await _app.DisposeAsync();
         _stopping.Dispose();
-    }
-}
-
-/// <summary>A log manager recording every line with its level, for asserting what an operator would read.</summary>
-internal sealed class LevelCapturingLogManager : ILogManager
-{
-    private readonly ConcurrentQueue<(string Level, string Text)> _lines = new();
-
-    public IReadOnlyCollection<(string Level, string Text)> Lines => _lines;
-
-    public Nethermind.Logging.ILogger GetLogger(string loggerName) => new(new Capture(_lines));
-
-    public Nethermind.Logging.ILogger GetClassLogger<T>() => GetLogger(typeof(T).Name);
-
-    private sealed class Capture(ConcurrentQueue<(string Level, string Text)> lines) : InterfaceLogger
-    {
-        public bool IsInfo => true;
-        public bool IsWarn => true;
-        public bool IsDebug => true;
-        public bool IsTrace => true;
-        public bool IsError => true;
-
-        public void Info(string text) => lines.Enqueue(("Info", text));
-        public void Warn(string text) => lines.Enqueue(("Warn", text));
-        public void Debug(string text) => lines.Enqueue(("Debug", text));
-        public void Trace(string text) => lines.Enqueue(("Trace", text));
-        public void Error(string text, Exception? ex = null) => lines.Enqueue(("Error", text));
     }
 }

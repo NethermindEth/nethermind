@@ -869,7 +869,7 @@ public class PeerBandTests
     /// Waits for the manager's admission event instead of polling its count, and keeps the Debug log of the manager and
     /// the local host: an admission that never happens is logged there and the session silently dropped.
     /// </summary>
-    private sealed class AdmissionWatch : InterfaceLogger
+    private sealed class AdmissionWatch
     {
         private static readonly TimeSpan HangBound = TimeSpan.FromSeconds(30);
 
@@ -877,7 +877,8 @@ public class PeerBandTests
         private readonly TaskCompletionSource _admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private Node[] _nodes = [];
 
-        public AdmissionWatch() => LogManager = new OneLoggerLogManager(new ILogger(this));
+        public AdmissionWatch() => LogManager = new OneLoggerLogManager(new ILogger(new TestLogRecorder(TestLogLevels.All & ~TestLogLevels.Trace,
+            (level, text, ex) => Add(level == LogLevel.Error && ex is not null ? $"{text}: {ex}" : text))));
 
         public ILogManager LogManager { get; }
 
@@ -914,18 +915,6 @@ public class PeerBandTests
 
             return $"{failure} ({state}). Log:{Environment.NewLine}{string.Join(Environment.NewLine, lines)}";
         }
-
-        public bool IsInfo => true;
-        public bool IsWarn => true;
-        public bool IsDebug => true;
-        public bool IsTrace => false;
-        public bool IsError => true;
-
-        public void Info(string text) => Add(text);
-        public void Warn(string text) => Add(text);
-        public void Debug(string text) => Add(text);
-        public void Trace(string text) { }
-        public void Error(string text, Exception? ex = null) => Add(ex is null ? text : $"{text}: {ex}");
 
         private void Add(string text)
         {

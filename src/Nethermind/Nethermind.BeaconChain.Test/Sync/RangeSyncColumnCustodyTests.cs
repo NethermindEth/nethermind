@@ -155,7 +155,7 @@ public class RangeSyncColumnCustodyTests
     {
         await using Fixture fixture = Fixture.Create();
         StubPeer bystander = fixture.Peer("bystander", [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c).Except(fixture.Sampled)]);
-        RangeSyncPeerSelectionTests.AllLevelsCapture log = new();
+        TestLogRecorder log = new();
         RangeSync sync = new(new StubPool(bystander), new OneLoggerLogManager(new ILogger(log)), fixture.SidecarPool, fixture.Chain.Spec, fixture.Clock, fixture.Discovery);
 
         if (byRoot)
@@ -169,9 +169,9 @@ public class RangeSyncColumnCustodyTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log.Lines, Has.Some.Contains("0 custodians").And.Contains(fixture.Sampled[0].ToString()), "the shortfall names the missing columns");
-            Assert.That(log.Lines, Has.None.Contains("serve from"), "the earliest available slot is not what is wrong");
-            Assert.That(log.Lines, Has.None.Contains("Exception"));
+            Assert.That(log.Messages, Has.Some.Contains("0 custodians").And.Contains(fixture.Sampled[0].ToString()), "the shortfall names the missing columns");
+            Assert.That(log.Messages, Has.None.Contains("serve from"), "the earliest available slot is not what is wrong");
+            Assert.That(log.Messages, Has.None.Contains("Exception"));
             Assert.That(bystander.ColumnRequests + bystander.RootColumnRequests, Is.Zero);
         }
     }
@@ -219,15 +219,15 @@ public class RangeSyncColumnCustodyTests
     {
         await using Fixture fixture = Fixture.Create();
         StubPeer cutShort = fixture.FailingColumnPeer("cut-short", columns => throw new PartialSidecarsException(new TimeoutException("request timed out"), fixture.ServeColumns(columns[..1])));
-        RangeSyncPeerSelectionTests.AllLevelsCapture log = new();
+        TestLogRecorder log = new();
         RangeSync sync = new(new StubPool(cutShort), new OneLoggerLogManager(new ILogger(log)), fixture.SidecarPool, fixture.Chain.Spec, fixture.Clock, fixture.Discovery);
 
         await DrainAsync(sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log.Lines, Has.Some.Matches<string>(static line => line.Contains("cut-short failed after") && line.Contains("keeping 1 sidecars read")));
-            Assert.That(log.Lines, Has.None.Contains("Exception"));
+            Assert.That(log.Messages, Has.Some.Matches<string>(static line => line.Contains("cut-short failed after") && line.Contains("keeping 1 sidecars read")));
+            Assert.That(log.Messages, Has.None.Contains("Exception"));
         }
     }
 

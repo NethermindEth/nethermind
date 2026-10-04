@@ -246,7 +246,7 @@ public class PeerHealthCheckRoundTests
 
         try
         {
-            PeerManager peerManager = await StartAndAdmitAsync(client, servers, token, new OneLoggerLogManager(new ILogger(failedChecks)));
+            PeerManager peerManager = await StartAndAdmitAsync(client, servers, token, new OneLoggerLogManager(failedChecks.Logger));
             using CancellationTokenSource roundCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
             roundStarted.Set();
             Task round = peerManager.RunMaintenanceRoundAsync(roundCancellation.Token);
@@ -312,23 +312,21 @@ public class PeerHealthCheckRoundTests
     }
 
     /// <summary>Counts the peer manager's debug lines that report a failed health check; safe to call from concurrent checks.</summary>
-    private sealed class FailedCheckCounter : InterfaceLogger
+    private sealed class FailedCheckCounter
     {
         private int _count;
 
         public int Count => Volatile.Read(ref _count);
 
-        public bool IsInfo => false;
-        public bool IsWarn => false;
-        public bool IsDebug => true;
-        public bool IsTrace => false;
-        public bool IsError => false;
+        public FailedCheckCounter() => Logger = new(new TestLogRecorder(TestLogLevels.Debug, (_, text, _) => Record(text)));
+
+        public ILogger Logger { get; }
 
         private string? _last;
 
         public string? Last => Volatile.Read(ref _last);
 
-        public void Debug(string text)
+        private void Record(string text)
         {
             if (text.Contains("failed health check", StringComparison.Ordinal))
             {
@@ -336,11 +334,6 @@ public class PeerHealthCheckRoundTests
                 Interlocked.Increment(ref _count);
             }
         }
-
-        public void Info(string text) { }
-        public void Warn(string text) { }
-        public void Trace(string text) { }
-        public void Error(string text, Exception? ex = null) { }
     }
 
     internal static StatusMessageV2 WithHead(StatusMessageV2 status, ulong headSlot) => new()

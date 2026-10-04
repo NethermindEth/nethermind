@@ -4,7 +4,6 @@
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.P2P;
-using Nethermind.BeaconChain.Test.Sync;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -20,7 +19,7 @@ public class Libp2pLoggingTests
     [Test]
     public void Nothing_the_library_logs_reaches_a_level_above_trace([Values] LogLevel level)
     {
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         Microsoft.Extensions.Logging.ILogger libp2p = BeaconP2P.CreateLibp2pLoggerFactory(logs).CreateLogger("Nethermind.Libp2p.Core.LocalPeer");
 
         libp2p.Log(level, UpgradeFailure);

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -124,7 +123,7 @@ public class BlockImporterTests
         DataColumnSidecarPool pool = new();
         ulong missing = custodied ? custody.CustodyColumns[0] : custody.SampledColumns.First(c => !custody.CustodyColumns.Contains(c));
         Hold(pool, chain, custody.SampledColumns.Where(c => c != missing));
-        WarningCapture warnings = new();
+        TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
         BlockImporter importer = CreateImporter(chain, custody, pool, warnings);
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
@@ -135,7 +134,7 @@ public class BlockImporterTests
                 ? "missing columns are retryable, not a permanent rejection"
                 : "custody columns alone are not enough: the per-slot sample must succeed too");
             Assert.That(importer.IsKnown(chain.BlockRoot), Is.False, "a block whose data is unavailable must not enter fork choice");
-            Assert.That(warnings.Warnings, Has.None.Contains("blob data is not yet available"), "a block trailing its columns is routine at the head, not a warning");
+            Assert.That(warnings.Messages, Has.None.Contains("blob data is not yet available"), "a block trailing its columns is routine at the head, not a warning");
         }
     }
 
@@ -203,7 +202,7 @@ public class BlockImporterTests
     public void Block_after_the_clock_slot_is_refused_before_its_state_transition(ulong slot, long millisecondsBeforeSlotOne, BlockImportResult expected)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
-        WarningCapture warnings = new();
+        TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
         SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeMilliseconds((long)(chain.Spec.GenesisTime + chain.Spec.SecondsPerSlot) * 1000 - millisecondsBeforeSlotOne).UtcDateTime));
         FailedBlockRoots failed = new();
         BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), warnings, importClock: clock, failedBlocks: failed);
@@ -217,7 +216,7 @@ public class BlockImporterTests
         {
             Assert.That(result, Is.EqualTo(expected));
             Assert.That(failed.Contains(root), Is.False, "a block from a slot the clock has not reached may still become valid");
-            Assert.That(warnings.Warnings.Any(w => w.Contains("before its state transition")), Is.EqualTo(expected == BlockImportResult.Invalid));
+            Assert.That(warnings.Messages.Any(w => w.Contains("before its state transition")), Is.EqualTo(expected == BlockImportResult.Invalid));
         }
     }
 
@@ -746,7 +745,7 @@ public class BlockImporterTests
         using MemColumnsDb<BeaconChainDbColumns> db = new();
         BeaconChainStore store = new(db);
         store.PutState(chain.AnchorRoot, BeaconStateFulu.Encode(chain.Anchor.AnchorState));
-        WarningCapture warnings = new();
+        TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, importClock: new SlotClock(chain.Spec, timestamper), store: store);
         UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x81, signed: gossip);
         UnsignedChain.ChainBlock parent = chain.Extend(first.Root, slot: 2, payloadHashByte: 0x82, signed: gossip);
@@ -781,7 +780,7 @@ public class BlockImporterTests
             Assert.That((headAfterB1, lineageAfterB1), Is.EqualTo((b1.Root, (Hash256?)b1.Root)), "the boosted block is the head, and the lineage follows it");
             Assert.That(restImported, Is.All.EqualTo(BlockImportResult.Imported));
             Assert.That((headAfterB3, importer.LineageRoot), Is.EqualTo((b3.Root, (Hash256?)b3.Root)));
-            Assert.That(warnings.Warnings, Has.None.Contains("is no longer retained"), "no block may be refused for a parent post-state fork choice still needs");
+            Assert.That(warnings.Messages, Has.None.Contains("is no longer retained"), "no block may be refused for a parent post-state fork choice still needs");
         }
     }
 
@@ -942,7 +941,7 @@ public class BlockImporterTests
             }
         }
 
-        WarningCapture warnings = new();
+        TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
         PostStateCache states = new(store, chain.Spec, chain.AnchorRoot, chain.Anchor.AnchorState, logManager: new OneLoggerLogManager(new ILogger(warnings)),
             pubkeys: chain.Anchor.Pubkeys, ancestors: Ancestors);
 
@@ -955,7 +954,7 @@ public class BlockImporterTests
         {
             Assert.That(regenerated is null ? null : SszRoots.HashTreeRoot(regenerated), Is.EqualTo(beyondBound ? null : blocks[^1].Block.Message!.StateRoot));
             Assert.That(walked, Is.LessThanOrEqualTo((int)chain.Spec.SlotsPerEpoch + 1), "the ancestor walk stops at the bound, before reading any more stored states");
-            Assert.That(warnings.Warnings, beyondBound ? Has.One.Contains($"no ancestor state is held within {chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
+            Assert.That(warnings.Messages, beyondBound ? Has.One.Contains($"no ancestor state is held within {chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
         }
     }
 
@@ -1017,7 +1016,7 @@ public class BlockImporterTests
         using MemColumnsDb<BeaconChainDbColumns> db = new();
         BeaconChainStore store = new(db);
         store.PutState(chain.AnchorRoot, BeaconStateFulu.Encode(chain.Anchor.AnchorState));
-        WarningCapture warnings = new();
+        TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, importClock: new SlotClock(chain.Spec, timestamper), store: store);
         byte fill = 0;
         UnsignedChain.ChainBlock Extend(Hash256 parentRoot, ulong slot) => chain.Extend(parentRoot, slot, payloadHashByte: ++fill, signed: gossip);
@@ -1070,7 +1069,7 @@ public class BlockImporterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "a mid-epoch parent is regenerated from its epoch's checkpoint block state");
-            Assert.That(warnings.Warnings, Has.None.Contains("Cannot regenerate"));
+            Assert.That(warnings.Messages, Has.None.Contains("Cannot regenerate"));
         }
     }
 
@@ -1233,7 +1232,7 @@ public class BlockImporterTests
     public void Child_of_an_invalid_parent_is_refused_before_any_engine_call()
     {
         UnsignedChain chain = UnsignedChain.Create();
-        WarningCapture warnings = new();
+        TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
         FailedBlockRoots failed = new();
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, engine: new ScriptedPayloadEngine(ExecutionStatus.Optimistic), failedBlocks: failed);
         UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
@@ -1246,7 +1245,7 @@ public class BlockImporterTests
         Assert.Multiple(() =>
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(warnings.Warnings, Has.Some.Contains("before its state transition").And.Contains("has an invalid execution payload"));
+            Assert.That(warnings.Messages, Has.Some.Contains("before its state transition").And.Contains("has an invalid execution payload"));
             Assert.That(failed.Contains(child.Root), Is.True, "column gossip must reject a sidecar whose parent the importer refused");
         });
     }
@@ -1356,7 +1355,7 @@ public class BlockImporterTests
     public void Block_with_only_a_bad_proposer_signature_is_not_recorded_as_failed()
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
-        WarningCapture warnings = new();
+        TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
         FailedBlockRoots failed = new();
         BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), warnings, failedBlocks: failed);
         BlsSignature genuine = chain.Block.Signature;
@@ -1369,7 +1368,7 @@ public class BlockImporterTests
         Assert.Multiple(() =>
         {
             Assert.That((forged, honest), Is.EqualTo((BlockImportResult.Invalid, BlockImportResult.Imported)));
-            Assert.That(warnings.Warnings, Has.Some.Contains("Invalid proposer signature"), "fixture: the forged copy fails on its signature");
+            Assert.That(warnings.Messages, Has.Some.Contains("Invalid proposer signature"), "fixture: the forged copy fails on its signature");
             Assert.That(failed.Contains(chain.BlockRoot), Is.False);
         });
     }
@@ -1409,7 +1408,7 @@ public class BlockImporterTests
     public void Block_off_the_finalized_chain_is_recorded_as_failed()
     {
         UnsignedChain chain = UnsignedChain.Create();
-        WarningCapture warnings = new();
+        TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
         FailedBlockRoots failed = new();
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, failedBlocks: failed);
         UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
@@ -1433,7 +1432,7 @@ public class BlockImporterTests
         Assert.Multiple(() =>
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(warnings.Warnings, Has.Some.Contains("does not descend from the finalized checkpoint"), "fixture: refused for its ancestry");
+            Assert.That(warnings.Messages, Has.Some.Contains("does not descend from the finalized checkpoint"), "fixture: refused for its ancestry");
             Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "descent from this node's finalized checkpoint says nothing of the block's data");
             Assert.That(failed.Contains(child.Root), Is.True);
         });
@@ -1449,7 +1448,7 @@ public class BlockImporterTests
     public void Refusal_by_fork_choice_after_the_tick_is_recorded_only_for_a_validation_failure(ulong slot, bool recorded)
     {
         UnsignedChain chain = UnsignedChain.Create();
-        WarningCapture warnings = new();
+        TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
         FailedBlockRoots failed = new();
         ManualTimestamper time = new(TickFinalityFixture.SlotStart(chain.Spec, 2));
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, importClock: new SlotClock(chain.Spec, time), failedBlocks: failed);
@@ -1465,7 +1464,7 @@ public class BlockImporterTests
         Assert.Multiple(() =>
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(warnings.Warnings, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
+            Assert.That(warnings.Messages, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
             Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "on_block refused it against this node's own store");
             Assert.That(failed.Contains(child.Root), Is.EqualTo(recorded));
         });
@@ -1555,7 +1554,7 @@ public class BlockImporterTests
     {
         const ulong forkSlot = 32;
         SignedGloasChain chain = new();
-        WarningCapture warnings = new();
+        TestLogRecorder warnings = new(TestLogLevels.Warn | TestLogLevels.Error);
         FailedBlockRoots failed = new();
         ManualTimestamper time = new(TickFinalityFixture.SlotStart(chain.Spec, forkSlot + 1));
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(warnings)), clock: new SlotClock(chain.Spec, time), failedBlocks: failed);
@@ -1575,7 +1574,7 @@ public class BlockImporterTests
         Assert.Multiple(() =>
         {
             Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(warnings.Warnings, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
+            Assert.That(warnings.Messages, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
             Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "on_block refused it against this node's own store");
             Assert.That(failed.Contains(child.Root), Is.True);
         });
@@ -2091,7 +2090,7 @@ public class BlockImporterTests
     private static long RefusedByForkChoice(string operation) =>
         Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
 
-    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null, FailedBlockRoots? failedBlocks = null, IDataAvailabilityRule? availability = null, BeaconChainStore? store = null, UnsignedChain.ChainBlock? anchor = null) =>
+    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, TestLogRecorder? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null, FailedBlockRoots? failedBlocks = null, IDataAvailabilityRule? availability = null, BeaconChainStore? store = null, UnsignedChain.ChainBlock? anchor = null) =>
         new(
             chain.Spec,
             store ?? new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
@@ -2186,25 +2185,5 @@ public class BlockImporterTests
             latestValidHash = LatestValidHash;
             return NotifyNewPayload(body);
         }
-    }
-
-    /// <summary>Keeps warnings and errors; safe to write from concurrent threads.</summary>
-    private sealed class WarningCapture : InterfaceLogger
-    {
-        private readonly ConcurrentQueue<string> _warnings = new();
-
-        public string[] Warnings => [.. _warnings];
-
-        public bool IsInfo => false;
-        public bool IsWarn => true;
-        public bool IsDebug => false;
-        public bool IsTrace => false;
-        public bool IsError => true;
-
-        public void Info(string text) { }
-        public void Warn(string text) => _warnings.Enqueue(text);
-        public void Debug(string text) { }
-        public void Trace(string text) { }
-        public void Error(string text, Exception? ex = null) => _warnings.Enqueue(text);
     }
 }

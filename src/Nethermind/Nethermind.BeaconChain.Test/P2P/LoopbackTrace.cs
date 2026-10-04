@@ -56,24 +56,14 @@ internal static class LoopbackTrace
     {
         public ILogger GetClassLogger<T>() => GetLogger(typeof(T).Name);
 
-        public ILogger GetLogger(string loggerName) => new(new Sink($"{tag} {loggerName[(loggerName.LastIndexOf('.') + 1)..]}"));
+        public ILogger GetLogger(string loggerName)
+        {
+            string source = $"{tag} {loggerName[(loggerName.LastIndexOf('.') + 1)..]}";
+            return new(new TestLogRecorder(sink: (level, text, ex) =>
+                Add(level.ToString()[0], source, ex is null ? text : $"{text} {ex}")));
+        }
     }
 
-    private sealed class Sink(string source) : InterfaceLogger
-    {
-        public bool IsInfo => true;
-        public bool IsWarn => true;
-        public bool IsDebug => true;
-        public bool IsTrace => true;
-        public bool IsError => true;
-
-        private static void Add(char level, string source, string text) =>
-            Lines.Enqueue($"{DateTime.UtcNow:HH:mm:ss.ffffff} {level} t{Environment.CurrentManagedThreadId} {source}: {text}");
-
-        public void Info(string text) => Add('I', source, text);
-        public void Warn(string text) => Add('W', source, text);
-        public void Debug(string text) => Add('D', source, text);
-        public void Trace(string text) => Add('T', source, text);
-        public void Error(string text, Exception? ex = null) => Add('E', source, ex is null ? text : $"{text} {ex}");
-    }
+    private static void Add(char level, string source, string text) =>
+        Lines.Enqueue($"{DateTime.UtcNow:HH:mm:ss.ffffff} {level} t{Environment.CurrentManagedThreadId} {source}: {text}");
 }

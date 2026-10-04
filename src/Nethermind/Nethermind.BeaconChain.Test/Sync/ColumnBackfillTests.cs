@@ -25,7 +25,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.RangeSyncTests;
-using static Nethermind.BeaconChain.Test.Sync.RangeSyncPeerSelectionTests;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -66,7 +65,7 @@ public partial class ColumnBackfillTests
     [CancelAfter(60_000)]
     public async Task A_slot_no_peer_can_serve_stops_the_floor_above_it_and_is_asked_for_again_later(CancellationToken token)
     {
-        AllLevelsCapture log = new();
+        TestLogRecorder log = new();
         await using Fixture fixture = Fixture.Create(new OneLoggerLogManager(new ILogger(log)));
         fixture.WithheldRoots.TryAdd(fixture.Roots[1], 0);
         StubPeer peer = fixture.Peer("peer");
@@ -92,8 +91,8 @@ public partial class ColumnBackfillTests
         {
             Assert.That(peer.RootColumnRequests, Is.GreaterThan(requestsAtMissing), "a later round asks again");
             Assert.That(fixture.Sampled.All(column => fixture.Store.HasDataColumnRecord(fixture.Roots[1], column)), Is.True);
-            Assert.That(log.Lines, Has.Some.Contains("cannot complete slot 1"));
-            Assert.That(log.Lines, Has.None.Contains("Exception"), "the sync gate fails a job on any log line with that word");
+            Assert.That(log.Messages, Has.Some.Contains("cannot complete slot 1"));
+            Assert.That(log.Messages, Has.None.Contains("Exception"), "the sync gate fails a job on any log line with that word");
         }
     }
 
@@ -101,7 +100,7 @@ public partial class ColumnBackfillTests
     [CancelAfter(60_000)]
     public async Task A_blocked_slot_is_routine_at_debug_and_a_warning_once_it_stays_blocked_naming_its_columns_and_the_custodians_asked(CancellationToken token)
     {
-        LevelCapturingLogManager logs = new();
+        TestLogRecorder logs = new();
         await using Fixture fixture = Fixture.Create(logs);
         fixture.WithheldRoots.TryAdd(fixture.Roots[1], 0);
 

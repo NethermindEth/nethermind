@@ -14,7 +14,6 @@ using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
-using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
@@ -327,7 +326,7 @@ public class PeerSessionCloseTests
 
             return Status;
         });
-        RangeSyncPeerSelectionTests.AllLevelsCapture logger = new();
+        TestLogRecorder logger = new();
         PeerManager manager = new(local.P2P, local.Config, closing, new OneLoggerLogManager(new ILogger(logger)));
 
         bool admitted = await manager.TryAddPeerAsync(LoopbackAddressText(remote.P2P), token);
@@ -343,7 +342,7 @@ public class PeerSessionCloseTests
 
             Assert.That(admitted, Is.False, "a peer whose session closed during admission is not reported as admitted");
             Assert.That(manager.PeerCount, Is.Zero, "nor left in the pool");
-            Assert.That(logger.Lines, Has.None.StartsWith("Connected to beacon chain peer"), "nor logged as connected");
+            Assert.That(logger.Messages, Has.None.StartsWith("Connected to beacon chain peer"), "nor logged as connected");
         }
     }
 }
