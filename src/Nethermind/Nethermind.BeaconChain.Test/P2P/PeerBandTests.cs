@@ -176,27 +176,77 @@ public class PeerBandTests
         }
     }
 
-    [Test]
+    public enum CeilingAdmission { SequentialDials, ConcurrentDials, StaticReconnect, InboundSession, InboundWithFaultHistory }
+
+    [TestCase(CeilingAdmission.SequentialDials, 2)]
+    [TestCase(CeilingAdmission.ConcurrentDials, 3)]
+    [TestCase(CeilingAdmission.StaticReconnect, 2)]
+    [TestCase(CeilingAdmission.InboundSession, 2)]
+    [TestCase(CeilingAdmission.InboundWithFaultHistory, 2)]
     [CancelAfter(60_000)]
-    public async Task Dial_cap_refuses_a_new_peer_once_the_high_watermark_is_reached(CancellationToken token)
+    public async Task Admission_paths_enforce_the_peer_band_ceiling(CeilingAdmission path, int remoteCount, CancellationToken token)
     {
-        Node server1 = CreateNode();
-        Node server2 = CreateNode();
-        Node client = CreateNode();
-        SetMatchingStatus(server1, server2, client);
-        client.Config.MaxPeerCount = 1;
+        Node[] remotes = [.. Enumerable.Range(0, remoteCount).Select(_ => CreateNode())];
+        Node local = CreateNode();
+        SetMatchingStatus([.. remotes, local]);
+        local.Config.MaxPeerCount = 1;
+        if (path == CeilingAdmission.StaticReconnect) local.Config.TargetPeerCount = 1;
+        if (path == CeilingAdmission.InboundWithFaultHistory) local.Config.FaultDisconnectsBeforeBan = 2;
+        await using NodeScope nodes = new([local, .. remotes]);
+        await nodes.StartAsync(token, [.. remotes, local]);
+        PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
 
-        await using NodeScope nodes = new(client, server1, server2);
-        await nodes.StartAsync(token, server1, server2, client);
+        switch (path)
+        {
+            case CeilingAdmission.SequentialDials:
+                Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remotes[0].P2P), token), Is.True);
+                Assert.That(manager.PeerCount, Is.EqualTo(1));
+                Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remotes[1].P2P), token), Is.False,
+                    "already at MaxPeerCount: must refuse without attempting the second dial");
+                break;
+            case CeilingAdmission.ConcurrentDials:
+                // Every admission races before the others inserted into the pool: reserve capacity before dialing.
+                bool[] admitted = await Task.WhenAll(remotes.Select(remote => manager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token)));
+                Assert.That(admitted.Count(static accepted => accepted), Is.EqualTo(1), "only one concurrent dial may be admitted");
+                break;
+            case CeilingAdmission.StaticReconnect:
+                // Static peers are exempt from trimming, so reconnect itself must reserve capacity.
+                local.Config.StaticPeers = string.Join(",", remotes.Select(remote => LoopbackAddress(remote.P2P)));
+                await manager.RunMaintenanceRoundAsync(token);
+                break;
+            default:
+                Node knocking = remotes[1];
+                string knockingId = knocking.P2P.LocalPeerId!.ToString();
+                bool hasHistory = path == CeilingAdmission.InboundWithFaultHistory;
+                if (hasHistory) manager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+                Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remotes[0].P2P), token), Is.True);
+                using (BeaconP2P.SessionWatch sessions = local.P2P.WatchSessions(knocking.P2P.LocalPeerId!))
+                {
+                    await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
+                    if (hasHistory)
+                    {
+                        await WaitUntilAsync(() => manager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId).LastDisconnectReason == "TooManyPeers", token, "the refusal was never recorded");
+                        // A capacity refusal must preserve the fault streak on either side of it.
+                        manager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+                        Assert.That(manager.IsBannedForTest(knockingId), Is.True);
+                    }
+                    else
+                    {
+                        // Remote teardown proves refusal completed before checking the absence of a history record.
+                        await WaitUntilAsync(() => knocking.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
+                        await WaitUntilAsync(() => local.P2P.SessionCountForTest == 1, token, "the refused session was not torn down");
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(sessions.Opened, Is.EqualTo(1), "the knocking session reached this node");
+                            Assert.That(manager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), Is.False,
+                                "never-admitted ids must not evict real peers' disconnect history");
+                        }
+                    }
+                }
+                break;
+        }
 
-        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server1.P2P), token), Is.True);
-        Assert.That(peerManager.PeerCount, Is.EqualTo(1));
-
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server2.P2P), token), Is.False,
-            "already at MaxPeerCount: must refuse without attempting the second dial");
-        Assert.That(peerManager.PeerCount, Is.EqualTo(1));
+        Assert.That(manager.PeerCount, Is.EqualTo(1), "no admission path may exceed MaxPeerCount");
     }
 
     [Test]
@@ -296,62 +346,6 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task Concurrent_dials_cannot_overshoot_the_configured_peer_band_ceiling(CancellationToken token)
-    {
-        // Three servers dialed concurrently against a ceiling of one: every dial's admission check
-        // races the others before any of them has inserted into the pool, which is exactly the
-        // check-then-act window that let MaxConcurrentOutboundDials-many concurrent dials overshoot.
-        Node server1 = CreateNode();
-        Node server2 = CreateNode();
-        Node server3 = CreateNode();
-        Node client = CreateNode();
-        SetMatchingStatus(server1, server2, server3, client);
-        client.Config.MaxPeerCount = 1;
-
-        await using NodeScope nodes = new(client, server1, server2, server3);
-        await nodes.StartAsync(token, server1, server2, server3, client);
-
-        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-
-        Task<bool>[] dials =
-        [
-            peerManager.TryAddPeerAsync(LoopbackAddress(server1.P2P), token),
-            peerManager.TryAddPeerAsync(LoopbackAddress(server2.P2P), token),
-            peerManager.TryAddPeerAsync(LoopbackAddress(server3.P2P), token),
-        ];
-        bool[] results = await Task.WhenAll(dials);
-
-        Assert.That(results.Count(r => r), Is.EqualTo(1), "only one of the three concurrent dials may be admitted once MaxPeerCount=1 is reached");
-        Assert.That(peerManager.PeerCount, Is.EqualTo(1), "the configured maximum must not be overshot by concurrent dials racing the check");
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task Static_peer_reconnect_cannot_take_the_pool_past_the_peer_band_ceiling(CancellationToken token)
-    {
-        // Two reachable static peers against a ceiling of one. The static reconnect loop used to dial
-        // straight through ConnectAsync with no ceiling check at all, and TrimToPeerBandAsync exempts
-        // static peers, so nothing ever brought the count back down: a permanent overshoot.
-        Node server1 = CreateNode();
-        Node server2 = CreateNode();
-        Node client = CreateNode();
-        SetMatchingStatus(server1, server2, client);
-        client.Config.MaxPeerCount = 1;
-        client.Config.TargetPeerCount = 1;
-
-        await using NodeScope nodes = new(client, server1, server2);
-        await nodes.StartAsync(token, server1, server2, client);
-
-        client.Config.StaticPeers = $"{LoopbackAddress(server1.P2P)},{LoopbackAddress(server2.P2P)}";
-        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-
-        await peerManager.RunMaintenanceRoundAsync(token);
-
-        Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a static reconnect must go through the same ceiling reservation as a discovery dial");
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
     public async Task A_session_the_remote_opened_is_admitted_and_reported_as_inbound_with_its_agent_string(CancellationToken token)
     {
         AdmissionWatch watch = new();
@@ -422,65 +416,6 @@ public class PeerBandTests
         IPeerDirectory directory = peerManager;
         Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("one session, one entry"));
         Assert.That(directory.Peers.Single().Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task A_session_the_remote_opened_at_the_peer_band_ceiling_is_refused_and_torn_down(CancellationToken token)
-    {
-        Node dialed = CreateNode();
-        Node knocking = CreateNode();
-        Node local = CreateNode();
-        SetMatchingStatus(dialed, knocking, local);
-        local.Config.MaxPeerCount = 1;
-
-        await using NodeScope nodes = new(local, dialed, knocking);
-        await nodes.StartAsync(token, dialed, knocking, local);
-        PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
-
-        using BeaconP2P.SessionWatch knockingSessions = local.P2P.WatchSessions(knocking.P2P.LocalPeerId!);
-        await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
-
-        string knockingId = knocking.P2P.LocalPeerId!.ToString();
-        // The knocking side losing its session proves the refusal ran to its disconnect, so the
-        // record check below cannot pass merely by looking before the refusal happened.
-        await WaitUntilAsync(() => knocking.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
-        await WaitUntilAsync(() => local.P2P.SessionCountForTest == 1, token, "the refused session was not torn down");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(knockingSessions.Opened, Is.EqualTo(1), "the knocking session reached this node, so the refusal path ran");
-            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "an inbound session must not take the pool past MaxPeerCount");
-            Assert.That(peerManager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), Is.False,
-                "a never-admitted id must not get a record: distinct knockers at the ceiling would otherwise evict real peers' history");
-        }
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task A_refusal_at_the_peer_band_ceiling_leaves_the_consecutive_fault_streak_untouched(CancellationToken token)
-    {
-        Node dialed = CreateNode();
-        Node knocking = CreateNode();
-        Node local = CreateNode();
-        SetMatchingStatus(dialed, knocking, local);
-        local.Config.MaxPeerCount = 1;
-        local.Config.FaultDisconnectsBeforeBan = 2;
-
-        await using NodeScope nodes = new(local, dialed, knocking);
-        await nodes.StartAsync(token, dialed, knocking, local);
-        PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
-        string knockingId = knocking.P2P.LocalPeerId!.ToString();
-        peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
-
-        await PeerSessionNodes.DialToBeRefusedAsync(knocking.P2P, local.P2P, token);
-        await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId).LastDisconnectReason == "TooManyPeers", token, "the refusal was never recorded");
-
-        // Being turned away while we are full says nothing about the peer's behaviour: the fault
-        // before it and the fault after it must still add up to the threshold of two.
-        peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
-        Assert.That(peerManager.IsBannedForTest(knockingId), Is.True);
     }
 
     [Test]
