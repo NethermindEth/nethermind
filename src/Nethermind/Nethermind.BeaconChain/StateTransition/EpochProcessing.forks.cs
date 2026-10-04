@@ -7,6 +7,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 
@@ -188,5 +189,278 @@ public static partial class EpochProcessing
         }
         Merkle.Merkleize(out UInt256 root, chunks);
         return new Hash256(root.ToLittleEndian());
+    }
+
+
+    public static partial void ProcessEpoch(ForkState state, EpochCache cache)
+    {
+        ProcessJustificationAndFinalization(state, cache);
+        ProcessInactivityUpdates(state);
+        ProcessRewardsAndPenalties(state, cache);
+        ProcessRegistryUpdates(state, cache);
+        ProcessSlashings(state, cache);
+        ProcessEth1DataReset(state);
+        ProcessPendingDeposits(state, cache);
+        ProcessPendingConsolidations(state);
+#if GLOAS
+        ProcessBuilderPendingPayments(state, cache);
+#endif
+        ProcessEffectiveBalanceUpdates(state, cache);
+        ProcessSlashingsReset(state);
+        ProcessRandaoMixesReset(state);
+        ProcessHistoricalSummariesUpdate(state);
+        ProcessParticipationFlagUpdates(state);
+        ProcessSyncCommitteeUpdates(state);
+        ProcessProposerLookahead(state);
+#if GLOAS
+        ProcessPtcWindow(state);
+#endif
+    }
+
+    public static partial JustificationAndFinalizationState ComputeJustificationAndFinalization(ForkState state, EpochCache cache)
+    {
+        JustificationAndFinalizationState result = new(state);
+
+#if GLOAS
+        // Skip FFG updates in the first two epochs so the 0x00 root stubs are never touched.
+#else
+        // Initial FFG checkpoint values have a `0x00` stub for `root`.
+        // Skip FFG updates in the first two epochs to avoid corner cases that might result in
+        // modifying this stub.
+#endif
+        if (state.GetCurrentEpoch() <= Presets.GenesisEpoch + 1)
+            return result;
+
+#if GLOAS
+        (ulong previousTargetBalance, ulong currentTargetBalance) = EpochProcessing.GetTargetBalances(
+#else
+        (ulong previousTargetBalance, ulong currentTargetBalance) = GetTargetBalances(
+#endif
+            state.Validators!, state.PreviousEpochParticipation ?? [], state.CurrentEpochParticipation ?? [],
+            state.GetPreviousEpoch(), state.GetCurrentEpoch());
+#if GLOAS
+        EpochProcessing.WeighJustificationAndFinalization(
+#else
+        WeighJustificationAndFinalization(
+#endif
+            result, state.GetTotalActiveBalance(cache), previousTargetBalance, currentTargetBalance,
+            state.Slot, state.BlockRoots!);
+        return result;
+    }
+
+    public static partial void ProcessInactivityUpdates(ForkState state)
+    {
+#if !GLOAS
+        // Skip the genesis epoch as score updates are based on the previous epoch participation.
+#endif
+        if (state.GetCurrentEpoch() == Presets.GenesisEpoch)
+            return;
+
+        ulong previousEpoch = state.GetPreviousEpoch();
+        bool isInInactivityLeak = IsInInactivityLeak(state);
+#if GLOAS
+        EpochProcessing.ProcessInactivityUpdates(state.Validators!, state.InactivityScores!, state.PreviousEpochParticipation ?? [], previousEpoch, isInInactivityLeak);
+#else
+        ProcessInactivityUpdates(state.Validators!, state.InactivityScores!, state.PreviousEpochParticipation ?? [], previousEpoch, isInInactivityLeak);
+#endif
+    }
+
+    public static partial void ProcessRegistryUpdates(ForkState state, EpochCache cache)
+    {
+        ulong currentEpoch = state.GetCurrentEpoch();
+        ulong activationEpoch = BeaconStateAccessors.ComputeActivationExitEpoch(currentEpoch);
+#if GLOAS
+        ulong finalizedEpoch = state.FinalizedCheckpoint!.Epoch;
+#endif
+
+#if !GLOAS
+        // Process activation eligibility, ejections, and activations.
+#endif
+        Validator[] validators = state.Validators!;
+        for (int i = 0; i < validators.Length; i++)
+        {
+            Validator validator = validators[i];
+            if (validator.IsEligibleForActivationQueue())
+            {
+                Validator updated = validator.Clone();
+                updated.ActivationEligibilityEpoch = currentEpoch + 1;
+                validators[i] = updated;
+            }
+            else if (validator.IsActiveValidator(currentEpoch) && validator.EffectiveBalance <= Presets.EjectionBalance)
+            {
+                state.InitiateValidatorExit(i, cache);
+            }
+#if GLOAS
+            else if (validator.ActivationEligibilityEpoch <= finalizedEpoch && validator.ActivationEpoch == Presets.FarFutureEpoch)
+#else
+            else if (state.IsEligibleForActivation(validator))
+#endif
+            {
+                Validator updated = validator.Clone();
+                updated.ActivationEpoch = activationEpoch;
+                validators[i] = updated;
+            }
+        }
+    }
+
+    public static partial void ProcessSlashings(ForkState state, EpochCache cache)
+    {
+        ulong epoch = state.GetCurrentEpoch();
+        ulong totalBalance = state.GetTotalActiveBalance(cache);
+#if GLOAS
+        EpochProcessing.ProcessSlashings(state.Validators!, state.Balances!, state.Slashings!, epoch, totalBalance);
+#else
+        ProcessSlashings(state.Validators!, state.Balances!, state.Slashings!, epoch, totalBalance);
+#endif
+    }
+
+    public static partial void ProcessPendingDeposits(ForkState state, EpochCache cache)
+    {
+        ulong nextEpoch = state.GetCurrentEpoch() + 1;
+#if GLOAS
+        ulong availableForProcessing = state.DepositBalanceToConsume + state.GetActivationChurnLimit(cache);
+#else
+        ulong availableForProcessing = state.DepositBalanceToConsume + state.GetActivationExitChurnLimit(cache);
+#endif
+        ulong processedAmount = 0;
+        int nextDepositIndex = 0;
+        List<PendingDeposit> depositsToPostpone = [];
+        bool isChurnLimitReached = false;
+        ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(state.FinalizedCheckpoint!.Epoch);
+
+        // Spec process_pending_deposits: validator_pubkeys.index is needed only after the queue gates pass.
+        Dictionary<BlsPublicKey, int>? pubkeyToIndex = null;
+
+        PendingDeposit[] pendingDeposits = state.PendingDeposits ?? [];
+        foreach (PendingDeposit deposit in pendingDeposits)
+        {
+#if !GLOAS
+            // Do not process deposit requests if the Eth1 bridge deposits are not yet applied.
+            if (deposit.Slot > Presets.GenesisSlot && state.Eth1DepositIndex < state.DepositRequestsStartIndex)
+                break;
+            // Check if the deposit has been finalized, otherwise stop processing.
+#endif
+            if (deposit.Slot > finalizedSlot)
+                break;
+#if !GLOAS
+            // Check if the number of processed deposits has not reached the limit, otherwise stop processing.
+#endif
+            if (nextDepositIndex >= Presets.MaxPendingDepositsPerEpoch)
+                break;
+
+            bool isValidatorExited = false;
+            bool isValidatorWithdrawn = false;
+            pubkeyToIndex ??= IndexPubkeys(state.Validators!);
+            if (pubkeyToIndex.TryGetValue(deposit.Pubkey, out int validatorIndex))
+            {
+                Validator validator = state.Validators![validatorIndex];
+                isValidatorExited = validator.ExitEpoch < Presets.FarFutureEpoch;
+                isValidatorWithdrawn = validator.WithdrawableEpoch < nextEpoch;
+            }
+
+            if (isValidatorWithdrawn)
+            {
+#if !GLOAS
+                // Deposited balance will never become active. Increase balance but do not consume churn.
+#endif
+                ApplyPendingDeposit(state, deposit, pubkeyToIndex);
+            }
+            else if (isValidatorExited)
+            {
+#if !GLOAS
+                // Validator is exiting, postpone the deposit until after the withdrawable epoch.
+#endif
+                depositsToPostpone.Add(deposit);
+            }
+            else
+            {
+#if !GLOAS
+                // Check if the deposit fits in the churn, otherwise do no more deposit processing in this epoch.
+#endif
+                isChurnLimitReached = processedAmount + deposit.Amount > availableForProcessing;
+                if (isChurnLimitReached)
+                    break;
+#if !GLOAS
+                // Consume churn and apply the deposit.
+#endif
+                processedAmount += deposit.Amount;
+                ApplyPendingDeposit(state, deposit, pubkeyToIndex);
+            }
+
+#if !GLOAS
+            // Regardless of how the deposit was handled, we move on in the queue.
+#endif
+            nextDepositIndex++;
+        }
+
+        state.PendingDeposits = [.. pendingDeposits[nextDepositIndex..], .. depositsToPostpone];
+#if !GLOAS
+
+        // Accumulate churn only if the churn limit has been hit.
+#endif
+        state.DepositBalanceToConsume = isChurnLimitReached ? availableForProcessing - processedAmount : 0;
+    }
+
+    public static partial void ProcessPendingConsolidations(ForkState state)
+    {
+        PendingConsolidation[] pendingConsolidations = state.PendingConsolidations ?? [];
+#if GLOAS
+        int nextPendingConsolidation = EpochProcessing.ProcessPendingConsolidations(state.Validators!, state.Balances!, pendingConsolidations, state.GetCurrentEpoch() + 1);
+#else
+        int nextPendingConsolidation = ProcessPendingConsolidations(state.Validators!, state.Balances!, pendingConsolidations, state.GetCurrentEpoch() + 1);
+#endif
+        state.PendingConsolidations = pendingConsolidations[nextPendingConsolidation..];
+    }
+
+    public static partial void ProcessEffectiveBalanceUpdates(ForkState state, EpochCache cache)
+    {
+#if GLOAS
+        EpochProcessing.ProcessEffectiveBalanceUpdates(state.Validators!, state.Balances!);
+#else
+        ProcessEffectiveBalanceUpdates(state.Validators!, state.Balances!);
+#endif
+        cache.InvalidateTotalActiveBalance();
+    }
+
+    private static partial SyncCommittee GetNextSyncCommittee(ForkState state)
+    {
+#if GLOAS
+        ulong epoch = state.GetCurrentEpoch() + 1;
+        Hash256 seed = state.GetSeed(epoch, DomainType.SyncCommittee);
+        int[] indices = GloasForkTransition.ComputeBalanceWeightedSelection(
+            state.Validators!, state.GetActiveValidatorIndices(epoch), seed.Bytes, Presets.SyncCommitteeSize, shuffleIndices: true);
+
+#else
+        int[] indices = GetNextSyncCommitteeIndices(state);
+#endif
+        BlsPublicKey[] pubkeys = new BlsPublicKey[indices.Length];
+        BlsSigner.AggregatedPublicKey aggregate = new();
+        Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);
+        for (int i = 0; i < indices.Length; i++)
+        {
+            pubkeys[i] = state.Validators![indices[i]].Pubkey;
+            // Altair eth_aggregate_pubkeys asserts KeyValidate on every member, rejecting infinity and off-subgroup keys
+            if (!BlsSignatureSet.TryKeyValidate(pubkeys[i].Bytes, publicKey))
+                throw new BeaconStateException($"Invalid sync committee pubkey for validator {indices[i]}");
+            aggregate.Aggregate(publicKey);
+        }
+        return new SyncCommittee
+        {
+            Pubkeys = pubkeys,
+            AggregatePubkey = new BlsPublicKey(aggregate.PublicKey.Compress()),
+        };
+    }
+
+    public static partial void ProcessProposerLookahead(ForkState state)
+    {
+        ulong[] lookahead = state.ProposerLookahead!;
+        int slotsPerEpoch = (int)Presets.SlotsPerEpoch;
+        Array.Copy(lookahead, slotsPerEpoch, lookahead, 0, lookahead.Length - slotsPerEpoch);
+#if GLOAS
+        ulong[] lastEpochProposers = GetBeaconProposerIndices(state, state.GetCurrentEpoch() + Presets.MinSeedLookahead + 1);
+#else
+        ulong[] lastEpochProposers = state.ComputeProposerIndices(state.GetCurrentEpoch() + Presets.MinSeedLookahead + 1);
+#endif
+        lastEpochProposers.CopyTo(lookahead, lookahead.Length - slotsPerEpoch);
     }
 }

@@ -5,12 +5,10 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Security.Cryptography;
-using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -31,26 +29,7 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// </remarks>
 public static partial class GloasEpochProcessing
 {
-    public static void ProcessEpoch(BeaconStateGloas state, EpochCache cache)
-    {
-        ProcessJustificationAndFinalization(state, cache);
-        ProcessInactivityUpdates(state);
-        ProcessRewardsAndPenalties(state, cache);
-        ProcessRegistryUpdates(state, cache);
-        ProcessSlashings(state, cache);
-        ProcessEth1DataReset(state);
-        ProcessPendingDeposits(state, cache);
-        ProcessPendingConsolidations(state);
-        ProcessBuilderPendingPayments(state, cache);
-        ProcessEffectiveBalanceUpdates(state, cache);
-        ProcessSlashingsReset(state);
-        ProcessRandaoMixesReset(state);
-        ProcessHistoricalSummariesUpdate(state);
-        ProcessParticipationFlagUpdates(state);
-        ProcessSyncCommitteeUpdates(state);
-        ProcessProposerLookahead(state);
-        ProcessPtcWindow(state);
-    }
+    public static partial void ProcessEpoch(BeaconStateGloas state, EpochCache cache);
 
     public static partial void ProcessJustificationAndFinalization(BeaconStateGloas state, EpochCache cache);
 
@@ -62,73 +41,18 @@ public static partial class GloasEpochProcessing
     /// Fork choice uses this on a Gloas block's post-state to compute its unrealized checkpoints (the
     /// spec's <c>compute_pulled_up_tip</c>) without cloning the state.
     /// </remarks>
-    public static JustificationAndFinalizationState ComputeJustificationAndFinalization(BeaconStateGloas state, EpochCache cache)
-    {
-        JustificationAndFinalizationState result = new(state);
-
-        // Skip FFG updates in the first two epochs so the 0x00 root stubs are never touched.
-        if (state.GetCurrentEpoch() <= Presets.GenesisEpoch + 1)
-            return result;
-
-        (ulong previousTargetBalance, ulong currentTargetBalance) = EpochProcessing.GetTargetBalances(
-            state.Validators!, state.PreviousEpochParticipation ?? [], state.CurrentEpochParticipation ?? [],
-            state.GetPreviousEpoch(), state.GetCurrentEpoch());
-        EpochProcessing.WeighJustificationAndFinalization(
-            result, state.GetTotalActiveBalance(cache), previousTargetBalance, currentTargetBalance,
-            state.Slot, state.BlockRoots!);
-        return result;
-    }
+    public static partial JustificationAndFinalizationState ComputeJustificationAndFinalization(BeaconStateGloas state, EpochCache cache);
 
     /// <summary>Altair <c>process_inactivity_updates</c>, unmodified in Gloas.</summary>
-    public static void ProcessInactivityUpdates(BeaconStateGloas state)
-    {
-        if (state.GetCurrentEpoch() == Presets.GenesisEpoch)
-            return;
-
-        ulong previousEpoch = state.GetPreviousEpoch();
-        bool isInInactivityLeak = IsInInactivityLeak(state);
-        EpochProcessing.ProcessInactivityUpdates(state.Validators!, state.InactivityScores!, state.PreviousEpochParticipation ?? [], previousEpoch, isInInactivityLeak);
-    }
+    public static partial void ProcessInactivityUpdates(BeaconStateGloas state);
 
     public static partial void ProcessRewardsAndPenalties(BeaconStateGloas state, EpochCache cache);
 
     /// <summary>Electra <c>process_registry_updates</c>, unmodified in Gloas.</summary>
-    public static void ProcessRegistryUpdates(BeaconStateGloas state, EpochCache cache)
-    {
-        ulong currentEpoch = state.GetCurrentEpoch();
-        ulong activationEpoch = BeaconStateAccessors.ComputeActivationExitEpoch(currentEpoch);
-        ulong finalizedEpoch = state.FinalizedCheckpoint!.Epoch;
-
-        Validator[] validators = state.Validators!;
-        for (int i = 0; i < validators.Length; i++)
-        {
-            Validator validator = validators[i];
-            if (validator.IsEligibleForActivationQueue())
-            {
-                Validator updated = validator.Clone();
-                updated.ActivationEligibilityEpoch = currentEpoch + 1;
-                validators[i] = updated;
-            }
-            else if (validator.IsActiveValidator(currentEpoch) && validator.EffectiveBalance <= Presets.EjectionBalance)
-            {
-                state.InitiateValidatorExit(i, cache);
-            }
-            else if (validator.ActivationEligibilityEpoch <= finalizedEpoch && validator.ActivationEpoch == Presets.FarFutureEpoch)
-            {
-                Validator updated = validator.Clone();
-                updated.ActivationEpoch = activationEpoch;
-                validators[i] = updated;
-            }
-        }
-    }
+    public static partial void ProcessRegistryUpdates(BeaconStateGloas state, EpochCache cache);
 
     /// <summary>Electra <c>process_slashings</c>, unmodified in Gloas.</summary>
-    public static void ProcessSlashings(BeaconStateGloas state, EpochCache cache)
-    {
-        ulong epoch = state.GetCurrentEpoch();
-        ulong totalBalance = state.GetTotalActiveBalance(cache);
-        EpochProcessing.ProcessSlashings(state.Validators!, state.Balances!, state.Slashings!, epoch, totalBalance);
-    }
+    public static partial void ProcessSlashings(BeaconStateGloas state, EpochCache cache);
 
     public static partial void ProcessEth1DataReset(BeaconStateGloas state);
 
@@ -136,72 +60,14 @@ public static partial class GloasEpochProcessing
     /// Gloas <c>process_pending_deposits</c> (modified, EIP-8061): the queue draws on the
     /// activation-only churn, and the Electra gate on unapplied Eth1-bridge deposits is gone.
     /// </summary>
-    public static void ProcessPendingDeposits(BeaconStateGloas state, EpochCache cache)
-    {
-        ulong nextEpoch = state.GetCurrentEpoch() + 1;
-        ulong availableForProcessing = state.DepositBalanceToConsume + state.GetActivationChurnLimit(cache);
-        ulong processedAmount = 0;
-        int nextDepositIndex = 0;
-        List<PendingDeposit> depositsToPostpone = [];
-        bool isChurnLimitReached = false;
-        ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(state.FinalizedCheckpoint!.Epoch);
-
-        // Spec process_pending_deposits: validator_pubkeys.index is needed only after the queue gates pass.
-        Dictionary<BlsPublicKey, int>? pubkeyToIndex = null;
-
-        PendingDeposit[] pendingDeposits = state.PendingDeposits ?? [];
-        foreach (PendingDeposit deposit in pendingDeposits)
-        {
-            if (deposit.Slot > finalizedSlot)
-                break;
-            if (nextDepositIndex >= Presets.MaxPendingDepositsPerEpoch)
-                break;
-
-            bool isValidatorExited = false;
-            bool isValidatorWithdrawn = false;
-            pubkeyToIndex ??= IndexPubkeys(state.Validators!);
-            if (pubkeyToIndex.TryGetValue(deposit.Pubkey, out int validatorIndex))
-            {
-                Validator validator = state.Validators![validatorIndex];
-                isValidatorExited = validator.ExitEpoch < Presets.FarFutureEpoch;
-                isValidatorWithdrawn = validator.WithdrawableEpoch < nextEpoch;
-            }
-
-            if (isValidatorWithdrawn)
-            {
-                ApplyPendingDeposit(state, deposit, pubkeyToIndex);
-            }
-            else if (isValidatorExited)
-            {
-                depositsToPostpone.Add(deposit);
-            }
-            else
-            {
-                isChurnLimitReached = processedAmount + deposit.Amount > availableForProcessing;
-                if (isChurnLimitReached)
-                    break;
-                processedAmount += deposit.Amount;
-                ApplyPendingDeposit(state, deposit, pubkeyToIndex);
-            }
-
-            nextDepositIndex++;
-        }
-
-        state.PendingDeposits = [.. pendingDeposits[nextDepositIndex..], .. depositsToPostpone];
-        state.DepositBalanceToConsume = isChurnLimitReached ? availableForProcessing - processedAmount : 0;
-    }
+    public static partial void ProcessPendingDeposits(BeaconStateGloas state, EpochCache cache);
 
     private static partial Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators);
 
     private static partial void ApplyPendingDeposit(BeaconStateGloas state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex);
 
     /// <summary>Electra <c>process_pending_consolidations</c>, unmodified in Gloas.</summary>
-    public static void ProcessPendingConsolidations(BeaconStateGloas state)
-    {
-        PendingConsolidation[] pendingConsolidations = state.PendingConsolidations ?? [];
-        int nextPendingConsolidation = EpochProcessing.ProcessPendingConsolidations(state.Validators!, state.Balances!, pendingConsolidations, state.GetCurrentEpoch() + 1);
-        state.PendingConsolidations = pendingConsolidations[nextPendingConsolidation..];
-    }
+    public static partial void ProcessPendingConsolidations(BeaconStateGloas state);
 
     /// <summary>
     /// Gloas <c>process_builder_pending_payments</c> (new): the previous epoch's payments that reached
@@ -233,11 +99,7 @@ public static partial class GloasEpochProcessing
     }
 
     /// <summary>Electra <c>process_effective_balance_updates</c>, unmodified in Gloas.</summary>
-    public static void ProcessEffectiveBalanceUpdates(BeaconStateGloas state, EpochCache cache)
-    {
-        EpochProcessing.ProcessEffectiveBalanceUpdates(state.Validators!, state.Balances!);
-        cache.InvalidateTotalActiveBalance();
-    }
+    public static partial void ProcessEffectiveBalanceUpdates(BeaconStateGloas state, EpochCache cache);
 
     public static partial void ProcessSlashingsReset(BeaconStateGloas state);
 
@@ -249,40 +111,10 @@ public static partial class GloasEpochProcessing
 
     public static partial void ProcessSyncCommitteeUpdates(BeaconStateGloas state);
 
-    private static SyncCommittee GetNextSyncCommittee(BeaconStateGloas state)
-    {
-        ulong epoch = state.GetCurrentEpoch() + 1;
-        Hash256 seed = state.GetSeed(epoch, DomainType.SyncCommittee);
-        int[] indices = GloasForkTransition.ComputeBalanceWeightedSelection(
-            state.Validators!, state.GetActiveValidatorIndices(epoch), seed.Bytes, Presets.SyncCommitteeSize, shuffleIndices: true);
-
-        BlsPublicKey[] pubkeys = new BlsPublicKey[indices.Length];
-        BlsSigner.AggregatedPublicKey aggregate = new();
-        Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);
-        for (int i = 0; i < indices.Length; i++)
-        {
-            pubkeys[i] = state.Validators![indices[i]].Pubkey;
-            // Altair eth_aggregate_pubkeys asserts KeyValidate on every member, rejecting infinity and off-subgroup keys
-            if (!BlsSignatureSet.TryKeyValidate(pubkeys[i].Bytes, publicKey))
-                throw new BeaconStateException($"Invalid sync committee pubkey for validator {indices[i]}");
-            aggregate.Aggregate(publicKey);
-        }
-        return new SyncCommittee
-        {
-            Pubkeys = pubkeys,
-            AggregatePubkey = new BlsPublicKey(aggregate.PublicKey.Compress()),
-        };
-    }
+    private static partial SyncCommittee GetNextSyncCommittee(BeaconStateGloas state);
 
     /// <summary>Fulu <c>process_proposer_lookahead</c> (EIP-7917) over the Gloas <see cref="GetBeaconProposerIndices"/>.</summary>
-    public static void ProcessProposerLookahead(BeaconStateGloas state)
-    {
-        ulong[] lookahead = state.ProposerLookahead!;
-        int slotsPerEpoch = (int)Presets.SlotsPerEpoch;
-        Array.Copy(lookahead, slotsPerEpoch, lookahead, 0, lookahead.Length - slotsPerEpoch);
-        ulong[] lastEpochProposers = GetBeaconProposerIndices(state, state.GetCurrentEpoch() + Presets.MinSeedLookahead + 1);
-        lastEpochProposers.CopyTo(lookahead, lookahead.Length - slotsPerEpoch);
-    }
+    public static partial void ProcessProposerLookahead(BeaconStateGloas state);
 
     /// <summary>
     /// Gloas <c>get_beacon_proposer_indices</c> (modified, EIP-8045): slashed validators leave the
