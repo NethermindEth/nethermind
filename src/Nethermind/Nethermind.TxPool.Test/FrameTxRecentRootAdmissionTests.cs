@@ -5,17 +5,10 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Spec;
-using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
@@ -23,11 +16,9 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -51,16 +42,9 @@ public class FrameTxRecentRootAdmissionTests
 
     private readonly ISpecProvider _specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true });
     private BasicTestBlockchain? _chain;
-    private FrameTxPrefixSimulator? _simulator;
-    private TxPool? _txPool;
 
     [TearDown]
-    public async Task TearDown()
-    {
-        if (_txPool is not null) await _txPool.DisposeAsync();
-        _simulator?.Dispose();
-        _chain?.Dispose();
-    }
+    public void TearDown() => _chain?.Dispose();
 
     [TestCase(false, false, TestName = "SubmitTx_CommittedTupleThenSelfVerify_IsAccepted")]
     [TestCase(true, false, TestName = "SubmitTx_ExpiryThenCommittedTupleThenSelfVerify_IsAccepted")]
@@ -141,18 +125,18 @@ public class FrameTxRecentRootAdmissionTests
         };
         if (sender == Sender) FrameTxTestFrames.SignSecp256k1(tx, TestItem.PrivateKeyA, signer: null);
         tx.Hash = tx.CalculateHash();
-        return _txPool!.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+        return _chain!.TxPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
     }
 
-    /// <summary>A pool whose simulator runs against the genesis state under a head at <see cref="HeadSlot"/>, the
-    /// state carrying <paramref name="recentRootCode"/> and one committed entry at <paramref name="committedSlot"/>.</summary>
-    private async Task BuildHarness(byte[] recentRootCode, ulong committedSlot, byte[]? senderCode = null)
-    {
+    /// <summary>The test node's pool and simulator over a genesis head at <see cref="HeadSlot"/>, its state
+    /// carrying <paramref name="recentRootCode"/> and one committed entry at <paramref name="committedSlot"/>.</summary>
+    private async Task BuildHarness(byte[] recentRootCode, ulong committedSlot, byte[]? senderCode = null) =>
         _chain = await BasicTestBlockchain.Create(builder =>
         {
             builder.AddSingleton(_specProvider);
-            builder.WithGenesisPostProcessor((_, worldState, specProvider) =>
+            builder.WithGenesisPostProcessor((genesis, worldState, specProvider) =>
             {
+                genesis.Header.SlotNumber = HeadSlot;
                 IReleaseSpec spec = specProvider.GenesisSpec;
                 worldState.CreateAccount(Sender, SenderBalance);
                 if (senderCode is not null) worldState.InsertCode(Sender, senderCode, spec);
@@ -167,34 +151,4 @@ public class FrameTxRecentRootAdmissionTests
                 worldState.RecalculateStateRoot();
             });
         });
-        await _chain.AddBlock();
-
-        BlockHeader head = _chain.BlockTree.Genesis!.Clone();
-        head.SlotNumber = HeadSlot;
-        IBlockFinder simulatorHead = Substitute.For<IBlockFinder>();
-        simulatorHead.Head.Returns(new Block(head));
-
-        TxPoolConfig txPoolConfig = new() { FrameTxSimulationBudgetPerHeadMs = int.MaxValue };
-        _simulator = new FrameTxPrefixSimulator(
-            new AutoReadOnlyTxProcessingEnvFactory(_chain.Container, _chain.WorldStateManager, _specProvider, shareCodeCache: false),
-            simulatorHead, _specProvider, txPoolConfig, LimboLogs.Instance);
-
-        TestReadOnlyStateProvider poolState = new();
-        poolState.CreateAccount(Sender, SenderBalance);
-        poolState.CreateAccount(Deployed, SenderBalance);
-        if (senderCode is not null) poolState.InsertCode(senderCode, Sender);
-        _txPool = new TxPool(
-            new EthereumEcdsa(_specProvider.ChainId),
-            new BlobTxStorage(),
-            new ChainHeadInfoProvider(new ChainHeadSpecProvider(_specProvider, _chain.BlockTree), _chain.BlockTree, poolState),
-            txPoolConfig,
-            new TxValidator(_specProvider.ChainId),
-            new SpecChangeTxValidator(_specProvider.ChainId),
-            LimboLogs.Instance,
-            new TransactionComparerProvider(_specProvider, _chain.BlockTree).GetDefaultComparer(),
-            ShouldGossip.Instance,
-            incomingTxFilters: null,
-            thereIsPriorityContract: false,
-            _simulator);
-    }
 }
