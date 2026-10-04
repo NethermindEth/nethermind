@@ -503,15 +503,8 @@ private def parameterValue? (input : Input) (parameter : Parameter) : Option Val
   | "intrinsicGas" => some (intrinsicValue input.intrinsic)
   | _ => none
 
-private def createFrame
-    (machine : Machine) (function : Function) (thisOperand : Operand)
-    (bindings : List (Parameter × Operand × ArgumentMode)) : Except String (Machine × FrameId) := do
-  let frameId := machine.nextFrame
-  let frame : RuntimeFrame :=
-    { id := frameId, functionSymbol := function.signature.symbol, thisOperand
-      cells := [], captures := [], carried := .unit }
-  let machine := { machine with frames := frame :: machine.frames, nextFrame := frameId + 1 }
-  let machine ← bindings.foldlM (fun machine item => do
+def bindFrameParameter (frameId : FrameId) (machine : Machine)
+    (item : Parameter × Operand × ArgumentMode) : Except String Machine := do
     let (parameter, operand, argumentMode) := item
     match parameter.refKind with
     | .ref | .out | .inRef | .refReadOnly | .refReadOnlyParameter =>
@@ -530,8 +523,48 @@ private def createFrame
     | .none =>
         let value ← readOperand machine operand
         let (machine, id) := allocateCell machine frameId parameter.symbol parameter.symbol value
-        bindCell machine frameId parameter.symbol id) machine
+        bindCell machine frameId parameter.symbol id
+
+def createFrame
+    (machine : Machine) (function : Function) (thisOperand : Operand)
+    (bindings : List (Parameter × Operand × ArgumentMode)) : Except String (Machine × FrameId) := do
+  let frameId := machine.nextFrame
+  let frame : RuntimeFrame :=
+    { id := frameId, functionSymbol := function.signature.symbol, thisOperand
+      cells := [], captures := [], carried := .unit }
+  let machine := { machine with frames := frame :: machine.frames, nextFrame := frameId + 1 }
+  let machine ← bindings.foldlM (bindFrameParameter frameId) machine
   pure (machine, frameId)
+
+def parameterDefaultValue (typeName : String) : Value := defaultValue typeName
+
+def operandReadResult (machine : Machine) (operand : Operand) : Except String Value :=
+  readOperand machine operand
+
+/-- An already evaluated copy or location allocates one parameter cell; aliases are not read. -/
+theorem bindFrameParameter_copy_or_alias (before : Machine) (frame : RuntimeFrame)
+    (parameter : Parameter) (value : Value) (alias : Option Location)
+    (kind : parameter.refKind = if alias.isSome then .inRef else .none)
+    (fresh : ∀ old ∈ before.frames, old.id ≠ frame.id) :
+    let operand := match alias with | none => Operand.immediate value | some location => .location location
+    let mode := if alias.isSome then ArgumentMode.readOnlyLocation else .value
+    let cell : Cell := {
+      id := before.nextCell, frame := frame.id, symbol := parameter.symbol,
+      provenance := parameter.symbol, value := if alias.isSome then parameterDefaultValue parameter.typeName else value, alias }
+    let updated := { frame with
+      cells := (parameter.symbol, before.nextCell) ::
+      frame.cells.filter (fun item => item.1 != parameter.symbol) }
+    bindFrameParameter frame.id { before with frames := frame :: before.frames }
+      (parameter, operand, mode) = .ok { before with
+        frames := updated :: before.frames, cells := cell :: before.cells, nextCell := before.nextCell+1 } := by
+  have mapOld (replacement : RuntimeFrame) :
+      before.frames.map (fun old => if old.id = frame.id then replacement else old) = before.frames := by
+    conv => rhs; rw [← List.map_id before.frames]
+    apply List.map_congr_left
+    intro old member
+    simp [fresh old member]
+  cases alias <;> simp_all [bindFrameParameter, allocateCell, bindCell, findFrame?, replaceFrame,
+    readOperand, Option.toExcept, bind, Except.bind, pure, Except.pure, parameterDefaultValue]
 
 theorem createFrame_writable_immediate_rejected (machine : Machine) (function : Function)
     (thisOperand : Operand) (parameter : Parameter) (value : Value) (mode : ArgumentMode)
@@ -539,7 +572,7 @@ theorem createFrame_writable_immediate_rejected (machine : Machine) (function : 
     (writable : parameter.refKind = .ref ∨ parameter.refKind = .out) :
     createFrame machine function thisOperand ((parameter, .immediate value, mode) :: tail) =
       .error s!"argument location required: {parameter.name}" := by
-  rcases writable with writable | writable <;> simp [createFrame, writable] <;> rfl
+  rcases writable with writable | writable <;> simp [createFrame, bindFrameParameter, writable] <;> rfl
 
 theorem createFrame_reference_location_alias (machine : Machine) (function : Function)
     (thisOperand : Operand) (parameter : Parameter) (location : Location) (mode : ArgumentMode)
@@ -554,7 +587,7 @@ theorem createFrame_reference_location_alias (machine : Machine) (function : Fun
     createFrame machine function thisOperand [(parameter, .location location, mode)] = (do
       let bound ← bindCell allocated frameId parameter.symbol cellId
       pure (bound, frameId)) := by
-  cases kind : parameter.refKind <;> simp [createFrame, kind] at reference ⊢ <;> rfl
+  cases kind : parameter.refKind <;> simp [createFrame, bindFrameParameter, kind] at reference ⊢ <;> rfl
 
 theorem createFrame_readonly_immediate_temporary (machine : Machine) (function : Function)
     (thisOperand : Operand) (parameter : Parameter) (value : Value) (mode : ArgumentMode)
@@ -574,7 +607,7 @@ theorem createFrame_readonly_immediate_temporary (machine : Machine) (function :
     createFrame machine function thisOperand [(parameter, .immediate value, mode)] = (do
       let bound ← bindCell allocated frameId parameter.symbol cellId
       pure (bound, frameId)) := by
-  rcases readonly with readonly | readonly | readonly <;> simp [createFrame, readonly] <;> rfl
+  rcases readonly with readonly | readonly | readonly <;> simp [createFrame, bindFrameParameter, readonly] <;> rfl
 
 theorem createFrame_value_copy (machine : Machine) (function : Function)
     (thisOperand : Operand) (parameter : Parameter) (operand : Operand) (mode : ArgumentMode)
@@ -589,7 +622,7 @@ theorem createFrame_value_copy (machine : Machine) (function : Function)
       let (allocated, cellId) := allocateCell entered frameId parameter.symbol parameter.symbol value
       let bound ← bindCell allocated frameId parameter.symbol cellId
       pure (bound, frameId)) := by
-  simp [createFrame, byValue]
+  simp [createFrame, bindFrameParameter, byValue]
 
 def CallContextPreserved (before after : Machine) : Prop :=
   after.work = before.work ∧ after.operands = before.operands ∧
@@ -674,7 +707,7 @@ theorem createFrame_success_establishes (before after : Machine) (function : Fun
     (receiver : Operand) (bindings : List (Parameter × Operand × ArgumentMode)) (frameId : FrameId)
     (succeeded : createFrame before function receiver bindings = .ok (after, frameId)) :
     CallFrameEstablished before after frameId function receiver := by
-  unfold createFrame at succeeded
+  unfold createFrame bindFrameParameter at succeeded
   dsimp only at succeeded
   generalize folded : bindings.foldlM (m := Except String) (s := Machine) _ _ = result at succeeded
   cases result with
@@ -801,7 +834,7 @@ theorem createFrame_success_cellAllocation (before after : Machine) (function : 
     (receiver : Operand) (bindings : List (Parameter × Operand × ArgumentMode)) (frameId : FrameId)
     (succeeded : createFrame before function receiver bindings = .ok (after, frameId)) :
     ParameterCellsAllocated before after frameId (bindings.map ParameterCellCount).sum := by
-  unfold createFrame at succeeded
+  unfold createFrame bindFrameParameter at succeeded
   dsimp only at succeeded
   generalize folded : bindings.foldlM (m := Except String) (s := Machine) _ _ = result at succeeded
   cases result with
@@ -991,7 +1024,7 @@ theorem createFrame_mixed_parameters_exact (before : Machine) (function : Functi
     cases kind : reference.refKind <;>
     simp only [kind, ne_eq, not_true_eq_false] at referenceKind
   all_goals
-    simp [createFrame, kind, readonlyKind, copiedKind, allocateCell, bindCell, findFrame?, replaceFrame,
+    simp [createFrame, bindFrameParameter, kind, readonlyKind, copiedKind, allocateCell, bindCell, findFrame?, replaceFrame,
       Option.toExcept, bind, Except.bind, pure, Except.pure,
       symbols12, symbols13, symbols23, Nat.add_assoc,
       show ∀ current : Machine, current.cells = added ++ before.cells →
@@ -1188,7 +1221,7 @@ theorem createFrame_success_byValue_layout (before after : Machine) (function : 
   have exactCount : ParameterCellsAllocated before after frameId bindings.length := by
     simpa [counts, List.map_const', List.sum_replicate_nat] using allocated
   refine ⟨exactCount, ?_⟩
-  unfold createFrame at succeeded
+  unfold createFrame bindFrameParameter at succeeded
   dsimp only at succeeded
   generalize folded : bindings.foldlM (m := Except String) (s := Machine) _ _ = result at succeeded
   cases result with
@@ -1696,7 +1729,7 @@ private def refundOperands (machine : Machine) (call : Call) (operands : List Op
       location := location,
       provenance := location.map (·.provenance) })
 
-private def bindCallArguments
+def bindCallArguments
     (machine : Machine) (function : Function) (call : Call) (operands : List Operand)
     (thisOperand : Operand) : Except String (Machine × FrameId) := do
   let bindings ← if call.arguments.isEmpty then
@@ -1844,7 +1877,7 @@ theorem bindCallArguments_transactionResult_entry_exact (before : Machine) (func
           cells := [exceptionCell, descriptionCell, errorCell] ++ before.cells,
           nextFrame := before.nextFrame + 1, nextCell := before.nextCell + 3 }, frameId) := by
   obtain ⟨errorException, errorDescription, exceptionDescription⟩ := symbols
-  simp [bindCallArguments, descriptors, parameters, List.get?, createFrame, readOperand, allocateCell,
+  simp [bindCallArguments, descriptors, parameters, List.get?, createFrame, bindFrameParameter, readOperand, allocateCell,
     bindCell, findFrame?, replaceFrame, Option.toExcept, bind, Except.bind, pure, Except.pure,
     errorKind, exceptionKind, descriptionKind, errorException, errorDescription,
     Ne.symm exceptionDescription, Nat.add_assoc]
@@ -7259,7 +7292,7 @@ theorem generated_calculateAvailableGas_binding_exact
     simp [freshFrames frame member]
   simp [bindCallArguments, descriptors, parameters, generatedCalculateAvailableGasOperands,
     generatedCalculateAvailableGasBound, generatedCalculateAvailableGasBoundFrame,
-    generatedCalculateAvailableGasBoundCells, List.get?, createFrame, readOperand, allocateCell,
+    generatedCalculateAvailableGasBoundCells, List.get?, createFrame, bindFrameParameter, readOperand, allocateCell,
     bindCell, findFrame?, replaceFrame, oldFrames, kinds,
     Option.toExcept, bind, Except.bind, pure, Except.pure, Nat.add_assoc]
   rfl
@@ -8373,7 +8406,7 @@ theorem generated_execute_calculateAvailableGas_binding_exact
     generatedExecuteAvailableGasBound, generatedExecuteAvailableGasFrame,
     generatedExecuteAvailableGasParameterCell, generatedExecuteAvailableGasLocalCell,
     generatedExecuteAvailableGasCaller, generatedExecuteAvailableGasLocation,
-    List.get?, createFrame, readOperand, allocateCell, bindCell, findFrame?, replaceFrame,
+    List.get?, createFrame, bindFrameParameter, readOperand, allocateCell, bindCell, findFrame?, replaceFrame,
     kinds, symbols, txType, specType,
     Option.toExcept, bind, Except.bind, pure, Except.pure,
     Nat.add_assoc]
@@ -10177,7 +10210,7 @@ private theorem generated_execute_resultBool_binding_exact
     simp [Nat.ne_of_lt (freshFrames frame member)]
   simp [bindCallArguments, descriptors, parameters, generatedExecuteResultBoolBound,
     generatedExecuteResultBoolFrame, generatedExecuteResultBoolParameterCell,
-    createFrame, readOperand, allocateCell, bindCell, findFrame?, replaceFrame,
+    createFrame, bindFrameParameter, readOperand, allocateCell, bindCell, findFrame?, replaceFrame,
     oldFrames, Option.toExcept, bind, Except.bind, pure, Except.pure]
 
 set_option maxRecDepth 10000 in
@@ -12187,7 +12220,7 @@ theorem generated_execute_simpleTransfer_binding_exact
     generatedExecuteSimpleTransferParameterCell,
     generatedExecuteSimpleTransferArgumentReceiver,
     generatedExecuteSimpleTransferArgumentNode, generatedExecuteSimpleTransferLocation,
-    List.get?, createFrame, readOperand, allocateCell, bindCell, findFrame?, replaceFrame,
+    List.get?, createFrame, bindFrameParameter, readOperand, allocateCell, bindCell, findFrame?, replaceFrame,
     oldFrames, kinds, symbols, Option.toExcept, bind, Except.bind, pure, Except.pure,
     Nat.add_assoc]
 
@@ -16720,7 +16753,7 @@ theorem generated_execute_simpleTransfer_charge_binding_exact (before : Machine)
   have costKind : generatedExecuteSimpleTransferChargeCostParameter.refKind = .none := rfl
   have different : generatedExecuteSimpleTransferChargeGasParameter.symbol ≠ generatedExecuteSimpleTransferChargeCostParameter.symbol := by decide +kernel
   change bindCallArguments before Generated.function10 call _ _ = _
-  simp [bindCallArguments, descriptors, parameters, List.get?, createFrame, readOperand, allocateCell,
+  simp [bindCallArguments, descriptors, parameters, List.get?, createFrame, bindFrameParameter, readOperand, allocateCell,
     bindCell, findFrame?, replaceFrame, Option.toExcept, bind, Except.bind, pure, Except.pure,
     gasKind, costKind, different, generatedExecuteSimpleTransferChargeBound, generatedExecuteSimpleTransferChargeFrame, generatedExecuteSimpleTransferChargeGasCell, generatedExecuteSimpleTransferChargeCostCell,
     Nat.add_assoc]
@@ -20700,10 +20733,10 @@ theorem generated_execute_simpleTransfer_clear_binding_exact (before : Machine) 
       { child := 0, ordinal := 0, mode := .writableLocation, implicit := false, kind := "Explicit" }] := rfl
   have gasKind : generatedExecuteSimpleTransferClearParameter.refKind = .ref := rfl
   change bindCallArguments before Generated.function17 call _ _ = _
-  simp [bindCallArguments, descriptors, parameters, List.get?, createFrame, readOperand, allocateCell,
+  simp [bindCallArguments, descriptors, parameters, List.get?, createFrame, bindFrameParameter, allocateCell,
     bindCell, findFrame?, replaceFrame, Option.toExcept, bind, Except.bind, pure, Except.pure,
     gasKind, generatedExecuteSimpleTransferClearBound, generatedExecuteSimpleTransferClearFrame,
-    generatedExecuteSimpleTransferClearAlias, Nat.add_assoc]
+    generatedExecuteSimpleTransferClearAlias]
   conv => rhs; rw [← List.map_id before.frames]
   apply List.map_congr_left
   intro old member
@@ -23906,7 +23939,7 @@ theorem generated_execute_simpleTransfer_constructor_binding_exact
     generatedExecuteSimpleTransferConstructorBound, generatedExecuteSimpleTransferConstructorFrame,
     generatedExecuteSimpleTransferConstructorParameters, generatedExecuteSimpleTransferConstructorParameterCell,
     generatedExecuteSimpleTransferConstructorReceiver, generatedExecuteSimpleTransferConstructorReceiverLocation,
-    List.get?, createFrame, readOperand, allocateCell, bindCell, findFrame?, replaceFrame,
+    List.get?, createFrame, bindFrameParameter, readOperand, allocateCell, bindCell, findFrame?, replaceFrame,
     oldFrames, kinds, symbols, Option.toExcept, bind, Except.bind, pure, Except.pure, Nat.add_assoc]
   repeat' constructor
 
@@ -29044,11 +29077,11 @@ private theorem generated_execute_simpleTransfer_reservoir_binding_exact
       [Argument.mk 0 0 .readOnlyLocation false "Explicit"] := rfl
   have parameterKind : generatedExecuteSimpleTransferReservoirParameter.refKind = .inRef := rfl
   change bindCallArguments before Generated.function23 call _ _ = _
-  simp [bindCallArguments, descriptors, parameters, List.get?, createFrame, readOperand,
+  simp [bindCallArguments, descriptors, parameters, List.get?, createFrame, bindFrameParameter,
     allocateCell, bindCell, findFrame?, replaceFrame, Option.toExcept, bind, Except.bind,
     pure, Except.pure, parameterKind, generatedExecuteSimpleTransferReservoirBound,
     generatedExecuteSimpleTransferReservoirFrame,
-    generatedExecuteSimpleTransferReservoirAlias, Nat.add_assoc]
+    generatedExecuteSimpleTransferReservoirAlias]
   conv => rhs; rw [← List.map_id before.frames]
   apply List.map_congr_left
   intro old member
@@ -36148,6 +36181,298 @@ theorem generated_execute_simpleTransfer_postRefund_accessGuard_to_callFrontier_
   rw [show input.tracer.access = access by rfl, total, steps_add, firstExact]
   exact secondExact
 
+section
+
+set_option maxHeartbeats 16000000
+set_option maxRecDepth 20000
+
+def generatedPostRefundFeeHelperEntryBlock : Block :=
+  { ordinal := 0, operations := [], branchValue := none, condition := .none, exit := .branch,
+    fallThrough := Generated.feeHelperSourceBlock0.fallThrough, conditional := none }
+
+def generatedPostRefundFeeHelperFunction : Function :=
+  { signature := Generated.feeHelperSignature, entryBlock := Generated.feeHelperEntryBlock,
+    entryOperationProvenance := Generated.feeHelperEntryOperation,
+    bindings := [], captures := [], regions := [], entryFacts := [], captureModes := [],
+    blocks := [generatedPostRefundFeeHelperEntryBlock], calls := [], blockBounds := [],
+    fuelBound := 1, mayReturn := false }
+
+def generatedPostRefundFeeHelperEntryProgram : Program :=
+  { generatedExecuteSimpleTransferPostRefundProgram with functions :=
+      [generatedExecuteSimpleTransferPostRefundFunction, generatedPostRefundFeeHelperFunction] }
+
+def generatedPostRefundFeeHelperCall : Call :=
+  (generatedExecuteSimpleTransferPostRefundCallNode false).call.get (by decide)
+
+set_option maxRecDepth 10000 in
+theorem generated_postRefund_feeHelper_entry_source_admitted :
+    Generated.feeHelperSignature = generatedPostRefundFeeHelperCall.target.member ∧
+    Generated.feeHelperSignature.parameters =
+      (generatedExecuteSimpleTransferPostRefundCallArguments false).mapIdx
+        (postRefundCalleeParameter (generatedExecuteSimpleTransferPostRefundCallSymbol false)) ∧
+    Generated.feeHelperEntryBlock = 0 ∧ Generated.feeHelperEntryOperation = 0 ∧
+    Generated.feeHelperSourceBlock0 =
+      { ordinal := 0, kind := "Entry", reachable := true, conditionKind := "None",
+        operations := [], branchValue := none, containsExcludedOperations := false,
+        fallThrough := some {
+          destination := 1, semantics := "Regular", leavingRegions := [],
+          enteringRegions := [], finallyRegions := [] }, conditional := none } := by
+  exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+private theorem createFrame_feeHelper_parameters_exact (before : Machine) (function : Function)
+    (receiver : Operand) (parameters : Nat → Parameter)
+    (values : Nat → Value) (locations : Nat → Location)
+    (kinds : ∀ i < 11, (parameters i).refKind = if i < 5 ∨ i = 10 then .none else .inRef)
+    (distinct : ∀ i < 11, ∀ j < 11, i ≠ j → (parameters i).symbol ≠ (parameters j).symbol)
+    (fresh : ∀ old ∈ before.frames, old.id ≠ before.nextFrame) :
+    let added : List Cell := [{ id := before.nextCell + 0, frame := before.nextFrame, symbol := (parameters 0).symbol, provenance := (parameters 0).symbol, value := values 0, alias := none },
+    { id := before.nextCell + 1, frame := before.nextFrame, symbol := (parameters 1).symbol, provenance := (parameters 1).symbol, value := values 1, alias := none },
+    { id := before.nextCell + 2, frame := before.nextFrame, symbol := (parameters 2).symbol, provenance := (parameters 2).symbol, value := values 2, alias := none },
+    { id := before.nextCell + 3, frame := before.nextFrame, symbol := (parameters 3).symbol, provenance := (parameters 3).symbol, value := values 3, alias := none },
+    { id := before.nextCell + 4, frame := before.nextFrame, symbol := (parameters 4).symbol, provenance := (parameters 4).symbol, value := values 4, alias := none },
+    { id := before.nextCell + 5, frame := before.nextFrame, symbol := (parameters 5).symbol, provenance := (parameters 5).symbol, value := defaultValue (parameters 5).typeName, alias := some (locations 5) },
+    { id := before.nextCell + 6, frame := before.nextFrame, symbol := (parameters 6).symbol, provenance := (parameters 6).symbol, value := defaultValue (parameters 6).typeName, alias := some (locations 6) },
+    { id := before.nextCell + 7, frame := before.nextFrame, symbol := (parameters 7).symbol, provenance := (parameters 7).symbol, value := defaultValue (parameters 7).typeName, alias := some (locations 7) },
+    { id := before.nextCell + 8, frame := before.nextFrame, symbol := (parameters 8).symbol, provenance := (parameters 8).symbol, value := defaultValue (parameters 8).typeName, alias := some (locations 8) },
+    { id := before.nextCell + 9, frame := before.nextFrame, symbol := (parameters 9).symbol, provenance := (parameters 9).symbol, value := defaultValue (parameters 9).typeName, alias := some (locations 9) },
+    { id := before.nextCell + 10, frame := before.nextFrame, symbol := (parameters 10).symbol, provenance := (parameters 10).symbol, value := values 10, alias := none }]
+    let frame : RuntimeFrame := {
+      id := before.nextFrame, functionSymbol := function.signature.symbol, thisOperand := receiver,
+      cells := (added.map (fun cell => (cell.symbol, cell.id))).reverse, captures := [], carried := .unit }
+    createFrame before function receiver
+      [(parameters 0, .immediate (values 0), .value),
+       (parameters 1, .immediate (values 1), .value),
+       (parameters 2, .immediate (values 2), .value),
+       (parameters 3, .immediate (values 3), .value),
+       (parameters 4, .immediate (values 4), .value),
+       (parameters 5, .location (locations 5), .readOnlyLocation),
+       (parameters 6, .location (locations 6), .readOnlyLocation),
+       (parameters 7, .location (locations 7), .readOnlyLocation),
+       (parameters 8, .location (locations 8), .readOnlyLocation),
+       (parameters 9, .location (locations 9), .readOnlyLocation),
+       (parameters 10, .immediate (values 10), .value)] =
+      .ok ({before with
+        frames := frame :: before.frames, cells := added.reverse ++ before.cells,
+        nextFrame := before.nextFrame + 1, nextCell := before.nextCell + 11}, before.nextFrame) := by
+  have mapOld (replacement : RuntimeFrame) :
+      before.frames.map (fun old => if old.id = before.nextFrame then replacement else old) = before.frames := by
+    conv => rhs; rw [← List.map_id before.frames]
+    apply List.map_congr_left
+    intro old member
+    simp [fresh old member]
+  simp [createFrame, bindFrameParameter, kinds, distinct, allocateCell, bindCell, findFrame?, replaceFrame,
+    readOperand, Option.toExcept, bind, Except.bind, pure, Except.pure, Nat.add_assoc, mapOld]
+
+def generatedPostRefundFeeHelperCells (before : Machine) (cells : String → CellId)
+    (values : String → Value) : List Cell :=
+  (Generated.feeHelperSignature.parameters.zip
+    (generatedExecuteSimpleTransferPostRefundCallArguments false)).mapIdx (fun index (parameter, argument) =>
+    { id := before.nextCell + index, frame := before.nextFrame,
+      symbol := parameter.symbol, provenance := parameter.symbol,
+      value := if argument.readOnly then defaultValue parameter.typeName else values argument.source.symbol,
+      alias := if argument.readOnly then some (argument.location cells) else none })
+
+def generatedPostRefundFeeHelperFrame (before : Machine) (receiver : Value)
+    (cells : String → CellId) (values : String → Value) : RuntimeFrame :=
+  { id := before.nextFrame, functionSymbol := Generated.feeHelperSignature.symbol,
+    thisOperand := .immediate receiver,
+    cells := ((generatedPostRefundFeeHelperCells before cells values).map
+      (fun cell => (cell.symbol, cell.id))).reverse,
+    captures := [], carried := .unit }
+
+def generatedPostRefundFeeHelperBound (before : Machine) (receiver : Value)
+    (cells : String → CellId) (values : String → Value) : Machine :=
+  { before with
+    frames := generatedPostRefundFeeHelperFrame before receiver cells values :: before.frames,
+    cells := (generatedPostRefundFeeHelperCells before cells values).reverse ++ before.cells,
+    nextFrame := before.nextFrame + 1, nextCell := before.nextCell + 11 }
+
+set_option maxRecDepth 10000 in
+theorem generated_postRefund_feeHelper_cell_layout (before : Machine)
+    (cells : String → CellId) (values : String → Value) :
+    (generatedPostRefundFeeHelperCells before cells values).map (·.alias.isSome) =
+      [false, false, false, false, false, true, true, true, true, true, false] ∧
+    (generatedPostRefundFeeHelperCells before cells values).map (·.id) =
+      (List.range 11).map (before.nextCell + ·) ∧
+    (generatedPostRefundFeeHelperCells before cells values).map (·.frame) =
+      List.replicate 11 before.nextFrame := by
+  exact ⟨rfl, rfl, rfl⟩
+
+set_option maxRecDepth 20000 in
+set_option maxHeartbeats 16000000 in
+theorem generated_postRefund_feeHelper_bind_exact (before : Machine) (receiver : Value)
+    (cells : String → CellId) (values : String → Value)
+    (fresh : ∀ frame ∈ before.frames, frame.id ≠ before.nextFrame) :
+    bindCallArguments before generatedPostRefundFeeHelperFunction generatedPostRefundFeeHelperCall
+      (.immediate receiver :: (generatedExecuteSimpleTransferPostRefundCallArguments false).map
+        (fun argument => argument.operand cells values)) (.immediate receiver) =
+      .ok (generatedPostRefundFeeHelperBound before receiver cells values, before.nextFrame) := by
+  let parameter (index : Nat) : Parameter :=
+    (Generated.feeHelperSignature.parameters[index]?).getD
+      (Generated.feeHelperSignature.parameters[0]?.get (by decide))
+  let argument (index : Nat) : PostRefundCallArgument :=
+    ((generatedExecuteSimpleTransferPostRefundCallArguments false)[index]?).getD
+      ((generatedExecuteSimpleTransferPostRefundCallArguments false)[0]?.get (by decide))
+  have kindsFinite : ∀ i : Fin 11, (parameter i.val).refKind =
+      if i.val < 5 ∨ i.val = 10 then .none else .inRef := by decide +kernel
+  have distinctFinite : ∀ i j : Fin 11, i ≠ j →
+      (parameter i.val).symbol ≠ (parameter j.val).symbol := by decide +kernel
+  have kinds : ∀ i < 11, (parameter i).refKind =
+      if i < 5 ∨ i = 10 then .none else .inRef := by
+    intro i h
+    exact kindsFinite ⟨i, h⟩
+  have distinct : ∀ i < 11, ∀ j < 11, i ≠ j →
+      (parameter i).symbol ≠ (parameter j).symbol := by
+    intro i hi j hj neq
+    exact distinctFinite ⟨i, hi⟩ ⟨j, hj⟩ (by simpa using neq)
+  have result := createFrame_feeHelper_parameters_exact before generatedPostRefundFeeHelperFunction
+    (.immediate receiver) parameter (fun i => values (argument i).source.symbol)
+    (fun i => (argument i).location cells) kinds distinct fresh
+  have binding : bindCallArguments before generatedPostRefundFeeHelperFunction generatedPostRefundFeeHelperCall
+      (.immediate receiver :: (generatedExecuteSimpleTransferPostRefundCallArguments false).map
+        (fun argument => argument.operand cells values)) (.immediate receiver) =
+      createFrame before generatedPostRefundFeeHelperFunction (.immediate receiver)
+      [(parameter 0, .immediate (values (argument 0).source.symbol), .value),
+        (parameter 1, .immediate (values (argument 1).source.symbol), .value),
+        (parameter 2, .immediate (values (argument 2).source.symbol), .value),
+        (parameter 3, .immediate (values (argument 3).source.symbol), .value),
+        (parameter 4, .immediate (values (argument 4).source.symbol), .value),
+        (parameter 5, .location ((argument 5).location cells), .readOnlyLocation),
+        (parameter 6, .location ((argument 6).location cells), .readOnlyLocation),
+        (parameter 7, .location ((argument 7).location cells), .readOnlyLocation),
+        (parameter 8, .location ((argument 8).location cells), .readOnlyLocation),
+        (parameter 9, .location ((argument 9).location cells), .readOnlyLocation),
+        (parameter 10, .immediate (values (argument 10).source.symbol), .value)] := by rfl
+  rw [binding]
+  exact result
+
+def generatedPostRefundFeeHelperPrepared (before : Machine) (frame : RuntimeFrame)
+    (tail : List Task) (fuel : Nat) : Machine :=
+  { replaceFrame before frame with
+    work := postRefundCallContinuation false frame.id tail,
+    operands := before.operands, csharpFuel := fuel }
+
+def generatedPostRefundFeeHelperScheduled (before : Machine) (frame : RuntimeFrame)
+    (receiver : Value) (cells : String → CellId) (values : String → Value)
+    (tail : List Task) (fuel : Nat) : Machine :=
+  let prepared := generatedPostRefundFeeHelperPrepared before frame tail fuel
+  { generatedPostRefundFeeHelperBound prepared receiver cells values with
+    work := .enterBlock before.nextFrame Generated.feeHelperSignature.symbol 0 ::
+      .resume frame.id before.nextFrame (.local false (.immediate receiver) .value) :: prepared.work }
+
+def generatedPostRefundFeeHelperEntered (before : Machine) (frame : RuntimeFrame)
+    (receiver : Value) (cells : String → CellId) (values : String → Value)
+    (tail : List Task) (fuel : Nat) : Machine :=
+  let prepared := generatedPostRefundFeeHelperPrepared before frame tail (fuel+1)
+  { generatedPostRefundFeeHelperBound prepared receiver cells values with
+    csharpFuel := fuel,
+    work := .finishBlock before.nextFrame Generated.feeHelperSignature.symbol
+        generatedPostRefundFeeHelperEntryBlock ::
+      .resume frame.id before.nextFrame (.local false (.immediate receiver) .value) :: prepared.work }
+
+set_option maxRecDepth 20000 in
+set_option maxHeartbeats 16000000 in
+theorem generated_postRefund_feeHelper_call_entry_exact
+    (input : Input) (before : Machine) (frame : RuntimeFrame)
+    (receiver : Value) (cells : String → CellId) (values : String → Value)
+    (tail : List Task) (fuel : Nat)
+    (fresh : ∀ old ∈ before.frames, old.id ≠ before.nextFrame)
+    (callerFresh : frame.id ≠ before.nextFrame)
+    (freshCells : ∀ cell ∈ before.cells, cell.id < before.nextCell)
+    (bounded : fuel + 1 ≤ 9223372036854775807) :
+    let frontier := generatedExecuteSimpleTransferPostRefundCallFrontier false before frame
+      receiver cells values tail (fuel+1)
+    step generatedPostRefundFeeHelperEntryProgram input frontier =
+      .next (generatedPostRefundFeeHelperScheduled before frame receiver cells values tail (fuel+1)) ∧
+    steps generatedPostRefundFeeHelperEntryProgram input 2 frontier =
+      .next (generatedPostRefundFeeHelperEntered before frame receiver cells values tail fuel) ∧
+    ∀ operand value, readOperand before operand = .ok value →
+      readOperand (generatedPostRefundFeeHelperEntered before frame receiver cells values tail fuel)
+        operand = .ok value := by
+  dsimp only
+  let prepared := generatedPostRefundFeeHelperPrepared before frame tail (fuel+1)
+  let bound := generatedPostRefundFeeHelperBound prepared receiver cells values
+  let helperFrame := generatedPostRefundFeeHelperFrame prepared receiver cells values
+  let node := generatedExecuteSimpleTransferPostRefundCallNode false
+  let call := generatedPostRefundFeeHelperCall
+  let arguments := (generatedExecuteSimpleTransferPostRefundCallArguments false).map
+    (fun argument => argument.operand cells values)
+  have preparedFresh : ∀ old ∈ prepared.frames, old.id ≠ prepared.nextFrame := by
+    intro old member
+    simp only [prepared, generatedPostRefundFeeHelperPrepared, replaceFrame, List.mem_map] at member
+    obtain ⟨original, member, rfl⟩ := member
+    split <;> simp_all [prepared, generatedPostRefundFeeHelperPrepared, replaceFrame]
+  have bindExact := generated_postRefund_feeHelper_bind_exact prepared receiver cells values preparedFresh
+  have indices : LocalCallIndicesValid generatedPostRefundFeeHelperFunction call
+      (.immediate receiver :: arguments) false := by
+    change (false = true ∨ (0 : Int) < 0 ∨ 0 < 12) ∧
+      ∀ argument ∈ generatedPostRefundFeeHelperCall.arguments, argument.ordinal < 11 ∧ argument.child < 12
+    decide +kernel
+  have applied := localCall_apply_success_step generatedPostRefundFeeHelperEntryProgram input
+    prepared bound frame.id before.nextFrame generatedPostRefundFeeHelperFunction node call
+    (.immediate receiver :: arguments) before.operands prepared.work (Or.inl rfl) rfl rfl rfl rfl
+    indices bindExact
+  have kind : node.kind = .invocation := rfl
+  have mode : node.mode = .value := rfl
+  have arity : node.children.length = 12 := rfl
+  have argumentsLength : (generatedExecuteSimpleTransferPostRefundCallArguments false).length = 11 := rfl
+  have zeroCast : ((0 : Nat) : Int) = 0 := rfl
+  have notConstructor : (OperationKind.invocation == .objectCreation) = false := rfl
+  have preparation : localCallPreparation {prepared with work := prepared.work, operands := before.operands}
+      frame.id call (.immediate receiver :: arguments) false = (prepared, .immediate receiver) := rfl
+  have first : step generatedPostRefundFeeHelperEntryProgram input
+      (generatedExecuteSimpleTransferPostRefundCallFrontier false before frame receiver cells values tail (fuel+1)) =
+      .next (generatedPostRefundFeeHelperScheduled before frame receiver cells values tail (fuel+1)) := by
+    have appliedStep := applied.2.2
+    simp only [kind, mode, arity, notConstructor] at appliedStep
+    rw [preparation] at appliedStep
+    simpa only [Generated.feeHelperEntryBlock, zeroCast, List.reverse_cons, argumentsLength, Nat.reduceAdd, node,
+      List.append_assoc, List.singleton_append, generatedPostRefundFeeHelperFunction,
+      generatedPostRefundFeeHelperScheduled, generatedExecuteSimpleTransferPostRefundCallFrontier,
+      prepared, generatedPostRefundFeeHelperPrepared, bound, arguments] using appliedStep
+  have present : findFrame? bound helperFrame.id = some helperFrame := by
+    simp [bound, helperFrame, generatedPostRefundFeeHelperBound, generatedPostRefundFeeHelperFrame,
+      findFrame?]
+  have entered := enterBlock_success_step generatedPostRefundFeeHelperEntryProgram input bound helperFrame
+    generatedPostRefundFeeHelperFunction generatedPostRefundFeeHelperEntryBlock 0
+    (.resume frame.id before.nextFrame (.local false (.immediate receiver) .value) :: prepared.work)
+    fuel rfl present rfl (by decide) bounded
+  have framesUnchanged :
+      bound.frames.map (fun old => if old.id == helperFrame.id then helperFrame else old) = bound.frames := by
+    change (helperFrame :: prepared.frames).map _ = helperFrame :: prepared.frames
+    simp only [List.map_cons, BEq.rfl, if_true, List.cons.injEq, true_and]
+    conv => rhs; rw [← List.map_id prepared.frames]
+    apply List.map_congr_left
+    intro old member
+    have distinct : old.id ≠ helperFrame.id := preparedFresh old member
+    simp [distinct]
+  have second : step generatedPostRefundFeeHelperEntryProgram input
+      (generatedPostRefundFeeHelperScheduled before frame receiver cells values tail (fuel+1)) =
+      .next (generatedPostRefundFeeHelperEntered before frame receiver cells values tail fuel) := by
+    have secondRaw := entered.2.2
+    simp only [replaceFrame] at secondRaw
+    rw [framesUnchanged] at secondRaw
+    have helperId : helperFrame.id = before.nextFrame := rfl
+    have helperSymbol : helperFrame.functionSymbol = Generated.feeHelperSignature.symbol := rfl
+    have noOperations : generatedPostRefundFeeHelperEntryBlock.operations = [] := rfl
+    have noBranch : generatedPostRefundFeeHelperEntryBlock.branchValue = none := rfl
+    simpa only [helperId, helperSymbol, noOperations, noBranch, List.flatMap_nil, List.nil_append,
+      List.singleton_append, generatedPostRefundFeeHelperScheduled, generatedPostRefundFeeHelperEntered,
+      bound, prepared, generatedPostRefundFeeHelperBound, generatedPostRefundFeeHelperPrepared] using secondRaw
+  refine ⟨first, by simp only [steps, first, second], ?_⟩
+  intro operand value readable
+  have preparedRead : readOperand prepared operand = .ok value := by
+    rw [readOperand_cells_eq prepared before rfl operand]
+    exact readable
+  have retained := bindCallArguments_success_preserves_read prepared bound
+    generatedPostRefundFeeHelperFunction call (.immediate receiver :: arguments) (.immediate receiver)
+    before.nextFrame bindExact freshCells operand value preparedRead
+  rw [readOperand_cells_eq (generatedPostRefundFeeHelperEntered before frame receiver cells values tail fuel)
+    bound rfl operand]
+  exact retained
+
+end
+
 theorem generated_availableGas_value_refines_initialization (input : Input)
     (domain : commonDomain input = true) :
     let reference := Eip803x.Refinement.TransactionGasInitialization.referenceInput
@@ -36162,5 +36487,98 @@ theorem generated_availableGas_value_refines_initialization (input : Input)
   obtain ⟨valid, _, value, reservoir, used, spill, refunded, _, _⟩ := result
   exact ⟨valid, by simp only [generatedAvailableGasValue, generatedAvailableGasKernel, enabled,
     value, reservoir, used, spill, refunded]⟩
+
+/-- Source-ordered finalization arguments; only ordinals 7 and 9 retain readonly locations. -/
+def generatedExecuteSimpleTransferFinalizeArguments : List PostRefundCallArgument :=
+  generatedExecuteSimpleTransferPostRefundFinalizeArguments
+
+def generatedExecuteSimpleTransferFinalizeNode : Node := postRefundFinalizeNode
+
+def generatedFinalizeReceiverReady (before : Machine) (frame : RuntimeFrame) (receiver : Value) : Prop :=
+  readOperand before frame.thisOperand = .ok receiver
+
+theorem generated_finalize_argument_modes_source_admitted :
+    generatedExecuteSimpleTransferFinalizeArguments.map (fun argument => (argument.name, argument.readOnly)) =
+      [("tx", false), ("spec", false), ("tracer", false), ("opts", false),
+       ("restore", false), ("commit", false), ("deleteCallerAccount", false),
+       ("senderReservedGasPayment", true), ("executingAccount", false), ("substate", true),
+       ("spentGas", false), ("statusCode", false)] ∧
+    (generatedExecuteSimpleTransferPostRefundCallBlock false).branchValue =
+      some generatedExecuteSimpleTransferFinalizeNode ∧
+    generatedExecuteSimpleTransferFinalizeNode.operator = "virtual=False" ∧
+    nodeTagsValid generatedExecuteSimpleTransferFinalizeNode = true := ⟨rfl, rfl, rfl, rfl⟩
+
+/-- No frame normalization or allocation occurs while evaluating the call's receiver and arguments. -/
+def generatedExecuteSimpleTransferFinalizeFrontier
+    (before : Machine) (frame : RuntimeFrame) (receiver : Value)
+    (cells : String → CellId) (values : String → Value) (tail : List Task) (fuel : Nat) : Machine :=
+  { before with
+    work := .apply frame.id generatedExecuteSimpleTransferFinalizeNode 13 :: tail,
+    operands := (generatedExecuteSimpleTransferFinalizeArguments.map
+      (fun argument => argument.operand cells values)).reverse ++ .immediate receiver :: before.operands,
+    csharpFuel := fuel }
+
+set_option maxRecDepth 20000 in
+set_option maxHeartbeats 16000000 in
+/-- Exactly 51 generic microsteps consume 26 C# ticks and stop before local-call application.
+The program and all continuation/state tails are arbitrary; readonly payloads need not be readable. -/
+theorem generated_finalize_call_frontier_exact
+    (program : Program) (input : Input) (before : Machine) (frame : RuntimeFrame)
+    (receiver : Value) (cells : String → CellId) (values : String → Value)
+    (tail : List Task) (fuel : Nat)
+    (present : findFrame? before frame.id = some frame)
+    (receiverRead : generatedFinalizeReceiverReady before frame receiver)
+    (ready : ∀ argument ∈ generatedExecuteSimpleTransferFinalizeArguments,
+      argument.Ready before frame cells values) :
+    steps program input 51 { before with
+      work := .eval frame.id generatedExecuteSimpleTransferFinalizeNode :: tail,
+      csharpFuel := fuel+26 } =
+      .next (generatedExecuteSimpleTransferFinalizeFrontier before frame receiver cells values tail fuel) := by
+  let arguments := generatedExecuteSimpleTransferFinalizeArguments
+  let invocation := generatedExecuteSimpleTransferFinalizeNode
+  let invocationTail := Task.apply frame.id invocation (arguments.length+1) :: tail
+  let argumentWork := arguments.map (fun argument => Task.eval frame.id (postRefundArgumentNode argument))
+  have invoked := eval_nonpattern_step program input before frame.id invocation tail
+    (fuel+1+2*arguments.length) (by rfl) (by decide)
+  have invocationChildren : invocation.children =
+      postRefundReceiverNode :: arguments.map postRefundArgumentNode := rfl
+  have invocationExact : step program input {before with
+      work := .eval frame.id invocation :: tail, csharpFuel := fuel+(2+2*arguments.length)} =
+      .next {before with
+        work := .eval frame.id postRefundReceiverNode :: argumentWork ++ invocationTail,
+        csharpFuel := fuel+(1+2*arguments.length)} := by
+    rw [show fuel+1+2*arguments.length+1 = fuel+(2+2*arguments.length) by omega] at invoked
+    simpa only [invocationChildren, List.map_cons, List.map_map, List.length_cons, List.length_map,
+      List.cons_append, List.nil_append, invocationTail, argumentWork, Function.comp_def,
+      List.append_assoc, Nat.add_assoc] using invoked
+  have receiverExact := postRefund_receiver_exact program input before frame receiver
+    (argumentWork ++ invocationTail) before.operands (fuel+2*arguments.length) present receiverRead
+  have argumentsExact := postRefund_arguments_exact program input arguments before frame cells values
+    invocationTail (.immediate receiver :: before.operands) fuel present ready
+  have run3 : steps program input 3 {before with
+      work := .eval frame.id invocation :: tail, csharpFuel := fuel+(2+2*arguments.length)} =
+      .next {before with
+        work := argumentWork ++ invocationTail, operands := .immediate receiver :: before.operands,
+        csharpFuel := fuel+2*arguments.length} := by
+    rw [show 3 = 1+2 by rfl, steps_add]
+    simp only [steps, invocationExact]
+    rw [show fuel+2*arguments.length+1 = fuel+(1+2*arguments.length) by omega] at receiverExact
+    exact receiverExact
+  have complete : steps program input (3+4*arguments.length) {before with
+      work := .eval frame.id invocation :: tail, csharpFuel := fuel+(2+2*arguments.length)} =
+      .next (generatedExecuteSimpleTransferFinalizeFrontier before frame receiver cells values tail fuel) := by
+    rw [steps_add, run3]
+    exact argumentsExact
+  exact complete
+
+theorem generated_finalize_frontier_preserves_state
+    (before : Machine) (frame : RuntimeFrame) (receiver : Value)
+    (cells : String → CellId) (values : String → Value) (tail : List Task) (fuel : Nat) :
+    let after := generatedExecuteSimpleTransferFinalizeFrontier before frame receiver cells values tail fuel
+    after.frames = before.frames ∧ after.cells = before.cells ∧ after.statics = before.statics ∧
+    after.tape = before.tape ∧ after.requestsRev = before.requestsRev ∧
+    after.nextFrame = before.nextFrame ∧ after.nextCell = before.nextCell ∧ after.returned = before.returned ∧
+    after.work = .apply frame.id generatedExecuteSimpleTransferFinalizeNode 13 :: tail := by
+  exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 end SimpleTransferCompletionExtractor.StageB.Runtime

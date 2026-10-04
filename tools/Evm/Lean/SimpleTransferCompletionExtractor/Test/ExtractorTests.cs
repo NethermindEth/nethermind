@@ -22,6 +22,242 @@ public sealed class ExtractorTests
     private const string SimpleFinalizeCall = "return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, recipient, in substate, spentGas, statusCode);";
 
     [Test]
+    public void Stage_b_finalize_entry_source_admission_is_current()
+    {
+        string root = FindRepoRoot();
+        Dictionary<string, byte[]> fresh = StageBFinalizeEntryExtractor.RenderArtifacts(root);
+        string output = Path.Combine(root, "tools/Evm/Lean/SimpleTransferCompletionExtractor/StageB/Finalize/Generated");
+        Dictionary<string, byte[]> supplied = Directory.EnumerateFiles(output)
+            .ToDictionary(static path => Path.GetFileName(path), File.ReadAllBytes, StringComparer.Ordinal);
+        Assert.That(() => StageBEffectiveBlockGasExtractor.ValidateArtifacts(supplied, fresh), Throws.Nothing);
+        JsonNode manifest = JsonNode.Parse(fresh[StageBFinalizeEntryExtractor.ManifestName])!;
+        Assert.That(manifest["extractionSources"]!.AsArray().Select(static source => source!["path"]!.GetValue<string>()),
+            Does.Contain("tools/Evm/Lean/SimpleTransferCompletionExtractor/StageBArtifact.cs"), "The Lean data emitter lives in StageBArtifact.cs.");
+    }
+
+    [Test]
+    public void Stage_b_finalize_entry_rejects_compile_valid_source_mutations(
+        [Values("internal", "virtual", "readonly-spent", "renamed", "swap-flags", "entry-region")] string mutation)
+    {
+        using SourceFixture fixture = new();
+        const string path = StageBRefundDispatchExtractor.ProductionPath;
+        string source = File.ReadAllText(Path.Combine(fixture.Root, path));
+        Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax declaration = CSharpSyntaxTree.ParseText(source).GetRoot()
+            .DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax>()
+            .Single(static method => method.Identifier.ValueText == "FinalizeTransaction");
+        string signature = source[declaration.SpanStart..declaration.Body!.OpenBraceToken.SpanStart];
+        string replacement = mutation switch
+        {
+            "internal" => signature.Replace("private", "internal", StringComparison.Ordinal),
+            "virtual" => signature.Replace("private", "protected virtual", StringComparison.Ordinal),
+            "readonly-spent" => signature.Replace("GasConsumed spentGas", "in GasConsumed spentGas", StringComparison.Ordinal),
+            "renamed" => signature.Replace("bool deleteCallerAccount", "bool deleteCaller", StringComparison.Ordinal),
+            "swap-flags" => signature.Replace("bool restore", "bool flagMarker", StringComparison.Ordinal)
+                .Replace("bool commit", "bool restore", StringComparison.Ordinal).Replace("bool flagMarker", "bool commit", StringComparison.Ordinal),
+            _ => signature,
+        };
+        if (mutation == "renamed")
+        {
+            string method = source[declaration.SpanStart..declaration.Span.End];
+            fixture.ReplaceFirst(path, method, method.Replace("deleteCallerAccount", "deleteCaller", StringComparison.Ordinal));
+        }
+        else if (mutation == "entry-region")
+        {
+            int start = source.IndexOf(signature, StringComparison.Ordinal);
+            int brace = source.IndexOf('{', start);
+            string anchor = source[start..(brace+1)];
+            fixture.ReplaceFirst(path, anchor, anchor + "\n using System.IDisposable entryScope = null;\n");
+        }
+        else fixture.ReplaceFirst(path, signature, replacement);
+        Assert.That(fixture.RequireStageBCompilation, Throws.Nothing);
+        Assert.That(fixture.ExtractFinalizeEntry, Throws.TypeOf<ExtractionException>());
+    }
+
+    [Test]
+    public void Stage_b_finalize_entry_rejects_descriptor_and_cfg_drift(
+        [Values("descriptor", "parameter-mode", "parameter-order", "optional", "entry-ordinal", "entry-operation",
+            "unreachable", "branch", "destination", "semantics", "enter-region", "leave-region", "finally-region", "expression-envelope")] string mutation)
+    {
+        using SourceFixture fixture = new();
+        StageBPlan plan = fixture.RequireStageBPlan();
+        StageBMethod method = plan.Methods.Single(static candidate => candidate.Signature?.Name == "FinalizeTransaction");
+        StageBMember descriptor = plan.Members.Single(member => member.Symbol == method.Symbol);
+        StageBBlock entry = method.ControlFlowEvidence[0];
+        StageBParameter[] parameters = descriptor.Parameters.ToArray();
+        switch (mutation)
+        {
+            case "descriptor": descriptor = descriptor with { Receiver = StageBReceiverKind.Static }; break;
+            case "parameter-mode": parameters[10] = parameters[10] with { RefKind = StageBRefKind.In }; break;
+            case "parameter-order": (parameters[4], parameters[5]) = (parameters[5], parameters[4]); break;
+            case "optional": parameters[11] = parameters[11] with { Optional = true }; break;
+            case "entry-ordinal": entry = entry with { Ordinal = 1 }; break;
+            case "entry-operation": method = method with { SelectedEntry = new(0, 1) }; break;
+            case "unreachable": entry = entry with { Reachable = false }; break;
+            case "branch": entry = entry with { BranchValue = method.ControlFlowEvidence[1].BranchValue }; break;
+            case "destination": entry = entry with { FallThrough = entry.FallThrough! with { Destination = 2 } }; break;
+            case "semantics": entry = entry with { FallThrough = entry.FallThrough! with { Semantics = "Return" } }; break;
+            case "enter-region": entry = entry with { FallThrough = entry.FallThrough! with { EnteringRegions = [1] } }; break;
+            case "leave-region": entry = entry with { FallThrough = entry.FallThrough! with { LeavingRegions = [1] } }; break;
+            case "finally-region": entry = entry with { FallThrough = entry.FallThrough! with { FinallyRegions = [1] } }; break;
+            case "expression-envelope": method = method with { ExpressionEnvelope = true }; break;
+        }
+        if (mutation is "parameter-mode" or "parameter-order" or "optional")
+            descriptor = descriptor with { Parameters = parameters };
+        method = method with
+        {
+            Signature = method.Signature! with { Parameters = parameters },
+            ControlFlowEvidence = [entry, .. method.ControlFlowEvidence.Skip(1)],
+        };
+        Assert.That(() => StageBFinalizeEntryExtractor.ValidateEntry(method, descriptor), Throws.TypeOf<ExtractionException>());
+    }
+
+    [Test]
+    public void Stage_b_finalize_entry_rejects_resigned_artifact_mutations(
+        [Values("signature", "edge", "ir-edge", "source-hash", "emitter-hash", "roster", "missing")] string mutation)
+    {
+        Dictionary<string, byte[]> fresh = StageBFinalizeEntryExtractor.RenderArtifacts(FindRepoRoot());
+        Dictionary<string, byte[]> supplied = fresh.ToDictionary(static pair => pair.Key, static pair => pair.Value.ToArray(), StringComparer.Ordinal);
+        if (mutation == "roster") supplied.Add("unexpected.json", []);
+        else if (mutation == "missing") supplied.Remove(StageBFinalizeEntryExtractor.IrName);
+        else
+        {
+            JsonNode manifest = JsonNode.Parse(supplied[StageBFinalizeEntryExtractor.ManifestName])!;
+            if (mutation == "source-hash") manifest["sources"]![0]!["sha256"] = new string('0', 64);
+            else if (mutation == "emitter-hash") manifest["extractionSources"]![1]!["sha256"] = new string('0', 64);
+            else if (mutation == "ir-edge")
+            {
+                JsonNode ir = JsonNode.Parse(supplied[StageBFinalizeEntryExtractor.IrName])!;
+                ir["sourceEntry"]!["fallThrough"]!["destination"] = 2;
+                supplied[StageBFinalizeEntryExtractor.IrName] = Encoding.UTF8.GetBytes(ir.ToJsonString());
+                manifest["ir"]!["sha256"] = Convert.ToHexStringLower(SHA256.HashData(supplied[StageBFinalizeEntryExtractor.IrName]));
+            }
+            else
+            {
+                string lean = Encoding.UTF8.GetString(supplied[StageBFinalizeEntryExtractor.LeanName]);
+                lean = mutation == "signature" ? lean.Replace("name := \"spentGas\"", "name := \"spent\"", StringComparison.Ordinal)
+                    : lean.Replace("destination := 1", "destination := 2", StringComparison.Ordinal);
+                supplied[StageBFinalizeEntryExtractor.LeanName] = Encoding.UTF8.GetBytes(lean);
+                Assert.That(supplied[StageBFinalizeEntryExtractor.LeanName], Is.Not.EqualTo(fresh[StageBFinalizeEntryExtractor.LeanName]));
+                manifest["lean"]!["sha256"] = Convert.ToHexStringLower(SHA256.HashData(supplied[StageBFinalizeEntryExtractor.LeanName]));
+            }
+            supplied[StageBFinalizeEntryExtractor.ManifestName] = Encoding.UTF8.GetBytes(manifest.ToJsonString());
+        }
+        Assert.That(() => StageBEffectiveBlockGasExtractor.ValidateArtifacts(supplied, fresh), Throws.TypeOf<ExtractionException>());
+    }
+
+    [TestCase("UInt256 fees = premiumPerGas * spentGas;", "UInt256 fees = effectiveGasPrice * spentGas;")]
+    [TestCase("UInt256.Min(header.BaseFeePerGas, effectiveGasPrice)", "UInt256.Max(header.BaseFeePerGas, effectiveGasPrice)")]
+    [TestCase("!tx.IsFree() ? effectiveBaseFee * spentGas", "tx.IsFree() ? effectiveBaseFee * spentGas")]
+    [TestCase("spec.IsEip1559Enabled ? eip1559Fees", "!spec.IsEip1559Enabled ? eip1559Fees")]
+    [TestCase("tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled", "tx.SupportsBlobs || spec.IsEip4844FeeCollectorEnabled")]
+    [TestCase("collectedFees += blobBaseFee;", "collectedFees = blobBaseFee;")]
+    [TestCase("spec.FeeCollector is not null && !collectedFees.IsZero", "spec.FeeCollector is not null && collectedFees.IsZero")]
+    [TestCase("WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);", "WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, collectedFees, spec);")]
+    [TestCase("tracer.ReportFees(fees, eip1559Fees + blobBaseFee);", "tracer.ReportFees(eip1559Fees + blobBaseFee, fees);")]
+    [TestCase("tracer.ReportFees(fees, eip1559Fees + blobBaseFee);", "tracer.ReportFees(fees, eip1559Fees);")]
+    [TestCase("WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);", "if (!fees.IsZero) WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);")]
+    [TestCase("WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);", "WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, UInt256.Zero, spec);")]
+    [TestCase("if (tracer.IsTracingFees)", "if (!tracer.IsTracingFees)")]
+    [TestCase("bool gasBeneficiaryNotDestroyed = !substate.DestroyListContains(header.GasBeneficiary);", "bool gasBeneficiaryNotDestroyed = substate.DestroyListContains(header.GasBeneficiary);")]
+    public void Stage_b_pay_fees_rejects_compile_valid_body_mutations(string original, string replacement)
+    {
+        using SourceFixture fixture = new();
+        fixture.Replace(StageBRefundDispatchExtractor.ProductionPath, original, replacement);
+        Assert.That(fixture.RequireStageBCompilation, Throws.Nothing);
+        Assert.That(fixture.ExtractPayFees, Throws.TypeOf<ExtractionException>());
+    }
+
+    [Test]
+    public void Stage_b_pay_fees_rejects_compile_valid_dispatch_mutations([Values("ordinary-shadow", "bal-shadow", "system-effect")] string mutation)
+    {
+        using SourceFixture fixture = new();
+        const string signature = "protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode)";
+        if (mutation == "ordinary-shadow")
+        {
+            const string original = ": EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel);";
+            fixture.ReplaceFirst(StageBRefundDispatchExtractor.ProductionPath, original,
+                original[..^1] + " { " + signature + " { } }");
+        }
+        else if (mutation == "bal-shadow")
+        {
+            string source = File.ReadAllText(Path.Combine(fixture.Root, StageBRefundDispatchExtractor.ProductionPath));
+            int start = source.IndexOf("where TGasPolicy : struct, IGasPolicy<TGasPolicy>", StringComparison.Ordinal);
+            int end = source.IndexOf('}', start);
+            string original = source[start..(end+1)];
+            fixture.ReplaceFirst(StageBRefundDispatchExtractor.ProductionPath, original,
+                "where TGasPolicy : struct, IGasPolicy<TGasPolicy> { " + signature + " { } }");
+        }
+        else
+        {
+            fixture.Replace("src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs",
+                signature + " { }", signature + " { throw new System.InvalidOperationException(); }");
+        }
+        Assert.That(fixture.RequireStageBCompilation, Throws.Nothing);
+        Assert.That(fixture.ExtractPayFees, Throws.TypeOf<ExtractionException>());
+    }
+
+    [Test]
+    public void Stage_b_pay_fees_rejects_compile_valid_read_effect_reordering([Values("report-before-collector", "base-before-beneficiary")] string mutation)
+    {
+        using SourceFixture fixture = new();
+        string source = File.ReadAllText(Path.Combine(fixture.Root, StageBRefundDispatchExtractor.ProductionPath));
+        if (mutation == "report-before-collector")
+        {
+            int method = source.IndexOf("protected virtual void PayFees(", StringComparison.Ordinal);
+            int start = source.IndexOf("if (tracer.IsTracingFees)", method, StringComparison.Ordinal);
+            int end = source.IndexOf('}', start);
+            string report = source[start..(end+1)];
+            fixture.Replace(StageBRefundDispatchExtractor.ProductionPath, report, "");
+            const string guard = "if (spec.FeeCollector is not null && !collectedFees.IsZero)";
+            fixture.Replace(StageBRefundDispatchExtractor.ProductionPath, guard, report + "\n            " + guard);
+        }
+        else
+        {
+            const string read = "UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);";
+            fixture.Replace(StageBRefundDispatchExtractor.ProductionPath, read, "");
+            const string probe = "bool gasBeneficiaryNotDestroyed = !substate.DestroyListContains(header.GasBeneficiary);";
+            fixture.Replace(StageBRefundDispatchExtractor.ProductionPath, probe, read + "\n            " + probe);
+        }
+        Assert.That(fixture.RequireStageBCompilation, Throws.Nothing);
+        Assert.That(fixture.ExtractPayFees, Throws.TypeOf<ExtractionException>());
+    }
+
+    [Test]
+    public void Stage_b_pay_fees_source_admission_is_current()
+    {
+        string root = FindRepoRoot();
+        Dictionary<string, byte[]> fresh = StageBPayFeesExtractor.RenderArtifacts(root);
+        string output = Path.Combine(root, "tools/Evm/Lean/SimpleTransferCompletionExtractor/StageB/PayFees/Generated");
+        Dictionary<string, byte[]> supplied = Directory.EnumerateFiles(output)
+            .ToDictionary(static path => Path.GetFileName(path), File.ReadAllBytes, StringComparer.Ordinal);
+        Assert.That(() => StageBEffectiveBlockGasExtractor.ValidateArtifacts(supplied, fresh), Throws.Nothing);
+    }
+
+    [Test]
+    public void Stage_b_pay_fees_rejects_resigned_artifact_mutations([Values("program-order", "arithmetic", "source-hash", "roster")] string mutation)
+    {
+        Dictionary<string, byte[]> fresh = StageBPayFeesExtractor.RenderArtifacts(FindRepoRoot());
+        Dictionary<string, byte[]> supplied = fresh.ToDictionary(static pair => pair.Key, static pair => pair.Value.ToArray(), StringComparer.Ordinal);
+        if (mutation == "roster") supplied.Add("unexpected.json", []);
+        else
+        {
+            JsonNode manifest = JsonNode.Parse(supplied[StageBPayFeesExtractor.ManifestName])!;
+            if (mutation == "source-hash") manifest["sources"]![0]!["sha256"] = new string('0', 64);
+            else
+            {
+                string lean = Encoding.UTF8.GetString(supplied[StageBPayFeesExtractor.LeanName]);
+                lean = mutation == "program-order" ? lean.Replace(".collector, .report", ".report, .collector", StringComparison.Ordinal)
+                    : lean.Replace("premium * paid % wordModulus", "premium + paid", StringComparison.Ordinal);
+                supplied[StageBPayFeesExtractor.LeanName] = Encoding.UTF8.GetBytes(lean);
+                Assert.That(supplied[StageBPayFeesExtractor.LeanName], Is.Not.EqualTo(fresh[StageBPayFeesExtractor.LeanName]));
+                manifest["lean"]!["sha256"] = Convert.ToHexStringLower(SHA256.HashData(supplied[StageBPayFeesExtractor.LeanName]));
+            }
+            supplied[StageBPayFeesExtractor.ManifestName] = Encoding.UTF8.GetBytes(manifest.ToJsonString());
+        }
+        Assert.That(() => StageBEffectiveBlockGasExtractor.ValidateArtifacts(supplied, fresh), Throws.TypeOf<ExtractionException>());
+    }
+
+    [Test]
     public async Task Stage_b_replay_compares_complete_observations_from_identical_input_bytes()
     {
         StageBPrefixProgram program = StageBPrefixCompiler.Compile(StageBLowering.Build(FindRepoRoot()));
@@ -720,6 +956,84 @@ public sealed class ExtractorTests
     }
 
     [Test]
+    public void Stage_b_finalize_frontier_retains_exact_argument_modes_and_no_callee()
+    {
+        StageBPrefixProgram prefix = StageBPrefixCompiler.Compile(StageBLowering.Build(FindRepoRoot()));
+        StageBPrefixFunction caller = prefix.Functions.Single(function => function.Signature.Symbol == prefix.Refund.Continuation.Function);
+        StageBTerm invocation = prefix.Refund.Continuation.SourceBlocks.Single(block => block.Ordinal == 39).BranchValue!;
+        StageBTerm expected = ExpectedPostRefundCallBlock(caller, 39).BranchValue!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(invocation), JsonSerializer.SerializeToNode(expected)), Is.True);
+            Assert.That(invocation.Children.Skip(1).Select(term => term.Binding!.ArgumentMode), Is.EqualTo(new[]
+            {
+                StageBArgumentMode.Value, StageBArgumentMode.Value, StageBArgumentMode.Value, StageBArgumentMode.Value,
+                StageBArgumentMode.Value, StageBArgumentMode.Value, StageBArgumentMode.Value, StageBArgumentMode.ReadOnlyLocation,
+                StageBArgumentMode.Value, StageBArgumentMode.ReadOnlyLocation, StageBArgumentMode.Value, StageBArgumentMode.Value,
+            }));
+            Assert.That(prefix.Functions.Select(function => function.Signature.Name), Does.Not.Contain("FinalizeTransaction"));
+            Assert.That(() => StageBArtifact.ValidateProgram(prefix), Throws.Nothing);
+        }
+    }
+
+    [TestCase("receiver", "return FinalizeTransaction", "return this.FinalizeTransaction")]
+    [TestCase("payment-alias", "in senderReservedGasPayment", "in opcodeGasPrice")]
+    [TestCase("substate-temporary", "in substate", "default(TransactionSubstate)")]
+    [TestCase("options", "tracer, opts", "tracer, ExecutionOptions.SkipValidation")]
+    [TestCase("delete-flag", "commit, deleteCallerAccount", "commit, !deleteCallerAccount")]
+    [TestCase("address", "recipient, in substate", "tx.SenderAddress!, in substate")]
+    [TestCase("status", "spentGas, statusCode", "spentGas, 0")]
+    [TestCase("gas-fields", "spentGas, statusCode", "new GasConsumed(1, 2, 3, 4, 5, 6), statusCode")]
+    public void Stage_b_finalize_frontier_rejects_compile_valid_argument_mutations(string mutation, string original, string replacement)
+    {
+        using SourceFixture fixture = new();
+        fixture.ReplaceFirst(Extractor.TransactionProcessorPath, SimpleFinalizeCall,
+            SimpleFinalizeCall.Replace(original, replacement, StringComparison.Ordinal));
+        Assert.That(() => fixture.RequireStageBCompilation(), Throws.Nothing, mutation);
+        Assert.That(() => StageBArtifact.ValidateProgram(StageBPrefixCompiler.Compile(fixture.RequireStageBPlan())),
+            Throws.TypeOf<ExtractionException>(), mutation);
+    }
+
+    [TestCase("spent-readonly", "            GasConsumed spentGas,", "            in GasConsumed spentGas,")]
+    [TestCase("virtual", "private TransactionResult FinalizeTransaction(", "protected virtual TransactionResult FinalizeTransaction(")]
+    public void Stage_b_finalize_frontier_rejects_compile_valid_signature_mutations(string mutation, string original, string replacement)
+    {
+        using SourceFixture fixture = new();
+        string source = File.ReadAllText(Path.Combine(fixture.Root, Extractor.TransactionProcessorPath));
+        int start = source.IndexOf("        private TransactionResult FinalizeTransaction(", StringComparison.Ordinal);
+        int end = source.IndexOf("\n        {", start, StringComparison.Ordinal);
+        string signature = source[start..end];
+        Assert.That(signature, Does.Contain(original));
+        fixture.ReplaceFirst(Extractor.TransactionProcessorPath, signature, signature.Replace(original, replacement, StringComparison.Ordinal));
+        Assert.That(() => fixture.RequireStageBCompilation(), Throws.Nothing, mutation);
+        Assert.That(() => StageBArtifact.ValidateProgram(StageBPrefixCompiler.Compile(fixture.RequireStageBPlan())),
+            Throws.TypeOf<ExtractionException>(), mutation);
+    }
+
+    [Test]
+    public void Stage_b_finalize_frontier_rejects_resigned_source_projection_mutations([Range(0, 3)] int mutation)
+    {
+        StageBPrefixProgram prefix = StageBPrefixCompiler.Compile(StageBLowering.Build(FindRepoRoot()));
+        StageBBlock block = prefix.Refund.Continuation.SourceBlocks.Single(block => block.Ordinal == 39);
+        StageBTerm call = block.BranchValue!;
+        StageBTerm[] children = [.. call.Children];
+        if (mutation == 0) (children[5], children[6]) = (children[6], children[5]);
+        if (mutation == 1) children[8] = children[8] with { Binding = children[8].Binding! with { ArgumentMode = StageBArgumentMode.Value } };
+        if (mutation == 2) children[11] = children[11] with { Binding = children[11].Binding! with { ArgumentMode = StageBArgumentMode.ReadOnlyLocation } };
+        StageBTerm changed = call with { Children = children, Operator = mutation == 3 ? "virtual=True" : call.Operator };
+        StageBPrefixProgram candidate = prefix with
+        {
+            Refund = prefix.Refund with { Continuation = prefix.Refund.Continuation with
+            {
+                SourceBlocks = prefix.Refund.Continuation.SourceBlocks.Select(source => source.Ordinal == 39 ? source with { BranchValue = changed } : source).ToArray(),
+            } },
+            Integrity = "",
+        };
+        candidate = candidate with { Integrity = StageBPrefixIntegrity.Compute(candidate) };
+        Assert.That(() => StageBArtifact.ValidateProgram(candidate), Throws.TypeOf<ExtractionException>());
+    }
+
+    [Test]
     public void Stage_b_prefix_fee_helper_entry_retains_source_signature_and_empty_entry()
     {
         StageBPrefixProgram prefix = StageBPrefixCompiler.Compile(StageBLowering.Build(FindRepoRoot()));
@@ -806,6 +1120,47 @@ public sealed class ExtractorTests
         StageBPrefixProgram candidate = prefix with { PostRefundFeeHelper = changed, Integrity = "" };
         candidate = candidate with { Integrity = StageBPrefixIntegrity.Compute(candidate) };
         Assert.That(() => StageBArtifact.ValidateProgram(candidate), Throws.TypeOf<ExtractionException>());
+    }
+
+    [TestCase("bit-test")]
+    [TestCase("parallel")]
+    [TestCase("execution-source")]
+    [TestCase("state-source")]
+    [TestCase("counter-order")]
+    [TestCase("fallback")]
+    [TestCase("combine-sum")]
+    [TestCase("header-before-state")]
+    [TestCase("paid-gas")]
+    [TestCase("fees-before-counters")]
+    public void Stage_b_fee_residual_rejects_compile_valid_mutations(string mutation)
+    {
+        using SourceFixture fixture = new();
+        const string execution = "_blockCumulativeExecutionGas += spentGas.EffectiveBlockGas;";
+        const string state = "_blockCumulativeStateGas += spentGas.BlockStateGas;";
+        const string header = "header.GasUsed = TGasPolicy.CombineBlockGas(_blockCumulativeExecutionGas, _blockCumulativeStateGas);";
+        const string gate = "if (SystemTransactionRoutingKernel.ParticipatesInNormalBlockCounters(opts, _parallel))";
+        const string fees = "PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);";
+        (string path, string original, string replacement) = mutation switch
+        {
+            "bit-test" => ("src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs",
+                "(options & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !parallel",
+                "options != ExecutionOptions.SkipValidation && !parallel"),
+            "parallel" => (Extractor.TransactionProcessorPath, gate, gate.Replace("_parallel", "!_parallel", StringComparison.Ordinal)),
+            "execution-source" => (Extractor.TransactionProcessorPath, execution, execution.Replace("EffectiveBlockGas", "BlockStateGas", StringComparison.Ordinal)),
+            "state-source" => (Extractor.TransactionProcessorPath, state, state.Replace("BlockStateGas", "EffectiveBlockGas", StringComparison.Ordinal)),
+            "counter-order" => (Extractor.TransactionProcessorPath, execution + "\n                    " + state, state + "\n                    " + execution),
+            "fallback" => (Extractor.GasConsumedPath, "BlockGas > 0 || BlockStateGas > 0 ? BlockGas : SpentGas", "BlockGas > 0 ? BlockGas : SpentGas"),
+            "combine-sum" => (Extractor.TransactionProcessorPath, header, "header.GasUsed = _blockCumulativeExecutionGas + _blockCumulativeStateGas;"),
+            "header-before-state" => (Extractor.TransactionProcessorPath, state + "\n                    " + header, header + "\n                    " + state),
+            "paid-gas" => (Extractor.TransactionProcessorPath, fees, fees.Replace("spentGas.SpentGas", "spentGas.EffectiveBlockGas", StringComparison.Ordinal)),
+            "fees-before-counters" => (Extractor.TransactionProcessorPath, gate, fees + "\n            " + gate),
+            _ => throw new AssertionException(mutation),
+        };
+        if (mutation == "fees-before-counters") fixture.ReplaceFirst(path, "            " + fees + "\n", "");
+        fixture.ReplaceFirst(path, original, replacement);
+        Assert.That(() => fixture.RequireStageBCompilation(), Throws.Nothing, mutation);
+        Assert.That(() => StageBArtifact.ValidateProgram(StageBPrefixCompiler.Compile(fixture.RequireStageBPlan())),
+            Throws.TypeOf<ExtractionException>(), mutation);
     }
 
     [Test]
@@ -3334,6 +3689,10 @@ public sealed class ExtractorTests
 
         internal void RequireStageBCompilation() => _ = CompilerSources.Load(Root, _overrides);
 
+        internal Dictionary<string, byte[]> ExtractPayFees() => StageBPayFeesExtractor.RenderArtifacts(Root, _overrides);
+
+        internal Dictionary<string, byte[]> ExtractFinalizeEntry() => StageBFinalizeEntryExtractor.RenderArtifacts(Root, _overrides);
+
         public void Dispose() => _directory.Dispose();
     }
 }
@@ -3793,7 +4152,7 @@ public sealed class StageBControlTests
                 StageBMember member = new("callee", "", "Callee", "probe", StageBMemberKind.Method, StageBReceiverKind.Static,
                     "void", StageBRefKind.None, [parameter]);
                 StageBPrefixFunction function = new(member, new(0, 0), [], [], [], [], [], [], [], [], 1, true);
-                StageBPrefixProgram program = new("callee", "", [function], [], [], [], null!, [], 1, "", [], [], [], [], "");
+                StageBPrefixProgram program = new("callee", "", [function], [], [], [], null!, [], 1, "", [], [], [], [], null!, "");
                 Machine machine = new(program, null!, new(), 1);
                 CallBindingProbe observer = new(sourceKind, write, read);
                 machine._callBindingProbe = observer;
@@ -5149,7 +5508,7 @@ public sealed class StageBControlTests
                     Literal(113), "None", StageBPrefixExit.Return, null, null);
                 StageBPrefixFunction root = new(member with { Symbol = "root", Parameters = [] }, new(0, 0), [], [], [], [], [rootBlock], [],
                     [new(0, StageBPrefixOperandMode.Location)], [], 28, true);
-                StageBPrefixProgram program = new("root", "", [root, child], [], [], [], null!, [], 28, "", [], [], [], [], "");
+                StageBPrefixProgram program = new("root", "", [root, child], [], [], [], null!, [], 28, "", [], [], [], [], null!, "");
                 Machine machine = new(program, null!, new(), fuel);
                 Frame frame = new(root, Operand.Value(StageBValue.Unit));
                 foreach (RecursiveCallLocation location in new[] { receiver, first, second, reference, output, continuation })
@@ -5706,7 +6065,7 @@ public sealed class StageBControlTests
     [TestCase("StageBPrefixProgram.cs", "Value, Location, ReadOnlyLocation", "Location, Value, ReadOnlyLocation", "Control projection enum changed")]
     [TestCase("StageBPlan.cs", "internal sealed record StageBEdge(int Destination, string Semantics, int[] LeavingRegions, int[] EnteringRegions, int[] FinallyRegions);", "internal sealed record StageBEdge(int Destination, string Semantics, int[] LeavingRegions, int[] EnteringRegions, int[] FinallyRegions) { public int Destination { get; init; } = Destination + 1; }", "Control projection record changed")]
     [TestCase("StageBPlan.cs", "internal sealed record StageBCfgPoint(int Block, int Operation);", "internal sealed record StageBCfgPoint(int Block, int Operation) { public int Block { get; init; } = Block + 1; }", "Control projection record changed")]
-    [TestCase("StageBPrefixProgram.cs", "StageBStage[] AcceptedStages, string Integrity);", "StageBStage[] AcceptedStages, string Integrity) { public long FuelBound { get; init; } = FuelBound + 1; }", "Control projection record changed")]
+    [TestCase("StageBPrefixProgram.cs", "StageBInertFunction PostRefundFeeHelper, string Integrity);", "StageBInertFunction PostRefundFeeHelper, string Integrity) { public long FuelBound { get; init; } = FuelBound + 1; }", "Control projection record changed")]
     [TestCase("StageBPrefixProgram.cs", "int ReceiverChild, StageBPrefixArgument[] Arguments);", "int ReceiverChild, StageBPrefixArgument[] Arguments) { public int ReceiverChild { get; init; } = ReceiverChild + 1; }", "Control projection record changed: StageBPrefixCall")]
     [TestCase("StageBPrefixProgram.cs", "int ReceiverChild, StageBPrefixArgument[] Arguments);", "int ReceiverChild, StageBPrefixArgument[] Arguments) { private StageBPrefixArgument[] _arguments = Arguments; private int _reads; public StageBPrefixArgument[] Arguments { get => _reads++ == 0 ? _arguments : []; init => _arguments = value; } }", "Control projection record changed: StageBPrefixCall")]
     [TestCase("StageBPrefixProgram.cs", "string Body, StageBRequestKind? RequestKind);", "string Body, StageBRequestKind? RequestKind) { public string Body { get; init; } = Body + \"changed\"; }", "Control projection record changed: StageBPrefixTarget")]

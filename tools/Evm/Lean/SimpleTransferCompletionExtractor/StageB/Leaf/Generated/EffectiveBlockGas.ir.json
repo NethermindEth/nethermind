@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "stage-b-effective-block-gas-source-admitted-leaf",
+  "symbol": "global::Nethermind.Evm.TransactionProcessing.GasConsumed.EffectiveBlockGas",
+  "source": {
+    "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/GasConsumed.cs",
+    "role": "semantic",
+    "sha256": "1dc4e78d5a17056dcb00d496136a32a899245f3a7b3e5a9eef74c4760ef68686"
+  },
+  "expression": "BlockGas\u003E0||BlockStateGas\u003E0?BlockGas:SpentGas",
+  "operands": [
+    "BlockGas",
+    "BlockStateGas",
+    "BlockGas",
+    "SpentGas"
+  ],
+  "operandType": "System.UInt64",
+  "exclusions": [
+    "reference-heap",
+    "property-read-clr-bridge",
+    "stage-a-completion-bundle"
+  ]
+}

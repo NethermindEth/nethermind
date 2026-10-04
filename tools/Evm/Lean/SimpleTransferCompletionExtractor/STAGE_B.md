@@ -222,7 +222,7 @@ are compared through a length-delimited structural encoding that retains every c
 identity, field name, field order, byte, and nested value up to a fixed depth exceeding the admitted
 program's layouts. `Verify-StageB.ps1` checks artifact freshness, the pinned ordinary-Refund adapter
 manifest and source closure, the standard-mainnet Refund-dispatch artifact, focused warning-as-error C#
-tests with a fail-closed minimum of 485 discovered Stage-B tests, the Stage-B Lean target, direct
+tests with a fail-closed minimum of 556 discovered Stage-B tests, the Stage-B Lean target, direct
 warning-as-error typechecks, and placeholder absence without depending on the known-stale Stage-A
 reference target.
 
@@ -909,7 +909,7 @@ and ordinary-Refund upstream manifests. This remains conditional on a finite run
 observation relating the exact Stage-B processor receiver value to one of those two leaves; it does not
 derive runtime selection. Fresh source extraction, deterministic artifacts and mutations of leaf
 sealing/slot ownership, lineage, either containing-instance call, IR, Lean or manifest bytes fail
-closed, and the focused gate requires at least 485 discovered Stage-B tests. The theorem excludes
+closed, and the focused gate requires at least 556 discovered Stage-B tests. The theorem excludes
 `SystemTransactionProcessor`, Optimism and Taiko processors, DI or plugin selection, host execution,
 the `Refund` return and caller assignment, `PayRefund` effects, caller resume and all downstream
 blocks.
@@ -975,12 +975,211 @@ the guard's carried Boolean. Two independent exact-source cases and fifteen comp
 cover call receivers, argument identity and readonly temporaries, operation order, finalization arguments,
 and return control flow. The existing replay still ends at `Refund` and does not execute these residual paths.
 
-Neither call is applied: `ReportSimpleTransferAccess` and its tracker/pool/callback behavior, fee/header
-updates, `FinalizeTransaction`, and later pipeline processing remain open. These roots do not compose the
+`generated_postRefund_feeHelper_entry_source_admitted` pins the actual eleven-parameter
+`UpdateHeaderGasUsedAndPayFees` signature and its empty CFG entry with the regular edge to block 1.
+The prefix artifact retains that signature and the helper's complete source CFG as inert evidence;
+the frozen replay and its executable function roster remain unchanged. A purpose-specific residual
+program admits only the helper's empty entry, not its guard or body.
+`generated_postRefund_feeHelper_bind_exact` proves exact receiver and argument binding into a fresh
+frame: six by-value cells and five readonly aliases, in source order, with exact symbols and locations.
+`generated_postRefund_feeHelper_cell_layout` fixes the eleven consecutive cell identifiers and owners.
+`generated_postRefund_feeHelper_call_entry_exact` applies the false-access fee-call frontier in one
+microstep, then enters its empty block in a second microstep/one C# tick. The endpoint has the entry's
+`finishBlock` task pending before the counter-participation guard, and retains the caller's resume and
+finalization continuation. Explicit fresh-frame/fresh-cell and representable-fuel premises ensure that
+existing readable cells stay readable with the same values; old cells, the prepared caller frame tail, statics, host requests,
+response tape, and returned result are retained. One source-admission case, four compile-valid source
+mutations, and five re-signed inert-metadata controls cover this boundary.
+
+`ReportSimpleTransferAccess` and its tracker/pool/callback behavior, actual `PayFees` execution,
+`FinalizeTransaction`, and later pipeline processing remain open. These entry roots do not compose the
 explicit-rearm/status-code phases into uninterrupted transaction execution or establish the concrete
-tracer-getter/CLR bridge. The automated axiom gate checks twenty-eight exact theorem roots transitively,
+tracer-getter/CLR bridge. The automated axiom gate checks seventy-five exact theorem roots transitively,
 allowing only `propext`, `Classical.choice` and
 `Quot.sound`, with injected-axiom and malformed-output negative controls.
+
+### Projected EIP-8037 fee-helper residual
+
+`StageB/FeeHelperSource.lean` independently reconstructs the selected helper CFG blocks and proves
+`FeeHelper.selected_source_admitted`: block 1's exact routing call on `opts` and `_parallel`, block 2's
+EIP-8037 guard, block 3's unchecked execution add followed by state add followed by constrained
+`CombineBlockGas` assignment to `header.GasUsed`, and block 5's exact receiver/ten-argument virtual
+`PayFees` invocation. Source mutations cannot pass by changing only the handwritten residual.
+
+`StageB/FeeHelper.lean` is a specialized executable residual, not an extension of the generic runtime.
+Its `Objects` projection contains identities and only `_parallel`, both cumulative counters, and
+`header.GasUsed`. `EntryWitness` explicitly joins the already accepted helper-entry machine to supplied
+parameter/read/readonly-alias observations and externally observed mutable fields. The proof does not
+derive a CLR reference heap from the immutable machine or claim generic `Runtime.steps` executes
+`CompoundAssignment`. No assumption asserts the desired counter result; it is computed and proved
+inside the projected residual. Concrete getter/setter/heap correspondence remains a separate obligation.
+
+The source-pinned `SystemTransactionRoutingKernel` leaf supplies the exact SkipValidation bit (4) and
+parallel gate. The existing `BlockReceiptGasAccountingKernel` supplies unchecked UInt64 addition and
+source-validated `EthereumGasPolicy.CombineBlockGas`; the gate checks its supporting sources as well
+as its source/IR/Lean hashes. `natural_counter_refinement` reuses its accepted no-wrap theorem to prove
+natural execution/state sums and header max, with explicit input-range and no-wrap premises.
+
+`StageBEffectiveBlockGasExtractor` admits the live, semantically bound positional UInt64 getter and
+emits the narrow `StageB/Leaf/Generated/EffectiveBlockGas` artifacts. It preserves
+`BlockGas > 0 || BlockStateGas > 0 ? BlockGas : SpentGas`: zero execution with nonzero state stays zero.
+Current source, compiler pins/references and extractor identities are recorded and regenerated for
+byte-exact checks. No stale Stage-A completion artifact is imported or regenerated. Its discovered
+schema/source-acceptance/assembly-identity drift is verification-artifact drift, not a Nethermind bug.
+
+`projected_residual_reaches_pending_payFees` proves exactly seventeen specialized transitions from
+entry to the pending fee apply: entry, routing guard, fork guard, execution add, state add, header
+write, receiver, then ten arguments. These are not generic-runtime microsteps or production C# ticks.
+`accepted_entry_reaches_pending_payFees` and `entry_and_residual_compose` compose only through the
+explicit witness, retaining the earlier checked two-step helper entry. `one_short_fuel` fails with
+sixteen residual fuel units. `pending_frontier_exact` fixes receiver/argument order, the four readonly
+alias locations/provenance and six value arguments, preserves the underlying entry machine, and
+proves the residual refuses to apply `PayFees`. The three writes are separately logged at the correct
+processor/header identities; header max uses both already updated, possibly wrapped counters.
+
+Seven executable theorem groups cover eight literal counter/wrap/max cases, eight raw option masks,
+the three excluded paths and one-short fuel, ordered writes, four alias identities, paid rather than
+effective fee gas, and a nested readonly alias observation. These are projected runner vectors, not
+end-to-end production executions. Ten compile-valid helper mutations cover bit-test, parallel,
+counter identity/order, fallback, max-versus-sum, update order, paid gas and fee placement. Twelve
+narrow-leaf tests cover current artifacts, seven compile-valid property mutations and four artifact/
+hash/roster controls. The focused Stage-B discovery floor is 584.
+
+Skipped-counter, parallel, and EIP-8037-disabled paths return `outside` in this milestone rather than
+claiming production behavior. PayFees dispatch/effects, FinalizeTransaction, generic mutable heap and
+compound assignment, CLR execution, and uninterrupted transaction composition remain unproved.
+The accepted prefix/entry theorem and frozen replay endpoint are unchanged.
+
+### Projected standard-mainnet PayFees and caller return
+
+`StageBPayFeesExtractor` admits the current protected virtual ten-parameter `PayFees` signature, exact
+body token structure and typed Roslyn body/CFG. It follows the sealed `EthereumTransactionProcessor`
+and `TransactionProcessor<EthereumGasPolicy>` lineages to the base slot and rejects both overrides
+and shadowing. `SystemTransactionProcessor<EthereumGasPolicy>` has a separately pinned empty override
+and is excluded; Optimism, Taiko, Xdc and plugin leaves are also excluded. Concrete DI/runtime receiver
+selection is an explicit observation, not inferred from the model receiver enum.
+
+The fresh narrow generated arithmetic/program leaf is a source-admitted transcription, not a generic
+C# compiler. `arithmetic_refines` relates its formulas to independently written modular formulas over
+bounded UInt256 words and UInt64 paid gas; `modular_outputs_bounded` proves every computed monetary
+quantity fits UInt256. The effective base fee is `min(header.BaseFeePerGas, effectiveGasPrice)`.
+Free transactions zero EIP-1559 fees; EIP-1559 enables their collector component; the conjunction of
+blob support and the blob-collector flag adds the blob component modulo 2^256. `ReportFees` receives
+premium and `(eip1559Fees + blobBaseFee) mod 2^256`, independently of collector gates.
+
+`projected_payFees_exact` executes ten projected source stages, including the unconditional destroy-list
+probe, then returns void. The pinned simple-transfer empty destroy list makes the beneficiary eligible
+even for zero premium; the final `IsEip8037Enabled` disjunct is short-circuited. The existing helper-entry
+boundary supplies the EIP-8037 context, actual paid gas and readonly premium/effective/blob aliases.
+The witness also observes a null `_destroyList` through the actual substate argument; a separate theorem
+proves the accepted simple-transfer constructed substate has that null field for both halt flags.
+Other transaction/spec/tracer flags remain explicit observations. Actual provider credit/create and
+tracer operations are abstract effects, with no distinct-address assumption or effect coalescing.
+
+Reads and effects share one ordered event trace. Beneficiary and collector argument reads are separate
+from earlier destroy/collector-null probes; later header, transaction, spec and tracer observations are
+checked after preceding effects. `EventExecution` relates that trace to an arbitrary external world
+transition relation and pointwise read relation. `event_execution_preserves_effect_order` proves its
+effect-only projection agrees with the ordered abstract-effect execution. No provider balance law,
+account-creation semantics, Boolean return interpretation, persistence or host exception behavior is
+asserted. Normal-return effects and the retained interpreter-machine projection/noninterference are
+explicit witness obligations, not assumed computed fee outputs.
+Read witnesses are observational in the chosen world abstraction; mutating getters are outside this
+normal-return boundary. Credit argument observations supply non-null addresses, including the second
+collector getter read; the earlier null check is not silently treated as proof of getter stability.
+
+`pending_boundary_composes` connects the accepted fee-helper frontier to projected PayFees completion.
+`helper_exit_source_admitted` pins the helper's empty exit after its fee call. The projected normal-return
+handoff uses the exact retained caller continuation (`handoff_uses_retained_continuation`); it is not
+claimed to arise from generic execution of the fee/helper bodies. `generic_return_resume_cleanup_exact`
+then executes three genuine generic-runtime steps: void resume, expression-statement cleanup, and
+caller `setLast`. `payFees_and_caller_resume_compose` combines these only through the explicit normal
+effect/read/noninterference witness. Cells, request/tape, allocation counters and C# fuel are retained,
+and all-matching duplicate frame replacement is preserved. This theorem stops with `FinalizeTransaction`
+scheduled for evaluation; the separately checked argument-only continuation below does not enter its body.
+
+Nine vector groups cover ten literal arithmetic/min/free/collector/wrap cases, same-account credits,
+zero credits, collector/tracer branches and repeated getter observations, exact event interleaving,
+short-circuited reads, projected ten/one-short fuel, excluded nonempty destroy lists, zero-C#-fuel
+generic return, and duplicate caller-frame semantics. Twenty-four C# cases cover fourteen compile-valid
+body mutations, three dispatch mutations, two read/effect reorderings, canonical admission and four
+re-signed artifact/roster controls. The gate checks six extraction modes, at least 584 discovered
+Stage-B tests and seventy-five exact axiom roots. Prefix/entry artifacts are unchanged; only compiler
+source evidence in the control manifest changes when adding the new extractor/CLI.
+
+The broad OrdinaryEvmCompletion fee lemma is private and is not reused through its larger bundle.
+Concrete virtual dispatch/DI, UInt256 optimized implementation, external object/provider/journal/tracer
+semantics, host exceptions, the access-report branch and uninterrupted end-to-end composition remain
+outside this milestone. No production Nethermind bug was confirmed.
+
+### FinalizeTransaction binding and empty entry
+
+`StageBFinalizeEntryExtractor` is a separate source-admission mode (`--stage-b-finalize-entry`). It uses
+the current StageBLowering/compiler closure and checks the production method's private, nonstatic,
+nonvirtual ownership, twelve ordered parameters, full equality to the accepted caller descriptor,
+entry position (0,0), empty reachable Entry0, and regular edge to block 1 with no entering, leaving or
+finally regions. The three `StageB/Finalize/Generated/FinalizeEntry` artifacts pin the current compiler,
+sources and extractor/emitter closure; `StageBArtifact.cs` contains the shared Lean data emitter and
+is explicitly pinned/tested. No finalization body is added to the frozen prefix, and no stale Stage-A
+bundle is imported. The residual function contains only Entry0, not block 1.
+
+The runtime exposes its existing `createFrame` and `bindCallArguments` definitions plus the factored
+single-parameter `bindFrameParameter` operation. `bindFrameParameter_copy_or_alias` gives a narrow
+one-cell equation without reading alias payloads. `Finalize/Binding.lean` derives an arbitrary-length
+mixed-copy/location binding theorem from that actual fold, retaining duplicate-symbol behavior; it
+does not implement a second twelve-argument evaluator. The two small `parameterDefaultValue` and
+`operandReadResult` wrappers support exact inactive alias payloads and successful old-read statements.
+These are proof-package APIs, not production Nethermind APIs or a CLR heap bridge.
+
+`Finalize.binding_exact` fixes ten copied values, including the complete six-field GasConsumed at
+ordinal 10, and exactly two readonly locations at ordinals 7 (payment) and 9 (substate). It allocates
+twelve consecutive cells and one fresh frame, retains receiver and source symbols/provenance, and
+reverses raw cells and bindings while preserving old suffixes. It creates no readonly temporaries.
+`bind_step` consumes one generic microstep and zero C# ticks, including at zero fuel.
+`bind_empty_entry_exact` adds one entry microstep/tick, stopping with Entry0's finish task pending
+before the Warmup guard is scheduled. `scheduled_to_empty_entry_exact` composes 53 steps/27 ticks
+from the accepted scheduled invocation; `return_to_empty_entry_exact` composes 56/27 from the accepted
+projected PayFees void-return handoff. Fresh frame/cell bounds and representable fuel are explicit;
+duplicate caller IDs and arbitrary continuation/operand tails are retained. `binding_preserves_old_reads`
+proves successful old operand reads survive allocation, without requiring either readonly payload to
+be readable. `entered_preserves_old_reads` carries that result through entry, and
+`entered_preserves_context` fixes all other retained machine fields exactly.
+
+Twenty-eight C# controls cover canonical admission, six compile-valid source mutations, fourteen
+descriptor/CFG projection mutations and seven re-signed artifact/hash/roster controls. Eleven Lean vector
+groups cover ten distinct abstract copy sentinels, six unequal gas fields, unreadable chained/cyclic
+aliases, exact reversed layout/counters/suffixes, zero-tick binding, one-tick entry/exhaustion, duplicate
+caller IDs and nonempty tails, old reads, 53/56 exact compositions, 52/55 short microsteps and 26 short
+ticks. Abstract sentinel payloads deliberately test positional binding independently of C# type-domain
+correspondence. Warmup/body semantics, transaction property writes, world-state/receipt effects,
+finalization return, concrete alias/default/heap/CLR correspondence and uninterrupted production
+pipeline refinement remain open. No production Nethermind bug was confirmed by this milestone.
+
+### FinalizeTransaction argument frontier
+
+`Runtime.generated_finalize_call_frontier_exact` executes the exact source-pinned private, nonvirtual
+invocation using the existing generic receiver and argument lemmas, for arbitrary programs and
+continuations. It consumes 51 microsteps and 26 C# ticks: one invocation eval, two receiver steps,
+and four steps for each of twelve arguments. Ten arguments require successful value reads. Payment
+ordinal 7 and substate ordinal 9 require bindings only: their readonly locations, original roots,
+field paths and provenance remain exact even if alias payloads are unreadable. `spentGas` is a
+by-value copy of the complete six-field struct, not its implicit `ulong` projection.
+
+`scheduled_finalization_arguments_exact` starts at the accepted PayFees return endpoint.
+`return_to_finalization_apply_exact` includes the accepted three zero-tick return/statement/setLast
+steps, reaching the same pending `.apply` in 54 microsteps/26 ticks. The argument theorem retains
+all cells, frames (including duplicate IDs), statics, tape, requests, allocation counters and returned
+value, plus arbitrary operand/work tails. Only the already accepted return cleanup normalizes the
+matching caller frames. This argument-only theorem neither adds nor applies the callee; the separate
+binding/empty-entry extension above starts from its pending application.
+
+Eight executable vector groups distinguish exact/extra/one-short ticks, 50 versus 51 microsteps,
+independently quantified Boolean positions, six unequal gas fields, readonly chains ending in missing/cyclic
+payloads, nonempty continuations, duplicate IDs and the complete 54-step composition. Fifteen C#
+controls cover canonical source/modes, eight compile-valid argument changes, two compile-valid
+signature/virtual changes and four re-signed projection changes. The accepted prefix/dispatch/fee
+artifacts remain unchanged. Callee body, finalization effects, concrete CLR reference
+heap/provider semantics and uninterrupted production-pipeline refinement remain open.
 
 Production-path review confirms that `PrepareSimpleTransferFastPath` returns the saved non-null `tx.To`
 only after the candidate, code-empty and no-delegation checks, and that successful gas initialization then

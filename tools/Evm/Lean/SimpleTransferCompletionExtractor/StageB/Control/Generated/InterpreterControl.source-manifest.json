@@ -53,11 +53,11 @@
     },
     {
       "path": "repo/tools/Evm/Lean/SimpleTransferCompletionExtractor/Program.cs",
-      "sha256": "32285434b8681a4f70dfdcd5b5bec4c72e3059b54ecedeff9d9dba67fbd6bf55"
+      "sha256": "5cc18820c73ea59373de052435389e94fbcc54661fa8b41dfddcef916dd9401f"
     },
     {
       "path": "repo/tools/Evm/Lean/SimpleTransferCompletionExtractor/StageBArtifact.cs",
-      "sha256": "279708a4c686e9f23cbe2b092e1dce7c0df76a606813f68646c420d8b7beabec"
+      "sha256": "88eff8ed99eb3b978d6a86b2312cdf4e118f50ab2a07c785caebee24fc4bf449"
     },
     {
       "path": "repo/tools/Evm/Lean/SimpleTransferCompletionExtractor/StageBControlExtractor.cs",
@@ -68,8 +68,20 @@
       "sha256": "bc7067df33b2b82c6337148d5b789773ecb691c20334e9921ad205b628917e9e"
     },
     {
+      "path": "repo/tools/Evm/Lean/SimpleTransferCompletionExtractor/StageBEffectiveBlockGasExtractor.cs",
+      "sha256": "d04ba0bb456606bc655d6beaf690242809a26fb37bebfce0ea302f9fda3604ce"
+    },
+    {
+      "path": "repo/tools/Evm/Lean/SimpleTransferCompletionExtractor/StageBFinalizeEntryExtractor.cs",
+      "sha256": "12a66fb8bd85736f41c50d24d88b0a68b8a136c30bcdde95fbf4c28fe1d66f8b"
+    },
+    {
       "path": "repo/tools/Evm/Lean/SimpleTransferCompletionExtractor/StageBLowering.cs",
       "sha256": "f168ea64954a219662b22ed60fdcee07957176ed3e5e9f46b8e2fc15044dab39"
+    },
+    {
+      "path": "repo/tools/Evm/Lean/SimpleTransferCompletionExtractor/StageBPayFeesExtractor.cs",
+      "sha256": "3c3c86d3c470ba2fbbca5a2beacb77c594aff2b8a470e77d405a029c761ee95c"
     },
     {
       "path": "repo/tools/Evm/Lean/SimpleTransferCompletionExtractor/StageBPlan.cs",

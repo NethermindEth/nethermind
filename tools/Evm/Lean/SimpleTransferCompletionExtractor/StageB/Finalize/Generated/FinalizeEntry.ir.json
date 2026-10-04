@@ -1,0 +1,255 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "stage-b-finalize-bind-empty-entry",
+  "owner": "private-instance-nonvirtual",
+  "signature": {
+    "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+    "definition": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+    "name": "FinalizeTransaction",
+    "declaringType": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E",
+    "kind": "method",
+    "receiver": "reference",
+    "type": "global::Nethermind.Evm.TransactionProcessing.TransactionResult",
+    "refKind": "none",
+    "parameters": [
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:0:tx:None:global::Nethermind.Core.Transaction",
+        "name": "tx",
+        "ordinal": 0,
+        "type": "global::Nethermind.Core.Transaction",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:1:spec:None:global::Nethermind.Core.Specs.IReleaseSpec",
+        "name": "spec",
+        "ordinal": 1,
+        "type": "global::Nethermind.Core.Specs.IReleaseSpec",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:2:tracer:None:global::Nethermind.Evm.Tracing.ITxTracer",
+        "name": "tracer",
+        "ordinal": 2,
+        "type": "global::Nethermind.Evm.Tracing.ITxTracer",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:3:opts:None:global::Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+        "name": "opts",
+        "ordinal": 3,
+        "type": "global::Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:4:restore:None:bool",
+        "name": "restore",
+        "ordinal": 4,
+        "type": "bool",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:5:commit:None:bool",
+        "name": "commit",
+        "ordinal": 5,
+        "type": "bool",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:6:deleteCallerAccount:None:bool",
+        "name": "deleteCallerAccount",
+        "ordinal": 6,
+        "type": "bool",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:7:senderReservedGasPayment:In:global::Nethermind.Int256.UInt256",
+        "name": "senderReservedGasPayment",
+        "ordinal": 7,
+        "type": "global::Nethermind.Int256.UInt256",
+        "refKind": "in",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:8:executingAccount:None:global::Nethermind.Core.Address",
+        "name": "executingAccount",
+        "ordinal": 8,
+        "type": "global::Nethermind.Core.Address",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:9:substate:In:global::Nethermind.Evm.TransactionSubstate",
+        "name": "substate",
+        "ordinal": 9,
+        "type": "global::Nethermind.Evm.TransactionSubstate",
+        "refKind": "in",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:10:spentGas:None:global::Nethermind.Evm.TransactionProcessing.GasConsumed",
+        "name": "spentGas",
+        "ordinal": 10,
+        "type": "global::Nethermind.Evm.TransactionProcessing.GasConsumed",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:11:statusCode:None:int",
+        "name": "statusCode",
+        "ordinal": 11,
+        "type": "int",
+        "refKind": "none",
+        "optional": false
+      }
+    ]
+  },
+  "callerDescriptor": {
+    "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+    "definition": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+    "name": "FinalizeTransaction",
+    "declaringType": "global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E",
+    "kind": "method",
+    "receiver": "reference",
+    "type": "global::Nethermind.Evm.TransactionProcessing.TransactionResult",
+    "refKind": "none",
+    "parameters": [
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:0:tx:None:global::Nethermind.Core.Transaction",
+        "name": "tx",
+        "ordinal": 0,
+        "type": "global::Nethermind.Core.Transaction",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:1:spec:None:global::Nethermind.Core.Specs.IReleaseSpec",
+        "name": "spec",
+        "ordinal": 1,
+        "type": "global::Nethermind.Core.Specs.IReleaseSpec",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:2:tracer:None:global::Nethermind.Evm.Tracing.ITxTracer",
+        "name": "tracer",
+        "ordinal": 2,
+        "type": "global::Nethermind.Evm.Tracing.ITxTracer",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:3:opts:None:global::Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+        "name": "opts",
+        "ordinal": 3,
+        "type": "global::Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:4:restore:None:bool",
+        "name": "restore",
+        "ordinal": 4,
+        "type": "bool",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:5:commit:None:bool",
+        "name": "commit",
+        "ordinal": 5,
+        "type": "bool",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:6:deleteCallerAccount:None:bool",
+        "name": "deleteCallerAccount",
+        "ordinal": 6,
+        "type": "bool",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:7:senderReservedGasPayment:In:global::Nethermind.Int256.UInt256",
+        "name": "senderReservedGasPayment",
+        "ordinal": 7,
+        "type": "global::Nethermind.Int256.UInt256",
+        "refKind": "in",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:8:executingAccount:None:global::Nethermind.Core.Address",
+        "name": "executingAccount",
+        "ordinal": 8,
+        "type": "global::Nethermind.Core.Address",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:9:substate:In:global::Nethermind.Evm.TransactionSubstate",
+        "name": "substate",
+        "ordinal": 9,
+        "type": "global::Nethermind.Evm.TransactionSubstate",
+        "refKind": "in",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:10:spentGas:None:global::Nethermind.Evm.TransactionProcessing.GasConsumed",
+        "name": "spentGas",
+        "ordinal": 10,
+        "type": "global::Nethermind.Evm.TransactionProcessing.GasConsumed",
+        "refKind": "none",
+        "optional": false
+      },
+      {
+        "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)::parameter:11:statusCode:None:int",
+        "name": "statusCode",
+        "ordinal": 11,
+        "type": "int",
+        "refKind": "none",
+        "optional": false
+      }
+    ]
+  },
+  "entry": {
+    "block": 0,
+    "operation": 0
+  },
+  "sourceEntry": {
+    "ordinal": 0,
+    "kind": "Entry",
+    "reachable": true,
+    "conditionKind": "None",
+    "operations": [],
+    "branchValue": null,
+    "containsExcludedOperations": false,
+    "fallThrough": {
+      "destination": 1,
+      "semantics": "Regular",
+      "leavingRegions": [],
+      "enteringRegions": [],
+      "finallyRegions": []
+    },
+    "conditional": null
+  },
+  "source": {
+    "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+    "sha256": "263339a972f1ee2cb6231657b6dc4b880f842faac48fb71d35f2325ac290e66c"
+  },
+  "prefixIntegrity": "7e53ced6f9a6e008ab21357359cd94c7af660977807b9c2f7a298daad36f4e7a",
+  "exclusions": [
+    "warmup-guard",
+    "callee-body",
+    "property-effects",
+    "world-state",
+    "receipts",
+    "clr"
+  ]
+}

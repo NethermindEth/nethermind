@@ -10,7 +10,22 @@ internal static class Program
         try
         {
             Arguments arguments = Arguments.Parse(args);
-            if (arguments.StageBRefundDispatch)
+            if (arguments.StageBFinalizeEntry)
+            {
+                StageBFinalizeEntryExtractor.Extract(arguments.RepoRoot, arguments.OutputDirectory, arguments.Check);
+                Console.WriteLine("Checked/extracted source-admitted FinalizeTransaction binding and empty entry.");
+            }
+            else if (arguments.StageBPayFees)
+            {
+                StageBPayFeesExtractor.Extract(arguments.RepoRoot, arguments.OutputDirectory, arguments.Check);
+                Console.WriteLine("Checked/extracted source-admitted standard-mainnet PayFees projection.");
+            }
+            else if (arguments.StageBEffectiveBlockGas)
+            {
+                StageBEffectiveBlockGasExtractor.Extract(arguments.RepoRoot, arguments.OutputDirectory, arguments.Check);
+                Console.WriteLine("Checked/extracted source-admitted EffectiveBlockGas leaf.");
+            }
+            else if (arguments.StageBRefundDispatch)
             {
                 StageBRefundDispatchExtractor.Extract(arguments.RepoRoot, arguments.OutputDirectory, arguments.Check);
                 Console.WriteLine("Checked/extracted source-attached standard-mainnet refund dispatch.");
@@ -56,7 +71,7 @@ internal static class Program
     }
 
     private sealed record Arguments(string RepoRoot, string OutputDirectory, string? LeanOutputPath, bool Check, bool StageB,
-        bool StageBControl, bool StageBRefundDispatch)
+        bool StageBControl, bool StageBRefundDispatch, bool StageBEffectiveBlockGas, bool StageBPayFees, bool StageBFinalizeEntry)
     {
         internal static Arguments Parse(string[] args)
         {
@@ -67,6 +82,9 @@ internal static class Program
             bool stageB = false;
             bool stageBControl = false;
             bool stageBRefundDispatch = false;
+            bool stageBEffectiveBlockGas = false;
+            bool stageBPayFees = false;
+            bool stageBFinalizeEntry = false;
             for (int index = 0; index < args.Length;)
             {
                 if (args[index] == "--check")
@@ -97,6 +115,27 @@ internal static class Program
                     index++;
                     continue;
                 }
+                if (args[index] == "--stage-b-effective-block-gas")
+                {
+                    if (stageBEffectiveBlockGas) throw new ArgumentException("Argument '--stage-b-effective-block-gas' was provided more than once.");
+                    stageBEffectiveBlockGas = true;
+                    index++;
+                    continue;
+                }
+                if (args[index] == "--stage-b-pay-fees")
+                {
+                    if (stageBPayFees) throw new ArgumentException("Argument '--stage-b-pay-fees' was provided more than once.");
+                    stageBPayFees = true;
+                    index++;
+                    continue;
+                }
+                if (args[index] == "--stage-b-finalize-entry")
+                {
+                    if (stageBFinalizeEntry) throw new ArgumentException("Argument '--stage-b-finalize-entry' was provided more than once.");
+                    stageBFinalizeEntry = true;
+                    index++;
+                    continue;
+                }
 
                 if (index + 1 >= args.Length) throw new ArgumentException($"Missing value for argument '{args[index]}'.");
                 string value = args[index + 1];
@@ -124,12 +163,12 @@ internal static class Program
 
             if (string.IsNullOrWhiteSpace(repoRoot)) throw new ArgumentException("Missing required argument '--repo-root'.");
             if (string.IsNullOrWhiteSpace(output)) throw new ArgumentException("Missing required argument '--output'.");
-            if ((stageB ? 1 : 0) + (stageBControl ? 1 : 0) + (stageBRefundDispatch ? 1 : 0) > 1)
+            if ((stageB ? 1 : 0) + (stageBControl ? 1 : 0) + (stageBRefundDispatch ? 1 : 0) + (stageBEffectiveBlockGas ? 1 : 0) + (stageBPayFees ? 1 : 0) + (stageBFinalizeEntry ? 1 : 0) > 1)
                 throw new ArgumentException("Stage-B modes are mutually exclusive.");
-            if ((stageB || stageBControl || stageBRefundDispatch) && leanOutput is not null)
+            if ((stageB || stageBControl || stageBRefundDispatch || stageBEffectiveBlockGas || stageBPayFees || stageBFinalizeEntry) && leanOutput is not null)
                 throw new ArgumentException("Argument '--lean-output' is not used by Stage-B modes.");
             return new Arguments(Path.GetFullPath(repoRoot), Path.GetFullPath(output),
-                leanOutput is null ? null : Path.GetFullPath(leanOutput), check, stageB, stageBControl, stageBRefundDispatch);
+                leanOutput is null ? null : Path.GetFullPath(leanOutput), check, stageB, stageBControl, stageBRefundDispatch, stageBEffectiveBlockGas, stageBPayFees, stageBFinalizeEntry);
         }
     }
 }

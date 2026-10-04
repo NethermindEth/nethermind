@@ -228,6 +228,16 @@ internal static class StageBArtifact
 
 internal static class StageBLeanDataEmitter
 {
+    internal static string FinalizeEntry(StageBMember signature, StageBBlock entry) =>
+        "-- SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited\n" +
+        "-- SPDX-License-Identifier: LGPL-3.0-only\n\n" +
+        "import SimpleTransferCompletionExtractor.StageB.Syntax\n\n" +
+        "namespace SimpleTransferCompletionExtractor.StageB.Finalize.Generated\n\n" +
+        "def signature : Member := " + Member(signature) + "\n\n" +
+        "def sourceEntry : SourceBlock := " + SourceBlock(entry) + "\n\n" +
+        "def entryBlock : Nat := 0\ndef entryOperation : Nat := 0\n\n" +
+        "end SimpleTransferCompletionExtractor.StageB.Finalize.Generated\n";
+
     internal static string Emit(StageBPrefixProgram program, string irSha256)
     {
         StringBuilder builder = new();

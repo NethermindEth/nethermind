@@ -72,6 +72,16 @@ function Assert-DependencyManifest(
             throw "Stage-B dependency $($artifact.Name) drifted for $ManifestName (expected $($artifact.Expected), got $actual)."
         }
     }
+    if ($manifest.PSObject.Properties.Name -contains "supportingSources")
+    {
+        foreach ($source in $manifest.supportingSources)
+        {
+            if ((Get-Sha256 (Join-Path $repo $source.path)) -cne $source.sha256)
+            {
+                throw "Stage-B supporting source drifted for ${ManifestName}: $($source.path)"
+            }
+        }
+    }
 }
 
 function Assert-OrdinaryRefundDependency([string]$RepoRoot)
@@ -138,6 +148,34 @@ Assert-DependencyManifest `
     "TransactionGasInitializationKernel.ir.json" `
     "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean"
 
+Assert-DependencyManifest `
+    "BlockReceiptGasAccountingKernel.source-manifest.json" `
+    "1bc07122e230b88e69f5444f526d6c3654f4788c4479ea114185982471bdc2aa" `
+    "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel" `
+    "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptGasAccountingKernel.cs" `
+    "BlockReceiptGasAccountingKernel.ir.json" `
+    "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean"
+
+$routingDirectory = Join-Path $leanRoot "SystemTransactionRoutingExtractor/Generated"
+$routingManifest = Join-Path $routingDirectory "SystemTransactionRoutingKernel.source-manifest.json"
+if ((Get-Sha256 $routingManifest) -cne "e321f7c52ccb5fbcf5b84f86027c092d56b75e36392eb47d0bc41de186ba46ee")
+{
+    throw "Stage-B system-routing dependency manifest drifted."
+}
+$routing = Get-Content -LiteralPath $routingManifest -Raw | ConvertFrom-Json
+foreach ($source in $routing.sources)
+{
+    if ((Get-Sha256 (Join-Path $repo $source.path)) -cne $source.sha256)
+    {
+        throw "Stage-B system-routing source drifted: $($source.path)"
+    }
+}
+if ((Get-Sha256 (Join-Path $routingDirectory $routing.ir.path)) -cne $routing.ir.sha256 -or
+    (Get-Sha256 (Join-Path $repo $routing.lean.path)) -cne $routing.lean.sha256)
+{
+    throw "Stage-B system-routing generated artifacts drifted."
+}
+
 & $refundVerification -RepoRoot $repo -Configuration $Configuration -SkipLean
 if ($LASTEXITCODE -ne 0) { throw "Stage-B ordinary-refund source-admission gate failed." }
 Assert-OrdinaryRefundDependency $repo
@@ -159,6 +197,18 @@ dotnet run --project $project -c $Configuration -p:SaveDiskSpace=true --no-build
     --stage-b-refund-dispatch --check --repo-root $repo --output $dispatchGenerated
 if ($LASTEXITCODE -ne 0) { throw "Stage-B standard-mainnet refund-dispatch extraction/freshness check failed." }
 
+dotnet run --project $project -c $Configuration -p:SaveDiskSpace=true --no-build -- `
+    --stage-b-effective-block-gas --check --repo-root $repo --output (Join-Path $package "StageB\Leaf\Generated")
+if ($LASTEXITCODE -ne 0) { throw "Stage-B EffectiveBlockGas extraction/freshness check failed." }
+
+dotnet run --project $project -c $Configuration -p:SaveDiskSpace=true --no-build -- `
+    --stage-b-pay-fees --check --repo-root $repo --output (Join-Path $package "StageB\PayFees\Generated")
+if ($LASTEXITCODE -ne 0) { throw "Stage-B PayFees source-admission/freshness check failed." }
+
+dotnet run --project $project -c $Configuration -p:SaveDiskSpace=true --no-build -- `
+    --stage-b-finalize-entry --check --repo-root $repo --output (Join-Path $package "StageB\Finalize\Generated")
+if ($LASTEXITCODE -ne 0) { throw "Stage-B FinalizeTransaction entry extraction/freshness check failed." }
+
 Push-Location $package
 try {
     lake --wfail build `
@@ -167,6 +217,9 @@ try {
         SimpleTransferCompletionExtractor.StageB.Control.Refinement `
         SimpleTransferCompletionExtractor.StageB.Dispatch.Refinement `
         SimpleTransferCompletionExtractor.StageB.RefundBridge `
+        SimpleTransferCompletionExtractor.StageB.FeeHelperVectors `
+        SimpleTransferCompletionExtractor.StageB.PayFees.Vectors `
+        SimpleTransferCompletionExtractor.StageB.Finalize.Vectors `
         SimpleTransferCompletionExtractor.StageB.Admission `
         stage-b-replay `
         SimpleTransferCompletionExtractor.StageB.Vectors
@@ -178,7 +231,7 @@ finally {
 
 dotnet test --project $testProject -c $Configuration -p:SaveDiskSpace=true `
     -p:TreatWarningsAsErrors=true --no-build -- --filter FullyQualifiedName~Stage_b `
-    --minimum-expected-tests 485 --no-ansi --progress off
+    --minimum-expected-tests 584 --no-ansi --progress off
 if ($LASTEXITCODE -ne 0) { throw "Stage-B tests failed." }
 
 Push-Location $package
@@ -189,6 +242,18 @@ try {
         "StageB\Dispatch\Refinement.lean",
         "StageB\RefundBridge.lean",
         "StageB\Semantics.lean",
+        "StageB\Leaf\Generated\EffectiveBlockGas.lean",
+        "StageB\FeeHelperSource.lean",
+        "StageB\FeeHelper.lean",
+        "StageB\FeeHelperVectors.lean",
+        "StageB\PayFees\Generated\PayFees.lean",
+        "StageB\PayFees\Residual.lean",
+        "StageB\PayFees\Return.lean",
+        "StageB\PayFees\Vectors.lean",
+        "StageB\Finalize\Generated\FinalizeEntry.lean",
+        "StageB\Finalize\Binding.lean",
+        "StageB\Finalize\Entry.lean",
+        "StageB\Finalize\Vectors.lean",
         "StageB\Admission.lean",
         "StageB\Replay.lean",
         "StageB\Vectors.lean",

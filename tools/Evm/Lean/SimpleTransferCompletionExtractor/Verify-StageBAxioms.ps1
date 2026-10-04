@@ -35,7 +35,54 @@ $roots = @(
     "SimpleTransferCompletionExtractor.StageB.Runtime.generated_execute_simpleTransfer_postRefund_accessGuard_exact",
     "SimpleTransferCompletionExtractor.StageB.Runtime.generated_execute_simpleTransfer_postRefund_call_frontiers_source_admitted",
     "SimpleTransferCompletionExtractor.StageB.Runtime.generated_execute_simpleTransfer_postRefund_callFrontier_exact",
-    "SimpleTransferCompletionExtractor.StageB.Runtime.generated_execute_simpleTransfer_postRefund_accessGuard_to_callFrontier_exact"
+    "SimpleTransferCompletionExtractor.StageB.Runtime.generated_execute_simpleTransfer_postRefund_accessGuard_to_callFrontier_exact",
+    "SimpleTransferCompletionExtractor.StageB.Runtime.generated_postRefund_feeHelper_entry_source_admitted",
+    "SimpleTransferCompletionExtractor.StageB.Runtime.generated_postRefund_feeHelper_cell_layout",
+    "SimpleTransferCompletionExtractor.StageB.Runtime.generated_postRefund_feeHelper_bind_exact",
+    "SimpleTransferCompletionExtractor.StageB.Runtime.generated_postRefund_feeHelper_call_entry_exact",
+    "SimpleTransferCompletionExtractor.StageB.FeeHelper.selected_source_admitted",
+    "SimpleTransferCompletionExtractor.StageB.FeeHelper.routing_is_exact_bit_gate",
+    "SimpleTransferCompletionExtractor.StageB.FeeHelper.projected_residual_reaches_pending_payFees",
+    "SimpleTransferCompletionExtractor.StageB.FeeHelper.accepted_entry_reaches_pending_payFees",
+    "SimpleTransferCompletionExtractor.StageB.FeeHelper.entry_and_residual_compose",
+    "SimpleTransferCompletionExtractor.StageB.FeeHelper.one_short_fuel",
+    "SimpleTransferCompletionExtractor.StageB.FeeHelper.pending_frontier_exact",
+    "SimpleTransferCompletionExtractor.StageB.FeeHelper.natural_counter_refinement",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.standard_dispatch_exact",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.arithmetic_refines",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.modular_outputs_bounded",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.projected_payFees_exact",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.one_short_fuel",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.events_project_effects",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.event_execution_preserves_effect_order",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.pending_boundary_composes",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.constructed_simple_transfer_has_null_destroy_list",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.projected_effects_exact",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.helper_exit_source_admitted",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.finalize_invocation_source_admitted",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.handoff_uses_retained_continuation",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.generic_return_resume_cleanup_exact",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.returned_frontier_is_unentered",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.payFees_and_caller_resume_compose",
+    "SimpleTransferCompletionExtractor.StageB.Runtime.generated_finalize_argument_modes_source_admitted",
+    "SimpleTransferCompletionExtractor.StageB.Runtime.generated_finalize_call_frontier_exact",
+    "SimpleTransferCompletionExtractor.StageB.Runtime.generated_finalize_frontier_preserves_state",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.scheduled_finalization_arguments_exact",
+    "SimpleTransferCompletionExtractor.StageB.PayFees.return_to_finalization_apply_exact",
+    "SimpleTransferCompletionExtractor.StageB.Runtime.bindFrameParameter_copy_or_alias",
+    "SimpleTransferCompletionExtractor.StageB.Runtime.evaluatedParameterLayout_exact",
+    "SimpleTransferCompletionExtractor.StageB.Runtime.createFrame_evaluated_parameters_exact",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.entry_source_admitted",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.parameter_layout",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.binding_exact",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.bind_step",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.empty_entry_step",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.bind_empty_entry_exact",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.binding_preserves_old_reads",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.entered_preserves_context",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.entered_preserves_old_reads",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.scheduled_to_empty_entry_exact",
+    "SimpleTransferCompletionExtractor.StageB.Finalize.return_to_empty_entry_exact"
 )
 $allowed = @("propext", "Classical.choice", "Quot.sound")
 
@@ -158,7 +205,7 @@ try
     Push-Location $package
     try
     {
-        $imports = "import Lean`nimport SimpleTransferCompletionExtractor.StageB.Semantics`n"
+        $imports = "import Lean`nimport SimpleTransferCompletionExtractor.StageB.PayFees.Vectors`nimport SimpleTransferCompletionExtractor.StageB.Finalize.Vectors`n"
         $main = $imports + $checker + "`n" + (($roots | ForEach-Object { "audit_stage_b_axiom $_" }) -join "`n")
         $mainPath = Join-Path $scratch "StageBAxioms.lean"
         [IO.File]::WriteAllText($mainPath, $main, [Text.UTF8Encoding]::new($false))

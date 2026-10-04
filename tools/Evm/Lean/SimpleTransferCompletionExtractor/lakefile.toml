@@ -13,6 +13,9 @@ defaultTargets = [
   "SimpleTransferCompletionExtractor.StageB.Dispatch.Refinement",
   "SimpleTransferCompletionExtractor.StageB.RefundBridge",
   "SimpleTransferCompletionExtractor.StageB.Semantics",
+  "SimpleTransferCompletionExtractor.StageB.FeeHelperVectors",
+  "SimpleTransferCompletionExtractor.StageB.PayFees.Vectors",
+  "SimpleTransferCompletionExtractor.StageB.Finalize.Vectors",
   "SimpleTransferCompletionExtractor.StageB.Admission",
   "SimpleTransferCompletionExtractor.StageB.Vectors",
   "SimpleTransferCompletionExtractor.StageB.Control.Refinement"

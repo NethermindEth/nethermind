@@ -44,7 +44,7 @@ refinement remains open. The stale Stage-A `Generated` triplet is not touched by
 
 Run `Verify-StageB.ps1` for the focused Stage-B lane. It checks fresh source-derived artifacts, the
 pinned ordinary-Refund adapter manifest and source closure, the standard-mainnet Refund-dispatch
-artifact, warning-as-error C# builds, a fail-closed minimum of 485 discovered Stage-B tests, the
+artifact, warning-as-error C# builds, a fail-closed minimum of 556 discovered Stage-B tests, the
 executable Lean vector target, direct Lean checks, and placeholder absence without invoking the
 known-stale Stage-A reference target.
 
@@ -370,7 +370,7 @@ the respective one-short boundaries; it also checks out-cell alias/copyback and 
   A finite runtime concrete-type observation relating that exact receiver value to one of the two
   leaves remains an explicit premise. Fresh extraction, deterministic artifacts and mutations of
   sealing/slot ownership, lineage, either call, IR, Lean or manifest bytes fail closed, and the focused
-  lane requires at least 485 discovered Stage-B tests. This theorem does not cover
+  lane requires at least 556 discovered Stage-B tests. This theorem does not cover
   `SystemTransactionProcessor`, Optimism or Taiko processors, DI or plugin selection, host execution,
   the `Refund` return or caller assignment, `PayRefund` effects, caller resume or downstream blocks.
   `generated_execute_simpleTransfer_refund_result_install_exact` now keeps the external-result boundary
@@ -420,10 +420,84 @@ bindings, frame identity, and sufficient representable fuel.
 block 37 in 28/15 when access tracing is enabled and 56/29 when disabled, retaining the guard's carried
 Boolean. Two exact-source cases and fifteen compile-valid source mutations cover the new boundary.
 The frozen replay still ends at `Refund`; these are separate residual execution theorems.
-The access-report helper body, tracker/pool/callback behavior, fee/header updates, `FinalizeTransaction`,
+The fee helper's actual eleven-parameter signature and complete source CFG are retained as inert
+source evidence, while a separate residual program admits only its empty entry block.
+`generated_postRefund_feeHelper_entry_source_admitted` pins that entry and exact signature;
+`generated_postRefund_feeHelper_bind_exact` and `generated_postRefund_feeHelper_cell_layout` establish
+six by-value copies, five readonly aliases, exact receiver, ordered parameter identities and consecutive
+fresh-frame cell identifiers. `generated_postRefund_feeHelper_call_entry_exact` advances the false-access
+fee-call frontier by two microsteps/one C# tick, leaving the empty entry's `finishBlock` pending before
+the guard. Caller continuation, old cells, the prepared caller frame tail, statics, host requests and response tape are
+preserved; explicit fresh-cell bounds also preserve all existing successful reads. Ten tests cover
+source admission, compile-valid source mutations, and re-signed inert-metadata controls.
+An additional, separate source-admitted residual in `StageB/FeeHelper.lean` now covers the sequential
+EIP-8037 counter/header path and stops with the exact ten-argument `PayFees` invocation fully evaluated,
+its apply task pending. `FeeHelper.selected_source_admitted` (in namespace `StageB`)
+checks the exact emitted helper CFG: routing bit-test and parallel guard, fork guard, execution add,
+state add, header maximum after both writes, then the virtual fee call. The residual uses existing
+source-pinned routing and receipt-accounting leaves, including unchecked UInt64 addition; a separate
+no-wrap theorem refines those fields to natural sums/max. A fresh `--stage-b-effective-block-gas`
+leaf admits the current getter, including zero execution with nonzero state. It does not import or
+regenerate the stale Stage-A completion bundle; that bundle's drift is verification-artifact drift,
+not a production bug.
+
+Composition is only through `FeeHelper.EntryWitness`: the accepted helper-entry machine plus explicit
+read/alias observations and external mutable processor/header projections. `entry_and_residual_compose`
+joins the checked two-step entry with seventeen specialized residual steps, not seventeen generic
+interpreter microsteps or C# ticks. Six by-value fee arguments and four readonly aliases retain exact
+source order and provenance. The generic entry machine, request tape and caller continuation remain
+unchanged while a separate projected write ledger records execution/state/header updates. Exact and
+one-short fuel, wrap boundaries, max directions, bit masks, paid-versus-effective gas, and nested
+readonly aliases have executable vectors. Twenty-two additional C# cases cover compile-valid source
+mutations, current narrow leaf admission, and artifact/hash/roster rejection.
+
+The access-report helper body, tracker/pool/callback behavior, concrete provider `PayFees` effects, `FinalizeTransaction`,
 later transaction or pipeline processing, the concrete tracer-getter/CLR bridge, and uninterrupted
 composition with the existing explicit-rearm/status-code phases remain open.
-The Stage-B gate audits twenty-eight exact roots transitively for nonstandard axioms, with
+The new residual does not derive the reference heap or execute `CompoundAssignment` through ordinary
+`Runtime.steps`. That bridge, mutable property accessors, skipped-counter/EIP-8037-disabled paths,
+and `PayFees` virtual dispatch remain open. The frozen replay still stops at `Refund`.
+`StageB/PayFees` now supplies a separate source-admitted projected continuation for the standard virtual
+`PayFees` body. A fresh narrow extractor pins both ordinary sealed receiver lineages, the exact typed
+body and signature, and the separately excluded empty system override. It neither imports nor changes
+the broad `OrdinaryEvmCompletion` or stale Stage-A completion bundles. The reference uses bounded
+256-bit inputs, exact modular products/sums, the effective-base-price minimum, free-transaction and
+collector gates, and the precise tracer payload (including blob fees independently of collector gates).
+Zero premium still emits the beneficiary credit/create call; same-account beneficiary/collector credits
+remain two ordered calls. Repeated property reads have separate observations rather than an implicit
+object-immutability premise.
+
+Ten projected stages reach void completion with exact/one-short fuel proofs. `EventExecution` requires
+every read at its actual interleaved world-state point and every abstract credit/report effect in order;
+it imposes no provider, account-existence, balance, creation or journal law. An explicit machine
+projection/noninterference witness bridges normal projected completion to the retained caller
+continuation. Three checked generic-runtime steps resume void, clean up the statement, and `setLast`,
+leaving the exact `FinalizeTransaction` invocation scheduled for evaluation. The following generic
+argument theorem now evaluates its receiver and twelve arguments in exactly 51 microsteps/26 C# ticks,
+or 54/26 including return/cleanup, and stops at the pending invocation application. Ten arguments are
+by value; only payment ordinal 7 and substate ordinal 9 retain readonly locations, without reading
+their payloads. The complete six-field `GasConsumed` value is copied. Arbitrary tails, duplicate caller
+IDs, cells, frames, statics, tape, requests, allocation counters and returned value are preserved by
+argument evaluation. No finalization body is entered or applied. Concrete DI resolution, plugin/system receivers,
+UInt256 limb/CLR implementation, provider/tracer correctness and exceptional host effects remain open.
+Twenty-four new C# cases and nine Lean vector groups cover the bounded continuation.
+
+Fifteen additional compile-valid/source-projection controls and eight Lean vector groups cover the
+finalization frontier, including 50/51 steps, 25/26 ticks, unreadable chained aliases and exact sentinels.
+The separate `--stage-b-finalize-entry` artifact now admits the actual private, instance, nonvirtual
+twelve-parameter signature, exact caller descriptor, empty reachable Entry0 and its regular empty-region
+edge to block 1. Its purpose-specific residual contains only Entry0. The genuine generic binder allocates
+ten copied cells and two readonly aliases (ordinals 7 and 9), with consecutive identifiers, exact symbols,
+receiver, reversed raw-cell/binding layout and preserved old suffixes. Binding takes one microstep and
+zero ticks; empty entry takes a second microstep and one tick. Composition gives 53/27 from the scheduled
+invocation and 56/27 from the accepted void-return handoff. The endpoint has `finishBlock` pending;
+neither the Warmup guard nor any finalization body/property/world/receipt effect has run.
+
+Twenty-eight new C# controls and eleven executable vector groups cover this boundary, including
+unreadable chained aliases, ten distinct abstract copied payloads, all six gas fields, duplicate caller
+IDs, old reads, exact/one-short steps and fuel. Abstract payload sentinels test the binder, not a C#
+type/heap representation theorem. Frame/cell freshness and representable fuel remain explicit.
+The Stage-B gate checks six extraction modes, at least 584 tests and seventy-five exact roots transitively for nonstandard axioms, with
 malformed-output and injected-axiom negative controls.
   Generic duplicate-key
 publication, arbitrary static-node children,
