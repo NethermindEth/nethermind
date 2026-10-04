@@ -77,6 +77,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private readonly record struct ProcessingWork(BlockRef Reference, ParallelUnbalancedWork.WorkerGroup? Workers);
 
+    // Experiment: wakes the dedicated processing thread straight from the writer, without a thread-pool hop.
+    private readonly SemaphoreSlim _processingSignal = new(0);
+
     private bool _recoveryComplete = false;
     private int _queueCount;
     private bool _disposed;
@@ -391,6 +394,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                         {
                             await _blockQueue.Writer.WriteAsync(work);
                         }
+                        if (Core.Diagnostics.ExperimentKnobs.DedicatedProcessingThread) _processingSignal.Release();
                     }
                 }
                 else
@@ -541,6 +545,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 try
                 {
                     await _blockQueue.Writer.WriteAsync(work);
+                    if (Core.Diagnostics.ExperimentKnobs.DedicatedProcessingThread) _processingSignal.Release();
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
@@ -622,8 +627,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        while (_blockQueue.Reader.WaitToReadAsync(CancellationToken).AsTask().GetAwaiter().GetResult())
+        while (!CancellationToken.IsCancellationRequested)
         {
+            // One release per queued block: a wait that finds the queue already drained just loops.
+            _processingSignal.Wait(CancellationToken);
+            if (!_blockQueue.Reader.TryPeek(out _)) continue;
             _pauseGate.WaitWhilePausedAsync(CancellationToken).AsTask().GetAwaiter().GetResult();
 
             using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores, _logger);
