@@ -61,10 +61,8 @@ public class BeaconDiscoveryBootnodesTests
         List<Node> fromSpec = Discovery(BeaconChainSpec.Mainnet).CreateBootNodes();
         List<Node> overridden = Discovery(BeaconChainSpec.Mainnet, BeaconChainSpec.Hoodi.Bootnodes[0]).CreateBootNodes();
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(overridden, Has.Count.EqualTo(1));
-            Assert.That(overridden[0].Id, Is.Not.EqualTo(fromSpec[0].Id));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(overridden, Has.Count.EqualTo(1));
+        Assert.That(overridden[0].Id, Is.Not.EqualTo(fromSpec[0].Id));
     }
 }

@@ -104,12 +104,10 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "eight verified columns out of 128 is exactly what a base-custody node can hold, and must suffice");
-            Assert.That(importer.IsKnown(chain.BlockRoot), Is.True);
-            Assert.That(custody.SampledColumns, Has.Count.EqualTo(8), "the fixture node is a base-custody node, not a supernode");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "eight verified columns out of 128 is exactly what a base-custody node can hold, and must suffice");
+        Assert.That(importer.IsKnown(chain.BlockRoot), Is.True);
+        Assert.That(custody.SampledColumns, Has.Count.EqualTo(8), "the fixture node is a base-custody node, not a supernode");
     }
 
     [TestCase(true, TestName = "Blob_block_missing_one_custody_column_is_deferred")]
@@ -311,12 +309,10 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(custody.CustodyGroupCount, Is.EqualTo(discovery.LocalCustody.CustodyGroupCount), "the importer demands the custody discovery advertises");
-            Assert.That(custody.SampledColumns, Has.Count.EqualTo(8));
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the production wiring, end to end: eight held columns of this node's real identity admit the block");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(custody.CustodyGroupCount, Is.EqualTo(discovery.LocalCustody.CustodyGroupCount), "the importer demands the custody discovery advertises");
+        Assert.That(custody.SampledColumns, Has.Count.EqualTo(8));
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the production wiring, end to end: eight held columns of this node's real identity admit the block");
     }
 
     [Test]
@@ -341,11 +337,9 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "outside the retention window nobody serves columns, so the gate must not wait for them");
-            Assert.That(importer.IsKnown(chain.BlockRoot), Is.True);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "outside the retention window nobody serves columns, so the gate must not wait for them");
+        Assert.That(importer.IsKnown(chain.BlockRoot), Is.True);
     }
 
     [Test]
@@ -363,17 +357,15 @@ public class BlockImporterTests
         HeadView head = importer.ComputeHead();
         ForkChoiceSnapshot? published = snapshots.Current;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(beforeAnyHead, Is.Null, "nothing is published until a head has been computed");
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(published, Is.Not.Null);
-            Assert.That(published!.Nodes.Select(n => n.Root), Is.EqualTo(new[] { chain.AnchorRoot, chain.BlockRoot }));
-            Assert.That(published.Nodes[1].ExecutionStatus, Is.EqualTo(ExecutionStatus.Valid), "the engine's verdict reached fork choice before the copy was taken");
-            Assert.That(published.JustifiedCheckpoint, Is.EqualTo(head.Justified));
-            Assert.That(published.FinalizedCheckpoint, Is.EqualTo(head.Finalized));
-            Assert.That(published.Nodes.Select(n => n.Root), Does.Contain(head.HeadRoot));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(beforeAnyHead, Is.Null, "nothing is published until a head has been computed");
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(published, Is.Not.Null);
+        Assert.That(published!.Nodes.Select(n => n.Root), Is.EqualTo(new[] { chain.AnchorRoot, chain.BlockRoot }));
+        Assert.That(published.Nodes[1].ExecutionStatus, Is.EqualTo(ExecutionStatus.Valid), "the engine's verdict reached fork choice before the copy was taken");
+        Assert.That(published.JustifiedCheckpoint, Is.EqualTo(head.Justified));
+        Assert.That(published.FinalizedCheckpoint, Is.EqualTo(head.Finalized));
+        Assert.That(published.Nodes.Select(n => n.Root), Does.Contain(head.HeadRoot));
     }
 
     [Test]
@@ -535,12 +527,10 @@ public class BlockImporterTests
         IResolveConstraint invalidation = sealedAgainstInvalidation
             ? Throws.TypeOf<ProtoArrayException>()
             : Throws.Nothing;
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(() => importer.OnInvalidExecutionPayload(chain.BlockRoot, null), invalidation,
-                "a block admitted as valid is sealed against invalidation; one admitted optimistically must stay invalidatable");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(() => importer.OnInvalidExecutionPayload(chain.BlockRoot, null), invalidation,
+            "a block admitted as valid is sealed against invalidation; one admitted optimistically must stay invalidatable");
     }
 
     /// <summary>
@@ -564,12 +554,10 @@ public class BlockImporterTests
         bool knownWhileDeferred = importer.IsKnown(chain.BlockRoot);
         BlockImportResult retried = importer.Import(chain.Block, chain.BlockRoot, verifySignatures);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(deferred, Is.EqualTo(BlockImportResult.EngineUnavailable), "an unevaluated payload is not an invalid block");
-            Assert.That(knownWhileDeferred, Is.False, "nothing may be recorded for a block the execution layer never saw");
-            Assert.That(retried, Is.EqualTo(BlockImportResult.Imported), "the same block must import once the engine answers again");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(deferred, Is.EqualTo(BlockImportResult.EngineUnavailable), "an unevaluated payload is not an invalid block");
+        Assert.That(knownWhileDeferred, Is.False, "nothing may be recorded for a block the execution layer never saw");
+        Assert.That(retried, Is.EqualTo(BlockImportResult.Imported), "the same block must import once the engine answers again");
     }
 
     /// <summary>
@@ -591,11 +579,9 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable));
-            Assert.That(engine.HasAnsweredNewPayload, Is.False, "the engine must not be consulted for a block that cannot be recorded anyway");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable));
+        Assert.That(engine.HasAnsweredNewPayload, Is.False, "the engine must not be consulted for a block that cannot be recorded anyway");
     }
 
     /// <summary>The same block must import once its missing columns are later pooled, not stay dropped forever.</summary>
@@ -614,12 +600,10 @@ public class BlockImporterTests
         Hold(pool, chain, [missing]);
         BlockImportResult retried = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(deferred, Is.EqualTo(BlockImportResult.DataUnavailable));
-            Assert.That(knownWhileDeferred, Is.False, "nothing may be recorded while a column is still missing");
-            Assert.That(retried, Is.EqualTo(BlockImportResult.Imported), "the same block must import once the missing column arrives");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(deferred, Is.EqualTo(BlockImportResult.DataUnavailable));
+        Assert.That(knownWhileDeferred, Is.False, "nothing may be recorded while a column is still missing");
+        Assert.That(retried, Is.EqualTo(BlockImportResult.Imported), "the same block must import once the missing column arrives");
     }
 
     /// <summary>
@@ -646,14 +630,12 @@ public class BlockImporterTests
 
         BlockImportResult slashingImported = importer.Import(scenario.Slashing.Block, scenario.Slashing.Root, verifySignatures: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(imported, Is.All.EqualTo(BlockImportResult.Imported));
-            Assert.That(headBeforeSlashing, Is.EqualTo(scenario.Voted.Root), "two votes on A's branch outweigh one on B");
-            Assert.That(slashingImported, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(importer.ComputeHead().HeadRoot, Is.EqualTo(scenario.B.Root), "the slashed validators' votes no longer count, so B's lone vote wins");
-            Assert.That(importer.LineageRoot, Is.EqualTo(scenario.B.Root), "a head on a competing branch is a reorg the lineage follows");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(imported, Is.All.EqualTo(BlockImportResult.Imported));
+        Assert.That(headBeforeSlashing, Is.EqualTo(scenario.Voted.Root), "two votes on A's branch outweigh one on B");
+        Assert.That(slashingImported, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(importer.ComputeHead().HeadRoot, Is.EqualTo(scenario.B.Root), "the slashed validators' votes no longer count, so B's lone vote wins");
+        Assert.That(importer.LineageRoot, Is.EqualTo(scenario.B.Root), "a head on a competing branch is a reorg the lineage follows");
     }
 
     /// <summary>
@@ -1060,13 +1042,11 @@ public class BlockImporterTests
         BlockImportResult parent = importer.Import(a.Block, a.Root, verifySignatures: false);
         BlockImportResult result = importer.Import(strayVote.Block, strayVote.Root, verifySignatures: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(parent, Is.EqualTo(BlockImportResult.Imported));
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "a vote for a block we never saw is not a reason to drop a block the transition accepted");
-            Assert.That(importer.IsKnown(strayVote.Root), Is.True);
-            Assert.That(RefusedByForkChoice("body_attestation") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(parent, Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "a vote for a block we never saw is not a reason to drop a block the transition accepted");
+        Assert.That(importer.IsKnown(strayVote.Root), Is.True);
+        Assert.That(RefusedByForkChoice("body_attestation") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
     }
 
     /// <summary>
@@ -1156,11 +1136,9 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(block, root, verifySignatures: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the transition accepted the slashing, so fork choice's refusal must not sink the block");
-            Assert.That(RefusedByForkChoice("body_attester_slashing") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the transition accepted the slashing, so fork choice's refusal must not sink the block");
+        Assert.That(RefusedByForkChoice("body_attester_slashing") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
     }
 
     /// <summary>
@@ -1184,12 +1162,10 @@ public class BlockImporterTests
         ForkChoiceSnapshot published = snapshots.Current!;
 
         ulong vote = chain.Anchor.AnchorState.Validators![0].EffectiveBalance;
-        Assert.Multiple(() =>
-        {
-            Assert.That(head, Is.EqualTo(scenario.Voted.Root));
-            Assert.That(published.Nodes.Single(n => n.Root == scenario.A.Root).Weight, Is.EqualTo(2 * vote), "A carries the two slot-1 and slot-3 votes");
-            Assert.That(published.Nodes.Single(n => n.Root == scenario.B.Root).Weight, Is.EqualTo(vote), "B carries the slot-5 vote");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(head, Is.EqualTo(scenario.Voted.Root));
+        Assert.That(published.Nodes.Single(n => n.Root == scenario.A.Root).Weight, Is.EqualTo(2 * vote), "A carries the two slot-1 and slot-3 votes");
+        Assert.That(published.Nodes.Single(n => n.Root == scenario.B.Root).Weight, Is.EqualTo(vote), "B carries the slot-5 vote");
     }
 
     /// <summary>
@@ -1210,12 +1186,10 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(child.Block, child.Root, verifySignatures: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(warnings.Messages, Has.Some.Contains("before its state transition").And.Contains("has an invalid execution payload"));
-            Assert.That(failed.Contains(child.Root), Is.True, "column gossip must reject a sidecar whose parent the importer refused");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(warnings.Messages, Has.Some.Contains("before its state transition").And.Contains("has an invalid execution payload"));
+        Assert.That(failed.Contains(child.Root), Is.True, "column gossip must reject a sidecar whose parent the importer refused");
     }
 
     // specs/bellatrix/optimistic-sync.md: apply the verdict to the payloads its head hash and latestValidHash name.
@@ -1302,13 +1276,11 @@ public class BlockImporterTests
         BlockImportResult validResult = importer.Import(valid.Block, valid.Root, verifySignatures: false);
         BlockImportResult brokenResult = importer.Import(broken.Block, brokenRoot, verifySignatures: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That((validResult, brokenResult), Is.EqualTo((BlockImportResult.Imported, BlockImportResult.Invalid)));
-            Assert.That(failed.Contains(brokenRoot), Is.True);
-            Assert.That(failed.Contains(valid.Root), Is.False, "an imported block is not a failed one");
-            Assert.That(failed.Count, Is.EqualTo(1));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((validResult, brokenResult), Is.EqualTo((BlockImportResult.Imported, BlockImportResult.Invalid)));
+        Assert.That(failed.Contains(brokenRoot), Is.True);
+        Assert.That(failed.Contains(valid.Root), Is.False, "an imported block is not a failed one");
+        Assert.That(failed.Count, Is.EqualTo(1));
     }
 
     /// <summary>
@@ -1329,12 +1301,10 @@ public class BlockImporterTests
         chain.Block.Signature = genuine;
         BlockImportResult honest = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That((forged, honest), Is.EqualTo((BlockImportResult.Invalid, BlockImportResult.Imported)));
-            Assert.That(warnings.Messages, Has.Some.Contains("Invalid proposer signature"), "fixture: the forged copy fails on its signature");
-            Assert.That(failed.Contains(chain.BlockRoot), Is.False);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((forged, honest), Is.EqualTo((BlockImportResult.Invalid, BlockImportResult.Imported)));
+        Assert.That(warnings.Messages, Has.Some.Contains("Invalid proposer signature"), "fixture: the forged copy fails on its signature");
+        Assert.That(failed.Contains(chain.BlockRoot), Is.False);
     }
 
     /// <summary>
@@ -1356,12 +1326,10 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(child.Block, root, verifySignatures: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.None), "a slot not after the parent's is invalid data, whatever the finalized slot");
-            Assert.That(failed.Contains(root), Is.EqualTo(recorded));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.None), "a slot not after the parent's is invalid data, whatever the finalized slot");
+        Assert.That(failed.Contains(root), Is.EqualTo(recorded));
     }
 
     /// <summary>
@@ -1393,13 +1361,11 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(child.Block, child.Root, verifySignatures: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(warnings.Messages, Has.Some.Contains("does not descend from the finalized checkpoint"), "fixture: refused for its ancestry");
-            Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "descent from this node's finalized checkpoint says nothing of the block's data");
-            Assert.That(failed.Contains(child.Root), Is.True);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(warnings.Messages, Has.Some.Contains("does not descend from the finalized checkpoint"), "fixture: refused for its ancestry");
+        Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "descent from this node's finalized checkpoint says nothing of the block's data");
+        Assert.That(failed.Contains(child.Root), Is.True);
     }
 
     /// <summary>
@@ -1425,13 +1391,11 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(child.Block, child.Root, verifySignatures: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(warnings.Messages, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
-            Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "on_block refused it against this node's own store");
-            Assert.That(failed.Contains(child.Root), Is.EqualTo(recorded));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(warnings.Messages, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
+        Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "on_block refused it against this node's own store");
+        Assert.That(failed.Contains(child.Root), Is.EqualTo(recorded));
     }
 
     // Spec Fulu on_block asserts availability before state_transition; the saved verdict belongs to that root.
@@ -1501,11 +1465,9 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(broken.Forked, brokenRoot, verifySignatures: false);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(failed.Contains(brokenRoot), Is.True);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(failed.Contains(brokenRoot), Is.True);
     }
 
     /// <summary>The Gloas arm of the tick-driven refusal: on_block refuses a block on a branch that the tick's pulled-up finality left.</summary>
@@ -1531,13 +1493,11 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(child.Forked, child.Root, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-            Assert.That(warnings.Messages, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
-            Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "on_block refused it against this node's own store");
-            Assert.That(failed.Contains(child.Root), Is.True);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(warnings.Messages, Has.Some.Contains("rejected by fork choice"), "fixture: the pre-transition checks passed and on_block refused");
+        Assert.That(importer.LastRefusal, Is.EqualTo(ImportRefusal.LocalAdmission), "on_block refused it against this node's own store");
+        Assert.That(failed.Contains(child.Root), Is.True);
     }
 
     [Test]
@@ -1554,11 +1514,9 @@ public class BlockImporterTests
         block.Signed.Signature = genuine;
         BlockImportResult honest = importer.Import(block.Forked, block.Root, verifySignatures: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That((forged, honest), Is.EqualTo((BlockImportResult.Invalid, BlockImportResult.Imported)));
-            Assert.That(failed.Contains(block.Root), Is.False);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((forged, honest), Is.EqualTo((BlockImportResult.Invalid, BlockImportResult.Imported)));
+        Assert.That(failed.Contains(block.Root), Is.False);
     }
 
     [Test]
@@ -1575,11 +1533,9 @@ public class BlockImporterTests
 
         importer.OnFinalized(new CheckpointRef(1, chain.AnchorRoot));
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(failed.Contains(atFinalized), Is.False, "a finalized slot is no longer kept");
-            Assert.That(failed.Contains(afterFinalized), Is.True);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(failed.Contains(atFinalized), Is.False, "a finalized slot is no longer kept");
+        Assert.That(failed.Contains(afterFinalized), Is.True);
     }
 
     [Test]

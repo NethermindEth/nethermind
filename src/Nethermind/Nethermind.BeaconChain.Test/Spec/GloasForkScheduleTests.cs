@@ -56,13 +56,11 @@ public class GloasForkScheduleTests
         BeaconChainSpec spec = SyntheticGloasSpec();
         ulong boundarySlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(GloasEpoch);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(spec.ForkAtEpoch(spec.GetEpoch(boundarySlot - 1)), Is.EqualTo(BeaconFork.Fulu),
-                "the last slot of the pre-fork epoch must still resolve to Fulu");
-            Assert.That(spec.ForkAtEpoch(spec.GetEpoch(boundarySlot)), Is.EqualTo(BeaconFork.Gloas),
-                "the first slot of GLOAS_FORK_EPOCH must resolve to Gloas");
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(spec.ForkAtEpoch(spec.GetEpoch(boundarySlot - 1)), Is.EqualTo(BeaconFork.Fulu),
+            "the last slot of the pre-fork epoch must still resolve to Fulu");
+        Assert.That(spec.ForkAtEpoch(spec.GetEpoch(boundarySlot)), Is.EqualTo(BeaconFork.Gloas),
+            "the first slot of GLOAS_FORK_EPOCH must resolve to Gloas");
     }
 
     [Test]
@@ -98,12 +96,10 @@ public class GloasForkScheduleTests
         byte[] fuluDigest = ForkDigest.Compute(spec, GloasEpoch - 1);
         byte[] gloasDigest = ForkDigest.Compute(spec, GloasEpoch);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(gloasDigest, Is.Not.EqualTo(fuluDigest),
-                "a node computing the same digest across the boundary would silently keep talking Fulu's fork id");
-            Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString("0xce2153ed")));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(gloasDigest, Is.Not.EqualTo(fuluDigest),
+            "a node computing the same digest across the boundary would silently keep talking Fulu's fork id");
+        Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString("0xce2153ed")));
     }
 
     // Expected digests reproduced independently in Python: sha256(fork_version ++ 28 zero bytes ++
@@ -117,13 +113,11 @@ public class GloasForkScheduleTests
         byte[] fuluDigest = ForkDigest.Compute(BeaconChainSpec.Sepolia, 353023);
         byte[] gloasDigest = ForkDigest.Compute(BeaconChainSpec.Sepolia, 353024);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(fuluDigest, Is.EqualTo(Bytes.FromHexString("0x74d01459")));
-            Assert.That(gloasDigest, Is.Not.EqualTo(fuluDigest),
-                "a node computing the same digest across the boundary would silently keep talking Fulu's fork id");
-            Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString("0x669e6c11")));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fuluDigest, Is.EqualTo(Bytes.FromHexString("0x74d01459")));
+        Assert.That(gloasDigest, Is.Not.EqualTo(fuluDigest),
+            "a node computing the same digest across the boundary would silently keep talking Fulu's fork id");
+        Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString("0x669e6c11")));
     }
 
     /// <summary>

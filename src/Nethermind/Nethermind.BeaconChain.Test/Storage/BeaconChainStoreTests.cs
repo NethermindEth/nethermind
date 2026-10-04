@@ -35,29 +35,27 @@ public class BeaconChainStoreTests
         store.PutMetadata("probe", [1]);
         store.SetAnchor(blockRoot, 12_345_678);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(store.TryGetBlock(blockRoot, out SignedBeaconBlock? readBlock), Is.True);
-            Assert.That(SignedBeaconBlock.Encode(readBlock!), Is.EqualTo(SignedBeaconBlock.Encode(block)));
-            Assert.That(store.TryGetBlock(missingRoot, out _), Is.False);
-            Assert.That(store.HasBlock(blockRoot), Is.True);
-            Assert.That(store.HasBlock(missingRoot), Is.False);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetBlock(blockRoot, out SignedBeaconBlock? readBlock), Is.True);
+        Assert.That(SignedBeaconBlock.Encode(readBlock!), Is.EqualTo(SignedBeaconBlock.Encode(block)));
+        Assert.That(store.TryGetBlock(missingRoot, out _), Is.False);
+        Assert.That(store.HasBlock(blockRoot), Is.True);
+        Assert.That(store.HasBlock(missingRoot), Is.False);
 
-            Assert.That(store.TryGetCanonicalRoot(12_345_678, out Hash256? canonicalRoot), Is.True);
-            Assert.That(canonicalRoot, Is.EqualTo(blockRoot));
-            Assert.That(store.TryGetCanonicalRoot(1, out _), Is.False);
+        Assert.That(store.TryGetCanonicalRoot(12_345_678, out Hash256? canonicalRoot), Is.True);
+        Assert.That(canonicalRoot, Is.EqualTo(blockRoot));
+        Assert.That(store.TryGetCanonicalRoot(1, out _), Is.False);
 
-            Assert.That(store.TryGetState(blockRoot, out byte[]? readState), Is.True);
-            Assert.That(readState, Is.EqualTo(stateSsz));
-            Assert.That(store.TryGetState(missingRoot, out _), Is.False);
+        Assert.That(store.TryGetState(blockRoot, out byte[]? readState), Is.True);
+        Assert.That(readState, Is.EqualTo(stateSsz));
+        Assert.That(store.TryGetState(missingRoot, out _), Is.False);
 
-            Assert.That(store.GetMetadata("probe"), Is.EqualTo(new byte[] { 1 }));
-            Assert.That(store.GetMetadata("missing"), Is.Null);
+        Assert.That(store.GetMetadata("probe"), Is.EqualTo(new byte[] { 1 }));
+        Assert.That(store.GetMetadata("missing"), Is.Null);
 
-            Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot), Is.True);
-            Assert.That(anchorRoot, Is.EqualTo(blockRoot));
-            Assert.That(anchorSlot, Is.EqualTo(12_345_678ul));
-        });
+        Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot), Is.True);
+        Assert.That(anchorRoot, Is.EqualTo(blockRoot));
+        Assert.That(anchorSlot, Is.EqualTo(12_345_678ul));
     }
 
     [Test]

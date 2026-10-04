@@ -42,13 +42,11 @@ public class GloasLineageHasherTests
         Assert.That(importer.Import(forkChild.Forked, forkChild.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
         IBeaconStateHasher afterForkChild = LineageHasher(importer);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(new[] { initial, afterFirst, afterSecond, afterFork, afterForkChild }, Has.All.TypeOf<CachedBeaconStateHasher>());
-            Assert.That(afterSecond, Is.SameAs(afterFirst), "a child of the lineage block reuses the lineage hasher");
-            Assert.That(afterFork, Is.Not.SameAs(afterSecond), "a fork branch does not inherit the previous branch's memo");
-            Assert.That(afterForkChild, Is.SameAs(afterFork));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(new[] { initial, afterFirst, afterSecond, afterFork, afterForkChild }, Has.All.TypeOf<CachedBeaconStateHasher>());
+        Assert.That(afterSecond, Is.SameAs(afterFirst), "a child of the lineage block reuses the lineage hasher");
+        Assert.That(afterFork, Is.Not.SameAs(afterSecond), "a fork branch does not inherit the previous branch's memo");
+        Assert.That(afterForkChild, Is.SameAs(afterFork));
     }
 
     /// <summary>
@@ -65,13 +63,11 @@ public class GloasLineageHasherTests
         SignedGloasChain.Block third = chain.Next(second, ForkSlot + 3, full: true, 0xA4);
         CachedBeaconStateHasher cached = new();
 
-        Assert.Multiple(() =>
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        foreach (SignedGloasChain.Block block in (SignedGloasChain.Block[])[first, second, fork, third, second])
         {
-            foreach (SignedGloasChain.Block block in (SignedGloasChain.Block[])[first, second, fork, third, second])
-            {
-                Assert.That(cached.HashTreeRoot(block.PostState), Is.EqualTo(SszRoots.HashTreeRoot(block.PostState)), $"state at slot {block.PostState.Slot}");
-            }
-        });
+            Assert.That(cached.HashTreeRoot(block.PostState), Is.EqualTo(SszRoots.HashTreeRoot(block.PostState)), $"state at slot {block.PostState.Slot}");
+        }
     }
 
     /// <summary>The envelope of the lineage block is checked through the lineage hasher, and passes with it.</summary>
@@ -87,11 +83,9 @@ public class GloasLineageHasherTests
 
         ExecutionPayloadEnvelopeImportResult result = importer.ImportEnvelope(first.Envelope);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
-            Assert.That(spy.GloasCalls, Is.EqualTo(1));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        Assert.That(spy.GloasCalls, Is.EqualTo(1));
     }
 
     /// <summary>A rough comparison for the report: re-hashing the state a block import just hashed, once through each hasher. Not asserted.</summary>

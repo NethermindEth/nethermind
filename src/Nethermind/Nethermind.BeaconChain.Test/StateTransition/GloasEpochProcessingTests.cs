@@ -62,11 +62,9 @@ public class GloasEpochProcessingTests
         SignedExecutionPayloadBid secondBid = ValidBuilderBid(state, builderSk, builderIndex: 0, value: secondBidValue, blockHashFill: 0x8B);
         Assert.DoesNotThrow(() => ApplyBlock(state, MinimalBlock(state, secondBid), cache));
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.BuilderPendingPayments[32].Withdrawal!.Amount, Is.EqualTo(secondBidValue));
-            Assert.That(state.BuilderPendingPayments[0].Withdrawal!.Amount, Is.EqualTo(firstBidValue), "the second payment must not destroy the first");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.BuilderPendingPayments[32].Withdrawal!.Amount, Is.EqualTo(secondBidValue));
+        Assert.That(state.BuilderPendingPayments[0].Withdrawal!.Amount, Is.EqualTo(firstBidValue), "the second payment must not destroy the first");
     }
 
     // ---- The three settlement branches of apply_parent_execution_payload ----
@@ -90,13 +88,11 @@ public class GloasEpochProcessingTests
         Assert.That(state.BuilderPendingPayments[30].Withdrawal!.Amount, Is.EqualTo(bidValue), "fixture bug: the rotation must have moved the payment to index 30");
         ApplyBlock(state, MinimalBlock(state, SelfBuildBid(state, parentBlockHash: bid.Message!.BlockHash!, blockHash: Hash(0x9B))), cache);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.LatestBlockHash, Is.EqualTo(bid.Message.BlockHash));
-            Assert.That(state.BuilderPendingPayments[30].Withdrawal!.Amount, Is.EqualTo(0ul), "settling must clear the previous-epoch address");
-            Assert.That(state.BuilderPendingWithdrawals, Is.Empty, "the settled withdrawal must be paid out by the same block's withdrawals step");
-            Assert.That(state.Builders![0].Balance, Is.EqualTo(builderStartingBalance - bidValue), "the builder must actually have been paid");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.LatestBlockHash, Is.EqualTo(bid.Message.BlockHash));
+        Assert.That(state.BuilderPendingPayments[30].Withdrawal!.Amount, Is.EqualTo(0ul), "settling must clear the previous-epoch address");
+        Assert.That(state.BuilderPendingWithdrawals, Is.Empty, "the settled withdrawal must be paid out by the same block's withdrawals step");
+        Assert.That(state.Builders![0].Balance, Is.EqualTo(builderStartingBalance - bidValue), "the builder must actually have been paid");
     }
 
     [Test]
@@ -117,12 +113,10 @@ public class GloasEpochProcessingTests
         // Slot 96: the child declares the slot-32 payload delivered; only the bid remembers the amount.
         ApplyBlock(state, MinimalBlock(state, SelfBuildBid(state, parentBlockHash: bid.Message!.BlockHash!, blockHash: Hash(0x9C))), cache);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.LatestBlockHash, Is.EqualTo(bid.Message.BlockHash));
-            Assert.That(state.Builders![0].Balance, Is.EqualTo(builderStartingBalance - bidValue), "an evicted payment is still owed and must be paid from the bid's own value");
-            Assert.That(state.BuilderPendingWithdrawals, Is.Empty);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.LatestBlockHash, Is.EqualTo(bid.Message.BlockHash));
+        Assert.That(state.Builders![0].Balance, Is.EqualTo(builderStartingBalance - bidValue), "an evicted payment is still owed and must be paid from the bid's own value");
+        Assert.That(state.BuilderPendingWithdrawals, Is.Empty);
     }
 
     // ---- process_builder_pending_payments in isolation ----
@@ -153,15 +147,13 @@ public class GloasEpochProcessingTests
 
         GloasEpochProcessing.ProcessBuilderPendingPayments(state, cache);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.BuilderPendingWithdrawals, Has.Length.EqualTo(1));
-            Assert.That(state.BuilderPendingWithdrawals![0], Is.SameAs(reaching.Withdrawal), "exactly the payment that reached the quorum is queued");
-            Assert.That(state.BuilderPendingPayments[8], Is.SameAs(currentEpoch), "the current-epoch half becomes the previous-epoch half");
-            Assert.That(state.BuilderPendingPayments.Take(32).Where((p, i) => i != 8).Select(p => p.Withdrawal!.Amount), Has.All.EqualTo(0ul));
-            Assert.That(state.BuilderPendingPayments.Skip(32).Select(p => p.Withdrawal!.Amount), Has.All.EqualTo(0ul), "the new current-epoch half is zeroed");
-            Assert.That(state.BuilderPendingPayments, Has.Length.EqualTo((int)Presets.BuilderPendingPaymentsLength));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.BuilderPendingWithdrawals, Has.Length.EqualTo(1));
+        Assert.That(state.BuilderPendingWithdrawals![0], Is.SameAs(reaching.Withdrawal), "exactly the payment that reached the quorum is queued");
+        Assert.That(state.BuilderPendingPayments[8], Is.SameAs(currentEpoch), "the current-epoch half becomes the previous-epoch half");
+        Assert.That(state.BuilderPendingPayments.Take(32).Where((p, i) => i != 8).Select(p => p.Withdrawal!.Amount), Has.All.EqualTo(0ul));
+        Assert.That(state.BuilderPendingPayments.Skip(32).Select(p => p.Withdrawal!.Amount), Has.All.EqualTo(0ul), "the new current-epoch half is zeroed");
+        Assert.That(state.BuilderPendingPayments, Has.Length.EqualTo((int)Presets.BuilderPendingPaymentsLength));
     }
 
     // ---- process_ptc_window ----
@@ -181,19 +173,17 @@ public class GloasEpochProcessingTests
         // rotation must have produced, through independently written seed/committee/selection code.
         PayloadTimelinessCommittee[] expected = GloasForkTransition.InitializePtcWindow(pre, state.GetCurrentEpoch() + 1);
 
-        Assert.Multiple(() =>
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.PtcWindow.Take(2 * slots), Is.EqualTo(before.Skip(slots)).AsCollection, "the first two epochs shift down by one epoch");
+        for (int i = 0; i < slots; i++)
         {
-            Assert.That(state.PtcWindow.Take(2 * slots), Is.EqualTo(before.Skip(slots)).AsCollection, "the first two epochs shift down by one epoch");
-            for (int i = 0; i < slots; i++)
-            {
-                ulong[] gloas = state.PtcWindow[2 * slots + i].Indices!;
-                ulong[] fulu = expected[2 * slots + i].Indices!;
-                Assert.That(gloas, Has.Length.EqualTo((int)Presets.PtcSize));
-                Assert.That(gloas, Is.EqualTo(fulu).AsCollection, $"PTC for slot-in-epoch {i} of the newly filled epoch");
-            }
-            Assert.That(state.PtcWindow.Skip(2 * slots).Select(c => c.Indices!.Distinct().Count()), Has.Some.GreaterThan(1),
-                "a real committee draws from many validators; an all-equal committee means the seed or candidate list is wrong");
-        });
+            ulong[] gloas = state.PtcWindow[2 * slots + i].Indices!;
+            ulong[] fulu = expected[2 * slots + i].Indices!;
+            Assert.That(gloas, Has.Length.EqualTo((int)Presets.PtcSize));
+            Assert.That(gloas, Is.EqualTo(fulu).AsCollection, $"PTC for slot-in-epoch {i} of the newly filled epoch");
+        }
+        Assert.That(state.PtcWindow.Skip(2 * slots).Select(c => c.Indices!.Distinct().Count()), Has.Some.GreaterThan(1),
+            "a real committee draws from many validators; an all-equal committee means the seed or candidate list is wrong");
     }
 
     // ---- get_beacon_proposer_indices (EIP-8045: slashed validators excluded) ----
@@ -316,24 +306,22 @@ public class GloasEpochProcessingTests
         SlotProcessing.ProcessSlots(fulu, target, new EpochCache());
         GloasSlotProcessing.ProcessSlots(gloas, target, new EpochCache());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(gloas.Slot, Is.EqualTo(target));
-            Assert.That(gloas.Balances, Is.EqualTo(fulu.Balances).AsCollection);
-            Assert.That(gloas.Validators!.Select(v => v.EffectiveBalance), Is.EqualTo(fulu.Validators!.Select(v => v.EffectiveBalance)).AsCollection);
-            Assert.That(gloas.Validators!.Select(v => v.EffectiveBalance).Distinct().Count(), Is.GreaterThan(1), "fixture bug: effective balances must actually have been updated to differ");
-            Assert.That(gloas.InactivityScores, Is.EqualTo(fulu.InactivityScores).AsCollection);
-            Assert.That(gloas.ProposerLookahead, Is.EqualTo(fulu.ProposerLookahead).AsCollection);
-            Assert.That(gloas.ProposerLookahead!.Distinct().Count(), Is.GreaterThan(1), "fixture bug: the lookahead must hold real proposers");
-            Assert.That(gloas.RandaoMixes![2], Is.EqualTo(fulu.RandaoMixes![2]), "the next epoch's mix is seeded from the current one");
-            Assert.That(gloas.PreviousEpochParticipation, Is.EqualTo(fulu.PreviousEpochParticipation).AsCollection);
-            Assert.That(gloas.CurrentEpochParticipation, Is.EqualTo(fulu.CurrentEpochParticipation).AsCollection);
-            Assert.That(gloas.CurrentJustifiedCheckpoint!.Epoch, Is.EqualTo(fulu.CurrentJustifiedCheckpoint!.Epoch));
-            Assert.That(gloas.FinalizedCheckpoint!.Epoch, Is.EqualTo(fulu.FinalizedCheckpoint!.Epoch));
-            Assert.That(gloas.JustificationBits!.Cast<bool>(), Is.EqualTo(fulu.JustificationBits!.Cast<bool>()).AsCollection);
-            Assert.That(gloas.Slashings, Is.EqualTo(fulu.Slashings).AsCollection);
-            Assert.That(gloas.Eth1DataVotes, Is.EqualTo(fulu.Eth1DataVotes).AsCollection);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(gloas.Slot, Is.EqualTo(target));
+        Assert.That(gloas.Balances, Is.EqualTo(fulu.Balances).AsCollection);
+        Assert.That(gloas.Validators!.Select(v => v.EffectiveBalance), Is.EqualTo(fulu.Validators!.Select(v => v.EffectiveBalance)).AsCollection);
+        Assert.That(gloas.Validators!.Select(v => v.EffectiveBalance).Distinct().Count(), Is.GreaterThan(1), "fixture bug: effective balances must actually have been updated to differ");
+        Assert.That(gloas.InactivityScores, Is.EqualTo(fulu.InactivityScores).AsCollection);
+        Assert.That(gloas.ProposerLookahead, Is.EqualTo(fulu.ProposerLookahead).AsCollection);
+        Assert.That(gloas.ProposerLookahead!.Distinct().Count(), Is.GreaterThan(1), "fixture bug: the lookahead must hold real proposers");
+        Assert.That(gloas.RandaoMixes![2], Is.EqualTo(fulu.RandaoMixes![2]), "the next epoch's mix is seeded from the current one");
+        Assert.That(gloas.PreviousEpochParticipation, Is.EqualTo(fulu.PreviousEpochParticipation).AsCollection);
+        Assert.That(gloas.CurrentEpochParticipation, Is.EqualTo(fulu.CurrentEpochParticipation).AsCollection);
+        Assert.That(gloas.CurrentJustifiedCheckpoint!.Epoch, Is.EqualTo(fulu.CurrentJustifiedCheckpoint!.Epoch));
+        Assert.That(gloas.FinalizedCheckpoint!.Epoch, Is.EqualTo(fulu.FinalizedCheckpoint!.Epoch));
+        Assert.That(gloas.JustificationBits!.Cast<bool>(), Is.EqualTo(fulu.JustificationBits!.Cast<bool>()).AsCollection);
+        Assert.That(gloas.Slashings, Is.EqualTo(fulu.Slashings).AsCollection);
+        Assert.That(gloas.Eth1DataVotes, Is.EqualTo(fulu.Eth1DataVotes).AsCollection);
     }
 
     [Test]
@@ -345,12 +333,10 @@ public class GloasEpochProcessingTests
 
         GloasSlotProcessing.ProcessSlots(state, 34);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(availability[33], Is.False, "process_slot at slot 32 unsets slot 33");
-            Assert.That(availability[34], Is.False, "process_slot at slot 33 unsets slot 34");
-            Assert.That(availability[32], Is.True, "the slot already processed under Fulu keeps its upgrade-time value");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(availability[33], Is.False, "process_slot at slot 32 unsets slot 33");
+        Assert.That(availability[34], Is.False, "process_slot at slot 33 unsets slot 34");
+        Assert.That(availability[32], Is.True, "the slot already processed under Fulu keeps its upgrade-time value");
     }
 
     // ---- process_justification_and_finalization, computed without mutating ----
@@ -402,21 +388,19 @@ public class GloasEpochProcessingTests
         Hash256 rootAfterCompute = SszRoots.HashTreeRoot(state);
         GloasEpochProcessing.ProcessJustificationAndFinalization(state, new EpochCache());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(rootAfterCompute, Is.EqualTo(rootBefore), "computing the pulled-up tip must not touch the post-state");
-            Assert.That(computed.CurrentJustifiedCheckpoint.Epoch, Is.EqualTo(expectedJustifiedEpoch));
-            Assert.That(computed.CurrentJustifiedCheckpoint.Root, Is.EqualTo(Hash(expectedJustifiedRootFill)));
-            Assert.That(computed.PreviousJustifiedCheckpoint.Root, Is.EqualTo(Hash((byte)(0xB0 + oldCurrentJustifiedEpoch))), "the old current checkpoint becomes the previous one");
-            Assert.That(computed.FinalizedCheckpoint.Epoch, Is.EqualTo(expectedFinalizedEpoch));
-            Assert.That(computed.FinalizedCheckpoint.Root, Is.EqualTo(Hash(expectedFinalizedRootFill)));
-            Assert.That(computed.JustificationBits.Cast<bool>(), Is.EqualTo(expectedBits).AsCollection);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(rootAfterCompute, Is.EqualTo(rootBefore), "computing the pulled-up tip must not touch the post-state");
+        Assert.That(computed.CurrentJustifiedCheckpoint.Epoch, Is.EqualTo(expectedJustifiedEpoch));
+        Assert.That(computed.CurrentJustifiedCheckpoint.Root, Is.EqualTo(Hash(expectedJustifiedRootFill)));
+        Assert.That(computed.PreviousJustifiedCheckpoint.Root, Is.EqualTo(Hash((byte)(0xB0 + oldCurrentJustifiedEpoch))), "the old current checkpoint becomes the previous one");
+        Assert.That(computed.FinalizedCheckpoint.Epoch, Is.EqualTo(expectedFinalizedEpoch));
+        Assert.That(computed.FinalizedCheckpoint.Root, Is.EqualTo(Hash(expectedFinalizedRootFill)));
+        Assert.That(computed.JustificationBits.Cast<bool>(), Is.EqualTo(expectedBits).AsCollection);
 
-            Assert.That(CheckpointRef.From(state.CurrentJustifiedCheckpoint!), Is.EqualTo(CheckpointRef.From(computed.CurrentJustifiedCheckpoint)));
-            Assert.That(CheckpointRef.From(state.PreviousJustifiedCheckpoint!), Is.EqualTo(CheckpointRef.From(computed.PreviousJustifiedCheckpoint)));
-            Assert.That(CheckpointRef.From(state.FinalizedCheckpoint!), Is.EqualTo(CheckpointRef.From(computed.FinalizedCheckpoint)));
-            Assert.That(state.JustificationBits!.Cast<bool>(), Is.EqualTo(expectedBits).AsCollection);
-        });
+        Assert.That(CheckpointRef.From(state.CurrentJustifiedCheckpoint!), Is.EqualTo(CheckpointRef.From(computed.CurrentJustifiedCheckpoint)));
+        Assert.That(CheckpointRef.From(state.PreviousJustifiedCheckpoint!), Is.EqualTo(CheckpointRef.From(computed.PreviousJustifiedCheckpoint)));
+        Assert.That(CheckpointRef.From(state.FinalizedCheckpoint!), Is.EqualTo(CheckpointRef.From(computed.FinalizedCheckpoint)));
+        Assert.That(state.JustificationBits!.Cast<bool>(), Is.EqualTo(expectedBits).AsCollection);
     }
 
     // ---- EIP-8061: pending deposits draw on the capped activation churn ----
@@ -429,11 +413,9 @@ public class GloasEpochProcessingTests
         BeaconStateGloas state = StateWithRegistry(validatorCount, effectiveBalanceEth);
         EpochCache cache = new();
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.GetExitChurnLimit(cache), Is.EqualTo(expectedExitEth * Gwei));
-            Assert.That(state.GetActivationChurnLimit(cache), Is.EqualTo(expectedActivationEth * Gwei));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.GetExitChurnLimit(cache), Is.EqualTo(expectedExitEth * Gwei));
+        Assert.That(state.GetActivationChurnLimit(cache), Is.EqualTo(expectedActivationEth * Gwei));
     }
 
     /// <summary>
@@ -451,11 +433,9 @@ public class GloasEpochProcessingTests
 
         ulong exitEpoch = state.ComputeExitEpochAndUpdateChurn(400 * Gwei, cache);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(exitEpoch, Is.EqualTo(BeaconStateAccessors.ComputeActivationExitEpoch(state.GetCurrentEpoch())));
-            Assert.That(state.ExitBalanceToConsume, Is.EqualTo(112 * Gwei));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(exitEpoch, Is.EqualTo(BeaconStateAccessors.ComputeActivationExitEpoch(state.GetCurrentEpoch())));
+        Assert.That(state.ExitBalanceToConsume, Is.EqualTo(112 * Gwei));
     }
 
     /// <summary>The fixture state with a registry of <paramref name="validatorCount"/> active validators at <paramref name="effectiveBalanceEth"/>; only the registry feeds the churn limits.</summary>
@@ -496,13 +476,11 @@ public class GloasEpochProcessingTests
 
         GloasEpochProcessing.ProcessPendingDeposits(state, cache);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Balances![5], Is.EqualTo(132 * Gwei), "the carried-over 28 ETH plus a fresh 128 ETH covers both remaining deposits");
-            Assert.That(state.Balances[7], Is.EqualTo(42 * Gwei));
-            Assert.That(state.PendingDeposits, Is.Empty);
-            Assert.That(state.DepositBalanceToConsume, Is.Zero, "nothing carries over when the queue drains under budget");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Balances![5], Is.EqualTo(132 * Gwei), "the carried-over 28 ETH plus a fresh 128 ETH covers both remaining deposits");
+        Assert.That(state.Balances[7], Is.EqualTo(42 * Gwei));
+        Assert.That(state.PendingDeposits, Is.Empty);
+        Assert.That(state.DepositBalanceToConsume, Is.Zero, "nothing carries over when the queue drains under budget");
     }
 
     [Test]
@@ -517,13 +495,11 @@ public class GloasEpochProcessingTests
 
         GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Balances![3], Is.EqualTo(32 * Gwei), "a deposit for an exiting validator waits until it is withdrawable");
-            Assert.That(state.Balances[5], Is.EqualTo(132 * Gwei), "the postponed 100 ETH must not count against the 128 ETH churn");
-            Assert.That(state.PendingDeposits, Is.EqualTo(new[] { unfinalized, exiting }).AsCollection, "postponed deposits go behind the unprocessed head of the queue");
-            Assert.That(state.DepositBalanceToConsume, Is.Zero);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Balances![3], Is.EqualTo(32 * Gwei), "a deposit for an exiting validator waits until it is withdrawable");
+        Assert.That(state.Balances[5], Is.EqualTo(132 * Gwei), "the postponed 100 ETH must not count against the 128 ETH churn");
+        Assert.That(state.PendingDeposits, Is.EqualTo(new[] { unfinalized, exiting }).AsCollection, "postponed deposits go behind the unprocessed head of the queue");
+        Assert.That(state.DepositBalanceToConsume, Is.Zero);
     }
 
     /// <summary>
@@ -543,13 +519,11 @@ public class GloasEpochProcessingTests
 
         GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Balances![3], Is.EqualTo((withdrawn ? 132UL : 32UL) * Gwei), "credited for withdrawal rather than queued behind the churn");
-            Assert.That(state.Balances[5], Is.EqualTo(132 * Gwei), "200 ETH exceeds the churn, so the exited validator's deposit must not have been charged");
-            Assert.That(state.PendingDeposits, withdrawn ? Is.Empty : Is.EqualTo(new[] { exited }).AsCollection);
-            Assert.That(state.DepositBalanceToConsume, Is.Zero);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Balances![3], Is.EqualTo((withdrawn ? 132UL : 32UL) * Gwei), "credited for withdrawal rather than queued behind the churn");
+        Assert.That(state.Balances[5], Is.EqualTo(132 * Gwei), "200 ETH exceeds the churn, so the exited validator's deposit must not have been charged");
+        Assert.That(state.PendingDeposits, withdrawn ? Is.Empty : Is.EqualTo(new[] { exited }).AsCollection);
+        Assert.That(state.DepositBalanceToConsume, Is.Zero);
     }
 
     [Test]
@@ -563,13 +537,11 @@ public class GloasEpochProcessingTests
 
         GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Balances![3], Is.EqualTo(33 * Gwei), "a deposit at the finalized slot itself is processable");
-            Assert.That(state.Balances[5], Is.EqualTo(32 * Gwei));
-            Assert.That(state.PendingDeposits, Is.EqualTo(new[] { unfinalized }).AsCollection);
-            Assert.That(state.DepositBalanceToConsume, Is.Zero, "waiting on finality is not a churn stop");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Balances![3], Is.EqualTo(33 * Gwei), "a deposit at the finalized slot itself is processable");
+        Assert.That(state.Balances[5], Is.EqualTo(32 * Gwei));
+        Assert.That(state.PendingDeposits, Is.EqualTo(new[] { unfinalized }).AsCollection);
+        Assert.That(state.DepositBalanceToConsume, Is.Zero, "waiting on finality is not a churn stop");
     }
 
     [Test]
@@ -581,13 +553,11 @@ public class GloasEpochProcessingTests
 
         GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Balances![3], Is.EqualTo((32 + (ulong)Presets.MaxPendingDepositsPerEpoch) * Gwei));
-            Assert.That(state.PendingDeposits, Has.Length.EqualTo(1));
-            Assert.That(state.PendingDeposits![0], Is.SameAs(last));
-            Assert.That(state.DepositBalanceToConsume, Is.Zero, "the count bound is not a churn stop, so nothing carries over");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Balances![3], Is.EqualTo((32 + (ulong)Presets.MaxPendingDepositsPerEpoch) * Gwei));
+        Assert.That(state.PendingDeposits, Has.Length.EqualTo(1));
+        Assert.That(state.PendingDeposits![0], Is.SameAs(last));
+        Assert.That(state.DepositBalanceToConsume, Is.Zero, "the count bound is not a churn stop, so nothing carries over");
     }
 
     [Test]
@@ -601,15 +571,13 @@ public class GloasEpochProcessingTests
 
         GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.Validators, Has.Length.EqualTo(registrySize + 1), "the forged deposit is consumed without adding a validator");
-            Assert.That(state.Validators![^1].Pubkey, Is.EqualTo(signed.Pubkey));
-            Assert.That(state.Validators[^1].EffectiveBalance, Is.EqualTo(32 * Gwei));
-            Assert.That(state.Balances, Has.Length.EqualTo(registrySize + 1));
-            Assert.That(state.Balances![^1], Is.EqualTo(32 * Gwei));
-            Assert.That(state.PendingDeposits, Is.Empty);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(state.Validators, Has.Length.EqualTo(registrySize + 1), "the forged deposit is consumed without adding a validator");
+        Assert.That(state.Validators![^1].Pubkey, Is.EqualTo(signed.Pubkey));
+        Assert.That(state.Validators[^1].EffectiveBalance, Is.EqualTo(32 * Gwei));
+        Assert.That(state.Balances, Has.Length.EqualTo(registrySize + 1));
+        Assert.That(state.Balances![^1], Is.EqualTo(32 * Gwei));
+        Assert.That(state.PendingDeposits, Is.Empty);
     }
 
     private static BuilderPendingPayment Payment(ulong weight, ulong amount, byte feeRecipientFill) => new()

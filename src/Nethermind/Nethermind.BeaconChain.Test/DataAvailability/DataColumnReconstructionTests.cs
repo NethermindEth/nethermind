@@ -56,19 +56,17 @@ public class DataColumnReconstructionTests
 
         bool ok = DataColumnReconstruction.TryReconstruct(held, out DataColumnSidecar[] recoveredMatrix);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(ok, Is.True);
-            Assert.That(recoveredMatrix, Has.Length.EqualTo(Eip7594DasConstants.NumberOfColumns));
-            Assert.That(Flatten(recoveredMatrix, s => s.Column!), Is.EqualTo(Flatten(fullMatrix, s => s.Column!)),
-                "recovered cells, at every column including those never held, must equal the originals bit-for-bit");
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ok, Is.True);
+        Assert.That(recoveredMatrix, Has.Length.EqualTo(Eip7594DasConstants.NumberOfColumns));
+        Assert.That(Flatten(recoveredMatrix, s => s.Column!), Is.EqualTo(Flatten(fullMatrix, s => s.Column!)),
+            "recovered cells, at every column including those never held, must equal the originals bit-for-bit");
 
-            for (int c = 0; c < Eip7594DasConstants.NumberOfColumns; c++)
-            {
-                Assert.That(recoveredMatrix[c].Index, Is.EqualTo((ulong)c));
-                Assert.That(recoveredMatrix[c].KzgCommitments, Is.SameAs(fullMatrix[0].KzgCommitments));
-            }
-        });
+        for (int c = 0; c < Eip7594DasConstants.NumberOfColumns; c++)
+        {
+            Assert.That(recoveredMatrix[c].Index, Is.EqualTo((ulong)c));
+            Assert.That(recoveredMatrix[c].KzgCommitments, Is.SameAs(fullMatrix[0].KzgCommitments));
+        }
     }
 
     [Test]
@@ -79,11 +77,9 @@ public class DataColumnReconstructionTests
 
         bool ok = DataColumnReconstruction.TryReconstruct(held, out DataColumnSidecar[] recoveredMatrix);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(ok, Is.False);
-            Assert.That(recoveredMatrix, Is.Empty);
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ok, Is.False);
+        Assert.That(recoveredMatrix, Is.Empty);
     }
 
     [Test]
@@ -121,10 +117,8 @@ public class DataColumnReconstructionTests
     {
         bool ok = DataColumnReconstruction.TryReconstruct([], out DataColumnSidecar[] recoveredMatrix);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(ok, Is.False);
-            Assert.That(recoveredMatrix, Is.Empty);
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ok, Is.False);
+        Assert.That(recoveredMatrix, Is.Empty);
     }
 }

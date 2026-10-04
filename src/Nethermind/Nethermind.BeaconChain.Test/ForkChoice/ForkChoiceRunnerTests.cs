@@ -78,15 +78,13 @@ public class ForkChoiceRunnerTests
         // The eight columns a base-custody node would hold: enough for the production rule, never for this one.
         DataColumnSidecar[] eightColumns = [.. chain.Columns.Take(8)];
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, eightColumns),
-                Throws.TypeOf<ForkChoiceException>().With.Message.Contains("blob data"));
-            Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.False, "a rejected block must not have been added to the tree");
-            Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, chain.Columns), Throws.Nothing,
-                "the spec vectors hand over the whole matrix and expect acceptance");
-            Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.True);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, eightColumns),
+            Throws.TypeOf<ForkChoiceException>().With.Message.Contains("blob data"));
+        Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.False, "a rejected block must not have been added to the tree");
+        Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, chain.Columns), Throws.Nothing,
+            "the spec vectors hand over the whole matrix and expect acceptance");
+        Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.True);
     }
 
     [Test]
@@ -97,17 +95,15 @@ public class ForkChoiceRunnerTests
         RecordingRule refusing = new(verdict: false);
         RecordingRule accepting = new(verdict: true);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, refusing), Throws.TypeOf<ForkChoiceException>());
-            Assert.That(refusing.Asked, Is.EqualTo(new List<(BeaconBlock, Hash256)> { (chain.Block.Message!, chain.BlockRoot) }),
-                "the rule is consulted for this block, keyed by its real root");
-            Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.False);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, refusing), Throws.TypeOf<ForkChoiceException>());
+        Assert.That(refusing.Asked, Is.EqualTo(new List<(BeaconBlock, Hash256)> { (chain.Block.Message!, chain.BlockRoot) }),
+            "the rule is consulted for this block, keyed by its real root");
+        Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.False);
 
-            Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, accepting), Throws.Nothing);
-            Assert.That(accepting.Asked, Has.Count.EqualTo(1));
-            Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.True);
-        });
+        Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, accepting), Throws.Nothing);
+        Assert.That(accepting.Asked, Has.Count.EqualTo(1));
+        Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.True);
     }
 
     /// <summary>
@@ -125,25 +121,23 @@ public class ForkChoiceRunnerTests
         runner.OnBlock(chain.Block, postState, ExecutionStatus.Optimistic, chain.Columns);
         ForkChoiceSnapshot withBlock = runner.Snapshot();
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(anchorOnly.Nodes, Has.Count.EqualTo(1), "the copy taken before the block still holds the anchor alone");
-            Assert.That(anchorOnly.Nodes[0].ParentRoot, Is.Null, "the tree root's parent is outside the tree");
-            Assert.That(anchorOnly.Nodes[0].Root, Is.EqualTo(chain.AnchorRoot));
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(anchorOnly.Nodes, Has.Count.EqualTo(1), "the copy taken before the block still holds the anchor alone");
+        Assert.That(anchorOnly.Nodes[0].ParentRoot, Is.Null, "the tree root's parent is outside the tree");
+        Assert.That(anchorOnly.Nodes[0].Root, Is.EqualTo(chain.AnchorRoot));
 
-            Assert.That(withBlock.Nodes.Select(n => n.Root), Is.EqualTo(new[] { chain.AnchorRoot, chain.BlockRoot }), "proto-array order, parent first");
-            ForkChoiceSnapshotNode block = withBlock.Nodes[1];
-            Assert.That(block.ParentRoot, Is.EqualTo(chain.AnchorRoot), "the parent index is resolved to its root");
-            Assert.That(block.Slot, Is.EqualTo(chain.Block.Message!.Slot));
-            Assert.That(block.ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
-            Assert.That(block.ExecutionBlockHash, Is.EqualTo(chain.Block.Message.Body!.ExecutionPayload!.BlockHash));
-            Assert.That(block.JustifiedEpoch, Is.EqualTo(runner.JustifiedCheckpoint.Epoch));
-            Assert.That(block.FinalizedEpoch, Is.EqualTo(runner.FinalizedCheckpoint.Epoch));
+        Assert.That(withBlock.Nodes.Select(n => n.Root), Is.EqualTo(new[] { chain.AnchorRoot, chain.BlockRoot }), "proto-array order, parent first");
+        ForkChoiceSnapshotNode block = withBlock.Nodes[1];
+        Assert.That(block.ParentRoot, Is.EqualTo(chain.AnchorRoot), "the parent index is resolved to its root");
+        Assert.That(block.Slot, Is.EqualTo(chain.Block.Message!.Slot));
+        Assert.That(block.ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
+        Assert.That(block.ExecutionBlockHash, Is.EqualTo(chain.Block.Message.Body!.ExecutionPayload!.BlockHash));
+        Assert.That(block.JustifiedEpoch, Is.EqualTo(runner.JustifiedCheckpoint.Epoch));
+        Assert.That(block.FinalizedEpoch, Is.EqualTo(runner.FinalizedCheckpoint.Epoch));
 
-            Assert.That(withBlock.JustifiedCheckpoint, Is.EqualTo(runner.JustifiedCheckpoint));
-            Assert.That(withBlock.FinalizedCheckpoint, Is.EqualTo(runner.FinalizedCheckpoint));
-            Assert.That(withBlock.ProposerBoostRoot, Is.EqualTo(chain.BlockRoot), "a block imported at the start of its own slot holds the boost, and the copy says so");
-        });
+        Assert.That(withBlock.JustifiedCheckpoint, Is.EqualTo(runner.JustifiedCheckpoint));
+        Assert.That(withBlock.FinalizedCheckpoint, Is.EqualTo(runner.FinalizedCheckpoint));
+        Assert.That(withBlock.ProposerBoostRoot, Is.EqualTo(chain.BlockRoot), "a block imported at the start of its own slot holds the boost, and the copy says so");
     }
 
     /// <summary>
@@ -161,11 +155,9 @@ public class ForkChoiceRunnerTests
 
         ImportWithBodyReplay(runner, slashing);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(headBeforeSlashing, Is.EqualTo(voted.Root), "two votes on A's branch outweigh one on B");
-            Assert.That(runner.GetHead(), Is.EqualTo(b.Root), "the slashed validators' votes no longer count, so B's lone vote wins");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(headBeforeSlashing, Is.EqualTo(voted.Root), "two votes on A's branch outweigh one on B");
+        Assert.That(runner.GetHead(), Is.EqualTo(b.Root), "the slashed validators' votes no longer count, so B's lone vote wins");
     }
 
     /// <summary>
@@ -178,12 +170,10 @@ public class ForkChoiceRunnerTests
         (ForkChoiceRunner runner, _, _, UnsignedChain.ChainBlock slashing) = EquivocationScenario();
         runner.OnBlock(slashing.Block, slashing.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(() => runner.OnAttesterSlashing(slashing.Block.Message!.Body!.AttesterSlashings![0], verifySignatures: true),
-                Throws.TypeOf<ForkChoiceException>().With.Message.Contains("invalid"));
-            Assert.That(runner.GetHead(), Is.EqualTo(slashing.Root), "a refused slashing discounts nobody: the head stays on A's branch, at its new leaf");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(() => runner.OnAttesterSlashing(slashing.Block.Message!.Body!.AttesterSlashings![0], verifySignatures: true),
+            Throws.TypeOf<ForkChoiceException>().With.Message.Contains("invalid"));
+        Assert.That(runner.GetHead(), Is.EqualTo(slashing.Root), "a refused slashing discounts nobody: the head stays on A's branch, at its new leaf");
     }
 
     /// <summary>

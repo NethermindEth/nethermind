@@ -76,10 +76,8 @@ public class ForkChoiceStoreTests
         });
 
         store.UpdateCheckpoints(GetCheckpoint(5), GetCheckpoint(4));
-        Assert.Multiple(() =>
-        {
-            Assert.That(store.JustifiedCheckpoint, Is.EqualTo(GetCheckpoint(5)), "a later justified epoch advances, root and all");
-            Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(4)));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.JustifiedCheckpoint, Is.EqualTo(GetCheckpoint(5)), "a later justified epoch advances, root and all");
+        Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(4)));
     }
 }

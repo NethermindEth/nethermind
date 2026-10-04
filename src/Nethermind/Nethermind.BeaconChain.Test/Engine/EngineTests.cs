@@ -101,20 +101,18 @@ public class EngineTests
         consolidation.SourcePubkey.Bytes.CopyTo(expectedConsolidations.AsSpan(1 + 20));
         consolidation.TargetPubkey.Bytes.CopyTo(expectedConsolidations.AsSpan(1 + 68));
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(converted.BlockNumber, Is.EqualTo(123));
-            Assert.That(converted.GasLimit, Is.EqualTo(30_000_000));
-            Assert.That(converted.Timestamp, Is.EqualTo(1_700_000_000));
-            AssertAdditionalPayloadFields(converted, payload.GasUsed, payload.ExtraData, payload.BaseFeePerGas, payload.Withdrawals![0]);
-            Assert.That(converted.Transactions, Is.EqualTo(new[] { Bytes.FromHexString("0x02abcd") }));
-            Assert.That(converted.BlobGasUsed, Is.EqualTo(131072ul));
-            Assert.That(converted.ExcessBlobGas, Is.EqualTo(262144ul));
-            Assert.That(versionedHashes.Single()!.Bytes.ToArray(), Is.EqualTo(expectedVersionedHash));
-            Assert.That(requests, Has.Length.EqualTo(2));
-            Assert.That(requests[0], Is.EqualTo(expectedDeposits));
-            Assert.That(requests[1], Is.EqualTo(expectedConsolidations));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(converted.BlockNumber, Is.EqualTo(123));
+        Assert.That(converted.GasLimit, Is.EqualTo(30_000_000));
+        Assert.That(converted.Timestamp, Is.EqualTo(1_700_000_000));
+        AssertAdditionalPayloadFields(converted, payload.GasUsed, payload.ExtraData, payload.BaseFeePerGas, payload.Withdrawals![0]);
+        Assert.That(converted.Transactions, Is.EqualTo(new[] { Bytes.FromHexString("0x02abcd") }));
+        Assert.That(converted.BlobGasUsed, Is.EqualTo(131072ul));
+        Assert.That(converted.ExcessBlobGas, Is.EqualTo(262144ul));
+        Assert.That(versionedHashes.Single()!.Bytes.ToArray(), Is.EqualTo(expectedVersionedHash));
+        Assert.That(requests, Has.Length.EqualTo(2));
+        Assert.That(requests[0], Is.EqualTo(expectedDeposits));
+        Assert.That(requests[1], Is.EqualTo(expectedConsolidations));
     }
 
     [TestCase(PayloadStatus.Valid, ExecutionStatus.Valid)]
@@ -139,16 +137,14 @@ public class EngineTests
         PayloadStatusV1 newPayloadStatus = await driver.NewPayload(block);
         PayloadStatusV1 forkchoiceStatus = await driver.ForkchoiceUpdated(TestHash, TestHash, TestHash);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(newPayloadStatus.Status, Is.EqualTo(status));
-            Assert.That(driver.NotifyNewPayload(block.Message!.Body!), Is.EqualTo(expected));
-            // specs/bellatrix/optimistic-sync.md: an INVALID status is applied through its latestValidHash, so the hook must not drop it.
-            Assert.That(((IEngineDriver)driver).NotifyNewPayload(block.Message!.Body!, out Hash256? reportedHash), Is.EqualTo(expected));
-            Assert.That(reportedHash, Is.EqualTo(latestValidHash));
-            Assert.That(forkchoiceStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(newPayloadStatus.Status, Is.EqualTo(status));
+        Assert.That(driver.NotifyNewPayload(block.Message!.Body!), Is.EqualTo(expected));
+        // specs/bellatrix/optimistic-sync.md: an INVALID status is applied through its latestValidHash, so the hook must not drop it.
+        Assert.That(((IEngineDriver)driver).NotifyNewPayload(block.Message!.Body!, out Hash256? reportedHash), Is.EqualTo(expected));
+        Assert.That(reportedHash, Is.EqualTo(latestValidHash));
+        Assert.That(forkchoiceStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
     }
 
     [Test]
@@ -245,21 +241,19 @@ public class EngineTests
         Address.SystemUser.Bytes.CopyTo(expectedBuilderExit.AsSpan(1));
         builderExit.Pubkey.Bytes.CopyTo(expectedBuilderExit.AsSpan(1 + 20));
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(converted.BlockNumber, Is.EqualTo(321));
-            Assert.That(converted.GasLimit, Is.EqualTo(36_000_000));
-            Assert.That(converted.Timestamp, Is.EqualTo(1_800_000_000));
-            AssertAdditionalPayloadFields(converted, payload.GasUsed, payload.ExtraData, payload.BaseFeePerGas, payload.Withdrawals![0]);
-            Assert.That(converted.Transactions, Is.EqualTo(new[] { Bytes.FromHexString("0x04cafe") }));
-            Assert.That(converted.BlobGasUsed, Is.EqualTo(262144ul));
-            Assert.That(converted.ExcessBlobGas, Is.EqualTo(393216ul));
-            Assert.That(converted.BlockAccessList, Is.EqualTo(Bytes.FromHexString("0xc0ffee")), "the access list bytes must reach the execution layer unchanged");
-            Assert.That(converted.SlotNumber, Is.EqualTo(77ul));
-            Assert.That(requests, Has.Length.EqualTo(2), "empty request lists are omitted, the two builder lists are not");
-            Assert.That(requests[0], Is.EqualTo(expectedBuilderDeposit));
-            Assert.That(requests[1], Is.EqualTo(expectedBuilderExit));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(converted.BlockNumber, Is.EqualTo(321));
+        Assert.That(converted.GasLimit, Is.EqualTo(36_000_000));
+        Assert.That(converted.Timestamp, Is.EqualTo(1_800_000_000));
+        AssertAdditionalPayloadFields(converted, payload.GasUsed, payload.ExtraData, payload.BaseFeePerGas, payload.Withdrawals![0]);
+        Assert.That(converted.Transactions, Is.EqualTo(new[] { Bytes.FromHexString("0x04cafe") }));
+        Assert.That(converted.BlobGasUsed, Is.EqualTo(262144ul));
+        Assert.That(converted.ExcessBlobGas, Is.EqualTo(393216ul));
+        Assert.That(converted.BlockAccessList, Is.EqualTo(Bytes.FromHexString("0xc0ffee")), "the access list bytes must reach the execution layer unchanged");
+        Assert.That(converted.SlotNumber, Is.EqualTo(77ul));
+        Assert.That(requests, Has.Length.EqualTo(2), "empty request lists are omitted, the two builder lists are not");
+        Assert.That(requests[0], Is.EqualTo(expectedBuilderDeposit));
+        Assert.That(requests[1], Is.EqualTo(expectedBuilderExit));
     }
 
     [TestCase(PayloadStatus.Valid, ExecutionStatus.Valid)]
@@ -282,18 +276,16 @@ public class EngineTests
         // driver must not reach for the block the Fulu path needs.
         ExecutionStatus verdict = driver.NotifyNewPayload(GloasPayload(slotNumber: 91), versionedHashes, parentBeaconBlockRoot, requests);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(verdict, Is.EqualTo(expected));
-            Assert.That(driver.HasAnsweredNewPayload, Is.True);
-            Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
-            engine.Received(1).engine_newPayloadV5(
-                Arg.Is<ExecutionPayloadV4>(p => p.BlockHash == TestHash && p.SlotNumber == 91ul && p.BlockAccessList!.Length == 3),
-                Arg.Is<Hash256?[]>(h => h.Length == 1 && h[0] == versionedHashes[0]),
-                parentBeaconBlockRoot,
-                Arg.Is<byte[][]>(r => r.Length == 1 && r[0][0] == 0x04));
-            engine.DidNotReceiveWithAnyArgs().engine_newPayloadV4(default!, default!, default, default);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(verdict, Is.EqualTo(expected));
+        Assert.That(driver.HasAnsweredNewPayload, Is.True);
+        Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
+        engine.Received(1).engine_newPayloadV5(
+            Arg.Is<ExecutionPayloadV4>(p => p.BlockHash == TestHash && p.SlotNumber == 91ul && p.BlockAccessList!.Length == 3),
+            Arg.Is<Hash256?[]>(h => h.Length == 1 && h[0] == versionedHashes[0]),
+            parentBeaconBlockRoot,
+            Arg.Is<byte[][]>(r => r.Length == 1 && r[0][0] == 0x04));
+        engine.DidNotReceiveWithAnyArgs().engine_newPayloadV4(default!, default!, default, default);
     }
 
     [Test]
@@ -307,14 +299,12 @@ public class EngineTests
         engine.Configure().engine_newPayloadV5(default!, default!, default, default)
             .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Fail("engine unavailable")));
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(() => driver.NotifyNewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas()),
-                Throws.TypeOf<EngineUnavailableException>(),
-                "a failed call is not a verdict; reporting it as SYNCING made the caller accept the block");
-            Assert.That(driver.HasAnsweredNewPayload, Is.True, "a failed call still drove the newPayload path");
-            Assert.That(driver.IsAvailable, Is.False);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(() => driver.NotifyNewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas()),
+            Throws.TypeOf<EngineUnavailableException>(),
+            "a failed call is not a verdict; reporting it as SYNCING made the caller accept the block");
+        Assert.That(driver.HasAnsweredNewPayload, Is.True, "a failed call still drove the newPayload path");
+        Assert.That(driver.IsAvailable, Is.False);
     }
 
     /// <summary>
@@ -341,12 +331,10 @@ public class EngineTests
 
         Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash));
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(driver.LastForkchoiceStatus, Is.SameAs(PayloadStatusV1.Syncing), "a failed call must not overwrite the last status");
-            Assert.That(driver.HasAnsweredNewPayload, Is.False, "forkchoiceUpdated says nothing about whether a payload was ever submitted");
-            Assert.That(driver.IsAvailable, Is.False);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(driver.LastForkchoiceStatus, Is.SameAs(PayloadStatusV1.Syncing), "a failed call must not overwrite the last status");
+        Assert.That(driver.HasAnsweredNewPayload, Is.False, "forkchoiceUpdated says nothing about whether a payload was ever submitted");
+        Assert.That(driver.IsAvailable, Is.False);
     }
 
     /// <summary>

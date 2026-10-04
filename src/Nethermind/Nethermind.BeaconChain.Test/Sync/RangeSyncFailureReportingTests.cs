@@ -60,12 +60,10 @@ public class RangeSyncFailureReportingTests
 
         List<ForkedSignedBeaconBlock> imported = await RangeSyncTests.CollectAsync(sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token));
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(imported.Select(b => b.Slot), Is.EqualTo(chain.Select(b => b.Message!.Slot)), "the good peer still completes the range");
-            Assert.That(badPeer.Reports, Is.Not.Empty.And.All.EqualTo(expected), "the bad peer is penalized under the reason that describes what it did");
-            Assert.That(goodPeer.Reports, Is.Empty);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(imported.Select(b => b.Slot), Is.EqualTo(chain.Select(b => b.Message!.Slot)), "the good peer still completes the range");
+        Assert.That(badPeer.Reports, Is.Not.Empty.And.All.EqualTo(expected), "the bad peer is penalized under the reason that describes what it did");
+        Assert.That(goodPeer.Reports, Is.Empty);
     }
 
     /// <summary>A reply that fails after some blocks used to drop them, so the batch was fetched again from its first slot; the blocks it delivered are kept and the peer is still penalized.</summary>

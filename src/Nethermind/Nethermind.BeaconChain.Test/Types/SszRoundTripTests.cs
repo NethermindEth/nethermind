@@ -29,14 +29,12 @@ public class SszRoundTripTests
         SignedBeaconBlock.Merkleize(original, out UInt256 originalRoot);
         SignedBeaconBlock.Merkleize(decoded, out UInt256 decodedRoot);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(reEncoded, Is.EqualTo(encoded));
-            Assert.That(decodedRoot, Is.EqualTo(originalRoot));
-            Assert.That(originalRoot, Is.Not.EqualTo(UInt256.Zero));
-            Assert.That(decoded.Message!.Body!.ExecutionPayload!.Transactions, Has.Length.EqualTo(2));
-            Assert.That(decoded.Message.Body.ExecutionPayload.Withdrawals, Has.Length.EqualTo(1));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reEncoded, Is.EqualTo(encoded));
+        Assert.That(decodedRoot, Is.EqualTo(originalRoot));
+        Assert.That(originalRoot, Is.Not.EqualTo(UInt256.Zero));
+        Assert.That(decoded.Message!.Body!.ExecutionPayload!.Transactions, Has.Length.EqualTo(2));
+        Assert.That(decoded.Message.Body.ExecutionPayload.Withdrawals, Has.Length.EqualTo(1));
     }
 
     [Test]
@@ -52,14 +50,12 @@ public class SszRoundTripTests
         BeaconStateFulu.Merkleize(decoded, out UInt256 decodedRoot);
         BeaconStateElectra.Merkleize(CreateSyntheticState<BeaconStateElectra>(), out UInt256 electraRoot);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(reEncoded, Is.EqualTo(encoded));
-            Assert.That(decodedRoot, Is.EqualTo(fuluRoot));
-            Assert.That(fuluRoot, Is.Not.EqualTo(electraRoot), "proposer_lookahead must be mixed into the Fulu root");
-            Assert.That(decoded.Validators, Has.Length.EqualTo(4));
-            Assert.That(decoded.ProposerLookahead, Is.EqualTo(original.ProposerLookahead));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reEncoded, Is.EqualTo(encoded));
+        Assert.That(decodedRoot, Is.EqualTo(fuluRoot));
+        Assert.That(fuluRoot, Is.Not.EqualTo(electraRoot), "proposer_lookahead must be mixed into the Fulu root");
+        Assert.That(decoded.Validators, Has.Length.EqualTo(4));
+        Assert.That(decoded.ProposerLookahead, Is.EqualTo(original.ProposerLookahead));
     }
 
     [Test]

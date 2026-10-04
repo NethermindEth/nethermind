@@ -64,22 +64,20 @@ public class DataColumnSidecarContainerTests
         DataColumnSidecar.Merkleize(original, out UInt256 originalRoot);
         DataColumnSidecar.Merkleize(decoded, out UInt256 decodedRoot);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(reEncoded, Is.EqualTo(encoded));
-            Assert.That(decodedRoot, Is.EqualTo(originalRoot));
-            Assert.That(originalRoot, Is.Not.EqualTo(UInt256.Zero));
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(reEncoded, Is.EqualTo(encoded));
+        Assert.That(decodedRoot, Is.EqualTo(originalRoot));
+        Assert.That(originalRoot, Is.Not.EqualTo(UInt256.Zero));
 
-            Assert.That(decoded.Index, Is.EqualTo(original.Index));
-            Assert.That(decoded.Column!.Select(c => c.AsSpan().ToArray()),
-                Is.EqualTo(original.Column!.Select(c => c.AsSpan().ToArray())));
-            Assert.That(decoded.KzgCommitments!.Select(c => c.AsSpan().ToArray()),
-                Is.EqualTo(original.KzgCommitments!.Select(c => c.AsSpan().ToArray())));
-            Assert.That(decoded.KzgProofs!.Select(c => c.AsSpan().ToArray()),
-                Is.EqualTo(original.KzgProofs!.Select(c => c.AsSpan().ToArray())));
-            Assert.That(decoded.SignedBlockHeader!.Message!.Slot, Is.EqualTo(100ul));
-            Assert.That(decoded.KzgCommitmentsInclusionProof, Has.Length.EqualTo(Eip7594DasConstants.KzgCommitmentsInclusionProofDepth));
-        });
+        Assert.That(decoded.Index, Is.EqualTo(original.Index));
+        Assert.That(decoded.Column!.Select(c => c.AsSpan().ToArray()),
+            Is.EqualTo(original.Column!.Select(c => c.AsSpan().ToArray())));
+        Assert.That(decoded.KzgCommitments!.Select(c => c.AsSpan().ToArray()),
+            Is.EqualTo(original.KzgCommitments!.Select(c => c.AsSpan().ToArray())));
+        Assert.That(decoded.KzgProofs!.Select(c => c.AsSpan().ToArray()),
+            Is.EqualTo(original.KzgProofs!.Select(c => c.AsSpan().ToArray())));
+        Assert.That(decoded.SignedBlockHeader!.Message!.Slot, Is.EqualTo(100ul));
+        Assert.That(decoded.KzgCommitmentsInclusionProof, Has.Length.EqualTo(Eip7594DasConstants.KzgCommitmentsInclusionProofDepth));
     }
 
     [Test]

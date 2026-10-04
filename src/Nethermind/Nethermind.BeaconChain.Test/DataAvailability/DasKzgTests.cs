@@ -48,12 +48,10 @@ public class DasKzgTests
     {
         nint handle = Nethermind.BeaconChain.DataAvailability.DasKzg.Handle;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(handle, Is.Not.EqualTo(nint.Zero));
-            Assert.That(KzgPolynomialCommitments.IsInitialized, Is.True);
-            Assert.That(Nethermind.BeaconChain.DataAvailability.DasKzg.IsSharedWithExecutionLayerHandle(), Is.True);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(handle, Is.Not.EqualTo(nint.Zero));
+        Assert.That(KzgPolynomialCommitments.IsInitialized, Is.True);
+        Assert.That(Nethermind.BeaconChain.DataAvailability.DasKzg.IsSharedWithExecutionLayerHandle(), Is.True);
     }
 
     /// <summary>

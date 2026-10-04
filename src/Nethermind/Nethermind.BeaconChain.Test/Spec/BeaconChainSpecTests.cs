@@ -29,12 +29,10 @@ public class BeaconChainSpecTests
         UnsupportedBeaconNetworkException ex = Assert.Throws<UnsupportedBeaconNetworkException>(
             () => BeaconChainSpec.ForChainId(chainId))!;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(ex.ChainId, Is.EqualTo(chainId));
-            Assert.That(ex.Message, Does.Contain(chainId.ToString()),
-                "the offending chain id must be visible in the failure so an operator can diagnose it");
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ex.ChainId, Is.EqualTo(chainId));
+        Assert.That(ex.Message, Does.Contain(chainId.ToString()),
+            "the offending chain id must be visible in the failure so an operator can diagnose it");
     }
 
     /// <summary>

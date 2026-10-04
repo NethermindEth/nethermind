@@ -33,11 +33,9 @@ public class DebugForkChoiceTests
         using HttpResponseMessage response = await host.GetAsync(Path, "application/json");
         using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
-            Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo(503));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
+        Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo(503));
     }
 
     [Test]
@@ -75,40 +73,38 @@ public class DebugForkChoiceTests
         JsonElement root = body.RootElement;
         JsonElement nodes = root.GetProperty("fork_choice_nodes");
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-            Assert.That(root.TryGetProperty("data", out _), Is.False, "getDebugForkChoice is one of the beacon-api responses with no data envelope");
-            Assert.That(root.GetProperty("justified_checkpoint").GetProperty("epoch").GetString(), Is.EqualTo("7"));
-            Assert.That(root.GetProperty("justified_checkpoint").GetProperty("root").GetString(), Is.EqualTo(Anchor.ToString()));
-            Assert.That(root.GetProperty("finalized_checkpoint").GetProperty("epoch").GetString(), Is.EqualTo("6"));
-            Assert.That(root.GetProperty("finalized_checkpoint").GetProperty("root").GetString(), Is.EqualTo(Anchor.ToString()));
-            Assert.That(root.GetProperty("extra_data").GetProperty("proposer_boost_root").GetString(), Is.EqualTo(Child.ToString()));
-            Assert.That(nodes.GetArrayLength(), Is.EqualTo(3));
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(root.TryGetProperty("data", out _), Is.False, "getDebugForkChoice is one of the beacon-api responses with no data envelope");
+        Assert.That(root.GetProperty("justified_checkpoint").GetProperty("epoch").GetString(), Is.EqualTo("7"));
+        Assert.That(root.GetProperty("justified_checkpoint").GetProperty("root").GetString(), Is.EqualTo(Anchor.ToString()));
+        Assert.That(root.GetProperty("finalized_checkpoint").GetProperty("epoch").GetString(), Is.EqualTo("6"));
+        Assert.That(root.GetProperty("finalized_checkpoint").GetProperty("root").GetString(), Is.EqualTo(Anchor.ToString()));
+        Assert.That(root.GetProperty("extra_data").GetProperty("proposer_boost_root").GetString(), Is.EqualTo(Child.ToString()));
+        Assert.That(nodes.GetArrayLength(), Is.EqualTo(3));
 
-            JsonElement first = nodes[0];
-            Assert.That(first.GetProperty("slot").GetString(), Is.EqualTo("224"));
-            Assert.That(first.GetProperty("block_root").GetString(), Is.EqualTo(Anchor.ToString()));
-            Assert.That(first.GetProperty("parent_root").GetString(), Is.EqualTo(Hash256.Zero.ToString()),
-                "parent_root is required by the Node schema, so the tree root carries the zero root rather than omitting it");
-            Assert.That(first.GetProperty("justified_epoch").GetString(), Is.EqualTo("6"));
-            Assert.That(first.GetProperty("finalized_epoch").GetString(), Is.EqualTo("5"));
-            Assert.That(first.GetProperty("weight").GetString(), Is.EqualTo("0"));
-            Assert.That(first.GetProperty("validity").GetString(), Is.EqualTo("valid"));
-            Assert.That(first.GetProperty("execution_block_hash").GetString(), Is.EqualTo(anchorPayload.ToString()));
+        JsonElement first = nodes[0];
+        Assert.That(first.GetProperty("slot").GetString(), Is.EqualTo("224"));
+        Assert.That(first.GetProperty("block_root").GetString(), Is.EqualTo(Anchor.ToString()));
+        Assert.That(first.GetProperty("parent_root").GetString(), Is.EqualTo(Hash256.Zero.ToString()),
+            "parent_root is required by the Node schema, so the tree root carries the zero root rather than omitting it");
+        Assert.That(first.GetProperty("justified_epoch").GetString(), Is.EqualTo("6"));
+        Assert.That(first.GetProperty("finalized_epoch").GetString(), Is.EqualTo("5"));
+        Assert.That(first.GetProperty("weight").GetString(), Is.EqualTo("0"));
+        Assert.That(first.GetProperty("validity").GetString(), Is.EqualTo("valid"));
+        Assert.That(first.GetProperty("execution_block_hash").GetString(), Is.EqualTo(anchorPayload.ToString()));
 
-            JsonElement second = nodes[1];
-            Assert.That(second.GetProperty("slot").GetString(), Is.EqualTo("225"));
-            Assert.That(second.GetProperty("block_root").GetString(), Is.EqualTo(Child.ToString()));
-            Assert.That(second.GetProperty("parent_root").GetString(), Is.EqualTo(Anchor.ToString()));
-            Assert.That(second.GetProperty("justified_epoch").GetString(), Is.EqualTo("7"));
-            Assert.That(second.GetProperty("finalized_epoch").GetString(), Is.EqualTo("6"));
-            Assert.That(second.GetProperty("weight").GetString(), Is.EqualTo("96000000000"), "weights are decimal strings, like every uint64 on this API");
-            Assert.That(second.GetProperty("validity").GetString(), Is.EqualTo("optimistic"));
-            Assert.That(second.GetProperty("execution_block_hash").GetString(), Is.EqualTo(childPayload.ToString()));
+        JsonElement second = nodes[1];
+        Assert.That(second.GetProperty("slot").GetString(), Is.EqualTo("225"));
+        Assert.That(second.GetProperty("block_root").GetString(), Is.EqualTo(Child.ToString()));
+        Assert.That(second.GetProperty("parent_root").GetString(), Is.EqualTo(Anchor.ToString()));
+        Assert.That(second.GetProperty("justified_epoch").GetString(), Is.EqualTo("7"));
+        Assert.That(second.GetProperty("finalized_epoch").GetString(), Is.EqualTo("6"));
+        Assert.That(second.GetProperty("weight").GetString(), Is.EqualTo("96000000000"), "weights are decimal strings, like every uint64 on this API");
+        Assert.That(second.GetProperty("validity").GetString(), Is.EqualTo("optimistic"));
+        Assert.That(second.GetProperty("execution_block_hash").GetString(), Is.EqualTo(childPayload.ToString()));
 
-            Assert.That(nodes[2].GetProperty("validity").GetString(), Is.EqualTo("invalid"));
-        });
+        Assert.That(nodes[2].GetProperty("validity").GetString(), Is.EqualTo("invalid"));
     }
 
     [Test]
@@ -123,11 +119,9 @@ public class DebugForkChoiceTests
         using HttpResponseMessage secondResponse = await host.GetAsync(Path, "application/json");
         using JsonDocument second = await BeaconApiTestHost.ReadJsonAsync(secondResponse);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(first.RootElement.GetProperty("fork_choice_nodes").GetArrayLength(), Is.EqualTo(1));
-            Assert.That(second.RootElement.GetProperty("fork_choice_nodes").GetArrayLength(), Is.EqualTo(2), "the holder is read per request, never captured when the routes are mapped");
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(first.RootElement.GetProperty("fork_choice_nodes").GetArrayLength(), Is.EqualTo(1));
+        Assert.That(second.RootElement.GetProperty("fork_choice_nodes").GetArrayLength(), Is.EqualTo(2), "the holder is read per request, never captured when the routes are mapped");
     }
 
     private static ForkChoiceSnapshot Snapshot(params Hash256[] roots)

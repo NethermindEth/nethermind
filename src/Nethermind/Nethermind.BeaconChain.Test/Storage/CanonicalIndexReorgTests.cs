@@ -69,20 +69,18 @@ public class CanonicalIndexReorgTests
         Assert.That(fixture.ComputeHead(), Is.EqualTo(a4.Root));
         Assert.That(fixture.ComputeHead(), Is.EqualTo(a4.Root));
         TestMemDb index = fixture.BlockIndex;
-        Assert.Multiple(() =>
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        foreach (ulong slot in new ulong[] { 0, 1, 2, 4 })
         {
-            foreach (ulong slot in new ulong[] { 0, 1, 2, 4 })
-            {
-                index.KeyWasWritten(CanonicalReorgFixture.SlotKey(slot), times: 1);
-            }
+            index.KeyWasWritten(CanonicalReorgFixture.SlotKey(slot), times: 1);
+        }
 
-            index.KeyWasWritten(static entry => entry.Item1.Length == sizeof(ulong), times: 4);
-            index.KeyWasRemoved(static key => key.Length == sizeof(ulong), times: 0);
-            // The advance stops one block below the old head, so the anchor slot is read only by the first head change.
-            index.KeyWasRead(CanonicalReorgFixture.SlotKey(0), times: 1);
-            // A head that did not change is not walked again.
-            index.KeyWasRead(CanonicalReorgFixture.SlotKey(4), times: 1);
-        });
+        index.KeyWasWritten(static entry => entry.Item1.Length == sizeof(ulong), times: 4);
+        index.KeyWasRemoved(static key => key.Length == sizeof(ulong), times: 0);
+        // The advance stops one block below the old head, so the anchor slot is read only by the first head change.
+        index.KeyWasRead(CanonicalReorgFixture.SlotKey(0), times: 1);
+        // A head that did not change is not walked again.
+        index.KeyWasRead(CanonicalReorgFixture.SlotKey(4), times: 1);
     }
 
     [Test]
@@ -111,13 +109,11 @@ public class CanonicalIndexReorgTests
 
         store.ApplyCanonicalIndexChanges([(7, null), (9, Keccak.Compute("nine"))], topSlot: 9);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(store.TryGetCanonicalRoot(7, out _), Is.False);
-            Assert.That(store.TryGetCanonicalRoot(8, out Hash256? eight) && eight == Keccak.Compute("eight"), Is.True, "a slot the change does not name is kept");
-            Assert.That(store.TryGetCanonicalRoot(9, out Hash256? nine) && nine == Keccak.Compute("nine"), Is.True);
-            Assert.That(store.GetCanonicalIndexTopSlot(), Is.EqualTo(9UL));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetCanonicalRoot(7, out _), Is.False);
+        Assert.That(store.TryGetCanonicalRoot(8, out Hash256? eight) && eight == Keccak.Compute("eight"), Is.True, "a slot the change does not name is kept");
+        Assert.That(store.TryGetCanonicalRoot(9, out Hash256? nine) && nine == Keccak.Compute("nine"), Is.True);
+        Assert.That(store.GetCanonicalIndexTopSlot(), Is.EqualTo(9UL));
     }
 
     /// <summary>
@@ -137,13 +133,11 @@ public class CanonicalIndexReorgTests
         Hash256?[] afterFailure = fixture.CanonicalRoots(through: 4);
         Hash256 head = fixture.ComputeHead();
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(afterFailure, Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, chainA[0].Root, chainA[1].Root, chainA[2].Root, null }),
-                "nothing of chain B is written until the whole change commits");
-            Assert.That(head, Is.EqualTo(b4.Root));
-            Assert.That(fixture.CanonicalRoots(through: 4), Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, b1.Root, null, null, b4.Root }));
-        });
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(afterFailure, Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, chainA[0].Root, chainA[1].Root, chainA[2].Root, null }),
+            "nothing of chain B is written until the whole change commits");
+        Assert.That(head, Is.EqualTo(b4.Root));
+        Assert.That(fixture.CanonicalRoots(through: 4), Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, b1.Root, null, null, b4.Root }));
     }
 
     public enum IndexedChain
