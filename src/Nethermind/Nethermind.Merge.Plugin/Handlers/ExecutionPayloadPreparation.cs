@@ -30,7 +30,8 @@ internal sealed class ExecutionPayloadPreparation : IDisposable
     {
         _payload = payload;
         _encodedTransactions = payload.Transactions;
-        if (payload.TransactionsRoot is null && _encodedTransactions.Length >= MinTxsForBackgroundRoot && !RuntimeInformation.IsSingleProcessor)
+        if (payload.TransactionsRoot is null && _encodedTransactions.Length >= MinTxsForBackgroundRoot && !RuntimeInformation.IsSingleProcessor
+            && !Core.Diagnostics.ExperimentKnobs.TxRootInline)
         {
             using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
             _txRootWork = ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions,
@@ -48,7 +49,13 @@ internal sealed class ExecutionPayloadPreparation : IDisposable
             return transactions.Error;
         }
 
-        if (_txRootWork is not null && ReferenceEquals(_encodedTransactions, _payload.Transactions))
+        if (Core.Diagnostics.ExperimentKnobs.TxRootInline && _payload.TransactionsRoot is null && ReferenceEquals(_encodedTransactions, _payload.Transactions))
+        {
+            // Experiment: on the request thread alone, so it never waits for workers that sender recovery holds.
+            using (ParallelUnbalancedWork.BeginDetachedWorkerScope(1))
+                _payload.TransactionsRoot = TxTrie.CalculateRoot(_encodedTransactions);
+        }
+        else if (_txRootWork is not null && ReferenceEquals(_encodedTransactions, _payload.Transactions))
         {
             _txRootWork.WaitForCompletion();
             _payload.TransactionsRoot = _txRoot;

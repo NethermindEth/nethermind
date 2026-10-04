@@ -96,4 +96,7 @@ public static class ExperimentKnobs
 
     /// <summary>Bulk set and subtree hashing fan out on pool workers of their own, outside the block's worker group.</summary>
     public static readonly bool MerkleDetached = On("NETHERMIND_EXP_MERKLE_DETACHED");
+
+    /// <summary>Early sender recovery runs on at most this many workers of the payload's group; 0 = the whole group.</summary>
+    public static readonly int RecoveryWorkers = Int("NETHERMIND_EXP_RECOVERY_WORKERS", 0);
 }
