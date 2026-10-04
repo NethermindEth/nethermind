@@ -685,15 +685,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
          * TKS: Observed 500MB/s compared to ~100MB/s between multithreaded and single thread compactions on my machine (processor count is returning 12 for 6 cores with hyperthreading)
          * TKS: CPU goes to insane 30% usage on idle - compacting only app
          */
-        options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
+        int compactionThreads = Core.Diagnostics.ExperimentKnobs.RocksCompactionThreads > 0 ? Core.Diagnostics.ExperimentKnobs.RocksCompactionThreads : Environment.ProcessorCount;
+        options.SetMaxBackgroundCompactions(compactionThreads);
         options.SetMaxBackgroundFlushes(Environment.ProcessorCount);
 
         // This one set the threadpool env, so its actually different from the above two
-        options.IncreaseParallelism(Environment.ProcessorCount);
+        options.IncreaseParallelism(compactionThreads);
         if (Core.Diagnostics.ExperimentKnobs.RocksDbLowPriority > 0) LowerBackgroundPriority(Core.Diagnostics.ExperimentKnobs.RocksDbLowPriority);
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
-        options.SetMaxSubcompactions((uint)Environment.ProcessorCount);
+        options.SetMaxSubcompactions((uint)(Core.Diagnostics.ExperimentKnobs.RocksSubcompactions > 0 ? Core.Diagnostics.ExperimentKnobs.RocksSubcompactions : compactionThreads));
 
         if (dbConfig.CompactOnDeletions)
         {

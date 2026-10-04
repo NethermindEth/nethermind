@@ -16,6 +16,12 @@ public static class ExperimentKnobs
     /// <summary>Nice value for RocksDB background threads (0 leaves them alone).</summary>
     public static readonly int RocksNice = Int("NETHERMIND_EXP_ROCKS_NICE", 0);
 
+    /// <summary>RocksDB compaction threads (background compactions and the low-priority pool); 0 keeps ProcessorCount.</summary>
+    public static readonly int RocksCompactionThreads = Int("NETHERMIND_EXP_ROCKS_COMPACTION_THREADS", 0);
+
+    /// <summary>RocksDB max subcompactions; 0 follows the compaction threads.</summary>
+    public static readonly int RocksSubcompactions = Int("NETHERMIND_EXP_ROCKS_SUBCOMPACTIONS", 0);
+
     private static bool On(string name) => Environment.GetEnvironmentVariable(name) == "1";
 
     private static int Int(string name, int fallback) =>
