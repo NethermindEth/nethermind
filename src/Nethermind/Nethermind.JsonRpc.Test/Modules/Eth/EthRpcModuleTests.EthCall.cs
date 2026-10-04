@@ -166,7 +166,7 @@ public partial class EthRpcModuleTests
 
         string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request.RootElement);
 
-        // No transaction before London carries dynamic fees, so there is nothing to fill, as in Geth's eth_fillTransaction.
+        // No transaction before London carries dynamic fees, so there is nothing to fill.
         Assert.That(JToken.Parse(response)["error"]?["message"]?.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(Berlin.Instance.Name)), response);
     }
 

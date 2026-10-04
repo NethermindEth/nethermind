@@ -115,7 +115,7 @@ public abstract class TransactionForRpc
         // A field the fork of the given spec lacks names a type it doesn't enable, even when its value is zero or
         // empty, so no transaction there can carry it. A defaulted type names no field. Calls pass the spec of the
         // block they run in; of the build and sign methods only eth_fillTransaction passes one, and it rejects such
-        // a field too, as Geth's fill does.
+        // a field too rather than fill a transaction no block at that fork could include.
         return spec is not null && !IsTypeDefaulted && !spec.IsTxTypeEnabled(type)
             ? TxErrorMessages.InvalidTxType(spec.Name)
             : new Transaction { Type = type };
