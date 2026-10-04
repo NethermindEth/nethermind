@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
+using static Nethermind.BeaconChain.Test.ForkChoice.ProtoArrayTestBlocks;
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
@@ -145,15 +146,6 @@ public class ProtoArrayNoViableHeadTests
     }
 
     private static ProtoBlock ChildOfAnchor(Hash256 root, CheckpointRef checkpoint) =>
-        new(
-            Slot: 1,
-            Root: root,
-            ParentRoot: GetRoot(0),
-            StateRoot: Hash256.Zero,
-            JustifiedCheckpoint: checkpoint,
-            FinalizedCheckpoint: checkpoint,
-            ExecutionStatus: ExecutionStatus.Optimistic,
-            ExecutionBlockHash: root,
-            UnrealizedJustifiedCheckpoint: checkpoint,
-            UnrealizedFinalizedCheckpoint: checkpoint);
+        CreateProtoBlock(1, root, GetRoot(0), checkpoint, checkpoint, ExecutionStatus.Optimistic, root,
+            unrealizedJustified: checkpoint, unrealizedFinalized: checkpoint);
 }

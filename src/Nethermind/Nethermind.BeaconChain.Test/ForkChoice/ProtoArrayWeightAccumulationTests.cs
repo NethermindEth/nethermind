@@ -5,6 +5,7 @@ using System.Linq;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
+using static Nethermind.BeaconChain.Test.ForkChoice.ProtoArrayTestBlocks;
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
@@ -24,17 +25,8 @@ public class ProtoArrayWeightAccumulationTests
     private static ProtoArrayForkChoice NewForkChoice(CheckpointRef? justified = null, CheckpointRef? finalized = null, ulong anchorSlot = 0) =>
         new(anchorSlot, anchorSlot, Hash256.Zero, justified ?? Anchor, finalized ?? Anchor, ExecutionStatus.Optimistic, Hash256.Zero, SlotsPerEpoch);
 
-    private static ProtoBlock Block(ulong slot, Hash256 root, Hash256 parent, CheckpointRef? justified = null, CheckpointRef? finalized = null) => new(
-        Slot: slot,
-        Root: root,
-        ParentRoot: parent,
-        StateRoot: Hash256.Zero,
-        JustifiedCheckpoint: justified ?? Anchor,
-        FinalizedCheckpoint: finalized ?? Anchor,
-        ExecutionStatus: ExecutionStatus.Optimistic,
-        ExecutionBlockHash: root,
-        UnrealizedJustifiedCheckpoint: null,
-        UnrealizedFinalizedCheckpoint: null);
+    private static ProtoBlock Block(ulong slot, Hash256 root, Hash256 parent, CheckpointRef? justified = null, CheckpointRef? finalized = null) =>
+        CreateProtoBlock(slot, root, parent, justified ?? Anchor, finalized ?? Anchor, ExecutionStatus.Optimistic, root);
 
     private static ulong[] Balances(int count, ulong each = Gwei32Eth) => Enumerable.Repeat(each, count).ToArray();
 
