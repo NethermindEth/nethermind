@@ -35,29 +35,25 @@ public class PeerBandTests
     public void An_address_without_a_peer_id_has_no_key(string address) =>
         Assert.That(() => PeerManager.ExtractPeerIdForTest(address), Throws.ArgumentException);
 
-    [TestCase("not a multiaddr")]
-    [TestCase("/ip4/1.2.3.4/tcp/9000")]
-    [TestCase("/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
-    [TestCase("/dns4/example.org/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
-    [TestCase("/dns4/example.org/udp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
-    [TestCase("/dns4/example.org/tcp/9000/ws/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
-    [TestCase("/dns4/example.org/tcp/9000/wss/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
-    [TestCase("/dnsaddr/example.org/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
-    public void A_static_peer_that_cannot_be_dialed_is_a_configuration_error(string address)
+    [TestCase("not a multiaddr", true)]
+    [TestCase("/ip4/1.2.3.4/tcp/9000", true)]
+    [TestCase("/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true)]
+    [TestCase("/dns4/example.org/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true)]
+    [TestCase("/dns4/example.org/udp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true)]
+    [TestCase("/dns4/example.org/tcp/9000/ws/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true)]
+    [TestCase("/dns4/example.org/tcp/9000/wss/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true)]
+    [TestCase("/dnsaddr/example.org/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true)]
+    [TestCase("/dns/beacon.invalid/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", false)]
+    [TestCase("/dns4/beacon.invalid/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", false)]
+    [TestCase("/dns6/beacon.invalid/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", false)]
+    [TestCase("/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e, /ip6/::1/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", false)]
+    public void Static_peer_configuration_accepts_dialable_addresses_and_refuses_undialable_addresses(string address, bool configurationError)
     {
         Node node = CreateNode();
         node.Config.StaticPeers = address;
 
-        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance), Throws.TypeOf<InvalidConfigurationException>());
-    }
-
-    [Test]
-    public void A_static_peer_with_a_dns_name_and_peer_id_is_accepted([Values("dns", "dns4", "dns6")] string protocol)
-    {
-        Node node = CreateNode();
-        node.Config.StaticPeers = $"/{protocol}/beacon.invalid/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e";
-
-        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance), Throws.Nothing);
+        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance),
+            configurationError ? Throws.TypeOf<InvalidConfigurationException>() : Throws.Nothing);
     }
 
     [Test]
@@ -100,15 +96,6 @@ public class PeerBandTests
         }
         ulong sequence = await client.P2P.PingAsync(client.P2P.LocalPeerForTest!.Sessions.Single(), token);
         Assert.That(sequence, Is.EqualTo(server.Metadata.Current.SeqNumber));
-    }
-
-    [Test]
-    public void A_static_peer_with_an_ip_address_and_peer_id_is_accepted()
-    {
-        Node node = CreateNode();
-        node.Config.StaticPeers = "/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e, /ip6/::1/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e";
-
-        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance), Throws.Nothing);
     }
 
     [Test]
