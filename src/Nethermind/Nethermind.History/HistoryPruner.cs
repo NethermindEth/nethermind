@@ -14,7 +14,6 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -55,7 +54,7 @@ public class HistoryPruner : IHistoryPruner
     private static readonly byte[] LegacyLowestInsertedBodyNumberKey = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
     private readonly ulong _persistedUnreclaimedFloor;
     private readonly IProcessExitSource _processExitSource;
-    private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
+    private readonly Lazy<IBackgroundTaskScheduler> _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
     private readonly IPrunedReceiptRetention _receiptRetention;
     private readonly bool _enabled;
@@ -112,8 +111,7 @@ public class HistoryPruner : IHistoryPruner
         IBlocksConfig blocksConfig,
         ISyncConfig syncConfig,
         IProcessExitSource processExitSource,
-        IBackgroundTaskScheduler backgroundTaskScheduler,
-        IBlockProcessingQueue blockProcessingQueue,
+        Lazy<IBackgroundTaskScheduler> backgroundTaskScheduler,
         IPrunedReceiptRetention receiptRetention,
         ILogManager logManager)
     {
@@ -155,8 +153,6 @@ public class HistoryPruner : IHistoryPruner
             }
             Metrics.PruningCutoffBlocknumber = CutoffBlockNumber;
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
-
-            blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
         }
     }
 
@@ -229,9 +225,6 @@ public class HistoryPruner : IHistoryPruner
         return head.Value.SaturatingSub(blocksToRetain);
     }
 
-    private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
-        => SchedulePruneHistory(_processExitSource.Token);
-
     /// <summary>
     /// Schedules a pruning operation if one is not already running. The first eligible pruning pass bypasses the
     /// configured pruning interval; subsequent passes require the interval to have elapsed.
@@ -252,7 +245,7 @@ public class HistoryPruner : IHistoryPruner
                         TimeSpan pruningTimeout = _historyConfig.PruningTimeoutSeconds > 0
                             ? TimeSpan.FromSeconds(_historyConfig.PruningTimeoutSeconds)
                             : DisabledPruningTimeout;
-                        if (!_backgroundTaskScheduler.TryScheduleTask(default(HistoryPrunerRequest),
+                        if (!_backgroundTaskScheduler.Value.TryScheduleTask(default(HistoryPrunerRequest),
                                 (_, backgroundTaskToken) =>
                                 {
                                     try
@@ -289,6 +282,8 @@ public class HistoryPruner : IHistoryPruner
         if (!_enabled) throw new HistoryPrunerException("History pruning is disabled.");
 
         // Stops on lack of progress rather than on ShouldPruneHistory, which stays true while the sync pivot is below the cutoff.
+        // In that state every pass also restarts a finished sweep, so sweep movement stops counting once a cycle completes.
+        bool sweepCycleCompleted = false;
         while (true)
         {
             (ulong, ulong, ulong, ulong) pointersBeforePass = (_blocksDeletePointer, _blocksReclaimCursor, _balsDeletePointer, _sliceCleanupCursor);
@@ -302,12 +297,14 @@ public class HistoryPruner : IHistoryPruner
 
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (sweepCursorBeforePass is not null && _txIndexSweepCursor is null) sweepCycleCompleted = true;
+
             bool progressed = pointersBeforePass != (_blocksDeletePointer, _blocksReclaimCursor, _balsDeletePointer, _sliceCleanupCursor)
-                || !Bytes.AreEqual(sweepCursorBeforePass, _txIndexSweepCursor);
+                || (!sweepCycleCompleted && !Bytes.AreEqual(sweepCursorBeforePass, _txIndexSweepCursor));
             if (progressed) continue;
 
             // A failed sweep logs and leaves its cursor in place, so without this a persistent failure would never end.
-            if (_txIndexSweepCursor is not null)
+            if (!sweepCycleCompleted && _txIndexSweepCursor is not null)
                 throw new HistoryPrunerException("Transaction index sweep made no progress.");
 
             return;

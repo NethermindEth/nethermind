@@ -374,8 +374,7 @@ public class HistoryPrunerTests
             BlocksConfig,
             SyncConfig,
             new ProcessExitSource(new()),
-            Substitute.For<IBackgroundTaskScheduler>(),
-            Substitute.For<IBlockProcessingQueue>(),
+            new Lazy<IBackgroundTaskScheduler>(static () => Substitute.For<IBackgroundTaskScheduler>()),
             NullPrunedReceiptRetention.Instance,
             LimboLogs.Instance);
 
@@ -624,13 +623,30 @@ public class HistoryPrunerTests
         (HistoryPruner pruner, TestMemDb metadataDb, _) = CreateFrontierFixture(synchronizationEnabled: true, markerPresent: true, receiptStorage: receiptStorage);
         metadataDb.Set(MetadataDbKeys.HistoryPruningTxIndexSweepCursor, Bytes.FromHexString("0x010203"));
 
-        // Bounds the old endless loop, which would otherwise hang the run rather than fail it.
+        // Guards against a hang: a regression would loop forever instead of throwing.
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
         Assert.That(() => pruner.PruneToCompletion(timeout.Token),
             Throws.TypeOf<HistoryPruner.HistoryPrunerException>().With.Message.Contains("sweep"));
     }
 
-    private static (HistoryPruner Pruner, TestMemDb MetadataDb, IPrunedReceiptRetention Retention) CreateFrontierFixture(bool synchronizationEnabled, bool markerPresent = false, ulong pruningInterval = 0, IReceiptStorage receiptStorage = null)
+    [Test]
+    public void Prune_to_completion_sweeps_once_when_the_sync_pivot_is_below_the_cutoff()
+    {
+        // A pivot below the access-list cutoff keeps ShouldPruneHistory true, so every pass restarts a finished sweep.
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        int sweepCalls = 0;
+        receiptStorage.SweepTransactionIndex(Arg.Any<ulong>(), Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<Func<ulong, bool>>(), Arg.Any<CancellationToken>(), out Arg.Any<int>())
+            .Returns(_ => sweepCalls++ % 2 == 0 ? Bytes.FromHexString("0x010203") : null);
+        (HistoryPruner pruner, _, _) = CreateFrontierFixture(synchronizationEnabled: true, markerPresent: true, receiptStorage: receiptStorage, syncPivot: 9_500);
+
+        // Guards against a hang: a regression would loop forever instead of returning.
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+        pruner.PruneToCompletion(timeout.Token);
+
+        Assert.That(sweepCalls, Is.EqualTo(2), "one sweep cycle, not a restart after it finished");
+    }
+
+    private static (HistoryPruner Pruner, TestMemDb MetadataDb, IPrunedReceiptRetention Retention) CreateFrontierFixture(bool synchronizationEnabled, bool markerPresent = false, ulong pruningInterval = 0, IReceiptStorage receiptStorage = null, ulong syncPivot = 10_000)
     {
         TestMemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(9000UL).Bytes);
@@ -647,14 +663,14 @@ public class HistoryPrunerTests
         chainLevels.LoadLevel(Arg.Is<ulong>(static n => n >= 9_000)).Returns(new ChainLevelInfo(true, new BlockInfo(oldest.Hash!, 0)));
         IPrunedReceiptRetention retention = Substitute.For<IPrunedReceiptRetention>();
 
-        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, synchronizationEnabled: synchronizationEnabled, oldestBlock: oldest, balRetentionEpochs: 1, retention: retention, pruningInterval: pruningInterval, receiptStorage: receiptStorage);
+        HistoryPruner pruner = CreateDetachedPruner(dbProvider, chainLevels, synchronizationEnabled: synchronizationEnabled, oldestBlock: oldest, balRetentionEpochs: 1, retention: retention, pruningInterval: pruningInterval, receiptStorage: receiptStorage, syncPivot: syncPivot);
         return (pruner, metadataDb, retention);
     }
 
-    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, bool synchronizationEnabled = true, Block oldestBlock = null, uint balRetentionEpochs = 3533, IPrunedReceiptRetention retention = null, ulong lowestBlock = 0, ulong pruningInterval = 0, IReceiptStorage receiptStorage = null)
+    private static HistoryPruner CreateDetachedPruner(IDbProvider dbProvider, IChainLevelInfoRepository chainLevels, bool synchronizationEnabled = true, Block oldestBlock = null, uint balRetentionEpochs = 3533, IPrunedReceiptRetention retention = null, ulong lowestBlock = 0, ulong pruningInterval = 0, IReceiptStorage receiptStorage = null, ulong syncPivot = 10_000)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
+        blockTree.SyncPivot.Returns((syncPivot, Keccak.Zero));
         blockTree.Head.Returns(Build.A.Block.WithNumber(10_000UL).TestObject);
         blockTree.GetLowestBlock().Returns(lowestBlock);
         if (oldestBlock is not null)
@@ -675,8 +691,7 @@ public class HistoryPrunerTests
             BlocksConfig,
             new SyncConfig { FastSync = true, PivotNumber = 10_000, DownloadBodiesInFastSync = true, SynchronizationEnabled = synchronizationEnabled },
             new ProcessExitSource(new()),
-            Substitute.For<IBackgroundTaskScheduler>(),
-            Substitute.For<IBlockProcessingQueue>(),
+            new Lazy<IBackgroundTaskScheduler>(static () => Substitute.For<IBackgroundTaskScheduler>()),
             retention ?? NullPrunedReceiptRetention.Instance,
             LimboLogs.Instance);
     }
@@ -1060,8 +1075,7 @@ public class HistoryPrunerTests
         testBlockchain.Container.Resolve<IBlocksConfig>(),
         testBlockchain.Container.Resolve<ISyncConfig>(),
         testBlockchain.Container.Resolve<IProcessExitSource>(),
-        testBlockchain.Container.Resolve<IBackgroundTaskScheduler>(),
-        testBlockchain.Container.Resolve<IBlockProcessingQueue>(),
+        testBlockchain.Container.Resolve<Lazy<IBackgroundTaskScheduler>>(),
         retention ?? testBlockchain.Container.Resolve<IPrunedReceiptRetention>(),
         LimboLogs.Instance);
 
@@ -1180,14 +1194,10 @@ public class HistoryPrunerTests
         // n.b. in prod MinHistoryRetentionEpochs should be 33024, however not feasible to test this
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 0 });
 
-        // prevent pruner being triggered by empty queue
-        IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
-
         return containerBuilder =>
         {
             containerBuilder
             .AddSingleton(specProvider)
-            .AddSingleton(blockProcessingQueue)
             .AddSingleton(historyConfig)
             .AddSingleton(BlocksConfig)
             .AddSingleton(SyncConfig);
