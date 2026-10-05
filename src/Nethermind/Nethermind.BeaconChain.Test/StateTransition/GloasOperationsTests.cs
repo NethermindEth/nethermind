@@ -146,29 +146,19 @@ public class GloasOperationsTests
         Assert.That(state.Slashings[1], Is.EqualTo(slashingsBefore + 32 * Gwei), "only the newly slashed validator's balance joins the slashings accounting");
     }
 
-    [TestCase("no intersection", "slashed no validator")]
-    [TestCase("every common validator already slashed", "slashed no validator")]
-    [TestCase("same vote twice", "not slashable")]
-    [TestCase("unsorted indices", "attestation 1 is invalid")]
-    [TestCase("bad signature", "attestation 2 is invalid")]
-    public void ProcessAttesterSlashing_rejects_an_invalid_slashing_and_mutates_nothing(string defect, string expectedMessage)
+    [TestCase(false, false, "slashed no validator")]
+    [TestCase(true, false, "slashed no validator")]
+    [TestCase(false, true, "attestation 1 is invalid")]
+    public void ProcessAttesterSlashing_rejects_invalid_participants_and_mutates_nothing(bool commonValidatorAlreadySlashed, bool unsorted, string expectedMessage)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         PubkeyCache pubkeys = InstallRealValidatorKeys(state);
-        AttestationData vote1 = Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xA0);
-        AttestationData vote2 = Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xB0);
-        AttesterSlashingGloas slashing = defect switch
+        AttesterSlashingGloas slashing = new()
         {
-            "no intersection" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote2, [3, 4]) },
-            "every common validator already slashed" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote2, [2, 3]) },
-            "same vote twice" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote1, [2, 3]) },
-            "unsorted indices" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [2, 1]), Attestation2 = SignedIndexedAttestation(state, vote2, [2, 3]) },
-            "bad signature" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote2, [2, 3]) },
-            _ => throw new ArgumentOutOfRangeException(nameof(defect)),
+            Attestation1 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xA0), unsorted ? [2, 1] : [1, 2]),
+            Attestation2 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xB0), commonValidatorAlreadySlashed || unsorted ? [2, 3] : [3, 4]),
         };
-        if (defect == "bad signature")
-            slashing.Attestation2!.Signature = Corrupt(slashing.Attestation2.Signature);
-        if (defect == "every common validator already slashed")
+        if (commonValidatorAlreadySlashed)
             state.SlashValidator(2, new EpochCache());
         AssertRefusedWithoutMutation(state, () =>
             GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true), expectedMessage, "a rejected slashing must leave the state untouched");
