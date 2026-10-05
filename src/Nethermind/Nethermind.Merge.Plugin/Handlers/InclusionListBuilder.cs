@@ -32,7 +32,11 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
     /// <remarks>Restricted to each sender's appendable run, since nothing else could be appended. Drawn
-    /// uniformly, not by fee: a fee-ordered draw drops what a builder passes over.</remarks>
+    /// uniformly, not by fee: a fee-ordered draw drops what a builder passes over.
+    /// Not gated on pool revalidation: the ready-tx snapshot applies no per-transaction spec check, so around a
+    /// fork the draw can include entries the new spec rejects — either because the pool's background revalidation
+    /// is still catching up, or because the target block is the activation slot itself, whose timestamp is
+    /// not known from the parent header. The only cost is wasted list bytes.</remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs(BlockHeader? parent)
     {
         const int capacity = SenderSampleCapacity;
@@ -43,8 +47,9 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         // state read: only the drawn senders below pay for one.
         using ArrayPoolListRef<Transaction[]> drawn = new(capacity);
         int seen = 0;
-        // Blob txs cannot appear here: TxPool routes them to a separate pool this snapshot does not read.
-        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee).Values)
+        // The pool routes blob txs to separate storage this snapshot never reads. Frame txs can remain in
+        // mixed sender buckets and are removed below.
+        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(baseFee).Values)
         {
             if (drawn.Count < capacity)
             {

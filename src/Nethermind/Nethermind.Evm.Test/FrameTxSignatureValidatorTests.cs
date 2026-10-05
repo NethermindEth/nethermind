@@ -317,7 +317,7 @@ public class FrameTxSignatureValidatorTests
         Address derivedSigner = new(Keccak.Compute(raw.AsSpan(64)).Bytes[12..]);
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, derivedSigner, default, raw)];
 
-        bool ok = FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), _ethereumEcdsa, p256Precompile: null, _spec, out string? error);
+        bool ok = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, p256Precompile: null, _spec, out string? error);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ok, Is.False);
@@ -326,12 +326,14 @@ public class FrameTxSignatureValidatorTests
     }
 
     [Test]
-    public void Validate_P256PlaceholderWithoutPrecompile_RejectedAsNotSupported()
+    public void Validate_P256PlaceholderWithoutPrecompile_RejectedAsNotSupported([Values] bool skipVerification)
     {
         Transaction tx = CreateFrameTx();
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, default)];
+        byte[] signature = skipVerification ? new byte[TxFrameSignature.P256SignatureLength] : [];
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, signature)];
 
-        bool ok = FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), _ethereumEcdsa, p256Precompile: null, _spec, out string? error, allowEmptySignatures: true);
+        ValueHash256? sigHash = null;
+        bool ok = FrameTxSignatureValidator.Validate(tx, ref sigHash, _ethereumEcdsa, p256Precompile: null, _spec, out string? error, allowEmptySignatures: true, skipVerification);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ok, Is.False);
@@ -362,7 +364,7 @@ public class FrameTxSignatureValidatorTests
     }
 
     private bool Validate(Transaction tx, out string? error) =>
-        FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), _ethereumEcdsa, SecP256r1Precompile.Instance, _spec, out error);
+        FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec, out error);
 
     private TxFrameSignature Secp256k1Entry(Transaction tx, PrivateKey key, Address? signer)
     {

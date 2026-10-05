@@ -61,7 +61,7 @@ public class PbtScopeProviderTests
             }
             using (worldState.BeginScope(header))
             {
-                Assert.That(worldState.GetCode(TestItem.AddressA), Is.EqualTo(expectedCode));
+                Assert.That(worldState.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(expectedCode));
             }
         }
     }

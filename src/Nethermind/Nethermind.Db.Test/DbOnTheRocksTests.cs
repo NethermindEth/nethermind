@@ -195,14 +195,15 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [Test]
-        public void CodeDb_uses_lz4_compression()
+        [TestCase("compression=kLZ4Compression")]
+        [TestCase("allow_mmap_reads=false", TestName = "No mmap reads: a page fault per cold contract reads 3.8 GB of fresh code about 3x slower than pread")]
+        public void CodeDb_applies_default_option(string option)
         {
             using IContainer container = CreateRocksDbContainer(new DbConfig());
             using IDb db = container.Resolve<IDbFactory>().CreateDb(new DbSettings(DbNames.Code, DbPath));
             db.Flush();
 
-            Assert.That(ReadOptionsFile(DbPath), Does.Contain("compression=kLZ4Compression"));
+            Assert.That(ReadOptionsFile(DbPath), Does.Contain(option));
         }
 
         [Test]
@@ -365,8 +366,8 @@ namespace Nethermind.Db.Test
                 Assert.That(index, Is.LessThan(10), "bounded scan returned more rows than requested");
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(keys[100 + index]));
-                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(values[100 + index]));
+                    Assert.That(view.CurrentKey, Is.SequenceEqualTo(keys[100 + index]));
+                    Assert.That(view.CurrentValue, Is.SequenceEqualTo(values[100 + index]));
                 }
 
                 index++;
@@ -569,9 +570,12 @@ namespace Nethermind.Db.Test
             Assert.That(didShutDown, Is.True);
         }
 
-        [TestCase(false, TestName = "Corrupted_exception_on_byte_array_get_writes_marker_and_shuts_down")]
-        [TestCase(true, TestName = "Corrupted_exception_on_caller_buffer_get_writes_marker_and_shuts_down")]
-        public void Corrupted_exception_on_get_writes_marker_and_shuts_down(bool callerBuffer)
+        public enum GetPath { ByteArray, CallerBuffer, NativeSlice }
+
+        [TestCase(GetPath.ByteArray, TestName = "Corrupted_exception_on_byte_array_get_writes_marker_and_shuts_down")]
+        [TestCase(GetPath.CallerBuffer, TestName = "Corrupted_exception_on_caller_buffer_get_writes_marker_and_shuts_down")]
+        [TestCase(GetPath.NativeSlice, TestName = "Corrupted_exception_on_native_slice_get_writes_marker_and_shuts_down")]
+        public void Corrupted_exception_on_get_writes_marker_and_shuts_down(GetPath path)
         {
             IDbConfig config = new DbConfig();
             byte[] key = [1, 2, 3];
@@ -596,22 +600,99 @@ namespace Nethermind.Db.Test
             using FatalShutdownTrackingDbOnTheRocks corruptedDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
                 _rocksdbConfigFactory, LimboLogs.Instance, () => didShutDown = true);
 
-            IReadOnlyKeyValueStore keyValueStore = corruptedDb;
-            Action read = () =>
-            {
-                if (callerBuffer)
-                {
-                    keyValueStore.Get(key, new byte[value.Length]);
-                }
-                else
-                {
-                    keyValueStore.Get(key);
-                }
-            };
-
-            Assert.That(read, Throws.InstanceOf<RocksDbException>());
+            Assert.That(() => ReadBy(corruptedDb, path, key, value.Length), Throws.InstanceOf<RocksDbException>());
             Assert.That(Directory.GetFiles(DbPath, "corrupt.marker", SearchOption.AllDirectories), Has.Length.EqualTo(1));
             Assert.That(didShutDown, Is.True);
+        }
+
+        // Background readers can outlive the block that queued them; a read after dispose begins must not reach the closed native DB.
+        [Test]
+        public void Get_after_dispose_begins_throws_instead_of_reading_the_closed_db([Values] GetPath path)
+        {
+            byte[] key = [1, 2, 3];
+            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            db.Dispose();
+
+            Assert.That(() => ReadBy(db, path, key, 64), Throws.InstanceOf<ObjectDisposedException>());
+        }
+
+        // A background code read can still hold a pinned slice when shutdown disposes the database; the slice must be
+        // released before RocksDB closes, or releasing it afterwards touches freed native memory.
+        [Test]
+        public void Dispose_waits_for_a_pinned_slice_to_be_released_before_closing_the_db()
+        {
+            byte[] key = [1, 2, 3];
+            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            _ = db.GetNativeSlice(key, out nint handle, ReadFlags.HintCacheMiss);
+
+            Task disposing = Task.Run(db.Dispose);
+            Assert.That(disposing.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the database closed under a pinned slice");
+
+            db.DangerousReleaseHandle(handle);
+            Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), "dispose never finished after the slice was released");
+        }
+
+        // Shutdown cannot wait forever for a slow reader, but closing under its slice frees memory the reader still uses.
+        // A release between the timeout and the hand-off must still close the database, as neither side would otherwise.
+        [Test]
+        public void A_slice_held_past_the_dispose_timeout_keeps_the_db_open_until_it_is_released([Values] bool releasedAsDisposeTimesOut)
+        {
+            byte[] key = [1, 2, 3];
+            nint handle = 0;
+            NativeCloseTrackingDbOnTheRocks? db = null;
+            // The timeout warning is logged just before dispose hands the close to the last release.
+            WarnHookLogger logger = new(() => { if (releasedAsDisposeTimesOut) db!.DangerousReleaseHandle(handle); });
+            db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, new OneLoggerLogManager(new ILogger(logger)))
+            {
+                PinnedSliceDrainTimeout = TimeSpan.FromMilliseconds(50)
+            };
+            db.PutSpan(key, new byte[64], WriteFlags.None);
+            _ = db.GetNativeSlice(key, out handle, ReadFlags.HintCacheMiss);
+
+            Assert.That(Task.Run(db.Dispose).Wait(TimeSpan.FromSeconds(10)), "dispose waited past its timeout");
+            if (!releasedAsDisposeTimesOut)
+            {
+                Assert.That(db.NativeCloses, Is.Zero, "the database closed under a pinned slice");
+                db.DangerousReleaseHandle(handle);
+            }
+
+            Assert.That(db.NativeCloses, Is.EqualTo(1), "the last release must close the database once");
+        }
+
+        /// <summary>Runs an action on every warning.</summary>
+        private sealed class WarnHookLogger(Action onWarn) : InterfaceLogger
+        {
+            public void Info(string text) { }
+            public void Warn(string text) => onWarn();
+            public void Debug(string text) { }
+            public void Trace(string text) { }
+            public void Error(string text, Exception? ex = null) { }
+            public bool IsInfo => false;
+            public bool IsWarn => true;
+            public bool IsDebug => false;
+            public bool IsTrace => false;
+            public bool IsError => false;
+        }
+
+        private static void ReadBy(DbOnTheRocks db, GetPath path, byte[] key, int length)
+        {
+            IReadOnlyKeyValueStore keyValueStore = db;
+            switch (path)
+            {
+                case GetPath.CallerBuffer:
+                    keyValueStore.Get(key, new byte[length]);
+                    break;
+                case GetPath.NativeSlice:
+                    // Code reads for execution take this path.
+                    _ = db.GetNativeSlice(key, out nint handle, ReadFlags.HintCacheMiss);
+                    db.DangerousReleaseHandle(handle);
+                    break;
+                default:
+                    keyValueStore.Get(key);
+                    break;
+            }
         }
 
         // An "IO error" (fd exhaustion, full disk, permissions) is not on-disk corruption, so it
@@ -1391,8 +1472,8 @@ namespace Nethermind.Db.Test
                 bool found = sorted.TryGetCeiling(lowerBoundIncl, upperBoundExcl, key, out int keyLength, value, out int valueLength);
 
                 Assert.That(found, Is.True, $"write {i} must be visible to the pooled iterator ({because})");
-                Assert.That(key[..keyLength].ToArray(), Is.EqualTo([1, i]), $"key of {i} ({because})");
-                Assert.That(value[..valueLength].ToArray(), Is.EqualTo([i]), $"value of {i} ({because})");
+                Assert.That(key[..keyLength], Is.SequenceEqualTo<byte>([1, i]), $"key of {i} ({because})");
+                Assert.That(value[..valueLength], Is.SequenceEqualTo([i]), $"value of {i} ({because})");
             }
 
             void AssertFindsNothing(ReadOnlySpan<byte> lowerBoundIncl, ReadOnlySpan<byte> upperBoundExcl, string because)
@@ -1554,7 +1635,7 @@ namespace Nethermind.Db.Test
             byte[] value = new byte[] { 4, 5, 6 };
             _db.PutSpan(key, value);
             Span<byte> readSpan = _db.GetSpan(key);
-            Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+            Assert.That(readSpan, Is.SequenceEqualTo(new byte[] { 4, 5, 6 }));
 
             Assert.That(AllocatedSpan, Is.EqualTo(1));
             _db.DangerousReleaseMemory(readSpan);
@@ -1568,11 +1649,11 @@ namespace Nethermind.Db.Test
             byte[] value = new byte[] { 4, 5, 6 };
             _db.PutSpan(key, value);
             Span<byte> readSpan = _db.GetSpan(key);
-            Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+            Assert.That(readSpan, Is.SequenceEqualTo(new byte[] { 4, 5, 6 }));
 
             IMemoryOwner<byte> manager = new DbSpanMemoryManager(_db, readSpan);
             Memory<byte> theMemory = manager.Memory;
-            Assert.That(theMemory.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+            Assert.That(theMemory, Is.SequenceEqualTo(new byte[] { 4, 5, 6 }));
 
             Assert.That(AllocatedSpan, Is.EqualTo(1));
             manager.Dispose();
@@ -1719,8 +1800,8 @@ namespace Nethermind.Db.Test
                 i = 0;
                 while (view.MoveNext())
                 {
-                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo([i, i, i]));
-                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo([i, i, i]));
+                    Assert.That(view.CurrentKey, Is.SequenceEqualTo([i, i, i]));
+                    Assert.That(view.CurrentValue, Is.SequenceEqualTo([i, i, i]));
                     i++;
                 }
 
@@ -1757,18 +1838,18 @@ namespace Nethermind.Db.Test
                 Assert.That(kv.Get(key, flags: flag), Is.EqualTo(value.ToArray()));
 
                 Span<byte> buffer = kv.GetSpan(key, flag);
-                Assert.That(buffer.ToArray(), Is.EqualTo(value.ToArray()));
+                Assert.That(buffer, Is.SequenceEqualTo(value));
                 kv.DangerousReleaseMemory(buffer);
 
                 int length = kv.Get(key, outBuffer);
-                Assert.That(outBuffer[..length].ToArray(), Is.EqualTo(value.ToArray()));
+                Assert.That(outBuffer[..length], Is.SequenceEqualTo(value));
             }
 
             using ISortedView iterator = ((ISortedKeyValueStore)kv).GetViewBetween(key, CreateNextKey(key));
             if (iterator.MoveNext())
             {
-                Assert.That(iterator.CurrentKey.ToArray(), Is.EqualTo(key.ToArray()));
-                Assert.That(iterator.CurrentValue.ToArray(), Is.EqualTo(value.ToArray()));
+                Assert.That(iterator.CurrentKey, Is.SequenceEqualTo(key));
+                Assert.That(iterator.CurrentValue, Is.SequenceEqualTo(value));
             }
 
             Assert.That(iterator.MoveNext(), Is.False);
@@ -1884,5 +1965,22 @@ namespace Nethermind.Db.Test
         ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
     {
         protected override void FatalShutdown() => onFatalShutdown();
+    }
+
+    class NativeCloseTrackingDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
+    {
+        public int NativeCloses { get; private set; }
+
+        protected override void ReleaseUnmanagedResources()
+        {
+            NativeCloses++;
+            base.ReleaseUnmanagedResources();
+        }
     }
 }

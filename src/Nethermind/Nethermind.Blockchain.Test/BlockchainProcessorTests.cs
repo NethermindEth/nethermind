@@ -787,6 +787,10 @@ public class BlockchainProcessorTests
         Block secondCopy = UnrecoveredCopy(_block1D2);
         ProcessingTestContext context = When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
+            // With the genesis copy still counted, the first copy would go through the recovery loop, whose write to
+            // the block queue runs the processing inline; holding that copy would then hold the recovery loop too,
+            // and the second copy would never reach its failing recovery.
+            .CountIs(0)
             .Suggested(_block1D2)
             .Recovered(_block1D2)
             .HeldAfterVerdict(_block1D2);

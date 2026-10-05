@@ -123,7 +123,7 @@ public class PbtMirrorScopeProviderTests
         {
             Assert.That(worldState.GetBalance(Eoa), Is.EqualTo((UInt256)105));
             Assert.That(worldState.GetBalance(Contract), Is.EqualTo((UInt256)42));
-            Assert.That(worldState.GetCode(Contract), Is.EqualTo(code));
+            Assert.That(worldState.GetCode(Contract).ToArray(), Is.EqualTo(code));
             Assert.That(worldState.Get(new StorageCell(Contract, 5)), Is.EqualTo(UInt256.Zero));
             Assert.That(worldState.Get(new StorageCell(Contract, 70)), Is.EqualTo((UInt256)0x07));
             Assert.That(worldState.Get(new StorageCell(Contract, 1000)), Is.EqualTo((UInt256)0x1234));

@@ -408,6 +408,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         bool depositsEnabled = parameters.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip6110TransitionTimestamp;
         bool withdrawalRequestsEnabled = parameters.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7002TransitionTimestamp;
         bool consolidationRequestsEnabled = parameters.Eip7251TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7251TransitionTimestamp;
+        bool builderRequestsEnabled = parameters.Eip8282TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip8282TransitionTimestamp;
         bool blockAccessListsEnabled = parameters.Eip7928TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7928TransitionTimestamp;
         bool slotNumberEnabled = parameters.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7843TransitionTimestamp;
 
@@ -416,7 +417,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
         }
 
-        bool requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled;
+        bool requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled || builderRequestsEnabled;
         if (requestsEnabled)
         {
             genesisHeader.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;

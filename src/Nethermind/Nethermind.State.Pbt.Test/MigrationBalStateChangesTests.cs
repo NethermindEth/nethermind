@@ -100,7 +100,7 @@ public class MigrationBalStateChangesTests
             {
                 Assert.That(worldState.AccountExists(TestItem.AddressA), Is.False);
                 Assert.That(worldState.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)40));
-                Assert.That(worldState.GetCode(TestItem.AddressB), Is.EqualTo(code));
+                Assert.That(worldState.GetCode(TestItem.AddressB).ToArray(), Is.EqualTo(code));
                 Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 1)), Is.EqualTo((UInt256)0x2a));
                 Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 2)), Is.EqualTo((UInt256)0xab));
                 Assert.That(worldState.GetBalance(TestItem.AddressC), Is.EqualTo((UInt256)25));
@@ -161,7 +161,7 @@ public class MigrationBalStateChangesTests
             Assert.That(worldState.GetBalance(address), Is.EqualTo(Number(entry.Value, "balance")), entry.Name);
             Assert.That(worldState.GetNonce(address), Is.EqualTo((ulong)Number(entry.Value, "nonce")), entry.Name);
             Assert.That(worldState.GetCodeHash(address), Is.EqualTo(ValueKeccak.Compute(code)), entry.Name);
-            Assert.That(worldState.GetCode(address), Is.EqualTo(code), entry.Name);
+            Assert.That(worldState.GetCode(address).ToArray(), Is.EqualTo(code), entry.Name);
         }
     }
 }

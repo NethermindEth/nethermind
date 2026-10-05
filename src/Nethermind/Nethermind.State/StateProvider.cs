@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -158,17 +159,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             // transaction must stay in the batch even if a later frame re-inserts and reverts.
             bool journalCode = !_codeBatchAlternate.ContainsKey(codeHash);
 
-            if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
-                && codeArray.Offset == 0
-                && codeArray.Array is { } array
-                && array.Length == code.Length)
-            {
-                _codeBatchAlternate[codeHash] = array;
-            }
-            else
-            {
-                _codeBatchAlternate[codeHash] = code.ToArray();
-            }
+            _codeBatchAlternate[codeHash] = code.AsArray();
 
             _blockCodeInsertFilter.Set(codeHash);
             inserted = true;
@@ -337,30 +328,32 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         return ref account is not null ? ref account.CodeHash.ValueHash256 : ref Keccak.OfAnEmptyString.ValueHash256;
     }
 
-    public byte[] GetCode(in ValueHash256 codeHash)
+    public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         => GetCodeCore(in codeHash);
 
-    private byte[] GetCodeCore(in ValueHash256 codeHash)
+    private ReadOnlyMemory<byte> GetCodeCore(in ValueHash256 codeHash)
     {
-        if (codeHash == Keccak.OfAnEmptyString.ValueHash256) return [];
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256) return Array.Empty<byte>();
 
-        if (_codeBatch is null || !_codeBatchAlternate.TryGetValue(codeHash, out byte[]? code))
+        if (_codeBatch is not null && _codeBatchAlternate.TryGetValue(codeHash, out byte[]? pending))
         {
-            code = CodeDb.GetCode(codeHash);
+            return pending;
         }
-        return code ?? ThrowMissingCode(in codeHash);
+
+        ReadOnlyMemory<byte> code = CodeDb.GetCode(codeHash);
+        return code.IsNull() ? ThrowMissingCode(in codeHash) : code;
 
         [DoesNotReturn, StackTraceHidden]
-        static byte[] ThrowMissingCode(in ValueHash256 codeHash)
+        static ReadOnlyMemory<byte> ThrowMissingCode(in ValueHash256 codeHash)
             => throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
     }
 
-    public byte[] GetCode(Address address)
+    public ReadOnlyMemory<byte> GetCode(Address address)
     {
         Account? account = GetThroughCache(address);
         if (account is null)
         {
-            return [];
+            return Array.Empty<byte>();
         }
 
         return GetCode(in account.CodeHash.ValueHash256);
@@ -1052,6 +1045,27 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
     }
 
+    /// <summary>
+    /// Drops the block's record of every account <paramref name="bal"/> changes, handing its committed value to
+    /// <paramref name="scope"/> as the one the BAL is applied over.
+    /// </summary>
+    /// <remarks>
+    /// Call after a commit with roots and before the BAL is applied. A hint only fills an empty slot, so a later hint of
+    /// the account's pre-block value (one the caches still hold) cannot override the committed one. Removals with
+    /// storage stay recorded: a removed account's cached slots must go whether or not the BAL recreated it.
+    /// </remarks>
+    internal void ForgetBlockChanges(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IScope scope)
+    {
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            if (accountChanges.HasStateChanges && _blockChanges.Remove(accountChanges.Address, out ChangeTrace change))
+                scope.HintGet(accountChanges.Address, change.After);
+        }
+    }
+
+    /// <summary>Has the write-back drop the cached storage of <paramref name="address"/>, as for an account removed with storage.</summary>
+    internal void ForgetCachedStorage(Address address) => _removedWithStorage.Add(address);
+
     public void Reset(bool resetBlockChanges = true)
     {
         if (_logger.IsTrace) Trace();
@@ -1169,18 +1183,18 @@ internal static class Extensions
 
             if (beforeCodeHash != afterCodeHash)
             {
-                byte[]? beforeCode = beforeCodeHash is null
-                    ? null
+                ReadOnlyMemory<byte> beforeCode = beforeCodeHash is null
+                    ? default
                     : beforeCodeHash == Keccak.OfAnEmptyString
-                        ? []
+                        ? Array.Empty<byte>()
                         : stateProvider.GetCode(in beforeCodeHash.ValueHash256);
-                byte[]? afterCode = afterCodeHash is null
-                    ? null
+                ReadOnlyMemory<byte> afterCode = afterCodeHash is null
+                    ? default
                     : afterCodeHash == Keccak.OfAnEmptyString
-                        ? []
+                        ? Array.Empty<byte>()
                         : stateProvider.GetCode(in afterCodeHash.ValueHash256);
 
-                if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
+                if (!(beforeCode.IsEmpty && afterCode.IsEmpty))
                 {
                     stateTracer.ReportCodeChange(address, beforeCode, afterCode);
                 }

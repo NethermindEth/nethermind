@@ -71,7 +71,7 @@ namespace Nethermind.Facade.Find
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
+            if (fromBlock.Number > toBlock.Number)
             {
                 throw new ArgumentException($"From block {fromBlock.Number} is later than to block {toBlock.Number}.");
             }
@@ -187,11 +187,6 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            if (toBlock.Number < fromBlock.Number)
-            {
-                return [];
-            }
-
             static IEnumerable<ulong> BlockNumbers(ulong from, ulong count)
             {
                 for (ulong i = 0; i < count; i++) yield return from + i;
@@ -225,9 +220,12 @@ namespace Nethermind.Facade.Find
             try
             {
                 long logIndexInBlock = 0;
+                Hash256? blockHash = null;
                 while (iterator.TryGetNext(out TxReceiptStructRef receipt))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+
+                    Hash256? txHash = null;
 
                     LogEntriesIterator logsIterator = iterator.IterateLogs(receipt);
                     if (!iterator.CanDecodeBloom || receipt.Bloom.Bytes.IsEmpty || filter.Matches(ref receipt.Bloom))
@@ -250,9 +248,9 @@ namespace Nethermind.Facade.Find
                                     logIndexInBlock,
                                     receipt.BlockNumber,
                                     blockTimestamp,
-                                    receipt.BlockHash.ToCommitment(),
+                                    blockHash ??= receipt.BlockHash.ToCommitment(),
                                     receipt.Index,
-                                    receipt.TxHash.ToCommitment(),
+                                    txHash ??= receipt.TxHash.ToCommitment(),
                                     log.Address.ToAddress(),
                                     log.Data.ToArray(),
                                     topics));

@@ -4,6 +4,7 @@
 #nullable enable
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.Metrics;
@@ -120,6 +121,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public class SummaryMetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
         {
+            private readonly ConcurrentDictionary<IMetricLabels, Summary.Child> _stableChildren = new(ReferenceEqualityComparer.Instance);
+
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -127,7 +130,12 @@ namespace Nethermind.Monitoring.Metrics
 
             public void Observe(double value, IMetricLabels? labels = null)
             {
-                if (labels is not null)
+                if (labels is IStableMetricLabels)
+                {
+                    Summary.Child child = _stableChildren.GetOrAdd(labels, static (l, s) => s.WithLabels(l.Labels), summary);
+                    child.Observe(value);
+                }
+                else if (labels is not null)
                 {
                     summary.WithLabels(labels.Labels).Observe(value);
                 }
@@ -140,6 +148,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public class HistogramMetricUpdater(Histogram histogram) : IMetricUpdater, IMetricObserver
         {
+            private readonly ConcurrentDictionary<IMetricLabels, Histogram.Child> _stableChildren = new(ReferenceEqualityComparer.Instance);
+
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -147,7 +157,12 @@ namespace Nethermind.Monitoring.Metrics
 
             public void Observe(double value, IMetricLabels? labels = null)
             {
-                if (labels is not null)
+                if (labels is IStableMetricLabels)
+                {
+                    Histogram.Child child = _stableChildren.GetOrAdd(labels, static (l, h) => h.WithLabels(l.Labels), histogram);
+                    child.Observe(value);
+                }
+                else if (labels is not null)
                 {
                     histogram.WithLabels(labels.Labels).Observe(value);
                 }

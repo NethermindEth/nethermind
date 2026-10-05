@@ -134,6 +134,8 @@ public class PbtMirrorScopeProvider(
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) =>
             authoritative.HintBal(bal, sink);
 
+        public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+
         public IWorldStateScopeProvider.ICodeDb CodeDb => pbt.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)

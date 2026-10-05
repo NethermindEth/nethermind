@@ -34,7 +34,7 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
     {
-        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
+        using Utf8JsonWriter jsonWriter = new(writer, StreamingResultBase.WriterOptions);
 
         jsonWriter.WriteStartArray();
         jsonWriter.Flush();

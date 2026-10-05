@@ -307,7 +307,7 @@ public class PbtWorldStateScopeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.Bundle.GetCode(codeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
-            Assert.That(scope.CodeDb.GetCode(codeHash.ValueHash256), Is.EqualTo(code));
+            Assert.That(scope.CodeDb.GetCode(codeHash.ValueHash256).ToArray(), Is.EqualTo(code));
         }
     }
 

@@ -24,6 +24,7 @@ public class PreBlockCaches
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache;
     private readonly PrecompileCaches _precompileCaches;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
+    private volatile CodePrefetcher? _codePrefetcher;
     private int _consumerScopes;
 
     private readonly Lock _reconcileLock = new();
@@ -93,6 +94,16 @@ public class PreBlockCaches
     {
         get => _mainScope;
         set => _mainScope = value;
+    }
+
+    /// <summary>
+    /// Code the consumer scope is reading ahead from the block access list, for every scope reading the block to take
+    /// from; null outside a consumer scope.
+    /// </summary>
+    public CodePrefetcher? CodePrefetcher
+    {
+        get => _codePrefetcher;
+        set => _codePrefetcher = value;
     }
 
     /// <summary>

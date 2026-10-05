@@ -138,6 +138,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
 
+    public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => GetOrCreateStorageTree(address);
 
     private PbtStorageTree GetOrCreateStorageTree(Address address)
