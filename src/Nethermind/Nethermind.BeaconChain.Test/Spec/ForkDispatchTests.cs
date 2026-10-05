@@ -313,20 +313,11 @@ public class ForkDispatchTests
     private static BeaconChainSpec CheckpointSpec()
     {
         BeaconChainSpec shared = GloasCheckpointFiles.SharedActivationEpochSpec;
-        return new BeaconChainSpec
+        return shared with
         {
-            SecondsPerSlot = shared.SecondsPerSlot,
-            SlotsPerEpoch = shared.SlotsPerEpoch,
-            GenesisTime = shared.GenesisTime,
-            GenesisValidatorsRoot = shared.GenesisValidatorsRoot,
+            ChainId = 0,
+            CheckpointSyncUrl = null,
             Forks = [new(ElectraVersion, shared.ElectraForkEpoch), .. shared.Forks],
-            BlobSchedule = shared.BlobSchedule,
-            ElectraForkEpoch = shared.ElectraForkEpoch,
-            FuluForkEpoch = shared.FuluForkEpoch,
-            MaxBlobsPerBlockElectra = shared.MaxBlobsPerBlockElectra,
-            GloasForkEpoch = shared.GloasForkEpoch,
-            GloasForkVersion = shared.GloasForkVersion,
-            Bootnodes = shared.Bootnodes,
         };
     }
 

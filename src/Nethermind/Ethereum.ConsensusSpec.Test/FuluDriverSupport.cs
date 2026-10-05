@@ -221,21 +221,15 @@ public static class FuluDriverSupport
     private static BeaconChainSpec MainnetWith(BlobScheduleEntry[] blobSchedule, ulong electraForkEpoch, ulong fuluForkEpoch, ulong maxBlobsPerBlockElectra, ulong gloasForkEpoch, byte[] gloasForkVersion)
     {
         BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
-        return new BeaconChainSpec
+        return mainnet with
         {
-            ChainId = mainnet.ChainId,
-            SecondsPerSlot = mainnet.SecondsPerSlot,
-            SlotsPerEpoch = mainnet.SlotsPerEpoch,
-            GenesisTime = mainnet.GenesisTime,
-            GenesisValidatorsRoot = mainnet.GenesisValidatorsRoot,
-            Forks = mainnet.Forks,
+            CheckpointSyncUrl = null,
             BlobSchedule = blobSchedule,
             ElectraForkEpoch = electraForkEpoch,
             FuluForkEpoch = fuluForkEpoch,
             MaxBlobsPerBlockElectra = maxBlobsPerBlockElectra,
             GloasForkEpoch = gloasForkEpoch,
             GloasForkVersion = gloasForkVersion,
-            Bootnodes = mainnet.Bootnodes,
         };
     }
 

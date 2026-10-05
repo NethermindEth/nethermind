@@ -12,18 +12,11 @@ public class GloasForkScheduleTests
     private const ulong GloasEpoch = 500_000ul;
     private static readonly byte[] GloasVersion = Bytes.FromHexString("0x07000000");
 
-    private static BeaconChainSpec SyntheticGloasSpec() => new()
+    private static BeaconChainSpec SyntheticGloasSpec() => BeaconChainSpec.Mainnet with
     {
+        CheckpointSyncUrl = null,
         ChainId = 0,
-        SecondsPerSlot = BeaconChainSpec.Mainnet.SecondsPerSlot,
-        SlotsPerEpoch = BeaconChainSpec.Mainnet.SlotsPerEpoch,
-        GenesisTime = BeaconChainSpec.Mainnet.GenesisTime,
-        GenesisValidatorsRoot = BeaconChainSpec.Mainnet.GenesisValidatorsRoot,
         Forks = [.. BeaconChainSpec.Mainnet.Forks, new ForkScheduleEntry(GloasVersion, GloasEpoch)],
-        BlobSchedule = BeaconChainSpec.Mainnet.BlobSchedule,
-        ElectraForkEpoch = BeaconChainSpec.Mainnet.ElectraForkEpoch,
-        FuluForkEpoch = BeaconChainSpec.Mainnet.FuluForkEpoch,
-        MaxBlobsPerBlockElectra = BeaconChainSpec.Mainnet.MaxBlobsPerBlockElectra,
         GloasForkEpoch = GloasEpoch,
         GloasForkVersion = GloasVersion,
         Bootnodes = [],

@@ -62,20 +62,12 @@ public class DataColumnSidecarGloasSizeTests
     private static BeaconChainSpec SpecWith(BlobScheduleEntry[] schedule, ulong electraMaxBlobs)
     {
         BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
-        return new BeaconChainSpec
+        return mainnet with
         {
-            SecondsPerSlot = mainnet.SecondsPerSlot,
-            SlotsPerEpoch = mainnet.SlotsPerEpoch,
-            GenesisTime = mainnet.GenesisTime,
-            GenesisValidatorsRoot = mainnet.GenesisValidatorsRoot,
-            Forks = mainnet.Forks,
+            ChainId = 0,
+            CheckpointSyncUrl = null,
             BlobSchedule = schedule,
-            ElectraForkEpoch = mainnet.ElectraForkEpoch,
-            FuluForkEpoch = mainnet.FuluForkEpoch,
             MaxBlobsPerBlockElectra = electraMaxBlobs,
-            GloasForkEpoch = mainnet.GloasForkEpoch,
-            GloasForkVersion = mainnet.GloasForkVersion,
-            Bootnodes = mainnet.Bootnodes,
         };
     }
 }

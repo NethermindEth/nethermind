@@ -387,22 +387,10 @@ public class RangeSyncColumnCustodyTests
     {
         await using Fixture fixture = Fixture.Create();
         BeaconChainSpec chainSpec = fixture.Chain.Spec;
-        BeaconChainSpec oneBlobSpec = new()
+        BeaconChainSpec oneBlobSpec = chainSpec with
         {
-            ChainId = chainSpec.ChainId,
-            CheckpointSyncUrl = chainSpec.CheckpointSyncUrl,
-            Bootnodes = chainSpec.Bootnodes,
-            SecondsPerSlot = chainSpec.SecondsPerSlot,
-            SlotsPerEpoch = chainSpec.SlotsPerEpoch,
-            GenesisTime = chainSpec.GenesisTime,
-            GenesisValidatorsRoot = chainSpec.GenesisValidatorsRoot,
-            Forks = chainSpec.Forks,
             BlobSchedule = [],
-            ElectraForkEpoch = chainSpec.ElectraForkEpoch,
-            FuluForkEpoch = chainSpec.FuluForkEpoch,
             MaxBlobsPerBlockElectra = (ulong)fixture.Chain.Block.Message!.Body!.BlobKzgCommitments!.Length - 1,
-            GloasForkEpoch = chainSpec.GloasForkEpoch,
-            GloasForkVersion = chainSpec.GloasForkVersion,
         };
         ulong[] served = [];
         StubPeer peer = fixture.FailingColumnPeer("over-limit", columns =>

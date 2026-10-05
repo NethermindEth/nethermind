@@ -9,6 +9,19 @@ namespace Nethermind.BeaconChain.Test.Spec;
 public class BeaconChainSpecTests
 {
     [Test]
+    public void A_configuration_copy_keeps_separate_identity()
+    {
+        BeaconChainSpec original = BeaconChainSpec.Mainnet;
+        BeaconChainSpec copy = original with { };
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(copy == original, Is.False);
+        Assert.That(copy.Equals((object)original), Is.False);
+        Assert.That(copy.GetHashCode(), Is.EqualTo(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(copy)));
+        Assert.That(copy.ToString(), Is.EqualTo(typeof(BeaconChainSpec).FullName));
+    }
+
+    [Test]
     public void ForChainId_returns_mainnet_for_the_mainnet_chain_id() =>
         Assert.That(BeaconChainSpec.ForChainId(BlockchainIds.Mainnet), Is.SameAs(BeaconChainSpec.Mainnet));
 

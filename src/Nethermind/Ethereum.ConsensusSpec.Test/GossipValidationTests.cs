@@ -493,22 +493,9 @@ public class GossipValidationTests
     }
 
     // compute_time_at_slot reads the anchor state's genesis_time, which the vectors set apart from the network config's.
-    internal static BeaconChainSpec WithGenesisTime(BeaconChainSpec spec, ulong genesisTime) => new()
+    internal static BeaconChainSpec WithGenesisTime(BeaconChainSpec spec, ulong genesisTime) => spec with
     {
-        ChainId = spec.ChainId,
-        CheckpointSyncUrl = spec.CheckpointSyncUrl,
-        SecondsPerSlot = spec.SecondsPerSlot,
-        SlotsPerEpoch = spec.SlotsPerEpoch,
         GenesisTime = genesisTime,
-        GenesisValidatorsRoot = spec.GenesisValidatorsRoot,
-        Forks = spec.Forks,
-        BlobSchedule = spec.BlobSchedule,
-        ElectraForkEpoch = spec.ElectraForkEpoch,
-        FuluForkEpoch = spec.FuluForkEpoch,
-        MaxBlobsPerBlockElectra = spec.MaxBlobsPerBlockElectra,
-        GloasForkEpoch = spec.GloasForkEpoch,
-        GloasForkVersion = spec.GloasForkVersion,
-        Bootnodes = spec.Bootnodes,
     };
 
     private static IEnumerable<TestCaseData> MainnetCases()

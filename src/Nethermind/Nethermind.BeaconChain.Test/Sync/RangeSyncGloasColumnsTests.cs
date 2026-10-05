@@ -31,22 +31,11 @@ public class RangeSyncGloasColumnsTests
     private const ulong SecondGloasSlot = 33;
 
     /// <summary>Fulu from genesis and Gloas from epoch 1, so slots 31 and 32 straddle the fork inside one batch.</summary>
-    internal static BeaconChainSpec Spec { get; } = new()
+    internal static BeaconChainSpec Spec { get; } = ImportableBlobBlock.FuluFromGenesis with
     {
-        ChainId = ImportableBlobBlock.FuluFromGenesis.ChainId,
-        CheckpointSyncUrl = ImportableBlobBlock.FuluFromGenesis.CheckpointSyncUrl,
-        Bootnodes = ImportableBlobBlock.FuluFromGenesis.Bootnodes,
-        SecondsPerSlot = ImportableBlobBlock.FuluFromGenesis.SecondsPerSlot,
-        SlotsPerEpoch = ImportableBlobBlock.FuluFromGenesis.SlotsPerEpoch,
-        GenesisTime = ImportableBlobBlock.FuluFromGenesis.GenesisTime,
-        GenesisValidatorsRoot = ImportableBlobBlock.FuluFromGenesis.GenesisValidatorsRoot,
-        Forks = ImportableBlobBlock.FuluFromGenesis.Forks,
-        BlobSchedule = ImportableBlobBlock.FuluFromGenesis.BlobSchedule,
         ElectraForkEpoch = 0,
         FuluForkEpoch = 0,
-        MaxBlobsPerBlockElectra = ImportableBlobBlock.FuluFromGenesis.MaxBlobsPerBlockElectra,
         GloasForkEpoch = 1,
-        GloasForkVersion = ImportableBlobBlock.FuluFromGenesis.GloasForkVersion,
     };
 
     private static readonly Hash256 OtherRoot = new([.. Enumerable.Repeat((byte)0xB7, 32)]);
