@@ -26,15 +26,20 @@ public class RunShutterP2P(IShutterConfig shutterConfig, IShutterApi shutterApi,
     {
         if (_logger.IsInfo) _logger.Info("Initializing Shutter plugin.");
 
+        Multiaddress[] bootnodes;
         try
         {
             shutterConfig.Validate();
+            bootnodes = StaticPeerKeeper.ParseStaticPeers(shutterConfig.BootnodeP2PAddresses!, "Shutter.BootnodeP2PAddresses", _logger);
+            if (bootnodes.Length != shutterConfig.BootnodeP2PAddresses!.Length)
+            {
+                throw new ArgumentException("Shutter.BootnodeP2PAddresses contains an invalid bootnode address.");
+            }
         }
         catch (ArgumentException e)
         {
             throw new ShutterPlugin.ShutterLoadingException("Invalid Shutter config", e);
         }
-        Multiaddress[] bootnodes = StaticPeerKeeper.ParseStaticPeers(shutterConfig.BootnodeP2PAddresses!, "Shutter.BootnodeP2PAddresses", _logger);
         _ = shutterApi.StartP2P(bootnodes, exitSource.Token);
 
         return Task.CompletedTask;
