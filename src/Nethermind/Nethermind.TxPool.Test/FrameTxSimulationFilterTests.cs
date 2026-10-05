@@ -236,7 +236,7 @@ public class FrameTxSimulationFilterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
-            Assert.That(filteringState.FrameSimulationYielded, Is.EqualTo(expected));
+            Assert.That(filteringState.FrameValidationYielded, Is.EqualTo(expected));
         }
     }
 

@@ -52,7 +52,7 @@ internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator
                 if (result.NodeBound)
                 {
                     Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationDeferred);
-                    state.FrameSimulationYielded = result.Yielded && !local && !tx.CarriesBlobs;
+                    state.FrameValidationYielded = result.Yielded && !local && !tx.CarriesBlobs;
                     if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash}, this node's validation-prefix simulation bounds were spent: {result.Reason}.");
                     return AcceptTxResult.FrameSimulationDeferred.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationDeferred);
                 }
