@@ -69,11 +69,26 @@ public static unsafe partial class Bytes
         }
 
         if ((uint)source.Length > (uint)destination.Length) ThrowDestinationTooShort();
-        Memmove(ref MemoryMarshal.GetReference(destination), ref MemoryMarshal.GetReference(source), (nuint)source.Length);
+        Memmove(
+            Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination)),
+            Unsafe.AsPointer(ref MemoryMarshal.GetReference(source)),
+            (nuint)source.Length);
     }
 
+    /// <summary>The zkVM's <c>memmove</c>, which its runtime turns into a DMA precompile.</summary>
+    /// <remarks>
+    /// Raw pointers rather than <c>ref byte</c>: byref arguments make ILC wrap the call in a stub that pins
+    /// both refs in a stack frame, ~10 steps a call. Unpinned pointers are safe because nothing between taking
+    /// them and the call returning can reach a GC safepoint: the import suppresses the GC transition and the
+    /// callee is a two-instruction thunk. Call only where <see cref="ZiskMemmoveFlag"/> is on.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Memmove(void* destination, void* source, nuint length) => MemmoveImport(destination, source, length);
+
+    // Behind a wrapper so that a JIT compiling a caller, as the zkEVM test hosts do, never binds the import:
+    // one that suppresses the GC transition is bound when it is compiled in, and the host has no such export.
     [DllImport("__Internal", EntryPoint = "memmove", ExactSpelling = true), SuppressGCTransition]
-    private static extern void Memmove(ref byte destination, ref byte source, nuint length);
+    private static extern void MemmoveImport(void* destination, void* source, nuint length);
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowDestinationTooShort() => throw new ArgumentException("Destination is too short.", "destination");
