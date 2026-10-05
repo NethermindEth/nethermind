@@ -5130,8 +5130,9 @@ namespace Nethermind.TxPool.Test
         }
 
         [TestCase(true, true, 2)]
-        [TestCase(true, false, 1)]
+        [TestCase(true, false, 3)]
         [TestCase(false, true, 1)]
+        [TestCase(false, false, 1)]
         public void Gossiped_frame_tx_whose_simulation_yielded_is_refetchable_once_per_request(bool yielded, bool announced, int expectedSimulations)
         {
             IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(yielded
@@ -5145,6 +5146,16 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
             Assert.That(_txPool.IsKnown(tx.Hash), Is.EqualTo(!(yielded && announced)));
+            if (yielded && !announced)
+            {
+                // The push was not requested, so it owes nothing until a later announcement makes the one request.
+                IMessageHandler<PooledTransactionRequestMessage> laterPeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+                Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(_txPool.NotifyAboutTx(tx.Hash!, laterPeer), Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+                Assert.That(_txPool.IsKnown(tx.Hash), Is.False);
+            }
+
             for (int resend = 0; resend < 3; resend++)
             {
                 _txPool.SubmitTx(tx, TxHandlingOptions.None);
@@ -5155,6 +5166,30 @@ namespace Nethermind.TxPool.Test
                 Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(expectedSimulations));
                 Assert.That(_txPool.IsKnown(tx.Hash), Is.True);
                 Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.Delayed));
+            }
+        }
+
+        [Test]
+        public void Repushed_frame_tx_whose_simulation_yielded_is_not_simulated_again()
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.RejectYielded("validation-prefix simulation preempted"));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+            for (int resend = 0; resend < 3; resend++)
+            {
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            }
+
+            // eth/68 pushes to several peers, so resends can arrive before the first announcement: they must not
+            // consume the entry that announcement claims.
+            IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1));
+                Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
             }
         }
 

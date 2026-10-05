@@ -20,24 +20,26 @@ namespace Nethermind.Blockchain
     {
         private readonly IBlockTree _blockTree;
         private readonly Func<BlockHeader, IReadOnlyStateProvider> _stateAt;
+        private readonly IBlockBuildingTracker? _blockBuildingTracker;
         // For testing
         public bool HasSynced { private get; init; }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
-            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), header => new SpecificBlockReadOnlyStateProvider(stateReader, header))
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, IBlockBuildingTracker? blockBuildingTracker = null)
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), header => new SpecificBlockReadOnlyStateProvider(stateReader, header), blockBuildingTracker)
         {
         }
 
         /// <remarks><paramref name="stateProvider"/> is used as given, so <see cref="TryGetHeadState"/> returns it
         /// unbound: binding the state to the head is the caller's concern.</remarks>
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider)
-            : this(specProvider, blockTree, stateProvider, _ => stateProvider)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, IBlockBuildingTracker? blockBuildingTracker = null)
+            : this(specProvider, blockTree, stateProvider, _ => stateProvider, blockBuildingTracker)
         {
         }
 
-        private ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, Func<BlockHeader, IReadOnlyStateProvider> stateAt)
+        private ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, Func<BlockHeader, IReadOnlyStateProvider> stateAt, IBlockBuildingTracker? blockBuildingTracker)
         {
             _stateAt = stateAt;
+            _blockBuildingTracker = blockBuildingTracker;
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
             Block? head = blockTree.Head;
@@ -90,6 +92,8 @@ namespace Nethermind.Blockchain
         }
 
         public bool IsProcessingBlock => _blockTree.IsProcessingBlock;
+
+        public bool IsBuildingBlock => _blockBuildingTracker?.IsBuildingBlock ?? false;
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
