@@ -173,17 +173,13 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
         await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
-    [Test]
-    public async Task Validators_post_with_a_repeated_status_is_400()
+    [TestCase("{\"statuses\":[\"active\",\"pending\",\"active\"]}", TestName = "Validators_post_with_a_repeated_status_is_400")]
+    [TestCase(null, TestName = "Validators_post_without_a_body_is_400")]
+    public async Task Validators_post_rejects_repeated_statuses_or_an_absent_body(string? body)
     {
-        using HttpResponseMessage response = await Post("validators", "{\"statuses\":[\"active\",\"pending\",\"active\"]}");
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
-    }
-
-    [Test]
-    public async Task Validators_post_without_a_body_is_400()
-    {
-        using HttpResponseMessage response = await _host.Client.SendAsync(new HttpRequestMessage(HttpMethod.Post, $"/eth/v1/beacon/states/{StateSlot}/validators"));
+        using HttpResponseMessage response = body is null
+            ? await _host.Client.SendAsync(new HttpRequestMessage(HttpMethod.Post, $"/eth/v1/beacon/states/{StateSlot}/validators"))
+            : await Post("validators", body);
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 

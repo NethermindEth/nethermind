@@ -303,11 +303,7 @@ public class CheckpointSyncRetryTests
     {
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(ForkCrossingChain.Instance.First.PostState, null);
         OutstandingArrayPool pool = new();
-        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, NewStore(), new TestLogRecorder())
-        {
-            MaxBodyBytes = 16,
-            BufferPool = pool,
-        };
+        using CheckpointSync sync = NewBodySync(pool, 16, new BeaconChainConfig { CheckpointStateFile = files.StateFile });
 
         Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None));
         Assert.That(pool.Rented, Is.Zero);
@@ -317,11 +313,7 @@ public class CheckpointSyncRetryTests
     public void An_oversized_declared_body_is_refused_before_renting([Values(17L, 2147483648L)] long declared)
     {
         OutstandingArrayPool pool = new();
-        using CheckpointSync sync = new(new BeaconChainConfig(), GloasCheckpointFiles.Spec, NewStore(), new TestLogRecorder())
-        {
-            MaxBodyBytes = 16,
-            BufferPool = pool,
-        };
+        using CheckpointSync sync = NewBodySync(pool, 16);
         using HttpResponseMessage response = new() { Content = new ByteArrayContent([]) };
         response.Content.Headers.ContentLength = declared;
 
@@ -333,11 +325,7 @@ public class CheckpointSyncRetryTests
     public async Task Body_reads_respect_the_limit_even_when_the_pool_returns_a_larger_array([Values(17, 18)] int bytes)
     {
         OutstandingArrayPool pool = new();
-        using CheckpointSync sync = new(new BeaconChainConfig(), GloasCheckpointFiles.Spec, NewStore(), new TestLogRecorder())
-        {
-            MaxBodyBytes = 17,
-            BufferPool = pool,
-        };
+        using CheckpointSync sync = NewBodySync(pool, 17);
         using HttpResponseMessage response = new() { Content = new ByteArrayContent(new byte[bytes]) };
         response.Content.Headers.ContentLength = 1;
 
@@ -355,6 +343,13 @@ public class CheckpointSyncRetryTests
         Assert.That(pool.Outstanding, Is.Zero);
         Assert.That(pool.LargestRequest, Is.LessThanOrEqualTo(17));
     }
+
+    private static CheckpointSync NewBodySync(OutstandingArrayPool pool, int maxBodyBytes, BeaconChainConfig? config = null) =>
+        new(config ?? new BeaconChainConfig(), GloasCheckpointFiles.Spec, NewStore(), new TestLogRecorder())
+        {
+            MaxBodyBytes = maxBodyBytes,
+            BufferPool = pool,
+        };
 
     private static CheckpointSync NewSync(FlakyCheckpointProvider provider, BeaconChainStore store, TestLogRecorder logs, int maxDownloadAttempts = 5, TimeSpan? retryBaseDelay = null, ArrayPool<byte>? bufferPool = null, TimeSpan? readStallTimeout = null, TimeSpan? responseHeadersTimeout = null) =>
         new(new BeaconChainConfig { CheckpointSyncUrl = provider.Url }, GloasCheckpointFiles.Spec, store, logs)
