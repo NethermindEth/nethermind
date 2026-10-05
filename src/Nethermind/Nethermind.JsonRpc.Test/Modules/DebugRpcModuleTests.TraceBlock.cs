@@ -42,7 +42,8 @@ public partial class DebugRpcModuleTests
 {
     [Test]
     public async Task Debug_traceBlock_checks_replay_parent_state(
-        [Values("debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
+        [Values("debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock",
+            "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex")] string method,
         [Values] bool streaming,
         [Values] bool parentAvailable)
     {
@@ -79,7 +80,13 @@ public partial class DebugRpcModuleTests
             "debug_traceBlockByNumber" => unprocessed.Number,
             _ => Rlp.Encode(unprocessed).ToString()
         };
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, selector);
+        object[] parameters = method switch
+        {
+            "debug_traceTransactionInBlockByHash" => [selector, transaction.Hash!],
+            "debug_traceTransactionInBlockByIndex" => [selector, "0x0"],
+            _ => [selector]
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameters);
         JToken actual = JToken.Parse(response);
         if (!parentAvailable)
         {
@@ -93,12 +100,20 @@ public partial class DebugRpcModuleTests
             return;
         }
         Assert.That(actual["error"], Is.Null, response);
+        JToken trace = actual["result"]!;
+        if (method.StartsWith("debug_traceBlock", StringComparison.Ordinal))
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.Count(), Is.EqualTo(1));
+                Assert.That(trace[0]!["txHash"]!.Value<string>(), Is.EqualTo(transaction.Hash!.ToString()));
+            }
+            trace = trace[0]!["result"]!;
+        }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual["result"]!.Count(), Is.EqualTo(1));
-            Assert.That(actual["result"]![0]!["txHash"]!.Value<string>(), Is.EqualTo(transaction.Hash!.ToString()));
-            Assert.That(actual["result"]![0]!["result"]!["gas"]!.Value<long>(), Is.EqualTo(21_000));
-            Assert.That(actual["result"]![0]!["result"]!["failed"]!.Value<bool>(), Is.False);
+            Assert.That(trace["gas"]!.Value<long>(), Is.EqualTo(21_000));
+            Assert.That(trace["failed"]!.Value<bool>(), Is.False);
         }
     }
 
