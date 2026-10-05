@@ -233,6 +233,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
             "ProgramCounter" => "Pc",
             "Keccak" => "Keccak256",
             "SStoreMetered" or "SStoreUnmetered" => "SStore",
+            "Push2CallSub" => "Push2",
             _ => name
         };
     }

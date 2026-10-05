@@ -437,6 +437,13 @@ public static partial class EvmInstructions
         return destination >= 0 && Unsafe.Add(ref stack.Code, destination) == (byte)Instruction.CALLDEST ? destination : -1;
     }
 
+    /// <inheritdoc cref="CallDestination(ref byte, ref EvmStack)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nint CallDestination(int callDestination, ref EvmStack stack) =>
+        stack.IsJumpDestination(callDestination) && Unsafe.Add(ref stack.Code, callDestination) == (byte)Instruction.CALLDEST
+            ? callDestination
+            : -1;
+
     /// <summary>Prefetches the bytecode cache line at a taken jump's next instruction.</summary>
     /// <remarks>Hints the target explicitly to reduce cache misses after non-sequential control flow.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

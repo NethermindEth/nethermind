@@ -240,7 +240,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.PUSH0] = OpcodeHandler<Push0Opcode<TTracingInst>, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.PUSH1] = OpcodeHandler<PushOpcode<EvmInstructions.Op1, TTracingInst>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.PUSH2] = OpcodeHandler<Push2Opcode<TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.PUSH2] = !TTracingInst.IsActive && spec.IsEip7979Enabled
+            ? OpcodeHandler<Push2CallSubOpcode, TTracingInst, TCancelable>()
+            : OpcodeHandler<Push2Opcode<TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.PUSH3] = OpcodeHandler<PushOpcode<EvmInstructions.Op3, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.PUSH4] = OpcodeHandler<PushOpcode<EvmInstructions.Op4, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.PUSH5] = OpcodeHandler<PushOpcode<EvmInstructions.Op5, TTracingInst>, TTracingInst, TCancelable>();
@@ -1548,6 +1550,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, ref programCounter);
+    }
+
+    /// <summary>Untraced PUSH2 on an EIP-7979 spec, which also runs a following <c>CALLSUB</c>.</summary>
+    [SkipLocalsInit]
+    private readonly struct Push2CallSubOpcode : IOpcodeBody
+    {
+        public static bool UsesVm => true;
+        public static bool MayJump => true;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionPush2AndCallSub(ref stack, ref gas, vm, ref programCounter);
     }
 
     [SkipLocalsInit]
