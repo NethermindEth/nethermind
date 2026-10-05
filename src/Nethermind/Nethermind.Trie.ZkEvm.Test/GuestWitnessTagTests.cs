@@ -26,19 +26,20 @@ public class GuestWitnessTagTests
     public void TearDown() => NoteWitnessNodeLoaded(0);
 
     [Test]
-    public void Loaded_node_keeps_its_rlp_and_the_tag_through_a_clone()
+    public void Loaded_node_hands_its_rlp_and_the_tag_to_the_re_encode_once_writable([Values] bool unsealInPlace)
     {
         byte[] rlp = FullBranchRlp();
         TrieNode node = ResolveTagged(rlp);
-        TrieNode clone = node.Clone();
+        TrieNode writable = unsealInPlace ? node.Unseal() : node.Clone();
+        object previous = typeof(TrieNode).GetMethod("ReadPreviousRlp", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(writable, null)!;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.IsBranch);
-            Assert.That(node.FullRlp.AsSpan().ToArray(), Is.EqualTo(rlp));
             Assert.That(TagOf(node), Is.EqualTo(Tag));
-            Assert.That(clone.FullRlp.AsSpan().ToArray(), Is.EqualTo(rlp));
-            Assert.That(TagOf(clone), Is.EqualTo(Tag));
+            Assert.That(writable.FullRlp.AsSpan().ToArray(), Is.EqualTo(rlp));
+            Assert.That(previous.GetType().GetField("Array")!.GetValue(previous), Is.SameAs(rlp));
+            Assert.That(previous.GetType().GetField("Tag")!.GetValue(previous), Is.EqualTo((nint)Tag));
         }
     }
 
