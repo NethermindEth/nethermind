@@ -32,9 +32,9 @@ public class ShufflingTests
 
     private static void Run(ShufflingCase testCase)
     {
-        YamlMappingNode mapping = LoadMapping(Path.Combine(testCase.CasePath, "mapping.yaml"));
-        byte[] seed = Bytes.FromHexString(Scalar(mapping, "seed"));
-        int count = int.Parse(Scalar(mapping, "count"));
+        YamlMappingNode mapping = FuluDriverSupport.LoadMapping(Path.Combine(testCase.CasePath, "mapping.yaml"));
+        byte[] seed = Bytes.FromHexString(FuluDriverSupport.Scalar(mapping, "seed"));
+        int count = int.Parse(FuluDriverSupport.Scalar(mapping, "count"));
         int[] expected = [.. ((YamlSequenceNode)mapping.Children[new YamlScalarNode("mapping")]).Children.Select(static node => int.Parse(((YamlScalarNode)node).Value!))];
         int rounds = RoundsByPreset[testCase.Preset];
 
@@ -48,15 +48,6 @@ public class ShufflingTests
         Assert.That(wholeList, Is.EqualTo(expected), "the whole-list shuffle of the identity");
     }
 
-    private static YamlMappingNode LoadMapping(string path)
-    {
-        using StreamReader reader = new(path);
-        YamlStream yaml = [];
-        yaml.Load(reader);
-        return (YamlMappingNode)yaml.Documents[0].RootNode;
-    }
-
-    private static string Scalar(YamlMappingNode map, string key) => ((YamlScalarNode)map.Children[new YamlScalarNode(key)]).Value!;
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
     private static IEnumerable<TestCaseData> MainnetCases() =>
