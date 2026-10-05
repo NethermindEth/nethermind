@@ -277,7 +277,7 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Receipt_message_decoding_with_eip7668_behavior_maps_null_bloom_to_removed()
+        public void Receipt_message_decoding_with_eip7668_behavior_maps_null_bloom_to_zero_length()
         {
             byte[] encoded = EncodeReceiptMessageWithNullBloom();
             ReceiptMessageDecoder decoder = new();
@@ -293,10 +293,10 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Receipt_message_encoding_with_eip7668_behavior_writes_zero_length_bloom([Values] bool removedInMemory)
+        public void Receipt_message_encoding_with_eip7668_behavior_writes_zero_length_bloom([Values] bool zeroLengthInMemory)
         {
             TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-            if (removedInMemory) receipt.Bloom = Bloom.ZeroLength;
+            if (zeroLengthInMemory) receipt.Bloom = Bloom.ZeroLength;
             ReceiptMessageDecoder decoder = new();
 
             byte[] encoded = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7668Receipts).Bytes;

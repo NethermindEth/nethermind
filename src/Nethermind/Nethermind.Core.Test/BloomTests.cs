@@ -43,14 +43,14 @@ namespace Nethermind.Core.Test
                 addedEntries.Sum(a => a.Topics.Length)), false);
 
         [Test]
-        public void Removed_matches_any_item()
+        public void ZeroLength_matches_any_item()
         {
             LogEntry[] entries = GetLogEntries(10, 3);
             Assert.That(entries.Select(static e => Bloom.ZeroLength.Matches(e)), Is.All.True);
         }
 
         [Test]
-        public void Removed_is_zero_length_and_distinct_from_empty()
+        public void ZeroLength_is_zero_length_and_distinct_from_empty()
         {
             using (Assert.EnterMultipleScope())
             {
@@ -61,7 +61,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Removed_ssz_encodes_and_merkleizes_as_zero_bloom()
+        public void ZeroLength_ssz_encodes_and_merkleizes_as_zero_bloom()
         {
             byte[] buffer = new byte[Bloom.ByteLength];
             Array.Fill(buffer, byte.MaxValue);

@@ -33,7 +33,7 @@ public class BloomConverterTests : ConverterTestBase<Bloom>
         static (a, b) => a is null ? b is null : a.Equals(b));
 
     [Test]
-    public void Removed_roundtrips_as_empty_hex() => TestConverter(
+    public void ZeroLength_roundtrips_as_empty_hex() => TestConverter(
         Bloom.ZeroLength,
         "\"0x\"",
         converter,
