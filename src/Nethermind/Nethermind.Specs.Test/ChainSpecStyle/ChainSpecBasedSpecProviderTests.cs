@@ -991,23 +991,27 @@ public class ChainSpecBasedSpecProviderTests
     [TestCase(10UL, null, true, TestName = "EIP-7979 without EIP-8024")]
     public void Eip7979_requires_eip8024(ulong eip7979Timestamp, ulong? eip8024Timestamp, bool throws)
     {
-        ChainSpec chainSpec = new()
+        ChainSpecJson chainSpecJson = new()
         {
-            Parameters = new ChainParameters
+            Params = new ChainSpecParamsJson
             {
                 Eip7979TransitionTimestamp = eip7979Timestamp,
                 Eip8024TransitionTimestamp = eip8024Timestamp,
-            },
-            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+            }
         };
 
         if (throws)
         {
-            Assert.Throws<ArgumentException>(() => _ = new ChainSpecBasedSpecProvider(chainSpec));
+            Assert.Throws<ArgumentException>(() => TestSpecHelper.LoadChainSpec(chainSpecJson));
         }
         else
         {
-            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp)).IsEip7979Enabled, Is.True);
+            (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(chainSpecJson);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp - 1)).IsEip7979Enabled, Is.False);
+                Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp)).IsEip7979Enabled, Is.True);
+            }
         }
     }
 
