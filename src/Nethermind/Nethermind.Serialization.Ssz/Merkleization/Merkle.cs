@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -182,24 +183,8 @@ public static partial class Merkle
             return ZeroHash(level + 1);
         }
 
-        return HashPair(in left, in right);
-    }
-
-    /// <summary>Hashes the 64-byte concatenation of two chunks with SHA-256.</summary>
-    /// <remarks>Hashes into the result: a <c>byte[32]</c> per merkle node cost the guest ~140 steps
-    /// each, several times the hash itself.</remarks>
-    [SkipLocalsInit]
-    private static UInt256 HashPair(in UInt256 left, in UInt256 right)
-    {
-        Span<UInt256> concatenation = stackalloc UInt256[2];
-        concatenation[0] = left;
-        concatenation[1] = right;
-
-        Unsafe.SkipInit(out UInt256 result);
-        Sha256(
-            MemoryMarshal.AsBytes(concatenation),
-            MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref result, 1)));
-        return result;
+        HashPair(in left, in right, out UInt256 parent);
+        return parent;
     }
 
     private static bool IsZeroHash(UInt256 span, int level) => span.Equals(ZeroHash(level));
@@ -208,7 +193,7 @@ public static partial class Merkle
     {
         ulong v = value < 0 ? ulong.MaxValue : 0L;
         UInt256 lengthPart = new((ulong)value, v, v, v);
-        root = HashConcatenation(root, lengthPart, 0);
+        HashPair(in root, in lengthPart, out root);
     }
 
     // EIP-7495 mixes the static active_fields bitvector into the progressive container root.
@@ -223,28 +208,58 @@ public static partial class Merkle
     }
 
     // EIP-7495 / EIP-7916 progressive merkleization keeps generalized indices stable across extensions.
-    public static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ulong numLeaves = 1)
+    public static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ulong numLeaves = 1) =>
+        MerkleizeProgressive(out root, chunks, ReadOnlySpan<UInt256>.Empty, numLeaves);
+
+    /// <summary>Merkleizes <paramref name="value"/> progressively as 32-byte chunks, the last one zero-padded.</summary>
+    public static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<byte> value)
+    {
+        int partialChunkLength = value.Length % 32;
+        if (partialChunkLength == 0)
+        {
+            MerkleizeProgressive(out root, MemoryMarshal.Cast<byte, UInt256>(value));
+            return;
+        }
+
+        Span<byte> lastChunk = stackalloc byte[32];
+        lastChunk.Clear();
+        value[^partialChunkLength..].CopyTo(lastChunk);
+        MerkleizeProgressive(out root, MemoryMarshal.Cast<byte, UInt256>(value[..^partialChunkLength]), MemoryMarshal.Cast<byte, UInt256>(lastChunk), 1);
+    }
+
+    /// <summary>Merkleizes <paramref name="chunks"/> followed by the at most one chunk of <paramref name="lastChunk"/> progressively.</summary>
+    private static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ReadOnlySpan<UInt256> lastChunk, ulong numLeaves)
     {
         ArgumentOutOfRangeException.ThrowIfZero(numLeaves, nameof(numLeaves));
 
-        if (chunks.Length == 0)
+        int count = chunks.Length + lastChunk.Length;
+        if (count == 0)
         {
             root = UInt256.Zero;
             return;
         }
 
         // The `numLeaves`-sized subtree is the left child; the remaining chunks recurse into the right.
-        int subtreeChunkCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
-        Merkleize(out UInt256 subtree, chunks[..subtreeChunkCount], numLeaves);
-
-        ReadOnlySpan<UInt256> remainingChunks = chunks[subtreeChunkCount..];
-        UInt256 continuation = UInt256.Zero;
-        if (!remainingChunks.IsEmpty)
+        int subtreeChunkCount = (int)Math.Min((ulong)count, Math.Min(numLeaves, (ulong)int.MaxValue));
+        UInt256 subtree;
+        if (subtreeChunkCount <= chunks.Length)
         {
-            MerkleizeProgressive(out continuation, remainingChunks, checked(numLeaves * 4));
+            Merkleize(out subtree, chunks[..subtreeChunkCount], ReadOnlySpan<UInt256>.Empty, numLeaves);
+            chunks = chunks[subtreeChunkCount..];
+        }
+        else
+        {
+            Merkleize(out subtree, chunks, lastChunk, numLeaves);
+            chunks = lastChunk = ReadOnlySpan<UInt256>.Empty;
         }
 
-        root = HashConcatenation(subtree, continuation, 0);
+        UInt256 continuation = UInt256.Zero;
+        if (chunks.Length + lastChunk.Length != 0)
+        {
+            MerkleizeProgressive(out continuation, chunks, lastChunk, checked(numLeaves * 4));
+        }
+
+        HashPair(in subtree, in continuation, out root);
     }
 
     public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value)
@@ -283,50 +298,79 @@ public static partial class Merkle
         }
     }
 
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL) =>
+        Merkleize(out root, value, ReadOnlySpan<UInt256>.Empty, limit);
+
+    /// <summary>Merkleizes <paramref name="value"/> followed by the at most one chunk of <paramref name="lastChunk"/>.</summary>
+    /// <remarks>
+    /// Reduces the tree a level at a time: the leaves are hashed in pairs straight from the input, and every
+    /// level above in place over a scratch buffer, a lone last node pairing with that level's zero hash. It
+    /// hashes the same nodes as <see cref="Merkleizer"/> without shuttling each through a per-level slot.
+    /// </remarks>
+    [SkipLocalsInit]
     private static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
     {
-        if (limit <= 1 && value.Length + lastChunk.Length <= 1)
+        int count = value.Length + lastChunk.Length;
+
+        // A single-chunk tree is its own root, and an empty one is the zero chunk.
+        if (limit <= 1 && count <= 1)
         {
             root = value.Length == 1 ? value[0] : lastChunk.Length == 1 ? lastChunk[0] : UInt256.Zero;
             return;
         }
 
-        int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
-        Span<UInt256> scratch = stackalloc UInt256[depth + 1];
-        Merkleizer merkleizer = new(scratch);
-        int length = value.Length;
-        for (int i = 0; i < length; i++)
+        int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)count : limit);
+        if (count == 0)
         {
-            merkleizer.Feed(value[i]);
-        }
-
-        if (lastChunk.Length > 0)
-        {
-            merkleizer.Feed(lastChunk[0]);
-        }
-
-        merkleizer.CalculateRoot(out root);
-    }
-
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
-    {
-        // A single-chunk tree is its own root, and an empty one is the zero chunk.
-        // With no chunks fed, CalculateRoot's final top-slot read would use unwritten scratch.
-        if (limit <= 1 && value.Length <= 1)
-        {
-            root = value.Length == 1 ? value[0] : UInt256.Zero;
+            root = ZeroHash(depth);
             return;
         }
 
-        int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
-        Span<UInt256> scratch = stackalloc UInt256[depth + 1];
-        Merkleizer merkleizer = new(scratch);
-        int length = value.Length;
-        for (int i = 0; i < length; i++)
+        int nodeCount = (count + 1) / 2;
+        UInt256[]? rented = null;
+        Span<UInt256> nodes = nodeCount <= StackNodeLimit
+            ? stackalloc UInt256[StackNodeLimit]
+            : rented = ArrayPool<UInt256>.Shared.Rent(nodeCount);
+
+        int pairs = value.Length / 2;
+        for (int i = 0; i < pairs; i++)
         {
-            merkleizer.Feed(value[i]);
+            HashNodes(in value[2 * i], in value[2 * i + 1], 0, out nodes[i]);
         }
 
-        merkleizer.CalculateRoot(out root);
+        if (value.Length % 2 == 1)
+        {
+            HashNodes(in value[^1], lastChunk.Length == 1 ? lastChunk[0] : UInt256.Zero, 0, out nodes[pairs]);
+        }
+        else if (lastChunk.Length == 1)
+        {
+            HashNodes(in lastChunk[0], UInt256.Zero, 0, out nodes[pairs]);
+        }
+
+        for (int level = 1; level < depth; level++)
+        {
+            int parentCount = nodeCount / 2;
+            for (int i = 0; i < parentCount; i++)
+            {
+                HashNodes(in nodes[2 * i], in nodes[2 * i + 1], level, out nodes[i]);
+            }
+
+            if (nodeCount % 2 == 1)
+            {
+                HashNodes(in nodes[nodeCount - 1], ZeroHash(level), level, out nodes[parentCount]);
+                parentCount++;
+            }
+
+            nodeCount = parentCount;
+        }
+
+        root = nodes[0];
+
+        if (rented is not null)
+        {
+            ArrayPool<UInt256>.Shared.Return(rented);
+        }
     }
+
+    private const int StackNodeLimit = 32;
 }

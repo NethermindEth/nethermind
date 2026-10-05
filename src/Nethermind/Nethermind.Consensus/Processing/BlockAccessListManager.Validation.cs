@@ -96,6 +96,7 @@ public partial class BlockAccessListManager
 
         // EIP-8037: 2D gas accounting — block gasUsed = max(sum_execution, sum_state)
         _blockExecutionContext.Value.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
+        _blockExecutionContext.Value.Header.GasUsedPerDimension = (totalExecutionGas, totalStateGas);
 
         static void CheckGasUsed(int index, Block block, ulong effectiveGas)
         {

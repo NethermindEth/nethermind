@@ -184,7 +184,7 @@ public class BlockTreeTests
 
         using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block.Number, block.Hash!);
         Assert.That(persistedBal, Is.Not.Null);
-        Assert.That(persistedBal!.Memory.ToArray(), Is.EqualTo(encodedBal));
+        Assert.That(persistedBal!.Memory, Is.SequenceEqualTo(encodedBal));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -548,7 +548,7 @@ public class BlockTreeTests
             Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
             Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block1.Number),
                 Is.Not.Null, "a known header must not make the block's body be discarded");
-            Assert.That(persistedBal?.Memory.ToArray(), Is.EqualTo(encodedBal));
+            Assert.That(persistedBal?.Memory, Is.SequenceEqualTo(encodedBal));
         }
     }
 
@@ -576,7 +576,7 @@ public class BlockTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
-            Assert.That(persistedBal?.Memory.ToArray(), Is.EqualTo(encodedBal),
+            Assert.That(persistedBal?.Memory, Is.SequenceEqualTo(encodedBal),
                 "a stored body must not make the block's access list be discarded");
         }
     }

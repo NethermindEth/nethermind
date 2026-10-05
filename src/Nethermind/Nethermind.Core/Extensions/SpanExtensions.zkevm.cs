@@ -201,13 +201,13 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static partial ulong MultiplyFold(ulong a, ulong b)
         {
-            uint al = (uint)a, ah = (uint)(a >> 32);
-            uint bl = (uint)b, bh = (uint)(b >> 32);
-            ulong lower = (ulong)al * bl;
-            ulong middle = (ulong)ah * bl + (lower >> 32);
-            ulong carry = (ulong)al * bh + (uint)middle;
-            ulong low = (carry << 32) | (uint)lower;
-            ulong high = (ulong)ah * bh + (middle >> 32) + (carry >> 32);
+            ulong al = a & uint.MaxValue, ah = a >> 32;
+            ulong bl = b & uint.MaxValue, bh = b >> 32;
+            ulong lower = al * bl;
+            ulong middle = ah * bl + (lower >> 32);
+            ulong carry = al * bh + (middle & uint.MaxValue);
+            ulong low = (carry << 32) | (lower & uint.MaxValue);
+            ulong high = ah * bh + (middle >> 32) + (carry >> 32);
             return low ^ high;
         }
     }

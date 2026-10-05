@@ -78,8 +78,8 @@ public sealed class BulkFillScopeProvider(
         session.CreateReader().TryGetSlot(address, index, ref value);
     }
 
-    public byte[]? GetCode(Hash256 codeHash) => session.GetCode(codeHash.ValueHash256);
-    public byte[]? GetCode(in ValueHash256 codeHash) => session.GetCode(codeHash);
+    public byte[]? GetCode(Hash256 codeHash) => session.GetCodeArray(codeHash.ValueHash256);
+    public byte[]? GetCode(in ValueHash256 codeHash) => session.GetCodeArray(codeHash);
     public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
         where TCtx : struct, INodeContext<TCtx> => throw new NotSupportedException("Bulk replay has no trie node store.");
 
@@ -101,6 +101,8 @@ public sealed class BulkFillScopeProvider(
         public void Commit(ulong blockNumber) => inner.Commit(blockNumber);
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => session.StageFinalState(takeSnapshot);
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
+        // Bulk fill stages final state only from the world state's block-change snapshot, which a BAL apply bypasses.
+        public void ApplyBal(ReadOnlyBlockAccessList bal) => throw new NotSupportedException();
         public void Dispose() => inner.Dispose();
     }
 

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -144,7 +145,6 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
 
         UInt256 senderBalance = TestState.GetBalance(Sender);
         TestAllTracerWithOutput tracer = CreateTracer();
-        tracer.IsTracingAccess = false;
         TransactionResult result = _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
         TestState.Commit(Spec);
 
@@ -169,7 +169,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             AssertStorage(new StorageCell(created, 1), UInt256.Zero);
             if (collision)
             {
-                Assert.That(TestState.GetCode(created), Is.EqualTo(new byte[] { 0x00 }));
+                Assert.That(TestState.GetCode(created), Is.SequenceEqualTo(new byte[] { 0x00 }));
                 AssertStorage(new StorageCell(created, 3), (UInt256)42);
             }
         }
@@ -500,8 +500,6 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         }
 
         TestAllTracerWithOutput tracer = CreateTracer();
-        // Access tracing would pre-warm every touched account/slot and shift all expected values.
-        tracer.IsTracingAccess = false;
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         using (Assert.EnterMultipleScope())
