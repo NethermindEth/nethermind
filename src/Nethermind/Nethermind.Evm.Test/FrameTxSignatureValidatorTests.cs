@@ -363,6 +363,49 @@ public class FrameTxSignatureValidatorTests
         Assert.That(error, Is.Not.Null);
     }
 
+    [Test]
+    public void RecoverSecp256k1Signers_LetsValidationSkipRecovery()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
+        Assert.That(FrameTxSignatureValidator.Secp256k1SignersRecovered(tx), Is.False);
+
+        FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ethereumEcdsa);
+
+        Assert.That(FrameTxSignatureValidator.Secp256k1SignersRecovered(tx), Is.True);
+        Assert.That(FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), Substitute.For<IEthereumEcdsa>(), SecP256r1Precompile.Instance, _spec, out string? error), Is.True);
+        Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void RecoverSecp256k1Signers_TxChangedAfterRecovery_StaleSignerRejected()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.MaxFeePerBlobGas = 3;
+        tx.BlobVersionedHashes = [BlobVersionedHash(0x01)];
+        tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
+        FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ethereumEcdsa);
+
+        tx.BlobVersionedHashes = [BlobVersionedHash(0x02)];
+
+        Assert.That(Validate(tx, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+    }
+
+    [Test]
+    public void RecoverSecp256k1Signers_HighS_LeftUnrecovered()
+    {
+        Transaction tx = CreateFrameTx();
+        byte[] highS = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        highS[1] = 1;
+        highS.AsSpan(33).Fill(0xFF);
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, highS)];
+
+        FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ethereumEcdsa);
+
+        Assert.That(tx.FrameSignatures[0].Recovered, Is.Null);
+    }
+
     private bool Validate(Transaction tx, out string? error) =>
         FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec, out error);
 
