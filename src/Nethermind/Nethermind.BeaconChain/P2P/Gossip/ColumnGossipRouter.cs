@@ -149,28 +149,26 @@ public sealed class ColumnGossipRouter(
 
     /// <summary>The most distinct signed headers a (slot, proposer_index) may run KZG work under.</summary>
     /// <remarks>
-    /// The expected proposer of a slot can still sign any number of headers for it. An honest proposer signs one; two
-    /// already prove an equivocation, so more only add KZG work chosen by the signer.
+    /// An honest proposer signs one header; two prove equivocation. Additional signed headers
+    /// only increase signer-controlled KZG work.
     /// </remarks>
     internal const int SignedHeadersPerProposal = 2;
 
     /// <summary>The most KZG batches run for one (block root, index); later copies are dropped without KZG work.</summary>
     /// <remarks>
-    /// Every column of a block carries the same signed header and inclusion proof, so anyone can copy them and send any
-    /// number of copies with altered cells, and a REJECT costs only the delivering peer's gossip score (<see cref="GossipScoring"/>),
-    /// which a new peer id escapes. An honest copy that arrives within the bound still verifies; a later one is refused.
+    /// Shared headers and inclusion proofs let anyone submit altered-cell copies. REJECT penalizes only
+    /// the delivering peer (<see cref="GossipScoring"/>), which a new peer id escapes. Honest copies
+    /// within the bound still verify; later copies are refused.
     /// </remarks>
     internal const int KzgBatchesPerColumn = 2;
 
     /// <summary>The most stored blocks decoded per slot for sidecars whose block is not cached, has no block summary and is not canonical at a recent slot.</summary>
     /// <remarks>
-    /// The slot and bid required by gloas/p2p-interface.md are indexed with new blocks; only legacy records spend this budget.
-    /// A REJECT costs only the delivering peer's gossip score, which a new peer id escapes, so it cannot bound decode work.
-    /// A sidecar whose root is the canonical block at its own slot, for the current or previous slot, is decoded outside
-    /// the budget: that is the honest case, and such a root is decoded once and then cached. A record the store does not
-    /// hold costs a key lookup, not a decode, and is still parked. The budget covers the rest, such as a competing block or
-    /// one stored but not yet canonical, of which an honest slot has at most a few; once it is spent, such a sidecar is
-    /// Ignored until the next slot after a key lookup and a canonical-index read, with no block decoded.
+    /// New blocks index the slot and bid required by gloas/p2p-interface.md; only legacy records spend
+    /// this budget. Peer-score REJECT penalties cannot bound decoding because new peer ids escape them.
+    /// Canonical roots at their own current or previous slot bypass the budget and are cached after one
+    /// decode. Missing records cost only a lookup and are parked. Other stored roots spend the budget;
+    /// once exhausted, they are Ignored until the next slot after lookup and canonical-index reads only.
     /// </remarks>
     internal const int StoreDecodesPerSlot = 16;
 
@@ -842,10 +840,9 @@ public sealed class ColumnGossipRouter(
 
     /// <summary>Runs every queued sidecar through the checks again once a new fork-choice snapshot or proposer lookahead is published.</summary>
     /// <remarks>
-    /// A queued sidecar's message was already <see cref="MessageValidity.Ignored"/>, so one that now passes is pooled but
-    /// not forwarded; pubsub drops later copies of the same message id before they reach this router, so only a copy
-    /// under another id, such as one received after the seen cache expires, can still be forwarded. One that still cannot
-    /// be verified is queued again.
+    /// Previously Ignored messages that now pass are pooled without forwarding. Pubsub suppresses copies
+    /// while their message id is cached; a distinct id or seen-cache expiry permits later forwarding.
+    /// Sidecars that remain unverifiable are queued again.
     /// </remarks>
     private void RetryParked()
     {
@@ -942,9 +939,8 @@ public sealed class ColumnGossipRouter(
 
     /// <summary>Whether <paramref name="blockRoot"/> is a block this node imported, and if so whether <paramref name="signature"/> is the one it was imported with.</summary>
     /// <remarks>
-    /// A header that hashes to a stored root is that block's header, and the store holds only blocks whose proposer
-    /// signature was verified at import. Such roots lie within the slot window checked before, so this decodes at most
-    /// the stored blocks of that window, each once.
+    /// A stored root identifies an imported header whose proposer signature already verified.
+    /// The preceding slot-window check bounds decoding to stored blocks in that window, each once.
     /// </remarks>
     private ImportedHeader ReadImportedHeader(Hash256 blockRoot, BlsSignature signature)
     {
@@ -1121,9 +1117,8 @@ public sealed class ColumnGossipRouter(
     /// block is retrieved") when it is for the current or next slot, the only slots the future-slot IGNORE lets through.
     /// </summary>
     /// <remarks>
-    /// The pool does not keep the peer that delivered a candidate, and <c>StrictNoSign</c> requires the message's
-    /// <c>from</c> to be absent, so a candidate has no source to be bounded by: the pool bounds candidates per
-    /// (root, column) and in total instead, and a forgery never displaces an earlier candidate.
+    /// The pool retains no delivering peer and <c>StrictNoSign</c> forbids <c>from</c>, so candidates
+    /// are bounded per (root, column) and globally; forgeries never displace earlier candidates.
     /// </remarks>
     private MessageValidity Park(DataColumnSidecarGloas sidecar, ColumnGossipDropReason reason)
     {
@@ -1299,11 +1294,10 @@ public sealed class ColumnGossipRouter(
 
     /// <summary>Sends each reconstructed sidecar of a subscribed subnet to that subnet's topic of the sidecar's own fork digest.</summary>
     /// <remarks>
-    /// fulu/das-core.md "Reconstruction and cross-seeding": a column of a subscribed subnet MUST go to the topic mesh neighbors.
-    /// A column of any other subnet is only held: its SHOULD-expose through gossip emission is not done. A sidecar is published only under
-    /// the signed header of a sidecar of its block that passed every check, since a held column consumed unverified or pooled by sync may
-    /// carry a forged signature, which reconstruction copies. A failed send releases its (slot, proposer_index, index) tuple, so a later
-    /// gossip copy is free to be forwarded.
+    /// fulu/das-core.md "Reconstruction and cross-seeding": subscribed columns MUST reach topic mesh
+    /// neighbors; other columns are only held, without SHOULD-expose gossip emission. Publication requires
+    /// a header that passed every check: reconstruction copies signatures, and sync or unverified pooled
+    /// columns may carry forgeries. Failed sends release the (slot, proposer_index, index) tuple for later gossip.
     /// </remarks>
     private void PublishReconstructed(Hash256 blockRoot, List<ReconstructedSidecarToPublish> entries)
     {
