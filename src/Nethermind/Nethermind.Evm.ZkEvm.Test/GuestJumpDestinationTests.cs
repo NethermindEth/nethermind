@@ -251,7 +251,7 @@ public class GuestJumpDestinationTests
         foreach (int i in order)
         {
             bool isJumpDestination = JumpDestinationAnalyzer.IsJumpDestination(expected, i);
-            bool jumpHandler = stack.IsKnownJumpDestination(i) || stack.TryMarkJumpDestination(i) || stack.AnalyzeJumpDestination(i);
+            bool jumpHandler = stack.IsKnownJumpDestination(i) || stack.TryMarkJumpDestination(i, ref code[0]) || stack.AnalyzeJumpDestination(i);
             Assert.That(jumpHandler, Is.EqualTo(isJumpDestination), $"jump handler {i}");
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(isJumpDestination), $"stack {i}");
             Assert.That(codeInfo.AnalyzeJump(i, bitmap, code), Is.EqualTo(isJumpDestination), $"analyze {i}");
