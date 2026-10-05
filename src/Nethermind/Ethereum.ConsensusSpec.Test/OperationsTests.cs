@@ -75,17 +75,9 @@ public class OperationsTests
                 "NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
         }
 
-        switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
-        {
-            case ForkDriver<BeaconStateFulu> fulu:
-                Run(testCase, fulu, Handlers);
-                break;
-            case ForkDriver<BeaconStateGloas> gloas:
-                Run(testCase, gloas, GloasHandlers);
-                break;
-            case ForkDriver other:
-                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no operations handler table.");
-        }
+        FuluDriverSupport.Dispatch(testCase.Fork, testCase,
+            static (testCase, driver) => Run(testCase, driver, Handlers),
+            static (testCase, driver) => Run(testCase, driver, GloasHandlers), "operations handler table");
     }
 
     private static void Run<TState>(OperationCase testCase, ForkDriver<TState> driver, Dictionary<string, (string? File, Action<OpContext<TState>, byte[], BlockSignatureBatch?> Apply)> handlers)
