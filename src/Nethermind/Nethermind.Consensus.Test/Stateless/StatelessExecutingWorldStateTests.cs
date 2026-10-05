@@ -56,15 +56,34 @@ public class StatelessExecutingWorldStateTests
     }
 
     /// <summary>EXTCODESIZE on a contract whose code the witness lacks must fail, whatever operation follows it.</summary>
-    /// <remarks>The interpreter answers EXTCODESIZE followed by ISZERO, GT or EQ from the code hash alone; POP is the unfused control.</remarks>
+    /// <remarks>
+    /// The interpreter answers EXTCODESIZE followed by ISZERO, GT or EQ from the code hash alone; POP is the unfused control.
+    /// The code is read before the folded operation is charged, so it must still fail when that charge runs out of gas.
+    /// </remarks>
     [Test]
-    public void Extcodesize_of_code_missing_from_the_witness_fails([Values(Instruction.ISZERO, Instruction.GT, Instruction.EQ, Instruction.POP)] Instruction next)
+    public void Extcodesize_of_code_missing_from_the_witness_fails(
+        [Values(Instruction.ISZERO, Instruction.GT, Instruction.EQ, Instruction.POP)] Instruction next,
+        [Values] bool outOfGasOnNext)
+    {
+        // Intrinsic cost, then PUSH1, PUSH20 and a cold EXTCODESIZE, leaving nothing for the next operation.
+        ulong gasLimit = outOfGasOnNext ? GasCostOf.Transaction + 2 * GasCostOf.VeryLow + GasCostOf.ColdAccountAccess : 100_000;
+
+        Assert.That(() => ExecuteExtcodesize(next, Prepare.EvmCode.Op(Instruction.STOP).Done, gasLimit), Throws.InvalidOperationException);
+    }
+
+    [Test]
+    public void Extcodesize_of_an_account_without_code_needs_no_code_in_the_witness(
+        [Values(Instruction.ISZERO, Instruction.GT, Instruction.EQ, Instruction.POP)] Instruction next) =>
+        Assert.That(() => ExecuteExtcodesize(next, targetCode: null, gasLimit: 100_000), Throws.Nothing);
+
+    /// <summary>Runs a transaction calling a contract that applies EXTCODESIZE to a target and then <paramref name="next"/>.</summary>
+    /// <param name="targetCode">The target's code, removed from the code database before execution; <see langword="null"/> for an account without code.</param>
+    private static void ExecuteExtcodesize(Instruction next, byte[] targetCode, ulong gasLimit)
     {
         IReleaseSpec spec = Prague.Instance;
         TestSpecProvider specProvider = new(spec);
         Address target = TestItem.AddressB;
         Address caller = TestItem.AddressC;
-        byte[] targetCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
         byte[] callerCode = Prepare.EvmCode.PushData(0).PushData(target).Op(Instruction.EXTCODESIZE).Op(next).Op(Instruction.STOP).Done;
 
         MemDb codeDb = new();
@@ -73,8 +92,9 @@ public class StatelessExecutingWorldStateTests
         using (inner.BeginScope(IWorldState.PreGenesis))
         {
             inner.CreateAccount(TestItem.AddressA, 1.Ether);
-            inner.CreateAccount(target, 0);
-            inner.InsertCode(target, targetCode, spec);
+            inner.CreateAccount(target, 1);
+            if (targetCode is not null)
+                inner.InsertCode(target, targetCode, spec);
             inner.CreateAccount(caller, 0);
             inner.InsertCode(caller, callerCode, spec);
             inner.Commit(spec);
@@ -82,17 +102,17 @@ public class StatelessExecutingWorldStateTests
             parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(inner.StateRoot).TestObject;
         }
 
-        codeDb.Remove(Keccak.Compute(targetCode).Bytes);
+        if (targetCode is not null)
+            codeDb.Remove(Keccak.Compute(targetCode).Bytes);
         StatelessExecutingWorldState state = new(inner);
         using IDisposable scope = state.BeginScope(parent);
 
         using EthereumVirtualMachine vm = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
         EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance), LimboLogs.Instance);
-        Transaction tx = Build.A.Transaction.WithTo(caller).WithGasLimit(100_000).WithGasPrice(1)
+        Transaction tx = Build.A.Transaction.WithTo(caller).WithGasLimit(gasLimit).WithGasPrice(1)
             .SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithBaseFee(0).WithExcessBlobGas(0).TestObject;
 
-        Assert.That(() => processor.Execute(tx, new BlockExecutionContext(header, spec), NullTxTracer.Instance),
-            Throws.InvalidOperationException);
+        processor.Execute(tx, new BlockExecutionContext(header, spec), NullTxTracer.Instance);
     }
 }
