@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -18,16 +19,25 @@ namespace Nethermind.Blockchain
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
         private readonly IBlockTree _blockTree;
+        private readonly Func<BlockHeader, IReadOnlyStateProvider> _stateAt;
         // For testing
         public bool HasSynced { private get; init; }
 
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
-            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), header => new SpecificBlockReadOnlyStateProvider(stateReader, header))
         {
         }
 
+        /// <remarks><paramref name="stateProvider"/> is used as given, so <see cref="TryGetHeadState"/> returns it
+        /// unbound: binding the state to the head is the caller's concern.</remarks>
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider)
+            : this(specProvider, blockTree, stateProvider, _ => stateProvider)
         {
+        }
+
+        private ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, Func<BlockHeader, IReadOnlyStateProvider> stateAt)
+        {
+            _stateAt = stateAt;
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
             Block? head = blockTree.Head;
@@ -44,6 +54,14 @@ namespace Nethermind.Blockchain
         public IChainHeadSpecProvider SpecProvider { get; }
 
         public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
+
+        /// <inheritdoc/>
+        public bool TryGetHeadState([NotNullWhen(true)] out BlockHeader? head, [NotNullWhen(true)] out IReadOnlyStateProvider? state)
+        {
+            head = _blockTree.Head?.Header;
+            state = head is null ? null : _stateAt(head);
+            return head is not null;
+        }
 
         public ulong HeadNumber { get; private set; }
 

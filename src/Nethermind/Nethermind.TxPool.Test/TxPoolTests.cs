@@ -3533,7 +3533,7 @@ namespace Nethermind.TxPool.Test
                     RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
             }
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(headSlot).TestObject);
+            await RaiseCanonicalHeadAndWait(Build.A.Block.WithNumber(1).WithSlotNumber(headSlot).TestObject);
 
             using (Assert.EnterMultipleScope())
             {
@@ -3553,10 +3553,10 @@ namespace Nethermind.TxPool.Test
             Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Block head = Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject;
-            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            await RaiseCanonicalHeadAndWait(head);
             _stateProvider.Set(cell, UInt256.Zero);
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithParent(head).WithSlotNumber(RecentRootSlot + slotsAfterWrite).TestObject);
+            await RaiseCanonicalHeadAndWait(Build.A.Block.WithNumber(2).WithParent(head).WithSlotNumber(RecentRootSlot + slotsAfterWrite).TestObject);
 
             using (Assert.EnterMultipleScope())
             {
@@ -3575,12 +3575,30 @@ namespace Nethermind.TxPool.Test
             Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Block agedOutHead = Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot + Eip8272Constants.RecentRootLength - 1).TestObject;
-            await RaiseBlockAddedToMainAndWaitForNewHead(agedOutHead);
+            await RaiseCanonicalHeadAndWait(agedOutHead);
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject, agedOutHead);
+            await RaiseCanonicalHeadAndWait(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject, agedOutHead);
 
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        [Test]
+        public async Task Recent_root_frame_transaction_admitted_against_a_newer_head_survives_a_queued_reorg_event_of_an_earlier_slot()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            _stateProvider.InsertCode(Eip8272Constants.RecentRootCode.ToArray(), Eip8272Constants.RecentRootAddress);
+            _stateProvider.Set(RecentRootStore.ReferenceCell(RecentRootTuple.SourceId, RecentRootSlot),
+                RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
+            Block reorgedIn = Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot - 1).TestObject;
+            Block canonicalHead = Build.A.Block.WithNumber(2).WithParent(reorgedIn).WithSlotNumber(RecentRootSlot).TestObject;
+            SetCanonicalHead(canonicalHead);
+            Transaction frameTx = SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            await RaiseCanonicalHeadAndWait(reorgedIn, Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot - 2).TestObject, canonicalHead);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
         }
 
         [Test]
@@ -3595,7 +3613,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             spec.IsEip8272Enabled = false;
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject);
+            await RaiseCanonicalHeadAndWait(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject);
 
             using (Assert.EnterMultipleScope())
             {
@@ -3620,7 +3638,7 @@ namespace Nethermind.TxPool.Test
                     RecentRootStore.EntryHash(RecentRootTuple.SourceId, RecentRootSlot, RecentRootTuple.Root).ToUInt256());
             }
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject);
+            await RaiseCanonicalHeadAndWait(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject);
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedPending));
         }
@@ -6816,6 +6834,18 @@ namespace Nethermind.TxPool.Test
 
         private void AssertRevalidatedForHead() =>
             Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+
+        private void SetCanonicalHead(Block head)
+        {
+            _blockTree.Head = head;
+            _blockTree.BestSuggestedHeader = head.Header;
+        }
+
+        private async Task RaiseCanonicalHeadAndWait(Block block, Block previousBlock = null, Block canonicalHead = null)
+        {
+            SetCanonicalHead(canonicalHead ?? block);
+            await RaiseBlockAddedToMainAndWaitForNewHead(block, previousBlock);
+        }
 
         private async Task RaiseBlockAddedToMainAndWaitForNewHead(Block block, Block previousBlock = null)
         {
