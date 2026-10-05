@@ -97,6 +97,36 @@ public class Eip8360Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Finalizes_without_eip_161()
+    {
+        // EIP-8360 sets the TCREATE account's nonce to 1 on its own; finalization keys on that nonce.
+        IReleaseSpec noEip161 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true, IsEip158Enabled = false };
+        byte[] init = Prepare.EvmCode.ForInitOf([(byte)Instruction.PUSH0]).Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        InstallCode(Factory, TCreateAndStore(init, 3), 10);
+
+        Assert.That(Run(spec: noEip161).StatusCode, Is.EqualTo(StatusCode.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FactorySlot(0), Is.EqualTo(ToWord(tcreated)));
+            AssertFinalized(tcreated, 3);
+        }
+    }
+
+    [Test]
+    public void A_later_transaction_starts_with_no_tcreate_accounts()
+    {
+        using (StackAccessTracker tracker = new())
+        {
+            tracker.WasTransientlyCreated(TestItem.AddressA, 5);
+        }
+
+        // The tracking state is pooled per thread, so this rents the one released above.
+        using StackAccessTracker next = new();
+        Assert.That(next.TransientCreates, Is.Null);
+    }
+
+    [Test]
     public void Deploys_and_runs_within_the_transaction_then_keeps_only_the_balance([Values(0, 5)] int endowment)
     {
         byte[] runtime = ReturnWord(Prepare.EvmCode.PushData(42));

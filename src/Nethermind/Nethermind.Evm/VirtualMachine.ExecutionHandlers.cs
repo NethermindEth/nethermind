@@ -62,7 +62,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         ExecutionEnvironment env = state.Env;
         vm._worldState.AddToBalanceAndCreateIfNotEmpty(env.ExecutingAccount, state.ExecutionType, in env.Value, vm.Spec);
-        if (Eip158.IsActive && state.ExecutionType.IsAnyCreate())
+        // EIP-8360 gives a TCREATE account nonce 1 whatever EIP-161 says; IsTransientCreate relies on it.
+        if ((Eip158.IsActive || (Eip8360.IsActive && state.ExecutionType == ExecutionType.TCREATE)) && state.ExecutionType.IsAnyCreate())
             vm._worldState.IncrementNonce(env.ExecutingAccount);
         return true;
     }

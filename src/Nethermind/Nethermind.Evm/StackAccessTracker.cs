@@ -192,7 +192,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
-            TransientCreates?.Clear();
+            TransientCreates = null;
         }
     }
 }
