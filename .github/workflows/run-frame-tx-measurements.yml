@@ -28,17 +28,15 @@ on:
         type: string
         default: ''
       machine_type:
-        description: GCE machine type of the runner created for this run. Runs only compare on the same type.
+        description: >-
+          GCE machine type of the runner created for this run, or reproducible-benchmarks for the shared bare-metal
+          runner. Runs only compare on the same type.
         required: false
         type: string
         default: c2-standard-8
 
-# Deliberate: no github.ref in the group, so dispatches never overlap; don't "fix" to the repo default.
-# A third dispatch replaces the pending second one, so dispatch one at a time and wait for it to finish.
-# The runner pool is shared with other benchmarks: keep each suite short, and never re-dispatch after a cancel.
-concurrency:
-  group: ${{ github.workflow }}
-  cancel-in-progress: false
+# No concurrency group: every run measures on a VM of its own, and a group would let a newer dispatch replace a
+# pending one. Runs on the shared bare-metal runner queue for it instead. Never re-dispatch after a cancel.
 
 permissions:
   contents: read
@@ -48,6 +46,7 @@ jobs:
   # types. STANDARD provisioning, so a spot reclaim cannot cut a run short.
   create_runner:
     name: Create the measurement runner
+    if: inputs.machine_type != 'reproducible-benchmarks'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -91,7 +90,9 @@ jobs:
   measure:
     name: Measure the frame-transaction validation prefix
     needs: [create_runner]
-    runs-on: ${{ needs.create_runner.outputs.runner_label }}
+    # The bare-metal runner skips creation, so run on a created VM or on that runner, never after a failed create.
+    if: ${{ !cancelled() && (needs.create_runner.result == 'success' || needs.create_runner.result == 'skipped') }}
+    runs-on: ${{ inputs.machine_type == 'reproducible-benchmarks' && 'reproducible-benchmarks' || needs.create_runner.outputs.runner_label }}
     # Suite budget plus build and setup; see the campaign SPEC.
     timeout-minutes: ${{ fromJSON('{"cost":30,"producer":50,"import":50,"import-tails":140,"honest":30}')[inputs.suite] }}
     steps:
