@@ -104,12 +104,6 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
                 if (type == "SignedExecutionPayloadBid") expression = "bid";
                 if (type == "SignedExecutionPayloadEnvelope") expression = "message";
             }
-            if (field.Property.Name == "Deposits" && type is "ExecutionRequests" or "ExecutionRequestsGloas")
-            {
-                code.Append($"WriteExecutionRequestLists(w, {value}.Deposits!, {value}.Withdrawals!, {value}.Consolidations!);\n");
-                continue;
-            }
-            if (field.Property.Name is "Withdrawals" or "Consolidations" && type is "ExecutionRequests" or "ExecutionRequestsGloas") continue;
             if (async && field.Property.Type is IArrayTypeSymbol array)
             {
                 string helper = array.ElementType.Name switch
@@ -195,13 +189,14 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
         {
             "AttesterSlashing" or "AttesterSlashingGloas" or "ProposerSlashing" => "slashing",
             "PayloadAttestation" => "attestation",
-            "BuilderDepositRequest" or "Deposit" => "deposit",
+            "BuilderDepositRequest" or "Deposit" or "DepositRequest" => "deposit",
             "BuilderExitRequest" or "SignedVoluntaryExit" => "exit",
             "SignedBlsToExecutionChange" => "change",
             "SszKzgCommitment" => "commitment",
             "Hash256" => "node",
             "Transaction" or "TransactionGloas" => "transaction",
-            "Withdrawal" => "withdrawal",
+            "Withdrawal" or "WithdrawalRequest" => "withdrawal",
+            "ConsolidationRequest" => "consolidation",
             _ => throw new InvalidOperationException("No original loop binding for " + type),
         };
         string spelling = type is "Transaction" or "Withdrawal" ? "Types." + type : type;
