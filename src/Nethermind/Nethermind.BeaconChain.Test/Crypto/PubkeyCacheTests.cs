@@ -8,13 +8,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Snappier;
+using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
 public class PubkeyCacheTests
 {
-    private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
-
     // The store key of the first persisted chunk, which holds validators 0 to 65535.
     private const string FirstChunkKey = "pubkeys:0";
 
@@ -94,7 +93,7 @@ public class PubkeyCacheTests
         Validator[] validators =
         [
             new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(0)) },
-            new Validator { Pubkey = OffSubgroupKeys.WithTorsion(SecretKey(1)) },
+            new Validator { Pubkey = OffSubgroupKeys.WithTorsion(DeriveKey(1)) },
             new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(2)) },
         ];
         PubkeyCache cache = new();
@@ -114,7 +113,7 @@ public class PubkeyCacheTests
         Validator[] validators =
         [
             new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(0)) },
-            new Validator { Pubkey = OffSubgroupKeys.WithTorsion(SecretKey(1)) },
+            new Validator { Pubkey = OffSubgroupKeys.WithTorsion(DeriveKey(1)) },
         ];
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         PubkeyCache cache = new();
@@ -332,13 +331,11 @@ public class PubkeyCacheTests
     private static bool IsOffSubgroup(int index) => index % 7 == 3;
 
     private static Validator[] MixedRegistry(int count) =>
-        [.. Enumerable.Range(0, count).Select(static i => new Validator { Pubkey = IsOffSubgroup(i) ? OffSubgroupKeys.WithTorsion(SecretKey(i)) : new BlsPublicKey(CompressedPubkey(i)) })];
+        [.. Enumerable.Range(0, count).Select(static i => new Validator { Pubkey = IsOffSubgroup(i) ? OffSubgroupKeys.WithTorsion(DeriveKey(i)) : new BlsPublicKey(CompressedPubkey(i)) })];
 
     internal static byte[] CompressedPubkey(int index)
     {
-        Bls.P1 publicKey = new(SecretKey(index));
+        Bls.P1 publicKey = new(DeriveKey(index));
         return publicKey.Compress();
     }
-
-    private static Bls.SecretKey SecretKey(int index) => new(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), (uint)index);
 }

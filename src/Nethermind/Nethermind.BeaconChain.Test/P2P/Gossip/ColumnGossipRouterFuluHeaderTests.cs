@@ -14,11 +14,11 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Crypto;
+using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
@@ -48,7 +48,6 @@ public class ColumnGossipRouterFuluHeaderTests
     private static readonly Hash256 OtherRoot = new(Enumerable.Repeat((byte)0x03, 32).ToArray());
     private static readonly Hash256 UnseenRoot = new(Enumerable.Repeat((byte)0x04, 32).ToArray());
     private static readonly Hash256 MidRoot = new(Enumerable.Repeat((byte)0x05, 32).ToArray());
-    private static readonly byte[] MasterSecretKey = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
 
     public enum Ancestry
     {
@@ -765,7 +764,7 @@ public class ColumnGossipRouterFuluHeaderTests
     {
         Hash256 domain = Domains.ComputeDomain(DomainType.BeaconProposer, Spec.VersionForEpoch(Spec.GetEpoch(block.Message!.Slot)), Spec.GenesisValidatorsRoot);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block.Message), domain);
-        block.Signature = new BlsSignature(BlsSigner.Sign(SecretKey(signer), signingRoot.Bytes).Bytes);
+        block.Signature = new BlsSignature(BlsSigner.Sign(GloasTestFixtures.DeriveKey(signer), signingRoot.Bytes).Bytes);
     }
 
 
@@ -777,7 +776,7 @@ public class ColumnGossipRouterFuluHeaderTests
         Validator[] validators = KeyedValidators();
         if (offSubgroup)
         {
-            validators[0].Pubkey = OffSubgroupKeys.WithTorsion(SecretKey(0));
+            validators[0].Pubkey = OffSubgroupKeys.WithTorsion(GloasTestFixtures.DeriveKey(0));
         }
 
         PubkeyCache keys = new();
@@ -855,9 +854,6 @@ public class ColumnGossipRouterFuluHeaderTests
         }
     }
 
-    // The store trusts its key as the block root, so the body need not hash to the header body root.
-    private static Bls.SecretKey SecretKey(int index) => new(new Bls.SecretKey(MasterSecretKey, Bls.ByteOrder.LittleEndian), (uint)index);
-
     private static PubkeyCache Pubkeys()
     {
         PubkeyCache pubkeys = new();
@@ -865,7 +861,7 @@ public class ColumnGossipRouterFuluHeaderTests
         return pubkeys;
     }
 
-    private static Validator[] KeyedValidators() => [.. Enumerable.Range(0, Validators).Select(i => new Validator { Pubkey = new BlsPublicKey(new Bls.P1(SecretKey(i)).Compress()) })];
+    private static Validator[] KeyedValidators() => [.. Enumerable.Range(0, Validators).Select(i => new Validator { Pubkey = new BlsPublicKey(new Bls.P1(GloasTestFixtures.DeriveKey(i)).Compress()) })];
     private static DataColumnSidecar SignedSidecar(int signer = 0) => Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer);
 
     private static DataColumnSidecar Signed(DataColumnSidecar sidecar, int signer)
@@ -875,7 +871,7 @@ public class ColumnGossipRouterFuluHeaderTests
             BeaconBlockHeader header = sidecar.SignedBlockHeader!.Message!;
             Hash256 domain = Domains.ComputeDomain(DomainType.BeaconProposer, Spec.VersionForEpoch(Spec.GetEpoch(header.Slot)), Spec.GenesisValidatorsRoot);
             Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain);
-            sidecar.SignedBlockHeader.Signature = new BlsSignature(BlsSigner.Sign(SecretKey(signer), signingRoot.Bytes).Bytes);
+            sidecar.SignedBlockHeader.Signature = new BlsSignature(BlsSigner.Sign(GloasTestFixtures.DeriveKey(signer), signingRoot.Bytes).Bytes);
         }
 
         return sidecar;

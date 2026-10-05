@@ -15,12 +15,6 @@ internal sealed class CountingStatesColumnsDb(bool sorted) : TestColumnsDb
     public CountingStatesDb Index { get; } = sorted ? new SeekableCountingStatesDb() : new CountingStatesDb();
     protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.States ? States : key == BeaconChainDbColumns.StateSlotIndex ? Index : base.CreateColumn(key);
 
-    public override void Dispose()
-    {
-        States.Dispose();
-        Index.Dispose();
-    }
-
     internal class CountingStatesDb : MemDb, IDb
     {
         public int KeysRead { get; protected set; }
