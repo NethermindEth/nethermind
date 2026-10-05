@@ -3,20 +3,16 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -28,13 +24,15 @@ namespace Nethermind.Evm.Test;
 /// Tests for EIP-8131: unified transaction content floor.
 /// </summary>
 [TestFixture]
-public class Eip8131Tests
+public class Eip8131Tests : VirtualMachineTestsBase
 {
     // Without EIP-2780 the floor is anchored on TX_BASE = 21000.
     private static readonly IReleaseSpec WithoutEip2780Spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip2780Enabled = false, IsEip8131Enabled = true };
 
     // With EIP-2780 the floor is anchored on the decomposed intrinsic base, which is 21000 for a value transfer to another account.
     private static readonly IReleaseSpec WithEip2780Spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true };
+
+    protected override ISpecProvider SpecProvider { get; } = new TestSpecProvider(WithoutEip2780Spec);
 
     private static TransactionBuilder<Transaction> ValueTransfer(TxType type) => Build.A.Transaction
         .WithType(type)
@@ -111,30 +109,20 @@ public class Eip8131Tests
     public void Content_floor_bounds_gas_limit_and_gas_used(ulong gasLimit, bool executed)
     {
         const ulong floor = 33_288;
-        TestSpecProvider specProvider = new(WithoutEip2780Spec);
-        IWorldState state = TestWorldStateFactory.CreateForTest();
-        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
-        state.CreateAccount(TestItem.AddressA, 1.Ether);
-        // An existing recipient keeps EIP-8037 new-account state gas out of the 1-wei transfer.
-        state.CreateAccount(TestItem.AddressB, 1);
-        state.Commit(specProvider.GenesisSpec);
-        state.CommitTree(0);
-
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, state, virtualMachine, new EthereumCodeInfoRepository(state), LimboLogs.Instance);
+        // Funds the sender and the recipient; an existing recipient keeps EIP-8037 new-account state gas out of the transfer.
+        (Block block, _) = PrepareTx(Activation, gasLimit, null);
 
         Transaction tx = Build.A.Transaction
-            .WithTo(TestItem.AddressB)
+            .WithTo(Recipient)
             .WithMaxFeePerGas(1)
             .WithMaxPriorityFeePerGas(1)
             .WithGasLimit(gasLimit)
             .WithShardBlobTxTypeAndFields(6, isMempoolTx: false)
-            .SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA)
+            .SignedAndResolved(new EthereumEcdsa(SpecProvider.ChainId), SenderKey)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithGasLimit(1_000_000).WithBaseFeePerGas(1).WithExcessBlobGas(0).WithTransactions(tx).TestObject;
 
-        CallOutputTracer tracer = new();
-        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, WithoutEip2780Spec), tracer);
+        TestAllTracerWithOutput tracer = CreateTracer();
+        TransactionResult result = _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
 
         using (Assert.EnterMultipleScope())
         {
