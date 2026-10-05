@@ -74,21 +74,25 @@ public class ExecutionPayloadEnvelopeImporterTests
         }
     }
 
-    [Test]
-    public void An_envelope_for_an_unknown_block_is_not_rejected_and_never_reaches_availability_or_the_engine()
+    [TestCase(false, TestName = "An_envelope_for_an_unknown_block_is_not_rejected_and_never_reaches_availability_or_the_engine")]
+    [TestCase(true, TestName = "An_envelope_without_a_beacon_block_root_is_a_counted_rejection_that_never_reaches_availability_or_the_engine")]
+    public void An_unknown_or_missing_block_root_never_reaches_availability_or_the_engine(bool missingRoot)
     {
         BeaconStateGloas state = StateWithCommittedBid(out SignedExecutionPayloadBid bid, out Bls.SecretKey builderSk);
         SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
+        if (missingRoot)
+            envelope.Message!.BeaconBlockRoot = null;
         IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
         bool availabilityAsked = false;
         long rejectionsBefore = Rejections();
 
-        ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates(), engine, (_, _) => availabilityAsked = true).Import(envelope);
+        ExecutionPayloadEnvelopeImportResult result = CreateImporter(missingRoot ? new BlockStates().Add(state) : new BlockStates(), engine, (_, _) => availabilityAsked = true).Import(envelope);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock));
+        Assert.That(result, Is.EqualTo(missingRoot ? ExecutionPayloadEnvelopeImportResult.Invalid : ExecutionPayloadEnvelopeImportResult.UnknownBlock),
+            "a missing root can never become known, so retrying it as an unknown block would never end");
         Assert.That(availabilityAsked, Is.False);
-        Assert.That(Rejections(), Is.EqualTo(rejectionsBefore), "an envelope may arrive before its block; that is not an invalid message");
+        Assert.That(Rejections() - rejectionsBefore, Is.EqualTo(missingRoot ? 1 : 0), "an envelope may arrive before its block; that is not an invalid message");
         engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
     }
 
@@ -264,25 +268,6 @@ public class ExecutionPayloadEnvelopeImporterTests
         BeaconStateGloas state = StateWithSelfBuildBid(out SignedExecutionPayloadBid bid, out PubkeyCache pubkeys, out Bls.SecretKey builderSk);
         SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
         AssertCountedRejectionBeforeEngineCall(pubkeys, envelope, () => new BlockStates().Add(state));
-    }
-
-    [Test]
-    public void An_envelope_without_a_beacon_block_root_is_a_counted_rejection_that_never_reaches_availability_or_the_engine()
-    {
-        BeaconStateGloas state = StateWithCommittedBid(out SignedExecutionPayloadBid bid, out Bls.SecretKey builderSk);
-        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
-        envelope.Message!.BeaconBlockRoot = null;
-        IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
-        bool availabilityAsked = false;
-        long rejectionsBefore = Rejections();
-
-        ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine, (_, _) => availabilityAsked = true).Import(envelope);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Invalid), "a missing root can never become known, so retrying it as an unknown block would never end");
-        Assert.That(Rejections() - rejectionsBefore, Is.EqualTo(1));
-        Assert.That(availabilityAsked, Is.False);
-        engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
     }
 
     [Test]

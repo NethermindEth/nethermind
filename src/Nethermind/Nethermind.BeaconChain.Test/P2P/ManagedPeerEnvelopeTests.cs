@@ -31,24 +31,20 @@ public class ManagedPeerEnvelopeTests
         (BeaconP2P server, _, _) = CreateNode(chain.Pool, chain.Store);
         (BeaconP2P client, BeaconChainStatusHolder clientStatus, BeaconChainConfig clientConfig) = CreateNode(new ExecutionPayloadEnvelopePool(), new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()));
 
-        await using (client)
-        await using (server)
+        await using PeerHostScope hosts = new(client, server);
+        await hosts.StartAsync(token, server, client);
+
+        PeerManager peerManager = new(client, clientConfig, clientStatus, LimboLogs.Instance);
+        Assert.That(await peerManager.TryAddPeerAsync(PeerSessionNodes.LoopbackAddressText(server), token), Is.True);
+        IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
+
+        IReadOnlyList<SignedExecutionPayloadEnvelope> byRange = await peer.RequestExecutionPayloadEnvelopesByRangeAsync(AnchorSlot, 8, token);
+        IReadOnlyList<SignedExecutionPayloadEnvelope> byRoot = await peer.RequestExecutionPayloadEnvelopesByRootAsync([secondRoot], token);
+
+        using (Assert.EnterMultipleScope())
         {
-            await server.StartAsync(token);
-            await client.StartAsync(token);
-
-            PeerManager peerManager = new(client, clientConfig, clientStatus, LimboLogs.Instance);
-            Assert.That(await peerManager.TryAddPeerAsync(PeerSessionNodes.LoopbackAddressText(server), token), Is.True);
-            IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
-
-            IReadOnlyList<SignedExecutionPayloadEnvelope> byRange = await peer.RequestExecutionPayloadEnvelopesByRangeAsync(AnchorSlot, 8, token);
-            IReadOnlyList<SignedExecutionPayloadEnvelope> byRoot = await peer.RequestExecutionPayloadEnvelopesByRootAsync([secondRoot], token);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(byRange.Select(e => e.Message!.BeaconBlockRoot), Is.EqualTo(new[] { firstRoot, secondRoot }), "by range serves both edge slots of the window");
-                Assert.That(byRoot.Select(e => e.Message!.BeaconBlockRoot), Is.EqualTo(new[] { secondRoot }), "by root serves only the requested root");
-            }
+            Assert.That(byRange.Select(e => e.Message!.BeaconBlockRoot), Is.EqualTo(new[] { firstRoot, secondRoot }), "by range serves both edge slots of the window");
+            Assert.That(byRoot.Select(e => e.Message!.BeaconBlockRoot), Is.EqualTo(new[] { secondRoot }), "by root serves only the requested root");
         }
     }
 
