@@ -4,6 +4,10 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -13,6 +17,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -116,14 +121,7 @@ public class Eip3298Tests(bool eip3298Enabled) : VirtualMachineTestsBase
     [Test]
     public void Clearing_many_slots_grants_no_refund([Values(1, 16)] int slots)
     {
-        SetSlots(1, slots);
-        Prepare code = Prepare.EvmCode;
-        for (int slot = 0; slot < slots; slot++)
-        {
-            code.PushData(0).PushData(slot).Op(Instruction.SSTORE);
-        }
-
-        TestAllTracerWithOutput result = Execute(Activation, GasLimit, code.Done);
+        TestAllTracerWithOutput result = Execute(Activation, GasLimit, ClearSlots(slots));
 
         AssertSettlement(result, eip3298Enabled ? 0 : (ulong)slots * RefundOf.SClearEip8038);
     }
@@ -169,6 +167,80 @@ public class Eip3298Tests(bool eip3298Enabled) : VirtualMachineTestsBase
             Assert.That(result.GasSpent, Is.EqualTo(eip3298Enabled ? floorGas : preRefundGas - cappedRefund));
             Assert.That(result.GasConsumedResult.BlockGas, Is.EqualTo(preRefundGas));
         }
+    }
+
+    /// <summary>Struct logs and the JavaScript tracer report the EIP-3298 refund counter and the uncapped gas used.</summary>
+    [Test]
+    public void Tracers_report_the_refund_counter_and_gas_used([Values] bool clear)
+    {
+        const int slots = 3;
+        byte[] code = clear ? ClearSlots(slots) : RestoreSlots(slots);
+        ulong refundCounter = clear
+            ? (eip3298Enabled ? 0 : slots * RefundOf.SClearEip8038)
+            : slots * StorageWrite;
+        (Block block, Transaction tx) = PrepareTx(Activation, GasLimit, code);
+        GethLikeTxMemoryTracer structLogs = new(tx, GethTraceOptions.Default);
+        using GethLikeBlockJavaScriptTracer javaScript = new(TestState, Spec, GethTraceOptions.Default with
+        {
+            Tracer = "{ refund: 0, step: function(log, db) { this.refund = log.getRefund() }, fault: function(log, db) {}, result: function(ctx, db) { return this.refund + ':' + ctx.gasUsed } }"
+        });
+        TestAllTracerWithOutput result = CreateTracer();
+
+        IBlockTracer blockTracer = javaScript;
+        blockTracer.StartNewBlockTrace(block);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), new CompositeTxTracer(structLogs, blockTracer.StartNewTxTrace(tx), result));
+        blockTracer.EndTxTrace();
+        blockTracer.EndBlockTrace();
+
+        AssertSettlement(result, refundCounter);
+        GethLikeTxTrace trace = structLogs.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((ulong)(trace.Entries[^1].Refund ?? 0), Is.EqualTo(refundCounter), "struct log refund");
+            Assert.That(trace.Gas, Is.EqualTo(result.GasSpent), "struct log gas");
+            Assert.That(JsonSerializer.Serialize(javaScript.BuildResult().Single().CustomTracerResult, EthereumJsonSerializer.JsonOptions),
+                Is.EqualTo($"\"{refundCounter}:{result.GasSpent}\""), "getRefund and ctx.gasUsed");
+        }
+    }
+
+    /// <summary><c>eth_estimateGas</c> finds the pre-refund requirement although the uncapped refund lowers the gas used.</summary>
+    [Test]
+    public void Estimate_is_the_exact_gas_limit_the_transaction_needs()
+    {
+        (Block block, Transaction tx) = PrepareTx(Activation, GasLimit, RestoreSlots(3));
+        BlockExecutionContext context = new(block.Header, Spec);
+
+        GasEstimation estimation = new GasEstimator(_processor, TestState).Estimate(tx, in context, errorMargin: 0);
+        Assert.That(estimation.Error, Is.Null);
+
+        TestAllTracerWithOutput RunAt(ulong gasLimit)
+        {
+            tx.GasLimit = gasLimit;
+            TestAllTracerWithOutput tracer = CreateTracer();
+            _processor.CallAndRestore(tx, in context, tracer);
+            return tracer;
+        }
+
+        TestAllTracerWithOutput atEstimate = RunAt(estimation.Gas);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(atEstimate.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(RunAt(estimation.Gas - 1).StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(estimation.Gas, Is.GreaterThanOrEqualTo(atEstimate.GasConsumedResult.MaxUsedGas));
+            Assert.That(atEstimate.GasSpent, Is.LessThan(atEstimate.GasConsumedResult.MaxUsedGas));
+        }
+    }
+
+    private byte[] ClearSlots(int slots)
+    {
+        SetSlots(1, slots);
+        Prepare code = Prepare.EvmCode;
+        for (int slot = 0; slot < slots; slot++)
+        {
+            code.PushData(0).PushData(slot).Op(Instruction.SSTORE);
+        }
+
+        return code.Done;
     }
 
     private void SetSlots(byte value, int count)
