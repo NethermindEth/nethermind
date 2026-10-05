@@ -305,11 +305,8 @@ public partial class BeaconSyncOrchestratorTests
         new("Partial availability beats no envelopes", [new(Head: 101, Calls: 0), new(Earliest: 104, Calls: 0), new(Earliest: 103, Requests: [(102, 2)])], FirstSlot: 102, FilterHead: true),
         new("Complete reply stops peer requests", [new(), new([], Calls: 0)]),
     ];
-    private static IEnumerable<TestCaseData> RangeEnvelopeCases()
-    {
-        for (int i = 0; i < RangeEnvelopeScenarios.Length; i++)
-            yield return new TestCaseData(i).SetName(RangeEnvelopeScenarios[i].Name);
-    }
+    private static IEnumerable<TestCaseData> RangeEnvelopeCases() =>
+        RangeEnvelopeScenarios.Select(static (scenario, index) => new TestCaseData(index).SetName(scenario.Name));
     [TestCaseSource(nameof(RangeEnvelopeCases))]
     public async Task Range_envelope_requests_preserve_order_availability_and_peer_blame(int index)
     {
@@ -526,11 +523,8 @@ public partial class BeaconSyncOrchestratorTests
         new("Finality ends column recovery", 0, int.MaxValue, false, true, 1, true, 1, null, null, SettleAfterSameSlot: false),
         new("Retry age ends column recovery", 0, int.MaxValue, false, true, RetryAgeSlots + 1, false, 1, null, null, SettleAfterSameSlot: false),
     ];
-    private static IEnumerable<TestCaseData> ColumnRecoveryCases()
-    {
-        for (int i = 0; i < ColumnRecoveryScenarios.Length; i++)
-            yield return new TestCaseData(i).SetName(ColumnRecoveryScenarios[i].Name);
-    }
+    private static IEnumerable<TestCaseData> ColumnRecoveryCases() =>
+        ColumnRecoveryScenarios.Select(static (scenario, index) => new TestCaseData(index).SetName(scenario.Name));
     [TestCaseSource(nameof(ColumnRecoveryCases))]
     public async Task Column_recovery_is_bounded_by_arrival_slot_peer_rotation_finality_and_age(int index)
     {
