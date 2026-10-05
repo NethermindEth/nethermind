@@ -363,7 +363,7 @@ namespace Nethermind.Trie
                 // Warmer jobs share one node, so a racing resolver may have published its decode during the load.
                 if (NodeType != NodeType.Unknown) return;
 
-                WriteRlp(rlp = new CappedArray<byte>(fullRlp));
+                WriteLoadedRlp(rlp = new CappedArray<byte>(fullRlp));
                 // A node referenced by hash is constructed persisted already.
                 if (!IsPersisted) IsPersisted = true;
             }
@@ -511,7 +511,7 @@ namespace Nethermind.Trie
             {
                 reader.DecodeByteArraySpan(ref position, out valueSpan);
                 CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
-                valueSpan.CopyTo(buffer.AsSpan());
+                Bytes.Copy(valueSpan, buffer.AsSpan());
                 Volatile.Write(ref _nodeData, new LeafData(key, buffer));
             }
             else
@@ -537,13 +537,13 @@ namespace Nethermind.Trie
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             bool isRoot = path.Length == 0;
-            CappedArray<byte> rlp = PrepareRlp(tree, ref path, bufferPool, canBeParallel);
+            CappedArray<byte> rlp = PrepareRlp(tree, ref path, bufferPool, canBeParallel, out PreviousRlp previous);
 
             // Descendant nodes with RLP shorter than a hash are embedded in their parent.
             if (rlp.Length >= 32 || isRoot)
             {
                 Metrics.IncrementTreeNodeHashCalculations();
-                return Nethermind.Core.Crypto.Keccak.Compute(rlp.AsSpan());
+                return ComputeKeccak(rlp.AsSpan(), previous);
             }
 
             return null;
@@ -551,17 +551,30 @@ namespace Nethermind.Trie
 
         [MethodImpl(PrepareRlpInlining)]
         internal CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
-            ICappedArrayPool? bufferPool, bool canBeParallel)
+            ICappedArrayPool? bufferPool, bool canBeParallel) =>
+            PrepareRlp(tree, ref path, bufferPool, canBeParallel, out _);
+
+        /// <param name="previous">A re-encoded branch's RLP from before the re-encode, which <see cref="ComputeKeccak"/> may resume from.</param>
+        private CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
+            ICappedArrayPool? bufferPool, bool canBeParallel, out PreviousRlp previous)
         {
             bool isRoot = path.Length == 0;
+            previous = default;
             CappedArray<byte> rlp = ReadRlp();
             if (rlp.IsNull || IsDirty)
             {
                 CappedArray<byte> oldRlp = rlp.IsNotNull ? rlp : CappedArray<byte>.Empty;
-                CappedArray<byte> fullRlp = IsBranch
-                    ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
-                        canBeParallel: isRoot && canBeParallel)
-                    : RlpEncode(tree, ref path, bufferPool, canBeParallel);
+                CappedArray<byte> fullRlp;
+                if (IsBranch)
+                {
+                    previous = ReadPreviousRlp();
+                    fullRlp = TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
+                        canBeParallel: isRoot && canBeParallel);
+                }
+                else
+                {
+                    fullRlp = RlpEncode(tree, ref path, bufferPool, canBeParallel);
+                }
 
                 if (oldRlp.IsNotNullOrEmpty)
                 {
@@ -911,7 +924,7 @@ namespace Nethermind.Trie
             CappedArray<byte> rlp = ReadRlp();
             if (rlp.IsNotNull)
             {
-                trieNode.InitRlp(rlp);
+                trieNode.InitClonedRlp(rlp, this);
             }
 
             return trieNode;

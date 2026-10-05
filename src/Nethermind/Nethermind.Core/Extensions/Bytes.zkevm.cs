@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Core.Extensions;
 
@@ -12,9 +14,10 @@ public static unsafe partial class Bytes
     /// Reverses the byte order of a 64-bit word.
     /// </summary>
     /// <remarks>
-    /// RISC-V has no byte-swap instruction, so the BCL's <c>ReverseEndianness</c> expands to a
-    /// byte-at-a-time shuffle; <see cref="ZkEvmBitOperations.Bswap64"/> does it with three masked
-    /// shift/or pairs on whole words. See <c>Bytes.std.cs</c> for the host form.
+    /// Without Zbb, RISC-V has no byte-swap instruction, so the BCL's <c>ReverseEndianness</c> expands
+    /// to a byte-at-a-time shuffle; <see cref="ZkEvmBitOperations.Bswap64"/> does it with three masked
+    /// shift/or pairs on whole words, or with <c>rev8</c> in a guest whose zkVM has Zbb. See
+    /// <c>Bytes.std.cs</c> for the host form.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong Bswap64(ulong value) => ZkEvmBitOperations.Bswap64(value);
@@ -44,6 +47,26 @@ public static unsafe partial class Bytes
         /// <summary>Reverses the byte order of a 64-bit word.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ulong Bswap64(ulong value) => ZkEvmBitOperations.Swap(value, _m8, _m16);
+    }
+
+    /// <summary>Copies <paramref name="source"/> to the start of <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// Corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
+    /// that spills every callee-saved register, ~60 steps a call whatever the length. Where
+    /// <see cref="ZiskMemmoveFlag"/> is on, this calls <c>memmove</c> directly, so overlapping spans stay safe;
+    /// elsewhere it keeps corelib's copy. See <c>Bytes.std.cs</c> for the host form.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <paramref name="source"/>.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Copy(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        if (!ZiskMemmoveFlag.IsActive)
+        {
+            source.CopyTo(destination);
+            return;
+        }
+
+        Accelerators.Memmove(source, destination);
     }
 
     /// <summary>Compares the 32 bytes at <paramref name="a"/> with the 32 bytes at <paramref name="b"/>.</summary>

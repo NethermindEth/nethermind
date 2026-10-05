@@ -223,7 +223,7 @@ namespace Nethermind.State
             bool firstWriteThisTx = !exists || head.CurrentIdx <= currentSnapshot;
             int originalIdx = firstWriteThisTx ? prevIdx : head.OriginalIdx;
 
-            head = new HeadChange(value, _changes.Count, originalIdx);
+            head.Set(value, _changes.Count, originalIdx);
             _changes.Add(new Change(in cell, value, StorageChangeType.Update, prevIdx, originalIdx));
         }
 
@@ -298,8 +298,20 @@ namespace Nethermind.State
         protected struct HeadChange(in UInt256 value, int currentIdx, int originalIdx)
         {
             public UInt256 Value = value;
-            public readonly int CurrentIdx = currentIdx;
-            public readonly int OriginalIdx = originalIdx;
+            public int CurrentIdx { readonly get; private set; } = currentIdx;
+            public int OriginalIdx { readonly get; private set; } = originalIdx;
+
+            /// <summary>Overwrites the head in place.</summary>
+            /// <remarks>
+            /// Assigning a new head through a ref builds it in a temporary and block-copies it, which the guest
+            /// does through corelib's out-of-line <c>Memmove</c>; field stores move the words directly.
+            /// </remarks>
+            public void Set(in UInt256 value, int currentIdx, int originalIdx)
+            {
+                Value = value;
+                CurrentIdx = currentIdx;
+                OriginalIdx = originalIdx;
+            }
         }
     }
 }
