@@ -98,7 +98,7 @@ internal sealed partial class PersistentStorageProvider
                 {
                     skipped++;
                 }
-                else if (TryWriteNow(kvp.Key, ref BlockChange.GetValueRefOrNullRef(kvp.Key), storageWriteBatch))
+                else if (CommitAndWriteUnlessDelete(kvp.Key, ref BlockChange.GetValueRefOrNullRef(kvp.Key), storageWriteBatch))
                 {
                     writes++;
                 }

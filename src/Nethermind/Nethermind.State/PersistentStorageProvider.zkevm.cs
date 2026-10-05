@@ -36,7 +36,7 @@ internal sealed partial class PersistentStorageProvider
                 {
                     skipped++;
                 }
-                else if (TryWriteNow(key, ref change, storageWriteBatch))
+                else if (CommitAndWriteUnlessDelete(key, ref change, storageWriteBatch))
                 {
                     writes++;
                 }

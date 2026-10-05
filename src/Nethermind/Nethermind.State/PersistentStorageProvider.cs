@@ -1425,7 +1425,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// <returns><see langword="false"/> when the change clears the slot, so its delete must follow every write.</returns>
         /// <remarks>Safe while enumerating <see cref="BlockChange"/>: it only overwrites an existing entry, never adds or removes one.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool TryWriteNow(in UInt256 key, ref StorageChangeTrace change, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
+        private static bool CommitAndWriteUnlessDelete(in UInt256 key, ref StorageChangeTrace change, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
             UInt256 after = change.After;
             change.Set(after, after, isInitialValue: false);
