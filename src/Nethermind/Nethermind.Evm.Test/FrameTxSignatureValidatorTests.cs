@@ -373,7 +373,7 @@ public class FrameTxSignatureValidatorTests
         FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ethereumEcdsa);
 
         Assert.That(FrameTxSignatureValidator.Secp256k1SignersRecovered(tx), Is.True);
-        Assert.That(FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), Substitute.For<IEthereumEcdsa>(), SecP256r1Precompile.Instance, _spec, out string? error), Is.True);
+        Assert.That(FrameTxSignatureValidator.Validate(tx, Substitute.For<IEthereumEcdsa>(), SecP256r1Precompile.Instance, _spec, out string? error), Is.True);
         Assert.That(error, Is.Null);
     }
 

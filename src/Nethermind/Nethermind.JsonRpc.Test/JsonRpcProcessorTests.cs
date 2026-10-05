@@ -774,6 +774,9 @@ public class JsonRpcProcessorTests
     {
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateTransactionCountRequest(idJson));
         Assert.That(AssertSingleResponse(result).Response!.Id, Is.EqualTo(expectedId));
+
+        using CollectedJsonRpcResponses batchResult = await ProcessAsync(CreateBatchRequest(CreateTransactionCountRequest("1"), CreateTransactionCountRequest(idJson)));
+        Assert.That(AssertBatchResponse(batchResult, 2).BatchItems![1].Id, Is.EqualTo(expectedId));
     }
 
     [Test]
@@ -930,17 +933,19 @@ public class JsonRpcProcessorTests
     [Test]
     public async Task Batch_size_limit_respects_authentication(
         [Values] bool isAuthenticated,
-        [Values] RequestTransport transport)
+        [Values] RequestTransport transport,
+        [Values(1, 2)] int maxBatchSize)
     {
         IJsonRpcService service = CreateEchoService();
-        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { MaxBatchSize = 1 });
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { MaxBatchSize = maxBatchSize });
         using JsonRpcContext context = CreateContext(transport, isAuthenticated);
+        string request = CreateTransactionCountBatchRequest(TransactionCountNestedArrayParamsJson, TransactionCountNestedArrayParamsJson);
 
         using CollectedJsonRpcResponses result = await ProcessAsync(
-            processor, Encoding.UTF8.GetBytes(CreateTransactionCountBatchRequest(2)), transport, context: context);
+            processor, Encoding.UTF8.GetBytes(request), transport, context: context);
 
         CollectedJsonRpcResult response = AssertOnlyResult(result);
-        if (!isAuthenticated)
+        if (!isAuthenticated && maxBatchSize < 2)
         {
             Assert.That(response.Response, Is.TypeOf<JsonRpcErrorResponse>());
             JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response.Response!;
@@ -1058,6 +1063,10 @@ public class JsonRpcProcessorTests
             ("Null element followed by valid request", "[null,{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
             ("Object element with invalid UTF-8 method", [(byte)'[', .. CreateRequestWithRawMethodTail(0xC3), (byte)']'], 1, -1),
             ("Object element with fractional id", "[{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 1, -1),
+            ("Object element with fractional id before nested params followed by valid request", "[{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"eth_chainId\",\"params\":[[1],{\"a\":[2]}]},{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
+            ("Object element with boolean id after nested params followed by valid request", "[{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[{\"a\":[1]}],\"id\":true},{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
+            ("Nested array element followed by valid request", "[[{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"eth_chainId\",\"params\":[]},[1]],{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
+            ("Whitespace around elements", " \r\n[ null ,\t{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[ ]} \n] \r\n"u8.ToArray(), 2, 1),
         ];
 
         foreach ((string name, byte[] request, int expectedItems, int validItemIndex) in cases)
@@ -1211,13 +1220,25 @@ public class JsonRpcProcessorTests
         return sink.Responses;
     }
 
+    private static readonly string[] NotOneDocumentBodies =
+    [
+        CreateRequest("1", "eth_blockNumber") + " garbage",
+        CreateBatchRequest(CreateRequest("1", "eth_blockNumber")) + " garbage",
+        CreateBatchRequest(CreateRequest("1", "eth_blockNumber")) + "]",
+        "[" + CreateRequest("1", "eth_blockNumber"),
+        "[" + CreateRequest("1", "eth_blockNumber") + ",]",
+        CreateBatchRequest(CreateRequest("1", "eth_blockNumber"), "{\"id\":2 \"method\":\"eth_chainId\"}"),
+    ];
+
     /// <remarks>
-    /// A single-document body ends at its root value, so anything but whitespace after it is a framing error and not a
-    /// second request - the body is answered with one parse error and none of it is dispatched.
+    /// A single-document body must be exactly one valid JSON value. Trailing data is a framing error, not a second
+    /// request, and an unclosed or malformed batch is not a document at all - either way the body is answered with one
+    /// parse error and none of it is dispatched.
     /// </remarks>
     [Test]
-    public async Task Trailing_data_after_a_single_document_request_is_a_parse_error(
-        [Values(RequestTransport.HttpMemory, RequestTransport.HttpPipe)] RequestTransport transport)
+    public async Task Body_that_is_not_one_valid_document_is_a_parse_error(
+        [Values(RequestTransport.HttpMemory, RequestTransport.HttpPipe)] RequestTransport transport,
+        [ValueSource(nameof(NotOneDocumentBodies))] string body)
     {
         bool dispatched = false;
         IJsonRpcService service = CreateService(request =>
@@ -1227,8 +1248,7 @@ public class JsonRpcProcessorTests
         });
         JsonRpcProcessor processor = CreateProcessor(service);
 
-        using CollectedJsonRpcResponses result = await ProcessAsync(
-            processor, Encoding.UTF8.GetBytes(CreateRequest("1", "eth_blockNumber") + " garbage"), transport);
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, Encoding.UTF8.GetBytes(body), transport);
 
         JsonRpcResponse response = AssertSingleResponse(result).Response!;
         using (Assert.EnterMultipleScope())
