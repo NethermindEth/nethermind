@@ -14,67 +14,53 @@ public class DataColumnSidecarVerifierTests
 {
     private const int ColumnIndex = 5;
 
-    [Test]
-    public void A_correctly_formed_sidecar_passes_every_check()
+    private static IEnumerable<TestCaseData> CryptographicChecks()
+    {
+        yield return Case("A_correctly_formed_sidecar_passes_every_check", null, true, true, true);
+        yield return Case("A_sidecar_with_a_tampered_cell_fails_kzg_verification", sidecar =>
+        {
+            byte[] tampered = sidecar.Column![0].AsSpan().ToArray();
+            tampered[0] ^= 0xFF;
+            sidecar.Column[0] = SszBlobCell.FromSpan(tampered);
+        }, true, false, null);
+        yield return Case("A_sidecar_with_a_tampered_proof_fails_kzg_verification", sidecar =>
+        {
+            byte[] tampered = sidecar.KzgProofs![0].AsSpan().ToArray();
+            tampered[0] ^= 0xFF;
+            sidecar.KzgProofs[0] = SszKzgCommitment.FromSpan(tampered);
+        }, null, false, null);
+        yield return Case("A_sidecar_whose_commitments_were_never_included_fails_inclusion_proof_even_though_its_cells_verify", sidecar =>
+        {
+            // New cells/commitments verify internally, but the stale inclusion proof must reject them.
+            DataColumnKzgFixture.BlobFixture unrelatedBlob = DataColumnKzgFixture.BuildBlob(0xEE);
+            sidecar.KzgCommitments = [DataColumnKzgFixture.CommitmentOf(unrelatedBlob), sidecar.KzgCommitments![1]];
+            sidecar.Column![0] = DataColumnKzgFixture.CellAt(unrelatedBlob, ColumnIndex);
+            sidecar.KzgProofs![0] = DataColumnKzgFixture.ProofAt(unrelatedBlob, ColumnIndex);
+        }, null, true, false);
+        yield return Case("A_sidecar_with_a_tampered_inclusion_proof_fails", sidecar =>
+        {
+            byte[] tamperedSibling = sidecar.KzgCommitmentsInclusionProof![0].Bytes.ToArray();
+            tamperedSibling[0] ^= 0xFF;
+            sidecar.KzgCommitmentsInclusionProof[0] = new Hash256(tamperedSibling);
+        }, null, null, false);
+
+        static TestCaseData Case(string name, Action<DataColumnSidecar>? tamper, bool? structure, bool? kzg, bool? inclusion) =>
+            new TestCaseData(tamper, structure, kzg, inclusion).SetName(name);
+    }
+
+    [TestCaseSource(nameof(CryptographicChecks))]
+    public void Sidecar_cryptographic_checks_preserve_structural_and_inclusion_checks(
+        Action<DataColumnSidecar>? tamper, bool? structure, bool? kzg, bool? inclusion)
     {
         DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-
+        tamper?.Invoke(sidecar);
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.True);
-        Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.True);
-        Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.True);
-    }
-
-    [Test]
-    public void A_sidecar_with_a_tampered_cell_fails_kzg_verification()
-    {
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-        byte[] tampered = sidecar.Column![0].AsSpan().ToArray();
-        tampered[0] ^= 0xFF;
-        sidecar.Column[0] = SszBlobCell.FromSpan(tampered);
-
-        // Array lengths stay valid; only the cryptographic check can detect this tamper.
-        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.True);
-        Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
-    }
-
-    [Test]
-    public void A_sidecar_with_a_tampered_proof_fails_kzg_verification()
-    {
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-        byte[] tampered = sidecar.KzgProofs![0].AsSpan().ToArray();
-        tampered[0] ^= 0xFF;
-        sidecar.KzgProofs[0] = SszKzgCommitment.FromSpan(tampered);
-
-        Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
-    }
-
-    [Test]
-    public void A_sidecar_whose_commitments_were_never_included_fails_inclusion_proof_even_though_its_cells_verify()
-    {
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-
-        // New cells/commitments verify internally, but the stale inclusion proof must reject them.
-        DataColumnKzgFixture.BlobFixture unrelatedBlob = DataColumnKzgFixture.BuildBlob(0xEE);
-        sidecar.KzgCommitments = [DataColumnKzgFixture.CommitmentOf(unrelatedBlob), sidecar.KzgCommitments![1]];
-        sidecar.Column![0] = DataColumnKzgFixture.CellAt(unrelatedBlob, ColumnIndex);
-        sidecar.KzgProofs![0] = DataColumnKzgFixture.ProofAt(unrelatedBlob, ColumnIndex);
-
-        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.True);
-        Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.False);
-    }
-
-    [Test]
-    public void A_sidecar_with_a_tampered_inclusion_proof_fails()
-    {
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-        byte[] tamperedSibling = sidecar.KzgCommitmentsInclusionProof![0].Bytes.ToArray();
-        tamperedSibling[0] ^= 0xFF;
-        sidecar.KzgCommitmentsInclusionProof[0] = new Hash256(tamperedSibling);
-
-        Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.False);
+        if (structure is bool expectedStructure)
+            Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.EqualTo(expectedStructure));
+        if (kzg is bool expectedKzg)
+            Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.EqualTo(expectedKzg));
+        if (inclusion is bool expectedInclusion)
+            Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.EqualTo(expectedInclusion));
     }
 
     [Test]
