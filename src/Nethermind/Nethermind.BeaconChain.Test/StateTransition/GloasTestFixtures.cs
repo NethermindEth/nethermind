@@ -184,18 +184,23 @@ internal static class GloasTestFixtures
     public static PubkeyCache InstallRealValidatorKeys(BeaconStateGloas state)
     {
         Validator[] validators = state.Validators!;
-        for (int i = 0; i < validators.Length; i++)
-        {
-            Validator updated = validators[i].Clone();
-            updated.Pubkey = ValidatorPubkeys.GetOrAdd(i, static index => new BlsPublicKey(new Bls.P1(ValidatorKey(index)).Compress()));
-            validators[i] = updated;
-        }
+        InstallValidatorKeys(validators, validators.Length, static i => ValidatorPubkeys.GetOrAdd(i, static index => new BlsPublicKey(new Bls.P1(ValidatorKey(index)).Compress())));
         state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = FillCommittee(validators[0].Pubkey), AggregatePubkey = Pubkey(0x60) };
         state.NextSyncCommittee = new SyncCommittee { Pubkeys = FillCommittee(validators[0].Pubkey), AggregatePubkey = Pubkey(0x61) };
 
         PubkeyCache pubkeys = new();
         pubkeys.Build(validators);
         return pubkeys;
+    }
+
+    public static void InstallValidatorKeys(Validator[] validators, int count, Func<int, BlsPublicKey>? pubkey = null)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            Validator updated = validators[i].Clone();
+            updated.Pubkey = pubkey is null ? new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress()) : pubkey(i);
+            validators[i] = updated;
+        }
     }
 
     public static SignedBeaconBlockHeader SignedHeader(BeaconStateGloas state, ulong slot, int proposerIndex, Hash256 bodyRoot)

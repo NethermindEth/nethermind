@@ -112,12 +112,7 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
         BeaconStateFulu state = CreateFuluState(ValidatorCount);
         state.FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero };
         Validator[] validators = state.Validators!;
-        for (int i = 0; i < validators.Length; i++)
-        {
-            Validator updated = validators[i].Clone();
-            updated.Pubkey = new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress());
-            validators[i] = updated;
-        }
+        InstallValidatorKeys(validators, validators.Length);
 
         BlsPublicKey[] syncCommittee = Enumerable.Repeat(validators[0].Pubkey, Presets.SyncCommitteeSize).ToArray();
         BlsPublicKey aggregatePubkey = AggregatePubkey(syncCommittee);
