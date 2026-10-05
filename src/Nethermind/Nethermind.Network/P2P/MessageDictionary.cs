@@ -8,11 +8,13 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using TaskExtensions = Nethermind.Core.Extensions.TaskExtensions;
 
@@ -106,7 +108,39 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
         else
         {
             data?.TryDispose();
-            throw new SubprotocolException($"Received a response to {nameof(T66Msg)} that has not been requested");
+            ThrowNotRequested();
         }
     }
+
+    /// <summary>
+    /// Throws unless the response in <paramref name="content"/> carries the request id of a pending request.
+    /// </summary>
+    /// <remarks>
+    /// Called before deserialization so an uncorrelated response is rejected without being decoded.
+    /// The request stays pending; <see cref="Handle"/> still claims it once the response is decoded.
+    /// </remarks>
+    /// <exception cref="SubprotocolException">The request id is unreadable or not pending.</exception>
+    public void ThrowIfNotRequested(IByteBuffer content) => GetPendingRequest(content);
+
+    /// <summary>
+    /// Returns the pending request that the response in <paramref name="content"/> answers.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="ThrowIfNotRequested"/>, called before deserialization; the request stays pending, so the
+    /// response can be checked against it before <see cref="Handle"/> claims it.
+    /// </remarks>
+    /// <exception cref="SubprotocolException">The request id is unreadable or not pending.</exception>
+    public T66Msg GetPendingRequest(IByteBuffer content)
+    {
+        Request<T66Msg, TData>? request = null;
+        if (!Eth66RequestId.TryPeek(content, out long id) || !_requests.TryGetValue(id, out request))
+        {
+            ThrowNotRequested();
+        }
+
+        return request.Message;
+    }
+
+    [StackTraceHidden, DoesNotReturn]
+    private static void ThrowNotRequested() => throw new SubprotocolException($"Received a response to {typeof(T66Msg).Name} that has not been requested");
 }

@@ -1548,7 +1548,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void ApplyStateChanges_uses_parent_state_without_prestate_sentinels()
+    public void ApplyBal_uses_parent_state_without_prestate_sentinels()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -1559,7 +1559,7 @@ public partial class BlockProcessorTests
                 .TestObject)
             .TestObject;
 
-        ApplyStateChangesInParentScope(
+        ApplyBalInParentScope(
             bal,
             genesisSetup: stateProvider => stateProvider.CreateAccount(TestItem.AddressA, 100),
             assertState: stateProvider =>
@@ -1576,7 +1576,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void ApplyStateChanges_creates_missing_account_from_balance_change()
+    public void ApplyBal_creates_missing_account_from_balance_change()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -1585,7 +1585,7 @@ public partial class BlockProcessorTests
                 .TestObject)
             .TestObject;
 
-        ApplyStateChangesInParentScope(
+        ApplyBalInParentScope(
             bal,
             genesisSetup: null,
             assertState: stateProvider =>
@@ -1600,9 +1600,9 @@ public partial class BlockProcessorTests
 
     // A predeploy mandating runtime code alone, leaving balance and nonce as they stand (EIP-8141's expiry
     // verifier), produces an account whose only BAL entry is a code change, so nothing else creates it.
-    // A slot write on a missing account is not an account change, so the hoisted creation must skip it.
+    // A slot write on a missing account is not an account change, so it must not create the account.
     [Test]
-    public void ApplyStateChanges_does_not_create_an_account_from_storage_changes_alone()
+    public void ApplyBal_does_not_create_an_account_from_storage_changes_alone()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -1611,7 +1611,7 @@ public partial class BlockProcessorTests
                 .TestObject)
             .TestObject;
 
-        ApplyStateChangesInParentScope(
+        ApplyBalInParentScope(
             bal,
             genesisSetup: null,
             assertState: stateProvider =>
@@ -1619,7 +1619,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void ApplyStateChanges_creates_missing_account_from_code_change()
+    public void ApplyBal_creates_missing_account_from_code_change()
     {
         byte[] code = [0x60, 0x00];
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
@@ -1629,7 +1629,7 @@ public partial class BlockProcessorTests
                 .TestObject)
             .TestObject;
 
-        ApplyStateChangesInParentScope(
+        ApplyBalInParentScope(
             bal,
             genesisSetup: null,
             assertState: stateProvider =>
@@ -1702,7 +1702,7 @@ public partial class BlockProcessorTests
         Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2));
     }
 
-    private static void ApplyStateChangesInParentScope(
+    private static void ApplyBalInParentScope(
         ReadOnlyBlockAccessList bal,
         Action<IWorldState>? genesisSetup,
         Action<IWorldState> assertState)
@@ -1720,7 +1720,7 @@ public partial class BlockProcessorTests
         BlockHeader parent = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
         using (stateProvider.BeginScope(parent))
         {
-            BlockAccessListManager.ApplyStateChanges(bal, stateProvider, Amsterdam.Instance, shouldComputeStateRoot: false);
+            stateProvider.ApplyBal(bal);
             assertState(stateProvider);
         }
     }
@@ -2077,6 +2077,59 @@ public partial class BlockProcessorTests
             () => processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None));
 
         Assert.That(exception!.InnerException, Is.SameAs(failure));
+    }
+
+    [Test]
+    public void ProcessOne_adds_the_world_states_account_changes_to_the_bals()
+    {
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(HoodiSpecProvider.Instance)
+            .Build();
+        using ILifetimeScope lifetime = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState)
+            .AddSingleton(Substitute.For<ITransactionProcessor>())
+            .AddSingleton(transactionsExecutor)
+            .AddSingleton<IBlockAccessListManager>(new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>())));
+        IWorldState stateProvider = lifetime.Resolve<IWorldState>();
+        IBlockProcessor processor = lifetime.Resolve<IBlockProcessor>();
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 10)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(1).TestObject)
+            .TestObject;
+        Block block = Build.A.Block.WithBlockAccessList(bal).TestObject;
+        transactionsExecutor.ProcessTransactions(
+                Arg.Any<Block>(),
+                Arg.Any<ProcessingOptions>(),
+                Arg.Any<BlockReceiptsTracer>(),
+                Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                // As the parallel executor does: the BAL's changes go straight to the scope, the rest through the world state.
+                call.Arg<Block>().AccountChanges = bal.GetStateChangedAddresses();
+                stateProvider.CreateAccount(TestItem.AddressA, 10);
+                stateProvider.CreateAccount(TestItem.AddressC, 1);
+                return Array.Empty<TxReceipt>();
+            });
+
+        using IDisposable scope = stateProvider.BeginScope(null);
+        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = true;
+        Block processedBlock;
+        try
+        {
+            (processedBlock, _) = processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None);
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+        }
+
+        using ArrayPoolList<AddressAsKey>? accountChanges = processedBlock.AccountChanges;
+        Assert.That(accountChanges!.Select(static address => address.Value), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressC }));
     }
 
     [Test]
@@ -2966,6 +3019,53 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public void Parallel_validation_takes_account_changes_from_the_bal_on_the_processing_thread([Values] bool isBlockProcessingThread)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Transaction[] transactions = CreateParallelValidationTransactions(1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                // Pre-execution, like the beacon-root contract's storage-only entry.
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageChanges(1, new StorageChange(0, 1)).TestObject,
+                // Post-execution, like a withdrawal recipient.
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithBalanceChanges(new BalanceChange(2, 10)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressC).WithStorageReads(1).TestObject)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(21_000)
+            .WithTransactions(transactions)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        using RecordingTransactionProcessorAdapter transactionProcessor = new();
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = CreateParallelValidationExecutor(stateProvider, transactionProcessor);
+
+        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = isBlockProcessingThread;
+        try
+        {
+            executor.ProcessTransactions(block, ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+        }
+
+        using ArrayPoolList<AddressAsKey>? accountChanges = block.AccountChanges;
+        if (isBlockProcessingThread)
+        {
+            Assert.That(accountChanges!.Select(static address => address.Value), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        }
+        else
+        {
+            Assert.That(accountChanges, Is.Null, "only the main processing thread publishes account changes");
+        }
+    }
+
+    [Test]
     public void Parallel_validation_forwards_parallel_safe_block_tracer_to_worker_transactions()
     {
         Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
@@ -3400,7 +3500,7 @@ public partial class BlockProcessorTests
         ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
         adapter.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(call =>
         {
-            observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0);
+            observedBudgets.Add(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0);
             call.Arg<Transaction>().BlockGasUsed = 21_000;
             call.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, 21_000, [], []);
             return TransactionResult.Ok;
