@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
@@ -615,8 +616,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         internal readonly struct ArithmeticShiftRightOperation : IStackBinaryOperation
         {
             public static nint SharedHandler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<SarOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+                Entry(&ExecuteOpcode<SarOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end)
@@ -640,8 +640,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         internal readonly struct ByteOperation : IStackBinaryOperation
         {
             public static nint SharedHandler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<ByteOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+                Entry(&ExecuteOpcode<ByteOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             /// <remarks>The byte is shifted out of its limb, where loading it alone would be a narrow access.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -666,8 +665,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static ulong GasCost => LowGasCost.GasCost;
 
             public static nint SharedHandler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<SignExtendOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+                Entry(&ExecuteOpcode<SignExtendOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             /// <remarks>
             /// An index of 31 or more leaves the word as it is. The limb holding the sign byte is extended in place by an
@@ -718,8 +716,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<Math1Opcode<EvmInstructions.OpNot, OffFlag>, OffFlag, OffFlag, OnFlag>;
+            nint shared = Entry(&ExecuteOpcode<Math1Opcode<EvmInstructions.OpNot, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -777,8 +774,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<Math3Opcode<TOperation, OffFlag>, OffFlag, OffFlag, OnFlag>;
+            nint shared = Entry(&ExecuteOpcode<Math3Opcode<TOperation, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -1034,8 +1030,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<JumpDestOpcode, OffFlag, OffFlag, OnFlag>;
+            nint shared = Entry(&ExecuteOpcode<JumpDestOpcode, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -1104,8 +1099,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         internal readonly struct GasValue : IStackValue
         {
             public static nint SharedHandler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<GasOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+                Entry(&ExecuteOpcode<GasOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => gas;
@@ -1115,8 +1109,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         internal readonly struct ReturnDataSizeValue : IStackValue
         {
             public static nint SharedHandler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<ReturnDataSizeOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+                Entry(&ExecuteOpcode<ReturnDataSizeOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static ulong Read(ref EvmStack stack, ref DispatchState state, ulong gas) => (uint)state.Vm.ReturnDataBuffer.Length;
@@ -1352,8 +1345,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag>, OffFlag, OffFlag, OnFlag>;
+            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -1389,8 +1381,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<TLoadOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+            nint shared = Entry(&ExecuteOpcode<TLoadOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -1428,8 +1419,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<TStoreOpcode, OffFlag, OffFlag, OnFlag>;
+            nint shared = Entry(&ExecuteOpcode<TStoreOpcode, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -1489,7 +1479,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 if (inSource)
                                 {
                                     copied = (uint)Math.Min(size, (ulong)source.Length - from);
-                                    Unsafe.CopyBlockUnaligned(ref range, ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from), copied);
+                                    Bytes.Copy(source.Slice((int)from, (int)copied), MemoryMarshal.CreateSpan(ref range, (int)copied));
                                 }
 
                                 Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, (uint)size - copied);
@@ -1533,8 +1523,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         internal readonly struct CallDataSource : ICopySource
         {
             public static nint SharedHandler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<CallDataCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+                Entry(&ExecuteOpcode<CallDataCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             public static bool ZeroExtends => true;
 
@@ -1547,8 +1536,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         internal readonly struct ReturnDataSource : ICopySource
         {
             public static nint SharedHandler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<ReturnDataCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+                Entry(&ExecuteOpcode<ReturnDataCopyOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             public static bool ZeroExtends => false;
 
@@ -1593,8 +1581,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 gas += VeryLowGasCost.GasCost;
             }
 
-            nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteOpcode<MStore8Opcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
+            nint shared = Entry(&ExecuteOpcode<MStore8Opcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -1835,10 +1822,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if ((Unsafe.Add(ref top, 1) | Unsafe.Add(ref product, 1) | upperHalves) != 0)
                 {
                     nint wide = upperHalves == 0
-                        ? (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                            &ExecuteMulOfHalfWidthFactors
-                        : (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                            &ExecuteMulOfWideFactors;
+                        ? Entry(&ExecuteMulOfHalfWidthFactors)
+                        : Entry(&ExecuteMulOfWideFactors);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, wide);
                 }
 
@@ -2073,8 +2058,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
                 else if (ZiskArith256Flag.IsActive)
                 {
-                    nint wide = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                        &ExecuteDivOfWideOperands;
+                    nint wide = Entry(&ExecuteDivOfWideOperands);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, wide);
                 }
                 else
