@@ -1368,10 +1368,11 @@ public partial class VirtualMachine<TGasPolicy>(
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);
 
-    private CallResult RunPrecompile<Eip158>(VmState<TGasPolicy> state)
+    private CallResult RunPrecompile<Eip158, Eip8360>(VmState<TGasPolicy> state)
         where Eip158 : struct, IFlag
+        where Eip8360 : struct, IFlag
     {
-        if (state.AccessTracker.TransientCreateList.Count != 0 && !TryChargeTransientCreateTransfer(state))
+        if (Eip8360.IsActive && state.AccessTracker.TransientCreates is not null && !TryChargeTransientCreateTransfer(state, isNewTransientCreate: false))
         {
             return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
@@ -1522,12 +1523,10 @@ public partial class VirtualMachine<TGasPolicy>(
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
-            if (vmState.AccessTracker.TransientCreateList.Count != 0 && !TryChargeTransientCreateTransfer(vmState))
+            if (!GetExecutionHandlers().InitializeFrame(this, vmState))
             {
                 return new CallResult(EvmExceptionType.OutOfGas);
             }
-
-            GetExecutionHandlers().InitializeFrame(this, vmState);
         }
 
         // If no machine code is present, treat the call as empty.

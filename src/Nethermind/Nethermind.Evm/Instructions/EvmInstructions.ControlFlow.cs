@@ -277,15 +277,17 @@ public static partial class EvmInstructions
 
         // EIP-8360: price the balance changes of TCREATE accounts on either side of the transfer. A self-targeting
         // SELFDESTRUCT moves no value; a pre-EIP-8246 burn happens at tx finalization, outside the tables.
-        if (vmState.AccessTracker.TransientCreateList.Count != 0 && !result.IsZero && !inheritor.Equals(executingAccount))
+        if (TSpec.IsEip8360Enabled && vmState.AccessTracker.TransientCreates is not null && !result.IsZero && !inheritor.Equals(executingAccount))
         {
-            if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, executingAccount, in result, UInt256.Zero))
+            if (vmState.IsTransientCreateContext
+                && vmState.AccessTracker.IsTransientCreate(state, executingAccount, out UInt256 original)
+                && !vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in result, UInt256.Zero))
                 goto OutOfGas;
 
-            if (vmState.AccessTracker.IsTransientCreate(inheritor))
+            if (vmState.AccessTracker.IsTransientCreate(state, inheritor, out original))
             {
                 UInt256 inheritorBalance = state.GetBalance(inheritor);
-                if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, inheritor, in inheritorBalance, inheritorBalance + result))
+                if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in inheritorBalance, inheritorBalance + result))
                     goto OutOfGas;
             }
         }

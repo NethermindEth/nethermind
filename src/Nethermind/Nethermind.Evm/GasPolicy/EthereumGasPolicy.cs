@@ -349,13 +349,9 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         where Eip3860 : struct, IFlag
         where Eip8038 : struct, IFlag
     {
-        // EIP-8360: TCREATE replaces the account-creation base cost; its target access is charged separately.
-        ulong baseCost = typeof(TOpCreate) == typeof(EvmInstructions.OpTCreate) ? GasCostOf.TCreate
-            : Eip8038.IsActive ? Eip8038Constants.CreateAccess
-            : Eip8037.IsActive ? GasCostOf.CreateExecution : GasCostOf.Create;
+        ulong baseCost = CreateGasCost.Base<TOpCreate>(Eip8038.IsActive, Eip8037.IsActive);
         ulong initCodeWordCost = Eip3860.IsActive ? GasCostOf.InitCodeWord * initCodeWords : 0;
-        ulong create2HashCost = typeof(TOpCreate) != typeof(EvmInstructions.OpCreate) ? GasCostOf.Sha3Word * initCodeWords : 0;
-        return UpdateGas(ref gas, baseCost + initCodeWordCost + create2HashCost);
+        return UpdateGas(ref gas, baseCost + initCodeWordCost + CreateGasCost.InitCodeHashing<TOpCreate>(initCodeWords));
     }
 
     private interface IStorageMode

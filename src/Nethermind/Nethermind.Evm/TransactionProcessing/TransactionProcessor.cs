@@ -130,7 +130,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         /// <summary>
-        /// Applies the EIP-8360 end-of-transaction finalization to every <c>TCREATE</c> account.
+        /// Applies the EIP-8360 end-of-transaction finalization to every live <c>TCREATE</c> account.
         /// </summary>
         /// <remarks>
         /// Code, nonce and storage are dropped and the balance is kept as a fresh nonce-0, code-less account; an
@@ -138,9 +138,9 @@ namespace Nethermind.Evm.TransactionProcessing
         /// </remarks>
         private protected static void FinalizeTransientCreates(IWorldState worldState, in StackAccessTracker accessTracker, bool commit)
         {
-            foreach (Address transientCreate in accessTracker.TransientCreateList)
+            foreach (AddressAsKey transientCreate in accessTracker.TransientCreates!.Keys)
             {
-                if (accessTracker.DestroyList.Contains(transientCreate)) continue;
+                if (!accessTracker.IsTransientCreate(worldState, transientCreate, out _) || accessTracker.DestroyList.Contains(transientCreate)) continue;
 
                 UInt256 balance = worldState.GetBalance(transientCreate);
                 DestroyAccount(worldState, transientCreate, in balance, commit, removeSelfdestructBurn: true);
@@ -1524,9 +1524,11 @@ namespace Nethermind.Evm.TransactionProcessing
                         }
                     }
 
-                    // Same derivation as Execute: !commit = build-up round spanning the block.
-                    bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
-                    FinalizeTransientCreates(WorldState, in accessedItems, commit);
+                    if (accessedItems.TransientCreates is not null)
+                    {
+                        FinalizeTransientCreates(WorldState, in accessedItems,
+                            opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled));
+                    }
 
                     // EIP-8037: defer destroy list processing to after PayFees so that
                     // burn logs include the priority fee in the balance.
@@ -1534,6 +1536,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     JournalSet<Address>? destroyList = substate.DestroyList;
                     if (!deferFinalization && destroyList?.Count > 0)
                     {
+                        // Same derivation as Execute: !commit = build-up round spanning the block.
+                        bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                         bool tracingRefunds = _tracerFlags.IsTracingRefunds;

@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Test;
 /// </summary>
 public class Eip8360Tests : VirtualMachineTestsBase
 {
-    private static readonly IReleaseSpec EnabledSpec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8360Enabled = true };
+    private static readonly IReleaseSpec EnabledSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true };
     private static readonly ISpecProvider EnabledSpecProvider = new TestSpecProvider(EnabledSpec);
 
     private static readonly Address Factory = TestItem.AddressC;
@@ -46,7 +46,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
     private EthereumEcdsa _ecdsa = null!;
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
-    protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
+    protected override ulong Timestamp => MainnetSpecProvider.BogotaBlockTimestamp;
     protected override ISpecProvider SpecProvider => EnabledSpecProvider;
 
     public enum StorageWriter { Direct, DelegateCall, Call }
@@ -87,7 +87,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
     {
         InstallCode(Factory, TCreateAndStore(EmptyInit, 0));
 
-        TestAllTracerWithOutput tracer = Run(spec: enabled ? EnabledSpec : Amsterdam.Instance);
+        TestAllTracerWithOutput tracer = Run(spec: enabled ? EnabledSpec : Bogota.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -167,7 +167,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
     [Test]
     public void Storage_is_transient_without_net_gas_metering()
     {
-        IReleaseSpec unmetered = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8360Enabled = true, IsEip1283Enabled = false, IsEip2200Enabled = false };
+        IReleaseSpec unmetered = new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true, IsEip1283Enabled = false, IsEip2200Enabled = false };
         byte[] init = Prepare.EvmCode.SSTORE(0, [7]).ForInitOf(ReturnWord(Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD))).Done;
         InstallCode(Factory, Prepare.EvmCode
             .Data(TCreateAndStore(init, UInt256.Zero))
@@ -310,16 +310,23 @@ public class Eip8360Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Tracking_is_journaled_with_the_frame()
+    public void A_later_transaction_ignores_the_tcreate_context_of_a_reused_frame([Values] bool laterSpecEnables)
     {
-        using StackAccessTracker tracker = new();
-        tracker.TakeSnapshot();
-        tracker.WasTransientlyCreated(TestItem.AddressA, 5);
-        Assert.That(tracker.IsTransientCreate(TestItem.AddressA), Is.True);
+        // The TCREATE initcode frame is pooled at depth 1 still marked as a TCREATE context; the library frame
+        // reusing it must neither redirect storage nor halt CREATE2, whether or not the later spec enables EIP-8360.
+        InstallCode(Factory, TCreateAndStore(EmptyInit, 0));
+        Assert.That(Run().StatusCode, Is.EqualTo(StatusCode.Success));
+        InstallCode(Library, Prepare.EvmCode.SSTORE(0, [7]).Create2(EmptyInit, Salt, 0).Op(Instruction.POP).STOP().Done);
+        InstallCode(Factory, Prepare.EvmCode.Call(Library, CallGas).Op(Instruction.POP).STOP().Done);
 
-        tracker.Restore();
+        TestAllTracerWithOutput tracer = Run(spec: laterSpecEnables ? EnabledSpec : Bogota.Instance);
 
-        Assert.That(tracker.IsTransientCreate(TestItem.AddressA), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(Storage(Library, 0), Is.EqualTo((UInt256)7), "SSTORE reaches persistent storage");
+            Assert.That(TestState.AccountExists(ContractAddress.From(Library, Salt, EmptyInit)), Is.True, "CREATE2 deploys");
+        }
     }
 
     public static IEnumerable<TestCaseData> BalanceTableCases()

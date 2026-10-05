@@ -239,7 +239,7 @@ public static partial class EvmInstructions
 
         // Fast-path for calls to externally owned accounts (non-contracts); EIP-8360 transfers need a frame to charge in.
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.IsTracingActions
-            && (!hasValueTransfer || vm.VmState.AccessTracker.TransientCreateList.Count == 0))
+            && (!TSpec.IsEip8360Enabled || !hasValueTransfer || vm.VmState.AccessTracker.TransientCreates is null))
         {
             vm.ReturnDataBuffer = default;
             // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.
@@ -271,7 +271,9 @@ public static partial class EvmInstructions
             return inlineResult;
         }
 
-        return CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
+        return TSpec.IsEip8360Enabled
+            ? CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OnFlag>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount)
+            : CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OffFlag>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
 
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
@@ -312,7 +314,7 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.NoInlining)]
 #endif
     [SkipLocalsInit]
-    private static EvmExceptionType CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst>(
+    private static EvmExceptionType CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, TEip8360>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
@@ -331,6 +333,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
+        where TEip8360 : struct, IFlag
     {
         IWorldState state = vm.WorldState;
         // Take a snapshot of the state for potential rollback.
@@ -364,7 +367,7 @@ public static partial class EvmInstructions
         // Precompiles run no bytecode: handle them inline, skipping the child
         // frame's round trip through the ExecuteTransaction dispatch loop.
         // EIP-8360 transfers take the full frame so its entry prices the TCREATE balance change.
-        if (codeInfo.IsPrecompile && (callValue.IsZero || vm.VmState.AccessTracker.TransientCreateList.Count == 0))
+        if (codeInfo.IsPrecompile && (!TEip8360.IsActive || callValue.IsZero || vm.VmState.AccessTracker.TransientCreates is null))
         {
             return vm.InlinePrecompileCall<TTracingInst>(
                 callEnv,
