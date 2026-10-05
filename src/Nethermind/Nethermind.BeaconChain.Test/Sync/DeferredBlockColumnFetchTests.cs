@@ -695,16 +695,25 @@ public class DeferredBlockColumnFetchTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task A_held_block_that_imports_before_its_turn_for_a_column_fetch_is_not_fetched(CancellationToken token)
+    public async Task Imported_held_blocks_leave_the_column_fetch_queue([Values] bool lastWaits, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
         const int HeldBlocks = BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches + 4;
-        HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, HeldBlocks, static (importer, delivered) =>
+        HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, HeldBlocks, (importer, delivered) =>
         {
-            importer.Accepted.UnionWith(delivered[..^1]);
-            importer.Stuck.Add(delivered[^1]);
+            importer.Accepted.UnionWith(lastWaits ? delivered[..^1] : delivered);
+            if (lastWaits) importer.Stuck.Add(delivered[^1]);
         }, token);
         await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
+        if (!lastWaits)
+        {
+            using IDisposable endedScope = Assert.EnterMultipleScope();
+            Assert.That(scenario.HeldRoots, Is.All.Matches<Hash256>(scenario.Importer.IsKnown), "fixture: every held block imported with the deferred block");
+            Assert.That(scenario.Orchestrator.RangeHeldSlot, Is.Null, "fixture: the chain ended");
+            Assert.That(scenario.Orchestrator.HeldColumnFetchQueueCount, Is.Zero);
+            return;
+        }
+
         Hash256[] importedBeforeTheirTurn = scenario.HeldRoots[BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches..^1];
 
         scenario.Gate.Open();
@@ -739,21 +748,6 @@ public class DeferredBlockColumnFetchTests
         Assert.That(drops, Has.Length.EqualTo(1), "fixture: the blocks behind the refused block were dropped");
         Assert.That(queuedAfterDrop, Is.Zero);
         Assert.That(scenario.HeldRootsRequested, Is.EquivalentTo(scenario.HeldRoots[..BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches]), "only the fetches that had started");
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task The_fetch_queue_is_empty_once_the_held_chain_ends(CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        const int HeldBlocks = BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches + 4;
-        HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, HeldBlocks, static (importer, delivered) => importer.Accepted.UnionWith(delivered), token);
-        await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(scenario.HeldRoots, Is.All.Matches<Hash256>(scenario.Importer.IsKnown), "fixture: every held block imported with the deferred block");
-        Assert.That(scenario.Orchestrator.RangeHeldSlot, Is.Null, "fixture: the chain ended");
-        Assert.That(scenario.Orchestrator.HeldColumnFetchQueueCount, Is.Zero);
     }
 
     [Test]
