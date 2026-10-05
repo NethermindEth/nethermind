@@ -117,9 +117,10 @@ internal class FrameTxSignatureFilterTests
     [TestCase(TxHandlingOptions.PersistentBroadcast, false, false, false)]
     public void Accept_DuringBlockWork_DefersOnlyAGossipedVerification(TxHandlingOptions options, bool carriesBlobs, bool refetchable, bool building)
     {
+        // Two signatures: the first verifying entry always runs, so only a later one can yield.
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
         if (carriesBlobs) tx.BlobVersionedHashes = [TestItem.KeccakA.BytesToArray()];
-        SignSecp256k1(tx, TestItem.PrivateKeyA, signer: null);
+        tx.FrameSignatures = [DigestSignature(TestItem.PrivateKeyB, 1), DigestSignature(TestItem.PrivateKeyC, 2)];
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
         if (building) headInfo.IsBuildingBlock.Returns(true);
         else headInfo.IsProcessingBlock.Returns(true);
@@ -142,6 +143,30 @@ internal class FrameTxSignatureFilterTests
             Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid, Is.EqualTo(invalid), "a yield is not a verdict on the signature");
             Assert.That(Metrics.FrameTxSignatureVerificationsPreempted, Is.EqualTo(deferred ? preempted + 1 : preempted));
         }
+    }
+
+    [Test]
+    public void Accept_DuringBlockWork_AdmitsASingleSignatureTransaction()
+    {
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(true);
+        headInfo.IsBuildingBlock.Returns(true);
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
+        FrameTxSignatureFilter filter = new(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>(), headInfo);
+        Transaction tx = Signed(TestItem.PrivateKeyA, signer: null);
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+
+        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(state.FrameSignaturesVerified, Is.True);
+    }
+
+    private static TxFrameSignature DigestSignature(PrivateKey key, byte fill)
+    {
+        byte[] digest = new byte[Hash256.Size];
+        digest[31] = fill;
+        byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, new ValueHash256(digest)));
+        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, raw);
     }
 
     private static AcceptTxResult Accept(Transaction tx, out bool signaturesVerified)

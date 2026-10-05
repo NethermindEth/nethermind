@@ -133,7 +133,7 @@ namespace Nethermind.TxPool
         public static long FrameTxSimulationsPreempted;
 
         [CounterMetric]
-        [Description("Number of EIP-8141 frame transaction signature verifications at admission stopped because block processing preempted them.")]
+        [Description("Number of EIP-8141 frame transaction signature verifications at admission stopped because block processing or building preempted them.")]
         public static long FrameTxSignatureVerificationsPreempted;
 
         [CounterMetric]
