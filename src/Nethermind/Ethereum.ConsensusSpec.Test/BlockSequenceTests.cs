@@ -22,17 +22,15 @@ public class BlockSequenceTests
     public void Every_fork_and_suite_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
         List<SanityCase> cases = FuluDriverSupport.TestedCases<SanityCase>(preset, MinimalCases, MainnetCases);
-        using (Assert.EnterMultipleScope())
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        foreach ((string suite, string handler) in HandlerBySuite)
         {
-            foreach ((string suite, string handler) in HandlerBySuite)
+            Assert.That(cases.Where(testCase => SuiteOf(testCase) == suite).Select(static testCase => testCase.Fork).Distinct(),
+                Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks), suite);
+            foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
             {
-                Assert.That(cases.Where(testCase => SuiteOf(testCase) == suite).Select(static testCase => testCase.Fork).Distinct(),
-                    Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks), suite);
-                foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-                {
-                    Assert.That(ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, fork, suite)).Select(Path.GetFileName),
-                        Is.EquivalentTo(new[] { handler }), $"{fork} {suite} handlers in the archive");
-                }
+                Assert.That(ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, fork, suite)).Select(Path.GetFileName),
+                    Is.EquivalentTo(new[] { handler }), $"{fork} {suite} handlers in the archive");
             }
         }
     }

@@ -27,15 +27,13 @@ public class SanityTests
     {
         List<SanityCase> blocks = FuluDriverSupport.TestedCases<SanityCase>(preset, MinimalBlockCases, MainnetBlockCases);
         List<SanityCase> slots = FuluDriverSupport.TestedCases<SanityCase>(preset, MinimalSlotCases, MainnetSlotCases);
-        using (Assert.EnterMultipleScope())
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(blocks.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks), "blocks");
+        Assert.That(slots.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks), "slots");
+        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
         {
-            Assert.That(blocks.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks), "blocks");
-            Assert.That(slots.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks), "slots");
-            foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-            {
-                IEnumerable<string> subSuites = ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, fork, "sanity")).Select(Path.GetFileName)!;
-                Assert.That(subSuites, Is.EquivalentTo(SubSuites), $"{fork} sanity sub-suites in the archive");
-            }
+            IEnumerable<string> subSuites = ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, fork, "sanity")).Select(Path.GetFileName)!;
+            Assert.That(subSuites, Is.EquivalentTo(SubSuites), $"{fork} sanity sub-suites in the archive");
         }
     }
     [Test]

@@ -226,12 +226,10 @@ public class SszStaticTests
         List<SszStaticCase> cases = FuluDriverSupport.TestedCases<SszStaticCase>(preset, MinimalCases, MainnetCases);
         HashSet<string> enumerated = [.. cases.Select(static testCase => PairKey(testCase.Fork, testCase.ContainerName))];
         List<(string Fork, string Container)> registered = [.. Registry.SelectMany(static byName => byName.Value.Keys.Select(fork => (fork, byName.Key)))];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ArchiveForks));
-            Assert.That(registered.Select(static pair => PairKey(pair.Fork, pair.Container)).Where(pair => !enumerated.Contains(pair)), Is.Empty, "registered containers with no vectors");
-            Assert.That(registered.GroupBy(static pair => pair.Fork).ToDictionary(static byFork => byFork.Key, static byFork => byFork.Count()), Is.EquivalentTo(RegisteredContainerCounts));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ArchiveForks));
+        Assert.That(registered.Select(static pair => PairKey(pair.Fork, pair.Container)).Where(pair => !enumerated.Contains(pair)), Is.Empty, "registered containers with no vectors");
+        Assert.That(registered.GroupBy(static pair => pair.Fork).ToDictionary(static byFork => byFork.Key, static byFork => byFork.Count()), Is.EquivalentTo(RegisteredContainerCounts));
     }
     [Test]
     public void Every_container_without_a_model_is_pinned_with_a_reason([Values] ConsensusPreset preset)
@@ -241,11 +239,9 @@ public class SszStaticTests
             .Select(static testCase => (testCase.Fork, Container: testCase.ContainerName))
             .Distinct()
             .Where(static pair => !(Registry.TryGetValue(pair.Container, out IReadOnlyDictionary<string, Entry>? byFork) && byFork.ContainsKey(pair.Fork)))];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(unmodeled.Where(static pair => NotModeledReason(pair.Fork, pair.Container) is null), Is.Empty, "containers with neither a model nor a pinned reason");
-            Assert.That(unmodeled.GroupBy(static pair => NotModeledReason(pair.Fork, pair.Container)!).ToDictionary(static g => g.Key, static g => g.Count()), Is.EquivalentTo(PinnedNotModeledCounts));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(unmodeled.Where(static pair => NotModeledReason(pair.Fork, pair.Container) is null), Is.Empty, "containers with neither a model nor a pinned reason");
+        Assert.That(unmodeled.GroupBy(static pair => NotModeledReason(pair.Fork, pair.Container)!).ToDictionary(static g => g.Key, static g => g.Count()), Is.EquivalentTo(PinnedNotModeledCounts));
     }
     [Test]
     public void Every_registered_container_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>

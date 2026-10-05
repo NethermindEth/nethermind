@@ -69,17 +69,15 @@ public class EpochProcessingTests
     {
         List<EpochProcessingCase> cases = FuluDriverSupport.TestedCases<EpochProcessingCase>(preset, MinimalCases, MainnetCases);
         string[] absentForPreset = preset == ConsensusPreset.Mainnet ? MinimalOnlySubTransitions : [];
-        using (Assert.EnterMultipleScope())
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks));
+        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
         {
-            Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks));
-            foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-            {
-                IEnumerable<string> table = FuluDriverSupport.RequireForkDriver(fork) is ForkDriver<BeaconStateGloas> ? GloasHandlers.Keys : Handlers.Keys;
-                Assert.That(
-                    cases.Where(testCase => testCase.Fork == fork).Select(static testCase => testCase.SubTransitionName).Distinct(),
-                    Is.EquivalentTo(table.Except(absentForPreset).Except(SubTransitionsAbsentByFork.GetValueOrDefault(fork, []))),
-                    $"{fork} sub-transitions");
-            }
+            IEnumerable<string> table = FuluDriverSupport.RequireForkDriver(fork) is ForkDriver<BeaconStateGloas> ? GloasHandlers.Keys : Handlers.Keys;
+            Assert.That(
+                cases.Where(testCase => testCase.Fork == fork).Select(static testCase => testCase.SubTransitionName).Distinct(),
+                Is.EquivalentTo(table.Except(absentForPreset).Except(SubTransitionsAbsentByFork.GetValueOrDefault(fork, []))),
+                $"{fork} sub-transitions");
         }
     }
     [Test]

@@ -31,13 +31,11 @@ public class ForkDriverTests
     public void Every_production_state_fork_is_extracted_and_has_a_driver()
     {
         Assert.That(ProductionStateForks, Is.Not.Empty, "fixture bug: no BeaconState container found");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ForkDriver.ByName.Keys.Order(StringComparer.Ordinal), Is.EqualTo(ProductionStateForks),
-                "a production state container without a driver leaves its fork's vectors unrun; a driver without one cannot decode");
-            Assert.That(ConsensusSpecArchive.StateTransitionForks.Order(StringComparer.Ordinal), Is.EqualTo(ProductionStateForks),
-                "a fork not extracted enumerates no vectors, and zero vectors run green");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ForkDriver.ByName.Keys.Order(StringComparer.Ordinal), Is.EqualTo(ProductionStateForks),
+            "a production state container without a driver leaves its fork's vectors unrun; a driver without one cannot decode");
+        Assert.That(ConsensusSpecArchive.StateTransitionForks.Order(StringComparer.Ordinal), Is.EqualTo(ProductionStateForks),
+            "a fork not extracted enumerates no vectors, and zero vectors run green");
     }
 
     [Test]
@@ -82,16 +80,14 @@ public class ForkDriverTests
         ForkDriver.CopyElectraFields(source, target);
 
         Assert.That(fields, Has.Length.EqualTo(37), "the Electra BeaconState has 37 fields");
-        using (Assert.EnterMultipleScope())
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        foreach (PropertyInfo field in fields)
         {
-            foreach (PropertyInfo field in fields)
-            {
-                object? expected = field.GetValue(source);
-                Assert.That(field.GetValue(target), field.PropertyType.IsValueType ? Is.EqualTo(expected) : Is.SameAs(expected), field.Name);
-            }
-
-            Assert.That(target.ProposerLookahead, Is.Null, "the Fulu-only field is left for RefillProposerLookahead");
+            object? expected = field.GetValue(source);
+            Assert.That(field.GetValue(target), field.PropertyType.IsValueType ? Is.EqualTo(expected) : Is.SameAs(expected), field.Name);
         }
+
+        Assert.That(target.ProposerLookahead, Is.Null, "the Fulu-only field is left for RefillProposerLookahead");
     }
 
     // All validators exit at epoch 2: Fulu's lookahead samples that empty epoch, which Electra must not read.

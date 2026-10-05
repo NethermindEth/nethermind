@@ -46,25 +46,21 @@ public class BlockSignatureBatchVectorTests
 
         List<SanityCase> blocks = [.. SanityBlockCases().Select(static data => (SanityCase)data.Arguments[0]!)];
         List<OperationCase> operations = [.. OperationCases().Select(static data => (OperationCase)data.Arguments[0]!)];
-        using (Assert.EnterMultipleScope())
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(blocks.Select(static c => c.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks), "sanity/blocks forks");
+        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
         {
-            Assert.That(blocks.Select(static c => c.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks), "sanity/blocks forks");
-            foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-            {
-                IEnumerable<string> table = fork == "gloas" ? GloasOperations.Keys : FuluOperations.Keys;
-                Assert.That(operations.Where(c => c.Fork == fork).Select(static c => c.OperationName).Distinct(), Is.EquivalentTo(table), $"{fork} operations");
-            }
+            IEnumerable<string> table = fork == "gloas" ? GloasOperations.Keys : FuluOperations.Keys;
+            Assert.That(operations.Where(c => c.Fork == fork).Select(static c => c.OperationName).Distinct(), Is.EquivalentTo(table), $"{fork} operations");
         }
     }
 
     private static void AssertAlike(string casePath, Outcome serial, Outcome batched)
     {
         bool expectAccepted = File.Exists(Path.Combine(casePath, "post.ssz_snappy"));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(batched, Is.EqualTo(serial), "batched outcome against the serial one");
-            Assert.That(serial.Accepted, Is.EqualTo(expectAccepted), $"serial outcome against the vector: {serial}");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(batched, Is.EqualTo(serial), "batched outcome against the serial one");
+        Assert.That(serial.Accepted, Is.EqualTo(expectAccepted), $"serial outcome against the vector: {serial}");
     }
 
     private static Outcome RunBlocks(SanityCase testCase, bool batched) => FuluDriverSupport.RequireForkDriver(testCase.Fork) switch
