@@ -308,24 +308,22 @@ public class ColumnGossipRouterFuluHeaderTests
     }
 
 
-    [TestCase(false, TestName = nameof(Another_signature_over_a_header_that_already_verified_is_rejected))]
-    [TestCase(true, TestName = "A_failed_signature_does_not_evict_the_verified_one_so_the_honest_signature_pairs_once")]
-    public void Another_signature_over_a_header_that_already_verified_is_rejected(bool repeatHonest)
+    [Test]
+    public void Another_signature_over_a_header_is_rejected_without_evicting_the_verified_signature()
     {
         (ColumnGossipRouter router, _, _) = Create(Ancestry.DescendsFromFinalized, parentInSnapshot: true);
         router.Handle(Column, gloasTopic: false, Message(SignedSidecar()));
         DataColumnSidecar resigned = SignedSidecar(signer: 1);
 
         MessageValidity verdict = router.Handle(Column, gloasTopic: false, Message(resigned));
-        if (repeatHonest)
-        {
-            router.Handle(Column, gloasTopic: false, Message(SignedSidecar()));
-        }
+        long verificationsBeforeReplay = router.HeaderSignatureVerificationCount;
+        router.Handle(Column, gloasTopic: false, Message(SignedSidecar()));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected));
         Assert.That(router.GetDropCount(ColumnGossipDropReason.InvalidHeaderSignature), Is.EqualTo(1));
-        Assert.That(router.HeaderSignatureVerificationCount, Is.EqualTo(2), "one pairing per distinct signature; the honest one stays cached across the failed one");
+        Assert.That(verificationsBeforeReplay, Is.EqualTo(2), "one pairing per distinct signature");
+        Assert.That(router.HeaderSignatureVerificationCount, Is.EqualTo(verificationsBeforeReplay), "the honest signature stays cached across the failed one");
     }
 
     [TestCase(true, true, TestName = "signed header on a deep chain from the finalized root is consumed")]
