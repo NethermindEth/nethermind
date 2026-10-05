@@ -379,7 +379,7 @@ namespace Nethermind.Trie
                 // Warmer jobs share one node, so a racing resolver may have published its decode during the load.
                 if (NodeType != NodeType.Unknown) return;
 
-                WriteRlp(rlp = new CappedArray<byte>(fullRlp));
+                WriteLoadedRlp(rlp = new CappedArray<byte>(fullRlp));
                 // A node referenced by hash is constructed persisted already.
                 if (!IsPersisted) IsPersisted = true;
             }
@@ -536,13 +536,14 @@ namespace Nethermind.Trie
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             bool isRoot = path.Length == 0;
+            PreviousRlp previous = ReadPreviousRlp();
             CappedArray<byte> rlp = PrepareRlp(tree, ref path, bufferPool, canBeParallel);
 
             // Descendant nodes with RLP shorter than a hash are embedded in their parent.
             if (rlp.Length >= 32 || isRoot)
             {
                 Metrics.IncrementTreeNodeHashCalculations();
-                return Nethermind.Core.Crypto.Keccak.Compute(rlp.AsSpan());
+                return ComputeKeccak(rlp.AsSpan(), previous);
             }
 
             return null;
@@ -862,7 +863,7 @@ namespace Nethermind.Trie
             CappedArray<byte> rlp = ReadRlp();
             if (rlp.IsNotNull)
             {
-                trieNode.InitRlp(rlp);
+                trieNode.InitClonedRlp(rlp, this);
             }
 
             return trieNode;

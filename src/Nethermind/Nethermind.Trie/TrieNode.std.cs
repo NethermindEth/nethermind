@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using System.Threading;
@@ -169,6 +170,25 @@ namespace Nethermind.Trie
                 spin.SpinOnce(); // CAS failed — another writer raced; back off before retry
             }
         }
+
+        /// <summary>Publishes the RLP a node was resolved from.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WriteLoadedRlp(CappedArray<byte> value) => WriteRlp(value);
+
+        /// <summary>Gives this clone of <paramref name="original"/> its RLP, <paramref name="rlp"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void InitClonedRlp(CappedArray<byte> rlp, TrieNode original) => InitRlp(rlp);
+
+        /// <summary>What <see cref="ComputeKeccak"/> may reuse of a node's RLP from before it is re-encoded: nothing here.</summary>
+        private readonly struct PreviousRlp { }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private PreviousRlp ReadPreviousRlp() => default;
+
+        /// <summary>Computes the keccak of <paramref name="rlp"/>, this node's encoding.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
+            Nethermind.Core.Crypto.Keccak.Compute(rlp);
 
         /// <summary>Whether a resolved, persisted child is dropped back to its hash once traversed.</summary>
         /// <remarks>Worth it for a long-lived process, whose node cache would otherwise retain every deep

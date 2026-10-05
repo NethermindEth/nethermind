@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -135,6 +136,48 @@ namespace Nethermind.Trie
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void WriteRlp(CappedArray<byte> value) => InitRlp(value);
+
+        /// <summary>Publishes the RLP a node was resolved from, tagged with the witness node the store handed out last.</summary>
+        /// <remarks>
+        /// The tag rides in the length word's upper half, which the guest has no seqlock sequence for, so any later
+        /// <see cref="WriteRlp"/> drops it with the RLP it names. A tag the store did not set for this load is stale, which
+        /// <see cref="KeccakHash.ComputeHash256OfEdited"/> detects: it resumes only from the very array the tag names.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WriteLoadedRlp(CappedArray<byte> value)
+        {
+            _rlpArray = value.UnderlyingArray;
+            _rlpSeqAndLength = (uint)value.Length | (ulong)KeccakHash.LoadedWitnessNode() << 32;
+        }
+
+        /// <summary>Gives this clone of <paramref name="original"/> its RLP, <paramref name="rlp"/>, with the original's witness tag.</summary>
+        /// <remarks>A trie write replaces each sealed node on its path with a clone, so the branches a commit re-encodes are
+        /// clones: without the tag none of them could resume from the witness node they were loaded from.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void InitClonedRlp(CappedArray<byte> rlp, TrieNode original)
+        {
+            _rlpArray = rlp.UnderlyingArray;
+            _rlpSeqAndLength = original._rlpSeqAndLength;
+        }
+
+        /// <summary>A node's RLP from before it is re-encoded, with its witness tag, for <see cref="ComputeKeccak"/>.</summary>
+        private readonly struct PreviousRlp(byte[]? array, nint tag)
+        {
+            public readonly byte[]? Array = array;
+            public readonly nint Tag = tag;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private PreviousRlp ReadPreviousRlp() => new(_rlpArray, (nint)(_rlpSeqAndLength >> 32));
+
+        /// <summary>Computes the keccak of <paramref name="rlp"/>, this node's encoding.</summary>
+        /// <remarks>A full branch re-encoded from a witness node resumes from the sponge state of its unchanged leading
+        /// rate blocks; see <see cref="KeccakHash.ComputeHash256OfEdited"/>.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
+            rlp.Length == FullBranchRlpLength
+                ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag))
+                : Nethermind.Core.Crypto.Keccak.Compute(rlp);
 
         /// <inheritdoc cref="PruneTraversedChildren"/>
         /// <remarks>The guest verifies one block and exits, so there is no cache to keep small and nothing
