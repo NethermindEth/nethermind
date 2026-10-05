@@ -60,6 +60,8 @@ public class Eip3298Tests(bool eip3298Enabled) : VirtualMachineTestsBase
     [Test]
     public void Frame_refund_rejects_invalid_counters_and_restores_state([Values(-1L, 101L)] long refundCounter)
     {
+        // Before EIP-3298 a negative counter is guarded by a Debug.Assert, not a Release check.
+        Assume.That(eip3298Enabled || refundCounter >= 0);
         MethodInfo method = typeof(TransactionProcessorBase<EthereumGasPolicy>).GetMethod("SettleFrameTx", BindingFlags.Instance | BindingFlags.NonPublic)!
             .MakeGenericMethod(typeof(OffFlag));
         Transaction tx = Build.A.Transaction.WithGasLimit(GasLimit).WithSenderAddress(Sender).TestObject;
@@ -78,7 +80,7 @@ public class Eip3298Tests(bool eip3298Enabled) : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Error, Is.EqualTo(refundCounter < 0 || eip3298Enabled
+            Assert.That(result.Error, Is.EqualTo(eip3298Enabled
                 ? TransactionResult.ErrorType.StateGasInvariantViolated
                 : TransactionResult.ErrorType.None));
             Assert.That(TestState.GetBalance(Sender), Is.EqualTo(initialBalance));

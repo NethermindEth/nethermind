@@ -1711,7 +1711,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // The execution gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: the spec adds it to
             // the refund counter pre-execution and applies min(before_refund / 5, counter) (uncapped under EIP-3298).
             ulong executionRefund = CalculateClaimableRefund(preRefundGas, codeInsertExecutionRefund, spec);
-            if (executionRefund > preRefundGas)
+            if (spec.IsEip3298Enabled && executionRefund > preRefundGas)
                 return InvalidStateGas(Logger, $"EIP-3298 halt-path invariant violated: refund ({executionRefund}) exceeds gas used ({preRefundGas}).");
             ulong spentGas = Math.Max(preRefundGas - executionRefund, floorGas);
             // Spilled state gas burns in gas_left as execution gas; the state dimension keeps
@@ -1872,7 +1872,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertExecutionRefund);
-            if (refund > 0 && (ulong)refund > spentGas)
+            if (spec.IsEip3298Enabled && refund > 0 && (ulong)refund > spentGas)
                 return InvalidStateGas(Logger, $"EIP-3298 invariant violated: refund ({refund}) exceeds gas used ({spentGas}).");
             (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, spentGas, floorGasLong);
             if (blockStateGas < 0)
