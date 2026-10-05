@@ -156,7 +156,7 @@ public class SampledColumnCustodianTests
         await StartAsync(token, server, client);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, new OneLoggerLogManager(new ILogger(logger)));
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
-        ReportFailuresShortOfADrop(peerManager.GetBestPeers(0).Single());
+        ReportFailures(peerManager.GetBestPeers(0).Single(), count: 7);
 
         serverStatus.Refuse = true;
         await peerManager.RunMaintenanceRoundAsync(token);
@@ -192,7 +192,7 @@ public class SampledColumnCustodianTests
         Stopwatch parked = Stopwatch.StartNew();
         Task admission = peerManager.WaitForAdmissionCapacityAsync(token);
         bool parkedWhileHealthy = !admission.IsCompleted;
-        ReportFailuresShortOfADrop(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(supernode.P2P)));
+        ReportFailures(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(supernode.P2P)), count: 7);
 
         supernodeStatus.Refuse = true;
         for (int round = 0; round < 8 && peerManager.PeerCount > 1; round++)
@@ -235,7 +235,7 @@ public class SampledColumnCustodianTests
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
         IReadOnlyList<ulong> uncustodiedWhileHealthy = peerManager.UncustodiedSampledColumns();
-        ReportFailuresUpToTheLimit(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P)));
+        ReportFailures(peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P)));
 
         PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
         ulong[] onlyFailingCustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
@@ -282,7 +282,7 @@ public class SampledColumnCustodianTests
         {
             client.Config.MaxPeerCount = 1;
             client.Config.TargetPeerCount = 1;
-            ReportFailuresUpToTheLimit(failingPeer);
+            ReportFailures(failingPeer);
             await peerManager.RunMaintenanceRoundAsync(token);
             expected = [PeerIdOf(failing)];
         }
@@ -290,7 +290,7 @@ public class SampledColumnCustodianTests
         {
             client.Config.MaxPeerCount = 2;
             client.Config.TargetPeerCount = 2;
-            ReportFailuresUpToTheLimit(failingPeer);
+            ReportFailures(failingPeer);
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(replacement.P2P), token, Enr(replacementKey, replacement, Eip7594DasConstants.NumberOfCustodyGroups)), Is.True);
             expected = [PeerIdOf(bystander), PeerIdOf(replacement)];
         }
@@ -381,24 +381,15 @@ public class SampledColumnCustodianTests
     private static Task<bool> AdmitAsync(PeerManager peerManager, Node node, CancellationToken token) =>
         peerManager.TryAddPeerAsync(LoopbackAddress(node.P2P), token);
 
-    private static void ReportFailuresUpToTheLimit(IBeaconSyncPeer peer)
+    private static void ReportFailures(IBeaconSyncPeer peer, int count = 8)
     {
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < count; i++)
         {
             peer.ReportFailure(PeerFailureReason.RequestFailed);
         }
     }
 
     private static string PeerIdOf(Node node) => $"{node.P2P.LocalPeerId}";
-
-    private static void ReportFailuresShortOfADrop(IBeaconSyncPeer peer)
-    {
-        // One below PeerManager's consecutive failure limit of 8, so the test needs one maintenance round, not eight.
-        for (int i = 0; i < 7; i++)
-        {
-            peer.ReportFailure(PeerFailureReason.RequestFailed);
-        }
-    }
 
     public enum CeilingCase
     {

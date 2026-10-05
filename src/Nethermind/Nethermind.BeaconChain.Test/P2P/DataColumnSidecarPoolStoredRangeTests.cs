@@ -142,24 +142,17 @@ public class DataColumnSidecarPoolStoredRangeTests
         Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(First));
     }
 
-    [Test]
-    public void A_canonical_block_with_no_stored_columns_needs_them_only_when_it_carries_blobs([Values] bool withBlobs)
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    [TestCase(false, false, TestName = "A_canonical_block_that_is_not_stored_at_all_is_not_servable")]
+    public void A_canonical_block_with_no_stored_columns_is_servable_only_when_stored_without_blobs(bool withBlobs, bool storeBlock)
     {
         (_, BeaconChainStore store, _) = StoreRange();
         const ulong slot = Last + 1;
-        PutBlock(store, RootAt(slot), slot, withBlobs);
+        if (storeBlock) PutBlock(store, RootAt(slot), slot, withBlobs);
         store.ApplyCanonicalIndexChanges([(slot, RootAt(slot))], slot);
 
-        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(withBlobs ? slot + 1 : First));
-    }
-
-    [Test]
-    public void A_canonical_block_that_is_not_stored_at_all_is_not_servable()
-    {
-        (_, BeaconChainStore store, _) = StoreRange();
-        store.ApplyCanonicalIndexChanges([(Last + 1, RootAt(Last + 1))], Last + 1);
-
-        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(Last + 2));
+        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(storeBlock && !withBlobs ? First : slot + 1));
     }
 
     [TestCase(false, TestName = "A_complete_store_keeps_its_floor")]
