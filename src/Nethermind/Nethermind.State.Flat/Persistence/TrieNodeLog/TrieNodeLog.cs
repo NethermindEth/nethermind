@@ -20,8 +20,8 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// byte budget and shard count, sharded by the first byte of the column key.
 /// <c>FallbackNodes</c> (paths of 16+ nibbles, practically empty) goes straight to RocksDB. A batch's records are
 /// staged per shard and appended by one worker per shard, and the shards are made durable and merged in parallel.
-/// With <see cref="IFlatDbConfig.TrieNodeLogSecondLevelEnabled"/> every shard merges into a second-level shard of the
-/// same size instead of RocksDB, and only that one merges into RocksDB.
+/// Unless <see cref="IFlatDbConfig.TrieNodeLogSecondLevelMergeLag"/> is -1, every shard merges into a second-level shard
+/// of the same size instead of RocksDB, and only that one merges into RocksDB.
 /// </summary>
 public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 {
@@ -51,6 +51,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMaxConcurrentMerges)} must be at least 1, got {config.TrieNodeLogMaxConcurrentMerges}", -1);
         if (config.TrieNodeLogMergeBacklogMargin < 1)
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMergeBacklogMargin)} must be at least 1, got {config.TrieNodeLogMergeBacklogMargin}", -1);
+        if (config.TrieNodeLogSecondLevelMergeLag < -1)
+            throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogSecondLevelMergeLag)} must be -1 (disabled) or at least 0, got {config.TrieNodeLogSecondLevelMergeLag}", -1);
         _mergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _secondLevelMergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _drainOnShutdown = config.TrieNodeLogDrainOnShutdown;
@@ -79,7 +81,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 {
                     string name = $"{partitionName}-{shard}";
                     TrieNodeLogShard? secondLevel = null;
-                    if (config.TrieNodeLogSecondLevelEnabled)
+                    if (SecondLevelEnabled(config))
                     {
                         string secondLevelName = name + SecondLevelSuffix;
                         secondLevel = new TrieNodeLogShard(secondLevelName, name, columns, Path.Combine(basePath, secondLevelName), db, budget / shardCount, SecondLevelIndexRatio, config.TrieNodeLogSecondLevelMergeLag, config.TrieNodeLogMergeBacklogMargin, _secondLevelMergeLimiter, secondLevel: null, logManager);
@@ -103,6 +105,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     internal IReadOnlyList<TrieNodeLogShard> Shards => _shards;
 
+    private static bool SecondLevelEnabled(IFlatDbConfig config) => config.TrieNodeLogSecondLevelMergeLag >= 0;
+
     /// <summary>
     /// Whether the shard directories under <paramref name="basePath"/> are exactly those <paramref name="config"/>
     /// would create, so a log constructed over them recovers their generations instead of needing
@@ -114,7 +118,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     {
         if (!Directory.Exists(basePath)) return true;
         HashSet<string> onDisk = Directory.GetDirectories(basePath).Select(Path.GetFileName).ToHashSet()!;
-        string[] suffixes = config.TrieNodeLogSecondLevelEnabled ? ["", SecondLevelSuffix] : [""];
+        string[] suffixes = SecondLevelEnabled(config) ? ["", SecondLevelSuffix] : [""];
         foreach ((string name, int shardCount) in new[] { (StatePartitionName, config.TrieNodeLogStateShardCount), (StoragePartitionName, config.TrieNodeLogStorageShardCount) })
         {
             foreach (string suffix in suffixes)

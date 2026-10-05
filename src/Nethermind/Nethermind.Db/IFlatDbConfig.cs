@@ -196,12 +196,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Merge the whole trie node log into RocksDB at shutdown. The log otherwise persists across restarts, keeping its deduplication window; mainly for debugging.", DefaultValue = "false")]
     bool TrieNodeLogDrainOnShutdown { get; set; }
 
-    [ConfigItem(Description = "Number of sealed trie node log generations kept unmerged behind the newest one. A generation is merged into RocksDB only once this many newer generations are sealed, and keys rewritten in those are skipped, so the effective deduplication window is (1 + this) generations at the cost of that many extra generation files and in-memory indexes.", DefaultValue = "2")]
+    [ConfigItem(Description = "Number of sealed trie node log generations kept unmerged behind the newest one. A generation is merged into RocksDB only once this many newer generations are sealed, and keys rewritten in those are skipped, so the effective deduplication window is (1 + this) generations at the cost of that many extra generation files and in-memory indexes.", DefaultValue = "1")]
     int TrieNodeLogMergeLag { get; set; }
 
-    [ConfigItem(Description = "Copy each trie node log generation, deduplicated, into a second-level log instead of merging it into RocksDB; the second-level log has the same size and merge settings as the first, an in-memory index of 1/16 of its size for both partitions, and merges its own full generations into RocksDB. The surviving nodes are less likely to be rewritten, and the log's index answers their reads faster than RocksDB. Requires TrieNodeLogEnabled.", DefaultValue = "false")]
-    bool TrieNodeLogSecondLevelEnabled { get; set; }
-
-    [ConfigItem(Description = "TrieNodeLogMergeLag of the second-level trie node log: sealed second-level generations kept unmerged behind the newest one, so more of them stay readable from the log at the cost of their files and in-memory indexes.", DefaultValue = "2")]
+    [ConfigItem(Description = "TrieNodeLogMergeLag of the second-level trie node log, or -1 to disable it. Each merged trie node log generation is copied, deduplicated, into the second-level log instead of RocksDB; it has the same size and backlog settings as the first, an in-memory index of 1/16 of its size for both partitions, and merges its own generations into RocksDB once this many newer ones are sealed. The surviving nodes are less likely to be rewritten, and the log's index answers their reads faster than RocksDB.", DefaultValue = "1")]
     int TrieNodeLogSecondLevelMergeLag { get; set; }
 }

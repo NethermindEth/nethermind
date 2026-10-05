@@ -66,6 +66,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
                 TrieNodeLogEnabled = true,
                 TrieNodeLogStateBytes = 8192,
                 TrieNodeLogStorageBytes = 8192,
+                TrieNodeLogSecondLevelMergeLag = -1,
             }, $"{layout}+TrieNodeLog");
 
             yield return new TestConfiguration(new FlatDbConfig()
@@ -73,7 +74,6 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
                 Enabled = true,
                 Layout = layout,
                 TrieNodeLogEnabled = true,
-                TrieNodeLogSecondLevelEnabled = true,
                 TrieNodeLogStateBytes = 8192,
                 TrieNodeLogStorageBytes = 8192,
             }, $"{layout}+TrieNodeLogSecondLevel");

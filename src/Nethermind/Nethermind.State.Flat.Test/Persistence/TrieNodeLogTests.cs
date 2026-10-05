@@ -42,7 +42,8 @@ public class TrieNodeLogTests
         _directory = TempPath.GetTempDirectory();
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         // Two shards per partition, so every shard gets a 4 KiB generation.
-        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
+        // The second level is off unless a test enables it, so merges reach RocksDB directly.
+        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192, TrieNodeLogSecondLevelMergeLag = -1 };
         Open();
     }
 
@@ -320,7 +321,6 @@ public class TrieNodeLogTests
 
     private async Task ReopenWithSecondLevel(int secondLevelMergeLag)
     {
-        _config.TrieNodeLogSecondLevelEnabled = true;
         _config.TrieNodeLogMergeLag = 0;
         _config.TrieNodeLogSecondLevelMergeLag = secondLevelMergeLag;
         await Reopen();
@@ -562,7 +562,7 @@ public class TrieNodeLogTests
         if (writtenWithSecondLevel) await ReopenWithSecondLevel(secondLevelMergeLag: 0);
         WriteTop(0, 1, Rlp1);
         await _log.DisposeAsync();
-        _config.TrieNodeLogSecondLevelEnabled = secondLevelEnabled;
+        _config.TrieNodeLogSecondLevelMergeLag = secondLevelEnabled ? 0 : -1;
 
         Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, _config), Is.EqualTo(matches));
     }
