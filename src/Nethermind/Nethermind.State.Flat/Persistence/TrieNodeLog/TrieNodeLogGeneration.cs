@@ -35,6 +35,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     private readonly ulong* _slots;
     private readonly int _mask;
     private int _preserve;
+    private bool _directorySynced;
     private readonly Action<string, Exception> _onDeleteFailed;
 
     public ulong Number { get; }
@@ -197,7 +198,45 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
 
     public void Write(long offset, ReadOnlySpan<byte> data) => RandomAccess.Write(Handle, data, offset);
 
-    public void Fsync() => RandomAccess.FlushToDisk(Handle);
+    /// <summary>Makes the file's content durable; the first call also makes its directory entry durable.</summary>
+    public void Fsync()
+    {
+        RandomAccess.FlushToDisk(Handle);
+        if (_directorySynced) return;
+        FsyncDirectory(System.IO.Path.GetDirectoryName(Path)!);
+        _directorySynced = true;
+    }
+
+    private const int O_RDONLY = 0;
+    private const int O_DIRECTORY = 0x10000;
+
+    [DllImport("libc", EntryPoint = "open", SetLastError = true)]
+    private static extern int Open([MarshalAs(UnmanagedType.LPUTF8Str)] string path, int flags);
+
+    [DllImport("libc", EntryPoint = "fsync", SetLastError = true)]
+    private static extern int FsyncSyscall(int fd);
+
+    [DllImport("libc", EntryPoint = "close")]
+    private static extern int Close(int fd);
+
+    /// <summary>
+    /// <c>fsync(2)</c> on a directory, so a file created in it survives a crash along with its fsynced content;
+    /// .NET cannot open a directory handle. No-op outside Linux, the production target.
+    /// </summary>
+    private static void FsyncDirectory(string path)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        int fd = Open(path, O_RDONLY | O_DIRECTORY);
+        if (fd < 0) throw new IOException($"open failed for directory {path}: errno {Marshal.GetLastPInvokeError()}");
+        try
+        {
+            if (FsyncSyscall(fd) != 0) throw new IOException($"fsync failed for directory {path}: errno {Marshal.GetLastPInvokeError()}");
+        }
+        finally
+        {
+            Close(fd);
+        }
+    }
 
     public void Truncate(long length)
     {

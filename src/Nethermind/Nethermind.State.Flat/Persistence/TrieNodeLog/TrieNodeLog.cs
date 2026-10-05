@@ -59,6 +59,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _secondLevelMergeLimiter = new SemaphoreSlim(config.TrieNodeLogMaxConcurrentMerges, config.TrieNodeLogMaxConcurrentMerges);
         _drainOnShutdown = config.TrieNodeLogDrainOnShutdown;
         _logger = logManager.GetClassLogger<TrieNodeLog>();
+        // Before the manifest is replaced: a shard of the previous layout that no longer exists must still have its files.
+        ValidateRecordedShards(basePath, db);
 
         // A generation's index is 1/IndexRatio of its bytes and rolls it at three-quarters occupancy, so the ratio
         // follows the partition's typical record size: state nodes are mostly branches, storage has smaller leaves.
@@ -150,24 +152,28 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     }
 
     /// <summary>
+    /// Throws when a shard the database recorded confirms generations beyond its merged marker whose files are not
+    /// under <paramref name="basePath"/>: a database restored without its log directory, whatever the layout it is
+    /// started with. A database without a manifest is only checked shard by shard as its directories are opened.
+    /// </summary>
+    public static void ValidateRecordedShards(string basePath, IColumnsDb<FlatDbColumns> db)
+    {
+        IReadOnlyKeyValueStore metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        byte[]? manifest = metadata.Get(ShardManifestKey);
+        if (manifest is null) return;
+        foreach (string name in Encoding.UTF8.GetString(manifest).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            TrieNodeLogShard.ThrowIfConfirmedGenerationsMissing(metadata, name, Path.Combine(basePath, name));
+    }
+
+    /// <summary>
     /// Merges every shard directory found under <paramref name="basePath"/> into RocksDB and removes it, whatever
     /// shard layout wrote it, so the log can be reconfigured or disabled between runs without losing nodes.
     /// Run before the log is constructed; the configured shards then start empty.
     /// </summary>
-    /// <remarks>
-    /// Refuses a database that confirms generations of a recorded shard whose files are gone. Second-level shards
-    /// go first: they hold what their first-level shards merged before.
-    /// </remarks>
+    /// <remarks>Second-level shards go first: they hold what their first-level shards merged before.</remarks>
     public static void MergeAllOnDisk(string basePath, IColumnsDb<FlatDbColumns> db, ILogManager logManager)
     {
-        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
-        byte[]? manifest = metadata.Get(ShardManifestKey);
-        if (manifest is not null)
-        {
-            foreach (string name in Encoding.UTF8.GetString(manifest).Split('\n', StringSplitOptions.RemoveEmptyEntries))
-                TrieNodeLogShard.ThrowIfConfirmedGenerationsMissing(metadata, name, Path.Combine(basePath, name));
-        }
-
+        ValidateRecordedShards(basePath, db);
         if (!Directory.Exists(basePath)) return;
         ILogger logger = logManager.GetClassLogger<TrieNodeLog>();
         using SemaphoreSlim mergeLimiter = new(1, 1);
@@ -199,7 +205,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             }
             Directory.Delete(directory, recursive: true);
         }
-        metadata.Remove(ShardManifestKey);
+        db.GetColumnDb(FlatDbColumns.Metadata).Remove(ShardManifestKey);
     }
 
     internal static bool Covers(FlatDbColumns column) => column is FlatDbColumns.StateTopNodes or FlatDbColumns.StateNodes or FlatDbColumns.StorageNodes;

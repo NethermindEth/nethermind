@@ -86,7 +86,6 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
     {
-        IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         // Sync and import batches scan the trie columns for range deletes, so the log is merged into RocksDB before
         // the snapshot they scan is taken, and they bypass it.
         bool bypass = from == StateId.Sync || to == StateId.Sync || flags.HasFlag(WriteFlags.DisableWAL);
@@ -101,6 +100,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 $"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
+        IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         ITrieNodeLog.IWriteBatch logBatch;
         try
         {
@@ -165,7 +165,9 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                     batch.Dispose();
                     if (!flags.HasFlag(WriteFlags.DisableWAL))
                     {
-                        db.Flush(onlyWal: true);
+                        // A log-backed batch needs the sync to throw, so a version RocksDB did not make durable is never confirmed.
+                        if (bypass) db.Flush(onlyWal: true);
+                        else db.SyncWal();
                     }
                     logBatch.Confirm();
                 }

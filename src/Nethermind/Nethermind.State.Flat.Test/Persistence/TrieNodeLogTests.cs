@@ -733,6 +733,48 @@ public class TrieNodeLogTests
     }
 
     [Test]
+    public async Task A_database_restored_without_a_partition_is_refused_under_another_shard_count()
+    {
+        TreePath highPath = TreePath.FromHexString("f1234"); // second state shard
+        using (IPersistence.IWriteBatch batch = Batch(0, 1))
+        {
+            batch.SetStateTrieNode(highPath, Rlp1);
+        }
+        await _log.DisposeAsync();
+        foreach (string shardDirectory in Directory.GetDirectories(_directory.Path, "state-*")) Directory.Delete(shardDirectory, recursive: true);
+        _config.TrieNodeLogStateShardCount = 1; // state-1 is no longer a configured shard, only a recorded one
+
+        Assert.That(Open, Throws.TypeOf<InvalidDataException>().With.Message.Contains("state-1"));
+    }
+
+    [Test]
+    public async Task A_cleared_log_resumes_and_restarts_without_the_discarded_generations()
+    {
+        WriteTop(0, 1, Rlp1);
+        _persistence.Clear();
+        WriteTop(0, 1, Rlp2); // a new generation, numbered after the discarded one
+
+        await Reopen();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp2));
+    }
+
+    [Test]
+    public void A_WAL_sync_failure_does_not_confirm_the_log()
+    {
+        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call => _db.GetColumnDb(call.Arg<FlatDbColumns>()));
+        db.CreateSnapshot().Returns(_ => _db.CreateSnapshot());
+        db.StartWriteBatch().Returns(_ => _db.StartWriteBatch());
+        db.When(static db => db.SyncWal()).Do(static _ => throw new IOException("WAL sync failed"));
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, _log);
+
+        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(State(0), State(1), WriteFlags.None);
+        writeBatch.SetStateTrieNode(TopPath, Rlp1);
+        Assert.That(writeBatch.Dispose, Throws.TypeOf<IOException>());
+        Assert.That(() => Batch(1, 2), Throws.InvalidOperationException.With.Message.Contains("restart"), "the batch's version was never confirmed");
+    }
+
+    [Test]
     public async Task A_database_restored_without_its_second_level_directory_is_refused()
     {
         await ReopenWithSecondLevel(secondLevelMergeLag: 0);

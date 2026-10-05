@@ -267,11 +267,16 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     internal void ClearExclusive()
     {
         using SemaphoreSlimExtensions.Scope _ = _flushLock.EnterScope();
-        // Forget the generation the database expects a file for before deleting the files, durably, so a crash in
-        // between is not taken for a lost log directory.
+        // The generations dropped here count as merged from now on (the database is wiped with them), durably before
+        // they go, so neither a crash in between nor a later commit makes recovery look for their files.
+        ulong watermark;
+        using (_lock.EnterScope()) watermark = _nextGeneration - 1;
         IDb metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
-        metadata.Remove(GenerationKey);
+        Span<byte> marker = stackalloc byte[8];
+        BinaryPrimitives.WriteUInt64BigEndian(marker, watermark);
+        metadata.PutSpan(FlushedGenerationKey, marker);
         metadata.FlushOrThrow();
+        Metrics.TrieNodeLogFlushedGeneration[_label] = (long)watermark;
 
         _retention.EnterWriteLock();
         try

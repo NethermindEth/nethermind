@@ -145,7 +145,9 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
                     batch.Dispose();
                     if (!flags.HasFlag(WriteFlags.DisableWAL))
                     {
-                        db.Flush(onlyWal: true);
+                        // A log-backed batch needs the sync to throw, so a version RocksDB did not make durable is never confirmed.
+                        if (bypass) db.Flush(onlyWal: true);
+                        else db.SyncWal();
                     }
                     logBatch.Confirm();
                 }
