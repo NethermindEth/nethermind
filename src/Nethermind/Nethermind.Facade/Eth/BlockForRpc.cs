@@ -144,7 +144,7 @@ public class BlockForRpc
     public UInt256 Timestamp { get; set; }
 
     public UInt256? BaseFeePerGas { get; set; }
-    public object[] Transactions { get; set; }
+    public BlockTransactions? Transactions { get; set; }
     public Hash256 TransactionsRoot { get; set; }
     public Hash256[] Uncles { get; set; }
 
@@ -172,9 +172,9 @@ public class BlockForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? SlotNumber { get; set; }
 
-    private static object[] GetTransactionHashes(Transaction[] transactions)
+    private static BlockTransactions GetTransactionHashes(Transaction[] transactions)
     {
-        if (transactions.Length == 0) return Array.Empty<Hash256>();
+        if (transactions.Length == 0) return BlockTransactions.Empty;
 
         Hash256[] hashes = new Hash256[transactions.Length];
         for (int i = 0; i < transactions.Length; i++)
@@ -184,10 +184,10 @@ public class BlockForRpc
         return hashes;
     }
 
-    private static object[] GetTransactionsForRpc(Block block, ulong chainId)
+    private static BlockTransactions GetTransactionsForRpc(Block block, ulong chainId)
     {
         Transaction[] transactions = block.Transactions;
-        if (transactions.Length == 0) return Array.Empty<TransactionForRpc>();
+        if (transactions.Length == 0) return BlockTransactions.Empty;
 
         TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
         for (int i = 0; i < transactions.Length; i++)
