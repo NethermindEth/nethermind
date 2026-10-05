@@ -174,10 +174,7 @@ public static partial class EvmInstructions
             // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
             state.AddAccountRead(delegated);
 
-            // EIP-7702: precompile MUST NOT execute via delegation; the decorator would route to the precompile CodeInfo.
-            codeInfo = spec.IsPrecompile(delegated)
-                ? CodeInfo.Empty
-                : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
+            codeInfo = vm.CodeInfoRepository.GetDelegatedCodeInfo(delegated, spec);
         }
 
         // EIP-150: forward the requested gas to the child frame, capped at 63/64 of remaining.
@@ -433,6 +430,7 @@ public static partial class EvmInstructions
         ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadAfterGas(in dataOffset, in dataLength);
         // Construct the execution environment for the call.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+            vm.EnvironmentCache,
             codeInfo: codeInfo,
             executingAccount: target,
             caller: caller,
@@ -470,6 +468,7 @@ public static partial class EvmInstructions
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+            vm.FrameCache,
             gas: childGas,
             outputDestination: outputOffset.ToLong(),
             outputLength: outputLength.ToLong(),

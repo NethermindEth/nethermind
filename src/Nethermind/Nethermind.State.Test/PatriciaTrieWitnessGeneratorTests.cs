@@ -26,7 +26,7 @@ public class PatriciaTrieWitnessGeneratorTests
         HashSet<Hash256AsKey> expected = RunGenerator(db, root, scenario, parallelize: false);
         using ParallelUnbalancedWork.WorkerScope outer = budget == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(budget);
         int expectedBudget = budget != 0 ? budget : parallelize ? Core.Cpu.RuntimeInformation.ProcessorCount : 0;
-        CollectingSink sink = new(() => Assert.That(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0, Is.EqualTo(expectedBudget)));
+        CollectingSink sink = new(() => Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0, Is.EqualTo(expectedBudget)));
 
         PatriciaTrieWitnessGenerator.Generate(new RawScopedTrieStore(db), root, BuildEntries(scenario), sink, parallelize);
 

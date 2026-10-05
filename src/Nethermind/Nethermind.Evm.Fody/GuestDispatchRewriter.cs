@@ -4,6 +4,7 @@
 using Fody;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Mono.Cecil.Rocks;
 
 namespace Nethermind.Evm.Fody;
 
@@ -35,6 +36,7 @@ internal static class GuestDispatchRewriter
             {
                 if (!method.HasBody) continue;
                 ILProcessor il = method.Body.GetILProcessor();
+                bool simplified = false;
                 for (int i = 0; i < method.Body.Instructions.Count; i++)
                 {
                     Instruction instruction = method.Body.Instructions[i];
@@ -44,6 +46,14 @@ internal static class GuestDispatchRewriter
                         || method.DeclaringType != dispatch || !MatchesHandler(marker, method)
                         || method.Body.HasExceptionHandlers || !ReturnsCallResult(instruction.Next))
                         throw new WeavingException($"Unsupported guest tail dispatch use in {method.FullName}.");
+
+                    // Each rewrite grows the body, which can push a short branch's target out of its range; branches
+                    // take their long forms while the body changes and the shortest that fits once it is done.
+                    if (!simplified)
+                    {
+                        method.Body.SimplifyMacros();
+                        simplified = true;
+                    }
 
                     // Use the call site's constructed types, including its enclosing gas-policy argument.
                     CallSite signature = new(reference.ReturnType) { CallingConvention = MethodCallingConvention.Default };
@@ -57,6 +67,8 @@ internal static class GuestDispatchRewriter
                     i += 2;
                     rewritten++;
                 }
+
+                if (simplified) method.Body.OptimizeMacros();
             }
 
         if (rewritten == 0) throw new WeavingException("Guest tail dispatch marker has no callers.");

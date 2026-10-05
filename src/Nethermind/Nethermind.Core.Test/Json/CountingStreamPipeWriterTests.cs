@@ -114,4 +114,16 @@ public class CountingStreamPipeWriterTests
         stream.Position = 0;
         Assert.That(serializer.Deserialize<string[]>(stream), Is.EqualTo(payload));
     }
+
+    [Test]
+    public void Stream_output_is_escaped_like_string_output()
+    {
+        const string value = "1 < 2 & 'é'";
+        EthereumJsonSerializer serializer = new();
+        using MemoryStream stream = new();
+
+        serializer.Serialize(stream, value);
+
+        Assert.That(System.Text.Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(serializer.Serialize(value)));
+    }
 }
