@@ -400,6 +400,47 @@ public class Eth70ProtocolHandlerTests
         AssertReceiptsEqual(result[0], receipts);
     }
 
+    /// <summary>Without a local header the fork is unknown, so decreasing per-transaction gas is accepted once EIP-8116 is scheduled.</summary>
+    [Test]
+    public async Task Should_accept_decreasing_receipt_gas_of_unknown_block_once_eip8116_is_scheduled([Values] bool eip8116Scheduled)
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        _syncManager.FindHeader(blockHash).Returns((BlockHeader?)null);
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip8116Enabled.Returns(eip8116Scheduled);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        async Task Act()
+        {
+            using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+            Assert.That(result, Has.Count.EqualTo(1));
+        }
+
+        if (eip8116Scheduled)
+        {
+            await Act();
+        }
+        else
+        {
+            SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await Act());
+            Assert.That(exception?.Message, Is.EqualTo("Cumulative gas decreased within block receipts"));
+        }
+    }
+
     [Test]
     public async Task Partial_first_block_is_checked_against_its_remaining_expected_receipts([Values] bool exceedsCount)
     {

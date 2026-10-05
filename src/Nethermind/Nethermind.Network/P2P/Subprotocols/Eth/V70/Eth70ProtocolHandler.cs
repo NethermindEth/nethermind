@@ -287,6 +287,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                     receiptRlpBehaviors.Add(RlpBehaviors.None);
                     validateReceiptGasUpperBoundAgainstHeader.Add(false);
                     validateReceiptGasEqualToHeader.Add(false);
+                    // Without a timestamp the EIP-8116 rule is unknown; per-transaction checks accept both forms.
+                    if (_specProvider.GetFinalSpec().IsEip8116Enabled)
+                    {
+                        (eip8116Blocks ??= new bool[blockHashes.Count])[i] = true;
+                    }
+
                     continue;
                 }
 
