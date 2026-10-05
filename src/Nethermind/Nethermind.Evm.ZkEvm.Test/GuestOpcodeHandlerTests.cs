@@ -132,7 +132,7 @@ public class GuestOpcodeHandlerTests
         yield return Succeeds("DUP1 MLOAD",
             Code(PUSH1, 0x2a, PUSH1, 0x20, MSTORE, PUSH1, 0x20, JUMPDEST, DUP1, MLOAD, PUSH1, 0, MSTORE, STOP), 8 * 3 + 1 + MemoryCost(2), storedTwice);
 
-        // The same loop with PUSH2 destinations: the first jump to each destination runs unfused, the later ones fuse.
+        // The same loop with PUSH2 destinations: the first jump to each destination leaves it to the analysis, the later ones fuse.
         byte[] fusedCountdown = Code(
             PUSH1, 3,
             JUMPDEST,
@@ -157,8 +157,8 @@ public class GuestOpcodeHandlerTests
         yield return Succeeds("JUMP onto a JUMPDEST its look-back cannot prove",
             Code([PUSH1, 48, JUMP, .. Filled(43, STOP), PUSH1, PUSH32, JUMPDEST, STOP]), 3 + 8 + 1);
 
-        // Each loop branches back while its counter is non-zero: the first branch finds the destination unanalyzed and runs
-        // unfused, the second fuses with it taken, the last fuses with it not taken.
+        // Each loop branches back while its counter is non-zero: the first branch finds the destination unanalyzed and leaves
+        // it to the analysis, the second fuses with it taken, the last fuses with it not taken.
         const ulong conditionIteration = 1 + 3 + 3 + 3 + 3 + 3 + 3 + 3 + 10;
         yield return Succeeds("LT PUSH2 JUMPI loop",
             Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 0, LT, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
