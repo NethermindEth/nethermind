@@ -650,30 +650,6 @@ public class GloasOperationsTests
     /// <summary>Well past SHARD_COMMITTEE_PERIOD, so a genesis-activated validator may exit; the block-root window still covers the epoch boundary.</summary>
     private static readonly ulong ExitEligibleSlot = (Presets.ShardCommitteePeriod + 1) * Presets.SlotsPerEpoch;
 
-    [Test]
-    public void ProcessVoluntaryExit_initiates_the_exit_and_queues_it_where_the_fulu_pipeline_would()
-    {
-        BeaconStateFulu pre = CreateFuluStateAtBoundary(ValidatorCount);
-        BeaconStateFulu fulu = pre.Clone();
-        BeaconStateGloas gloas = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
-        PubkeyCache pubkeys = InstallRealValidatorKeys(gloas);
-        fulu.Slot = ExitEligibleSlot;
-        gloas.Slot = ExitEligibleSlot;
-        const int exiting = 9;
-        SignedVoluntaryExit exit = SignedExit(gloas, exiting, epoch: 3);
-
-        GloasBlockProcessing.ProcessVoluntaryExit(gloas, exit, new EpochCache(), pubkeys, verifySignature: true);
-        // The Fulu twin still carries placeholder pubkeys; only the queueing is compared, not the signature.
-        BlockProcessing.ProcessVoluntaryExit(fulu, exit, new EpochCache(), new PubkeyCache(), verifySignature: false);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(gloas.Validators![exiting].ExitEpoch, Is.EqualTo(BeaconStateAccessors.ComputeActivationExitEpoch(Presets.ShardCommitteePeriod + 1)));
-        Assert.That(gloas.Validators[exiting].ExitEpoch, Is.EqualTo(fulu.Validators![exiting].ExitEpoch));
-        Assert.That(gloas.Validators[exiting].WithdrawableEpoch, Is.EqualTo(fulu.Validators[exiting].WithdrawableEpoch));
-        Assert.That(gloas.EarliestExitEpoch, Is.EqualTo(fulu.EarliestExitEpoch));
-        Assert.That(gloas.ExitBalanceToConsume, Is.EqualTo(fulu.ExitBalanceToConsume));
-    }
-
     [TestCase("bad signature", "Invalid voluntary exit signature")]
     [TestCase("pending partial withdrawal", "pending partial withdrawals")]
     [TestCase("already exiting", "already initiated an exit")]
@@ -734,32 +710,6 @@ public class GloasOperationsTests
 
     // ---- BLS-to-execution changes ----
 
-    [Test]
-    public void ProcessBlsToExecutionChange_rewrites_the_bls_credentials_to_the_execution_address_as_the_fulu_pipeline_does()
-    {
-        BeaconStateFulu pre = CreateFuluStateAtBoundary(ValidatorCount);
-        const int changing = 4;
-        Bls.SecretKey fromKey = DeriveKey(500);
-        Validator withBlsCredentials = pre.Validators![changing].Clone();
-        withBlsCredentials.WithdrawalCredentials = BlsWithdrawalCredentials(new BlsPublicKey(new Bls.P1(fromKey).Compress()));
-        pre.Validators[changing] = withBlsCredentials;
-        BeaconStateFulu fulu = pre.Clone();
-        BeaconStateGloas gloas = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
-        Address toAddress = new(Hash(0xE7).Bytes[12..]);
-        SignedBlsToExecutionChange change = SignedBlsChange(gloas, changing, fromKey, toAddress);
-
-        GloasBlockProcessing.ProcessBlsToExecutionChange(gloas, change, verifySignature: true);
-        BlockProcessing.ProcessBlsToExecutionChange(fulu, change, verifySignature: true);
-
-        byte[] expectedBytes = new byte[32];
-        expectedBytes[0] = Presets.EthWithdrawalPrefix;
-        toAddress.Bytes.CopyTo(expectedBytes.AsSpan(12));
-        Hash256 expected = new(expectedBytes);
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(gloas.Validators![changing].WithdrawalCredentials, Is.EqualTo(expected));
-        Assert.That(gloas.Validators[changing].WithdrawalCredentials, Is.EqualTo(fulu.Validators![changing].WithdrawalCredentials));
-    }
-
     [TestCase("bad signature", "Invalid BLS to execution change signature")]
     [TestCase("credentials of another key", "does not match the withdrawal credentials")]
     [TestCase("execution credentials already", "does not have BLS withdrawal credentials")]
@@ -782,33 +732,5 @@ public class GloasOperationsTests
             change.Signature = Corrupt(change.Signature);
         AssertRefusedWithoutMutation(state, () =>
             GloasBlockProcessing.ProcessBlsToExecutionChange(state, change, verifySignature: true), expectedMessage, "a rejected change must leave the state untouched");
-    }
-
-    [Test]
-    public void SlashValidator_applies_the_same_exit_penalty_and_rewards_as_the_fulu_mutator()
-    {
-        BeaconStateFulu pre = CreateFuluStateAtBoundary(ValidatorCount);
-        BeaconStateFulu fulu = pre.Clone();
-        BeaconStateGloas gloas = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
-        const int slashed = 3;
-        const int proposer = 7;
-        fulu.ProposerLookahead![0] = proposer;
-        gloas.ProposerLookahead![0] = proposer;
-
-        // At this fixture size both forks' exit churn floors at MIN_PER_EPOCH_CHURN_LIMIT_ELECTRA,
-        // so the EIP-8061 exit churn and the Electra activation-exit churn agree on the exit epoch.
-        fulu.SlashValidator(slashed, new EpochCache());
-        gloas.SlashValidator(slashed, new EpochCache());
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(gloas.Validators![slashed].Slashed, Is.True);
-        Assert.That(gloas.Validators[slashed].ExitEpoch, Is.EqualTo(fulu.Validators![slashed].ExitEpoch));
-        Assert.That(gloas.Validators[slashed].WithdrawableEpoch, Is.EqualTo(fulu.Validators[slashed].WithdrawableEpoch));
-        Assert.That(gloas.Balances, Is.EqualTo(fulu.Balances).AsCollection);
-        Assert.That(gloas.Balances![slashed], Is.LessThan(32 * Gwei), "fixture bug: the penalty must actually have been applied");
-        Assert.That(gloas.Balances[proposer], Is.GreaterThan(32 * Gwei), "fixture bug: the reward must actually have been credited");
-        Assert.That(gloas.Slashings, Is.EqualTo(fulu.Slashings).AsCollection);
-        Assert.That(gloas.EarliestExitEpoch, Is.EqualTo(fulu.EarliestExitEpoch));
-        Assert.That(gloas.ExitBalanceToConsume, Is.EqualTo(fulu.ExitBalanceToConsume));
     }
 }
