@@ -44,15 +44,7 @@ namespace Nethermind.Core.Test
         public void Removed_matches_any_item()
         {
             LogEntry[] entries = GetLogEntries(10, 3);
-            Bloom accumulated = new();
-            accumulated.Accumulate(Bloom.Removed);
-            Bloom.Removed.Set(Keccak.OfAnEmptyString.Bytes);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(entries.Select(static e => Bloom.Removed.Matches(e)), Is.All.True);
-                Assert.That(entries.Select(e => accumulated.Matches(e)), Is.All.True);
-            }
+            Assert.That(entries.Select(static e => Bloom.Removed.Matches(e)), Is.All.True);
         }
 
         [Test]

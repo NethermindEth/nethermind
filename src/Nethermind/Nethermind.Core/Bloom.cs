@@ -23,7 +23,8 @@ public class Bloom : IEquatable<Bloom>
     /// <remarks>
     /// Unlike <see cref="Empty"/> (256 zero bytes) it exposes no bytes and RLP-encodes as <c>0x80</c>.
     /// It carries no filter information, so it matches every query: its hidden bits are all set,
-    /// which keeps <see cref="Matches(BloomExtract)"/>, <see cref="Set(ReadOnlySpan{byte}, Bloom?)"/> and <see cref="Accumulate"/> check-free.
+    /// which keeps <see cref="Matches(BloomExtract)"/> check-free. It must never be accumulated into a real bloom,
+    /// and its <see cref="BloomStructRef"/> has no bytes, so callers check <see cref="Bytes"/> for emptiness before matching it.
     /// </remarks>
     public static readonly Bloom Removed = CreateRemoved();
     public const int BitLength = 2048;
@@ -168,6 +169,7 @@ public class Bloom : IEquatable<Bloom>
             return;
         }
 
+        Debug.Assert(!bloom.IsRemoved || IsRemoved, "EIP-7668: Bloom.Removed must not be accumulated into a real bloom.");
         _bloomData.AsSpan().Or(bloom._bloomData.AsReadOnlySpan());
     }
 
