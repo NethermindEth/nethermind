@@ -267,6 +267,17 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
         Assert.That(tracer.PollCount, Is.EqualTo(2), "the first poll is at frame entry and the second at a CALLSUB");
     }
 
+    [TestCase("610005B000B1B2", 17UL, TestName = "Cancelable table: PUSH2 CALLSUB simple routine")]
+    [TestCase("610005B000B161000BB0B2B1B2", 34UL, TestName = "Cancelable table: PUSH2 CALLSUB two levels of subroutines")]
+    public void Executes_with_exact_gas_on_a_cancelable_table(string hex, ulong executionGas)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, FromEipVector(hex));
+        CancellingTracer tracer = new(traceInstructions, cancelAtPoll: int.MaxValue);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        AssertSuccess(tracer, executionGas);
+    }
+
     private const string SimpleRoutine = "6004B000B1B2";
     private static readonly string[] SimpleRoutineOpcodes = ["PUSH1", "CALLSUB", "CALLDEST", "RETURNSUB", "STOP"];
     private static readonly int[] SimpleRoutinePcs = [0, 2, 4, 5, 3];
@@ -370,7 +381,7 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
         public override bool IsTracingInstructions => false;
     }
 
-    private sealed class CancellingTracer(bool traceInstructions) : TestAllTracerWithOutput, ITxTracer
+    private sealed class CancellingTracer(bool traceInstructions, int cancelAtPoll = 2) : TestAllTracerWithOutput, ITxTracer
     {
         public int PollCount { get; private set; }
 
@@ -378,6 +389,6 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
 
         bool ITxTracer.IsCancelable => true;
 
-        bool ITxTracer.IsCancelled => ++PollCount >= 2;
+        bool ITxTracer.IsCancelled => ++PollCount >= cancelAtPoll;
     }
 }
