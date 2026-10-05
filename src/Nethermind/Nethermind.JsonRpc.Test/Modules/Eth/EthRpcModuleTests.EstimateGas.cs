@@ -1081,6 +1081,38 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo($"failed with {blockGasLimit} gas: invalid instruction"), serialized);
     }
 
+    // A precompile that rejects its input is halted like one that runs out of gas, but more gas does not help it.
+    [TestCase("0x0000000000000000000000000000000000000009", "0x", "Precompile BLAKE2F failed with error: invalid input length", TestName = "BLAKE2F without input")]
+    // (0, 0) + (1, 3): the second point is not on the curve.
+    [TestCase("0x0000000000000000000000000000000000000006", "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000003", "Precompile BN254_ADD failed with error: failed", TestName = "BN254 addition off the curve")]
+    // A 1025-byte base: EIP-7823 limits each length to 1024 bytes.
+    [TestCase("0x0000000000000000000000000000000000000005", "0x000000000000000000000000000000000000000000000000000000000000040100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001", "Precompile MODEXP failed with error: one or more of base/exponent/modulus length exceeded 1024 bytes", TestName = "MODEXP length above the EIP-7823 limit")]
+    public async Task Estimate_gas_precompile_failure_keeps_its_report(string precompile, string data, string error)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        ulong blockGasLimit = ctx.Test.BlockTree.Head!.GasLimit;
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"{{precompile}}","data":"{{data}}"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo($"failed with {blockGasLimit} gas: {error}"), serialized);
+    }
+
+    [Test]
+    public async Task Estimate_gas_precompile_out_of_gas_at_the_highest_gas_limit_exceeds_the_allowance()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        ulong hi = Math.Min(ctx.Test.BlockTree.Head!.GasLimit, Eip7825Constants.DefaultTxGasLimitCap);
+        // MODEXP with a modulus length of 2^256 - 1 costs more than any gas limit.
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000005","data":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo($"gas required exceeds allowance ({hi})"), serialized);
+    }
+
     private const string OneEther = "0xde0b6b3a7640000";
     private const string BelowBaseCostAtOneGwei = "0x1319718a0c00"; // 20999 gwei
 
