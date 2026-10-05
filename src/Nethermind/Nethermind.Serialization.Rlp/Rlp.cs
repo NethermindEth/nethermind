@@ -891,7 +891,16 @@ namespace Nethermind.Serialization.Rlp
             // First test rejects either bound being negative.
             if ((bytesLeft | l.Limit) < 0 || (uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
             {
-                ThrowCountOverLimit((uint)count, bytesLeft, l);
+                // A limit handed to the throw is a struct holding references, so every inlined guard would keep a
+                // stack copy that the caller's prologue zeroes; the default limit is rebuilt behind the call instead.
+                if (limit is null)
+                {
+                    ThrowCountOverDefaultLimit((uint)count, bytesLeft);
+                }
+                else
+                {
+                    ThrowCountOverLimit((uint)count, bytesLeft, l);
+                }
             }
         }
 
@@ -905,6 +914,12 @@ namespace Nethermind.Serialization.Rlp
                 ThrowUnexpectedCount(actual, expected);
             }
         }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowCountOverDefaultLimit(uint count, int bytesLeft) =>
+            ThrowCountOverLimit(count, bytesLeft, new RlpLimit());
 
         [DoesNotReturn]
         [StackTraceHidden]

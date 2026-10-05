@@ -1309,12 +1309,26 @@ namespace Nethermind.Trie
         }
 
         /// <summary>Resolves child <paramref name="i"/> from this node's RLP and caches it in <paramref name="data"/>, its slot.</summary>
-        /// <remarks>Out of line so the resolved-child check above stays small enough to inline into every walk.</remarks>
+        /// <remarks>
+        /// Out of line so the resolved-child check above stays small enough to inline into every walk. A hashed child of
+        /// a full branch, the most common case, is resolved here; every other shape goes to
+        /// <see cref="ResolveChildFromAnyRlp"/>, whose item scan would otherwise make this frame save every register.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         private object? ResolveChildFromRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i)
         {
-            object? childOrRef = null;
             CappedArray<byte> rlp = ReadRlp();
+            ReadOnlySpan<byte> span = rlp.AsSpan();
+            int position = 3 + i * Rlp.LengthOfKeccakRlp;
+            return span.Length == FullBranchRlpLength && IsBranch && span[position] == 160
+                ? ResolveHashedChild(tree, ref childPath, ref data, span.Slice(position + 1, Hash256.Size))
+                : ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private object? ResolveChildFromAnyRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i, CappedArray<byte> rlp)
+        {
+            object? childOrRef = null;
             if (rlp.IsNotNull)
             {
                 // Allows to load children in parallel
@@ -1331,13 +1345,7 @@ namespace Nethermind.Trie
                         }
                     case 160:
                         {
-                            // Not interned: both interned hashes are of payloads short enough to be embedded rather than hashed.
-                            Hash256 keccak = new(in MemoryMarshal.AsRef<ValueHash256>(nodeRlp.Data.Slice(position + 1, Hash256.Size)));
-
-                            TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                            childOrRef = child;
-                            if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
-
+                            childOrRef = ResolveHashedChild(tree, ref childPath, ref data, nodeRlp.Data.Slice(position + 1, Hash256.Size));
                             break;
                         }
                     default:
@@ -1351,6 +1359,16 @@ namespace Nethermind.Trie
             }
 
             return childOrRef;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static TrieNode ResolveHashedChild(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, ReadOnlySpan<byte> hash)
+        {
+            // Not interned: both interned hashes are of payloads short enough to be embedded rather than hashed.
+            Hash256 keccak = new(in MemoryMarshal.AsRef<ValueHash256>(hash));
+            TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
+            if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
+            return child;
         }
 
         /// <summary>
