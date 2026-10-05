@@ -69,16 +69,59 @@ public class BeaconChainStoreTests
     }
 
     [Test]
-    public void A_database_from_a_newer_schema_version_is_refused_and_left_unstamped()
+    public void A_database_from_another_schema_version_is_refused_and_left_unstamped(
+        [Values(0u, 1u, 2u, 3u, 4u, 5u, BeaconChainStore.CurrentSchemaVersion + 1)] uint unsupported)
     {
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        uint newer = BeaconChainStore.CurrentSchemaVersion + 1;
-        store.SetSchemaVersion(newer);
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        store.SetSchemaVersion(unsupported);
+        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(BlockRoot.Bytes, [0xff]);
 
         Assert.That(store.EnsureSchemaVersion, Throws.InvalidOperationException.With.Message.Contains("delete the beaconChain database"));
 
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
-        Assert.That(version, Is.EqualTo(newer), "a refused database must not be restamped as one this build can read");
+        Assert.That(version, Is.EqualTo(unsupported), "a refused database must not be restamped as one this build can read");
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.Blocks).Get(BlockRoot.Bytes), Is.EqualTo(new byte[] { 0xff }));
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.BlockIndex).GetAllKeys(), Is.Empty);
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex).GetAllKeys(), Is.Empty);
+    }
+
+    [Test]
+    public void A_populated_database_without_a_valid_stamp_is_refused_and_left_unchanged([Values] bool malformed)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        byte[]? stamp = malformed ? [1, 2, 3] : null;
+        if (stamp is not null) store.PutMetadata(BeaconChainMetadataKeys.SchemaVersion, stamp);
+        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(BlockRoot.Bytes, [0xff]);
+
+        Assert.That(store.EnsureSchemaVersion, Throws.InvalidOperationException.With.Message.Contains("delete the beaconChain database"));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.SchemaVersion), Is.EqualTo(stamp));
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.Blocks).Get(BlockRoot.Bytes), Is.EqualTo(new byte[] { 0xff }));
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.BlockIndex).GetAllKeys(), Is.Empty);
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex).GetAllKeys(), Is.Empty);
+    }
+
+    [Test]
+    public void A_current_database_is_accepted_without_rebuilding_its_indexes()
+    {
+        using CountingStatesColumnsDb db = new(sorted: true);
+        BeaconChainStore store = new(db);
+        store.SetSchemaVersion(BeaconChainStore.CurrentSchemaVersion);
+        db.States.Set([1], [1]);
+        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(BlockRoot.Bytes, [0xff]);
+
+        Assert.That(store.EnsureSchemaVersion, Throws.Nothing);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(db.States.KeysRead, Is.Zero, "opening the current schema does not enumerate stored state keys");
+        Assert.That(store.TryGetSchemaVersion(out uint version) ? version : (uint?)null, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.Blocks).Get(BlockRoot.Bytes), Is.EqualTo(new byte[] { 0xff }));
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.BlockIndex).GetAllKeys(), Is.Empty);
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex).GetAllKeys(), Is.Empty);
     }
 
     private static readonly Hash256 BlockRoot = new(Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333"));

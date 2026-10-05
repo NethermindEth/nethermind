@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using Nethermind.BeaconChain.ForkChoice;
-using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Sync;
@@ -11,7 +10,6 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Snappier;
 using static Nethermind.BeaconChain.Test.Storage.BeaconChainStoreEnvelopeTests;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
@@ -143,32 +141,6 @@ public class BeaconChainStoreEnvelopeRetentionTests
         store.PruneExecutionPayloadEnvelopes(Sepolia.GloasForkEpoch + BeaconChainStore.MinEpochsForBlockRequests + 2, ulong.MaxValue);
 
         Assert.That(column.GetAllKeys(), Is.Empty);
-    }
-
-    [Test]
-    public void Database_at_the_children_index_version_upgrades_without_a_rebuild_and_keeps_its_envelopes()
-    {
-        const uint childrenIndexVersion = 2;
-        MemColumnsDb<BeaconChainDbColumns> db = new();
-        BeaconChainStore store = new(db, Sepolia);
-        Hash256 blockRoot = Keccak.Compute("block");
-        store.PutForkedBlock(blockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(FirstGloasSlot + 1)));
-        Hash256 unindexedRoot = Keccak.Compute("block stored without the children index");
-        byte[] unindexed = SignedBeaconBlockCodec.Encode(new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(FirstGloasSlot + 2)), Sepolia);
-        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(unindexedRoot.Bytes, Snappy.CompressToArray(unindexed));
-        SignedExecutionPayloadEnvelope envelope = Envelope(FirstGloasSlot + 1);
-        store.PutExecutionPayloadEnvelope(envelope.Message!.BeaconBlockRoot!, envelope);
-        store.SetSchemaVersion(childrenIndexVersion);
-
-        BeaconChainStore reopened = new(db, Sepolia);
-        reopened.EnsureSchemaVersion();
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(reopened.TryGetSchemaVersion(out uint version), Is.True);
-        Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion).And.GreaterThan(childrenIndexVersion), "a build that stamps the children index version must refuse a database this build wrote");
-        Assert.That(reopened.TryGetChildren(unindexedRoot, out _, out _), Is.False, "the children index is not rebuilt");
-        Assert.That(reopened.TryGetExecutionPayloadEnvelope(envelope.Message.BeaconBlockRoot!, out _), Is.True);
-        Assert.That(reopened.HasBlock(blockRoot), Is.True);
     }
 
     private static byte[] DamagedBounds(BoundsDamage damage) => damage switch

@@ -392,6 +392,7 @@ public class BeaconChainServiceStartupTests
         BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Blocks, blocks), GloasCheckpointFiles.Spec);
         await using IContainer container = KickContainer(engine, pubkeyCache, logManager).AddSingleton(store).Build();
         byte[] stateSsz = SyncCommitteeKeyAnchors.EncodeState(gloas: false, nextCommittee: false, key: null, out Hash256 blockRoot);
+        store.EnsureSchemaVersion();
         store.PutState(blockRoot, stateSsz);
         store.SetAnchor(blockRoot, 0);
         container.Resolve<IBeaconChainConfig>().WeakSubjectivityCheckpoint = independentCheckpoint ? $"{blockRoot}:0" : null;
@@ -664,6 +665,7 @@ public class BeaconChainServiceStartupTests
 
     private static void SeedAnchor(BeaconChainStore store, bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key, Hash256? blockStateRoot = null)
     {
+        store.EnsureSchemaVersion();
         byte[] stateSsz = SyncCommitteeKeyAnchors.EncodeState(gloas, nextCommittee, key, out Hash256 blockRoot);
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         BeaconBlock fulu = chain.AnchorBlock;

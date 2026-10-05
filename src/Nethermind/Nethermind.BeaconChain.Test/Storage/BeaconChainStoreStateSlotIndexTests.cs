@@ -59,6 +59,7 @@ public class BeaconChainStoreStateSlotIndexTests
     {
         using MemColumnsDb<BeaconChainDbColumns> db = new();
         BeaconChainStore store = new(db);
+        store.EnsureSchemaVersion();
         store.PutState(Root(1), StateAt(10));
         store.PutState(Root(2), StateAt(40));
         store.PutState(Root(3), StateAt(90));
@@ -69,40 +70,6 @@ public class BeaconChainStoreStateSlotIndexTests
 
         Assert.That(new[] { 1, 2, 3 }.Select(i => restarted.TryGetState(Root(i), out _)), Is.EqualTo(new[] { false, true, true }));
         Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(2), "a pruned state leaves no index entry");
-    }
-
-    [Test]
-    public void States_stored_before_the_index_existed_are_indexed_once_and_then_pruned_by_slot([Values(6, 1027)] int count)
-    {
-        using CountingStatesColumnsDb db = new(sorted: true);
-        BeaconChainStore legacy = new(db);
-        for (int i = 0; i < count; i++)
-        {
-            legacy.PutState(Root(i), StateAt(10 + 10ul * (ulong)i));
-        }
-
-        foreach (byte[] key in db.Index.GetAllKeys().Where(key => key.Length == IndexKeyLength).ToArray())
-        {
-            db.Index.Remove(key);
-        }
-
-        legacy.PutState(Root(count), [9]);
-        legacy.SetSchemaVersion(4);
-        Assert.That(IndexKeyCount(db.Index), Is.Zero, "fixture bug: the states must look like a build without the index wrote them");
-
-        BeaconChainStore upgraded = new(db);
-        upgraded.EnsureSchemaVersion();
-        int indexed = IndexKeyCount(db.Index);
-        db.States.ResetCount();
-        upgraded.EnsureSchemaVersion();
-        int keysReadByRepeat = db.States.KeysRead;
-        upgraded.SetAnchor(Root(3), 40);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(upgraded.TryGetState(Root(count), out _), Is.True, "a legacy state without a readable slot is kept");
-        Assert.That(indexed, Is.EqualTo(count));
-        Assert.That(keysReadByRepeat, Is.Zero, "the state table is scanned once, when the version is raised");
-        Assert.That(Enumerable.Range(0, count).Select(i => upgraded.TryGetState(Root(i), out _)), Is.EqualTo(Enumerable.Range(0, count).Select(i => i >= 3)));
     }
 
     [Test]
@@ -174,35 +141,6 @@ public class BeaconChainStoreStateSlotIndexTests
         Assert.That(store.TryGetBlockRootByStateRoot(stateRoot, out Hash256? restored), Is.True);
         Assert.That(restored, Is.EqualTo(blockRoot));
         Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(1));
-    }
-
-    [Test]
-    public void Both_indexes_are_migrated_from_the_prior_layout([Values(4u, 5u)] uint version)
-    {
-        using MemColumnsDb<BeaconChainDbColumns> db = new();
-        BeaconChainStore store = new(db);
-        Hash256 blockRoot = Root(1);
-        Hash256 stateRoot = Root(11);
-        SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(10);
-        block.Message!.StateRoot = stateRoot;
-        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(blockRoot.Bytes, Snappier.Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
-        store.PutState(blockRoot, StateAt(10));
-        db.GetColumnDb(BeaconChainDbColumns.BlockIndex).Remove([4, .. stateRoot.Bytes.ToArray()]);
-        db.GetColumnDb(BeaconChainDbColumns.BlockIndex).Remove([3, .. blockRoot.Bytes.ToArray()]);
-        if (version == 4)
-        {
-            foreach (byte[] key in db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex).GetAllKeys().ToArray())
-                db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex).Remove(key);
-        }
-        store.SetSchemaVersion(version);
-
-        store.EnsureSchemaVersion();
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(store.TryGetBlockRootByStateRoot(stateRoot, out Hash256? found), Is.True);
-        Assert.That(found, Is.EqualTo(blockRoot));
-        Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(1));
-        Assert.That(store.TryGetSchemaVersion(out uint migrated) ? migrated : 0, Is.EqualTo(6u));
     }
 
     [Test]

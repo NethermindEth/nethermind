@@ -21,6 +21,7 @@ public class BeaconChainStoreStatePruningTests
     {
         _db = new MemColumnsDb<BeaconChainDbColumns>();
         _store = new BeaconChainStore(_db);
+        _store.EnsureSchemaVersion();
     }
 
     [TearDown]

@@ -171,7 +171,7 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
 
     [Test]
     public async Task Hex_state_id_uses_the_state_commitment(
-        [Values("root", "fork", "ssz")] string endpoint, [Values] bool legacy)
+        [Values("root", "fork", "ssz")] string endpoint)
     {
         const ulong slot = 13_200_000;
         Hash256 blockRoot = TestRoot(20);
@@ -179,13 +179,7 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(Spec);
         SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(slot);
         block.Message!.StateRoot = stateRoot;
-        if (legacy)
-        {
-            host.WriteLegacyBlock(blockRoot, block);
-            host.Store.SetSchemaVersion(4);
-            host.Store.EnsureSchemaVersion();
-        }
-        else host.Store.PutBlock(blockRoot, block);
+        host.Store.PutBlock(blockRoot, block);
         host.Store.PutState(blockRoot, BeaconStateFulu.Encode(BeaconApiTestHost.RichState(Spec, slot)));
 
         string Path(Hash256 id) => endpoint == "ssz" ? $"/eth/v2/debug/beacon/states/{id}" : $"/eth/v1/beacon/states/{id}/{endpoint}";

@@ -43,7 +43,7 @@ public static class BeaconChainMetadataKeys
 /// with chunk count and uncompressed length under the bare root. Blocks use snappy-compressed SSZ.
 /// BlockIndex keys are disjoint: 8-byte slots, BlockSummaryKeyPrefix ++ root, and ChildrenKeyPrefix ++ root.
 /// Children values contain state (1 byte), parent root (32), then child roots (32 each). Stored blocks have complete
-/// child lists; absent parents have pending lists. Older databases rebuild the index at ChildrenIndexSchemaVersion.
+/// child lists; absent parents have pending lists.
 /// StateId indexes use prefix 4 for state-to-block roots and 3 for block-to-state roots, updated with blocks.
 /// SignedBeaconBlockCodec selects the slot's fork shape; without a spec only Fulu blocks are supported.
 /// </remarks>
@@ -52,13 +52,7 @@ public static class BeaconChainMetadataKeys
 public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSpec? spec = null)
 {
     /// <summary>Layout version of every column; bump it whenever a change needs an existing database migrated or refused.</summary>
-    public const uint CurrentSchemaVersion = StateRootIndexSchemaVersion;
-
-    /// <summary>The first version whose children index is known to cover every stored block; an older database gets the index rebuilt.</summary>
-    private const uint ChildrenIndexSchemaVersion = 2;
-
-    /// <summary>The first version whose <see cref="BeaconChainDbColumns.StateSlotIndex"/> column holds a slot index entry for every state whose slot is readable, so a build that does not maintain it refuses the database.</summary>
-    private const uint StateSlotIndexSchemaVersion = 5;
+    public const uint CurrentSchemaVersion = 6;
 
     /// <summary>Offset of <c>parent_root</c> in a serialized <c>SignedBeaconBlock</c>: the message offset and signature precede the message, whose slot and proposer index precede the root; the same in every fork.</summary>
     private const int ParentRootOffset = sizeof(uint) + BlsSignature.Length + sizeof(ulong) + sizeof(ulong);
@@ -86,8 +80,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     private const byte ChildrenPending = 0;
     /// <summary>The block is stored and the list is the full set of stored children.</summary>
     private const byte ChildrenComplete = 1;
-
-    internal const int ChildrenRebuildBatchSize = 1024;
 
     /// <summary><c>compute_min_epochs_for_block_requests()</c> (phase0/p2p-interface.md), the epochs ExecutionPayloadEnvelopesByRange/ByRoot must serve (gloas/p2p-interface.md).</summary>
     internal const ulong MinEpochsForBlockRequests = Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2;
@@ -810,45 +802,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         }
 
         return keys;
-    }
-
-    /// <summary>Writes a state slot index entry for every stored state whose slot is readable.</summary>
-    /// <remarks>Reads only the first chunk prefix of each state and writes <see cref="ChildrenRebuildBatchSize"/> entries at a time. Idempotent: it runs before the version stamp, and a crash in between only makes it run again.</remarks>
-    private void RebuildStateSlotIndex()
-    {
-        List<byte[]> entries = new(ChildrenRebuildBatchSize);
-        foreach (byte[] key in _states.GetAllKeys())
-        {
-            if (key.Length != Hash256.Size || _states.Get(key) is not { } manifest)
-            {
-                continue;
-            }
-
-            Hash256 root = new(key);
-            if (TryGetStateSlot(root, manifest, out ulong slot))
-            {
-                entries.Add(StateSlotIndexKey(slot, root));
-                if (entries.Count == ChildrenRebuildBatchSize)
-                {
-                    WriteStateSlotIndexEntries(entries);
-                    entries.Clear();
-                }
-            }
-        }
-
-        WriteStateSlotIndexEntries(entries);
-    }
-
-    private void WriteStateSlotIndexEntries(List<byte[]> entries)
-    {
-        if (entries.Count == 0) return;
-
-        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
-        IWriteBatch states = batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex);
-        foreach (byte[] entry in entries)
-        {
-            states.Set(entry, []);
-        }
     }
 
     /// <summary>Stores a verified execution payload envelope under its beacon block root and indexes it by slot for <see cref="PruneExecutionPayloadEnvelopes"/>.</summary>
@@ -1667,106 +1620,25 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     public byte[]? GetMetadata(string key) => _metadata.Get(Encoding.UTF8.GetBytes(key));
     public void PutMetadata(string key, byte[] value) => _metadata.Set(Encoding.UTF8.GetBytes(key), value);
 
-    /// <summary>Brings the database to <see cref="CurrentSchemaVersion"/>, or refuses one last written by a newer build.</summary>
-    /// <remarks>
-    /// An absent version means version 0. Version 1 added the stamp without rewriting data.
-    /// Version 2 rebuilds children indexes for all stored blocks; versions 3 and 4 add envelope and
-    /// data-column compatibility stamps without rewriting their layouts. These stamps reject older
-    /// builds that cannot prune those columns. Version 5 indexes readable state slots for pruning
-    /// and rejects builds that cannot maintain the index. Version 6 indexes retained blocks by state
-    /// commitment for Beacon API identifiers. Newer versions are refused without changing their stamp.
-    /// </remarks>
-    /// <exception cref="InvalidOperationException">The database was written by a newer schema version, or holds a block record too short to be a signed beacon block.</exception>
+    /// <summary>Stamps an empty database or verifies that a populated database uses the current schema.</summary>
+    /// <exception cref="InvalidOperationException">The database does not use the current schema.</exception>
     public void EnsureSchemaVersion()
     {
-        uint version = TryGetSchemaVersion(out uint stored) ? stored : 0;
-        if (version > CurrentSchemaVersion)
+        if (TryGetSchemaVersion(out uint version))
         {
-            throw new InvalidOperationException($"The beaconChain database has schema version {version}, newer than the {CurrentSchemaVersion} this build supports; delete the beaconChain database to checkpoint-sync again.");
+            if (version != CurrentSchemaVersion)
+                throw new InvalidOperationException($"The beaconChain database has schema version {version}, but this build supports only {CurrentSchemaVersion}; delete the beaconChain database to checkpoint-sync again.");
+            return;
         }
 
-        if (version < ChildrenIndexSchemaVersion)
+        foreach (BeaconChainDbColumns column in db.ColumnKeys)
         {
-            RebuildChildrenIndex();
+            using IEnumerator<byte[]> keys = db.GetColumnDb(column).GetAllKeys().GetEnumerator();
+            if (keys.MoveNext())
+                throw new InvalidOperationException("The beaconChain database has no valid schema version; delete the beaconChain database to checkpoint-sync again.");
         }
 
-        if (version < StateSlotIndexSchemaVersion)
-        {
-            RebuildStateSlotIndex();
-        }
-
-        if (version < StateRootIndexSchemaVersion)
-        {
-            RebuildStateRootIndex();
-        }
-
-        if (version != CurrentSchemaVersion)
-        {
-            SetSchemaVersion(CurrentSchemaVersion);
-        }
-    }
-
-    /// <summary>Replaces the whole children index with one derived from the stored blocks alone.</summary>
-    /// <remarks>
-    /// Stored blocks get complete entries with parent roots; absent parents keep pending child lists.
-    /// Tombstones and deleted-block entries are dropped. Only the parent-root prefix is decompressed,
-    /// supporting every fork. Reads and writes use <see cref="ChildrenRebuildBatchSize"/> batches to bound
-    /// memory. Runs before the version stamp and is idempotent after a crash.
-    /// </remarks>
-    private void RebuildChildrenIndex()
-    {
-        RemoveChildrenEntries();
-
-        List<(Hash256 Root, Hash256 ParentRoot)> batch = new(ChildrenRebuildBatchSize);
-        foreach (byte[] key in _blocks.GetAllKeys())
-        {
-            if (key.Length != Hash256.Size || !TryReadParentRoot(key, out Hash256? parentRoot))
-            {
-                continue;
-            }
-
-            batch.Add((new Hash256(key), parentRoot));
-            if (batch.Count == ChildrenRebuildBatchSize)
-            {
-                WriteRebuiltChildren(batch);
-                batch.Clear();
-            }
-        }
-
-        WriteRebuiltChildren(batch);
-    }
-
-    private void RemoveChildrenEntries()
-    {
-        List<byte[]> stale = new(ChildrenRebuildBatchSize);
-        foreach (byte[] key in _blockIndex.GetAllKeys())
-        {
-            if (key.Length != ChildrenKeyLength || key[0] != ChildrenKeyPrefix)
-            {
-                continue;
-            }
-
-            stale.Add(key);
-            if (stale.Count == ChildrenRebuildBatchSize)
-            {
-                RemoveIndexKeys(stale);
-                stale.Clear();
-            }
-        }
-
-        RemoveIndexKeys(stale);
-    }
-
-    private void RemoveIndexKeys(List<byte[]> keys)
-    {
-        if (keys.Count == 0) return;
-
-        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
-        IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
-        foreach (byte[] key in keys)
-        {
-            index.Remove(key);
-        }
+        SetSchemaVersion(CurrentSchemaVersion);
     }
 
     /// <returns><c>false</c> when the record is gone.</returns>
@@ -1796,64 +1668,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         {
             _blocks.DangerousReleaseMemory(compressed);
         }
-    }
-
-    /// <summary>Writes the own entry of each block in <paramref name="blocks"/> and links it under its parent, rewriting each touched entry once.</summary>
-    private void WriteRebuiltChildren(List<(Hash256 Root, Hash256 ParentRoot)> blocks)
-    {
-        if (blocks.Count == 0) return;
-
-        Dictionary<Hash256, byte[]> entries = [];
-        Dictionary<Hash256, List<Hash256>> added = [];
-        foreach ((Hash256 root, Hash256 parentRoot) in blocks)
-        {
-            byte[] ownEntry = LoadRebuiltEntry(entries, root) ?? NewChildrenEntry(ChildrenPending, parentRoot);
-            ownEntry[0] = ChildrenComplete;
-            parentRoot.Bytes.CopyTo(ownEntry.AsSpan(1));
-            entries[root] = ownEntry;
-
-            if (!added.TryGetValue(parentRoot, out List<Hash256>? siblings))
-            {
-                added[parentRoot] = siblings = [];
-            }
-
-            siblings.Add(root);
-        }
-
-        foreach ((Hash256 parentRoot, List<Hash256> children) in added)
-        {
-            byte[] parentEntry = LoadRebuiltEntry(entries, parentRoot) ?? NewChildrenEntry(ChildrenPending, Hash256.Zero);
-            byte[] extended = new byte[parentEntry.Length + children.Count * Hash256.Size];
-            parentEntry.CopyTo(extended, 0);
-            for (int i = 0; i < children.Count; i++)
-            {
-                children[i].Bytes.CopyTo(extended.AsSpan(parentEntry.Length + i * Hash256.Size));
-            }
-
-            entries[parentRoot] = extended;
-        }
-
-        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
-        IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
-        Span<byte> entryKey = stackalloc byte[ChildrenKeyLength];
-        foreach ((Hash256 root, byte[] entry) in entries)
-        {
-            ChildrenKey(root, entryKey);
-            index.Set(entryKey, entry);
-        }
-    }
-
-    /// <summary>The entry of <paramref name="root"/> as this batch or an earlier one left it.</summary>
-    private byte[]? LoadRebuiltEntry(Dictionary<Hash256, byte[]> batchEntries, Hash256 root)
-    {
-        if (batchEntries.TryGetValue(root, out byte[]? entry))
-        {
-            return entry;
-        }
-
-        Span<byte> key = stackalloc byte[ChildrenKeyLength];
-        ChildrenKey(root, key);
-        return ReadChildrenEntry(key);
     }
 
     public bool TryGetSchemaVersion(out uint version)

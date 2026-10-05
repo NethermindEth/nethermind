@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Snappier;
-using Transaction = Nethermind.BeaconChain.Types.Transaction;
 
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
@@ -114,41 +113,6 @@ public class BeaconChainStoreChildrenIndexTests
     }
 
     [Test]
-    public void Opening_a_database_from_before_the_index_rebuilds_every_child_list_as_complete()
-    {
-        Hash256 grandparent = FromLow(0);
-        Hash256 parent = FromLow(1);
-        Hash256 legacyChild = FromLow(2);
-        Hash256 indexedChild = FromLow(3);
-        Hash256 deletedLegacy = FromLow(4);
-        WriteLegacyBlock(parent, CreateBlock(100, grandparent));
-        WriteLegacyBlock(legacyChild, CreateBlock(101, parent));
-        _store.PutBlock(indexedChild, CreateBlock(102, parent)); // a build that had the index but not yet the rebuild
-        WriteLegacyBlock(deletedLegacy, CreateBlock(103, parent));
-        _store.DeleteBlock(deletedLegacy); // leaves a tombstone that pins the block incomplete
-        _store.SetCanonicalRoot(100, parent);
-        _store.SetSchemaVersion(1);
-
-        BeaconChainStore reopened = new(_db);
-        reopened.EnsureSchemaVersion();
-
-        Assert.That(reopened.TryGetSchemaVersion(out uint version), Is.True);
-        Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
-        Assert.That(reopened.TryGetChildren(parent, out Hash256[] children, out bool complete), Is.True);
-        Assert.That(children, Is.EquivalentTo(new[] { legacyChild, indexedChild }), "the rebuild sees every stored block, indexed or not");
-        Assert.That(complete, Is.True, "after the rebuild the list holds every stored child, so the API may answer with it");
-        Assert.That(reopened.TryGetChildren(legacyChild, out Hash256[] leafChildren, out bool leafComplete), Is.True);
-        Assert.That(leafChildren, Is.Empty);
-        Assert.That(leafComplete, Is.True, "a legacy block with no stored children has a complete empty list, not a pinned-incomplete one");
-        Assert.That(reopened.TryGetChildren(grandparent, out Hash256[] grandchildren, out bool grandparentComplete), Is.True);
-        Assert.That(grandchildren, Is.EqualTo(new[] { parent }));
-        Assert.That(grandparentComplete, Is.False, "a parent that is not stored is tracked for its children but cannot vouch for them");
-        Assert.That(reopened.TryGetChildren(deletedLegacy, out _, out _), Is.False, "a tombstone describes a block the rebuild proves absent");
-        Assert.That(reopened.TryGetCanonicalRoot(100, out Hash256? canonical), Is.True);
-        Assert.That(canonical, Is.EqualTo(parent), "the canonical slot index shares the column and must survive the rebuild");
-    }
-
-    [Test]
     public void A_database_already_at_the_current_schema_version_keeps_its_index_as_is()
     {
         Hash256 legacy = FromLow(1);
@@ -158,120 +122,14 @@ public class BeaconChainStoreChildrenIndexTests
         BeaconChainStore reopened = new(_db);
         reopened.EnsureSchemaVersion();
 
-        Assert.That(reopened.TryGetChildren(legacy, out _, out _), Is.False, "the rebuild scans every stored block, so it must run only on the upgrade that introduced it");
-    }
-
-    [Test]
-    public void A_rebuilt_index_equals_the_one_built_by_storing_and_deleting_the_same_blocks()
-    {
-        const int Blocks = 2600;
-        Random random = new(12345);
-        List<Hash256> stored = [];
-        List<Hash256> universe = [Hash256.Zero];
-        for (int i = 1; i <= Blocks; i++)
-        {
-            Hash256 parent = i % 50 == 0 ? BlockRoot(100_000 + i) : universe[random.Next(universe.Count)];
-            Hash256 root = BlockRoot(i);
-            _store.PutBlock(root, CreateBlock((ulong)i, parent));
-            stored.Add(root);
-            universe.Add(root);
-            universe.Add(parent);
-        }
-
-        foreach (Hash256 pruned in stored.Where((_, index) => index % 7 == 0).ToArray())
-        {
-            _store.DeleteBlock(pruned);
-        }
-
-        Dictionary<Hash256, (Hash256[] Children, bool Complete)> incremental = Snapshot(_store, universe);
-        Assert.That(incremental.Values.Count(entry => entry.Complete), Is.GreaterThan(Blocks / 2), "the fixture must leave complete and pending entries to compare");
-        _store.SetSchemaVersion(1);
-
-        BeaconChainStore reopened = new(_db);
-        reopened.EnsureSchemaVersion();
-
-        Dictionary<Hash256, (Hash256[] Children, bool Complete)> rebuilt = Snapshot(reopened, universe);
-        Assert.That(Blocks, Is.GreaterThan(BeaconChainStore.ChildrenRebuildBatchSize * 2), "the rebuild must cross batch boundaries");
-        foreach (Hash256 root in universe.Distinct())
-        {
-            Assert.That(rebuilt[root].Complete, Is.EqualTo(incremental[root].Complete), $"completeness of {root}");
-            Assert.That(rebuilt[root].Children, Is.EquivalentTo(incremental[root].Children), $"children of {root}");
-        }
-    }
-
-    [Test]
-    public void Rebuilding_a_wide_fan_out_of_large_blocks_allocates_far_less_than_the_blocks_it_reads()
-    {
-        const int Children = 3000;
-        const int TransactionBytes = 64 * 1024;
-        Hash256 parent = BlockRoot(0);
-        byte[] record = Snappy.CompressToArray(SignedBeaconBlock.Encode(CreateBlock(100, parent, TransactionBytes)));
-        IDb blocks = _db.GetColumnDb(BeaconChainDbColumns.Blocks);
-        for (int i = 1; i <= Children; i++)
-        {
-            blocks.Set(BlockRoot(i).Bytes, record);
-        }
-
-        _store.SetSchemaVersion(1);
-        BeaconChainStore reopened = new(_db);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        reopened.EnsureSchemaVersion();
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        Assert.That(reopened.TryGetChildren(parent, out Hash256[] listed, out bool complete), Is.True);
-        Assert.That(listed, Has.Length.EqualTo(Children));
-        Assert.That(complete, Is.False, "the parent is not stored");
-        long wholeBlocks = (long)Children * TransactionBytes;
-        Assert.That(allocated, Is.LessThan(wholeBlocks / 16), "decompressing every whole block, or regrowing the parent list once per child, would allocate at least the blocks' size");
-    }
-
-    [TestCase(0, false)]
-    [TestCase(100, false)]
-    [TestCase(147, false)]
-    [TestCase(148, false)]
-    [TestCase(180, true)]
-    public void Rebuilding_refuses_a_record_too_short_to_hold_a_parent_root(int decompressedLength, bool accepted)
-    {
-        Hash256 root = BlockRoot(1);
-        _db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(new byte[decompressedLength]));
-        _store.SetSchemaVersion(1);
-        BeaconChainStore reopened = new(_db);
-
-        if (accepted)
-        {
-            reopened.EnsureSchemaVersion();
-            Assert.That(reopened.TryGetChildren(Hash256.Zero, out Hash256[] children, out _), Is.True, "the parent root is the last byte range of the 148-byte prefix");
-            Assert.That(children, Is.EqualTo(new[] { root }));
-        }
-        else if (decompressedLength == 148)
-        {
-            Assert.That(reopened.EnsureSchemaVersion, Throws.InstanceOf<System.IO.InvalidDataException>());
-        }
-        else
-        {
-            Assert.That(reopened.EnsureSchemaVersion, Throws.InstanceOf<InvalidOperationException>().With.Message.Contains(root.ToString()),
-                "a parent root read past the record would link the block under a made-up parent");
-        }
+        Assert.That(reopened.TryGetChildren(legacy, out _, out _), Is.False);
     }
 
     // Legacy record: compressed SSZ under bare block root, without index entries.
     private void WriteLegacyBlock(Hash256 root, SignedBeaconBlock block) =>
         _db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
 
-    private static Dictionary<Hash256, (Hash256[] Children, bool Complete)> Snapshot(BeaconChainStore store, IEnumerable<Hash256> roots)
-    {
-        Dictionary<Hash256, (Hash256[] Children, bool Complete)> snapshot = [];
-        foreach (Hash256 root in roots.Distinct())
-        {
-            snapshot[root] = store.TryGetChildren(root, out Hash256[] children, out bool complete) ? (children, complete) : ([], false);
-        }
-
-        return snapshot;
-    }
-
-    private static Hash256 BlockRoot(int index) => BeaconChainStoreStateSlotIndexTests.Root(index);
-
-    private static SignedBeaconBlock CreateBlock(ulong slot, Hash256 parent, int transactionBytes = 0)
+    private static SignedBeaconBlock CreateBlock(ulong slot, Hash256 parent)
     {
         SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(slot);
         block.Message!.ParentRoot = parent;
@@ -279,7 +137,7 @@ public class BeaconChainStoreChildrenIndexTests
         payload.BlockNumber = 1;
         payload.GasUsed = 0;
         payload.ExtraData = Bytes.FromHexString("0x");
-        payload.Transactions = transactionBytes == 0 ? [] : [new Transaction { Bytes = new byte[transactionBytes] }];
+        payload.Transactions = [];
         return block;
     }
 }
