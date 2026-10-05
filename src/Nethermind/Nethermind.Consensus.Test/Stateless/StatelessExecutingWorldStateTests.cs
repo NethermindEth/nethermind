@@ -87,7 +87,7 @@ public class StatelessExecutingWorldStateTests
         using IDisposable scope = state.BeginScope(parent);
 
         using EthereumVirtualMachine vm = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance), LimboLogs.Instance);
         Transaction tx = Build.A.Transaction.WithTo(caller).WithGasLimit(100_000).WithGasPrice(1)
             .SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithBaseFee(0).WithExcessBlobGas(0).TestObject;
