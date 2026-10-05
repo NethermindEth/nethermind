@@ -160,10 +160,6 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
         const ulong gasLimit = 1_000_000;
         TestAllTracerWithOutput result = Run(code, gasLimit: gasLimit);
 
-        byte[] PushDestination(byte destination) => push2Destinations
-            ? [(byte)Instruction.PUSH2, 0, destination]
-            : [(byte)Instruction.PUSH1, destination];
-
         if (succeeds)
         {
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), result.Error);
@@ -172,6 +168,10 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
         {
             AssertHalt(result, EvmExceptionType.ReturnStackOverflow, gasLimit);
         }
+
+        byte[] PushDestination(byte destination) => push2Destinations
+            ? [(byte)Instruction.PUSH2, 0, destination]
+            : [(byte)Instruction.PUSH1, destination];
     }
 
     [TestCase("B1", GasCostOf.JumpDest, EvmExceptionType.None, TestName = "CALLDEST costs 1")]
