@@ -45,11 +45,11 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceTransaction_log_indices_include_preceding_transactions([Values] bool revertFirst)
+    public async Task Debug_traceTransaction_log_indices_include_preceding_transactions([Values] bool revertFirst, [Values(true, "true")] object withLog)
     {
         string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
             RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", block.Transactions[2].Hash!,
-                new { tracer = "callTracer", tracerConfig = new { withLog = true } }));
+                new { tracer = "callTracer", tracerConfig = new { withLog } }));
 
         AssertLastTransactionLogIndex(responses, revertFirst);
     }
@@ -57,7 +57,7 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Debug_traceBlock_log_indices_span_transactions(
         [Values("debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
-        [Values] bool revertFirst)
+        [Values] bool revertFirst, [Values(true, "true")] object withLog)
     {
         string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
         {
@@ -69,7 +69,7 @@ public partial class DebugRpcModuleTests
                 _ => throw new AssertionException($"Unexpected block tracing method: {method}")
             };
             return RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter,
-                new { tracer = "callTracer", tracerConfig = new { withLog = true } });
+                new { tracer = "callTracer", tracerConfig = new { withLog } });
         });
 
         foreach (string response in responses)
