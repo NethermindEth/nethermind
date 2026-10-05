@@ -47,7 +47,7 @@ public sealed class IdentityPrecompileTransition(ISpecProvider specProvider, IHe
 
     private bool IsForkBlock(BlockHeader header)
     {
-        BlockHeader parent = headerFinder.Get(header.ParentHash!, header.Number - 1)
+        BlockHeader parent = (header.ParentHash is null ? null : headerFinder.Get(header.ParentHash, header.Number - 1))
             ?? throw new InvalidOperationException($"Cannot detect the EIP-7666 fork block: parent of {header.ToString(BlockHeader.Format.Short)} not found.");
         return !specProvider.GetSpec(parent).IsEip7666Enabled;
     }

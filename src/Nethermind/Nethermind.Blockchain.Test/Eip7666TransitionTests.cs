@@ -146,6 +146,19 @@ public class Eip7666TransitionTests
         state.DidNotReceiveWithAnyArgs().InsertCode(default!, default, default, default!, default);
     }
 
+    [Test]
+    public void Unresolvable_parent_throws([Values] bool nullParentHash)
+    {
+        IReleaseSpec eip7666 = new OverridableReleaseSpec(Bogota.Instance) { IsEip7666Enabled = true };
+        BlockHeader header = Build.A.BlockHeader.WithNumber(ForkBlockNumber).WithParentHash(TestItem.KeccakA).TestObject;
+        if (nullParentHash) header.ParentHash = null;
+        IHeaderFinder headerFinder = Substitute.For<IHeaderFinder>();
+        headerFinder.Get(Arg.Is<Hash256>(static h => h == null), Arg.Any<ulong?>()).Returns(static _ => throw new ArgumentNullException("blockHash"));
+        IdentityPrecompileTransition transition = new(new TestSpecProvider(eip7666), headerFinder);
+
+        Assert.Throws<InvalidOperationException>(() => transition.ApplyIfForkBlock(header, eip7666, Substitute.For<IWorldState>()));
+    }
+
     private static async Task<BasicTestBlockchain> CreateChain(ulong forkBlockNumber, bool parallelExecution, bool occupied)
     {
         IReleaseSpec eip7666 = new OverridableReleaseSpec(Bogota.Instance) { IsEip7666Enabled = true };
