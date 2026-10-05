@@ -280,6 +280,7 @@ public class DataColumnSidecarPoolStoredRangeTests
         IContainer container = BeaconChainTestContainer.Builder().AddSingleton<IColumnsDb<BeaconChainDbColumns>>(db).Build();
         ulong top = container.Resolve<SlotClock>().CurrentSlot - 50;
         BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        store.EnsureSchemaVersion();
         store.SetAnchor(TestItem.KeccakA, top - 10);
         store.ApplyCanonicalIndexChanges([], top);
         store.RaiseDataColumnFloor(singleSlot ? top : top - 100);

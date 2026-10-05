@@ -70,15 +70,14 @@ public class BeaconChainServiceTests
     }
 
     [Test]
-    public void Start_stamps_an_unversioned_database_before_reading_its_anchor()
+    public void Start_refuses_an_unversioned_populated_database_before_reading_its_anchor()
     {
         using IContainer container = BuildContainer();
         BeaconChainStore store = container.Resolve<BeaconChainStore>();
         store.SetAnchor(TestItem.KeccakA, 1);
 
-        Assert.That(() => container.Resolve<BeaconChainService>().Start(), Throws.InvalidOperationException.With.Message.Contains("anchor state"), "the driver went on to read the anchor");
-        Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
-        Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+        Assert.That(() => container.Resolve<BeaconChainService>().Start(), Throws.InvalidOperationException.With.Message.Contains("no valid schema version"));
+        Assert.That(store.TryGetSchemaVersion(out _), Is.False);
     }
 
     [Test]
