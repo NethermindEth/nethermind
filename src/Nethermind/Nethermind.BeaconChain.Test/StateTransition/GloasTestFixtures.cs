@@ -9,6 +9,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
+using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -436,33 +437,18 @@ internal static class GloasTestFixtures
         return new SignedExecutionPayloadEnvelope { Message = message, Signature = signature };
     }
 
-    public static SignedBeaconBlockGloas MinimalBlock(BeaconStateGloas state, SignedExecutionPayloadBid bid) => new()
+    public static SignedBeaconBlockGloas MinimalBlock(BeaconStateGloas state, SignedExecutionPayloadBid bid)
     {
-        Message = new BeaconBlockGloas
-        {
-            Slot = state.Slot,
-            ProposerIndex = state.GetBeaconProposerIndex(),
-            ParentRoot = SszRoots.HashTreeRoot(state.LatestBlockHeader!),
-            StateRoot = Hash256.Zero,
-            Body = new BeaconBlockBodyGloas
-            {
-                RandaoReveal = default,
-                Eth1Data = state.Eth1Data,
-                Graffiti = Hash256.Zero,
-                ProposerSlashings = [],
-                AttesterSlashings = [],
-                Attestations = [],
-                Deposits = [],
-                VoluntaryExits = [],
-                SyncAggregate = new SyncAggregate { SyncCommitteeBits = new BitArray(Presets.SyncCommitteeSize), SyncCommitteeSignature = new BlsSignature(G2PointAtInfinity()) },
-                BlsToExecutionChanges = [],
-                SignedExecutionPayloadBid = bid,
-                PayloadAttestations = [],
-                ParentExecutionRequests = new ExecutionRequestsGloas(),
-            },
-        },
-        Signature = default,
-    };
+        SignedBeaconBlockGloas block = SignedBeaconBlockBuilders.CreateMinimalGloasBlock(state.Slot);
+        BeaconBlockGloas message = block.Message!;
+        message.ProposerIndex = state.GetBeaconProposerIndex();
+        message.ParentRoot = SszRoots.HashTreeRoot(state.LatestBlockHeader!);
+        BeaconBlockBodyGloas body = message.Body!;
+        body.Eth1Data = state.Eth1Data;
+        body.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(G2PointAtInfinity());
+        body.SignedExecutionPayloadBid = bid;
+        return block;
+    }
 
     // Fixture RANDAO reveals are unsigned; ApplyBlock deliberately skips signatures.
     public static void ApplyBlock(BeaconStateGloas state, SignedBeaconBlockGloas block, EpochCache cache) =>
