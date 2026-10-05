@@ -195,14 +195,17 @@ public class FrameTxSimulationFilterTests
         simulator.Received(1).Simulate(tx, Arg.Any<bool>(), local: expected, token: Arg.Any<CancellationToken>());
     }
 
-    [TestCase(TxHandlingOptions.None, true)]
-    [TestCase(TxHandlingOptions.PersistentBroadcast, false)]
-    public void Accept_WhileProcessingABlock_PreemptsOnlyGossipedSimulation(TxHandlingOptions options, bool deferred)
+    [TestCase(false, TxHandlingOptions.None, true)]
+    [TestCase(false, TxHandlingOptions.PersistentBroadcast, false)]
+    [TestCase(true, TxHandlingOptions.None, true)]
+    [TestCase(true, TxHandlingOptions.PersistentBroadcast, false)]
+    public void Accept_WhileProcessingOrBuildingABlock_PreemptsOnlyGossipedSimulation(bool building, TxHandlingOptions options, bool deferred)
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
-        headInfo.IsProcessingBlock.Returns(true);
+        headInfo.IsProcessingBlock.Returns(!building);
+        headInfo.IsBuildingBlock.Returns(building);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
         simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
             .Returns(static call => call.ArgAt<Func<bool>?>(4)?.Invoke() == true

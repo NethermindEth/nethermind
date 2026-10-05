@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -469,6 +470,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
         EndOriginalsRound();
         _storages.ResetAndClear();
+        InvalidateStorageMemo();
+    }
+
+    /// <summary>Drops the block's storage changes of every account <paramref name="bal"/> changed, whose slots are now the scope's.</summary>
+    /// <remarks>
+    /// The write-back then carries only the BAL's slots for such an account, so when the block touched others of its
+    /// slots (or wiped it) before the BAL was applied, the account's cached storage is dropped instead.
+    /// </remarks>
+    internal void ForgetBlockChanges(ReadOnlyBlockAccessList bal)
+    {
+        if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            if (!accountChanges.HasStateChanges || !_storages.Remove(accountChanges.Address, out PerContractState? state)) continue;
+
+            if (state.TouchesSlotsOutside(accountChanges)) _stateProvider.ForgetCachedStorage(accountChanges.Address);
+            state.Return();
+        }
+
         InvalidateStorageMemo();
     }
 
@@ -1469,6 +1489,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 storageWriteBatch.Set(kvp.Key, kvp.Value.After);
             }
+        }
+
+        /// <summary>Whether the block wiped this storage or touched a slot that <paramref name="balChanges"/> does not write.</summary>
+        public bool TouchesSlotsOutside(ReadOnlyAccountChanges balChanges)
+        {
+            if (_wasCleared) return true;
+
+            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
+            {
+                if (!balChanges.TryGetDeclaredSlotChanges(kvp.Key, out ReadOnlySlotChanges? slotChanges) || slotChanges is null) return true;
+            }
+
+            return false;
         }
 
         public void RemoveStorageTree() => _backend = null;

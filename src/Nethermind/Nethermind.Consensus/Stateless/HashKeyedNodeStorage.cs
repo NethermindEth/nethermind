@@ -108,12 +108,14 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     /// <remarks>
     /// <see cref="NodeStorage"/> falls back to a half-path key when the hash key misses. Nothing writes
     /// a half-path key under <see cref="INodeStorage.KeyScheme.Hash"/>, so that probe can only miss here.
+    /// The keccak is viewed as a <see cref="NodeKey"/>, which wraps it alone, rather than copied into one: a copy
+    /// holds its four words in callee-saved registers across the whole inlined resolve.
     /// </remarks>
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
-        => Find(new NodeKey(keccak));
+        => Find(in Unsafe.As<ValueHash256, NodeKey>(ref Unsafe.AsRef(in keccak)));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private byte[]? Find(NodeKey key)
+    private byte[]? Find(in NodeKey key)
     {
         if (_nodes.Count != 0 && _nodes.TryGetValue(key, out byte[]? value)) return value;
         int entry = _heads[key.Bucket(_bucketMask)];
@@ -193,7 +195,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     {
         private readonly ValueHash256 _hash = hash;
 
-        internal int Bucket(int mask) => (int)Unsafe.ReadUnaligned<uint>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
+        internal int Bucket(int mask) => (int)Unsafe.ReadUnaligned<ulong>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
 
         public bool Equals(NodeKey other)
         {
