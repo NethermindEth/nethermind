@@ -525,7 +525,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong grossGasBeforeCorrection = intrinsicGas + totalFrameGasUsed;
         ulong stateGasCorrectionApplied = (ulong)Math.Max(0, stateGasCorrection);
         ulong grossGas = grossGasBeforeCorrection > stateGasCorrectionApplied ? grossGasBeforeCorrection - stateGasCorrectionApplied : 0;
-        Debug.Assert(refundCounter >= 0, $"frame-tx settlement invariant violated: negative refund counter ({refundCounter}).");
+        Debug.Assert(spec.IsEip3298Enabled || refundCounter >= 0, $"frame-tx settlement invariant violated: negative refund counter ({refundCounter}).");
         ulong gasRefund = RefundHelper.CalculateClaimableRefund(grossGas, (ulong)Math.Max(0, refundCounter), spec);
         if (spec.IsEip3298Enabled && (refundCounter < 0 || gasRefund > grossGas))
         {
