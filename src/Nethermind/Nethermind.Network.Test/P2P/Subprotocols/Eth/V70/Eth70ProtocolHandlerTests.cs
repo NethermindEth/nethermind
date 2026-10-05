@@ -27,6 +27,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
@@ -178,6 +179,13 @@ public class Eth70ProtocolHandlerTests
 
         Assert.That(action, Throws.TypeOf<SubprotocolException>());
         _session.DidNotReceive().DeliverMessage(Arg.Any<ReceiptsMessage70>());
+    }
+
+    [Test]
+    public void Should_reject_unrequested_receipts_before_decoding()
+    {
+        HandleIncomingStatusMessage();
+        UndecodableResponse.AssertRejectedAsUnrequested(_handler.HandleMessage, Eth70MessageCode.Receipts);
     }
 
     [TestCaseSource(nameof(SingleBlockReceiptResponseCases))]
@@ -348,7 +356,56 @@ public class Eth70ProtocolHandlerTests
         Assert.That(result, Has.Count.EqualTo(2));
         AssertReceiptsEqual(result[0], block1);
         AssertReceiptsEqual(result[1], block2);
-        Assert.That(seenOffsets.AsSpan().ToArray(), Is.EqualTo(new[] { 0L, 2L }));
+        Assert.That(seenOffsets.AsSpan(), Is.SequenceEqualTo(new[] { 0L, 2L }));
+    }
+
+    [Test]
+    public async Task Partial_first_block_is_checked_against_its_remaining_expected_receipts([Values] bool exceedsCount)
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
+
+        TxReceipt[] block1 = BuildSequentialReceipts(3);
+        TxReceipt[] block2 = BuildSequentialReceipts(2);
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            if (sent.FirstBlockReceiptIndex == 0)
+            {
+                using ReceiptsMessage70 firstPage = new(sent.RequestId, new[] { block1.Take(2).ToArray() }.ToPooledList(), true);
+                HandleZeroMessage(firstPage, Eth70MessageCode.Receipts);
+                return;
+            }
+
+            if (exceedsCount)
+            {
+                int remaining = block1.Length - (int)sent.FirstBlockReceiptIndex;
+                UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_handler.HandleMessage,
+                    UndecodableResponse.CreateReceipts(sent.RequestId, remaining + 1, Rlp.Encode(0)),
+                    Eth70MessageCode.Receipts);
+
+                // Ends the still-pending request so the paging loop stops.
+                using ReceiptsMessage70 empty = new(sent.RequestId, ArrayPoolList<TxReceipt[]>.Empty(), false);
+                HandleZeroMessage(empty, Eth70MessageCode.Receipts);
+                return;
+            }
+
+            using ReceiptsMessage70 continuation = new(sent.RequestId, new[] { block1.Skip((int)sent.FirstBlockReceiptIndex).ToArray(), block2 }.ToPooledList(), false);
+            HandleZeroMessage(continuation, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts([Keccak.Zero, TestItem.KeccakA], new[] { block1.Length, block2.Length }, CancellationToken.None);
+
+        if (exceedsCount)
+        {
+            Assert.That(async () => await task, Throws.TypeOf<SubprotocolException>().With.Message.Contains("no progress"));
+            return;
+        }
+
+        using IOwnedReadOnlyList<TxReceipt[]> result = await task;
+        AssertReceiptsEqual(result[0], block1);
+        AssertReceiptsEqual(result[1], block2);
     }
 
     [Test]
@@ -370,7 +427,7 @@ public class Eth70ProtocolHandlerTests
         }
     }
 
-    [TestCase(true, "Receipt count exceeds block transactions count")]
+    [TestCase(true, "Receipts response exceeds the request: more than 0 receipts for block 0")]
     [TestCase(false, "Block receipts size exceeds block gas limit allowance")]
     public void Should_validate_partial_receipts_of_known_block_with_zero_gas_limit(bool bodyKnown, string expectedError)
     {

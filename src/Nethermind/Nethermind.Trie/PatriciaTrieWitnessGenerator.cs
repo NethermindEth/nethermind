@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Trie.Pruning;
@@ -104,6 +103,10 @@ public static class PatriciaTrieWitnessGenerator
         bool parallelize = false)
     {
         if (paths.Length == 0 || rootHash == Keccak.EmptyTreeHash) return;
+
+        using ParallelUnbalancedWork.WorkerScope? workers = parallelize
+            ? ParallelUnbalancedWork.BeginWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount)
+            : null;
 
         PatriciaTree.BulkSetEntry[] entriesArr = ArrayPool<PatriciaTree.BulkSetEntry>.Shared.Rent(paths.Length);
         // One root-sized buffer suffices for the whole walk: a deeper node never has more entries than the root.
@@ -294,7 +297,7 @@ public static class PatriciaTrieWitnessGenerator
         ISink sink,
         Span<byte> childState)
     {
-        // flipCount parity says which array `entries` currently lives in; recover both so each worker can rebuild its span from an offset (a Span cannot cross the Parallel.For boundary).
+        // flipCount parity says which array `entries` currently lives in; recover both so each worker can rebuild its span from an offset (a Span cannot cross the parallel callback boundary).
         PatriciaTree.BulkSetEntry[] originalEntries = (flipCount & 1) == 0 ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
         PatriciaTree.BulkSetEntry[] originalBuffer = (flipCount & 1) == 0 ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
 
@@ -317,7 +320,7 @@ public static class PatriciaTrieWitnessGenerator
         }
 
         Context closureCtx = ctx;
-        Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions, i =>
+        ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions, i =>
         {
             TrieNode? child = jobs[i].Child;
             int count = jobs[i].Count;

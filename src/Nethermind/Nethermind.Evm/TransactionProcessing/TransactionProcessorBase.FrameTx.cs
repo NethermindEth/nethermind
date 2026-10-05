@@ -96,6 +96,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     private TransactionResult ExecuteFrameTx<TTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
         where TTracing : struct, IFlag
     {
+        if (!spec.IsEip8141Enabled)
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(TxErrorMessages.InvalidTxType(spec.Name));
+        }
+
         // eth_call and the other estimation/tracing entry points reach the processor with validation
         // skipped, so the whole structural constraint set is enforced here and not only in TxValidator.
         if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out string? malformed))
@@ -142,10 +147,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         bool allowEmptySignatures = SkipSenderChecks || !ShouldValidate(opts);
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        ValueHash256? sigHash = null;
         // EIP-7928: a tx that never takes the P256 branch never accesses the precompile, so no BAL entry.
         IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
-        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError, allowEmptySignatures, skipVerification: SkipSenderChecks))
+        if (!FrameTxSignatureValidator.Validate(tx, ref sigHash, Ecdsa, p256Precompile, spec, out string? signatureError, allowEmptySignatures, skipVerification: SkipSenderChecks))
         {
             WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
@@ -216,6 +221,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.Nonce,
             frames,
             tx.FrameSignatures ?? [],
+            tx,
             sigHash,
             in maxCost,
             in tx.MaxPriorityFeePerGas,
@@ -223,7 +229,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.MaxFeePerBlobGas.GetValueOrDefault(),
             WorldState.GetNonce(sender),
             tx.RecentRootReferences,
-            tx.NonceKeys);
+            tx.NonceKeys)
+        {
+            SkipFeeReservation = opts.HasFlag(ExecutionOptions.FrameGasEstimation) && opts.HasFlag(ExecutionOptions.Restore)
+        };
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
         ulong totalFrameGasUsed = 0;
@@ -518,7 +527,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong stateGasCorrectionApplied = (ulong)Math.Max(0, stateGasCorrection);
         ulong grossGas = grossGasBeforeCorrection > stateGasCorrectionApplied ? grossGasBeforeCorrection - stateGasCorrectionApplied : 0;
         Debug.Assert(refundCounter >= 0, $"frame-tx settlement invariant violated: negative refund counter ({refundCounter}).");
-        ulong gasAfterRefund = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)Math.Max(0, refundCounter), spec);
+        ulong gasRefund = RefundHelper.CalculateClaimableRefund(grossGas, (ulong)Math.Max(0, refundCounter), spec);
+        ulong gasAfterRefund = grossGas - gasRefund;
         ulong blockStateGas = (ulong)Math.Max(0, totalFrameStateGasUsed - stateGasCorrection);
         // EIP-7778: the payer pays the post-refund execution dimension, but the block counts it before the refund.
         ulong payerRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(gasAfterRefund, blockStateGas, floorGas);
@@ -536,7 +546,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // and blob legs. Both legs are bounded by max_cost, so the subtraction cannot underflow.
         UInt256 spentCost = (UInt256)spentGas * effectiveGasPrice;
         UInt256 chargedCost = spentCost + blobFee;
-        if (maxCost > chargedCost)
+        if (!frameContext.SkipFeeReservation && maxCost > chargedCost)
         {
             WorldState.AddToBalance(payer, maxCost - chargedCost, spec);
         }
@@ -593,7 +603,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             frameReceiptTracer?.ReportFrameTxReceipt(payer, frameReceipts);
 
-            GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
+            GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, blockRegularGas + blockStateGas, gasRefund);
             if (postTxReverted)
             {
                 // The failed receipt rebuilds the log set from the frame receipts reported above.
@@ -735,12 +745,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         verifyGasUsed = 0;
 
         Address sender = tx.SenderAddress!;
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        ValueHash256? sigHash = null;
         if (!opts.HasFlag(ExecutionOptions.FrameSignaturesPreValidated))
         {
             // As the main path does, so an unused P256 branch records no account access (EIP-7928).
             IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
-            if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
+            if (!FrameTxSignatureValidator.Validate(tx, ref sigHash, Ecdsa, p256Precompile, spec, out string? signatureError, allowEmptySignatures: false, skipVerification: false))
             {
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
             }
@@ -765,7 +775,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
         frameContext = new FrameTxContext(
-            sender, tx.Nonce, tx.Frames!, tx.FrameSignatures ?? [], sigHash,
+            sender, tx.Nonce, tx.Frames!, tx.FrameSignatures ?? [], tx, sigHash,
             in maxCost, in tx.MaxPriorityFeePerGas, tx.DecodedMaxFeePerGas, tx.MaxFeePerBlobGas.GetValueOrDefault(),
             WorldState.GetNonce(sender),
             tx.RecentRootReferences,
@@ -874,12 +884,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
             }
 
-            // Read only once the access is paid for. EIP-7702: a precompile must not execute via delegation,
-            // asked of the repository because that is what dispatches: a state override can move a precompile.
+            // Read only once the access is paid for.
             WorldState.AddAccountRead(delegation);
-            codeInfo = _codeInfoRepository.GetPrecompile(delegation, spec) is not null
-                ? CodeInfo.Empty
-                : _codeInfoRepository.GetCachedCodeInfoNoDelegation(delegation, spec);
+            codeInfo = _codeInfoRepository.GetDelegatedCodeInfo(delegation, spec);
         }
 
         ReadOnlyMemory<byte> inputData = frame.Data;

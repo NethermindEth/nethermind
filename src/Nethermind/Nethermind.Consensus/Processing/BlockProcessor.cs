@@ -16,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Metric;
@@ -404,7 +405,25 @@ public partial class BlockProcessor(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void SetAccountChanges(Block block)
-        => block.AccountChanges = _stateProvider.GetAccountChanges();
+    {
+        ArrayPoolList<AddressAsKey>? worldStateChanges = _stateProvider.GetAccountChanges();
+        // Already set from the BAL when its changes went straight to the scope: the world state adds only what it did not cover.
+        if (block.AccountChanges is not { } balChanges || block.BlockAccessList is not { } bal)
+        {
+            block.AccountChanges = worldStateChanges;
+            return;
+        }
+
+        if (worldStateChanges is null) return;
+
+        using (worldStateChanges)
+        {
+            foreach (AddressAsKey address in worldStateChanges.AsSpan())
+            {
+                if (bal.GetAccountChanges(address) is not { HasStateChanges: true }) balChanges.Add(address);
+            }
+        }
+    }
 
     private void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
