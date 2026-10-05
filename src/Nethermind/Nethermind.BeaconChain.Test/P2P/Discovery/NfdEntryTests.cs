@@ -9,9 +9,8 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
 /// <summary>
-/// The ENR <c>nfd</c> entry (EIP-7892 / p2p-interface.md): "the digest of the next scheduled fork,
-/// regular or blob-parameter-only", published as the raw 4-byte SSZ <c>ForkDigest</c>, or its
-/// zero-filled default when none is scheduled.
+/// EIP-7892 / p2p-interface.md: ENR <c>nfd</c> is the next regular or blob-parameter fork's
+/// raw 4-byte SSZ <c>ForkDigest</c>, or zero when none is scheduled.
 /// </summary>
 public class NfdEntryTests
 {

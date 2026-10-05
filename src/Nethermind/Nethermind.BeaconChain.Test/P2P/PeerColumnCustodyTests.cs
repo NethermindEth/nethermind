@@ -16,13 +16,11 @@ using Libp2pPublicKey = Nethermind.Libp2p.Core.Dto.PublicKey;
 namespace Nethermind.BeaconChain.Test.P2P;
 
 /// <summary>
-/// A remote peer serves only the columns it custodies (fulu/p2p-interface.md), so asking it for any other column
-/// wastes the request and leaves the block unavailable. Its custody is <c>get_custody_groups</c> over its discv5
-/// node id and advertised custody group count (fulu/das-core.md).
+/// fulu/p2p-interface.md: peers serve only custodied columns, derived by <c>get_custody_groups</c>
+/// from their discv5 node id and advertised count (fulu/das-core.md).
 /// </summary>
 public class PeerColumnCustodyTests
 {
-    /// <summary>The EIP-778 example record's private key, public key and node id.</summary>
     private const string Eip778PrivateKey = "b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291";
     private const string Eip778PublicKey = "03ca634cae0d49acb401d8a4c6b6fe8c55b70d115bf400769cc1400f3258cd3138";
     private static readonly Hash256 Eip778NodeId = new("0xa448f24c6d18e575453db13171562b71999873db5b286df957af199ec94617f7");

@@ -116,10 +116,8 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
         Assert.That(body, Is.EqualTo(expected));
     }
 
-    /// <summary>
-    /// Both POST bodies are uniqueItems; an id repeated, or given once as an index and once as a pubkey, yields one entry,
-    /// so a body of repeated ids cannot multiply the response. The GET balances id filter shares the rule.
-    /// </summary>
+    /// <summary>POST uniqueItems and GET balances deduplicate both repeated ids
+    /// and index/pubkey aliases of the same validator.</summary>
     [Test]
     public async Task Repeated_ids_naming_one_validator_give_one_entry([Values("validator_balances", "validator_identities", "get_validator_balances")] string endpoint)
     {
