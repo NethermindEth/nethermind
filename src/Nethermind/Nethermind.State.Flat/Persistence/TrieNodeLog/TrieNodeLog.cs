@@ -82,7 +82,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                     if (config.TrieNodeLogSecondLevelEnabled)
                     {
                         string secondLevelName = name + SecondLevelSuffix;
-                        secondLevel = new TrieNodeLogShard(secondLevelName, name, columns, Path.Combine(basePath, secondLevelName), db, budget / shardCount, SecondLevelIndexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _secondLevelMergeLimiter, secondLevel: null, logManager);
+                        secondLevel = new TrieNodeLogShard(secondLevelName, name, columns, Path.Combine(basePath, secondLevelName), db, budget / shardCount, SecondLevelIndexRatio, config.TrieNodeLogSecondLevelMergeLag, config.TrieNodeLogMergeBacklogMargin, _secondLevelMergeLimiter, secondLevel: null, logManager);
                         secondLevelShards.Add(secondLevel);
                     }
                     shards.Add(new TrieNodeLogShard(name, name, columns, Path.Combine(basePath, name), db, budget / shardCount, indexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, secondLevel, logManager));

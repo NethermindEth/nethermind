@@ -318,10 +318,11 @@ public class TrieNodeLogTests
         Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.EqualTo(Value(4)));
     }
 
-    private async Task ReopenWithSecondLevel()
+    private async Task ReopenWithSecondLevel(int secondLevelMergeLag)
     {
         _config.TrieNodeLogSecondLevelEnabled = true;
         _config.TrieNodeLogMergeLag = 0;
+        _config.TrieNodeLogSecondLevelMergeLag = secondLevelMergeLag;
         await Reopen();
     }
 
@@ -330,7 +331,7 @@ public class TrieNodeLogTests
     [Test]
     public async Task Second_level_takes_merged_generations_and_merges_its_own_full_ones_into_RocksDB()
     {
-        await ReopenWithSecondLevel();
+        await ReopenWithSecondLevel(secondLevelMergeLag: 0);
 
         // 3000-byte values: two per 4 KiB generation, so every second batch seals one.
         static byte[] Value(byte seed) => TrieNodeLogTests.Value(seed, 3000);
@@ -387,9 +388,37 @@ public class TrieNodeLogTests
     }
 
     [Test]
+    public async Task Second_level_merge_lag_is_configured_separately()
+    {
+        await ReopenWithSecondLevel(secondLevelMergeLag: 1);
+
+        // 3000-byte values: two per 4 KiB generation, so every second batch seals a first-level generation and every
+        // fourth a second-level one.
+        static byte[] Value(byte seed) => TrieNodeLogTests.Value(seed, 3000);
+
+        TreePath coldPath = TreePath.FromHexString("1234"); // same shard as TopPath, written once
+        using (IPersistence.IWriteBatch batch = Batch(0, 1))
+        {
+            batch.SetStateTrieNode(TopPath, Value(1));
+            batch.SetStateTrieNode(coldPath, Rlp1);
+        }
+        for (ulong block = 1; block < 4; block++) WriteTop(block, block + 1, Value((byte)(block + 1)));
+        Assert.That(() => ShardFiles("state-0"), Is.Empty.After(5000, 20), "a first-level lag of zero merges every sealed generation");
+        Assert.That(Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.Null, "a second-level lag of one keeps second-level generation 1 until generation 2 is sealed");
+
+        for (ulong block = 4; block < 8; block++) WriteTop(block, block + 1, Value((byte)(block + 1)));
+        Assert.That(() => Raw().TryLoadStateRlp(coldPath, ReadFlags.None), Is.EqualTo(Rlp1).After(5000, 20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Raw().TryLoadStateRlp(TopPath, ReadFlags.None), Is.Null, "rewritten in second-level generation 2, so not merged from generation 1");
+            Assert.That(ReadTop(), Is.EqualTo(Value(8)));
+        }
+    }
+
+    [Test]
     public async Task Second_level_survives_a_restart_and_the_startup_merge_takes_it_first()
     {
-        await ReopenWithSecondLevel();
+        await ReopenWithSecondLevel(secondLevelMergeLag: 0);
         byte[] large = Value(1, 3000);
 
         using (IPersistence.IWriteBatch batch = Batch(0, 1))
@@ -530,7 +559,7 @@ public class TrieNodeLogTests
     [TestCase(false, false, true)]
     public async Task The_on_disk_second_level_matches_the_config_only_when_enabled(bool writtenWithSecondLevel, bool secondLevelEnabled, bool matches)
     {
-        if (writtenWithSecondLevel) await ReopenWithSecondLevel();
+        if (writtenWithSecondLevel) await ReopenWithSecondLevel(secondLevelMergeLag: 0);
         WriteTop(0, 1, Rlp1);
         await _log.DisposeAsync();
         _config.TrieNodeLogSecondLevelEnabled = secondLevelEnabled;

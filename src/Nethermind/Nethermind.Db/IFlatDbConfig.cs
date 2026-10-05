@@ -201,4 +201,7 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Copy each trie node log generation, deduplicated, into a second-level log instead of merging it into RocksDB; the second-level log has the same size and merge settings as the first, an in-memory index of 1/16 of its size for both partitions, and merges its own full generations into RocksDB. The surviving nodes are less likely to be rewritten, and the log's index answers their reads faster than RocksDB. Requires TrieNodeLogEnabled.", DefaultValue = "false")]
     bool TrieNodeLogSecondLevelEnabled { get; set; }
+
+    [ConfigItem(Description = "TrieNodeLogMergeLag of the second-level trie node log: sealed second-level generations kept unmerged behind the newest one, so more of them stay readable from the log at the cost of their files and in-memory indexes.", DefaultValue = "2")]
+    int TrieNodeLogSecondLevelMergeLag { get; set; }
 }
