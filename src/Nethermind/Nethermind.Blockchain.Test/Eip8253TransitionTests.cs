@@ -28,7 +28,6 @@ using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -129,32 +128,33 @@ public class Eip8253TransitionTests
     }
 
     [Test]
-    public void Parent_is_looked_up_only_until_a_processed_block_shows_the_fork_is_active([Values] bool producing)
+    public async Task Parent_is_looked_up_only_until_a_processed_block_shows_the_fork_is_active([Values] bool producing)
     {
-        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true };
-        TestSpecProvider specProvider = new(eip8253) { NextForkSpec = eip8253, AllowTestChainOverride = false };
-        BlockHeader[] chain = new BlockHeader[4];
-        for (int i = 0; i < chain.Length; i++)
-        {
-            chain[i] = (i == 0 ? Build.A.BlockHeader.WithNumber(0) : Build.A.BlockHeader.WithParent(chain[i - 1])).TestObject;
-        }
+        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, forkBlockNumber: 0, parallelExecution: false);
+        BlockHeader[] headers = new BlockHeader[3];
+        for (int i = 0; i < headers.Length; i++) headers[i] = (await chain.AddBlock()).Header;
 
-        IHeaderFinder headerFinder = Substitute.For<IHeaderFinder>();
-        headerFinder.Get(chain[0].Hash!, 0).Returns(chain[0]);
-        IWorldState state = Substitute.For<IWorldState>();
-        ZeroNonceStorageAccountsTransition transition = new(specProvider, headerFinder);
+        CountingHeaderFinder headerFinder = new(chain.Container.Resolve<IHeaderFinder>());
+        await using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder.AddScoped<IHeaderFinder>(headerFinder));
+        ZeroNonceStorageAccountsTransition transition = scope.Resolve<ZeroNonceStorageAccountsTransition>();
+        IReleaseSpec spec = chain.SpecProvider.GetSpec(headers[0]);
 
-        for (int i = 1; i < chain.Length; i++)
+        using IDisposable stateScope = chain.MainWorldState.BeginScope(chain.BlockTree.Head!.Header);
+        foreach (BlockHeader header in headers)
         {
             // A block being built only gets its hash once processing ends.
-            Hash256 hash = chain[i].Hash!;
-            if (producing) chain[i].Hash = null;
-            transition.ApplyIfForkBlock(chain[i], eip8253, state);
-            chain[i].Hash = hash;
+            BlockHeader processed = header.Clone();
+            if (producing) processed.Hash = null;
+            transition.ApplyIfForkBlock(processed, spec, chain.MainWorldState);
+            processed.Hash = header.Hash;
         }
 
-        headerFinder.ReceivedWithAnyArgs(1).Get(default!, default);
-        state.DidNotReceiveWithAnyArgs().SetNonce(default!, default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headerFinder.Lookups, Is.EqualTo(1), "only the first block's parent is looked up");
+            Assert.That(chain.MainWorldState.GetNonce(Target), Is.Zero, "the fork was already active at the parent");
+            Assert.That(chain.MainWorldState.AccountExists(AbsentTarget), Is.False);
+        }
     }
 
     /// <remarks>The asset lists 28 accounts ordered by address hash, so a mistyped address breaks the order.</remarks>
@@ -235,5 +235,16 @@ public class Eip8253TransitionTests
         Assert.That(changes.CodeChanges, Is.Empty);
         Assert.That(changes.StorageChanges, Is.Empty);
         Assert.That(changes.StorageReads, Is.Empty);
+    }
+
+    private sealed class CountingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
+    {
+        public int Lookups { get; private set; }
+
+        public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null)
+        {
+            Lookups++;
+            return inner.Get(blockHash, blockNumber);
+        }
     }
 }
