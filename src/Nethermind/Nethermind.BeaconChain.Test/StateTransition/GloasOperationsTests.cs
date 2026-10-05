@@ -628,27 +628,15 @@ public class GloasOperationsTests
         BeaconStateGloas state = CreateGloasState(out _, out _);
         PubkeyCache pubkeys = InstallRealValidatorKeys(state);
         const int exiting = 9;
-        SignedVoluntaryExit exit;
-        switch (defect)
-        {
-            case "too recently activated":
-                // Still at the fixture's epoch 1, under SHARD_COMMITTEE_PERIOD since activation.
-                state.Slot = BoundarySlot;
-                exit = SignedExit(state, exiting, epoch: 1);
-                break;
-            case "exit epoch in the future":
-                state.Slot = ExitEligibleSlot;
-                exit = SignedExit(state, exiting, epoch: Presets.ShardCommitteePeriod + 5);
-                break;
-            case "index out of range":
-                state.Slot = ExitEligibleSlot;
-                exit = SignedExit(state, ValidatorCount, epoch: 3);
-                break;
-            default:
-                state.Slot = ExitEligibleSlot;
-                exit = SignedExit(state, exiting, epoch: 3);
-                break;
-        }
+        state.Slot = defect == "too recently activated" ? BoundarySlot : ExitEligibleSlot;
+        SignedVoluntaryExit exit = SignedExit(state,
+            defect == "index out of range" ? ValidatorCount : exiting,
+            epoch: defect switch
+            {
+                "too recently activated" => 1,
+                "exit epoch in the future" => Presets.ShardCommitteePeriod + 5,
+                _ => 3,
+            });
         switch (defect)
         {
             case "bad signature":
