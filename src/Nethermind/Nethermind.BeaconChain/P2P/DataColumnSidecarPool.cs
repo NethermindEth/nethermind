@@ -21,31 +21,20 @@ using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.P2P;
 
-/// <summary>
-/// Data column sidecars this node has validated, serving <c>DataColumnSidecarsByRange</c>/<c>ByRoot</c>.
-/// </summary>
+/// <summary>Holds verified Fulu and Gloas sidecars for by-range and by-root serving.</summary>
 /// <remarks>
-/// With a store, every added sidecar is persisted there and a read that misses the bounded in-memory
-/// cache falls through to it, so eviction and restarts lose nothing the store still retains (a node MUST be
-/// able to serve these requests for <see cref="Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests"/>
-/// epochs); the pool prunes the store once per wall-clock epoch. Without one, the pool is a bounded
-/// recent-sidecar cache only. Each served map retains at most <c>capacity</c> sidecars and evicts the lowest slot first, so
-/// a flood of old-slot sidecars can never push out a newer block's columns, and the slots still retained
-/// completely always form one suffix, reported by <see cref="EarliestCompletelyServableSlot"/>. The
-/// <c>capacity</c> most recently given sidecars are held as well, so a verified range-synced column
-/// that the retained set refuses is still found when its block is imported.
-/// Fulu and Gloas sidecars sit in separate maps keyed by (block root, column): a slot can carry
-/// competing blocks, so by-range serving must resolve the canonical root first and look up by
-/// (root, column). A Gloas sidecar whose block is not yet known can be
-/// parked as pending: pending sidecars are never returned by the served lookups, and move to the
-/// served map only through <see cref="AddGloas"/> once verified against their block's bid.
+/// With a store, additions persist and cache misses read through; pruning runs once per wall-clock epoch. Without one,
+/// retention is memory-only. Each fork's served map evicts lowest slots first, retaining a complete suffix plus capacity
+/// recent arrivals so range-synced columns remain available to import. Keys are (block root, column), not slot,
+/// so by-range serving resolves the canonical root first. Pending Gloas candidates are never served before AddGloas verifies them.
+/// Store retention must satisfy Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests.
 /// </remarks>
-/// <param name="capacity">The most sidecars each served map holds in memory.</param>
-/// <param name="store">Where sidecars are persisted and read back on a memory miss; <c>null</c> keeps them in memory only.</param>
-/// <param name="clock">Where the wall-clock epoch that sets the retention window is read from; <c>null</c> never prunes the store.</param>
-/// <param name="status">Where the finalized epoch is read from, below which sidecars of non-canonical blocks are pruned; <c>null</c> prunes none.</param>
-/// <param name="logManager">Reports stored sidecars that cannot be read or written.</param>
-/// <param name="storeWriter">Where the store writes and prunes run, in order, after memory holds the sidecar; <c>null</c> runs them on the caller.</param>
+/// <param name="capacity">Maximum sidecars per served map.</param>
+/// <param name="store">Persistence and read-through storage; null is memory-only.</param>
+/// <param name="clock">Retention clock; null disables store pruning.</param>
+/// <param name="status">Finalized epoch for pruning noncanonical sidecars; null disables that pruning.</param>
+/// <param name="logManager">Reports store faults.</param>
+/// <param name="storeWriter">Runs writes and prunes in order after memory insertion; null runs on the caller.</param>
 public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainStore? store = null, SlotClock? clock = null, IBeaconChainStatusSource? status = null, ILogManager? logManager = null,
     ColumnStoreWriter? storeWriter = null)
 {
@@ -86,7 +75,6 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     /// <remarks>Availability runs a KZG batch per candidate, so this bounds that work per column; above one, so an earlier forgery cannot block the genuine sidecar alone.</remarks>
     public const int MaxPendingGloasCandidatesPerKey = 4;
 
-    /// <summary>The distinct slots the served maps index, bounded by twice <paramref name="capacity"/>; for tests and diagnostics.</summary>
     internal int SlotIndexCount
     {
         get
@@ -403,7 +391,6 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         return notStored;
     }
 
-    /// <summary>Removes the watch on <paramref name="blockRoot"/>, if any.</summary>
     internal void Unwatch(Hash256 blockRoot)
     {
         lock (_servedLock)
@@ -413,7 +400,6 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
     }
 
-    /// <summary>The watched roots' current count; for tests and diagnostics.</summary>
     internal int WatchCount
     {
         get
@@ -629,8 +615,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
     }
 
-    /// <summary>Writes a sidecar the memory now holds to the store, fixes the stored floor on the first one, and prunes once per epoch.</summary>
-    /// <remarks>A failed write is reported and raises the floor above the slot, in the store too where it accepts the floor, so the sidecar is not claimed servable once memory evicts it or after a restart.</remarks>
+    /// <remarks>Failed writes raise the persisted floor where possible, so eviction or restart cannot claim the slot servable.</remarks>
     private void Persist(ulong slot, Hash256 blockRoot, ulong column, DataColumnSidecar? fulu, DataColumnSidecarGloas? gloas)
     {
         if (store is null)
@@ -666,7 +651,6 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         PruneOncePerEpoch();
     }
 
-    /// <summary>Records the floor a failed write raised in the store, so a restart does not claim the slot complete; a failed attempt is repeated after the next sidecar.</summary>
     private void PersistWriteFailedFloor()
     {
         ulong failedBelow;
@@ -842,7 +826,6 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
     }
 
-    /// <summary>The pending candidates' current total, bounded by <see cref="MaxPendingGloasSidecars"/>; for tests and diagnostics.</summary>
     internal int PendingGloasCount
     {
         get

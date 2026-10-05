@@ -160,11 +160,7 @@ public sealed class ExecutionPayloadEnvelopeImporter(
         return HasSelfBuildProposerKey(signedEnvelope.Message, state) && GloasBlockProcessing.VerifyExecutionPayloadEnvelopeSignature(state, signedEnvelope, pubkeys);
     }
 
-    /// <summary>
-    /// Whether the key a self-built envelope's signature is checked against is cached, first extending the cache from the
-    /// state's registry when it lags, as fork choice does for each block's post-state; an envelope from a builder needs none.
-    /// </summary>
-    /// <remarks>A proposer index outside the registry fails the spec's <c>state.validators[...]</c> lookup, so the envelope is invalid.</remarks>
+    /// <summary>Extends the validator cache before verifying a self-built envelope. Registered builders do not need it; an out-of-registry proposer is invalid.</summary>
     private bool HasSelfBuildProposerKey(ExecutionPayloadEnvelope envelope, BeaconStateGloas state)
     {
         if (envelope.BuilderIndex != Presets.BuilderIndexSelfBuild)
@@ -195,10 +191,8 @@ public sealed class ExecutionPayloadEnvelopeImporter(
         return ExecutionPayloadEnvelopeImportResult.Invalid;
     }
 
-    /// <summary>Carries one envelope's execution verdict from the verification's engine call back to <see cref="Import"/>.</summary>
     private sealed class EnvelopeVerdict(INewPayloadNotifier engine) : INewPayloadNotifier
     {
-        /// <summary>The engine's verdict on this envelope's payload; <c>null</c> until the engine answers.</summary>
         public ExecutionStatus? Status { get; private set; }
 
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) =>

@@ -64,50 +64,38 @@ public sealed class ForkChoiceRunner
     private readonly Dictionary<CheckpointRef, ForkedBeaconState> _checkpointStates = [];
     private readonly Dictionary<CheckpointRef, JustifiedBalances> _justifiedBalances = [];
 
-    /// <summary>Most recent last: a target checkpoint state a vote verified against, per shuffling of the current and previous epochs.</summary>
     private readonly List<(ShufflingKey Key, ForkedBeaconState State)> _voteStates = [];
 
-    /// <summary>The head <see cref="GetHeadNode"/> last returned, which gossip aggregates are checked against; cleared when a tick, a block, a slashing or an invalid payload may move it.</summary>
-    /// <remarks>A vote does not clear it: recomputing <c>get_head</c> for every aggregate would cost more than a head one vote can move.</remarks>
+    /// <summary>Caches the head for gossip authentication; ticks, blocks, slashings and invalidation clear it. Votes do not, avoiding a head recomputation per aggregate.</summary>
     private Hash256? _lastHeadRoot;
     private readonly List<(Hash256 Head, ulong Epoch, int Count)> _gossipCommitteeCounts = [];
 
-    /// <summary>The store epoch <see cref="_offHeadBuilds"/> counts in.</summary>
     private ulong _offHeadBuildEpoch;
 
-    /// <summary>Target states built this epoch for gossip aggregates of another shuffling than the head's.</summary>
     private int _offHeadBuilds;
 
     /// <summary>The target epoch and aggregator of each aggregate that cost one of <see cref="_offHeadBuilds"/>, so one selected aggregator cannot spend them all.</summary>
     /// <remarks>Keyed as p2p-interface.md keys its first-aggregate-per-aggregator rule, so a previous-epoch duty does not use up a current-epoch one.</remarks>
     private readonly HashSet<(ulong TargetEpoch, ulong AggregatorIndex)> _offHeadAggregators = [];
 
-    /// <summary>The epoch of the including blocks <see cref="_otherShufflingBodyBuilds"/> counts in.</summary>
     private ulong _otherShufflingBodyBuildEpoch;
 
-    /// <summary>Target states built for body votes of another shuffling than their block's, in blocks of <see cref="_otherShufflingBodyBuildEpoch"/>.</summary>
     private int _otherShufflingBodyBuilds;
 
-    /// <summary>Body votes of another shuffling than their block's whose build the budget put off, oldest first; <see cref="OnTick"/> applies them.</summary>
     private readonly Queue<DeferredBodyVote> _deferredBodyVotes = new();
 
-    /// <summary>The store slot in which a deferred body vote last cost a build.</summary>
     private ulong? _deferredBuildSlot;
 
     /// <summary>The root and post-state of the block <see cref="OnBlock"/> last registered, which its own body votes and later checkpoint advances read.</summary>
     /// <remarks>A caller may advance that state in place afterwards; every reader checks what it reads against the state's own roots or the root.</remarks>
     private (Hash256 Root, ForkedBeaconState State)? _lastBlock;
 
-    /// <summary>The spec's <c>store.block_timeliness</c>: whether each block arrived before its slot's attestation and PTC deadlines, keyed by block root.</summary>
     private readonly Dictionary<Hash256, BlockTimeliness> _blockTimeliness = [];
 
-    /// <summary>The spec's <c>store.payload_timeliness_vote</c> and <c>store.payload_data_availability_vote</c>, kept for every Gloas block.</summary>
     private readonly Dictionary<Hash256, PtcVotes> _ptcVotes = [];
 
-    /// <summary>The spec's <c>store.payloads</c>, as roots only: the Gloas blocks whose execution payload envelope was delivered and verified.</summary>
     private readonly HashSet<Hash256> _payloads = [];
 
-    /// <summary>The committed bid's <c>parent_block_hash</c> of each Gloas block, keyed by block root.</summary>
     private readonly Dictionary<Hash256, Hash256> _parentBlockHashes = [];
 
     /// <summary>specs/bellatrix/optimistic-sync.md: invalid Gloas payloads cannot become FULL again.</summary>
@@ -126,13 +114,10 @@ public sealed class ForkChoiceRunner
     /// <remarks>An incremental hasher pays one full merkleization per advance instead of one per skipped slot.</remarks>
     internal Func<IBeaconStateHasher> CheckpointStateHasher { get; set; } = static () => new CachedBeaconStateHasher();
 
-    /// <summary>An attestation for the current slot, validated and indexed, waiting for the next slot tick (the spec only counts attestations from past slots).</summary>
     private readonly record struct QueuedAttestation(ulong Slot, ulong[] AttestingIndices, Hash256 BlockRoot, ulong TargetEpoch, bool? PayloadPresent);
 
-    /// <summary>The fields an indexed attestation carries in both the Fulu and the Gloas container.</summary>
     private readonly record struct IndexedVote(ulong[] AttestingIndices, AttestationData Data, BlsSignature Signature);
 
-    /// <summary>The fields a <c>SignedAggregateAndProof</c> adds around its aggregate, with <c>hash_tree_root</c> of the container it came in.</summary>
     private readonly record struct AggregatorProof(ulong AggregatorIndex, BlsSignature SelectionProof, Hash256 MessageRoot, BlsSignature Signature);
 
     private readonly record struct BlockProposer(ulong Slot, ulong ProposerIndex);
@@ -158,13 +143,10 @@ public sealed class ForkChoiceRunner
     private static readonly StringLabel BodyAttestationRejected = new("body_attestation");
     private static readonly StringLabel BodyAttestationDeferredDropped = new("body_attestation_deferred_dropped");
 
-    /// <summary>A body vote waiting for its target's state, with the block that carried it.</summary>
     private sealed record DeferredBodyVote(AttestationData Data, BitArray AggregationBits, BitArray CommitteeBits, BlsSignature Signature, bool GloasContainer, Hash256 IncludingBlock);
 
-    /// <summary>A <c>store.block_timeliness</c> entry: its <c>ATTESTATION_TIMELINESS_INDEX</c> and <c>PTC_TIMELINESS_INDEX</c> flags.</summary>
     private readonly record struct BlockTimeliness(bool Attestation, bool Ptc);
 
-    /// <summary>The <c>on_payload_attestation_message</c> writes of one or more validators voting the same data, resolved before any is applied.</summary>
     private sealed record PtcVoteWrite(PtcVotes Votes, List<int> Seats, bool PayloadPresent, bool BlobDataAvailable)
     {
         public void Apply()
@@ -630,10 +612,6 @@ public sealed class ForkChoiceRunner
             message.Data ?? throw new ForkChoiceException($"Payload attestation from validator {message.ValidatorIndex} has no data"),
             [message.ValidatorIndex], message.Signature, isFromBlock, verifySignature)?.Apply();
 
-    /// <summary>
-    /// Every assertion of <c>on_payload_attestation_message</c> for <paramref name="validatorIndices"/> voting <paramref name="data"/>,
-    /// and the seats they hold; <see langword="null"/> when the spec returns early and writes nothing.
-    /// </summary>
     private PtcVoteWrite? ResolvePtcVote(PayloadAttestationData data, ulong[] validatorIndices, BlsSignature signature, bool isFromBlock, bool verifySignature)
     {
         Hash256 root = data.BeaconBlockRoot ?? throw new ForkChoiceException($"Payload attestation at slot {data.Slot} has no block root");
@@ -739,7 +717,6 @@ public sealed class ForkChoiceRunner
     /// <summary>The committed bid's <c>parent_block_hash</c> of the Gloas block <paramref name="blockRoot"/>; <see langword="null"/> for a pre-Gloas or unknown block.</summary>
     public Hash256? GetParentBlockHash(Hash256 blockRoot) => _parentBlockHashes.GetValueOrDefault(blockRoot);
 
-    /// <summary>The fork-independent <c>on_block</c> assertions: a known parent whose payload is not invalid, not from the future, after the finalized slot and descending from the finalized checkpoint.</summary>
     private void ValidateOnBlock(ulong slot, Hash256 parentRoot)
     {
         CheckpointRef finalized = _store.FinalizedCheckpoint;
@@ -835,16 +812,7 @@ public sealed class ForkChoiceRunner
         _lastHeadRoot = null;
     }
 
-    /// <summary>
-    /// The <c>is_same_dependent_root</c> term of <c>update_proposer_boost_root</c> (specs/phase0/fork-choice.md, unchanged
-    /// by specs/gloas/fork-choice.md apart from the payload status of the walk): whether a current-slot block on
-    /// <paramref name="parentRoot"/> and the pre-block <c>get_head</c> share <c>get_shuffling_dependent_root</c> at the store epoch.
-    /// </summary>
-    /// <remarks>
-    /// Must run before the block is added and before the checkpoints move. A current-slot block is always after the
-    /// dependent slot, so its dependent root is its parent's. A pruned walk ends <see langword="null"/> for both roots at
-    /// once: both descend from the finalized root, below which the spec's walk reaches the same block.
-    /// </remarks>
+    /// <summary>Compares the parent's dependent root with the pre-block head before adding the block or moving checkpoints (update_proposer_boost_root). Both pruned walks end at the same finalized ancestry.</summary>
     private bool HasHeadDependentRoot(Hash256 parentRoot)
     {
         ulong lookaheadStartSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(_store.CurrentEpoch > Presets.MinSeedLookahead ? _store.CurrentEpoch - Presets.MinSeedLookahead : 0);
@@ -852,8 +820,6 @@ public sealed class ForkChoiceRunner
         return _protoArray.GetAncestor(GetHead(), dependentSlot) == _protoArray.GetAncestor(parentRoot, dependentSlot);
     }
 
-    /// <summary>Whether <paramref name="slot"/> is in an epoch at or after <see cref="BeaconChainSpec.GloasForkEpoch"/>.</summary>
-    /// <remarks>Compares the epoch directly: <see cref="BeaconChainSpec.ForkAtEpoch"/> throws for pre-Electra epochs, which the mainnet fork-choice vectors use.</remarks>
     private bool IsGloasSlot(ulong slot) => _spec.GetEpoch(slot) >= _spec.GloasForkEpoch;
 
     /// <summary>
@@ -1139,16 +1105,7 @@ public sealed class ForkChoiceRunner
         _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
     };
 
-    /// <summary>
-    /// The Gloas <c>validate_on_attestation</c> rules on <c>data.index</c>, which votes for the head block's
-    /// payload status (specs/gloas/fork-choice.md, EIP-7732): 0 or 1, 0 for a vote in the block's own slot,
-    /// and 1 only for a block whose payload is verified.
-    /// </summary>
-    /// <remarks>
-    /// The last rule is the spec's literal <c>is_payload_verified</c>, <c>root in store.payloads</c>, so an index-1 vote for a
-    /// pre-Gloas block is refused: its payload has no envelope. <see cref="IsPayloadVerified"/> exempts such a block for
-    /// <c>on_block</c> only, where the literal check would refuse every first Gloas block.
-    /// </remarks>
+    /// <summary>Enforces Gloas payload-status indices: 0/1, 0 in the block's own slot, and 1 only for roots in store.payloads. Pre-Gloas blocks are exempt only for on_block, not index-1 votes (gloas/fork-choice.md, EIP-7732).</summary>
     private void ValidatePayloadStatusVote(AttestationData data, ulong blockSlot)
     {
         if (data.Index > 1)
@@ -1242,7 +1199,6 @@ public sealed class ForkChoiceRunner
             throw new ForkChoiceException($"{what} has {count} attesting indices, over the bound of {MaxAttestingIndices}");
     }
 
-    /// <summary>The spec's <c>is_valid_indexed_attestation</c> of <paramref name="state"/>'s fork, over the vote in that fork's container.</summary>
     private bool IsValidIndexedAttestation(ForkedBeaconState state, IndexedVote vote, bool verifySignature, BlockSignatureBatch.Deferral? deferral = null) => state switch
     {
         ForkedBeaconState.OfFulu fulu => BlockProcessing.IsValidIndexedAttestation(
@@ -1299,7 +1255,6 @@ public sealed class ForkChoiceRunner
         return new GloasWeights(this, GetJustifiedBalances(_store.JustifiedCheckpoint)).Of(index, node.PayloadStatus);
     }
 
-    /// <summary>The Gloas <c>get_head</c> walk from (justified root, PENDING) over the weights the last score update left.</summary>
     private ForkChoiceNode FindGloasHead(JustifiedBalances balances)
     {
         IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
@@ -1336,10 +1291,6 @@ public sealed class ForkChoiceRunner
         }
     }
 
-    /// <summary>
-    /// The child of (<paramref name="node"/>, PENDING) that <c>get_head</c> takes: EMPTY, or FULL when the payload is verified and
-    /// FULL wins on weight, then on <c>get_payload_status_tiebreaker</c> (the roots are equal).
-    /// </summary>
     private ForkChoicePayloadStatus ChoosePayloadNode(ProtoNode node, int index, GloasWeights weights)
     {
         // Gloas children of a pre-Gloas block build on the payload it carried (ProtoArray.GetParentPayloadStatus).
@@ -1358,11 +1309,9 @@ public sealed class ForkChoiceRunner
             : ForkChoicePayloadStatus.Empty;
     }
 
-    /// <summary>The spec's <c>is_previous_slot_payload_decision</c>: an EMPTY or FULL node of a block from the slot before the current one.</summary>
     private bool IsPreviousSlotPayloadDecision(ulong blockSlot, ForkChoicePayloadStatus status) =>
         status != ForkChoicePayloadStatus.Pending && blockSlot + 1 == _store.CurrentSlot;
 
-    /// <summary>The spec's <c>get_payload_status_tiebreaker</c>.</summary>
     private byte GetPayloadStatusTiebreaker(ProtoNode node, ForkChoicePayloadStatus status)
     {
         if (!IsPreviousSlotPayloadDecision(node.Slot, status))
@@ -1423,15 +1372,7 @@ public sealed class ForkChoiceRunner
         return true;
     }
 
-    /// <summary>
-    /// The spec's <c>get_weight</c> over the proto-array's per-node weights, which carry the proposer score on every node the
-    /// boosted block descends from whenever it is known and valid (<see cref="ProtoArray.ApplyScoreChanges"/>).
-    /// </summary>
-    /// <remarks>
-    /// The score is taken back off those nodes when <c>should_apply_proposer_boost</c> is false, and an EMPTY or FULL node of a
-    /// previous-slot block weighs zero. The boosted path is the boosted block's PENDING node and, for each ancestor, its PENDING node
-    /// and the payload node the path runs through (the child's <see cref="ProtoNode.ParentPayloadStatus"/>), per <c>is_ancestor</c>.
-    /// </remarks>
+    /// <summary>Adjusts proto-array weights for Gloas get_weight: remove boost along its PENDING/ancestor payload path when should_apply_proposer_boost is false, and zero previous-slot EMPTY/FULL weights.</summary>
     private sealed class GloasWeights
     {
         private readonly ForkChoiceRunner _runner;
@@ -1678,10 +1619,8 @@ public sealed class ForkChoiceRunner
         return reorgLateHead || reorgEquivocatingHead ? parentRoot : headRoot;
     }
 
-    /// <summary>The spec's <c>is_head_late</c>: a block with no recorded timeliness (unknown to this store) is treated as late, denying a reorg rather than allowing one on missing data.</summary>
     private bool IsHeadLate(Hash256 headRoot) => !_blockTimeliness.TryGetValue(headRoot, out BlockTimeliness timeliness) || !timeliness.Attestation;
 
-    /// <summary>The spec's <c>is_proposing_on_time</c>: whether the wall clock is at most <c>get_proposer_reorg_cutoff_ms</c> into the slot.</summary>
     private bool IsProposingOnTime()
     {
         ulong slotDurationMs = _spec.SecondsPerSlot * 1000;
@@ -1691,15 +1630,7 @@ public sealed class ForkChoiceRunner
         return timeIntoSlotMs <= GloasTiming.ProposerReorgCutoffBps * slotDurationMs / Presets.BasisPoints;
     }
 
-    /// <summary>
-    /// The spec's <c>is_head_weak</c>: whether the head's attestation score, plus the justified effective balance
-    /// of every equivocating validator in the head slot's committees, is below
-    /// <see cref="ReorgHeadWeightThresholdPercent"/> of a committee's share.
-    /// </summary>
-    /// <remarks>
-    /// The equivocators' balances are read unfiltered from the justified state: they are usually slashed, and
-    /// <paramref name="justifiedBalances"/> reports slashed validators as zero. Valid only right after <see cref="GetHead"/>.
-    /// </remarks>
+    /// <summary>Tests head weakness using boost-free attestation score plus unfiltered justified balances of equivocators. The supplied balances zero slashed validators, so they cannot supply the latter. Valid only immediately after GetHead.</summary>
     private bool IsHeadWeak(Hash256 headRoot, ulong headSlot, JustifiedBalances justifiedBalances)
     {
         ulong headWeight = GetAttestationScore(headRoot, justifiedBalances);
@@ -1730,19 +1661,10 @@ public sealed class ForkChoiceRunner
         return headWeight < _protoArray.CalculateCommitteeFraction(justifiedBalances, ReorgHeadWeightThresholdPercent);
     }
 
-    /// <summary>The spec's <c>is_parent_strong</c>: whether the parent's attestation score is above <see cref="ReorgParentWeightThresholdPercent"/> of a committee's share. Valid only right after <see cref="GetHead"/>.</summary>
     private bool IsParentStrong(Hash256 parentRoot, JustifiedBalances justifiedBalances) =>
         GetAttestationScore(parentRoot, justifiedBalances) > _protoArray.CalculateCommitteeFraction(justifiedBalances, ReorgParentWeightThresholdPercent);
 
-    /// <summary>
-    /// The spec's <c>get_attestation_score</c>: the proto-array weight of <paramref name="root"/> without the proposer
-    /// score that the last <see cref="GetHead"/> added to the boosted block and each of its ancestors.
-    /// </summary>
-    /// <remarks>
-    /// Mirrors the proto-array's boost rule: the score is the default boost percent of a committee's share of
-    /// <paramref name="justifiedBalances"/>, and an execution-invalid boost root is never boosted. Valid only right
-    /// after <see cref="GetHead"/> with the same balances.
-    /// </remarks>
+    /// <summary>Reads boost-free weight using the same balances as the preceding GetHead. Subtract only boost actually applied along the valid boosted ancestry.</summary>
     private ulong GetAttestationScore(Hash256 root, JustifiedBalances justifiedBalances)
     {
         ulong weight = _protoArray.GetWeight(root) ?? throw new ForkChoiceException($"Block {root} is unknown to fork choice");
@@ -1785,7 +1707,6 @@ public sealed class ForkChoiceRunner
     public static bool IsSingleSlotReorg(ulong parentSlot, ulong headSlot, ulong proposalSlot) =>
         parentSlot + 1 == headSlot && headSlot + 1 == proposalSlot;
 
-    /// <summary>The spec's <c>get_checkpoint_block</c>: the ancestor of <paramref name="root"/> at the start of <paramref name="epoch"/>.</summary>
     private Hash256 GetCheckpointBlock(Hash256 root, ulong epoch) =>
         _protoArray.GetAncestor(root, BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch)) ?? ResolveMissingCheckpointBlock(root, epoch);
 
@@ -1804,10 +1725,7 @@ public sealed class ForkChoiceRunner
         && slot > BeaconStateAccessors.ComputeStartSlotAtEpoch(checkpoint.Epoch)
         && _protoArray.IsDescendant(checkpoint.Root, root);
 
-    /// <summary>
-    /// The spec's <c>store.block_states[root]</c>, typed by the fork of the block's own slot so that a
-    /// Gloas root is never offered to the Fulu-typed <see cref="IForkChoiceStateProvider"/>.
-    /// </summary>
+    /// <summary>Resolves block post-state by its slot's fork, never offering a Gloas root to a Fulu provider.</summary>
     /// <exception cref="ForkChoiceException">The block is unknown, has no state, or is a Gloas block and this runner has no <see cref="IGloasBlockStateProvider"/>.</exception>
     private ForkedBeaconState GetBlockState(Hash256 blockRoot)
     {
@@ -1987,7 +1905,6 @@ public sealed class ForkChoiceRunner
     /// <summary>The body votes waiting for <see cref="OnTick"/> to build their target state.</summary>
     internal int DeferredBodyVoteCount => _deferredBodyVotes.Count;
 
-    /// <summary>Puts off a body vote whose target state the budget cannot build now, dropping the oldest past <see cref="MaxDeferredBodyVotes"/>.</summary>
     private void DeferBodyVote(DeferredBodyVote vote)
     {
         if (_deferredBodyVotes.Count == MaxDeferredBodyVotes)
@@ -2000,12 +1917,7 @@ public sealed class ForkChoiceRunner
         _deferredBodyVotes.Enqueue(vote);
     }
 
-    /// <summary>Applies the deferred body votes whose target state is held, and builds at most one more target state per store slot for the next.</summary>
-    /// <remarks>
-    /// specs/phase0/fork-choice.md on_attestation for a body vote has no time check, and update_latest_messages takes only a newer target epoch, so a
-    /// vote applied late changes nothing a validator's newer vote already set; only which of two votes of one epoch counts can differ. A vote whose
-    /// target finality has pruned, or that fails verification, is dropped as the importer drops a refused one.
-    /// </remarks>
+    /// <summary>Applies held deferred votes and builds at most one target state per slot. Later votes replace only older target epochs, so delayed application can change which same-epoch vote wins; pruned or invalid votes are dropped.</summary>
     private void ApplyDeferredBodyVotes()
     {
         for (int pending = _deferredBodyVotes.Count; pending > 0; pending--)
@@ -2035,17 +1947,11 @@ public sealed class ForkChoiceRunner
         }
     }
 
-    /// <summary>Whether <paramref name="target"/>'s epoch has the same shuffling decision block on the chain of <paramref name="blockRoot"/> as on the target's own.</summary>
-    /// <remarks>
-    /// The committees of a target epoch are fixed by that block, so a vote the state transition checked with the committees of
-    /// <paramref name="blockRoot"/>'s state names the same validators through the target's state exactly when this holds. The first two
-    /// epochs decide on the slot-0 block every chain shares.
-    /// </remarks>
+    /// <summary>Checks the shuffling decision shared by the target and including block; only then do transition-verified bits identify the same validators. The first two epochs share the slot-0 decision.</summary>
     private bool HasShufflingOf(Hash256 blockRoot, CheckpointRef target) =>
         target.Epoch <= Presets.MinSeedLookahead
         || (GetShufflingKey(target) is { } key && key == GetShufflingKey(new CheckpointRef(target.Epoch, blockRoot)));
 
-    /// <summary>The <see cref="ShufflingKey"/> of <paramref name="target"/>'s epoch on its chain; <c>null</c> for the first two epochs or a root the tree does not hold.</summary>
     private ShufflingKey? GetShufflingKey(CheckpointRef target)
     {
         if (target.Epoch <= Presets.MinSeedLookahead)
@@ -2063,7 +1969,6 @@ public sealed class ForkChoiceRunner
         return treeRoot is null ? null : new ShufflingKey(target.Epoch, treeRoot, BelowTreeRoot: true);
     }
 
-    /// <summary>Holds <paramref name="state"/>, which a vote verified against, for its shuffling, or marks the one held as just used; evicts the least recently used past <see cref="MaxVoteStates"/>.</summary>
     private void RegisterVoteState(ShufflingKey? key, ForkedBeaconState state)
     {
         if (key is not { } shuffling || shuffling.Epoch + 1 < _store.CurrentEpoch)
@@ -2093,14 +1998,12 @@ public sealed class ForkChoiceRunner
         _voteStates.Add((shuffling, state));
     }
 
-    /// <summary>Drops the held vote states of epochs before the previous one, which neither gossip nor a new block's body can target.</summary>
     private void PruneVoteStates()
     {
         ulong currentEpoch = _store.CurrentEpoch;
         _voteStates.RemoveAll(entry => entry.Key.Epoch + 1 < currentEpoch);
     }
 
-    /// <summary>The spec's <c>store_target_checkpoint_state</c> computation, without the cache; see <see cref="GetCheckpointState"/>.</summary>
     private ForkedBeaconState ComputeCheckpointState(CheckpointRef checkpoint, bool requireHeld = false)
     {
         ulong blockSlot = _protoArray.GetBlockSlot(checkpoint.Root) ?? throw new ForkChoiceException($"Block {checkpoint.Root} is unknown to fork choice");
@@ -2195,7 +2098,6 @@ public sealed class ForkChoiceRunner
         _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
     };
 
-    /// <summary>The spec's <c>get_weight</c> balance source: effective balances of the justified state's active, unslashed validators, and its <c>get_total_active_balance</c>.</summary>
     private JustifiedBalances GetJustifiedBalances(CheckpointRef justified)
     {
         if (_justifiedBalances.TryGetValue(justified, out JustifiedBalances? cached))
@@ -2236,7 +2138,6 @@ public sealed class ForkChoiceRunner
         }
     }
 
-    /// <summary>The spec's <c>update_latest_messages</c>: equivocating validators never vote again.</summary>
     private void ApplyVotes(ulong[] attestingIndices, Hash256 blockRoot, ulong slot, ulong targetEpoch, bool? payloadPresent)
     {
         foreach (ulong index in attestingIndices)
