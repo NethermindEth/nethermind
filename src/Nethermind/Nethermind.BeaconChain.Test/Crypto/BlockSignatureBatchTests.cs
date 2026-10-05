@@ -134,10 +134,8 @@ public class BlockSignatureBatchTests
         Assert.That(batch.Count, Is.Zero, "a verified batch is emptied");
     }
 
-    [TestCase(0)]
-    [TestCase(2)]
-    [TestCase(4)]
-    public void One_invalid_signature_anywhere_is_refused_with_its_own_message(int invalidPosition)
+    [Test]
+    public void One_invalid_signature_anywhere_is_refused_with_its_own_message([Values(0, 2, 4)] int invalidPosition)
     {
         BlockSignatureBatch batch = BatchWithInvalidAt(5, invalidPosition, alsoInvalid: -1);
 

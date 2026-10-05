@@ -105,11 +105,10 @@ public class GossipLoopbackTests
     }
 
     // phase0 p2p-interface.md: REJECTed messages are not forwarded and MAY descore their sender.
-    [TestCase(MessageValidity.Accepted)]
-    [TestCase(MessageValidity.Rejected)]
-    [TestCase(MessageValidity.Ignored)]
+    [Test]
     [CancelAfter(120_000)]
-    public async Task Relay_forwards_a_deferred_block_only_once_it_is_accepted_and_charges_its_sender_for_a_reject(MessageValidity verdict, CancellationToken token)
+    public async Task Relay_forwards_a_deferred_block_only_once_it_is_accepted_and_charges_its_sender_for_a_reject(
+        [Values(MessageValidity.Accepted, MessageValidity.Rejected, MessageValidity.Ignored)] MessageValidity verdict, CancellationToken token)
     {
         SlotClock slotClock = new(Spec, Timestamper.Default);
         byte[] digest = ForkDigest.Compute(Spec, slotClock.CurrentEpoch);
@@ -359,12 +358,9 @@ public class GossipLoopbackTests
     }
 
     // p2p-interface.md permits compressed payloads up to max_compressed_len(10 MiB), spanning several yamux windows.
-    [TestCase(64)]
-    [TestCase(300 * 1024)]
-    [TestCase(1200 * 1024)]
-    [TestCase(6 * 1024 * 1024)]
+    [Test]
     [CancelAfter(60_000)]
-    public async Task A_gossip_message_of_any_legal_size_reaches_the_other_host(int size, CancellationToken token)
+    public async Task A_gossip_message_of_any_legal_size_reaches_the_other_host([Values(64, 300 * 1024, 1200 * 1024, 6 * 1024 * 1024)] int size, CancellationToken token)
     {
         string topicId = GossipTopics.Topic(ForkDigest.Compute(Spec, 0), GossipTopics.DataColumnSidecarTopicName(0));
         await using BeaconP2P publisher = CreateHost();

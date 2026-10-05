@@ -48,10 +48,8 @@ public class SlotClockTests
         Assert.That(clock.UnixMilliseconds, Is.EqualTo((long)GenesisTime * 1000 + millisecondsSinceGenesis), "unix ms");
     }
 
-    [TestCase(0ul)]
-    [TestCase(5ul)]
-    [TestCase(13_410_304ul)]
-    public void Slot_start_time_is_genesis_plus_slot_duration(ulong slot) =>
+    [Test]
+    public void Slot_start_time_is_genesis_plus_slot_duration([Values(0ul, 5ul, 13_410_304ul)] ulong slot) =>
         Assert.That(CreateClock(0).SlotStartMilliseconds(slot), Is.EqualTo((long)GenesisTime * 1000 + (long)slot * 12_000));
 
     [Test]

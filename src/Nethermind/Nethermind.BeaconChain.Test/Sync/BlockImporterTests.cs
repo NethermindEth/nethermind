@@ -727,12 +727,8 @@ public class BlockImporterTests
         Assert.That(regenerated!.Slot, Is.EqualTo(third.PostState.Slot));
     }
 
-    [TestCase("unknown")]
-    [TestCase("gloas")]
-    [TestCase("ancestor")]
-    [TestCase("block")]
-    [TestCase("stateRoot")]
-    public void Regeneration_refuses_unresolvable_or_invalid_replay_without_retaining_partial_state(string missing)
+    [Test]
+    public void Regeneration_refuses_unresolvable_or_invalid_replay_without_retaining_partial_state([Values("unknown", "gloas", "ancestor", "block", "stateRoot")] string missing)
     {
         UnsignedChain chain = UnsignedChain.Create();
         using MemColumnsDb<BeaconChainDbColumns> db = new();
