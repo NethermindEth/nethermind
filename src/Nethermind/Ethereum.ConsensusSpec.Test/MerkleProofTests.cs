@@ -59,13 +59,11 @@ public class MerkleProofTests
             KzgCommitmentsInclusionProof = branch,
         };
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(leafIndex, Is.EqualTo((1UL << Eip7594DasConstants.KzgCommitmentsInclusionProofDepth) + (ulong)Eip7594DasConstants.BlobKzgCommitmentsSubtreeIndex),
-                "the vector proves the generalized index the sidecar check folds up from");
-            Assert.That(DataColumnSidecarVerifier.ComputeCommitmentsListRoot(body.BlobKzgCommitments!), Is.EqualTo(leaf));
-            Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.True);
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(leafIndex, Is.EqualTo((1UL << Eip7594DasConstants.KzgCommitmentsInclusionProofDepth) + (ulong)Eip7594DasConstants.BlobKzgCommitmentsSubtreeIndex),
+            "the vector proves the generalized index the sidecar check folds up from");
+        Assert.That(DataColumnSidecarVerifier.ComputeCommitmentsListRoot(body.BlobKzgCommitments!), Is.EqualTo(leaf));
+        Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.True);
     }
 
     private static YamlMappingNode LoadProof(string path)

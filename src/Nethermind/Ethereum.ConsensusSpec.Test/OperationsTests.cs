@@ -43,17 +43,15 @@ public class OperationsTests
     public void Every_fork_and_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
         List<OperationCase> cases = FuluDriverSupport.TestedCases<OperationCase>(preset, MinimalCases, MainnetCases);
-        using (Assert.EnterMultipleScope())
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks));
+        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
         {
-            Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks));
-            foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-            {
-                IEnumerable<string> table = FuluDriverSupport.RequireForkDriver(fork) is ForkDriver<BeaconStateGloas> ? GloasHandlers.Keys : Handlers.Keys;
-                Assert.That(
-                    cases.Where(testCase => testCase.Fork == fork).Select(static testCase => testCase.OperationName).Distinct(),
-                    Is.EquivalentTo(table.Except(OperationsAbsentByFork.GetValueOrDefault(fork, []))),
-                    $"{fork} operations");
-            }
+            IEnumerable<string> table = FuluDriverSupport.RequireForkDriver(fork) is ForkDriver<BeaconStateGloas> ? GloasHandlers.Keys : Handlers.Keys;
+            Assert.That(
+                cases.Where(testCase => testCase.Fork == fork).Select(static testCase => testCase.OperationName).Distinct(),
+                Is.EquivalentTo(table.Except(OperationsAbsentByFork.GetValueOrDefault(fork, []))),
+                $"{fork} operations");
         }
     }
     [Test]

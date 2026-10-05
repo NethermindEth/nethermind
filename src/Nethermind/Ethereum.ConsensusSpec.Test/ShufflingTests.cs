@@ -42,12 +42,10 @@ public class ShufflingTests
         int[] wholeList = [.. Enumerable.Range(0, count)];
         SwapOrNotShuffle.ShuffleList(wholeList, seed, forwards: false, rounds);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(expected, Has.Length.EqualTo(count), "the vector's mapping covers its whole list");
-            Assert.That(perIndex, Is.EqualTo(expected), "compute_shuffled_index");
-            Assert.That(wholeList, Is.EqualTo(expected), "the whole-list shuffle of the identity");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(expected, Has.Length.EqualTo(count), "the vector's mapping covers its whole list");
+        Assert.That(perIndex, Is.EqualTo(expected), "compute_shuffled_index");
+        Assert.That(wholeList, Is.EqualTo(expected), "the whole-list shuffle of the identity");
     }
 
     private static YamlMappingNode LoadMapping(string path)

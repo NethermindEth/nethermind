@@ -26,14 +26,12 @@ public class GenesisTests
             return;
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(cases.Select(static c => c.Handler).Distinct(), Is.EquivalentTo(Handlers));
-            Assert.That(ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, "phase0", Suite)).Select(Path.GetFileName), Is.EquivalentTo(Handlers), "handlers in the archive");
-            Assert.That(cases.Select(static c => c.Fork).Distinct(), Is.EquivalentTo(new[] { "phase0" }));
-            // A driver that passes without checking a state would turn every vector green unseen.
-            Assert.That(cases.Where(static c => !ThrowsNotImplemented(c)), Is.Empty, "vectors that ran without reporting not-implemented");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(cases.Select(static c => c.Handler).Distinct(), Is.EquivalentTo(Handlers));
+        Assert.That(ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, "phase0", Suite)).Select(Path.GetFileName), Is.EquivalentTo(Handlers), "handlers in the archive");
+        Assert.That(cases.Select(static c => c.Fork).Distinct(), Is.EquivalentTo(new[] { "phase0" }));
+        // A driver that passes without checking a state would turn every vector green unseen.
+        Assert.That(cases.Where(static c => !ThrowsNotImplemented(c)), Is.Empty, "vectors that ran without reporting not-implemented");
     }
 
     private static bool ThrowsNotImplemented(GenesisCase testCase)
