@@ -114,6 +114,15 @@ public class GuestJumpDestinationTests
         }
     }
 
+    [TestCase(false, TestName = "Code without a CALLDEST byte keeps the incremental bitmap")]
+    [TestCase(true, TestName = "Code with a CALLDEST byte takes a complete bitmap")]
+    public void Call_destinations_keep_the_incremental_bitmap_only_without_a_calldest_byte(bool hasCallDest)
+    {
+        CodeInfo codeInfo = new(new byte[] { PUSH1, hasCallDest ? (byte)Instruction.CALLDEST : (byte)0, JUMPDEST });
+
+        Assert.That(ReferenceEquals(codeInfo.JumpAndCallDestinationBitmap, codeInfo.IncrementalJumpBitmap), Is.EqualTo(!hasCallDest));
+    }
+
     [Test]
     public void Complete_bitmap_misses_do_not_advance_the_incremental_cursor()
     {

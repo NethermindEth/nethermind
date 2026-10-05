@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -41,20 +42,46 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
 
     /// <summary>The EIP-7979 destination bitmap, built on first use; one bit per <c>JUMPDEST</c> or <c>CALLDEST</c> instruction.</summary>
     /// <remarks>
-    /// Kept apart from <see cref="JumpDestinationBitmap"/> because the code info is shared across forks. A valid
-    /// EIP-8024 immediate is instruction data, so a <c>CALLDEST</c> byte inside one is not marked; the <c>JUMPDEST</c>
-    /// bits still match <see cref="JumpDestinationBitmap"/>, as such an immediate is never <c>0x5b</c> or a PUSH.
+    /// Kept apart from <see cref="JumpDestinationBitmap"/> because the code info is shared across forks; code with no
+    /// <c>CALLDEST</c> byte shares the build's own jump bitmap instead. A valid EIP-8024 immediate is instruction data,
+    /// so a <c>CALLDEST</c> byte inside one is not marked; the <c>JUMPDEST</c> bits still match
+    /// <see cref="JumpDestinationBitmap"/>, as such an immediate is never <c>0x5b</c> or a PUSH.
     /// </remarks>
     internal long[] JumpAndCallDestinationBitmap => _jumpAndCallDestinationBitmap ??= CreateJumpAndCallDestinationBitmap();
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private long[] CreateJumpAndCallDestinationBitmap()
     {
-        Metrics.IncrementContractsAnalysed();
         ReadOnlySpan<byte> code = MachineCode.Span;
-        if ((uint)code.Length < (uint)1 || code[0] == (byte)Instruction.STOP) return _emptyJumpDestinationBitmap;
+        // Code that starts with STOP halts before any jump, so it is not analyzed.
+        if (code.IsEmpty || code[0] == (byte)Instruction.STOP || !code.Contains((byte)CALLDEST)) return PlainJumpBitmap;
 
+        Metrics.IncrementContractsAnalysed();
         long[] bitmap = CreateBitmap(code.Length);
+        if (MayHoldEip8024CallDestination(code)) return PopulateJumpAndCallDestinationBitmap_Scalar(bitmap, code);
+
+        // CALLDEST is a one-byte instruction like JUMPDEST, so the jump analysis of the code with each CALLDEST
+        // byte read as a JUMPDEST marks both.
+        byte[] rented = ArrayPool<byte>.Shared.Rent(code.Length);
+        Span<byte> markers = rented.AsSpan(0, code.Length);
+        code.Replace(markers, (byte)CALLDEST, (byte)JUMPDEST);
+        PopulateJumpDestinationBitmap(bitmap, markers);
+        ArrayPool<byte>.Shared.Return(rented);
+        return bitmap;
+    }
+
+    /// <summary>Whether a <c>CALLDEST</c> byte follows a <c>DUPN</c>, <c>SWAPN</c> or <c>EXCHANGE</c> byte, so may be its EIP-8024 immediate.</summary>
+    private static bool MayHoldEip8024CallDestination(ReadOnlySpan<byte> code)
+    {
+        ReadOnlySpan<byte> afterDupN = [(byte)Instruction.DUPN, (byte)CALLDEST];
+        ReadOnlySpan<byte> afterSwapN = [(byte)Instruction.SWAPN, (byte)CALLDEST];
+        ReadOnlySpan<byte> afterExchange = [(byte)Instruction.EXCHANGE, (byte)CALLDEST];
+        return code.IndexOf(afterDupN) >= 0 || code.IndexOf(afterSwapN) >= 0 || code.IndexOf(afterExchange) >= 0;
+    }
+
+    /// <summary>Marks the <c>JUMPDEST</c> and <c>CALLDEST</c> instructions of <paramref name="code"/>, stepping over EIP-8024 immediates.</summary>
+    private static long[] PopulateJumpAndCallDestinationBitmap_Scalar(long[] bitmap, ReadOnlySpan<byte> code)
+    {
         for (int pc = 0; pc < code.Length; pc++)
         {
             int op = code[pc];
@@ -122,14 +149,15 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
         // If code is empty or starts with STOP, then we don't need to analyze
         if ((uint)code.Length < (uint)1 || code[0] == (byte)Instruction.STOP) return _emptyJumpDestinationBitmap;
 
-        long[] bitmap = CreateBitmap(code.Length);
-
-        return Avx512Vbmi.IsSupported && Vector512.IsHardwareAccelerated && code.Length >= Vector512<sbyte>.Count ? PopulateJumpDestinationBitmap_Vector512(bitmap, code) :
-            Avx2.IsSupported && code.Length >= Vector256<sbyte>.Count ? PopulateJumpDestinationBitmap_Vector256(bitmap, code) :
-            Ssse3.IsSupported && code.Length >= Vector128<sbyte>.Count ? PopulateJumpDestinationBitmap_Ssse3(bitmap, code) :
-            AdvSimd.Arm64.IsSupported && code.Length >= Vector128<sbyte>.Count ? PopulateJumpDestinationBitmap_AdvSimd(bitmap, code) :
-            PopulateJumpDestinationBitmap_Scalar(bitmap, code);
+        return PopulateJumpDestinationBitmap(CreateBitmap(code.Length), code);
     }
+
+    private static long[] PopulateJumpDestinationBitmap(long[] bitmap, ReadOnlySpan<byte> code) =>
+        Avx512Vbmi.IsSupported && Vector512.IsHardwareAccelerated && code.Length >= Vector512<sbyte>.Count ? PopulateJumpDestinationBitmap_Vector512(bitmap, code) :
+        Avx2.IsSupported && code.Length >= Vector256<sbyte>.Count ? PopulateJumpDestinationBitmap_Vector256(bitmap, code) :
+        Ssse3.IsSupported && code.Length >= Vector128<sbyte>.Count ? PopulateJumpDestinationBitmap_Ssse3(bitmap, code) :
+        AdvSimd.Arm64.IsSupported && code.Length >= Vector128<sbyte>.Count ? PopulateJumpDestinationBitmap_AdvSimd(bitmap, code) :
+        PopulateJumpDestinationBitmap_Scalar(bitmap, code);
 
     internal static long[] CreateBitmap(int codeLength)
         => new long[GetInt64ArrayLengthFromBitLength(codeLength)];
