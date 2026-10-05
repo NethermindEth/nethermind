@@ -254,11 +254,11 @@ public class TrailingRequestBytesLoopbackTests
 
     private static byte[] TrailingBytes(int count) => [.. Enumerable.Repeat((byte)0x2a, count)];
 
-    private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token,
-        Identity? requesterIdentity = null, int requests = 1, Func<IChannel, CancellationToken, Task>? afterRequest = null, Func<IChannel, CancellationToken, Task>? afterResponse = null)
+    internal static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token,
+        Identity? requesterIdentity = null, int requests = 1, Func<IChannel, CancellationToken, Task>? afterRequest = null, Func<IChannel, CancellationToken, Task>? afterResponse = null, ILogManager? logManager = null)
     {
         ServiceProvider services = new ServiceCollection()
-            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(LimboLogs.Instance))
+            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(logManager ?? LimboLogs.Instance))
             .AddSingleton<RawRequestProtocol>()
             .AddLibp2p(static builder => builder.AddProtocol<RawRequestProtocol>())
             .BuildServiceProvider();

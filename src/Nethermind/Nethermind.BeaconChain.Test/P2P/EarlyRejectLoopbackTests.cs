@@ -2,18 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.IO;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Libp2p.Core;
-using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Logging;
-using Nethermind.Network.Libp2p;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
@@ -72,7 +67,7 @@ public class EarlyRejectLoopbackTests
         byte[] wire = await EncodeAsync(protocolId, request, token);
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
         await server.StartAsync(token);
-        (byte[] response, TimeSpan elapsed) = await RequestAsync(server, protocolId, wire, request != Request.ZeroLengthStreamHeldOpen, token);
+        (byte[] response, TimeSpan elapsed) = await ReqResp.TrailingRequestBytesLoopbackTests.RequestAsync(server, protocolId, wire, request != Request.ZeroLengthStreamHeldOpen, token, logManager: LoopbackTrace.Or(LimboLogs.Instance, "requester"));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         if (empty)
@@ -88,26 +83,6 @@ public class EarlyRejectLoopbackTests
             Assert.That(chunk?.Payload, Is.Not.Empty, "the error chunk carries its message");
         }
         Assert.That(elapsed, Is.LessThan(Prompt), "answered or closed at once, not by the listener's own timeout");
-    }
-
-    private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token)
-    {
-        ServiceProvider services = new ServiceCollection()
-            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(LoopbackTrace.Or(LimboLogs.Instance, "requester")))
-            .AddSingleton<RawRequestProtocol>()
-            .AddLibp2p(static builder => builder.AddProtocol<RawRequestProtocol>())
-            .BuildServiceProvider();
-        await using (services)
-        await using (ILocalPeer requester = services.GetRequiredService<IPeerFactory>().Create(new Identity(privateKey: null, KeyType.Secp256K1)))
-        {
-            ISession session = await PeerSessionNodes.DialFromPlainPeerAsync(requester, server, token);
-            services.GetRequiredService<RawRequestProtocol>().Id = protocolId;
-            services.GetRequiredService<RawRequestProtocol>().HalfClose = halfClose;
-
-            Stopwatch elapsed = Stopwatch.StartNew();
-            byte[] response = await session.DialAsync<RawRequestProtocol, byte[], byte[]>(wire, token).WaitAsync(token);
-            return (response, elapsed.Elapsed);
-        }
     }
 
     /// <summary>Encodes a by-root list by hand: the generated encoder refuses more identifiers than the spec limit.</summary>
@@ -159,28 +134,5 @@ public class EarlyRejectLoopbackTests
             default:
                 throw new ArgumentOutOfRangeException(nameof(request));
         }
-    }
-
-    private sealed class RawRequestProtocol : ISessionProtocol<byte[], byte[]>
-    {
-        public string Id { get; set; } = "/test/raw-request/1";
-        public bool HalfClose { get; set; } = true;
-
-        public async Task<byte[]> DialAsync(IChannel downChannel, ISessionContext context, byte[] request)
-        {
-            using CancellationTokenSource cts = new(Prompt + Prompt);
-            ChannelStreamAdapter stream = new(downChannel);
-            await stream.WriteAsync(request, cts.Token);
-            if (HalfClose)
-            {
-                await downChannel.WriteEofAsync(cts.Token);
-            }
-
-            using MemoryStream response = new();
-            await stream.CopyToAsync(response, cts.Token);
-            return response.ToArray();
-        }
-
-        public Task ListenAsync(IChannel downChannel, ISessionContext context) => throw new NotSupportedException();
     }
 }
