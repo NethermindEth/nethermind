@@ -26,6 +26,18 @@ public class ForkTests
             }),
     };
 
+    [TestCase("fork_base_state")]
+    [TestCase("fork_builder_deposit_uses_deposit_slot_epoch")]
+    public void Required_gloas_upgrade_matches_the_independent_post_state(string name)
+    {
+        string path = Path.Combine(ConsensusSpecArchive.GetRoot(ConsensusPreset.Mainnet),
+            "tests", "mainnet", "gloas", "fork", "fork", "pyspec_tests", name);
+        foreach (string file in new[] { "pre.ssz_snappy", "post.ssz_snappy" })
+            Assert.That(File.Exists(Path.Combine(path, file)), Is.True, $"mandatory fork vector is missing {file}");
+        Assert.That(() => Run(new ForkCase(nameof(ConsensusPreset.Mainnet), "gloas", path,
+            $"mainnet/gloas/fork/fork/pyspec_tests/{name}")), Throws.Nothing);
+    }
+
     [TestCaseSource(nameof(MinimalCases))]
     public void Fork(ForkCase testCase) => Execute(testCase);
     [TestCaseSource(nameof(MainnetCases))]
