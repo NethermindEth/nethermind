@@ -43,9 +43,9 @@ public class FrameTxWidthFinalizer : IDisposable
 
     public FrameTxWidthFinalizer(IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPoolConfig txPoolConfig, ILogManager logManager)
     {
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-        _logger = logManager?.GetClassLogger<FrameTxWidthFinalizer>() ?? throw new ArgumentNullException(nameof(logManager));
+        _blockTree = blockTree;
+        _receiptFinder = receiptFinder;
+        _logger = logManager.GetClassLogger<FrameTxWidthFinalizer>();
 
         if (txPoolConfig.FrameTxWidthEnabled)
         {
