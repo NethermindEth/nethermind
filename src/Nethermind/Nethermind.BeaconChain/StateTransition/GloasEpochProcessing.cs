@@ -172,29 +172,8 @@ public static partial class GloasEpochProcessing
     }
 
     /// <summary>Spec <c>compute_ptc</c> over a Gloas state; the upgrade-time twin reads the Fulu pre-state (see <see cref="GloasForkTransition.InitializePtcWindow"/>).</summary>
-    public static PayloadTimelinessCommittee ComputePtc(BeaconStateGloas state, CommitteeCache committees, ulong slot)
-    {
-        ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(slot);
-        Hash256 domainSeed = state.GetSeed(epoch, DomainType.PtcAttester);
-        Span<byte> preimage = stackalloc byte[32 + 8];
-        domainSeed.Bytes.CopyTo(preimage);
-        BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], slot);
-        byte[] seed = SHA256.HashData(preimage);
-
-        List<int> indices = [];
-        for (int i = 0; i < committees.CommitteesPerSlot; i++)
-            indices.AddRange(committees.GetBeaconCommittee(slot, i));
-
-        int[] selected = GloasForkTransition.ComputeBalanceWeightedSelection(state.Validators!, indices, seed, (int)Presets.PtcSize, shuffleIndices: false);
-        ulong[] ptcIndices = new ulong[selected.Length];
-        for (int i = 0; i < selected.Length; i++)
-            ptcIndices[i] = (ulong)selected[i];
-
-        return new PayloadTimelinessCommittee
-        {
-            Indices = ptcIndices,
-        };
-    }
+    public static PayloadTimelinessCommittee ComputePtc(BeaconStateGloas state, CommitteeCache committees, ulong slot) =>
+        GloasForkTransition.ComputePtcFromSeed(state.GetSeed(BeaconStateAccessors.ComputeEpochAtSlot(slot), DomainType.PtcAttester), state.Validators!, committees, slot);
 
     private static partial bool IsEligibleValidator(Validator validator, ulong previousEpoch);
 
