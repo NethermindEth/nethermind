@@ -1560,8 +1560,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static bool MayJump => true;
 
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionPush2AndCallSub(ref stack, ref gas, vm, ref programCounter);
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            if (!EvmInstructions.IsCallSubAfterPush2(ref stack, programCounter))
+                return EvmInstructions.InstructionPush2<TGasPolicy, OffFlag>(ref stack, ref gas, vm, ref programCounter);
+
+            nint fusedOpCodeCount = 0;
+            return EvmInstructions.InstructionPush2CallSub<TGasPolicy, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
+        }
+
+        /// <summary>The dispatch form, which counts fused opcodes in the chain's counter and reads the virtual machine only for a CALLSUB.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, ref DispatchState state, ref nint programCounter, ref nint opCodeCount) =>
+            EvmInstructions.IsCallSubAfterPush2(ref stack, programCounter)
+                ? EvmInstructions.InstructionPush2CallSub<TGasPolicy, OffFlag>(ref stack, ref gas, state.Vm, ref programCounter, ref opCodeCount)
+                : EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag>(ref stack, ref gas, null!, ref programCounter, ref opCodeCount);
     }
 
     [SkipLocalsInit]

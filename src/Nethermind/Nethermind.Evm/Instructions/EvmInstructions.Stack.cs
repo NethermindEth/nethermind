@@ -111,29 +111,15 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         nint fusedOpCodeCount = 0;
-        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
-    }
-
-    /// <summary>
-    /// Untraced PUSH2 on an EIP-7979 spec: also runs a following <c>CALLSUB</c> and the <c>CALLDEST</c> it lands on,
-    /// as well as the <c>JUMP</c>/<c>JUMPI</c> that <see cref="InstructionPush2{TGasPolicy, TTracingInst}"/> runs.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    [SkipLocalsInit]
-    internal static EvmExceptionType InstructionPush2AndCallSub<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        nint fusedOpCodeCount = 0;
-        return InstructionPush2Core<TGasPolicy, OffFlag, OnFlag, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
+        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter, TFuseCallSub>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
+    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TUseVmCounter : struct, IFlag
-        where TFuseCallSub : struct, IFlag
     {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
@@ -195,16 +181,6 @@ public static partial class EvmInstructions
             goto Success;
         }
 
-        if (TFuseCallSub.IsActive && !TTracingInst.IsActive &&
-            (Instruction)Unsafe.Add(ref bytes, programCounter + Size) == Instruction.CALLSUB)
-        {
-            ushort destination = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter)));
-            if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination))
-                goto Unfused;
-
-            return FusedCallSub<TGasPolicy, TUseVmCounter>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount, destination, programCounter + Size + 1);
-        }
-
     Unfused:
         ref byte start = ref Unsafe.Add(ref bytes, programCounter);
         EvmExceptionType result;
@@ -233,21 +209,46 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
-    /// <summary>
-    /// Runs an EIP-7979 <c>CALLSUB</c> to the static <paramref name="destination"/> its PUSH named, which never reaches
-    /// the data stack, and charges the <c>CALLDEST</c> it lands on as <c>CALLSUB</c> would.
-    /// </summary>
-    /// <param name="returnAddress">The position of the instruction after <c>CALLSUB</c>.</param>
+    /// <summary>Whether the instruction after the PUSH2 at <paramref name="programCounter"/> - 1 is an EIP-7979 <c>CALLSUB</c>.</summary>
+    /// <remarks>Untraced code is padded, so the read is in bounds even past the end.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType FusedCallSub<TGasPolicy, TUseVmCounter>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount, int destination, nint returnAddress)
+    internal static bool IsCallSubAfterPush2(ref EvmStack stack, nint programCounter) =>
+        (Instruction)Unsafe.Add(ref stack.Code, programCounter + sizeof(ushort)) == Instruction.CALLSUB;
+
+    /// <summary>
+    /// Untraced PUSH2 followed by an EIP-7979 <c>CALLSUB</c> (see <see cref="IsCallSubAfterPush2"/>): runs the call and the
+    /// <c>CALLDEST</c> it lands on, so the static destination never reaches the data stack.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionPush2CallSub<TGasPolicy, TUseVmCounter>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TUseVmCounter : struct, IFlag
     {
+        const int Size = sizeof(ushort);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        ref byte immediate = ref Unsafe.Add(ref stack.Code, programCounter);
+        // A following CALLSUB does not exempt PUSH2 from the stack limit.
+        if (stack.Head >= EvmStack.MaxStackSize - 1)
+        {
+            programCounter += Size;
+            return EvmExceptionType.StackOverflow;
+        }
+
+        ushort destination = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ushort>(ref immediate));
+        // With lazy analysis an unanalyzed destination runs unfused, leaving the analysis to CALLSUB.
+        if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination))
+        {
+            programCounter += Size;
+            return stack.Push2Bytes<OffFlag, OffFlag>(ref immediate);
+        }
+
         IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
         if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         nint target = CallDestination(destination, ref stack);
         if (target < 0) return EvmExceptionType.InvalidJumpDestination;
-        if (!vm.VmState.TryPushReturnAddress((int)returnAddress)) return EvmExceptionType.ReturnStackOverflow;
+        // The return address is the instruction after CALLSUB.
+        if (!vm.VmState.TryPushReturnAddress((int)(programCounter + Size + 1))) return EvmExceptionType.ReturnStackOverflow;
         programCounter = target + 1;
         IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
         return TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas) ? EvmExceptionType.None : EvmExceptionType.OutOfGas;

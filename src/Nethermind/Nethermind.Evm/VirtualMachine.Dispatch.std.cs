@@ -313,12 +313,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (carriesExecutionGas)
                 {
                     LoadFixedGas(out TGasPolicy localGas, gas);
-                    exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag, OffFlag>(ref stack, ref localGas, null!, ref pc, ref opCodeCount);
+                    exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag>(ref stack, ref localGas, null!, ref pc, ref opCodeCount);
                     gas = GetExecutionGas(ref localGas);
                 }
                 else
                 {
-                    exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag, OffFlag>(ref stack, ref state.Gas, null!, ref pc, ref opCodeCount);
+                    exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag>(ref stack, ref state.Gas, null!, ref pc, ref opCodeCount);
                 }
             }
             else if (!TCancelable.IsActive && typeof(TOpcode) == typeof(Push2CallSubOpcode))
@@ -326,12 +326,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (carriesExecutionGas)
                 {
                     LoadFixedGas(out TGasPolicy localGas, gas);
-                    exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag, OnFlag>(ref stack, ref localGas, state.Vm, ref pc, ref opCodeCount);
+                    exceptionType = Push2CallSubOpcode.Execute(ref stack, ref localGas, ref state, ref pc, ref opCodeCount);
                     gas = GetExecutionGas(ref localGas);
                 }
                 else
                 {
-                    exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag, OnFlag>(ref stack, ref state.Gas, state.Vm, ref pc, ref opCodeCount);
+                    exceptionType = Push2CallSubOpcode.Execute(ref stack, ref state.Gas, ref state, ref pc, ref opCodeCount);
                 }
             }
             else if (!TTracingInst.IsActive && !TCancelable.IsActive && typeof(TOpcode) == typeof(JumpOpcode<OffFlag>))
