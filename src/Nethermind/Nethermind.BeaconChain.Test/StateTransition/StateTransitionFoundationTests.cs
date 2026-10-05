@@ -32,11 +32,8 @@ public class StateTransitionFoundationTests
     {
         byte[] seed = SHA256.HashData(BitConverter.GetBytes(count));
 
-        int[] perIndex = new int[count];
-        for (int i = 0; i < count; i++)
-        {
-            perIndex[i] = SwapOrNotShuffle.ComputeShuffledIndex(i, count, seed);
-        }
+        int[] perIndex = Enumerable.Range(0, count)
+            .Select(i => SwapOrNotShuffle.ComputeShuffledIndex(i, count, seed)).ToArray();
 
         int[] bulk = Enumerable.Range(0, count).ToArray();
         SwapOrNotShuffle.ShuffleList(bulk, seed);

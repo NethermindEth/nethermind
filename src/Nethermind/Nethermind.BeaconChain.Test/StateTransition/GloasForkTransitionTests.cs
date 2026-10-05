@@ -445,9 +445,7 @@ public class GloasForkTransitionTests
     // Every byte differs, so an execution address read from the wrong 20-byte window of the credentials shows.
     private static Hash256 PrefixedCredentials(byte prefix, byte seed)
     {
-        byte[] bytes = new byte[32];
-        for (int i = 0; i < bytes.Length; i++)
-            bytes[i] = unchecked((byte)(seed + i));
+        byte[] bytes = Enumerable.Range(0, 32).Select(i => unchecked((byte)(seed + i))).ToArray();
         bytes[0] = prefix;
         return new Hash256(bytes);
     }

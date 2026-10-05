@@ -27,9 +27,8 @@ public class SyncAggregateThroughputTests
     public void Cached_against_decompressed()
     {
         BlsPublicKey[] pool = [.. Enumerable.Range(0, DistinctKeys).Select(static i => new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress()))];
-        Validator[] registry = new Validator[RegistrySize];
-        for (int i = 0; i < registry.Length; i++)
-            registry[i] = new Validator { Pubkey = pool[i % DistinctKeys] };
+        Validator[] registry = Enumerable.Range(0, RegistrySize)
+            .Select(i => new Validator { Pubkey = pool[i % DistinctKeys] }).ToArray();
         PubkeyCache pubkeys = new();
         pubkeys.Build(registry);
 
