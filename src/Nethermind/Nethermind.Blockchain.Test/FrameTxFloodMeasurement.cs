@@ -250,7 +250,7 @@ public partial class FrameTxFloodMeasurement
                     double lagUs = lag * 1_000_000.0 / Stopwatch.Frequency;
                     if (lagUs > MaxLagUs) Volatile.Write(ref _maxLagUs, lagUs);
 
-                    if (submit(txs[i % txs.Length]) == AcceptTxResult.FrameSimulationFailed) Interlocked.Increment(ref Rejected);
+                    if (submit(AsDecoded(txs[i % txs.Length])) == AcceptTxResult.FrameSimulationFailed) Interlocked.Increment(ref Rejected);
                     Interlocked.Increment(ref Submitted);
                 }
             })
@@ -276,6 +276,19 @@ public partial class FrameTxFloodMeasurement
         }
 
         public void ResetMaxLag() => Volatile.Write(ref _maxLagUs, 0);
+
+        /// <summary>A copy made at submission, as a node holds a gossiped transaction it has just decoded.</summary>
+        /// <remarks>Pool entries are built ahead and age into the oldest generation, and a signature entry caches its
+        /// recovered signer. Submitting them directly would attach that young cache to old objects and promote it,
+        /// filling the oldest generation with work a node never does. A copy with its own entries dies young, and
+        /// pays every recovery itself.</remarks>
+        private static Transaction AsDecoded(Transaction pooled)
+        {
+            Transaction decoded = new();
+            pooled.CopyTo(decoded, copyHash: true);
+            if (pooled.FrameSignatures is { Length: > 0 } signatures) decoded.FrameSignatures = FrameTxTestFrames.Fresh(signatures);
+            return decoded;
+        }
 
         /// <summary>Cancels and joins the submitting thread, returning whether it stopped within the timeout.</summary>
         public bool Stop()
@@ -540,6 +553,7 @@ public partial class FrameTxFloodMeasurement
             Nonce = 0,
             SenderAddress = Attacker,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: _frameExecutionGasLimit, UInt256.Zero, data)],
+            // Shared here; the generator gives each submission its own entries as it submits.
             FrameSignatures = _frameSignatures,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,

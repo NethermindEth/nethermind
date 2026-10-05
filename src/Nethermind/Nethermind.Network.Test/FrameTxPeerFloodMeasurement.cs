@@ -14,7 +14,6 @@ using Autofac;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -170,7 +169,6 @@ public class FrameTxPeerFloodMeasurement
             .AddModule(new TestNethermindModule())
             .AddSingleton(txPool)
             .AddSingleton(syncServer)
-            .AddSingleton<IForkInfo>(new ForkInfo(Substitute.For<ISpecProvider>(), syncServer))
             .AddSingleton<IBackgroundTaskScheduler>(RunImmediatelyScheduler.Instance)
             .AddSingleton(syncMode)
             .Build();

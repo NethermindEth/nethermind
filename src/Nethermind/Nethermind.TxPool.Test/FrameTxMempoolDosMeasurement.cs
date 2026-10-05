@@ -689,7 +689,8 @@ public class FrameTxMempoolDosMeasurement
             Nonce = 0,
             SenderAddress = Sender,
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: _frameExecutionGasLimit, UInt256.Zero, data)],
-            FrameSignatures = _frameSignatures,
+            // Its own entries, so no transaction inherits another's cached recoveries.
+            FrameSignatures = FrameTxTestFrames.Fresh(_frameSignatures),
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,

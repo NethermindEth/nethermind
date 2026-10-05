@@ -503,9 +503,11 @@ public partial class FrameTxFloodMeasurement
             }
         }
 
-        long start = Stopwatch.GetTimestamp();
+        // Timed from just before the generators start, so construction is not counted as time traffic was offered.
+        long start;
         if (spamRate == 0)
         {
+            start = Stopwatch.GetTimestamp();
             honestGenerator.Run(() => { Slots(); return 0; });
             outcome.Finish(Stopwatch.GetElapsedTime(start), honestGenerator.MaxLagUs, 0);
             return outcome;
@@ -515,6 +517,7 @@ public partial class FrameTxFloodMeasurement
         Transaction[] spam = BuildFloodTransactions(_saltCursor, spamCount);
         _saltCursor += spamCount;
         using FloodGenerator spamGenerator = new(tx => outcome.RecordSpam(_chain.TxPool.SubmitTx(tx, TxHandlingOptions.None)), spam, spamRate);
+        start = Stopwatch.GetTimestamp();
         honestGenerator.Run(() => spamGenerator.Run(() => { Slots(); return 0; }));
         outcome.Finish(Stopwatch.GetElapsedTime(start), honestGenerator.MaxLagUs, spamGenerator.MaxLagUs);
         return outcome;

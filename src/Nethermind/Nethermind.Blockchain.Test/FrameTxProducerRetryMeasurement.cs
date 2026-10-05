@@ -601,8 +601,15 @@ public class FrameTxProducerRetryMeasurement
         // the admitted-unresolved path this harness measures. The modules wire one, and with it this prefix would be
         // rejected at admission instead of reaching the producer.
         _poolScope = _chain!.Container.BeginLifetimeScope(builder => builder
-            .AddSingleton<IChainHeadInfoProvider>(new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(_specProvider, _poolHeadTree), _poolHeadTree, poolState)
+            // The experiment's inputs: the head tree the pool advances and the state it prices against. The spec
+            // and comparer providers are the modules' own registrations, rebuilt in this scope on that head tree.
+            .AddSingleton<IBlockTree>(_poolHeadTree)
+            .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
+            .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
+            .AddScoped<IComparer<Transaction>, ITransactionComparerProvider>(comparers => comparers.GetDefaultComparer())
+            // The registered provider reads state through an IStateReader at the chain's state root; this pool's
+            // state lives at a head of its own, so the provider is built on that state instead.
+            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider>(spec => new ChainHeadInfoProvider(spec, _poolHeadTree, poolState)
             {
                 // The pool raises TxPoolHeadChanged only while it considers itself synced, and AdvancePoolHead
                 // waits on that event, so pin it rather than leaving it to the pinned head's block number.
@@ -614,7 +621,6 @@ public class FrameTxProducerRetryMeasurement
                 FrameTxMaxVerifyGas = 0,
                 FrameTxEvictionRetryBudget = kRetry,
             })
-            .AddSingleton<IComparer<Transaction>>(new TransactionComparerProvider(_specProvider, _poolHeadTree).GetDefaultComparer())
             .RegisterType<TxPool.TxPool>().WithAttributeFiltering().SingleInstance().ExternallyOwned());
         _pool = _poolScope.Resolve<TxPool.TxPool>(new TypedParameter(typeof(IFrameTxPrefixSimulator), null));
         Assert.That(typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(_pool),

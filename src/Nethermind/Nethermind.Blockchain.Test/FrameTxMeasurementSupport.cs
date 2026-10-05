@@ -252,6 +252,7 @@ internal sealed class ProducerRig : IDisposable
             gate.EvictTransaction(Arg.Any<Transaction>()).Returns(_ => rig.OnEvictionRequested());
 
             rig._adapter = adapter;
+            rig._substitutes = [gate, balManager];
             rig._executor = new BlockProcessor.BlockProductionTransactionsExecutor(
                 adapter,
                 state,
@@ -271,6 +272,11 @@ internal sealed class ProducerRig : IDisposable
     }
 
     private bool OnEvictionRequested() => ++_attemptsOnCurrent >= _kRetry;
+
+    /// <summary>Substitutes the executor calls on every pass. Each records its calls with their arguments, so they
+    /// are cleared after every pass, or the record grows for the whole case and its collections land in the
+    /// measured window.</summary>
+    private object[] _substitutes = [];
 
     public void RunFor(TimeSpan window)
     {
@@ -295,12 +301,20 @@ internal sealed class ProducerRig : IDisposable
         Block block = _blocks[_blockCursor];
         _blockCursor = _blockCursor + 1 == _blocks.Length ? 0 : _blockCursor + 1;
 
+        // The victim is a fixed workload, so every pass re-verifies its signatures. A pending transaction keeps its
+        // recovered signers across builds, which would shrink each pass to the cached path after the first.
+        foreach (Transaction tx in block.Transactions)
+        {
+            foreach (TxFrameSignature signature in tx.FrameSignatures ?? []) signature.Recovered = null;
+        }
+
         long start = Stopwatch.GetTimestamp();
         _receiptsTracer.StartNewBlockTrace(block);
         _executor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
         _executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, _receiptsTracer, CancellationToken.None);
         _receiptsTracer.EndBlockTrace();
         double micros = Stopwatch.GetElapsedTime(start).TotalMicroseconds;
+        foreach (object substitute in _substitutes) substitute.ClearReceivedCalls();
 
         if (_attemptsOnCurrent >= _kRetry) _attemptsOnCurrent = 0;
 
