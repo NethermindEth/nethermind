@@ -5,6 +5,7 @@ using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -28,11 +29,11 @@ public abstract class SignableTransactionForRpc : TransactionForRpc
     protected SignableTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData) { }
 
-    internal sealed class SignableTransactionJsonConverter : JsonConverter<SignableTransactionForRpc>
+    public sealed class SignableTransactionJsonConverter : JsonConverter<SignableTransactionForRpc>
     {
         public override SignableTransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
             // The base converter matches only TransactionForRpc, so its concrete-type deserialization never re-enters this one.
-            JsonSerializer.Deserialize<TransactionForRpc>(ref reader, options) switch
+            TypeInfoJsonSerializer.Deserialize<TransactionForRpc>(ref reader, options) switch
             {
                 null => null,
                 SignableTransactionForRpc signable => signable,
@@ -40,6 +41,6 @@ public abstract class SignableTransactionForRpc : TransactionForRpc
             };
 
         public override void Write(Utf8JsonWriter writer, SignableTransactionForRpc value, JsonSerializerOptions options) =>
-            JsonSerializer.Serialize(writer, value, value.GetType(), options);
+            TypeInfoJsonSerializer.Serialize(writer, value, value.GetType(), options);
     }
 }

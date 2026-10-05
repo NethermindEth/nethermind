@@ -174,6 +174,243 @@ public sealed partial class KeccakHash
         return Unsafe.As<ulong, ValueHash256>(ref lane);
     }
 
+    /// <summary>Leading rate blocks of a full branch whose sponge states <see cref="ComputeHash256OfWitnessNodes"/> keeps.</summary>
+    private const int RetainedBlocks = Hash532InputLength / HASH_DATA_AREA;
+    private const int RetainedLanes = RetainedBlocks * STATE_LANES;
+    private const int FullBranchTailLength = Hash532InputLength - RetainedBlocks * HASH_DATA_AREA;
+
+    /// <summary>The witness nodes <see cref="ComputeHash256OfWitnessNodes"/> keyed last, and what it kept of them.</summary>
+    /// <remarks>A class of its own, with no initializer, so each access is a plain load or store rather than a
+    /// class-initialization check.</remarks>
+    private static class WitnessNodes
+    {
+        public static byte[][]? Nodes;
+        /// <summary>How many of <see cref="Nodes"/> were keyed, those with an entry in <see cref="States"/>.</summary>
+        public static nint Count;
+        /// <summary>Per node, <see cref="RetainedLanes"/> lanes: the states its leading rate blocks leave, written for full branches only.</summary>
+        public static unsafe ulong* States;
+        /// <summary>The tag <see cref="NoteWitnessNodeLoaded"/> was given last.</summary>
+        public static nint Loaded;
+    }
+
+    /// <inheritdoc cref="KeccakHash.ComputeHash256OfWitnessNodes" />
+    /// <remarks>When the trie commit re-encodes a witness branch, the edited children leave every rate block before
+    /// the first of them unchanged; on a mainnet block the blocks so repeated are most of the commit's repeated
+    /// permutations. Keeping them costs a copy of the capacity lanes per block, each block being absorbed into a
+    /// state of its own.</remarks>
+    internal static partial void ComputeHash256OfWitnessNodes(byte[][] nodes, int count, Span<ValueHash256> hashes)
+    {
+        unsafe
+        {
+            // Native rather than a managed array, which the guest's allocator zeroes word by word. Left uninitialized: only
+            // a full branch's lanes are written, and ComputeHash256OfEdited reads no other.
+            ulong* states = (ulong*)NativeMemory.Alloc((nuint)count, RetainedLanes * sizeof(ulong));
+            for (int i = 0; i < count; i++)
+            {
+                byte[] node = nodes[i];
+                hashes[i] = node.Length == Hash532InputLength
+                    ? ComputeHash532Retaining(node, ref states[(nuint)i * RetainedLanes])
+                    : ComputeHash256(node);
+            }
+
+            ulong* released = WitnessNodes.States;
+            WitnessNodes.Nodes = nodes;
+            WitnessNodes.Count = count;
+            WitnessNodes.States = states;
+            NativeMemory.Free(released);
+        }
+    }
+
+    /// <inheritdoc cref="KeccakHash.NoteWitnessNodeLoaded" />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static partial void NoteWitnessNodeLoaded(nint tag) => WitnessNodes.Loaded = tag;
+
+    /// <summary>The tag <see cref="NoteWitnessNodeLoaded"/> was given last.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static nint LoadedWitnessNode() => WitnessNodes.Loaded;
+
+    /// <summary>Computes the Keccak-256 digest of a full branch re-encoded from <paramref name="previous"/>.</summary>
+    /// <param name="input">The re-encoded branch, <see cref="Hash532InputLength"/> bytes.</param>
+    /// <param name="previous">The encoding <paramref name="input"/> was patched from.</param>
+    /// <param name="tag">What <see cref="LoadedWitnessNode"/> returned when <paramref name="previous"/> was loaded.</param>
+    /// <remarks>Starts after the leading rate blocks <paramref name="input"/> shares with <paramref name="previous"/>,
+    /// from the state <see cref="ComputeHash256OfWitnessNodes"/> kept, when <paramref name="previous"/> is the keyed node
+    /// <paramref name="tag"/> names. Anything else, a stale tag included, hashes <paramref name="input"/> whole.</remarks>
+    [SkipLocalsInit]
+    internal static unsafe ValueHash256 ComputeHash256OfEdited(ReadOnlySpan<byte> input, byte[]? previous, nint tag)
+    {
+        Debug.Assert(input.Length == Hash532InputLength);
+        byte[][]? nodes = WitnessNodes.Nodes;
+        nuint index = (nuint)(tag - 1);
+        if (nodes is null || index >= (nuint)WitnessNodes.Count || !ReferenceEquals(nodes[index], previous)
+            || previous!.Length != Hash532InputLength)
+        {
+            return ValueKeccak.Compute(input);
+        }
+
+        Unsafe.SkipInit(out KeccakState stateBuffer);
+        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        fixed (byte* data = input, original = previous)
+        {
+            nuint offset = 0;
+            // One state past the one the matching blocks leave.
+            nuint next = index * RetainedLanes;
+            while (offset < RetainedBlocks * HASH_DATA_AREA && BlockEquals(data + offset, original + offset))
+            {
+                offset += HASH_DATA_AREA;
+                next += STATE_LANES;
+            }
+
+            if (offset == 0)
+            {
+                return ValueKeccak.Compute(input);
+            }
+
+            ref ulong retained = ref WitnessNodes.States[next - STATE_LANES];
+            if (offset == RetainedBlocks * HASH_DATA_AREA)
+            {
+                AbsorbFullBranchTailFrom(ref lane, ref retained, data + offset);
+            }
+            else
+            {
+                AbsorbBlockFrom(ref lane, ref retained, data + offset);
+                Accelerators.KeccakF(ref lane);
+                for (offset += HASH_DATA_AREA; offset < RetainedBlocks * HASH_DATA_AREA; offset += HASH_DATA_AREA)
+                {
+                    AbsorbBlock(ref lane, data + offset, intoZeroState: false);
+                    Accelerators.KeccakF(ref lane);
+                }
+
+                AbsorbPaddedTail(ref lane, data + offset, FullBranchTailLength);
+            }
+        }
+
+        Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
+        Accelerators.KeccakF(ref lane);
+        return Unsafe.As<ulong, ValueHash256>(ref lane);
+    }
+
+    /// <summary>Hashes a full branch, leaving the state after each of its leading rate blocks in <paramref name="retained"/>.</summary>
+    /// <param name="retained">Lane 0 of <see cref="RetainedBlocks"/> consecutive states.</param>
+    [SkipLocalsInit]
+    private static unsafe ValueHash256 ComputeHash532Retaining(byte[] node, ref ulong retained)
+    {
+        Unsafe.SkipInit(out KeccakState stateBuffer);
+        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        ref ulong second = ref Unsafe.Add(ref retained, STATE_LANES);
+        ref ulong third = ref Unsafe.Add(ref retained, 2 * STATE_LANES);
+
+        fixed (byte* data = node)
+        {
+            ZeroCapacity(ref retained);
+            AbsorbBlock(ref retained, data, intoZeroState: true);
+            Accelerators.KeccakF(ref retained);
+            AbsorbBlockFrom(ref second, ref retained, data + HASH_DATA_AREA);
+            Accelerators.KeccakF(ref second);
+            AbsorbBlockFrom(ref third, ref second, data + 2 * HASH_DATA_AREA);
+            Accelerators.KeccakF(ref third);
+            AbsorbFullBranchTailFrom(ref lane, ref third, data + RetainedBlocks * HASH_DATA_AREA);
+        }
+
+        Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
+        Accelerators.KeccakF(ref lane);
+        return Unsafe.As<ulong, ValueHash256>(ref lane);
+    }
+
+    /// <summary>Whether the rate blocks at <paramref name="a"/> and <paramref name="b"/> are equal.</summary>
+    /// <remarks>Lane by lane, unrolled: corelib's <c>SequenceEqual</c> has no vector width on riscv64 and pays a loop
+    /// and a call for the same word compares.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool BlockEquals(byte* a, byte* b) =>
+        LaneEquals(a, b, 0) && LaneEquals(a, b, 1) && LaneEquals(a, b, 2) && LaneEquals(a, b, 3)
+        && LaneEquals(a, b, 4) && LaneEquals(a, b, 5) && LaneEquals(a, b, 6) && LaneEquals(a, b, 7)
+        && LaneEquals(a, b, 8) && LaneEquals(a, b, 9) && LaneEquals(a, b, 10) && LaneEquals(a, b, 11)
+        && LaneEquals(a, b, 12) && LaneEquals(a, b, 13) && LaneEquals(a, b, 14) && LaneEquals(a, b, 15)
+        && LaneEquals(a, b, 16);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool LaneEquals(byte* a, byte* b, nuint index) =>
+        Unsafe.ReadUnaligned<ulong>(a + index * sizeof(ulong)) == Unsafe.ReadUnaligned<ulong>(b + index * sizeof(ulong));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ZeroCapacity(ref ulong lane)
+    {
+        Unsafe.Add(ref lane, 17) = 0;
+        Unsafe.Add(ref lane, 18) = 0;
+        Unsafe.Add(ref lane, 19) = 0;
+        Unsafe.Add(ref lane, 20) = 0;
+        Unsafe.Add(ref lane, 21) = 0;
+        Unsafe.Add(ref lane, 22) = 0;
+        Unsafe.Add(ref lane, 23) = 0;
+        Unsafe.Add(ref lane, 24) = 0;
+    }
+
+    /// <summary>Writes into <paramref name="lane"/> the state <paramref name="source"/> becomes once a whole rate block of <paramref name="data"/> is absorbed.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void AbsorbBlockFrom(ref ulong lane, ref ulong source, byte* data)
+    {
+        AbsorbLaneFrom(ref lane, ref source, data, 0);
+        AbsorbLaneFrom(ref lane, ref source, data, 1);
+        AbsorbLaneFrom(ref lane, ref source, data, 2);
+        AbsorbLaneFrom(ref lane, ref source, data, 3);
+        AbsorbLaneFrom(ref lane, ref source, data, 4);
+        AbsorbLaneFrom(ref lane, ref source, data, 5);
+        AbsorbLaneFrom(ref lane, ref source, data, 6);
+        AbsorbLaneFrom(ref lane, ref source, data, 7);
+        AbsorbLaneFrom(ref lane, ref source, data, 8);
+        AbsorbLaneFrom(ref lane, ref source, data, 9);
+        AbsorbLaneFrom(ref lane, ref source, data, 10);
+        AbsorbLaneFrom(ref lane, ref source, data, 11);
+        AbsorbLaneFrom(ref lane, ref source, data, 12);
+        AbsorbLaneFrom(ref lane, ref source, data, 13);
+        AbsorbLaneFrom(ref lane, ref source, data, 14);
+        AbsorbLaneFrom(ref lane, ref source, data, 15);
+        AbsorbLaneFrom(ref lane, ref source, data, 16);
+        CopyCapacity(ref lane, ref source);
+    }
+
+    /// <summary>Writes into <paramref name="lane"/> the state <paramref name="source"/> becomes once a full branch's
+    /// last <see cref="FullBranchTailLength"/> bytes and their 0x01 pad byte are absorbed.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void AbsorbFullBranchTailFrom(ref ulong lane, ref ulong source, byte* tail)
+    {
+        AbsorbLaneFrom(ref lane, ref source, tail, 0);
+        AbsorbLaneFrom(ref lane, ref source, tail, 1);
+        AbsorbLaneFrom(ref lane, ref source, tail, 2);
+        AbsorbLaneFrom(ref lane, ref source, tail, 3);
+        AbsorbLaneFrom(ref lane, ref source, tail, 4);
+        AbsorbLaneFrom(ref lane, ref source, tail, 5);
+        AbsorbLaneFrom(ref lane, ref source, tail, 6);
+        AbsorbLaneFrom(ref lane, ref source, tail, 7);
+        AbsorbLaneFrom(ref lane, ref source, tail, 8);
+        AbsorbLaneFrom(ref lane, ref source, tail, 9);
+        AbsorbLaneFrom(ref lane, ref source, tail, 10);
+        AbsorbLaneFrom(ref lane, ref source, tail, 11);
+        AbsorbLaneFrom(ref lane, ref source, tail, 12);
+        AbsorbLaneFrom(ref lane, ref source, tail, 13);
+        AbsorbLaneFrom(ref lane, ref source, tail, 14);
+        Unsafe.Add(ref lane, 15) = Unsafe.Add(ref source, 15) ^ PaddedLastWord(tail + FullBranchTailLength, FullBranchTailLength & 7);
+        Unsafe.Add(ref lane, 16) = Unsafe.Add(ref source, 16);
+        CopyCapacity(ref lane, ref source);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void AbsorbLaneFrom(ref ulong lane, ref ulong source, byte* data, nuint index) =>
+        Unsafe.Add(ref lane, index) = Unsafe.Add(ref source, index) ^ Unsafe.ReadUnaligned<ulong>(data + index * sizeof(ulong));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CopyCapacity(ref ulong lane, ref ulong source)
+    {
+        Unsafe.Add(ref lane, 17) = Unsafe.Add(ref source, 17);
+        Unsafe.Add(ref lane, 18) = Unsafe.Add(ref source, 18);
+        Unsafe.Add(ref lane, 19) = Unsafe.Add(ref source, 19);
+        Unsafe.Add(ref lane, 20) = Unsafe.Add(ref source, 20);
+        Unsafe.Add(ref lane, 21) = Unsafe.Add(ref source, 21);
+        Unsafe.Add(ref lane, 22) = Unsafe.Add(ref source, 22);
+        Unsafe.Add(ref lane, 23) = Unsafe.Add(ref source, 23);
+        Unsafe.Add(ref lane, 24) = Unsafe.Add(ref source, 24);
+    }
+
     /// <summary>Writes a sub-rate message and its 0x01 pad byte into a zeroed state.</summary>
     /// <param name="length">A constant from 8 to 135: each lane up to the padded last word then folds to one
     /// store, and the lanes past it to nothing.</param>
@@ -235,20 +472,6 @@ public sealed partial class KeccakHash
         Unsafe.Add(ref lane, 15) = 0;
         Unsafe.Add(ref lane, 16) = 0;
         ZeroCapacity(ref lane);
-    }
-
-    /// <summary>Zeroes the capacity lanes of a state, which the message is never absorbed into.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ZeroCapacity(ref ulong lane)
-    {
-        Unsafe.Add(ref lane, 17) = 0;
-        Unsafe.Add(ref lane, 18) = 0;
-        Unsafe.Add(ref lane, 19) = 0;
-        Unsafe.Add(ref lane, 20) = 0;
-        Unsafe.Add(ref lane, 21) = 0;
-        Unsafe.Add(ref lane, 22) = 0;
-        Unsafe.Add(ref lane, 23) = 0;
-        Unsafe.Add(ref lane, 24) = 0;
     }
 
     /// <summary>XORs a sub-rate tail of <paramref name="length"/> bytes and the 0x01 pad byte after it into the state.</summary>

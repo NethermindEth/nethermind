@@ -119,7 +119,7 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     try
                     {
-                        using IOwnedReadOnlyList<TxReceipt[]?> receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, cancellationToken);
+                        using IOwnedReadOnlyList<TxReceipt[]?> receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, new[] { block.Transactions.Length }, cancellationToken);
                         TxReceipt[]? txReceipts = receipts.FirstOrDefault();
                         if (txReceipts is not null)
                         {
