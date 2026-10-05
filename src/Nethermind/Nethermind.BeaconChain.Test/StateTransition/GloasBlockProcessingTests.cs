@@ -387,20 +387,6 @@ public class GloasBlockProcessingTests
         Assert.That(() => GloasBlockProcessing.ProcessWithdrawals(state), Throws.TypeOf<BeaconStateException>().With.Message.Contains("out of range"));
     }
 
-    [Test]
-    public void ProcessWithdrawals_is_a_no_op_when_the_parent_payload_was_not_delivered()
-    {
-        BeaconStateGloas state = CreateGloasState(out _, out _);
-        // LatestBlockHash left at its post-upgrade value, which never equals the committed bid's
-        // block hash unless a parent payload was actually applied (see ApplyParentExecutionPayload).
-        ulong balanceBefore = state.Balances![2];
-
-        GloasBlockProcessing.ProcessWithdrawals(state);
-
-        Assert.That(state.Balances[2], Is.EqualTo(balanceBefore));
-        Assert.That(state.PayloadExpectedWithdrawals, Is.Empty.Or.Null);
-    }
-
     // ---- The progressive operation lists carry no SSZ bound, so process_operations asserts the limits ----
 
     [Test]

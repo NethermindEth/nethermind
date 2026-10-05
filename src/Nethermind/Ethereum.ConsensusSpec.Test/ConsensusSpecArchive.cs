@@ -38,7 +38,7 @@ public static class ConsensusSpecArchive
     public const string Version = "v1.7.0-beta.2";
 
     /// <summary>
-    /// Set NETHERMIND_CONSENSUS_SPEC_MAINNET=1 to enumerate the full mainnet-preset suites. Six required
+    /// Set NETHERMIND_CONSENSUS_SPEC_MAINNET=1 to enumerate the full mainnet-preset suites. Required
     /// successful operation cases run regardless. mainnet.tar.gz is on the order of 900 MB compressed
     /// and several GB decompressed even before selective extraction.
     /// </summary>
