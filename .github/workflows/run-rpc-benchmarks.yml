@@ -1,5 +1,5 @@
-name: RPC owned resource recovery
-run-name: RPC restore owned failed attempt ${{ github.run_id }}
+name: RPC release audited owned reservation
+run-name: RPC release recovered reservation ${{ github.run_id }}
 on:
   workflow_dispatch:
 permissions:
@@ -8,25 +8,14 @@ concurrency:
   group: codex-rpc-native-capability
   cancel-in-progress: false
 jobs:
-  recovery:
+  release:
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          path: rpc-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: rpc-release-${{ github.run_id }}-${{ github.run_attempt }}
           persist-credentials: false
-      - name: Recover only attributed old-run resources and retain locks
-        run: python3 -B rpc-recovery-${{ github.run_id }}-${{ github.run_attempt }}/scripts/rpc-recovery/select_recovery.py
-      - name: Retain encrypted evidence for independent recovery audit
-        id: evidence
-        if: success()
-        run: python3 -B rpc-recovery-${{ github.run_id }}-${{ github.run_attempt }}/scripts/rpc-recovery/capture.py
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: rpc-recovery-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ steps.evidence.outputs.public }}/
-          if-no-files-found: error
-          retention-days: 30
+      - name: Release independently audited reservation with final live checks
+        run: python3 -B rpc-release-${{ github.run_id }}-${{ github.run_attempt }}/scripts/rpc-recovery/release.py
