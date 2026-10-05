@@ -4,6 +4,7 @@
 using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -194,6 +195,21 @@ public class ReceiptDecoderTests
         OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts);
 
         Assert.That(decoded.Sender, Is.Null);
+    }
+
+    [Test]
+    public void Compact_storage_decoding_defers_bloom_until_read()
+    {
+        OptimismTxReceipt receipt = new()
+        {
+            StatusCode = 1,
+            GasUsedTotal = 1,
+            Logs = [Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).TestObject]
+        };
+        OptimismCompactReceiptStorageDecoder decoder = new();
+        RlpReader reader = new(decoder.Encode(receipt, RlpBehaviors.Eip658Receipts).Bytes);
+
+        CompactReceiptDecoderTests.AssertBloomDeferredUntilRead(decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts), new Bloom(receipt.Logs));
     }
 
     [Test]

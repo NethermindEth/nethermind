@@ -82,8 +82,6 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Position = receiptEnd;
             }
 
-            txReceipt.Bloom = new Bloom(txReceipt.Logs);
-
             return txReceipt;
         }
 
