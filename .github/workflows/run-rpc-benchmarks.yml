@@ -1,5 +1,5 @@
-name: RPC owned failure evidence
-run-name: RPC read-only recovery evidence ${{ github.run_id }}
+name: RPC owned resource recovery
+run-name: RPC restore owned failed attempt ${{ github.run_id }}
 on:
   workflow_dispatch:
 permissions:
@@ -8,7 +8,7 @@ concurrency:
   group: codex-rpc-native-capability
   cancel-in-progress: false
 jobs:
-  evidence:
+  recovery:
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 10
     steps:
@@ -17,8 +17,11 @@ jobs:
           ref: ${{ github.sha }}
           path: rpc-recovery-${{ github.run_id }}-${{ github.run_attempt }}
           persist-credentials: false
-      - name: Retain encrypted read-only evidence of failed owned attempt
+      - name: Recover only attributed old-run resources and retain locks
+        run: python3 -B rpc-recovery-${{ github.run_id }}-${{ github.run_attempt }}/scripts/rpc-recovery/restore.py
+      - name: Retain encrypted evidence for independent recovery audit
         id: evidence
+        if: success()
         run: python3 -B rpc-recovery-${{ github.run_id }}-${{ github.run_attempt }}/scripts/rpc-recovery/capture.py
       - uses: actions/upload-artifact@v4
         if: success()
