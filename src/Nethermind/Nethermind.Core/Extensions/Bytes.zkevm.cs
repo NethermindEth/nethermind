@@ -85,10 +85,19 @@ public static unsafe partial class Bytes
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Memmove(void* destination, void* source, nuint length) => MemmoveImport(destination, source, length);
 
+    /// <summary>The zkVM's <c>memset</c>, which its runtime turns into a DMA precompile for a zero fill.</summary>
+    /// <remarks>Takes raw pointers for the reason given on <see cref="Memmove"/>. Call only where
+    /// <see cref="ZiskMemmoveFlag"/> is on.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Memset(void* destination, int value, nuint length) => MemsetImport(destination, value, length);
+
     // Behind a wrapper so that a JIT compiling a caller, as the zkEVM test hosts do, never binds the import:
     // one that suppresses the GC transition is bound when it is compiled in, and the host has no such export.
     [DllImport("__Internal", EntryPoint = "memmove", ExactSpelling = true), SuppressGCTransition]
     private static extern void MemmoveImport(void* destination, void* source, nuint length);
+
+    [DllImport("__Internal", EntryPoint = "memset", ExactSpelling = true), SuppressGCTransition]
+    private static extern void MemsetImport(void* destination, int value, nuint length);
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowDestinationTooShort() => throw new ArgumentException("Destination is too short.", "destination");
