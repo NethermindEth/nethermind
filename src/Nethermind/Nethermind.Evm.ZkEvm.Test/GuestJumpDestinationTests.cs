@@ -94,14 +94,14 @@ public class GuestJumpDestinationTests
     }
 
     [Test]
-    public void Call_destination_switch_updates_the_guest_bit_test([Values] bool eip8024)
+    public void Call_destination_switch_updates_the_guest_bit_test()
     {
         byte[] code = [PUSH1, (byte)Instruction.CALLDEST, (byte)Instruction.CALLDEST];
         CodeInfo codeInfo = new(code);
         byte stackMemory = 0;
         EvmStack stack = new(0, ref stackMemory, code, codeInfo);
 
-        stack.UseCallDestinations(eip8024);
+        stack.UseCallDestinations();
 
         using (Assert.EnterMultipleScope())
         {
@@ -111,13 +111,13 @@ public class GuestJumpDestinationTests
     }
 
     [Test]
-    public void Complete_bitmap_misses_do_not_advance_the_incremental_cursor([Values] bool eip8024)
+    public void Complete_bitmap_misses_do_not_advance_the_incremental_cursor()
     {
         byte[] code = [PUSH1, 0, JUMPDEST, PUSH1, JUMPDEST, (byte)Instruction.CALLDEST];
         CodeInfo codeInfo = new(code);
         byte stackMemory = 0;
         EvmStack enabled = new(0, ref stackMemory, code, codeInfo);
-        enabled.UseCallDestinations(eip8024);
+        enabled.UseCallDestinations();
         Assert.That(enabled.IsJumpDestination(4), Is.False, "PUSH data");
 
         EvmStack disabled = new(0, ref stackMemory, code, codeInfo);

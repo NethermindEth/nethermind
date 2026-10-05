@@ -27,17 +27,16 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
 {
     private const ulong GasLimit = 100_000;
 
-    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
-    protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp + 1;
+    private const ulong DisabledTimestamp = 1;
 
-    private ForkActivation Disabled => (BlockNumber, MainnetSpecProvider.OsakaBlockTimestamp);
-    private ForkActivation WithEip8024 => (BlockNumber, MainnetSpecProvider.OsakaBlockTimestamp + 2);
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong Timestamp => DisabledTimestamp + 1;
+
+    private ForkActivation Disabled => (BlockNumber, DisabledTimestamp);
 
     protected override ISpecProvider SpecProvider => new CustomSpecProvider(
-        ((ForkActivation)0, Osaka.Instance),
-        (Disabled, Osaka.Instance),
-        (Activation, new Osaka { IsEip7979Enabled = true }),
-        (WithEip8024, new Osaka { IsEip7979Enabled = true, IsEip8024Enabled = true }));
+        ((ForkActivation)0, Bogota.Instance),
+        (Activation, new Bogota { IsEip7979Enabled = true }));
 
     /// <summary>Maps the EIP's placeholder opcodes 0xb0-0xb2 in <paramref name="hex"/> to this implementation's values.</summary>
     private static byte[] FromEipVector(string hex)
@@ -105,6 +104,7 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
     [TestCase("6004B060B100", EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB to CALLDEST inside PUSH data")]
     [TestCase("60045660B100", EvmExceptionType.InvalidJumpDestination, TestName = "JUMP to CALLDEST inside PUSH data")]
     [TestCase("6003B05B00", EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB to JUMPDEST")]
+    [TestCase("6004B0E6B100", EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB to CALLDEST inside an EIP-8024 immediate")]
     [TestCase("640100000004B000B1", EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB destination above uint32")]
     [TestCase("60045600B1B2", EvmExceptionType.ReturnStackUnderflow, TestName = "JUMP to CALLDEST pushes no return address")]
     [TestCase("B0", EvmExceptionType.StackUnderflow, TestName = "CALLSUB with an empty data stack")]
@@ -161,23 +161,6 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
                 AssertSuccess(result, cost);
             else
                 AssertHalt(result, expected, gasLimit);
-        }
-    }
-
-    [Test]
-    public void Eip8024_immediate_is_not_a_call_destination([Values] bool eip8024)
-    {
-        // PUSH1 4, CALLSUB, DUPN, <CALLDEST byte>, STOP: the byte is DUPN's immediate only under EIP-8024.
-        byte[] code = FromEipVector("6004B0E6B100");
-        TestAllTracerWithOutput result = Run(code, eip8024 ? WithEip8024 : Activation);
-
-        if (eip8024)
-        {
-            AssertHalt(result, EvmExceptionType.InvalidJumpDestination);
-        }
-        else
-        {
-            AssertSuccess(result, GasCostOf.VeryLow + GasCostOf.CallSub + GasCostOf.JumpDest);
         }
     }
 

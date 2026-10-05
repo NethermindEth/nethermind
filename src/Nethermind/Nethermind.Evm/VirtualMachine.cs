@@ -1470,7 +1470,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (_useCallDestinations)
         {
-            stack.UseCallDestinations(_callDestinationsEip8024);
+            stack.UseCallDestinations();
         }
 
         // Operate on the frame gas by reference so exceptional halts keep the latest

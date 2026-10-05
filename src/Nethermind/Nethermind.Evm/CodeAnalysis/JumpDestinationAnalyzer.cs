@@ -36,22 +36,19 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
         get => _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
     }
 
-    // Volatile for the same cross-thread publication as the jump-destination bitmap; one per EIP-8024 setting.
+    // Volatile for the same cross-thread publication as the jump-destination bitmap.
     private volatile long[]? _jumpAndCallDestinationBitmap;
-    private volatile long[]? _jumpAndCallDestinationBitmapEip8024;
 
     /// <summary>The EIP-7979 destination bitmap, built on first use; one bit per <c>JUMPDEST</c> or <c>CALLDEST</c> instruction.</summary>
-    /// <param name="eip8024">Whether EIP-8024 immediates are instruction data, so a <c>CALLDEST</c> byte inside one is not marked.</param>
     /// <remarks>
-    /// Kept apart from <see cref="JumpDestinationBitmap"/> because the code info is shared across forks. The
-    /// <c>JUMPDEST</c> bits are the same either way: an EIP-8024 immediate is never <c>0x5b</c> or a PUSH.
+    /// Kept apart from <see cref="JumpDestinationBitmap"/> because the code info is shared across forks. A valid
+    /// EIP-8024 immediate is instruction data, so a <c>CALLDEST</c> byte inside one is not marked; the <c>JUMPDEST</c>
+    /// bits still match <see cref="JumpDestinationBitmap"/>, as such an immediate is never <c>0x5b</c> or a PUSH.
     /// </remarks>
-    internal long[] GetJumpAndCallDestinationBitmap(bool eip8024) => eip8024
-        ? _jumpAndCallDestinationBitmapEip8024 ??= CreateJumpAndCallDestinationBitmap(eip8024: true)
-        : _jumpAndCallDestinationBitmap ??= CreateJumpAndCallDestinationBitmap(eip8024: false);
+    internal long[] JumpAndCallDestinationBitmap => _jumpAndCallDestinationBitmap ??= CreateJumpAndCallDestinationBitmap();
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private long[] CreateJumpAndCallDestinationBitmap(bool eip8024)
+    private long[] CreateJumpAndCallDestinationBitmap()
     {
         Metrics.IncrementContractsAnalysed();
         ReadOnlySpan<byte> code = MachineCode.Span;
@@ -69,7 +66,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
             {
                 pc += op - PUSHx;
             }
-            else if (eip8024 && pc + 1 < code.Length && IsEip8024Immediate(op, code[pc + 1]))
+            else if (pc + 1 < code.Length && IsEip8024Immediate(op, code[pc + 1]))
             {
                 pc++;
             }

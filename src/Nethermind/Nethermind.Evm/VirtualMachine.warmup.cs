@@ -174,7 +174,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                     TGasPolicy.FromULong(ulong.MaxValue), ExecutionType.TRANSACTION, env, accessTracker, state.TakeSnapshot());
                 vm.VmState = vmState;
                 vmState.InitializeStacks(txTracer, codeInfo.ExecutionCodeSpan, out EvmStack stack);
-                if (vm._useCallDestinations) stack.UseCallDestinations(vm._callDestinationsEip8024);
+                if (vm._useCallDestinations) stack.UseCallDestinations();
 
                 for (int stackItem = 0; stackItem < 20; stackItem++)
                     stack.PushOne<TTracingInst>();

@@ -97,13 +97,12 @@ public ref partial struct EvmStack
     partial void InitializeJumpDestinations();
 
     /// <summary>Validates jumps against the EIP-7979 bitmap, where a <c>CALLDEST</c> is also a jump destination.</summary>
-    /// <param name="eip8024">Whether EIP-8024 immediates are instruction data rather than instructions.</param>
     /// <remarks>Chosen once per frame, so JUMP and JUMPI keep their single bit test.</remarks>
-    internal void UseCallDestinations(bool eip8024)
+    internal void UseCallDestinations()
     {
         if (CodeLength != 0 && _codeInfo is not null)
         {
-            _jumpDestinations = _codeInfo.GetJumpAndCallDestinationBitmap(eip8024);
+            _jumpDestinations = _codeInfo.JumpAndCallDestinationBitmap;
 #if ZK_EVM
             _jumpDestinationBits = ref MemoryMarshal.GetArrayDataReference(_jumpDestinations);
 #endif
