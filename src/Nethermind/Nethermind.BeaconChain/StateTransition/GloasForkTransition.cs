@@ -282,10 +282,12 @@ public static class GloasForkTransition
     }
 
     /// <summary>Spec <c>compute_ptc</c>: the (possibly-duplicate) payload timeliness committee for one slot.</summary>
-    private static PayloadTimelinessCommittee ComputePtc(BeaconStateFulu pre, CommitteeCache committees, ulong slot)
+    private static PayloadTimelinessCommittee ComputePtc(BeaconStateFulu pre, CommitteeCache committees, ulong slot) =>
+        ComputePtcFromSeed(pre.GetSeed(BeaconStateAccessors.ComputeEpochAtSlot(slot), DomainType.PtcAttester), pre.Validators!, committees, slot);
+
+    /// <summary>Computes the slot's PTC from its domain seed and validator balances.</summary>
+    internal static PayloadTimelinessCommittee ComputePtcFromSeed(Hash256 domainSeed, Validator[] validators, CommitteeCache committees, ulong slot)
     {
-        ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(slot);
-        Hash256 domainSeed = pre.GetSeed(epoch, DomainType.PtcAttester);
         Span<byte> preimage = stackalloc byte[32 + 8];
         domainSeed.Bytes.CopyTo(preimage);
         BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], slot);
@@ -295,7 +297,7 @@ public static class GloasForkTransition
         for (int i = 0; i < committees.CommitteesPerSlot; i++)
             indices.AddRange(committees.GetBeaconCommittee(slot, i));
 
-        int[] selected = ComputeBalanceWeightedSelection(pre.Validators!, indices, seed, (int)Presets.PtcSize, shuffleIndices: false);
+        int[] selected = ComputeBalanceWeightedSelection(validators, indices, seed, (int)Presets.PtcSize, shuffleIndices: false);
         ulong[] ptcIndices = new ulong[selected.Length];
         for (int i = 0; i < selected.Length; i++)
             ptcIndices[i] = (ulong)selected[i];
