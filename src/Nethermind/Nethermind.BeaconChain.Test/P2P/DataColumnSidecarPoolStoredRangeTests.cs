@@ -162,14 +162,17 @@ public class DataColumnSidecarPoolStoredRangeTests
         Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(Last + 2));
     }
 
-    [Test]
-    public void A_complete_store_keeps_its_floor()
+    [TestCase(false, TestName = "A_complete_store_keeps_its_floor")]
+    [TestCase(true, TestName = "A_floor_above_every_stored_slot_is_left_alone")]
+    public void A_restart_preserves_a_floor_covering_the_stored_range(bool aboveRange)
     {
-        (_, BeaconChainStore store, _) = StoreRange();
+        (_, BeaconChainStore store, _) = StoreRange(skip: aboveRange ? [(First + 4, Sampled[0])] : []);
+        if (aboveRange) store.RaiseDataColumnFloor(Last + 5);
+        ulong expected = aboveRange ? Last + 5 : First;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(First));
-        Assert.That(StoredFloor(store), Is.EqualTo(First));
+        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(expected));
+        Assert.That(StoredFloor(store), Is.EqualTo(expected));
     }
 
     [Test]
@@ -183,17 +186,6 @@ public class DataColumnSidecarPoolStoredRangeTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(ulong.MaxValue));
         Assert.That(store.TryGetDataColumnFloor(out _), Is.False, "nothing is recorded before the first sidecar");
-    }
-
-    [Test]
-    public void A_floor_above_every_stored_slot_is_left_alone()
-    {
-        (_, BeaconChainStore store, _) = StoreRange(skip: (First + 4, Sampled[0]));
-        store.RaiseDataColumnFloor(Last + 5);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(Restart(store).EarliestCompletelyServableSlot, Is.EqualTo(Last + 5));
-        Assert.That(StoredFloor(store), Is.EqualTo(Last + 5));
     }
 
     [Test]
