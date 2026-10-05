@@ -49,6 +49,11 @@ namespace Nethermind.Facade.Proxy
 
                     return await ProcessRequestAsync<T>(method, endpoint, requestId, payload, cancellationToken);
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    // Caller cancellation has to surface as-is instead of being turned into a default result once the retries run out
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error(ex.Message, ex);
