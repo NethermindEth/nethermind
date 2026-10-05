@@ -50,9 +50,9 @@ namespace Nethermind.BeaconChain.StateTransition.Hashing;
 /// is safe because every cache diffs against its own snapshot.
 /// </para>
 /// <para>
-/// Use one instance per followed state lineage, like the rest of <see cref="EpochCache"/>. After
-/// a reorg either keep the instance (hashing a sibling state stays correct, only the first call
-/// pays for the larger diff) or call <see cref="Reset"/> to drop the caches. Not thread-safe.
+/// Use one instance per followed state lineage, like the rest of <see cref="EpochCache"/>.
+/// Hashing a sibling state after a reorg stays correct; only the first call pays for the larger diff.
+/// Not thread-safe.
 /// </para>
 /// </remarks>
 public sealed class CachedBeaconStateHasher : IBeaconStateHasher
@@ -171,7 +171,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         if (state.ExecutionPayloadAvailability is not null && state.ExecutionPayloadAvailability.Length != (int)Presets.SlotsPerHistoricalRoot)
             throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateGloas)}.{nameof(state.ExecutionPayloadAvailability)}: expected {Presets.SlotsPerHistoricalRoot} bits but found {state.ExecutionPayloadAvailability.Length}.");
 
-        // Gloas states never return to the Fulu-only trees; drop them instead of pinning them until Reset.
+        // Gloas hashing does not use the Fulu-only trees; release their cached data.
         if (_fuluCachesLive)
         {
             _validators.Reset();
@@ -249,30 +249,6 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private static void ThrowInvalidVector(string stateType, string field, string unit, int expected, int actual) =>
         throw new InvalidDataException($"Invalid SSZ value for {stateType}.{field}: expected {expected} {unit} but found {actual}.");
 
-    /// <summary>Drops every snapshot and cached subtree; the next call hashes from scratch.</summary>
-    public void Reset()
-    {
-        _fuluCachesLive = false;
-        _validators.Reset();
-        _balances.Reset();
-        _inactivityScores.Reset();
-        _previousEpochParticipation.Reset();
-        _currentEpochParticipation.Reset();
-        _blockRoots.Reset();
-        _stateRoots.Reset();
-        _randaoMixes.Reset();
-        _currentSyncCommittee.Reset();
-        _nextSyncCommittee.Reset();
-        _latestExecutionPayloadHeader.Reset();
-        _gloasValidators.Reset();
-        _gloasBalances.Reset();
-        _gloasInactivityScores.Reset();
-        _gloasPreviousEpochParticipation.Reset();
-        _gloasCurrentEpochParticipation.Reset();
-        _builders.Reset();
-        _ptcWindow.Reset();
-    }
-
     /// <summary>Computes the root of a <c>List[Root, limit]</c> (small on mainnet: frozen since Capella).</summary>
     private static UInt256 RootListRoot(Hash256[]? hashes, ulong limit)
     {
@@ -309,12 +285,6 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
                 _cached = true;
             }
             return _root;
-        }
-
-        public void Reset()
-        {
-            _last = null;
-            _cached = false;
         }
     }
 
@@ -550,12 +520,6 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
 
             Merkle.Merkleize(out UInt256 root, _roots);
             return root;
-        }
-
-        public void Reset()
-        {
-            Array.Clear(_snapshot);
-            _cached = false;
         }
     }
 
