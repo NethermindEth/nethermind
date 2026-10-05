@@ -468,10 +468,14 @@ public class FrameTxProducerRetryMeasurement
 
     /// <summary>
     /// Measures what a peer gets for re-gossiping a transaction the pool has already dropped: the budget is
-    /// counted per pool residency, so each re-entry is a fresh one and the unpaid burn is unbounded in residencies.
+    /// counted per pool residency, so each re-entry is a fresh one.
     /// </summary>
     /// <remarks>Pins the semantics <see cref="ITxPoolConfig.FrameTxEvictionRetryBudget"/> documents, on the
-    /// production path rather than by calling <see cref="ITxPool.EvictTransaction"/> directly.</remarks>
+    /// production path rather than by calling <see cref="ITxPool.EvictTransaction"/> directly.
+    /// Like <see cref="MeasuredProducerRetriesAgainstARealPool"/> this runs on the admitted unresolved path, so the
+    /// same failing transaction re-enters every time and the burn is unbounded in residencies. With a simulator
+    /// wired, a prefix that still fails is rejected at re-admission, so each residency needs a prefix that
+    /// approves at admission and fails later on changed head state.</remarks>
     [Test]
     [NonParallelizable]
     public async Task AResubmittedFrameTxIsGrantedAFreshBudget()
@@ -504,7 +508,8 @@ public class FrameTxProducerRetryMeasurement
         }
 
         Emit($"case=resubmit_measured k_retry={kRetry} k_basis=measured m_per_head={mPerHead} m_basis=scheduled "
-             + $"budget={verifyGas} residencies={residencies} readmitted={admitted} last_admission={lastAdmission} "
+             + $"budget={verifyGas} admission_basis=unresolved_admit residencies={residencies} readmitted={admitted} "
+             + $"last_admission={lastAdmission} "
              + $"execution_attempts={totalAttempts} burn_first_attempt={firstBurn} burn_total={totalBurn} "
              + $"amplification={(firstBurn == 0 ? 0 : (double)totalBurn / firstBurn):F2} amplification_basis=measured "
              + $"modelled_attempts={residencies * perResidency}");
