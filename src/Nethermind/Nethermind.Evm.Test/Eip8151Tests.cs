@@ -3,8 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -328,6 +334,58 @@ public class Eip8151Tests : VirtualMachineTestsBase
         Assert.That(probe.Decisions, Is.EqualTo(new[] { !eip8151Enabled }));
     }
 
+    [Test]
+    public void Prestate_tracer_includes_the_recovered_account(
+        [Values] bool eip8151Enabled,
+        [Values(Instruction.CALL, Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction callOpcode)
+    {
+        _spec.IsEip8151Enabled = eip8151Enabled;
+        DeploySigner(ContractCode);
+        (Block Block, Transaction Tx) prepared = PrepareTx(Activation, TxGasLimit,
+            MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, PrecompileGasLimit, ValidInput).Done);
+        GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer }, prepared.Block, prepared.Tx, TestState, _spec);
+
+        Run(prepared, tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> prestate = (Dictionary<AddressAsKey, NativePrestateTracerAccount>)trace.CustomTracerResult!.Value;
+        Assert.That(prestate.TryGetValue(Signer, out NativePrestateTracerAccount? signer), Is.EqualTo(eip8151Enabled), "recovered account in prestate");
+        if (eip8151Enabled) Assert.That(signer!.Code, Is.EqualTo(ContractCode), "recovered account code");
+    }
+
+    [Test]
+    public void Access_list_tracer_includes_the_recovered_address([Values] bool eip8151Enabled)
+    {
+        _spec.IsEip8151Enabled = eip8151Enabled;
+        AccessTxTracer tracer = new();
+
+        Run(MeasureEcRecover(Prepare.EvmCode, 0, Instruction.STATICCALL, PrecompileGasLimit, ValidInput).Done, tracer);
+
+        Assert.That(tracer.AccessList!.Select(static entry => entry.Address), eip8151Enabled ? Does.Contain(Signer) : Does.Not.Contain(Signer));
+    }
+
+    [Test]
+    public void Call_tracer_reports_the_restricted_output_and_access_cost([Values] bool eip8151Enabled)
+    {
+        _spec.IsEip8151Enabled = eip8151Enabled;
+        DeploySigner(ContractCode);
+        (Block Block, Transaction Tx) prepared = PrepareTx(Activation, TxGasLimit,
+            MeasureEcRecover(Prepare.EvmCode, 0, Instruction.STATICCALL, PrecompileGasLimit, ValidInput).Done);
+        using NativeCallTracer tracer = new(prepared.Tx, _spec, GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer });
+
+        Run(prepared, tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame call = ((NativeCallTracerCallFrame)trace.CustomTracerResult!.Value).Calls.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.To, Is.EqualTo(PrecompiledAddresses.ECRecover.Value), "to");
+            Assert.That(call.Output!.ToArray(), Is.EqualTo(eip8151Enabled ? new byte[32] : AsWord(Signer).ToBigEndian()), "output");
+            Assert.That(call.GasUsed, Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + ColdAccountAccess : EcRecoverBaseCost), "gas used");
+        }
+    }
+
     private void CreateProcessor(bool parallel, (Address From, Address To)? movedPrecompile = null, IVirtualMachine? machine = null)
     {
         _tracedState = new TracedAccessWorldState(TestState, parallel);
@@ -354,10 +412,12 @@ public class Eip8151Tests : VirtualMachineTestsBase
         if (code.Length > 0) TestState.InsertCode(Signer, code, _spec);
     }
 
-    private void Run(byte[] code)
+    private void Run(byte[] code, ITxTracer? tracer = null) => Run(PrepareTx(Activation, TxGasLimit, code), tracer);
+
+    private void Run((Block Block, Transaction Tx) prepared, ITxTracer? tracer)
     {
-        (Block block, Transaction tx) = PrepareTx(Activation, TxGasLimit, code);
-        TransactionResult result = _processor.Execute(tx, new BlockExecutionContext(block.Header, _spec), NullTxTracer.Instance);
+        (Block block, Transaction tx) = prepared;
+        TransactionResult result = _processor.Execute(tx, new BlockExecutionContext(block.Header, _spec), tracer ?? NullTxTracer.Instance);
         Assert.That(result.TransactionExecuted, Is.True, "transaction executed");
     }
 
