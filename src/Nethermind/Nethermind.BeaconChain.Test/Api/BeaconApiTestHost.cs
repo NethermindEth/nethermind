@@ -1,16 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
 using System.Collections;
-using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
@@ -30,7 +26,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Snappier;
-using NUnit.Framework;
 using ExecutionPayload = Nethermind.BeaconChain.Types.ExecutionPayload;
 using Transaction = Nethermind.BeaconChain.Types.Transaction;
 using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;

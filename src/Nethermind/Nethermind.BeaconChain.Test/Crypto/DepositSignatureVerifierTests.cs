@@ -8,7 +8,6 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 

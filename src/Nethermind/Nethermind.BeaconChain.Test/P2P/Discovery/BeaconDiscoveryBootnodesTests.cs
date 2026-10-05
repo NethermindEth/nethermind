@@ -1,11 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,7 +12,6 @@ using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 

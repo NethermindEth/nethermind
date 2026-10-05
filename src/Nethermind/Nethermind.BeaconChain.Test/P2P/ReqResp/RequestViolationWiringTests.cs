@@ -3,7 +3,6 @@
 
 using Autofac;
 using Nethermind.BeaconChain.P2P;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.ReqResp;
 

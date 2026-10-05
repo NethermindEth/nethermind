@@ -8,7 +8,6 @@ using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Crypto;

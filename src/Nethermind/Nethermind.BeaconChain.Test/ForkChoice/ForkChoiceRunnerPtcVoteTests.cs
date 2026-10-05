@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
-using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
@@ -89,7 +86,7 @@ public class ForkChoiceRunnerPtcVoteTests
         harness.TickTo(refusal == RefusedVote.WireVoteNotForTheCurrentSlot ? first.Slot + 1 : first.Slot);
         harness.Import(first);
         ulong[] ptc = harness.Ptc(first);
-        ulong outsider = Enumerable.Range(0, ValidatorCount).Select(static i => (ulong)i).First(i => !ptc.Contains(i));
+        ulong outsider = Enumerable.Range(0, ValidatorCount).Select(static i => (ulong)i).First(i => !Enumerable.Contains(ptc, i));
 
         PayloadAttestationMessage message = harness.PtcMessage(first, refusal == RefusedVote.NotInPtc ? outsider : ptc[0], true, true, sign: true);
         switch (refusal)

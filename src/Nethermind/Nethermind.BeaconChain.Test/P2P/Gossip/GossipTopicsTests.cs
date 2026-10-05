@@ -4,7 +4,6 @@
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Extensions;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 

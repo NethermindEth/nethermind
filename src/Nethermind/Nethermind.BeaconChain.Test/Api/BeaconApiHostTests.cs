@@ -1,15 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Engine;
@@ -26,7 +23,6 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
-using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 using NSubstitute;
 

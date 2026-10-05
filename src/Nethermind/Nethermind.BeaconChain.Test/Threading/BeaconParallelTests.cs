@@ -1,12 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Concurrent;
-using System.Linq;
-using System.Threading;
 using Nethermind.BeaconChain.Threading;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Threading;
 

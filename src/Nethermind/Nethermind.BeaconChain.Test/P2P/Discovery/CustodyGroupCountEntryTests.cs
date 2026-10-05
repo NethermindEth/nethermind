@@ -3,7 +3,6 @@
 
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.Serialization.Rlp;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
