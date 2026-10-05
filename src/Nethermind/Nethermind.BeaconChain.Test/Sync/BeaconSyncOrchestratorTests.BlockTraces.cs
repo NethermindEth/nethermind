@@ -184,11 +184,13 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Gossip_child_of_a_parent_waiting_on_its_payload_imports_after_the_envelope([Values] bool parentAlreadyHeld)
     {
         BlockContext s = ParkedBlocks();
+        s.Importer.OnImported = (block, root) => s.Importer.Head = CreateHead(root, block.Slot, Spec.GetEpoch(NearHeadAnchorSlot));
         if (parentAlreadyHeld)
             await s.Walk(0);
         await s.Walk(1);
         await s.Envelope();
         await s.Walk(2);
+        await s.Sync.ProcessQueuedAsync(CancellationToken.None);
         using IDisposable assertions = Assert.EnterMultipleScope();
         s.Known(1, 2);
         s.Tip(2);
