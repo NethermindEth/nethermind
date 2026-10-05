@@ -174,14 +174,7 @@ public class DataColumnSidecarPoolPersistenceTests
         Hash256 root = Keccak.Compute("stored");
         DataColumnSidecar fulu = DataColumnSidecarTestFixture.BuildValidSidecar(4, CurrentSlot);
         root = gloas ? root : RootOf(fulu);
-        if (gloas)
-        {
-            store.PutDataColumnSidecar(DataColumnSidecarGloasTestFixture.BuildSidecar(4, CurrentSlot, root));
-        }
-        else
-        {
-            store.PutDataColumnSidecar(root, CurrentSlot, fulu);
-        }
+        StoreColumn(store, gloas, root, CurrentSlot, fulu);
 
         DataColumnSidecarPool pool = new(store: store);
         db.FailReads = true;
@@ -205,27 +198,13 @@ public class DataColumnSidecarPoolPersistenceTests
         (_, BeaconChainStore store) = CreateStore();
         DataColumnSidecar fulu0 = DataColumnSidecarTestFixture.BuildValidSidecar(0, CurrentSlot), fulu1 = DataColumnSidecarTestFixture.BuildValidSidecar(1, CurrentSlot);
         Hash256 root = gloas ? Keccak.Compute("block") : RootOf(fulu0);
-        if (gloas)
-        {
-            store.PutDataColumnSidecar(DataColumnSidecarGloasTestFixture.BuildSidecar(0, CurrentSlot, root));
-        }
-        else
-        {
-            store.PutDataColumnSidecar(root, CurrentSlot, fulu0);
-        }
+        StoreColumn(store, gloas, root, CurrentSlot, fulu0);
 
         DataColumnSidecarPool restarted = new(store: store);
         bool woke = false;
         bool allStoredWatching = restarted.TryWatch(root, [0], gloas, () => { });
         bool watching = restarted.TryWatch(root, [0, 1], gloas, () => woke = true);
-        if (gloas)
-        {
-            restarted.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(1, CurrentSlot, root));
-        }
-        else
-        {
-            restarted.Add(root, CurrentSlot, fulu1);
-        }
+        AddColumn(restarted, gloas, root, CurrentSlot, fulu1);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(watching, Is.True, "column 1 is missing");
@@ -244,14 +223,7 @@ public class DataColumnSidecarPoolPersistenceTests
         bool storedWhenWoken = false;
         pool.TryWatch(root, [2], gloas, () => storedWhenWoken = store.HasDataColumnRecord(root, 2));
 
-        if (gloas)
-        {
-            pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(2, CurrentSlot, root));
-        }
-        else
-        {
-            pool.Add(root, CurrentSlot, fulu);
-        }
+        AddColumn(pool, gloas, root, CurrentSlot, fulu);
 
         Assert.That(storedWhenWoken, Is.True);
     }
@@ -324,41 +296,32 @@ public class DataColumnSidecarPoolPersistenceTests
         Assert.That(store.TryGetDataColumnSidecarGloas(oldToo, 0, out _), Is.False, "and again when the epoch changes");
     }
 
-    [Test]
-    public void A_damaged_stored_sidecar_is_not_served_until_it_is_added_again()
+    [TestCase(false, TestName = "A_damaged_stored_sidecar_is_not_served_until_it_is_added_again")]
+    [TestCase(true, TestName = "A_record_repaired_while_it_is_read_is_served_after_memory_evicts_it")]
+    public void A_damaged_record_is_servable_after_repair_and_memory_eviction(bool repairDuringRead)
     {
-        (MemColumnsDb<BeaconChainDbColumns> db, BeaconChainStore store) = CreateStore();
-        Hash256 root = Keccak.Compute("damaged");
-        store.PutDataColumnSidecar(DataColumnSidecarGloasTestFixture.BuildSidecar(3, CurrentSlot, root));
-        db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars).Set([.. root.Bytes, 0, 0, 0, 0, 0, 0, 0, 3], [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3]);
-        DataColumnSidecarPool pool = new(capacity: 1, store);
-
-        bool damaged = pool.TryGetGloas(root, 3, out _);
-        pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, CurrentSlot, root));
-        pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(0, CurrentSlot + 1, Keccak.Compute("evicts")));
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(damaged, Is.False);
-        Assert.That(pool.TryGetGloas(root, 3, out _), Is.True, "read from the store once memory evicted it, so the unreadable marker must be gone");
-    }
-
-    [Test]
-    public void A_record_repaired_while_it_is_read_is_served_after_memory_evicts_it()
-    {
-        FaultyColumnsDb db = new();
+        IColumnsDb<BeaconChainDbColumns> db = repairDuringRead ? new FaultyColumnsDb() : new MemColumnsDb<BeaconChainDbColumns>();
         BeaconChainStore store = new(db, Spec);
-        Hash256 root = Keccak.Compute("repaired");
+        Hash256 root = Keccak.Compute(repairDuringRead ? "repaired" : "damaged");
         store.PutDataColumnSidecar(DataColumnSidecarGloasTestFixture.BuildSidecar(3, CurrentSlot, root));
         db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars).Set([.. root.Bytes, 0, 0, 0, 0, 0, 0, 0, 3], [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3]);
         DataColumnSidecarPool pool = new(capacity: 1, store);
-        db.AfterNextRecordRead = () => pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, CurrentSlot, root));
+        if (repairDuringRead)
+        {
+            ((FaultyColumnsDb)db).AfterNextRecordRead = () => pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, CurrentSlot, root));
+        }
 
         bool servedWhileDamaged = pool.TryGetGloas(root, 3, out _);
+        if (!repairDuringRead)
+        {
+            pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, CurrentSlot, root));
+        }
+
         pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(0, CurrentSlot + 1, Keccak.Compute("evicts")));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(servedWhileDamaged, Is.False);
-        Assert.That(pool.TryGetGloas(root, 3, out _), Is.True);
+        Assert.That(pool.TryGetGloas(root, 3, out _), Is.True, "read from the store once memory evicted it, so the unreadable marker must be gone");
     }
 
     [Test]
@@ -405,18 +368,9 @@ public class DataColumnSidecarPoolPersistenceTests
             : WithWriter(ownWriter);
         using ManualResetEventSlim release = new();
         writer.Post(() => release.Wait(TimeSpan.FromSeconds(30)));
-        Hash256 root;
-        if (gloas)
-        {
-            root = Keccak.Compute("written later");
-            pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(7, slot, root));
-        }
-        else
-        {
-            DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(7, slot);
-            root = RootOf(sidecar);
-            pool.Add(root, slot, sidecar);
-        }
+        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(7, slot);
+        Hash256 root = gloas ? Keccak.Compute("written later") : RootOf(sidecar);
+        AddColumn(pool, gloas, root, slot, sidecar);
 
         bool storedWhileWriterBusy = Stored(store, root, gloas);
         bool servedWhileWriterBusy = gloas ? pool.TryGetGloas(root, 7, out _) : pool.TryGet(root, 7, out _);
@@ -468,16 +422,10 @@ public class DataColumnSidecarPoolPersistenceTests
 
         Hash256 Add(ulong column, ulong slot)
         {
-            if (gloas)
-            {
-                Hash256 root = Keccak.Compute($"block at {slot}");
-                pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, slot, root));
-                return root;
-            }
-
             DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot);
-            pool.Add(RootOf(sidecar), slot, sidecar);
-            return RootOf(sidecar);
+            Hash256 root = gloas ? Keccak.Compute($"block at {slot}") : RootOf(sidecar);
+            AddColumn(pool, gloas, root, slot, sidecar);
+            return root;
         }
     }
 
@@ -502,6 +450,30 @@ public class DataColumnSidecarPoolPersistenceTests
         DrainStoreWrites(writer);
 
         Assert.That(held ? columns!.Select(static c => c.Index) : [], Is.EqualTo(Enumerable.Range(0, required).Select(static i => (ulong)i)));
+    }
+
+    private static void StoreColumn(BeaconChainStore store, bool gloas, Hash256 root, ulong slot, DataColumnSidecar fulu)
+    {
+        if (gloas)
+        {
+            store.PutDataColumnSidecar(DataColumnSidecarGloasTestFixture.BuildSidecar(fulu.Index, slot, root));
+        }
+        else
+        {
+            store.PutDataColumnSidecar(root, slot, fulu);
+        }
+    }
+
+    private static void AddColumn(DataColumnSidecarPool pool, bool gloas, Hash256 root, ulong slot, DataColumnSidecar fulu)
+    {
+        if (gloas)
+        {
+            pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(fulu.Index, slot, root));
+        }
+        else
+        {
+            pool.Add(root, slot, fulu);
+        }
     }
 
     internal static void DrainStoreWrites(ColumnStoreWriter writer)
