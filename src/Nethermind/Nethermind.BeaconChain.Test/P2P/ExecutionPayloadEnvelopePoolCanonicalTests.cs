@@ -69,30 +69,24 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
             full ? null : "a held envelope does not make the head FULL; only fork choice can");
     }
 
-    [Test]
-    public void Full_status_of_another_root_does_not_serve_the_head()
+    [TestCase(false, TestName = "Full_status_of_another_root_does_not_serve_the_head")]
+    [TestCase(true, TestName = "Never_serves_a_sibling_of_a_full_head")]
+    public void A_full_verdict_serves_only_the_head_it_names(bool fullHead)
     {
         EnvelopeChain chain = new();
         (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
         (Hash256 head, _) = chain.Put(Base + 1, genesis, genesisHash);
+        Hash256? sibling = fullHead ? chain.Put(Base + 1, genesis, genesisHash, salt: 1).Root : null;
         chain.AddEnvelopes(genesis, head);
-        chain.SetHead(head, Base + 1);
-        chain.Status.Publish(chain.Status.CurrentStatus, genesis);
+        if (sibling is not null)
+            chain.AddEnvelopes(sibling);
 
-        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(new[] { genesis }), "a FULL verdict for a previous head must not carry over to the new one");
-    }
+        chain.SetHead(head, Base + 1, full: fullHead);
+        if (!fullHead)
+            chain.Status.Publish(chain.Status.CurrentStatus, genesis);
 
-    [Test]
-    public void Never_serves_a_sibling_of_a_full_head()
-    {
-        EnvelopeChain chain = new();
-        (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
-        (Hash256 head, _) = chain.Put(Base + 1, genesis, genesisHash);
-        (Hash256 sibling, _) = chain.Put(Base + 1, genesis, genesisHash, salt: 1);
-        chain.AddEnvelopes(genesis, head, sibling);
-        chain.SetHead(head, Base + 1, full: true);
-
-        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(new[] { genesis, head }), "the sibling is not on the head chain");
+        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(fullHead ? new[] { genesis, head } : new[] { genesis }),
+            fullHead ? "the sibling is not on the head chain" : "a FULL verdict for a previous head must not carry over to the new one");
     }
 
     [Test]

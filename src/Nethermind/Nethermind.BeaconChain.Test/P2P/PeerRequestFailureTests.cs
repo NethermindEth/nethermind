@@ -123,7 +123,7 @@ public class PeerRequestFailureTests
         await using Fixture fixture = await Fixture.CreateAsync(token);
         Node other = CreateNode();
         SetMatchingStatus(other);
-        try
+        await using (other.P2P)
         {
             await other.P2P.StartAsync(token);
             Assert.That(await fixture.Manager.TryAddPeerAsync(LoopbackAddress(other.P2P), token), Is.True);
@@ -140,10 +140,6 @@ public class PeerRequestFailureTests
 
             Assert.That(fixture.Manager.PeerCount, Is.EqualTo(keepFloor ? 2 : 1));
             if (!keepFloor) Assert.That(await fixture.Manager.TryAddPeerAsync(fixture.Peer.Id, token), Is.False, "a dropped endpoint also observes backoff");
-        }
-        finally
-        {
-            await other.P2P.DisposeAsync();
         }
     }
 
