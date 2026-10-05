@@ -83,14 +83,17 @@ public class GossipDigestWindowTests
         return router.GetDropCount(GossipDropReason.UnknownTopic) == unknownBefore;
     }
 
-    internal sealed class RecordingTopic : ITopic
+    internal sealed class RecordingTopic(bool recordMessages = true) : ITopic
     {
         public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
         public bool IsSubscribed { get; private set; }
         public List<byte[]> Published { get; } = [];
         public void Subscribe() => IsSubscribed = true;
         public void Unsubscribe() => IsSubscribed = false;
-        public void Publish(byte[] value) => Published.Add(value);
+        public void Publish(byte[] value)
+        {
+            if (recordMessages) Published.Add(value);
+        }
         public void Publish(IMessage value) { }
     }
 

@@ -4,9 +4,6 @@
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Merge.Plugin;
-using Nethermind.Merge.Plugin.Data;
-using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test.Engine;
 
@@ -21,7 +18,7 @@ public class EngineDriverMetricsTests
     [HardTimeout(60_000)]
     public void Engine_calls_made_from_many_threads_at_once_are_all_counted()
     {
-        EngineDriver[] drivers = [.. Enumerable.Range(0, Threads).Select(static _ => CreateDriver())];
+        EngineDriver[] drivers = [.. Enumerable.Range(0, Threads).Select(static worker => EngineTests.CreateSyncingDriver(out _))];
         ExecutionPayloadGloas payload = EngineTests.GloasPayload(5);
         ulong newPayloadBefore = Metrics.BeaconChainNewPayloadCalls;
         ulong forkchoiceBefore = Metrics.BeaconChainForkchoiceUpdatedCalls;
@@ -51,12 +48,5 @@ public class EngineDriverMetricsTests
         Assert.That(failedThreads, Is.Zero, "every call must return a verdict");
         Assert.That(Metrics.BeaconChainNewPayloadCalls - newPayloadBefore, Is.EqualTo((ulong)(Threads * CallsPerThread)));
         Assert.That(Metrics.BeaconChainForkchoiceUpdatedCalls - forkchoiceBefore, Is.EqualTo((ulong)(Threads * CallsPerThread)));
-    }
-
-    private static EngineDriver CreateDriver()
-    {
-        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
-        EngineTests.ConfigureEngine(engine, static () => Task.FromResult(PayloadStatusV1.Syncing));
-        return TestEngineDriver.Create(EngineTests.CreateDetector(engine, out _));
     }
 }

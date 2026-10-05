@@ -285,9 +285,7 @@ public class EngineTests
     [Test]
     public void Engine_driver_refuses_to_turn_a_failed_newPayloadV5_call_into_a_verdict()
     {
-        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
-        ConfigureEngine(engine, () => Task.FromResult(PayloadStatusV1.Syncing));
-        EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _));
+        EngineDriver driver = CreateSyncingDriver(out IEngineRpcModule engine);
         driver.NotifyNewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas());
         Assert.That(driver.IsAvailable, Is.True);
         engine.Configure().engine_newPayloadV5(default!, default!, default, default)
@@ -313,9 +311,7 @@ public class EngineTests
             1 => ResultWrapper<ForkchoiceUpdatedV1Result>.Success(null!),
             _ => ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadStatus = null! }),
         };
-        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
-        ConfigureEngine(engine, () => Task.FromResult(PayloadStatusV1.Syncing));
-        EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _));
+        EngineDriver driver = CreateSyncingDriver(out IEngineRpcModule engine);
         await driver.ForkchoiceUpdated(TestHash, TestHash, TestHash);
         Assert.That(driver.IsAvailable, Is.True);
         engine.Configure().engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(Task.FromResult(answer));
@@ -342,10 +338,8 @@ public class EngineTests
     public async Task Engine_faults_are_unavailable_and_a_later_call_recovers(
         [Values(0, 1, 2, 3)] int method, [Values] bool synchronous, [Values] bool cancellation)
     {
-        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
         Exception cause = cancellation ? new OperationCanceledException("engine budget") : new InvalidOperationException("storage failure");
-        ConfigureEngine(engine, () => Task.FromResult(PayloadStatusV1.Syncing));
-        EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _),
+        EngineDriver driver = CreateSyncingDriver(out IEngineRpcModule engine,
             method == 1 ? TestEngineDriver.Spec.GloasForkEpoch * TestEngineDriver.Spec.SlotsPerEpoch : 0);
 
         await InvokeEngine(driver, method);
@@ -430,6 +424,13 @@ public class EngineTests
         2 => driver.NewPayload(CreateBlock()),
         _ => driver.NewPayload(GloasPayload(5), [], TestHash, new ExecutionRequestsGloas()),
     };
+
+    internal static EngineDriver CreateSyncingDriver(out IEngineRpcModule engine, ulong slot = 0)
+    {
+        engine = Substitute.For<IEngineRpcModule>();
+        ConfigureEngine(engine, static () => Task.FromResult(PayloadStatusV1.Syncing));
+        return TestEngineDriver.Create(CreateDetector(engine, out _), slot);
+    }
 
     internal static void ConfigureEngine(IEngineRpcModule engine, Func<Task<PayloadStatusV1>> response)
     {
