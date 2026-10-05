@@ -24,34 +24,20 @@ public class BeaconStateCodecTests
     }
 
     [Test]
-    public void A_state_from_a_fork_the_driver_cannot_process_is_refused_by_name()
-    {
-        BeaconChainSpec sepolia = BeaconChainSpec.Sepolia;
-        byte[] gloasState = StateStartingAtSlot(sepolia.GloasForkEpoch * sepolia.SlotsPerEpoch);
-
-        NotSupportedException ex = Assert.Throws<NotSupportedException>(
-            () => BeaconStateCodec.Decode(gloasState, sepolia))!;
-
-        Assert.That(ex.Message, Does.Contain(nameof(BeaconFork.Gloas)));
-    }
-
-    [Test]
     public void A_state_too_short_to_carry_a_slot_is_refused_rather_than_read_past_its_end() =>
         Assert.Throws<BeaconStateException>(
-            () => BeaconStateCodec.Decode(new byte[SlotOffset], BeaconChainSpec.Sepolia));
+            () => BeaconStateCodec.DecodeForked(new byte[SlotOffset], BeaconChainSpec.Sepolia));
 
     [Test]
-    public void A_fulu_state_reaches_the_decoder()
+    public void A_supported_state_reaches_the_decoder([Values] bool gloas)
     {
         BeaconChainSpec sepolia = BeaconChainSpec.Sepolia;
-        byte[] truncatedFuluState = StateStartingAtSlot(sepolia.FuluForkEpoch * sepolia.SlotsPerEpoch);
+        byte[] truncatedState = StateStartingAtSlot((gloas ? sepolia.GloasForkEpoch : sepolia.FuluForkEpoch) * sepolia.SlotsPerEpoch);
 
-        // The fork gate passes, so the failure below comes from the SSZ decoder meeting a
-        // deliberately truncated body - not from the gate rejecting a Fulu state.
         InvalidDataException ex = Assert.Throws<InvalidDataException>(
-            () => BeaconStateCodec.Decode(truncatedFuluState, sepolia))!;
+            () => BeaconStateCodec.DecodeForked(truncatedState, sepolia))!;
 
-        Assert.That(ex.Message, Does.Contain(nameof(BeaconStateFulu)));
+        Assert.That(ex.Message, Does.Contain(gloas ? nameof(BeaconStateGloas) : nameof(BeaconStateFulu)));
     }
 
     [Test]

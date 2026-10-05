@@ -86,13 +86,6 @@ public class ForkDispatchTests
         [BeaconFork.Gloas] = typeof(ForkedBeaconState.OfGloas),
     };
 
-    private static readonly Dictionary<BeaconFork, bool> FuluOnlyStateDecodes = new()
-    {
-        [BeaconFork.Electra] = false,
-        [BeaconFork.Fulu] = true,
-        [BeaconFork.Gloas] = false,
-    };
-
     // upgrade_to_gloas is the only fork upgrade this driver runs (gloas/fork.md); earlier forks leave a Fulu state as it is.
     private static readonly Dictionary<BeaconFork, Type> UpgradedStates = new()
     {
@@ -244,23 +237,12 @@ public class ForkDispatchTests
             return;
         }
 
-        Assert.That(BeaconStateCodec.DecodeForked(ssz, Spec), Is.InstanceOf(layout));
-    }
-
-    [Test]
-    public void Fulu_state_codec_decodes_only_fulu_and_refuses_every_other_fork_by_name([ValueSource(nameof(Forks))] BeaconFork fork)
-    {
-        bool decodes = Expect(FuluOnlyStateDecodes, fork);
-        byte[] ssz = StateAt(fork);
-
-        if (decodes)
+        ForkedBeaconState decoded = BeaconStateCodec.DecodeForked(ssz, Spec);
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(BeaconStateCodec.Decode(ssz, Spec).Slot, Is.EqualTo(FirstSlot(fork)));
-            return;
+            Assert.That(decoded, Is.InstanceOf(layout));
+            Assert.That(decoded.Slot, Is.EqualTo(FirstSlot(fork)));
         }
-
-        NotSupportedException refusal = Assert.Throws<NotSupportedException>(() => BeaconStateCodec.Decode(ssz, Spec))!;
-        Assert.That(refusal.Message, Does.Contain($"belongs to the {fork} fork"));
     }
 
     [Test]

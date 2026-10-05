@@ -333,22 +333,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <summary>Whether a block is stored under <paramref name="root"/>, without reading or decoding it.</summary>
     public bool HasBlock(Hash256 root) => _blocks.KeyExists(root.Bytes);
 
-    /// <summary>Reads a pre-Gloas block; see <see cref="TryGetForkedBlock"/>.</summary>
-    /// <exception cref="InvalidOperationException">The stored block is a Gloas block.</exception>
-    public bool TryGetBlock(Hash256 root, [NotNullWhen(true)] out SignedBeaconBlock? block)
-    {
-        if (!TryGetForkedBlock(root, out ForkedSignedBeaconBlock? forked))
-        {
-            block = null;
-            return false;
-        }
-
-        block = forked is ForkedSignedBeaconBlock.OfFulu fulu
-            ? fulu.Block
-            : throw new InvalidOperationException($"{nameof(TryGetBlock)} cannot read the Gloas block {root} at slot {forked.Slot}; use {nameof(TryGetForkedBlock)}");
-        return true;
-    }
-
     /// <summary>Reads a block in the shape of the fork its slot belongs to.</summary>
     /// <exception cref="BeaconStateException">The stored record is not a well-formed signed beacon block prefix.</exception>
     public bool TryGetForkedBlock(Hash256 root, [NotNullWhen(true)] out ForkedSignedBeaconBlock? block)

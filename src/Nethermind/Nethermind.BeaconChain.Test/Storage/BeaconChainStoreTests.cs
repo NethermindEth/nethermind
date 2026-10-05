@@ -34,9 +34,9 @@ public class BeaconChainStoreTests
         store.SetAnchor(blockRoot, 12_345_678);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(store.TryGetBlock(blockRoot, out SignedBeaconBlock? readBlock), Is.True);
-        Assert.That(SignedBeaconBlock.Encode(readBlock!), Is.EqualTo(SignedBeaconBlock.Encode(block)));
-        Assert.That(store.TryGetBlock(missingRoot, out _), Is.False);
+        Assert.That(store.TryGetForkedBlock(blockRoot, out ForkedSignedBeaconBlock? readBlock), Is.True);
+        Assert.That(SignedBeaconBlock.Encode(((ForkedSignedBeaconBlock.OfFulu)readBlock!).Block), Is.EqualTo(SignedBeaconBlock.Encode(block)));
+        Assert.That(store.TryGetForkedBlock(missingRoot, out _), Is.False);
         Assert.That(store.HasBlock(blockRoot), Is.True);
         Assert.That(store.HasBlock(missingRoot), Is.False);
 
@@ -83,7 +83,6 @@ public class BeaconChainStoreTests
 
     private static readonly Hash256 BlockRoot = new(Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333"));
 
-    // The last Fulu slot goes through the Fulu-typed adapters and the first Gloas slot does not, which pins the boundary on both sides.
     [Test]
     public void Fulu_and_gloas_blocks_read_back_in_the_shape_of_the_fork_their_slot_belongs_to()
     {
@@ -98,26 +97,14 @@ public class BeaconChainStoreTests
 
         Assert.That(store.TryGetForkedBlock(fuluRoot, out ForkedSignedBeaconBlock? readFulu), Is.True);
         Assert.That(store.TryGetForkedBlock(BlockRoot, out ForkedSignedBeaconBlock? readGloas), Is.True);
-        Assert.That(store.TryGetBlock(fuluRoot, out SignedBeaconBlock? adapted), Is.True, "the Fulu-typed read still serves a Fulu block");
         Assert.That(readFulu, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
         Assert.That(readGloas, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
         bool hasChildren = store.TryGetChildren(fuluRoot, out Hash256[] children, out _);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(SignedBeaconBlock.Encode(((ForkedSignedBeaconBlock.OfFulu)readFulu!).Block), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
         Assert.That(SignedBeaconBlockGloas.Encode(((ForkedSignedBeaconBlock.OfGloas)readGloas!).Block), Is.EqualTo(SignedBeaconBlockGloas.Encode(gloas)));
-        Assert.That(SignedBeaconBlock.Encode(adapted!), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
         Assert.That(hasChildren, Is.True);
         Assert.That(children, Is.EqualTo(new[] { BlockRoot }));
-    }
-
-    [Test]
-    public void The_fulu_typed_read_refuses_a_gloas_block_by_name_rather_than_misreading_it()
-    {
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Sepolia);
-        store.PutForkedBlock(BlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(FirstGloasSlot)));
-
-        Assert.That(() => store.TryGetBlock(BlockRoot, out _),
-            Throws.InvalidOperationException.With.Message.Contains(nameof(BeaconChainStore.TryGetForkedBlock)));
     }
 
     [Test]
@@ -149,11 +136,10 @@ public class BeaconChainStoreTests
 
         store.PutBlock(BlockRoot, fulu);
 
-        Assert.That(store.TryGetBlock(BlockRoot, out SignedBeaconBlock? read), Is.True);
         Assert.That(store.TryGetForkedBlock(BlockRoot, out ForkedSignedBeaconBlock? forked), Is.True);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(SignedBeaconBlock.Encode(read!), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
+            Assert.That(SignedBeaconBlock.Encode(((ForkedSignedBeaconBlock.OfFulu)forked!).Block), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
             Assert.That(forked, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
         }
 
