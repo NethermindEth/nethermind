@@ -1382,9 +1382,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
                             WorldState.AddAccountRead(delegationAddress);
 
-                            codeInfo = spec.IsPrecompile(delegationAddress)
-                                ? CodeInfo.Empty
-                                : codeInfoRepository.GetCachedCodeInfo(delegationAddress, followDelegation: false, spec, out _);
+                            codeInfo = codeInfoRepository.GetDelegatedCodeInfo(delegationAddress, spec);
                         }
                     }
                     else

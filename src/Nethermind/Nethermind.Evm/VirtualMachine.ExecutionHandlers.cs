@@ -31,6 +31,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 #endif
         // All targets have these managed signatures; the table captures no VM or transaction state.
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> InitializeFrame =
+#if ZK_EVM
+            // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
+            SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !spec.IsEip8360Enabled ? &InitializeFrameSkippingNoOpCredit :
+#endif
             (SpecFlags.Eip158(spec), spec.IsEip8360Enabled) switch
             {
                 (true, true) => &InitializeFrameCore<OnFlag, OnFlag>,

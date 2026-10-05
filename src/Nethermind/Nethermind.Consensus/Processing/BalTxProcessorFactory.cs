@@ -19,8 +19,9 @@ namespace Nethermind.Consensus.Processing;
 /// <remarks>
 /// Bundles the construction-only dependencies so the manager and its pools carry one factory instead of
 /// five loose ones. Resolved from the processing scope, it picks up that scope's overrides (a decorated
-/// <see cref="ITransactionProcessorFactory"/>, scope-specific <see cref="CodeInfoRepositoryFactory"/> and
-/// <see cref="TransactionProcessorAdapterFactory"/>) automatically. The optional parameters default to the
+/// <see cref="ITransactionProcessorFactory"/>, scope-specific <see cref="CodeInfoRepositoryFactory"/>,
+/// <see cref="TransactionProcessorAdapterFactory"/> and a decorated
+/// <see cref="ITransactionProcessor.IBlobBaseFeeCalculator"/>) automatically. The optional parameters default to the
 /// standard Ethereum implementations only at manual construction sites (stateless envs, tests) — in
 /// container scopes the registered services are always injected.
 /// </remarks>
@@ -30,7 +31,8 @@ public class BalTxProcessorFactory(
     ILogManager logManager,
     CodeInfoRepositoryFactory? codeInfoRepositoryFactory = null,
     TransactionProcessorAdapterFactory? txProcessorAdapterFactory = null,
-    ITransactionProcessorFactory? transactionProcessorFactory = null)
+    ITransactionProcessorFactory? transactionProcessorFactory = null,
+    ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator = null)
 {
     private static readonly CodeInfoRepositoryFactory DefaultCodeInfoRepositoryFactory =
         static worldState => new EthereumCodeInfoRepository(worldState);
@@ -40,13 +42,14 @@ public class BalTxProcessorFactory(
     private readonly CodeInfoRepositoryFactory _codeInfoRepositoryFactory = codeInfoRepositoryFactory ?? DefaultCodeInfoRepositoryFactory;
     private readonly TransactionProcessorAdapterFactory _txProcessorAdapterFactory = txProcessorAdapterFactory ?? DefaultTxProcessorAdapterFactory;
     private readonly ITransactionProcessorFactory _transactionProcessorFactory = transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>();
+    private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator = blobBaseFeeCalculator ?? BlobBaseFeeCalculator.Instance;
 
     /// <remarks>The caller owns the returned virtual machine and disposes it once it stops using the processor.</remarks>
     public (ITransactionProcessor Processor, ITransactionProcessorAdapter Adapter, IDisposable VirtualMachine) Create(IWorldState worldState, bool parallel)
     {
         VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
         ITransactionProcessor processor = _transactionProcessorFactory.Create(
-            BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine,
+            _blobBaseFeeCalculator, specProvider, worldState, virtualMachine,
             _codeInfoRepositoryFactory(worldState), logManager, parallel);
         return (processor, _txProcessorAdapterFactory(processor), virtualMachine);
     }
