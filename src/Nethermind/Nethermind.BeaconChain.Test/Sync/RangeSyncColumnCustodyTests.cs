@@ -323,24 +323,10 @@ public class RangeSyncColumnCustodyTests
         {
             firstColumn ??= columns[0];
             DataColumnSidecar valid = fixture.Chain.Columns[(int)columns[0]];
-            DataColumnSidecar tampered = new()
-            {
-                Index = valid.Index,
-                Column = [.. valid.Column!.Select(static cell => { byte[] bytes = cell.AsSpan().ToArray(); bytes[^1] ^= 0xFF; return SszBlobCell.FromSpan(bytes); })],
-                KzgCommitments = valid.KzgCommitments,
-                KzgProofs = valid.KzgProofs,
-                SignedBlockHeader = valid.SignedBlockHeader,
-                KzgCommitmentsInclusionProof = valid.KzgCommitmentsInclusionProof,
-            };
-            DataColumnSidecar truncated = new()
-            {
-                Index = valid.Index,
-                Column = valid.Column![..^1],
-                KzgCommitments = valid.KzgCommitments,
-                KzgProofs = valid.KzgProofs,
-                SignedBlockHeader = valid.SignedBlockHeader,
-                KzgCommitmentsInclusionProof = valid.KzgCommitmentsInclusionProof,
-            };
+            DataColumnSidecar tampered = CopySidecar(valid);
+            tampered.Column = [.. valid.Column!.Select(static cell => { byte[] bytes = cell.AsSpan().ToArray(); bytes[^1] ^= 0xFF; return SszBlobCell.FromSpan(bytes); })];
+            DataColumnSidecar truncated = CopySidecar(valid);
+            truncated.Column = valid.Column![..^1];
             return [.. fixture.ServeColumns(columns[1..]), .. Enumerable.Repeat(truncated, malformedCopyFirst ? 1 : 0), .. Enumerable.Repeat(tampered, 50), valid];
         });
 
@@ -362,15 +348,10 @@ public class RangeSyncColumnCustodyTests
         {
             firstColumn ??= columns[0];
             DataColumnSidecar valid = fixture.Chain.Columns[(int)columns[0]];
-            DataColumnSidecar malformed = new()
-            {
-                Index = valid.Index,
-                Column = invalidPart == 0 ? valid.Column![..^1] : valid.Column,
-                KzgCommitments = invalidPart == 2 ? valid.KzgCommitments![..^1] : valid.KzgCommitments,
-                KzgProofs = valid.KzgProofs,
-                SignedBlockHeader = valid.SignedBlockHeader,
-                KzgCommitmentsInclusionProof = invalidPart == 1 ? [.. valid.KzgCommitmentsInclusionProof!.Select(static _ => Hash256.Zero)] : valid.KzgCommitmentsInclusionProof,
-            };
+            DataColumnSidecar malformed = CopySidecar(valid);
+            malformed.Column = invalidPart == 0 ? valid.Column![..^1] : valid.Column;
+            malformed.KzgCommitments = invalidPart == 2 ? valid.KzgCommitments![..^1] : valid.KzgCommitments;
+            malformed.KzgCommitmentsInclusionProof = invalidPart == 1 ? [.. valid.KzgCommitmentsInclusionProof!.Select(static _ => Hash256.Zero)] : valid.KzgCommitmentsInclusionProof;
             return [.. Enumerable.Repeat(malformed, malformedCopies), .. fixture.ServeColumns(columns)];
         });
 
@@ -451,6 +432,16 @@ public class RangeSyncColumnCustodyTests
             ("other", [1]),
         }), "columns beyond the bound are left for a later round");
     }
+
+    private static DataColumnSidecar CopySidecar(DataColumnSidecar source) => new()
+    {
+        Index = source.Index,
+        Column = source.Column,
+        KzgCommitments = source.KzgCommitments,
+        KzgProofs = source.KzgProofs,
+        SignedBlockHeader = source.SignedBlockHeader,
+        KzgCommitmentsInclusionProof = source.KzgCommitmentsInclusionProof,
+    };
 
     private static StubPeer PeerWithCustody(string id, PeerColumnCustody custody) => new(id, headSlot: 0, static (_, _) => [], custody: custody);
 
