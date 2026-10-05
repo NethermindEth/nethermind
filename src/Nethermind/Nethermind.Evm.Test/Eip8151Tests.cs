@@ -12,8 +12,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -41,11 +43,13 @@ namespace Nethermind.Evm.Test;
 /// </remarks>
 public class Eip8151Tests : VirtualMachineTestsBase
 {
-    private const ulong TxGasLimit = 1_000_000;
+    /// <remarks>Covers the EIP-8037 state gas of every measurement slot the transaction creates.</remarks>
+    private const ulong TxGasLimit = 4_000_000;
     private const long PrecompileGasLimit = 100_000;
     private const int OutputOffset = 128;
     private const int SlotsPerMeasurement = 5;
     private const ulong EcRecoverBaseCost = 3000;
+    private const ulong ColdAccountAccess = Eip8038Constants.ColdAccountAccess;
 
     private static readonly PrivateKey SignerKey = TestItem.PrivateKeyC;
     private static readonly Address Signer = SignerKey.Address;
@@ -61,14 +65,14 @@ public class Eip8151Tests : VirtualMachineTestsBase
     private TracedAccessWorldState _tracedState = null!;
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
-    protected override ulong Timestamp => MainnetSpecProvider.PragueBlockTimestamp;
+    protected override ulong Timestamp => MainnetSpecProvider.BogotaBlockTimestamp;
     protected override ISpecProvider SpecProvider => _specProvider;
 
     [SetUp]
     public override void Setup()
     {
         // Opcode tables are cached per spec instance, so a test that flips a repricing flag needs its own.
-        _spec = new OverridableReleaseSpec(Prague.Instance);
+        _spec = new OverridableReleaseSpec(Bogota.Instance);
         _specProvider = new TestSpecProvider(_spec);
         base.Setup();
         _spec.IsEip8151Enabled = true;
@@ -115,7 +119,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
             Assert.That(call.Result, Is.EqualTo(UInt256.One), "success");
             Assert.That(call.Output, Is.EqualTo(returnsAddress ? AsWord(Signer) : UInt256.Zero), "output");
             Assert.That(call.ReturnDataSize, Is.EqualTo((UInt256)32), "return data size");
-            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + GasCostOf.ColdAccountAccess : EcRecoverBaseCost), "gas");
+            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + ColdAccountAccess : EcRecoverBaseCost), "gas");
         }
     }
 
@@ -162,7 +166,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(true, GasCostOf.ColdAccountAccess, TestName = "Warming_follows_the_recovering_frame(reverted frame leaves the address cold)")]
+    [TestCase(true, ColdAccountAccess, TestName = "Warming_follows_the_recovering_frame(reverted frame leaves the address cold)")]
     [TestCase(false, GasCostOf.WarmStateRead, TestName = "Warming_follows_the_recovering_frame(committed frame leaves the address warm)")]
     public void Warming_follows_the_recovering_frame(bool revert, ulong expectedBalanceCost)
     {
@@ -187,19 +191,22 @@ public class Eip8151Tests : VirtualMachineTestsBase
 
     [Test]
     public void Access_cost_is_charged_before_the_recovered_account_is_read(
+        [Values] bool eip8151Enabled,
         [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode,
         [Values] bool enoughGas)
     {
-        long gasLimit = (long)(EcRecoverBaseCost + GasCostOf.ColdAccountAccess) - (enoughGas ? 0 : 1);
+        _spec.IsEip8151Enabled = eip8151Enabled;
+        long gasLimit = (long)(EcRecoverBaseCost + ColdAccountAccess) - (enoughGas ? 0 : 1);
 
         Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, gasLimit, ValidInput).Done);
 
         Measurement call = Read(0);
+        bool charged = eip8151Enabled && enoughGas;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(call.Result, Is.EqualTo(enoughGas ? UInt256.One : UInt256.Zero), "success");
-            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo((ulong)gasLimit), "gas");
-            Assert.That(_tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Signer), enoughGas ? Is.Not.Null : Is.Null, "EIP-7928 entry");
+            Assert.That(call.Result, Is.EqualTo(enoughGas || !eip8151Enabled ? UInt256.One : UInt256.Zero), "success");
+            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(eip8151Enabled ? (ulong)gasLimit : EcRecoverBaseCost), "gas");
+            Assert.That(_tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Signer), charged ? Is.Not.Null : Is.Null, "EIP-7928 entry");
         }
     }
 
@@ -207,14 +214,14 @@ public class Eip8151Tests : VirtualMachineTestsBase
     public void Running_out_of_gas_for_the_access_cost_leaves_the_address_cold(
         [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
     {
-        Prepare code = MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, (long)(EcRecoverBaseCost + GasCostOf.ColdAccountAccess) - 1, ValidInput);
+        Prepare code = MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, (long)(EcRecoverBaseCost + ColdAccountAccess) - 1, ValidInput);
 
         Run(MeasureBalance(code, 1, Signer).Done);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Read(0).Result, Is.EqualTo(UInt256.Zero), "success");
-            Assert.That(BalanceCost(Read(1)), Is.EqualTo(GasCostOf.ColdAccountAccess), "later BALANCE gas");
+            Assert.That(BalanceCost(Read(1)), Is.EqualTo(ColdAccountAccess), "later BALANCE gas");
         }
     }
 
@@ -230,8 +237,9 @@ public class Eip8151Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Cached_recovery_does_not_return_an_address_whose_account_gained_code()
+    public void Cached_recovery_does_not_return_an_address_whose_account_gained_code([Values] bool eip8151Enabled)
     {
+        _spec.IsEip8151Enabled = eip8151Enabled;
         byte[] code = MeasureEcRecover(Prepare.EvmCode, 0, Instruction.STATICCALL, PrecompileGasLimit, ValidInput).Done;
         Run(code);
         Assert.That(Read(0).Output, Is.EqualTo(AsWord(Signer)), "output before the account gains code");
@@ -243,7 +251,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Precompiles.Metrics.ECRecoverPrecompile, Is.EqualTo(recoveriesBefore), "second recovery is served from the precompile result cache");
-            Assert.That(Read(0).Output, Is.EqualTo(UInt256.Zero), "output after the account gains code");
+            Assert.That(Read(0).Output, Is.EqualTo(eip8151Enabled ? UInt256.Zero : AsWord(Signer)), "output after the account gains code");
         }
     }
 
@@ -271,27 +279,31 @@ public class Eip8151Tests : VirtualMachineTestsBase
 
     [Test]
     public void Ecrecover_moved_by_a_state_override_keeps_the_restriction(
+        [Values] bool eip8151Enabled,
         [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
     {
+        _spec.IsEip8151Enabled = eip8151Enabled;
         CreateProcessor(parallel: false, (PrecompiledAddresses.ECRecover.Value, MovedPrecompileTarget));
         DeploySigner(ContractCode);
 
         Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, PrecompileGasLimit, ValidInput, MovedPrecompileTarget).Done);
 
         Measurement call = Read(0);
-        ulong coldTargetAccess = GasCostOf.ColdAccountAccess - GasCostOf.WarmStateRead;
+        ulong coldTargetAccess = ColdAccountAccess - GasCostOf.WarmStateRead;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(call.Result, Is.EqualTo(UInt256.One), "success");
-            Assert.That(call.Output, Is.EqualTo(UInt256.Zero), "output");
-            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(coldTargetAccess + EcRecoverBaseCost + GasCostOf.ColdAccountAccess), "gas");
+            Assert.That(call.Output, Is.EqualTo(eip8151Enabled ? UInt256.Zero : AsWord(Signer)), "output");
+            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(coldTargetAccess + EcRecoverBaseCost + (eip8151Enabled ? ColdAccountAccess : 0)), "gas");
         }
     }
 
     [Test]
     public void Precompile_moved_to_the_ecrecover_address_is_not_restricted(
+        [Values] bool eip8151Enabled,
         [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
     {
+        _spec.IsEip8151Enabled = eip8151Enabled;
         CreateProcessor(parallel: false, (Sha256Precompile.Address, PrecompiledAddresses.ECRecover.Value));
 
         Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, PrecompileGasLimit, ValidInput).Done);
@@ -304,7 +316,19 @@ public class Eip8151Tests : VirtualMachineTestsBase
         }
     }
 
-    private void CreateProcessor(bool parallel, (Address From, Address To)? movedPrecompile = null)
+    [Test]
+    public void Ecrecover_leaves_the_inline_static_call_path_only_under_eip8151([Values] bool eip8151Enabled)
+    {
+        _spec.IsEip8151Enabled = eip8151Enabled;
+        InlinePathProbe probe = new(new TestBlockhashProvider(SpecProvider), SpecProvider, LimboLogs.Instance);
+        CreateProcessor(parallel: false, machine: probe);
+
+        Run(MeasureEcRecover(Prepare.EvmCode, 0, Instruction.STATICCALL, PrecompileGasLimit, ValidInput).Done);
+
+        Assert.That(probe.Decisions, Is.EqualTo(new[] { !eip8151Enabled }));
+    }
+
+    private void CreateProcessor(bool parallel, (Address From, Address To)? movedPrecompile = null, IVirtualMachine? machine = null)
     {
         _tracedState = new TracedAccessWorldState(TestState, parallel);
         _tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
@@ -319,7 +343,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
             codeInfoRepository = overridable;
         }
 
-        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, _tracedState, Machine, codeInfoRepository, LimboLogs.Instance);
+        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, _tracedState, machine ?? Machine, codeInfoRepository, LimboLogs.Instance);
     }
 
     private void DeploySigner(byte[]? code)
@@ -421,4 +445,18 @@ public class Eip8151Tests : VirtualMachineTestsBase
     }
 
     private readonly record struct Measurement(ulong Cost, UInt256 Result, UInt256 ReturnDataSize, UInt256 Output);
+
+    /// <summary>Records whether each STATICCALL to a precompile may take the inline path.</summary>
+    private sealed class InlinePathProbe(IBlockhashProvider blockHashProvider, ISpecProvider specProvider, ILogManager logManager)
+        : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine
+    {
+        public List<bool> Decisions { get; } = [];
+
+        protected internal override bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource)
+        {
+            bool direct = base.CanExecutePrecompileCallDirectly(precompile, codeSource);
+            Decisions.Add(direct);
+            return direct;
+        }
+    }
 }
