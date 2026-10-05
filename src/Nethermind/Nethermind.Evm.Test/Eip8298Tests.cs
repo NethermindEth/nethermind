@@ -305,6 +305,33 @@ public class Eip8298Tests : VirtualMachineTestsBase
         }
     }
 
+    // A creation transaction reports the code it deploys: the callTracer root, the receipt output eth_call
+    // returns, and the trace_* create result all agree. With EIP-8298 off, a plain creation, as on master.
+    [Test]
+    public void CreationTransaction_ReportsDeployedCodeAsOutput_InEveryTracer([Values] bool eip8298Enabled)
+    {
+        _eip8298Enabled = eip8298Enabled;
+        DeploySource();
+        byte[] initCode = eip8298Enabled ? AdoptingInitCode(0xef, 32) : Prepare.EvmCode.ForInitOf(SourceCode).Done;
+        (Block block, Transaction tx, Address created) = PrepareCreation(CreationKind.Transaction, initCode, 0);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using NativeCallTracer callTracer = new(tx, spec, GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer });
+        ParityLikeTxTracer parityTracer = new(block, tx, ParityTraceTypes.Trace);
+        TestAllTracerWithOutput receiptTracer = CreateTracer();
+
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), new CompositeTxTracer(callTracer, parityTracer, receiptTracer));
+
+        using GethLikeTxTrace trace = callTracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestState.GetCode(created).ToArray(), Is.EqualTo(SourceCode), "deployed code");
+            Assert.That(root.Output!.AsSpan().ToArray(), Is.EqualTo(SourceCode), "callTracer root output");
+            Assert.That(receiptTracer.ReturnValue, Is.EqualTo(SourceCode), "eth_call output");
+            Assert.That(parityTracer.BuildResult().Action!.Result!.Code, Is.EqualTo(SourceCode), "trace_* created code");
+        }
+    }
+
     [Test]
     public void PrestateTracer_IncludesSourceAndAdoptedCode([Values] bool eip8298Enabled, [Values] bool diffMode)
     {

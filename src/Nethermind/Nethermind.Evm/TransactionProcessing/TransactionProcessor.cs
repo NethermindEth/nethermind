@@ -1498,7 +1498,19 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (tx.IsContractCreation)
                     {
-                        if (!DeployContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
+                        // EIP-8298: adopted code is already in place, so the creation reports it rather than
+                        // the initcode's ignored return data, as the create-end trace does.
+                        if (CodeDepositHandler.HasAdoptedCode(spec, WorldState, env.ExecutingAccount))
+                        {
+                            if (_tracerFlags.IsTracingReceipt)
+                            {
+                                substate = new(WorldState.GetCode(env.ExecutingAccount), substate.Refund, substate.DestroyList, substate.Logs, shouldRevert: false, logger: Logger)
+                                {
+                                    ShouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch,
+                                };
+                            }
+                        }
+                        else if (!DeployContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
                         {
                             goto FailContractCreate;
                         }
@@ -1738,9 +1750,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
-            if (CodeDepositHandler.HasAdoptedCode(spec, WorldState, codeOwner))
-                return true;
-
             if (!CodeDepositHandler.CalculateCost(spec, substate.Output.Length, in unspentGas, out ulong executionDepositCost, out long stateDepositCost))
                 return false;
 
