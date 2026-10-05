@@ -32,9 +32,9 @@ public class Eip3298Tests(bool eip3298Enabled) : VirtualMachineTestsBase
     private const ulong StorageWrite = Eip8038Constants.StorageWrite;
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
-    protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
+    protected override ulong Timestamp => MainnetSpecProvider.BogotaBlockTimestamp;
     protected override ISpecProvider SpecProvider { get; } =
-        new TestSpecProvider(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip3298Enabled = eip3298Enabled });
+        new TestSpecProvider(new OverridableReleaseSpec(Bogota.Instance) { IsEip3298Enabled = eip3298Enabled });
 
     private delegate RefundResult RefundInvoker(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in TransactionSubstate substate, in EthereumGasPolicy gas, in UInt256 gasPrice, ulong codeInsertRefunds,
@@ -217,21 +217,27 @@ public class Eip3298Tests(bool eip3298Enabled) : VirtualMachineTestsBase
 /// <summary>EIP-3298 gating of the storage-clear refund and refund cap, including forks without EIP-8038.</summary>
 public class Eip3298SpecTests
 {
-    private static readonly IReleaseSpec[] Forks = [Frontier.Instance, Cancun.Instance, Amsterdam.Instance];
+    // The refunds each fork applies with EIP-3298 off.
+    private static readonly (IReleaseSpec Spec, ulong SClearRefund, ulong DestroyRefund)[] Forks =
+    [
+        (Frontier.Instance, RefundOf.SClearBeforeEip3529, RefundOf.DestroyBeforeEip3529),
+        (Cancun.Instance, RefundOf.SClearAfterEip3529, RefundOf.DestroyAfterEip3529),
+        (Bogota.Instance, RefundOf.SClearEip8038, RefundOf.DestroyAfterEip3529),
+    ];
 
     [Test]
-    public void Storage_clear_refund_and_cap_are_removed([ValueSource(nameof(Forks))] IReleaseSpec fork, [Values] bool eip3298Enabled)
+    public void Storage_clear_refund_and_cap_are_removed([ValueSource(nameof(Forks))] (IReleaseSpec Spec, ulong SClearRefund, ulong DestroyRefund) fork, [Values] bool eip3298Enabled)
     {
-        OverridableReleaseSpec spec = new(fork) { IsEip3298Enabled = eip3298Enabled };
+        OverridableReleaseSpec spec = new(fork.Spec) { IsEip3298Enabled = eip3298Enabled };
         const ulong spentGas = 100_000;
         const ulong refund = 90_000;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.GasCosts.SClearRefund, eip3298Enabled ? Is.Zero : Is.EqualTo(fork.GasCosts.SClearRefund).And.Not.Zero);
-            Assert.That(spec.GasCosts.DestroyRefund, eip3298Enabled ? Is.Zero : Is.EqualTo(fork.GasCosts.DestroyRefund));
+            Assert.That(spec.GasCosts.SClearRefund, eip3298Enabled ? Is.Zero : Is.EqualTo(fork.SClearRefund));
+            Assert.That(spec.GasCosts.DestroyRefund, eip3298Enabled ? Is.Zero : Is.EqualTo(fork.DestroyRefund));
             Assert.That(RefundHelper.CalculateClaimableRefund(spentGas, refund, spec),
-                Is.EqualTo(eip3298Enabled ? refund : spentGas / (fork.IsEip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient)));
+                Is.EqualTo(eip3298Enabled ? refund : spentGas / (fork.Spec.IsEip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient)));
         }
     }
 }
