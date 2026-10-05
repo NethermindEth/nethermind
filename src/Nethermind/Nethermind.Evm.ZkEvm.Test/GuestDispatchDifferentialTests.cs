@@ -137,6 +137,7 @@ public class GuestDispatchDifferentialTests
     /// Only the untraced table fuses the landed-on <c>CALLDEST</c> into <c>CALLSUB</c>, so every table must still agree,
     /// including when the gas runs out on the fused charge.
     /// </remarks>
+    [TestCase("6004BA00BB", EvmExceptionType.Stop, TestName = "EIP-7979 CALLSUB charges the landed-on CALLDEST")]
     [TestCase("6004BA00BBBC", EvmExceptionType.Stop, TestName = "EIP-7979 simple routine")]
     [TestCase("6004BA00BB6009BABCBBBC", EvmExceptionType.Stop, TestName = "EIP-7979 two levels of subroutines")]
     [TestCase("600556BBBC5B6003BA", EvmExceptionType.Stop, TestName = "EIP-7979 subroutine at end of code")]
