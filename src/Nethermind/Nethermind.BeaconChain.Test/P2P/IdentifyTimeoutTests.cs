@@ -8,6 +8,7 @@ using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(60_000)]
 public class IdentifyTimeoutTests
 {
     private static readonly TimeSpan Within = IdentifyAgentVersionProbe.ReadTimeout + TimeSpan.FromSeconds(3);
@@ -20,7 +21,6 @@ public class IdentifyTimeoutTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_dial_to_a_peer_that_never_answers_identify_fails_within_the_identify_bound([Values] Stall stall, CancellationToken token)
     {
         await using PlainPeer peer = await PlainPeer.StartAsync(settings => new StallingIdentifyProtocol(stall, settings), token);
@@ -49,7 +49,6 @@ public class IdentifyTimeoutTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_session_from_a_peer_that_never_answers_identify_is_closed_within_the_identify_bound([Values] Stall stall, CancellationToken token)
     {
         await using BeaconP2P node = Create().P2P;
@@ -67,7 +66,6 @@ public class IdentifyTimeoutTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_session_closed_during_identify_is_not_an_identify_timeout([Values] bool localClose, CancellationToken token)
     {
         await using PlainPeer peer = await PlainPeer.StartAsync(

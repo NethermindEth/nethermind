@@ -6,12 +6,12 @@ using Nethermind.Libp2p.Core;
 
 namespace Nethermind.BeaconChain.Test.P2P.ReqResp;
 
+[CancelAfter(60_000)]
 public class InboundViolationReportingTests
 {
     private const int Limit = 8;
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_violation_is_recorded_against_a_connected_peer_that_selection_leaves_out(CancellationToken token)
     {
         PeerManager? manager = null;
@@ -38,7 +38,6 @@ public class InboundViolationReportingTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_violation_by_a_peer_that_is_not_connected_is_not_recorded_against_a_connected_one(CancellationToken token)
     {
         PeerManager? manager = null;

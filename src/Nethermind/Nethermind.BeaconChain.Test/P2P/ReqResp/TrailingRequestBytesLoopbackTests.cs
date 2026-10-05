@@ -21,6 +21,7 @@ namespace Nethermind.BeaconChain.Test.P2P.ReqResp;
 /// phase0 p2p ssz_snappy: bytes remaining after the n SSZ bytes of a request are invalid input. A request is complete once its payload
 /// is read, so it is served at once without waiting for EOF; bytes already buffered are answered InvalidRequest, later ones are reported against the peer.
 /// </summary>
+[CancelAfter(60_000)]
 public class TrailingRequestBytesLoopbackTests
 {
     private const string StatusV2 = "/eth2/beacon_chain/req/status/2/ssz_snappy";
@@ -39,7 +40,6 @@ public class TrailingRequestBytesLoopbackTests
     private static readonly TimeSpan AtOnce = TimeSpan.FromMilliseconds(250);
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Trailing_bytes_are_refused_and_a_clean_request_is_served_whether_or_not_the_stream_is_held_open(
         [Values(StatusV2, BlocksByRange, BlocksByRoot, Goodbye)] string protocolId,
         [Values(0, 1, 300)] int trailingBytes,
@@ -48,7 +48,6 @@ public class TrailingRequestBytesLoopbackTests
         await AssertTrailingBytesAsync(protocolId, await EncodeAsync(protocolId, trailingBytes, token), trailingBytes, holdOpen, token);
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Trailing_bytes_after_an_empty_by_root_list_are_refused_and_the_list_is_served_on_a_held_open_stream(
         [Values(0, 1, 300)] int trailingBytes,
         [Values] bool holdOpen,
@@ -56,7 +55,6 @@ public class TrailingRequestBytesLoopbackTests
         await AssertTrailingBytesAsync(BlocksByRoot, [.. EmptyListFraming, .. TrailingBytes(trailingBytes)], trailingBytes, holdOpen, token);
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Skippable_frames_after_the_data_frame_of_an_empty_by_root_list_are_refused(
         [Values(new byte[] { 0xfe }, new byte[] { 0xfe, 0x00, 0x00, 0x00 })] byte[] trailing,
         [Values] bool holdOpen,
@@ -64,7 +62,6 @@ public class TrailingRequestBytesLoopbackTests
         await AssertTrailingBytesAsync(BlocksByRoot, [.. EmptyListFraming, .. trailing], trailing.Length, holdOpen, token);
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_request_with_nothing_after_it_on_a_held_open_stream_is_answered_at_once_and_not_reported(
         [Values(StatusV2, BlocksByRange, BlocksByRoot, MetaData, Goodbye)] string protocolId,
         CancellationToken token)
@@ -97,7 +94,6 @@ public class TrailingRequestBytesLoopbackTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task An_empty_by_root_request_on_a_held_open_stream_is_answered_at_once(
         [Values(BlocksByRoot, EnvelopesByRoot, ColumnsByRoot)] string protocolId,
         [Values(new byte[] { 0x00 }, new byte[] { 0x00, 0xff, 0x06, 0x00, 0x00, 0x73, 0x4e, 0x61, 0x50, 0x70, 0x59 })] byte[] wire,
@@ -115,7 +111,6 @@ public class TrailingRequestBytesLoopbackTests
 
     // Metadata has no payload, so bytes sent with it can arrive after the answer is on its way: they are refused only when already buffered.
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_metadata_request_is_answered_and_bytes_sent_with_it_never_stall_it(
         [Values(1, 300)] int trailingBytes,
         [Values] bool holdOpen,
@@ -133,7 +128,6 @@ public class TrailingRequestBytesLoopbackTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Bytes_sent_while_a_request_is_served_are_reported_against_the_peer_and_the_response_is_intact(CancellationToken token)
     {
         using ServingGate gate = new();
@@ -168,7 +162,6 @@ public class TrailingRequestBytesLoopbackTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Bytes_sent_after_the_response_is_complete_are_reported_against_the_peer(
         [Values(StatusV2, MetaData, Goodbye)] string protocolId,
         CancellationToken token)

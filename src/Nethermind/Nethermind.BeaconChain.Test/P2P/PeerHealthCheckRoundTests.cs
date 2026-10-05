@@ -11,6 +11,7 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(30_000)]
 public class PeerHealthCheckRoundTests
 {
     private const int MaxConcurrentChecks = 8;
@@ -35,7 +36,6 @@ public class PeerHealthCheckRoundTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task Discovery_scheduling_never_exceeds_its_bound_and_awaits_workers_on_completion_or_cancellation([Values] bool cancel, CancellationToken token)
     {
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -89,7 +89,6 @@ public class PeerHealthCheckRoundTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task Discovery_scheduling_waits_for_admission_capacity_before_dialling(CancellationToken token)
     {
         TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -108,7 +107,6 @@ public class PeerHealthCheckRoundTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_failing_dial_does_not_end_discovery_scheduling(CancellationToken token)
     {
         List<string> dialled = [];

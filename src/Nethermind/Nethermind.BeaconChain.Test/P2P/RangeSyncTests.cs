@@ -20,6 +20,7 @@ using Nethermind.Network;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(30_000)]
 public partial class RangeSyncTests
 {
     private const ulong AnchorSlot = 10;
@@ -32,7 +33,6 @@ public partial class RangeSyncTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task Yields_continuity_verified_blocks_and_refetches_bad_batches_from_another_peer([Values] BadPeerBehavior behavior, CancellationToken token)
     {
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) =
@@ -56,7 +56,6 @@ public partial class RangeSyncTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task Range_synced_blob_block_gets_its_sampled_columns_fetched_and_verified(CancellationToken token)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
@@ -93,7 +92,6 @@ public partial class RangeSyncTests
     /// </summary>
     [TestCase(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests, 1)]
     [TestCase(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 1, 0)]
-    [CancelAfter(30_000)]
     public async Task Fulu_blob_blocks_before_the_data_availability_window_get_no_column_request(ulong currentEpoch, int expectedRequests, CancellationToken token)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
@@ -115,7 +113,6 @@ public partial class RangeSyncTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_range_synced_blob_block_imports_while_the_pool_is_full_of_higher_slot_columns(CancellationToken token)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();

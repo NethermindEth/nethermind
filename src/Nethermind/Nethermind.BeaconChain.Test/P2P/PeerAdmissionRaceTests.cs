@@ -16,6 +16,7 @@ using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(120_000)]
 public class PeerAdmissionRaceTests
 {
     private static readonly TimeSpan Hold = TimeSpan.FromSeconds(8);
@@ -29,7 +30,6 @@ public class PeerAdmissionRaceTests
     }
 
     [Test]
-    [CancelAfter(120_000)]
     public async Task A_dial_that_fails_hands_back_the_session_the_peer_opened_meanwhile_but_not_after_the_caller_cancels(
         [Values(DialOutcome.DialFails, DialOutcome.CallerCancels)] DialOutcome outcome, CancellationToken token)
     {
@@ -64,7 +64,6 @@ public class PeerAdmissionRaceTests
     }
 
     [Test]
-    [CancelAfter(120_000)]
     public async Task A_session_the_peer_opened_during_our_dial_to_it_is_admitted_unless_the_caller_cancelled([Values] DialOutcome outcome, CancellationToken token)
     {
         ScriptedStatusSource served = new(static _ => Status);
@@ -124,7 +123,6 @@ public class PeerAdmissionRaceTests
 
     [Test]
     [Repeat(8)]
-    [CancelAfter(120_000)]
     public async Task Peers_dialing_each_other_at_once_end_with_one_session_on_both_sides(CancellationToken token)
     {
         Node first = Create();
@@ -333,7 +331,6 @@ public class PeerAdmissionRaceTests
     private static PeerId PeerIdOf(byte[] privateKey) => BeaconP2P.IdentityFromStoredKey(privateKey).PeerId;
 
     [Test]
-    [CancelAfter(120_000)]
     public async Task A_slow_teardown_of_a_failed_dial_does_not_hold_the_dial_slot(CancellationToken token)
     {
         using ManualResetEventSlim refuse = new();

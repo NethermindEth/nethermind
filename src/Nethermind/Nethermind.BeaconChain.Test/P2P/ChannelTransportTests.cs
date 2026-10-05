@@ -9,6 +9,7 @@ using Nethermind.Libp2p.Core;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(10_000)]
 public class ChannelTransportTests
 {
     // Each chunk is one yamux frame as it is handed up, given by its segment lengths: Noise frames of up to 65,535 bytes, and small frames.
@@ -19,12 +20,10 @@ public class ChannelTransportTests
     ];
 
     [Test]
-    [CancelAfter(10_000)]
     public Task An_exact_length_read_receives_every_segment_of_every_chunk([ValueSource(nameof(Chunkings))] int[][] chunks, CancellationToken token) =>
         AssertChannelAsync(chunks, token);
 
     [Test]
-    [CancelAfter(10_000)]
     public async Task A_full_close_above_closes_the_channel_below(CancellationToken token)
     {
         Channel channel = new();
@@ -55,7 +54,6 @@ public class ChannelTransportTests
     }
 
     [Test]
-    [CancelAfter(10_000)]
     public async Task A_half_close_above_keeps_the_response_flowing(CancellationToken token)
     {
         Channel channel = new();
@@ -77,7 +75,6 @@ public class ChannelTransportTests
 
     /// <summary>Multi-segment frames retain their backing arrays: a copy of each megabyte frame would land on the large object heap.</summary>
     [Test]
-    [CancelAfter(10_000)]
     public async Task Segments_are_passed_upward_without_a_copy(CancellationToken token)
     {
         byte[] frame = new byte[140_003];
@@ -107,7 +104,6 @@ public class ChannelTransportTests
     }
 
     [Test]
-    [CancelAfter(10_000)]
     public async Task An_incomplete_exact_read_is_aborted_by_full_close(CancellationToken token)
     {
         Channel channel = new();
@@ -121,7 +117,6 @@ public class ChannelTransportTests
     }
 
     [Test]
-    [CancelAfter(10_000)]
     public async Task An_aborted_transport_read_is_an_io_error_not_end_of_stream(CancellationToken token)
     {
         Channel channel = new();

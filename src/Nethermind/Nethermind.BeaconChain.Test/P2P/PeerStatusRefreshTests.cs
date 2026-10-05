@@ -9,13 +9,13 @@ using static Nethermind.BeaconChain.Test.P2P.PeerHealthCheckRoundTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(60_000)]
 public class PeerStatusRefreshTests
 {
     private const ulong ChainAheadBy = 10;
     private const string Reason = "gossip shows the chain past the peers";
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_behind_the_chain_is_asked_for_its_status_at_once_and_at_most_once_per_interval(CancellationToken token)
     {
         (Node client, StatusMessageV2 status) = CreateClient();
@@ -47,7 +47,6 @@ public class PeerStatusRefreshTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_whose_status_refresh_fails_after_the_chain_moved_past_it_is_offered_for_the_slots_up_to_that_point(CancellationToken token)
     {
         (Node client, StatusMessageV2 status) = CreateClient();
@@ -71,7 +70,6 @@ public class PeerStatusRefreshTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_whose_status_refresh_fails_is_not_offered_past_its_head_when_the_chain_was_not_claimed_past_it(CancellationToken token)
     {
         (Node client, StatusMessageV2 status) = CreateClient();
@@ -139,7 +137,6 @@ public class PeerStatusRefreshTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Status_is_refreshed_on_its_own_cadence_between_maintenance_rounds(CancellationToken token)
     {
         (Node client, StatusMessageV2 status) = CreateClient();

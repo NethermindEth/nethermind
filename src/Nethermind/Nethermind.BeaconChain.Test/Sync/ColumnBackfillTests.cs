@@ -22,13 +22,13 @@ using static Nethermind.BeaconChain.Test.P2P.RangeSyncTests;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
+[CancelAfter(60_000)]
 public partial class ColumnBackfillTests
 {
     private const ulong AnchorSlot = 4;
     private const ulong HeadSlot = 5;
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Blocks_and_sampled_columns_below_the_anchor_are_stored_and_the_floor_reaches_the_window_start(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -54,7 +54,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_slot_no_peer_can_serve_stops_the_floor_above_it_and_is_asked_for_again_later(CancellationToken token)
     {
         TestLogRecorder log = new();
@@ -87,7 +86,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_blocked_slot_is_routine_at_debug_and_a_warning_once_it_stays_blocked_naming_its_columns_and_the_custodians_asked(CancellationToken token)
     {
         TestLogRecorder logs = new();
@@ -114,7 +112,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_restart_lowers_the_floor_to_the_stored_progress_before_the_head_is_followed(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -137,7 +134,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_restart_after_a_missing_asks_only_for_the_columns_still_missing(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -159,7 +155,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Nothing_is_requested_while_the_head_is_behind_and_the_backfill_starts_when_it_is_followed(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -192,7 +187,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Backfill_preserves_linked_ranges_and_blames_only_proven_reply_faults([Values] BackfillReply reply, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -261,7 +255,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_Gloas_block_has_its_columns_fetched_only_when_its_payload_was_revealed([Values] bool revealed, CancellationToken token)
     {
         BeaconChainSpec spec = RangeSyncGloasColumnsTests.Spec;
@@ -317,7 +310,6 @@ public partial class ColumnBackfillTests
 
     /// <summary>Await store persistence after the pool writer has committed fetched columns.</summary>
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_window_whose_fetched_columns_are_still_queued_for_the_store_completes_without_a_retry(CancellationToken token)
     {
         using ColumnStoreWriter writer = new(LimboLogs.Instance);
@@ -341,7 +333,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Completed_backfill_serves_blocks_below_the_anchor_by_range(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();

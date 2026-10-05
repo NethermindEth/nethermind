@@ -7,10 +7,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(60_000)]
 public class ColumnStoreWriterTests
 {
     [Test]
-    [CancelAfter(60_000)]
     public async Task Disposal_drains_the_queued_writes_in_order_and_later_ones_never_run(CancellationToken token)
     {
         ConcurrentQueue<int> ran = [];
@@ -33,7 +33,6 @@ public class ColumnStoreWriterTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_barrier_requested_while_disposal_drains_completes_only_after_the_running_write(CancellationToken token)
     {
         using ManualResetEventSlim running = new();

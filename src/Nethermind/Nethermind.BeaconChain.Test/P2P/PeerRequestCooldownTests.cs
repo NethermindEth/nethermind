@@ -9,13 +9,13 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(60_000)]
 public class PeerRequestCooldownTests
 {
     private const ulong HeadLead = 100;
 
     // A closed session puts the peer out of selection outright, so its place in the order cannot be observed.
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_that_failed_a_request_is_offered_after_the_others_until_the_cooldown_ends([Values(PeerFailureReason.RequestFailed, PeerFailureReason.ProtocolViolation)] PeerFailureReason reason, CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
@@ -34,7 +34,6 @@ public class PeerRequestCooldownTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_is_offered_after_the_others_for_thirty_seconds_after_a_failed_request(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
@@ -50,7 +49,6 @@ public class PeerRequestCooldownTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_in_cooldown_that_is_the_only_one_is_still_offered(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, connectBehind: false);
@@ -61,7 +59,6 @@ public class PeerRequestCooldownTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_served_request_does_not_end_the_cooldown(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
@@ -73,7 +70,6 @@ public class PeerRequestCooldownTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task An_inbound_violation_does_not_put_the_peer_behind_others(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
@@ -84,7 +80,6 @@ public class PeerRequestCooldownTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Peers_in_cooldown_keep_the_order_of_their_head_slots(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);

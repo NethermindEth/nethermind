@@ -20,6 +20,7 @@ using KeyType = Nethermind.Libp2p.Core.Dto.KeyType;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(60_000)]
 public class PeerSessionCloseTests
 {
     private static readonly Identity PeerIdentity = new(privateKey: null, KeyType.Secp256K1);
@@ -119,7 +120,6 @@ public class PeerSessionCloseTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_that_breaks_the_protocol_and_closes_its_session_is_banned_after_the_configured_fault_disconnects([Values] Violation violation, CancellationToken token)
     {
         Node node = Create();
@@ -143,7 +143,6 @@ public class PeerSessionCloseTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_drop_that_began_before_the_session_closed_does_not_record_the_peer_again(CancellationToken token)
     {
         Node node = Create();
@@ -219,7 +218,6 @@ public class PeerSessionCloseTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_churn_of_identities_keeps_only_the_newest_closed_peers_up_to_the_capacity(CancellationToken token)
     {
         Node node = Create();
@@ -255,7 +253,6 @@ public class PeerSessionCloseTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_dialed_peer_that_breaks_the_protocol_and_closes_after_its_admission_backs_its_address_off(CancellationToken token)
     {
         Node remote = Create();
@@ -277,7 +274,6 @@ public class PeerSessionCloseTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_session_that_closes_while_its_status_is_checked_is_not_admitted(CancellationToken token)
     {
         Node remote = Create();
