@@ -1,16 +1,40 @@
-RPC native capability v3: one ordinary queued GitHub job on the reviewed runner.
-Same c2e/feeba workload, images, prospective inputs and lifecycle guards as v2.
-Only launcher change: require exact RUNNER_NAME=reproducible-benchmarks before
-run identity, path access, reservation or node/CPU mutation. Wrong runner refuses.
-Root may enqueue one job behind existing jobs; never cancel or reprioritize them.
-The runner serializes its Actions jobs. Continuous hosted/upstream automatic work
-is not a reason to require the entire repository workflow queue to be empty.
-All live preflight, prior HOLD, foreign container/mount/journal, exact owned-lock,
-private archive, normal stop and CPU restore checks remain unchanged.
-This does not strengthen protection from a future foreign harness after UNKNOWN
-HOLD; an initially empty queue never prevented later automatic dispatches either.
-No comprehensive /proc helper-scan claim is made for the inherited preflight.
-Recovery37297806898 and release37298729707 are independently accepted; the failed
-original37293502679 and undispatched frozen v2 remain unchanged. One corrected
-capability only. Native success still requires full encrypted evidence review.
-No optimization comparison, timing acceptance or corpus pooling claim.
+RPC NATIVE CAPABILITY V4 - READY_OFFLINE_NATIVE_NOT_RUN
+
+Closing only the already started permission-fix preparation. No operator install,
+commit/push, CI dispatch, image build, census or new workload is authorized/executed
+in this closing session. Old v3 intent and frozen packages remain untouched.
+
+Harness ae8611b2f50393223c7d87a0738be552503e388e has exact feeba parent and only the
+reviewed two-line private_audit CLI child-umask correction plus regression.29 exact
+source pins include that regression. Native body, guard, inputs, workload and early
+RUNNER_NAME pin remain byte-identical to v3 except exact harness identity references.
+Parent operator is42e6426ac50bcb204fbd93f3e620f35aeada09fe.
+
+The unchanged planned workload is one9bb baseline lifecycle: warm60s/100rps/seed1001,
+main10s/100rps/seed1, exact image/.NET10.0.12/corpus/snapshot, no profiling. It has NOT
+run on ae861. No production-performance, pooling coverage or native PASS follows.
+
+Full requested portable validation:96PASS/0skip under LinuxWSLroot, including actual
+CLI inherited077/UID1001 fixture traversal with private archive denial,62 harness,
+8 arithmetic,6 startup,6 guard,2 runner,10 native orchestration and2 input-hook tests.
+All29 source pins match the root-provided ae861 Git archive. These are synthetic
+correctness tests. Source-fix beforeFAIL/afterPASS and independent review remain in
+warmup-permission-fix. Per-suite logs and exact runtime are in validation/RESULTS.json.
+
+Root-only install/dispatch helpers were prepared during the original v4 assignment
+and remain UNEXECUTED; both require --execute-root-approved. They do not imply current
+permission to operate. Future integration branch iscodex/rpc-native-capability-v4;
+new exclusive intent iswarmup-corrected-native-intent.json, separate from oldv3 intent.
+Gate: exact independently accepted release37306059639 at36a7bc85c2c6a5d7f2a80a4ed9e9b0b1ca241935,
+recovery37305343772 for failed37302318550,32 CPU originals restored and unchanged
+snapshot. Its pinned release-verification does not claim native PASS or normal shutdown.
+
+Ordinary queueing remains bounded by exact runner refusal before resource mutation
+and unchanged live resource/HOLD/ownership/CPU/provenance checks. A later foreign
+harness can ignore our persistent lock after UNKNOWN_HOLD; no empty-queue or runner
+assertion removes that residual risk. Unknown/failure means no retry/cleanup/archive/
+release until independently established owned quiescence/recovery. Public export is
+only the existing encrypted/allowlisted successful result; private sources persist.
+
+Latest user instruction is to finish underway work and stop. This package is retained
+for review and later explicit authorization only; no future run is scheduled here.

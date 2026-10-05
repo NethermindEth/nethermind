@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 
 HERE=Path(__file__).resolve().parent
-HARNESS='feeba5b89d51fad85931c77b8d3c7fba4ff373ed'
+HARNESS='ae8611b2f50393223c7d87a0738be552503e388e'
 INVENTORY_HEAD='99a991c2793da89cc617b8541b9d7d806075f428'
 HEAD_HASH='0x1bcc8cd8ce5471e5c25f9a4b5c711ce11d37445eb24be3e0b7ee57b048000933'
 
