@@ -156,6 +156,19 @@ public sealed partial class KeccakHash
     /// it. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial ValueHash256 ComputeHash256(ReadOnlySpan<byte> input);
 
+    /// <summary>Computes the Keccak-256 digest of each of the first <paramref name="count"/> of <paramref name="nodes"/>
+    /// into the same index of <paramref name="hashes"/>.</summary>
+    /// <remarks>The guest keeps <paramref name="nodes"/>, which must not change afterwards, with the sponge states the
+    /// leading rate blocks of its full branches leave, so that a branch re-encoded from one of them is re-hashed from
+    /// its first changed block. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    internal static partial void ComputeHash256OfWitnessNodes(byte[][] nodes, int count, Span<ValueHash256> hashes);
+
+    /// <summary>Notes that a node storage handed out entry <paramref name="tag"/> minus one of the nodes last passed
+    /// to <see cref="ComputeHash256OfWitnessNodes"/>.</summary>
+    /// <remarks>The trie node the entry resolves reads the tag back. A no-op on the host.
+    /// See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    internal static partial void NoteWitnessNodeLoaded(nint tag);
+
     /// <summary>Writes the Keccak-256 digest of <paramref name="input"/> to <paramref name="output"/> through
     /// <see cref="ComputeHash256"/>, where that is the target's faster path.</summary>
     /// <returns>Whether the digest was written.</returns>
