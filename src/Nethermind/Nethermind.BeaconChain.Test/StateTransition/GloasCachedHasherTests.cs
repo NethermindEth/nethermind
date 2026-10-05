@@ -22,106 +22,6 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 public class GloasCachedHasherTests
 {
     [Test]
-    public void Cached_root_matches_full_root_through_mutation_sequence()
-    {
-        BeaconStateGloas state = CreateGloasState(out _, out _);
-        CachedBeaconStateHasher hasher = new();
-
-        AssertRootsMatch(hasher, state, "initial");
-        AssertRootsMatch(hasher, state, "repeated call without mutation");
-
-        BeaconStateGloas uncached = state.Clone();
-        ulong targetSlot = 2 * Presets.SlotsPerEpoch + 1;
-        GloasSlotProcessing.ProcessSlots(state, targetSlot, new EpochCache { Hasher = hasher });
-        GloasSlotProcessing.ProcessSlots(uncached, targetSlot, new EpochCache());
-        Assert.That(state.StateRoots, Is.EqualTo(uncached.StateRoots), "state roots cached by slot processing across an epoch boundary");
-        AssertRootsMatch(hasher, state, "after slot and epoch processing");
-
-        int count = state.Validators!.Length;
-        // One index in each progressive subtree, which starts at (4^k - 1) / 3.
-        foreach (int i in (int[])[0, 1, 5, 21, 85, 341, 1365, count - 1])
-        {
-            state.Balances![i] += 7;
-        }
-        AssertRootsMatch(hasher, state, "scattered balance edits");
-
-        for (int i = 0; i < 3; i++)
-        {
-            Validator appended = state.Validators[0].Clone();
-            appended.Pubkey = Pubkey((byte)(0xE0 + i));
-            state.Validators = [.. state.Validators, appended];
-            state.Balances = [.. state.Balances!, 32 * Gwei];
-            state.PreviousEpochParticipation = [.. state.PreviousEpochParticipation!, 0];
-            state.CurrentEpochParticipation = [.. state.CurrentEpochParticipation!, 0];
-            state.InactivityScores = [.. state.InactivityScores!, 0];
-        }
-        AssertRootsMatch(hasher, state, "validator appends");
-
-        Validator replaced = state.Validators[2].Clone();
-        replaced.ExitEpoch = 12345;
-        state.Validators[2] = replaced;
-        AssertRootsMatch(hasher, state, "validator replacement");
-
-        state.CurrentEpochParticipation![0] |= 0b001;
-        state.PreviousEpochParticipation![count - 1] |= 0b110;
-        AssertRootsMatch(hasher, state, "participation edits");
-
-        state.InactivityScores![3] += 4;
-        AssertRootsMatch(hasher, state, "inactivity score edit");
-
-        Builder builder = state.Builders![0];
-        state.Builders = [builder, NewBuilder(builder, Pubkey(0xB1), balance: 9 * Gwei)];
-        AssertRootsMatch(hasher, state, "builder append");
-
-        state.Builders[0] = NewBuilder(builder, builder.Pubkey, balance: builder.Balance + Gwei);
-        AssertRootsMatch(hasher, state, "builder replacement");
-
-        state.Builders = state.Builders[..1];
-        AssertRootsMatch(hasher, state, "builder registry shrink");
-
-        PayloadTimelinessCommittee[] window = state.PtcWindow!;
-        ulong[] indices = Enumerable.Repeat(7UL, (int)Presets.PtcSize).ToArray();
-        window[5] = new PayloadTimelinessCommittee { Indices = indices };
-        AssertRootsMatch(hasher, state, "ptc window element replacement");
-
-        int slotsPerEpoch = (int)Presets.SlotsPerEpoch;
-        Array.Copy(window, slotsPerEpoch, window, 0, window.Length - slotsPerEpoch);
-        AssertRootsMatch(hasher, state, "ptc window shift");
-
-        int availabilityIndex = (int)(state.Slot % Presets.SlotsPerHistoricalRoot);
-        state.ExecutionPayloadAvailability![availabilityIndex] = !state.ExecutionPayloadAvailability[availabilityIndex];
-        AssertRootsMatch(hasher, state, "execution payload availability bit flip");
-
-        state.BuilderPendingPayments![3] = new BuilderPendingPayment { Weight = 5, ProposerIndex = 1, Withdrawal = new BuilderPendingWithdrawal { Amount = Gwei, BuilderIndex = 0 } };
-        state.LatestBlockHash = Hash(0x5A);
-        state.NextWithdrawalBuilderIndex = 1;
-        AssertRootsMatch(hasher, state, "builder payment, latest block hash and builder sweep index");
-
-        state.RandaoMixes![7] = Hash(0x77);
-        state.BlockRoots![1] = Hash(0x11);
-        state.StateRoots![2] = Hash(0x22);
-        AssertRootsMatch(hasher, state, "randao and root vector updates");
-
-        state.Balances = [.. state.Balances!];
-        AssertRootsMatch(hasher, state, "balances array replaced with an equal copy");
-
-        Hash256 originalRoot = SszRoots.HashTreeRoot(state);
-        BeaconStateGloas clone = state.Clone();
-        clone.Balances![1] += 42;
-        Validator cloneReplacement = clone.Validators![3].Clone();
-        cloneReplacement.Slashed = true;
-        clone.Validators[3] = cloneReplacement;
-        clone.LatestBlockHeader!.StateRoot = Hash(0x88);
-        clone.ExecutionPayloadAvailability![0] = !clone.ExecutionPayloadAvailability[0];
-        clone.PtcWindow![0] = window[5];
-
-        AssertRootsMatch(hasher, clone, "same hasher on the mutated clone");
-        AssertRootsMatch(new CachedBeaconStateHasher(), clone, "fresh hasher on the mutated clone");
-        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(originalRoot), "original state unchanged after mutating the clone");
-        AssertRootsMatch(hasher, state, "same hasher back on the original lineage");
-    }
-
-    [Test]
     public void Slot_processing_hashes_through_the_caches_hasher()
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
@@ -398,7 +298,7 @@ public class GloasCachedHasherTests
     private static void AssertRootsMatch(CachedBeaconStateHasher hasher, BeaconStateGloas state, string stage) =>
         Assert.That(hasher.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(state)), stage);
 
-    private static Builder NewBuilder(Builder template, BlsPublicKey pubkey, ulong balance) => new()
+    internal static Builder NewBuilder(Builder template, BlsPublicKey pubkey, ulong balance) => new()
     {
         Pubkey = pubkey,
         Version = template.Version,
