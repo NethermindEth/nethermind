@@ -224,28 +224,20 @@ public class CheckpointSyncHttpTests
             c.Response.ContentType = "application/octet-stream";
             await c.Response.Body.WriteAsync(stateSsz);
         });
-        app.MapGet("/eth/v2/beacon/blocks/{root}", async (HttpContext c, string root) =>
+        static async Task AnswerByRoot(HttpContext c, string root, Hash256? expectedRoot, byte[]? body)
         {
-            if (root != blockRoot.ToString())
-            {
-                c.Response.StatusCode = StatusCodes.Status404NotFound;
-                return;
-            }
-
-            c.Response.ContentType = "application/octet-stream";
-            await c.Response.Body.WriteAsync(blockSsz);
-        });
-        app.MapGet("/eth/v2/debug/beacon/states/{root}", async (HttpContext c, string root) =>
-        {
-            if (root != postStateRoot?.ToString() || postState is null)
+            if (root != expectedRoot?.ToString() || body is null)
             {
                 c.Response.StatusCode = StatusCodes.Status404NotFound;
                 return;
             }
 
             c.Response.ContentType = System.Net.Mime.MediaTypeNames.Application.Octet;
-            await c.Response.Body.WriteAsync(postState);
-        });
+            await c.Response.Body.WriteAsync(body);
+        }
+
+        app.MapGet("/eth/v2/beacon/blocks/{root}", (HttpContext c, string root) => AnswerByRoot(c, root, blockRoot, blockSsz));
+        app.MapGet("/eth/v2/debug/beacon/states/{root}", (HttpContext c, string root) => AnswerByRoot(c, root, postStateRoot, postState));
         await app.StartAsync();
         return app;
     }
