@@ -35,6 +35,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
@@ -166,6 +167,18 @@ public class StatelessInputGeneratorTests
             block.Header.Hash = mutation == "hash" ? TestItem.KeccakA : block.Header.CalculateHash();
 
             Assert.That(StatelessExecutor.Execute(block, witness, specProvider), Is.EqualTo(mutation == "valid"));
+        }
+    }
+
+    [Test]
+    public void Direct_execution_rejects_eip8304_blocks([Values] bool eip8304)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false);
+        using (witness)
+        {
+            TestSpecProvider eip8304SpecProvider = new(new OverridableReleaseSpec(specProvider.GetSpec(block.Header)) { IsEip8304Enabled = eip8304 });
+
+            Assert.That(StatelessExecutor.Execute(block, witness, eip8304SpecProvider), Is.EqualTo(!eip8304));
         }
     }
 
