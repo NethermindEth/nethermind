@@ -553,6 +553,7 @@ public class PrewarmerScopeProvider(
             // first-in-block touch by PersistentStorageProvider; counting it here again double-counted
             // fully-cold reads. Populator probes are excluded — they miss by design while filling.
             if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
+            else ColdReadWatch.Read();
 
             baseStorageTree.Get(storageCell.Index, out value);
         }
@@ -577,7 +578,7 @@ public class PrewarmerScopeProvider(
 
             storageReadCapture.Record(in storageCell);
             // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
-            value = UInt256.One;
+            value = storageReadCapture.Placeholder;
         }
 
         public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
