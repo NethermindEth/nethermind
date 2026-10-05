@@ -26,22 +26,21 @@ public static class ExecutionStatusTestDefinition
     private static List<Operation> CommonPrologue(ulong[] balances) =>
     [
         .. InitialForkAndVote(balances),
-        new AssertWeight(GetRoot(0), 1),
-        new AssertWeight(GetRoot(1), 1),
-        new AssertWeight(GetRoot(2), 0),
+        .. Weights(1, 1, 0),
         new ProcessAttestation(1, GetRoot(2), 2),
         Head(balances, 2),
-        new AssertWeight(GetRoot(0), 2),
-        new AssertWeight(GetRoot(1), 1),
-        new AssertWeight(GetRoot(2), 1),
+        .. Weights(2, 1, 1),
         new ProcessBlock(2, GetRoot(3), GetRoot(1), Anchor, Anchor),
         Head(balances, 2),
-        new AssertWeight(GetRoot(0), 2),
-        new AssertWeight(GetRoot(1), 1),
-        new AssertWeight(GetRoot(2), 1),
-        new AssertWeight(GetRoot(3), 0),
+        .. Weights(2, 1, 1, 0),
         new ProcessAttestation(0, GetRoot(3), 3),
     ];
+
+    private static IEnumerable<Operation> Weights(params ulong[] expected)
+    {
+        for (int root = 0; root < expected.Length; root++)
+            yield return new AssertWeight(GetRoot((ulong)root), expected[root]);
+    }
 
     public static ForkChoiceTestDefinition Get01()
     {
@@ -51,23 +50,14 @@ public static class ExecutionStatusTestDefinition
         operations.AddRange(
         [
             Head(balances, 2),
-            new AssertWeight(GetRoot(0), 2),
-            new AssertWeight(GetRoot(1), 1),
-            new AssertWeight(GetRoot(2), 1),
-            new AssertWeight(GetRoot(3), 1),
+            .. Weights(2, 1, 1, 1),
             new InvalidatePayload(GetRoot(3), GetRoot(1)),
             Head(balances, 2),
             // Invalidation of 3 should have removed its weight upstream.
-            new AssertWeight(GetRoot(0), 1),
-            new AssertWeight(GetRoot(1), 0),
-            new AssertWeight(GetRoot(2), 1),
-            new AssertWeight(GetRoot(3), 0),
+            .. Weights(1, 0, 1, 0),
             new ProcessAttestation(1, GetRoot(1), 3),
             Head(balances, 1),
-            new AssertWeight(GetRoot(0), 1),
-            new AssertWeight(GetRoot(1), 1),
-            new AssertWeight(GetRoot(2), 0),
-            new AssertWeight(GetRoot(3), 0),
+            .. Weights(1, 1, 0, 0),
         ]);
 
         return ForkChoiceTestDefinition.Create(Anchor, operations);
@@ -82,17 +72,11 @@ public static class ExecutionStatusTestDefinition
         [
             new ProcessAttestation(1, GetRoot(3), 3),
             Head(balances, 3),
-            new AssertWeight(GetRoot(0), 2),
-            new AssertWeight(GetRoot(1), 2),
-            new AssertWeight(GetRoot(2), 0),
-            new AssertWeight(GetRoot(3), 2),
+            .. Weights(2, 2, 0, 2),
             new InvalidatePayload(GetRoot(3), GetRoot(1)),
             Head(balances, 2),
             // Invalidation of 3 should have removed all weight (both votes were on its chain).
-            new AssertWeight(GetRoot(0), 0),
-            new AssertWeight(GetRoot(1), 0),
-            new AssertWeight(GetRoot(2), 0),
-            new AssertWeight(GetRoot(3), 0),
+            .. Weights(0, 0, 0, 0),
         ]);
 
         return ForkChoiceTestDefinition.Create(Anchor, operations);
@@ -105,27 +89,18 @@ public static class ExecutionStatusTestDefinition
         List<Operation> operations =
         [
             .. InitialForkAndVote(balances),
-            new AssertWeight(GetRoot(0), 1_000),
-            new AssertWeight(GetRoot(1), 1_000),
-            new AssertWeight(GetRoot(2), 0),
+            .. Weights(1_000, 1_000, 0),
             new ProcessAttestation(1, GetRoot(1), 2),
             Head(balances, 1),
-            new AssertWeight(GetRoot(0), 2_000),
-            new AssertWeight(GetRoot(1), 2_000),
-            new AssertWeight(GetRoot(2), 0),
+            .. Weights(2_000, 2_000, 0),
             new ProcessBlock(2, GetRoot(3), GetRoot(1), Anchor, Anchor),
             new FindHead(Anchor, Anchor, balances, GetRoot(3), ProposerBoostRoot: GetRoot(3)),
-            new AssertWeight(GetRoot(0), 33_250),
-            new AssertWeight(GetRoot(1), 33_250),
-            new AssertWeight(GetRoot(2), 0),
+            .. Weights(33_250, 33_250, 0),
             // A "magic number" from calculate_committee_fraction: 2_000_000 / 32 * 50%.
             new AssertWeight(GetRoot(3), 31_250),
             new InvalidatePayload(GetRoot(3), GetRoot(1)),
             new FindHead(Anchor, Anchor, balances, GetRoot(1), ProposerBoostRoot: GetRoot(3)),
-            new AssertWeight(GetRoot(0), 2_000),
-            new AssertWeight(GetRoot(1), 2_000),
-            new AssertWeight(GetRoot(2), 0),
-            new AssertWeight(GetRoot(3), 0),
+            .. Weights(2_000, 2_000, 0, 0),
         ];
 
         return ForkChoiceTestDefinition.Create(Anchor, operations);
