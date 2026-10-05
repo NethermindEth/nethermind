@@ -199,10 +199,7 @@ public static class FuluDriverSupport
         if (!File.Exists(configPath))
             return mainnet;
 
-        using StreamReader reader = new(configPath);
-        YamlStream yaml = [];
-        yaml.Load(reader);
-        YamlMappingNode config = (YamlMappingNode)yaml.Documents[0].RootNode;
+        YamlMappingNode config = LoadMapping(configPath);
 
         ulong Scalar(string key, ulong fallback) =>
             config.Children.TryGetValue(new YamlScalarNode(key), out YamlNode? node) ? ulong.Parse(((YamlScalarNode)node).Value!) : fallback;
@@ -270,6 +267,16 @@ public static class FuluDriverSupport
         Dictionary<string, string> meta = ParseFlowMap(executionPath);
         return !meta.TryGetValue("execution_valid", out string? value) || value == "true";
     }
+
+    internal static YamlMappingNode LoadMapping(string path)
+    {
+        using StreamReader reader = new(path);
+        YamlStream yaml = [];
+        yaml.Load(reader);
+        return (YamlMappingNode)yaml.Documents[0].RootNode;
+    }
+
+    internal static string Scalar(YamlMappingNode map, string key) => ((YamlScalarNode)map.Children[new YamlScalarNode(key)]).Value!;
 
     public static Dictionary<string, string> ParseFlowMap(string path)
     {

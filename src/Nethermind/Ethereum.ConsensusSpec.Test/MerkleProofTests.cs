@@ -47,9 +47,9 @@ public class MerkleProofTests
             throw new NotImplementedInDriverException($"{testCase.Fork} {proofName} proves a leaf no code in this node verifies.");
 
         BeaconBlockBody.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, "object.ssz_snappy")), out BeaconBlockBody body);
-        YamlMappingNode proof = LoadProof(Path.Combine(testCase.CasePath, "proof.yaml"));
-        Hash256 leaf = new(Scalar(proof, "leaf"));
-        ulong leafIndex = ulong.Parse(Scalar(proof, "leaf_index"));
+        YamlMappingNode proof = FuluDriverSupport.LoadMapping(Path.Combine(testCase.CasePath, "proof.yaml"));
+        Hash256 leaf = new(FuluDriverSupport.Scalar(proof, "leaf"));
+        ulong leafIndex = ulong.Parse(FuluDriverSupport.Scalar(proof, "leaf_index"));
         Hash256[] branch = [.. ((YamlSequenceNode)proof.Children[new YamlScalarNode("branch")]).Children.Select(static node => new Hash256(((YamlScalarNode)node).Value!))];
 
         DataColumnSidecar sidecar = new()
@@ -66,15 +66,6 @@ public class MerkleProofTests
         Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.True);
     }
 
-    private static YamlMappingNode LoadProof(string path)
-    {
-        using StreamReader reader = new(path);
-        YamlStream yaml = [];
-        yaml.Load(reader);
-        return (YamlMappingNode)yaml.Documents[0].RootNode;
-    }
-
-    private static string Scalar(YamlMappingNode map, string key) => ((YamlScalarNode)map.Children[new YamlScalarNode(key)]).Value!;
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
     private static IEnumerable<TestCaseData> MainnetCases() =>

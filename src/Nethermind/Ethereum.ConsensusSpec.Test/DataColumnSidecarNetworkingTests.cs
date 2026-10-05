@@ -254,10 +254,7 @@ public class DataColumnSidecarNetworkingTests
     /// <summary>meta.yaml's <c>finalized_checkpoint</c> root, given as <c>root</c> or as the name of a <c>block_0x{root}</c> file.</summary>
     internal static Hash256? ReadFinalizedRoot(string casePath)
     {
-        using StreamReader reader = new(Path.Combine(casePath, "meta.yaml"));
-        YamlStream yaml = [];
-        yaml.Load(reader);
-        YamlMappingNode root = (YamlMappingNode)yaml.Documents[0].RootNode;
+        YamlMappingNode root = FuluDriverSupport.LoadMapping(Path.Combine(casePath, "meta.yaml"));
         if (!root.Children.TryGetValue(new YamlScalarNode("finalized_checkpoint"), out YamlNode? node))
             return null;
 
