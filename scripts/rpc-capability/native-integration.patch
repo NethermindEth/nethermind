@@ -1,0 +1,28 @@
+--- reviewed-EA09/native_capability.py
++++ native/native_capability.py
+@@ -172,6 +172,13 @@
+             self.preflight = True
+             self.audit("prepare", "prepare", "--arms", "4", "--warm-count", "6000", "--main-count", "1000")
+             self.prepared = True
++            if self.environment.get("RPC_NATIVE_INTEGRATION_FREEZE_FILE"):
++                private_root = Path(self.environment["RPC_PRIVATE_STORAGE_ROOT"]) / (
++                    "spin-diagnostic-" + self.environment["GITHUB_RUN_ID"] + "-" + self.environment["GITHUB_RUN_ATTEMPT"])
++                for name, source in (("prospective-expected-pins.json", self.environment["RPC_NATIVE_EXPECTED_PINS_FILE"]),
++                                     ("integration-freeze.json", self.environment["RPC_NATIVE_INTEGRATION_FREEZE_FILE"])):
++                    with (private_root / name).open("xb") as target:
++                        target.write(Path(source).read_bytes())
+             self.audit("cpu-attempt", "cpu-apply-attempt")
+             self.run("cpu-apply", ["bash", str(self.scripts / "cpu-stabilize.sh"), "apply"],
+                      changes={"STATE_DIR": str(Path(self.environment["SCRATCH_ROOT"]) / "cpu-state")})
+@@ -286,9 +293,9 @@
+             or not all(isinstance(expected.get(key), str) and re.fullmatch("[0-9a-f]{64}", expected[key])
+                        for key in ("corpus_sha256", "snapshot_fingerprint_sha256"))
+             or not isinstance(expected.get("snapshot_head_hash"), str) or not re.fullmatch("0x[0-9a-f]{64}", expected["snapshot_head_hash"])):
+-        raise ValueError("HISTORIC_PROVENANCE_PINS_REQUIRED")
++        raise ValueError("EXPECTED_PROVENANCE_PINS_REQUIRED")
+     if digest_file(corpus) != expected["corpus_sha256"]:
+-        raise ValueError("HISTORIC_CORPUS_DIFFERS")
++        raise ValueError("EXPECTED_CORPUS_DIFFERS")
+     for key in list(env):
+         if key.startswith(("JB_", "RESOURCE_SAMPLER_", "REFERENCE_")) and key != "JB_ETH_CALL_CORPUS_FILE":
+             env.pop(key)

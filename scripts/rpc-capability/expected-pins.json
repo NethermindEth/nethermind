@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "provenance_kind": "PROSPECTIVE_FREEZE",
+  "inventory_sha256": "ebbdf4a10ae1f1ca8fad358bda2e963d3909ccdd4aa97569eff7b242bc2ed73d",
+  "inventory_run_id": 37290954063,
+  "inventory_attempt": 1,
+  "inventory_head": "99a991c2793da89cc617b8541b9d7d806075f428",
+  "existing_anchor_matched": true,
+  "baseline_image": "nethermindeth/nethermind@sha256:a6e80b5688b383d2b60bc5c45ba2b4b200f80d3624ad9b7eddd662496bb8909b",
+  "baseline_source": "9bb024e1e84d370a3a27fad38c3b19717e6f67ea",
+  "runtime_version": "10.0.12",
+  "corpus_sha256": "15aa930b645a2f79c7cec9672aff047dcaf5913b34aa5c65ee371ec0f7368d7c",
+  "snapshot_fingerprint_sha256": "c05b88644ecedf04dcf484f8c7cb90ed2291ad08e816b069bc6f6ab0adf086cd",
+  "snapshot_head_hash": "0x1bcc8cd8ce5471e5c25f9a4b5c711ce11d37445eb24be3e0b7ee57b048000933",
+  "historical_byte_equivalence_claimed": false
+}

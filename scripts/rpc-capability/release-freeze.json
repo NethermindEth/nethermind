@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "status": "READY_FOR_REVIEWED_PROSPECTIVE_CAPABILITY",
+  "harness_head": "420c992e6d8c8e2b1abae899cece932da7e9e47b",
+  "inventory_sha256": "ebbdf4a10ae1f1ca8fad358bda2e963d3909ccdd4aa97569eff7b242bc2ed73d",
+  "files": {
+    "guard.py": "4b54bdb3fcf3bb9d93e112ee56cf004c160d00427d29879c809281b79498ad95",
+    "launch.py": "56bb3c2690df4b3ad069f202097cedf1f6754ca7dbf1ce27a539000ef57e0ed2",
+    "freeze.py": "03382e3f392ac3945b29d466344e2a6f25f3199f22fa41e7ae4e8b979275db8d",
+    "test_guard.py": "67e61972663c4751d334c8f0820eeb49173ad8a1379b6992ba9b40182cade1d4",
+    "workflow.yml": "144ae8083f1b2309198532d433959bcf650142dbb2ed82c636094af099e1f36f",
+    "expected-pins.json": "bd70983c88abc902b99d6055438ce49b498f439b3447c401da4eec12913f9d95",
+    "native/native_capability.py": "15ee781d7733af6dfc76d348d26c6f23b6b2ef9bf763343e96db08729ae2b386",
+    "native/pidfd_compat.py": "8c0a1e3bb4405cb21ad2fffff71b8c5faf4516db6afc6376254de11ee042b2b8",
+    "native/source-pins.json": "1328dd74aafe6da6adc6d811d0a25f0ee81b48cb8910721bd102afcf6af1049b",
+    "native/harness-pin.json": "673b2f470b22e382b94ea3fa6342be69374ea5856ac01f1352e4b3c96054505e",
+    "native/test_native_capability.py": "d272df667370abca400dd12ba772302d8bbdedbdfa54f4f4823f04aee3a04a8f"
+  }
+}
