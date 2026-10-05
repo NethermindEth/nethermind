@@ -9,20 +9,21 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.History;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-/// <summary>Selects BAL catch-up blocks on the consensus-finalized ancestry and preserves receipt retention.</summary>
+/// <summary>Selects BAL catch-up blocks on the consensus-finalized ancestry.</summary>
+/// <remarks>
+/// A reconstructed block with transactions takes its receipts from the network, verified against the header's
+/// receipts root, so its outputs match execution. Without a receipt store to hold them, such blocks execute.
+/// </remarks>
 public sealed class FinalizedBlockAccessListPolicy(
     ISyncConfig syncConfig,
     IBeaconSyncStrategy beaconSync,
     IBlockTree blockTree,
     ISpecProvider specProvider,
-    IReceiptConfig receiptConfig,
-    Func<IHistoryPruner> historyPruner,
-    IPrunedReceiptRetention receiptRetention)
+    IReceiptConfig receiptConfig)
 {
     private readonly object _lock = new();
     private readonly Dictionary<ulong, Hash256> _ancestors = [];
@@ -35,7 +36,8 @@ public sealed class FinalizedBlockAccessListPolicy(
     public bool CanReconstruct(BlockHeader header)
     {
         if (!syncConfig.ReconstructFinalizedStateFromBlockAccessLists || header.IsGenesis || !header.Difficulty.IsZero
-            || header.BlockAccessListHash is null || !beaconSync.MergeTransitionFinished)
+            || header.BlockAccessListHash is null || !beaconSync.MergeTransitionFinished
+            || (header.HasTransactions && !receiptConfig.StoreReceipts))
             return false;
 
         IReleaseSpec spec = specProvider.GetSpec(header);
@@ -108,9 +110,4 @@ public sealed class FinalizedBlockAccessListPolicy(
         _ancestors[latest.Number] = finalized;
         return true;
     }
-
-    /// <summary>Whether receipts must be available before this block can bypass execution.</summary>
-    public bool NeedsReceipts(BlockHeader header) => receiptConfig.StoreReceipts
-        && (historyPruner().CutoffBlockNumber is not { } cutoff || header.Number >= cutoff
-            || receiptRetention.ShouldRetainReceipts(header));
 }

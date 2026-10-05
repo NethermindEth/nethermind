@@ -21,6 +21,10 @@ namespace Nethermind.Merge.Plugin
         [Description("Number of GetPayload Requests")]
         public static long GetPayloadRequests { get; set; }
 
+        [CounterMetric]
+        [Description("Number of finalized blocks caught up by applying their block access list instead of executing them")]
+        public static long FinalizedBlockAccessListReconstructions { get; set; }
+
         [GaugeMetric]
         [Description("Number of Transactions included in the Last GetPayload Request")]
         public static int NumberOfTransactionsInGetPayload { get; set; }

@@ -24,7 +24,7 @@ public interface ISyncConfig : IConfig
         DefaultValue = "false")]
     bool FastSync { get; set; }
 
-    [ConfigItem(Description = "Whether to reconstruct finalized catch-up state from EIP-7928 block access lists. Experimental; state roots are verified and unfinalized blocks execute normally. Receipts required by local retention are downloaded before processing.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to catch up consensus-finalized blocks by applying their EIP-7928 block access lists instead of executing them. State and receipts roots are verified; unfinalized blocks, and blocks whose data is unavailable or mismatched, execute normally.", DefaultValue = "true")]
     bool ReconstructFinalizedStateFromBlockAccessLists { get; set; }
 
     [Obsolete]

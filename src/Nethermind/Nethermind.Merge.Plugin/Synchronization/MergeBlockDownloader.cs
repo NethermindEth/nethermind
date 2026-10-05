@@ -57,7 +57,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         protected override bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) =>
             base.ShouldDownloadReceipts(header, shouldProcess, requested)
-            || (shouldProcess && finalizedBalPolicy?.CanReconstruct(header) == true && finalizedBalPolicy.NeedsReceipts(header));
+            || (shouldProcess && header.HasTransactions && finalizedBalPolicy?.CanReconstruct(header) == true);
 
         protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {

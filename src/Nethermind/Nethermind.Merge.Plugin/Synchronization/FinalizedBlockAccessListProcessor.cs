@@ -52,25 +52,26 @@ public sealed class FinalizedBlockAccessListProcessor(
         }
         catch (RlpException ex)
         {
-            if (_logger.IsDebug) _logger.Debug($"Cannot reconstruct {block}: {ex.Message}");
+            return Execute($"undecodable block access list: {ex.Message}");
         }
 
-        if (list is null || (list.WireHash ?? Keccak.Compute(Rlp.Encode(list).Bytes)) != block.Header.BlockAccessListHash)
-            return inner.ProcessOne(block, options, blockTracer, spec, token);
+        if (list is null) return Execute("no block access list");
+        if ((list.WireHash ?? Keccak.Compute(Rlp.Encode(list).Bytes)) != block.Header.BlockAccessListHash)
+            return Execute("block access list hash mismatch");
 
         TxReceipt[] receipts = [];
-        if (policy.NeedsReceipts(block.Header))
+        if (block.Transactions.Length > 0)
         {
-            if (block.Transactions.Length > 0 && !receiptStorage.HasBlock(block.Number, block.Hash!))
-                return inner.ProcessOne(block, options, blockTracer, spec, token);
+            if (!receiptStorage.HasBlock(block.Number, block.Hash!)) return Execute("no receipts");
             receipts = receiptStorage.Get(block);
             if (receipts.Length != block.Transactions.Length
                 || ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot) != block.ReceiptsRoot)
-                return inner.ProcessOne(block, options, blockTracer, spec, token);
+                return Execute("receipts root mismatch");
         }
 
-        BlockAccessListStateReconstructor.Apply(state, list, spec, token);
+        // No transactions run, so background work such as prewarming can stop before the writes are applied.
         _transactionsExecuted?.Invoke();
+        BlockAccessListStateReconstructor.Apply(state, list, spec, token);
         state.Commit(spec);
         state.RecalculateStateRoot();
         if (state.StateRoot != block.StateRoot)
@@ -78,6 +79,13 @@ public sealed class FinalizedBlockAccessListProcessor(
                 $"BAL reconstruction mismatched state root for {block}; retrying execution.");
         block.BlockAccessList = list;
         block.AccountChanges = state.GetAccountChanges();
+        Metrics.FinalizedBlockAccessListReconstructions++;
         return (block, receipts);
+
+        (Block, TxReceipt[]) Execute(string reason)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Executing finalized {block.ToString(Block.Format.Short)}: {reason}");
+            return inner.ProcessOne(block, options, blockTracer, spec, token);
+        }
     }
 }

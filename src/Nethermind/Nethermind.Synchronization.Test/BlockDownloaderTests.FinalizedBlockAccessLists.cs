@@ -16,7 +16,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.History;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -151,7 +150,6 @@ public partial class BlockDownloaderTests
         IContainer node = CreateMergeNode(builder => builder
             .AddSingleton<IForwardHeaderProvider>(headers)
             .AddSingleton<IBeaconSyncStrategy>(beacon)
-            .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance)),
             new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = true });
         Context ctx = node.Resolve<Context>();

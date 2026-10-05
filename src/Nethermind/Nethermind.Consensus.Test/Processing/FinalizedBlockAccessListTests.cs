@@ -22,7 +22,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -71,14 +70,13 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
     }
 
     [Test]
-    public void Retention_controls_receipt_requirements([Values] bool store, [Values] bool pruned, [Values] bool retained)
+    public void Blocks_with_transactions_need_a_receipt_store([Values] bool storeReceipts, [Values] bool withTransaction)
     {
         using TestEnvironment env = new(useFlatDb);
-        Block block = env.CreateBlock();
-        env.ReceiptConfig.StoreReceipts = store;
-        env.History.CutoffBlockNumber.Returns(pruned ? 2UL : (ulong?)null);
-        env.Retention.ShouldRetainReceipts(block.Header).Returns(retained);
-        Assert.That(env.Policy.NeedsReceipts(block.Header), Is.EqualTo(store && (!pruned || retained)));
+        Block block = env.CreateBlock(withTransaction: withTransaction);
+        env.Beacon.GetFinalizedHash().Returns(block.Hash);
+        env.ReceiptConfig.StoreReceipts = storeReceipts;
+        Assert.That(env.Policy.CanReconstruct(block.Header), Is.EqualTo(storeReceipts || !withTransaction));
     }
 
     [Test]
@@ -97,6 +95,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
                 Is.EqualTo(matchingList && !matchingRoot));
             Assert.That(env.State.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)(reconstructed ? 25 : 100)));
             Assert.That(env.State.StateRoot, Is.EqualTo(reconstructed ? block.StateRoot : env.Genesis.StateRoot));
+            Assert.That(block.AccountChanges?.Contains(TestItem.AddressA) == true, Is.EqualTo(reconstructed), "changed accounts for the tx pool cache");
         }
         block.DisposeAccountChanges();
     }
@@ -155,10 +154,12 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         block.DisposeAccountChanges();
     }
 
-    [Test]
-    public void Default_configuration_keeps_normal_execution()
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void Disabled_configuration_or_chain_without_access_lists_keeps_normal_execution(bool enabled, bool accessListChain)
     {
-        using TestEnvironment env = new(useFlatDb, enabled: false);
+        using TestEnvironment env = new(useFlatDb, enabled, accessListChain);
+        Assert.That(env.Processor, Is.Not.InstanceOf<FinalizedBlockAccessListProcessor>());
         Block block = env.CreateBlock();
         env.Beacon.GetFinalizedHash().Returns(block.Hash);
         using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
@@ -214,7 +215,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         tree.FindHeader(third.Hash!, BlockTreeLookupOptions.None).Returns(third.Header);
         tree.FindHeader(env.Genesis.Hash!, BlockTreeLookupOptions.None).Returns(env.Genesis.Header);
         FinalizedBlockAccessListPolicy policy = new(new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = true },
-            env.Beacon, tree, new Nethermind.Specs.TestSpecProvider(Amsterdam.Instance), env.ReceiptConfig, () => env.History, env.Retention);
+            env.Beacon, tree, new Nethermind.Specs.TestSpecProvider(Amsterdam.Instance), env.ReceiptConfig);
         env.Beacon.GetFinalizedHash().Returns(second.Hash);
         Assert.That(policy.CanReconstruct(first.Header), Is.True);
         tree.ClearReceivedCalls();
@@ -241,8 +242,6 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
     {
         private readonly IContainer _container;
         public IBeaconSyncStrategy Beacon { get; } = Substitute.For<IBeaconSyncStrategy>();
-        public IHistoryPruner History { get; } = Substitute.For<IHistoryPruner>();
-        public IPrunedReceiptRetention Retention { get; } = Substitute.For<IPrunedReceiptRetention>();
         public ReceiptConfig ReceiptConfig { get; } = new() { StoreReceipts = false, DeferredPersistence = false };
         public IBlockTree Tree { get; }
         public IWorldState State { get; }
@@ -253,7 +252,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         public FinalizedBlockAccessListPolicy Policy { get; }
         public Block Genesis { get; }
 
-        public TestEnvironment(bool useFlatDb, bool enabled = true)
+        public TestEnvironment(bool useFlatDb, bool enabled = true, bool accessListChain = true)
         {
             SyncConfig sync = new() { ReconstructFinalizedStateFromBlockAccessLists = enabled };
             Beacon.MergeTransitionFinished.Returns(true);
@@ -262,10 +261,8 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
                 .AddSingleton<ISyncConfig>(sync)
                 .AddSingleton<IReceiptConfig>(ReceiptConfig)
                 .AddSingleton<IBeaconSyncStrategy>(Beacon)
-                .AddSingleton<IHistoryPruner>(History)
-                .AddSingleton<IPrunedReceiptRetention>(Retention)
                 .AddSingleton<FinalizedBlockAccessListPolicy>()
-                .AddSingleton<IMainProcessingModule>(new TestProcessingModule(sync))
+                .AddSingleton<IMainProcessingModule>(new TestProcessingModule(sync, new Nethermind.Specs.TestSpecProvider(accessListChain ? Amsterdam.Instance : Osaka.Instance)))
                 .Build();
             MainProcessingContext main = _container.Resolve<MainProcessingContext>();
             State = main.WorldState;
@@ -314,11 +311,11 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         public void Dispose() => _container.Dispose();
     }
 
-    private sealed class TestProcessingModule(ISyncConfig config) : Module, IMainProcessingModule
+    private sealed class TestProcessingModule(ISyncConfig config, ISpecProvider specProvider) : Module, IMainProcessingModule
     {
         protected override void Load(ContainerBuilder builder) => builder
             .AddScoped<RecordingProcessor>().Bind<IBlockProcessor, RecordingProcessor>()
-            .AddModule(new FinalizedBlockAccessListModule(config));
+            .AddModule(new FinalizedBlockAccessListModule(config, specProvider));
     }
 
     public sealed class RecordingProcessor(IWorldState state) : IBlockProcessor
