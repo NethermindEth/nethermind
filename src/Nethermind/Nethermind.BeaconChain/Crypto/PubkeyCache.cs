@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Threading;
 using Nethermind.BeaconChain.Types;

@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Threading;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.Core.Attributes;

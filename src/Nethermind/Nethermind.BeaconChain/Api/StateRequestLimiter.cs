@@ -1,15 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
 using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
 using System.Threading.RateLimiting;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;

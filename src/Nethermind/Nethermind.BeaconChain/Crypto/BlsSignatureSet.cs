@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics.CodeAnalysis;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using G2Affine = Nethermind.Crypto.Bls.P2Affine;
