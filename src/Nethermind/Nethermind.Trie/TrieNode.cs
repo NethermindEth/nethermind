@@ -536,8 +536,7 @@ namespace Nethermind.Trie
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             bool isRoot = path.Length == 0;
-            PreviousRlp previous = ReadPreviousRlp();
-            CappedArray<byte> rlp = PrepareRlp(tree, ref path, bufferPool, canBeParallel);
+            CappedArray<byte> rlp = PrepareRlp(tree, ref path, bufferPool, canBeParallel, out PreviousRlp previous);
 
             // Descendant nodes with RLP shorter than a hash are embedded in their parent.
             if (rlp.Length >= 32 || isRoot)
@@ -550,17 +549,30 @@ namespace Nethermind.Trie
         }
 
         internal CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
-            ICappedArrayPool? bufferPool, bool canBeParallel)
+            ICappedArrayPool? bufferPool, bool canBeParallel) =>
+            PrepareRlp(tree, ref path, bufferPool, canBeParallel, out _);
+
+        /// <param name="previous">A re-encoded branch's RLP from before the re-encode, which <see cref="ComputeKeccak"/> may resume from.</param>
+        private CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
+            ICappedArrayPool? bufferPool, bool canBeParallel, out PreviousRlp previous)
         {
             bool isRoot = path.Length == 0;
+            previous = default;
             CappedArray<byte> rlp = ReadRlp();
             if (rlp.IsNull || IsDirty)
             {
                 CappedArray<byte> oldRlp = rlp.IsNotNull ? rlp : CappedArray<byte>.Empty;
-                CappedArray<byte> fullRlp = IsBranch
-                    ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
-                        canBeParallel: isRoot && canBeParallel)
-                    : RlpEncode(tree, ref path, bufferPool, canBeParallel);
+                CappedArray<byte> fullRlp;
+                if (IsBranch)
+                {
+                    previous = ReadPreviousRlp();
+                    fullRlp = TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
+                        canBeParallel: isRoot && canBeParallel);
+                }
+                else
+                {
+                    fullRlp = RlpEncode(tree, ref path, bufferPool, canBeParallel);
+                }
 
                 if (oldRlp.IsNotNullOrEmpty)
                 {
