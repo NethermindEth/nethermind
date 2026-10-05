@@ -162,39 +162,15 @@ internal static partial class BeaconJsonWriter
         s.Writer.WriteEndArray();
     }
 
-    private static async Task WriteHashArrayAsync(BeaconJsonStream s, string name, Hash256[] items)
-    {
-        s.Writer.WriteStartArray(name);
-        foreach (Hash256 item in items)
-        {
-            WriteHexValue(s.Writer, item.Bytes);
-            await s.CheckpointAsync();
-        }
-        s.Writer.WriteEndArray();
-    }
+    private static Task WriteHashArrayAsync(BeaconJsonStream s, string name, Hash256[] items) =>
+        WriteArrayAsync(s, name, items, static (w, item) => WriteHexValue(w, item.Bytes));
 
-    private static async Task WriteUIntArrayAsync(BeaconJsonStream s, string name, ulong[] items)
-    {
-        s.Writer.WriteStartArray(name);
-        foreach (ulong item in items)
-        {
-            WriteUIntValue(s.Writer, item);
-            await s.CheckpointAsync();
-        }
-        s.Writer.WriteEndArray();
-    }
+    private static Task WriteUIntArrayAsync(BeaconJsonStream s, string name, ulong[] items) =>
+        WriteArrayAsync(s, name, items, WriteUIntValue);
 
     /// <summary>Participation flags are an SSZ <c>List[uint8]</c>: one decimal string per validator, not a hex blob.</summary>
-    private static async Task WriteParticipationAsync(BeaconJsonStream s, string name, byte[] flags)
-    {
-        s.Writer.WriteStartArray(name);
-        foreach (byte flag in flags)
-        {
-            WriteUIntValue(s.Writer, flag);
-            await s.CheckpointAsync();
-        }
-        s.Writer.WriteEndArray();
-    }
+    private static Task WriteParticipationAsync(BeaconJsonStream s, string name, byte[] flags) =>
+        WriteArrayAsync(s, name, flags, static (w, flag) => WriteUIntValue(w, flag));
 
     private static void WriteUInt(Utf8JsonWriter w, string name, ulong value)
     {
