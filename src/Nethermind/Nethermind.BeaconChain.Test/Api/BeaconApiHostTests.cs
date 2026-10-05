@@ -85,11 +85,12 @@ public class BeaconApiHostTests
         _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
     }
 
-    [Test]
-    public async Task Health_reports_503_before_any_head_is_known()
+    [TestCase("/eth/v1/node/health", HttpStatusCode.ServiceUnavailable, TestName = "Health_reports_503_before_any_head_is_known")]
+    [TestCase("/eth/v1/node/peers/QmT78zSuBmuS4z925WZfrqQ1EFh5GHW9V4FjHkSBu7Q5yJ", HttpStatusCode.NotFound, TestName = "PeerById_is_404_for_a_valid_id_when_no_peer_manager_is_registered")]
+    public async Task Missing_node_services_report_the_published_status(string endpoint, HttpStatusCode expected)
     {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/health");
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
+        HttpResponseMessage response = await _client.GetAsync(endpoint);
+        Assert.That(response.StatusCode, Is.EqualTo(expected));
     }
 
     [Test]
@@ -180,13 +181,6 @@ public class BeaconApiHostTests
         JsonDocument body = await ReadJsonAsync(response);
         Assert.That(body.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
         Assert.That(body.RootElement.GetProperty("meta").GetProperty("count").GetInt32(), Is.EqualTo(0));
-    }
-
-    [Test]
-    public async Task PeerById_is_404_for_a_valid_id_when_no_peer_manager_is_registered()
-    {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/peers/QmT78zSuBmuS4z925WZfrqQ1EFh5GHW9V4FjHkSBu7Q5yJ");
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
     }
 
     [Test]

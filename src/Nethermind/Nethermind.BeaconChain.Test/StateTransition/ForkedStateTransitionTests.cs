@@ -101,34 +101,22 @@ public class ForkedStateTransitionTests
         Assert.That(ex.Message, Does.Contain("non-future slot"));
     }
 
-    [Test]
-    public void Apply_throws_when_the_block_was_constructed_with_the_wrong_ssz_shape_for_the_fork_it_targets()
+    // With GloasForkEpoch = 0 every epoch targets Gloas, so slot 150 still resolves to Gloas; a
+    // Fulu-shaped SignedBeaconBlock can never be the right container for that fork.
+    [TestCase(0ul, 150ul, "targets the Gloas fork but was constructed as", TestName = "Apply_throws_when_the_block_was_constructed_with_the_wrong_ssz_shape_for_the_fork_it_targets")]
+    // GloasForkEpoch far in the future: the block's own slot (101) targets Fulu, but the state has
+    // already (by construction, not by this dispatcher) moved to Gloas.
+    [TestCase(1_000_000ul, 101ul, "already crossed into Gloas", TestName = "Apply_throws_for_a_fulu_targeted_block_against_a_state_already_carried_past_the_boundary")]
+    public void Apply_refuses_a_fulu_block_when_the_state_and_target_fork_are_inconsistent(ulong gloasForkEpoch, ulong blockSlot, string error)
     {
         BeaconStateGloas gloasState = new() { Slot = 100 };
         ForkedBeaconState state = new ForkedBeaconState.OfGloas(gloasState);
-        BeaconChainSpec spec = SyntheticSpec(gloasForkEpoch: 0);
-        // With GloasForkEpoch = 0 every epoch targets Gloas, so slot 150 still resolves to Gloas; a
-        // Fulu-shaped SignedBeaconBlock can never be the right container for that fork.
-        SignedBeaconBlock block = new() { Message = new BeaconBlock { Slot = 150 }, Signature = default };
+        BeaconChainSpec spec = SyntheticSpec(gloasForkEpoch);
+        SignedBeaconBlock block = new() { Message = new BeaconBlock { Slot = blockSlot }, Signature = default };
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
             ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new TestEngineDriver.BodyOnlyNotifier(), spec))!;
-        Assert.That(ex.Message, Does.Contain("targets the Gloas fork but was constructed as"));
-    }
-
-    [Test]
-    public void Apply_throws_for_a_fulu_targeted_block_against_a_state_already_carried_past_the_boundary()
-    {
-        BeaconStateGloas gloasState = new() { Slot = 100 };
-        ForkedBeaconState state = new ForkedBeaconState.OfGloas(gloasState);
-        // GloasForkEpoch far in the future: the block's own slot (101) targets Fulu, but the state has
-        // already (by construction, not by this dispatcher) moved to Gloas.
-        BeaconChainSpec spec = SyntheticSpec(gloasForkEpoch: 1_000_000);
-        SignedBeaconBlock block = new() { Message = new BeaconBlock { Slot = 101 }, Signature = default };
-
-        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new TestEngineDriver.BodyOnlyNotifier(), spec))!;
-        Assert.That(ex.Message, Does.Contain("already crossed into Gloas"));
+        Assert.That(ex.Message, Does.Contain(error));
     }
 
     private static BeaconChainSpec SyntheticSpec(ulong gloasForkEpoch) => GloasTestFixtures.SyntheticSpec(gloasForkEpoch, GloasVersion);
