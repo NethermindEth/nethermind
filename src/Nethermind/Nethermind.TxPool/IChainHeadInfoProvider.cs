@@ -44,6 +44,9 @@ namespace Nethermind.TxPool
         bool IsSyncing { get; }
         bool IsProcessingBlock { get; }
 
+        /// <summary>True while this node's block producer executes a block it is building.</summary>
+        bool IsBuildingBlock { get; }
+
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }
 }

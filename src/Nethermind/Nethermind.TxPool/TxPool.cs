@@ -1597,8 +1597,11 @@ namespace Nethermind.TxPool
             {
                 _hashCache.DeleteFromCurrentBlock(tx.Hash!);
             }
-            else if (accepted != AcceptTxResult.Invalid
-                && accepted != AcceptTxResult.InvalidBlobProofs)
+            // A yielded push stays known, so resends buy no validation, and waits for an announcement to refetch it.
+            else if (!(state.FrameSimulationYielded && _retryCache.TryAwaitAnnouncement(tx.Hash!))
+                && accepted != AcceptTxResult.Invalid
+                && accepted != AcceptTxResult.InvalidBlobProofs
+                && !(accepted == AcceptTxResult.AlreadyKnown && _retryCache.IsAwaitingAnnouncement(tx.Hash!)))
             {
                 _retryCache.Received(tx.Hash!);
             }
@@ -1613,10 +1616,26 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
-            (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(in hash) ?
-                AnnounceResult.Delayed :
-                _retryCache.Announced(in hash, retryHandler);
+        public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler)
+        {
+            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
+            {
+                return AnnounceResult.Delayed;
+            }
+
+            if (!_hashCache.Get(in hash))
+            {
+                return _retryCache.Announced(in hash, retryHandler);
+            }
+
+            if (!_retryCache.TryClaimUnrequested(in hash, retryHandler))
+            {
+                return AnnounceResult.Delayed;
+            }
+
+            _hashCache.DeleteFromCurrentBlock(in hash);
+            return AnnounceResult.RequestRequired;
+        }
 
         public AcceptTxResult ValidateTxForBlobSampling(Transaction tx)
         {
