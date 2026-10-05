@@ -20,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -46,9 +47,14 @@ public class FrameTxValidationPrefixSimulationTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        UseSpec(Eip8141Prototype.Instance);
+    }
+
+    private void UseSpec(IReleaseSpec spec)
+    {
+        _specProvider = new TestSpecProvider(spec);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         _virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
@@ -401,6 +407,52 @@ public class FrameTxValidationPrefixSimulationTests
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
         Assert.That(tracer.Violated, Is.True);
+    }
+
+    // Banned in every prefix frame, deploy-frame initcode at tx.sender included. With EIP-8298 off, 0x4C is
+    // undefined, so the prefix must fare exactly as with another undefined opcode (0xF6).
+    [Test]
+    public void Simulate_PrefixUsesSetCodeFrom_BannedOnlyUnderEip8298([Values] bool eip8298, [Values] bool inDeployFrame)
+    {
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip8298Enabled = eip8298 });
+        DeployContract(TestItem.AddressC, ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = SimulateAdoptingPrefix((byte)Instruction.SETCODEFROM, inDeployFrame);
+
+        if (eip8298)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.ViolationReason, Is.EqualTo("banned opcode SETCODEFROM in validation prefix"));
+                Assert.That(tracer.Payer, Is.Null);
+            }
+            return;
+        }
+
+        (TransactionResult undefinedResult, FrameTxValidationTracer undefinedTracer) = SimulateAdoptingPrefix(0xf6, inDeployFrame);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.EqualTo(undefinedTracer.ViolationReason));
+            Assert.That(tracer.Payer, Is.EqualTo(undefinedTracer.Payer));
+            Assert.That(result.TransactionExecuted, Is.EqualTo(undefinedResult.TransactionExecuted));
+            Assert.That(result.ErrorDescription, Is.EqualTo(undefinedResult.ErrorDescription));
+        }
+    }
+
+    /// <summary>Runs <paramref name="opcode"/> on <see cref="TestItem.AddressC"/> in deploy-frame initcode or a self-verify frame.</summary>
+    private (TransactionResult, FrameTxValidationTracer) SimulateAdoptingPrefix(byte opcode, bool inDeployFrame)
+    {
+        byte[] adopt = [.. Prepare.EvmCode.PushData(TestItem.AddressC).Done, opcode, (byte)Instruction.POP];
+        if (!inDeployFrame)
+        {
+            DeployContract(Sender, [.. adopt, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+            return SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+        }
+
+        // A distinct initcode per opcode keeps each run's deployed sender fresh.
+        Address deployed = InstallFactory([.. adopt, (byte)Instruction.STOP]);
+        FundAccount(deployed, 1.Ether);
+        return SimulateAllowingAbort(DeployTx(deployed));
     }
 
     [TestCase(true, TestName = "GAS immediately before a call is permitted")]

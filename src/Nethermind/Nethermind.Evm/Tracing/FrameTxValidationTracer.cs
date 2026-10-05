@@ -153,6 +153,11 @@ public sealed class FrameTxValidationTracer(
             case Instruction.SELFBALANCE:
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
+            case Instruction.SETCODEFROM when spec.IsEip8298Enabled:
+                // EIP-8298 writes code outside both deploy-frame carve-outs, and copies whatever the source
+                // holds at inclusion, which its owner can change with SETCODEFROM.
+                Violate($"banned opcode {opcode} in validation prefix");
+                break;
             case Instruction.CREATE:
                 // Its address is f(factory, factory.nonce), which any third party can move by making the
                 // factory create again; only CREATE2 makes the deployment a pure function of the transaction.
