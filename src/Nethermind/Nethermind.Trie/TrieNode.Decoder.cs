@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -289,7 +290,7 @@ namespace Nethermind.Trie
                 result = pool.SafeRent(sequenceLength);
                 resultSpan = result.AsSpan();
                 position = Rlp.StartSequence(resultSpan, 0, contentLength);
-                children[..childrenLength].CopyTo(resultSpan[position..]);
+                Bytes.Copy(children[..childrenLength], resultSpan[position..]);
                 resultSpan[sequenceLength - valueRlpLength] = 128;
 
                 return result;
@@ -938,7 +939,7 @@ namespace Nethermind.Trie
                         }
                         if (!TBatch.IsActive && Avx2.IsSupported && !Avx512F.VL.IsSupported)
                             return WriteChildrenRlpBranchNonRlp<OnFlag>(tree, ref path, item, destination, bufferPool, canBeParallel, i, position);
-                        path.AppendMut(i);
+                        EnterChildPath(ref path, i);
                         // Once the walk is batching, defer any dirty child: the length decides which
                         // kernel serves it, and a leaf fits the same single block a small branch does.
                         if (TBatch.IsActive)
@@ -949,7 +950,7 @@ namespace Nethermind.Trie
                                 candidates |= (ushort)(1 << i);
                                 positions[i] = (ushort)position;
                                 position += Rlp.LengthOfKeccakRlp;
-                                path.TruncateOne();
+                                LeaveChildPath(ref path);
                                 continue;
                             }
                             childNode.ResolvePreparedKey(in rlp);
@@ -958,13 +959,13 @@ namespace Nethermind.Trie
                         {
                             childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
                         }
-                        path.TruncateOne();
+                        LeaveChildPath(ref path);
 
                         Hash256? childHash = childNode.Keccak;
                         if (childHash is null)
                         {
                             Span<byte> fullRlp = childNode.FullRlp.AsSpan();
-                            fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
+                            Bytes.Copy(fullRlp, destination.Slice(position, fullRlp.Length));
                             position += fullRlp.Length;
                         }
                         else
@@ -999,7 +1000,15 @@ namespace Nethermind.Trie
                 int runStart = cursor;
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
-                for (; Unsafe.IsAddressLessThan(ref child, ref end); child = ref Unsafe.Add(ref child, 1))
+                // The unchanged children after the last changed one go out in the tail run, so they are only
+                // walked to find where the value starts.
+                ref object? last = ref end;
+                while (Unsafe.IsAddressGreaterThan(ref last, ref child) && Unsafe.Add(ref last, -1) is null)
+                {
+                    last = ref Unsafe.Add(ref last, -1);
+                }
+
+                for (; Unsafe.IsAddressLessThan(ref child, ref last); child = ref Unsafe.Add(ref child, 1))
                 {
                     object? data = child;
                     if (data is null)
@@ -1011,7 +1020,7 @@ namespace Nethermind.Trie
                         int runLength = cursor - runStart;
                         if (runLength != 0)
                         {
-                            nodeRlp.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                            Bytes.Copy(nodeRlp.Data.Slice(runStart, runLength), destination.Slice(position, runLength));
                             position += runLength;
                         }
 
@@ -1025,17 +1034,17 @@ namespace Nethermind.Trie
                         }
                         else
                         {
-                            path.AppendMut(ChildIndex(ref child, ref end));
+                            EnterChildPath(ref path, ChildIndex(ref child, ref end));
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
                             childNode!.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                            path.TruncateOne();
+                            LeaveChildPath(ref path);
 
                             Hash256? childHash = childNode.Keccak;
                             if (childHash is null)
                             {
                                 Span<byte> fullRlp = childNode.FullRlp.AsSpan();
-                                fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
+                                Bytes.Copy(fullRlp, destination.Slice(position, fullRlp.Length));
                                 position += fullRlp.Length;
                             }
                             else
@@ -1049,10 +1058,27 @@ namespace Nethermind.Trie
                     }
                 }
 
+                // Every item takes at least a byte, so once the bytes left match the items left, each child is
+                // one byte and the value is the last byte. That ends the walk early on a run of empty trailing
+                // slots, without trusting the last byte, which a value such as 0x80 (81 80) also ends in.
+                int valuePosition = nodeRlp.Data.Length - 1;
+                for (int remaining = BranchesCount - ChildIndex(ref last, ref end); remaining != 0; remaining--)
+                {
+                    if (valuePosition - cursor == remaining)
+                    {
+                        cursor = valuePosition;
+                        break;
+                    }
+
+                    cursor += nodeRlp.PeekNextRlpLength(cursor);
+                }
+
+                Debug.Assert(item.SeekChildPosition(nodeRlp, BranchesCount) == cursor, "The tail does not end at the branch value");
+
                 int tailLength = cursor - runStart;
                 if (tailLength != 0)
                 {
-                    nodeRlp.Data.Slice(runStart, tailLength).CopyTo(destination.Slice(position, tailLength));
+                    Bytes.Copy(nodeRlp.Data.Slice(runStart, tailLength), destination.Slice(position, tailLength));
                     position += tailLength;
                 }
 
@@ -1064,7 +1090,7 @@ namespace Nethermind.Trie
             {
                 // Nethermind branches have an empty value, so a canonical 532-byte branch has sixteen hash children.
                 Debug.Assert(nodeRlp[^1] == 128);
-                nodeRlp.Slice(3, BranchesCount * Rlp.LengthOfKeccakRlp).CopyTo(destination);
+                Bytes.Copy(nodeRlp.Slice(3, BranchesCount * Rlp.LengthOfKeccakRlp), destination);
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
                 for (; Unsafe.IsAddressLessThan(ref child, ref end); child = ref Unsafe.Add(ref child, 1))
@@ -1080,9 +1106,9 @@ namespace Nethermind.Trie
                         hash = childNode.Keccak;
                         if (hash is null)
                         {
-                            path.AppendMut(i);
+                            EnterChildPath(ref path, i);
                             childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                            path.TruncateOne();
+                            LeaveChildPath(ref path);
                             hash = childNode.Keccak;
                             if (hash is null) return false;
                         }
