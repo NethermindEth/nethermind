@@ -9,9 +9,8 @@ using Nethermind.Merge.Plugin.SszRest;
 namespace Nethermind.BeaconChain.Test.P2P;
 
 /// <summary>
-/// Real KZG blobs for Gloas sidecar tests: the commitments a bid would carry, and a valid
-/// <see cref="DataColumnSidecarGloas"/> for any column of them. The cells and proofs come from
-/// <see cref="DataColumnKzgFixture"/>, never from the verifier under test.
+/// Real KZG bid commitments and valid <see cref="DataColumnSidecarGloas"/> columns.
+/// Cells and proofs come from <see cref="DataColumnKzgFixture"/>, independently of the verifier under test.
 /// </summary>
 internal static class DataColumnSidecarGloasTestFixture
 {

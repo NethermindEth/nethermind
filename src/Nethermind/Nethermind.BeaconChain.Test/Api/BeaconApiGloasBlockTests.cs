@@ -274,10 +274,8 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
         Assert.That(payload.GetProperty("slot_number").GetString(), Is.EqualTo(GloasSlot.ToString()));
     }
 
-    /// <summary>
-    /// types/primitive.yaml ExecutionOptimistic follows the envelope's own payload: fork choice's verdict on it while fork choice holds the block,
-    /// then a verified child that builds on it. A child that built EMPTY over it verifies nothing.
-    /// </summary>
+    /// <summary>types/primitive.yaml ties ExecutionOptimistic to the envelope payload: its fork-choice
+    /// verdict while held, then a verified child building on it. An EMPTY child verifies nothing.</summary>
     [TestCase(true, true, true, false, TestName = "Held block with a verified payload")]
     [TestCase(true, false, true, true, TestName = "Held VALID block with an unverified payload")]
     [TestCase(false, true, true, false, TestName = "Pruned block with a verified child built on its payload")]

@@ -13,13 +13,8 @@ using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// <c>/eth/v1/beacon/states/{state_id}/validators*</c> and <c>/committees</c>: every assertion here
-/// compares against a status or committee membership derived independently of
-/// <c>ValidatorStatus.Classify</c>/<c>CommitteeCache</c> - by construction of the fixture, not by
-/// re-running the production code - so a wrong classification or a broken shuffling partition would
-/// actually fail these.
-/// </summary>
+/// <summary>Expected statuses and committee membership come from fixture construction,
+/// independently of <c>ValidatorStatus.Classify</c> and <c>CommitteeCache</c>.</summary>
 public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
@@ -97,12 +92,8 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
-    /// <summary>
-    /// Unlike <c>id</c> and <c>status</c>, the committees endpoint's <c>index</c> parameter is
-    /// declared as a single <c>Uint64</c> in the beacon-api spec, not an array. Sending it twice is
-    /// caller error, not a filter to union - this driver rejects the ambiguity as 400 rather than
-    /// silently picking one occurrence, which would be confidently wrong the other half of the time.
-    /// </summary>
+    /// <summary>The beacon-api spec declares committee <c>index</c> as a scalar Uint64;
+    /// repeated keys are rejected as ambiguous (400).</summary>
     [Test]
     public async Task Committees_repeated_index_key_is_400_not_a_silently_picked_value()
     {
@@ -169,8 +160,7 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         }
 
         distinctSlots = seenSlots.Count;
-        // Every active validator appears in exactly one committee across the whole epoch: this is
-        // an invariant of compute_committee independent of how CommitteeCache implements shuffling.
+        // compute_committee partitions active validators once per epoch, independently of the shuffling implementation.
         Assert.That(allMembers.Distinct().Count(), Is.EqualTo(validatorCount), "every validator must appear exactly once");
         Assert.That(allMembers, Has.Count.EqualTo(validatorCount), "no validator may be duplicated across committees");
         Assert.That(distinctSlots, Is.EqualTo(32), "one committee-index-0 entry for every slot in the epoch (32 slots), given 50 active validators clamps to 1 committee/slot");

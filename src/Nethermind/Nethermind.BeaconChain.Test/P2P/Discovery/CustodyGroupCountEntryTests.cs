@@ -7,10 +7,8 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
 /// <summary>
-/// The ENR <c>cgc</c> byte-encoding rule (p2p-interface.md): "Uint64 big endian integer with no
-/// leading zero bytes (0 encoded as empty byte string)". Each expected byte sequence below is
-/// hand-derived from that rule and from RLP's own well-known encoding, independent of
-/// <see cref="CustodyGroupCountEntry"/>'s implementation.
+/// p2p-interface.md: ENR <c>cgc</c> is uint64 big endian without leading zero bytes; zero is empty.
+/// Expected bytes are hand-derived from this rule and RLP, independently of <see cref="CustodyGroupCountEntry"/>.
 /// </summary>
 public class CustodyGroupCountEntryTests
 {
