@@ -247,6 +247,127 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
+    /// The accounts that large calldata names as ABI address words are read at the start of the block, while the
+    /// small integers in the same calldata (here an amount and an offset) are not taken for addresses.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WarmsTheAccountsLargeCalldataNames()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            Block block = BuildCalldataAddressBlock(out Address first, out Address second, out Address small);
+            using (ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block))
+            {
+                Assert.That(collected, Is.EqualTo(new[] { first, second }), "a repeated word is collected once");
+            }
+
+            await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preBlockCaches.StateCache.TryGetValue(first, out _), Is.True, "a recipient named in calldata is read");
+                Assert.That(preBlockCaches.StateCache.TryGetValue(second, out _), Is.True, "a recipient named in calldata is read");
+                Assert.That(preBlockCaches.StateCache.TryGetValue(small, out _), Is.False, "a small integer is not an address");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The speculative pass runs the address warmer inline ahead of the delta's transaction warming, so the calldata
+    /// scan is left to the block, which repeats it with the full fan-out.
+    /// </summary>
+    [Test]
+    public void StartSpeculativePreWarm_LeavesTheAccountsLargeCalldataNamesToTheBlock()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
+
+        RunSpeculativePreWarm(preWarmer, BuildParentHeader(), Osaka.Instance, BuildCalldataAddressBlock(out Address first, out Address second, out _));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressD, out _), Is.True, "the pass still reads the recipients");
+            Assert.That(preBlockCaches.StateCache.TryGetValue(first, out _), Is.False, "the calldata scan is left to the block");
+            Assert.That(preBlockCaches.StateCache.TryGetValue(second, out _), Is.False, "the calldata scan is left to the block");
+        }
+    }
+
+    /// <summary>Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.</summary>
+    [Test]
+    public void CollectCalldataAddresses_ScansInclusionListTransactionsAfterTheBlocks()
+    {
+        Block block = BuildCalldataAddressBlock(out Address first, out Address second, out _);
+        Address third = new("0x5a52e96bacdabb82fd05763e25335261b270efcb");
+        byte[] data = new byte[4 + BlockCachePreWarmer.MinCalldataWordsForAddressWarm * 32];
+        third.Bytes.CopyTo(data.AsSpan(4 + 12));
+        block.InclusionListTransactions = [Build.A.Transaction.WithData(data).WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyD).TestObject];
+
+        using ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block);
+        Assert.That(collected, Is.EqualTo(new[] { first, second, third }));
+    }
+
+    [Test]
+    public void CollectCalldataAddresses_Cancelled_ScansNothing()
+    {
+        Block block = BuildCalldataAddressBlock(out _, out _, out _);
+        using ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block, new CancellationToken(canceled: true));
+        Assert.That(collected, Is.Null);
+    }
+
+    /// <summary>A range reads no further account once the session is cancelled during one of its reads.</summary>
+    [Test]
+    public void WarmCalldataRange_StopsAtTheFirstAccountAfterCancellation()
+    {
+        using CancellationTokenSource cancellation = new();
+        using ArrayPoolList<Address> addresses = new(4) { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD };
+        List<Address> read = [];
+
+        BlockCachePreWarmer.WarmCalldataRange(addresses, 0, addresses.Count, cancellation, (source, address) =>
+        {
+            read.Add(address);
+            source.Cancel();
+        }, cancellation.Token);
+
+        Assert.That(read, Is.EqualTo(new[] { TestItem.AddressA }));
+    }
+
+    [TestCase("0000000000000000000000000000000000000000000000000000000000000000", false, TestName = "IsAddressWord_Zero_IsNot")]
+    [TestCase("00000000000000000000000095323debf3e1084237250e6b17a40b9299d7daf0", true, TestName = "IsAddressWord_LeftPaddedAddress_Is")]
+    [TestCase("00000000000000000000000000000001f3e1084237250e6b17a40b9299d7daf0", true, TestName = "IsAddressWord_OnlyTheFourthAddressByteSet_Is")]
+    [TestCase("00000000000000000000000000000000f3e1084237250e6b17a40b9299d7daf0", false, TestName = "IsAddressWord_FourLeadingZeroAddressBytes_IsNot")]
+    [TestCase("00000000000000000000000001000000000000000000000000000000000000ff", true, TestName = "IsAddressWord_TopAddressByteSet_Is")]
+    [TestCase("0000000000000000000000ff95323debf3e1084237250e6b17a40b9299d7daf0", false, TestName = "IsAddressWord_TwelfthPaddingByteSet_IsNot")]
+    [TestCase("ff0000000000000000000000ffffffffffffffffffffffffffffffffffffffff", false, TestName = "IsAddressWord_FirstPaddingByteSet_IsNot")]
+    public void IsAddressWord_MatchesOnlyLeftPaddedAddresses(string word, bool expected) =>
+        Assert.That(BlockCachePreWarmer.IsAddressWord(Bytes.FromHexString(word)), Is.EqualTo(expected));
+
+    /// <summary>
+    /// A block whose first transaction's calldata names two addresses as ABI words, one of them twice, beside a small
+    /// integer and an offset, padded with two plain transfers: below three transactions a block gets no reactive warm.
+    /// </summary>
+    private static Block BuildCalldataAddressBlock(out Address first, out Address second, out Address small)
+    {
+        first = new("0x95323debf3e1084237250e6b17a40b9299d7daf0");
+        second = new("0x0e17015cb81c1eb8049764d80e133bf5d6b97d19");
+        small = Address.FromNumber(5);
+        byte[] data = new byte[4 + 10 * 32];
+        first.Bytes.CopyTo(data.AsSpan(4 + 2 * 32 + 12));
+        second.Bytes.CopyTo(data.AsSpan(4 + 3 * 32 + 12));
+        small.Bytes.CopyTo(data.AsSpan(4 + 4 * 32 + 12));
+        first.Bytes.CopyTo(data.AsSpan(4 + 5 * 32 + 12));
+        data[4 + 32 - 1] = 0x40;
+
+        return Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(
+                Build.A.Transaction.WithData(data).WithGasLimit(1_000_000).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .TestObject;
+    }
+
+    /// <summary>
     /// Verifies that BAL-based prewarming populates the storage cache for storage slots
     /// listed as both changed and read-only in the BAL.
     /// </summary>
