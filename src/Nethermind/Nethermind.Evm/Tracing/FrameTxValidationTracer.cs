@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -94,6 +97,10 @@ public sealed class FrameTxValidationTracer(
         if (isDeployFrame && IsForbiddenCallTarget(target))
         {
             Violate($"deploy frame target {target} is not an undelegated contract");
+        }
+        else if (isDeployFrame && HasMutableCode(target))
+        {
+            Violate($"deploy frame target {target} has mutable code");
         }
     }
 
@@ -201,6 +208,12 @@ public sealed class FrameTxValidationTracer(
                 Violate($"CALL*/EXTCODE* to disallowed target {target} in validation prefix");
                 return;
             }
+
+            if (HasMutableCode(target))
+            {
+                Violate($"CALL*/EXTCODE* target {target} has mutable code in validation prefix");
+                return;
+            }
         }
 
         // A funded call or create executes or pushes zero on the caller's balance alone, which is the same
@@ -269,6 +282,55 @@ public sealed class FrameTxValidationTracer(
         if (target == sender || spec.IsPrecompile(target)) return false;
         if (!state.IsContract(target)) return true;
         return state.IsDelegatedCode(target);
+    }
+
+    /// <summary>Under EIP-8298, whether a contract other than tx.sender can change its own code.</summary>
+    /// <remarks>
+    /// Code changes only through SETCODEFROM run in the account's own context, directly or via code it
+    /// DELEGATECALLs or CALLCODEs, and EIP-6780 rules out redeployment, so the scan has no false negatives.
+    /// The verdict is cached per code hash.
+    /// </remarks>
+    private bool HasMutableCode(Address target)
+    {
+        if (!spec.IsEip8298Enabled || target == sender || spec.IsPrecompile(target)) return false;
+
+        (ValueHash256, bool) key = (state.GetCodeHash(target), spec.IsEip8024Enabled);
+        if (MutableCodeCache.TryGet(key, out bool mutable)) return mutable;
+
+        mutable = ContainsCodeChangingInstruction(state.GetCode(in key.Item1).Span, key.Item2);
+        MutableCodeCache.Set(key, mutable);
+        return mutable;
+    }
+
+    /// <summary>EIP-8298 mutable-code verdicts, keyed by code hash and whether EIP-8024 immediates are skipped.</summary>
+    internal static readonly ClockCache<(ValueHash256, bool), bool> MutableCodeCache =
+        new(4_096, comparer: EqualityComparer<(ValueHash256, bool)>.Default);
+
+    /// <summary>Whether <paramref name="code"/> holds SETCODEFROM, DELEGATECALL or CALLCODE as an instruction.</summary>
+    /// <remarks>
+    /// Skips PUSH data, and, under EIP-8024, valid DUPN/SWAPN/EXCHANGE immediates. Those are never PUSH or
+    /// JUMPDEST bytes, so every jump destination stays an instruction boundary of this scan.
+    /// </remarks>
+    private static bool ContainsCodeChangingInstruction(ReadOnlySpan<byte> code, bool eip8024)
+    {
+        for (int i = 0; i < code.Length; i++)
+        {
+            Instruction opcode = (Instruction)code[i];
+            switch (opcode)
+            {
+                case Instruction.SETCODEFROM or Instruction.DELEGATECALL or Instruction.CALLCODE:
+                    return true;
+                case >= Instruction.PUSH1 and <= Instruction.PUSH32:
+                    i += opcode - Instruction.PUSH0;
+                    break;
+                case Instruction.DUPN or Instruction.SWAPN when eip8024 && i + 1 < code.Length && (uint)(code[i + 1] - 0x5B) > 0x24:
+                case Instruction.EXCHANGE when eip8024 && i + 1 < code.Length && (uint)(code[i + 1] - 0x52) > 0x2D:
+                    i++;
+                    break;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsCall(Instruction opcode) => opcode is
