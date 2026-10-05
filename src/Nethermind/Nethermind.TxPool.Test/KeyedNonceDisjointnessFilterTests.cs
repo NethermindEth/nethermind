@@ -24,28 +24,19 @@ public class KeyedNonceDisjointnessFilterTests
     private static readonly UInt256 K1 = 0x111;
     private static readonly UInt256 K2 = 0x222;
 
-    [Test]
-    public void Accept_OverlappingKeySet_IsRejected()
+    [TestCaseSource(nameof(KeyedCases))]
+    public void Accept_KeyedFrameTransaction_IsRejectedOnlyOnAnOverlappingKeySet(UInt256[] incoming, UInt256[] pending, AcceptTxResult expected)
     {
-        AcceptTxResult result = Accept(KeyedTx([Hub, K2]), PendingWith([Hub, K1]));
+        AcceptTxResult result = Accept(KeyedTx(incoming), PendingWith(pending));
 
-        Assert.That(result, Is.EqualTo(AcceptTxResult.KeyedNonceOverlap));
+        Assert.That(result, Is.EqualTo(expected));
     }
 
-    [Test]
-    public void Accept_DisjointKeySets_AreAdmitted()
+    private static IEnumerable<TestCaseData> KeyedCases()
     {
-        AcceptTxResult result = Accept(KeyedTx([K2]), PendingWith([K1]));
-
-        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-    }
-
-    [Test]
-    public void Accept_SameCompetingSlot_IsNotAnOverlap()
-    {
-        AcceptTxResult result = Accept(KeyedTx([K1]), PendingWith([K1]));
-
-        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        yield return new TestCaseData(new[] { Hub, K2 }, new[] { Hub, K1 }, AcceptTxResult.KeyedNonceOverlap).SetName("overlapping key set is rejected");
+        yield return new TestCaseData(new[] { K2 }, new[] { K1 }, AcceptTxResult.Accepted).SetName("disjoint key sets are admitted");
+        yield return new TestCaseData(new[] { K1 }, new[] { K1 }, AcceptTxResult.Accepted).SetName("same competing slot is not an overlap");
     }
 
     [TestCaseSource(nameof(UngatedCases))]
