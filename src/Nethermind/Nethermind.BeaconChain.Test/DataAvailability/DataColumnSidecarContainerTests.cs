@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -50,16 +51,8 @@ public class DataColumnSidecarContainerTests
     {
         DataColumnSidecar original = CreateRepresentative();
 
-        byte[] encoded = DataColumnSidecar.Encode(original);
-        DataColumnSidecar.Decode(encoded, out DataColumnSidecar decoded);
-        byte[] reEncoded = DataColumnSidecar.Encode(decoded);
-
-        DataColumnSidecar.Merkleize(original, out UInt256 originalRoot);
-        DataColumnSidecar.Merkleize(decoded, out UInt256 decodedRoot);
-
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(reEncoded, Is.EqualTo(encoded));
-        Assert.That(decodedRoot, Is.EqualTo(originalRoot));
+        (DataColumnSidecar decoded, UInt256 originalRoot) = GloasContainerTests.AssertRoundTrips(original);
         Assert.That(originalRoot, Is.Not.EqualTo(UInt256.Zero));
 
         Assert.That(decoded.Index, Is.EqualTo(original.Index));
