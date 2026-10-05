@@ -183,12 +183,7 @@ public class ExecutionPayloadEnvelopeImporterTests
         SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, ValidatorKey((int)state.LatestBlockHeader!.ProposerIndex), Presets.BuilderIndexSelfBuild);
         BlockStates states = new BlockStates().Add(state);
         state.LatestBlockHeader.ProposerIndex = (ulong)state.Validators!.Length;
-        IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
-        long rejectionsBefore = Rejections();
-
-        ExecutionPayloadEnvelopeImportResult result = CreateImporter(states, engine, pubkeys: pubkeys).Import(envelope);
-
-        AssertCountedRejectionWithoutEngineCall(result, rejectionsBefore, engine);
+        AssertCountedRejectionBeforeEngineCall(pubkeys, envelope, () => states);
     }
 
     /// <summary>
@@ -256,12 +251,7 @@ public class ExecutionPayloadEnvelopeImporterTests
         SignedExecutionPayloadEnvelope forged = rightKeyWrongDomain
             ? Resigned(state, envelope, rightKey, DomainType.BeaconProposer)
             : Resigned(state, envelope, otherKey, DomainType.BeaconBuilder);
-        IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
-        long rejectionsBefore = Rejections();
-
-        ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine, pubkeys: pubkeys).Import(forged);
-
-        AssertCountedRejectionWithoutEngineCall(result, rejectionsBefore, engine);
+        AssertCountedRejectionBeforeEngineCall(pubkeys, forged, () => new BlockStates().Add(state));
     }
 
     /// <summary>
@@ -323,12 +313,7 @@ public class ExecutionPayloadEnvelopeImporterTests
     {
         BeaconStateGloas state = StateWithSelfBuildBid(out SignedExecutionPayloadBid bid, out PubkeyCache pubkeys, out Bls.SecretKey builderSk);
         SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
-        IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
-        long rejectionsBefore = Rejections();
-
-        ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine, pubkeys: pubkeys).Import(envelope);
-
-        AssertCountedRejectionWithoutEngineCall(result, rejectionsBefore, engine);
+        AssertCountedRejectionBeforeEngineCall(pubkeys, envelope, () => new BlockStates().Add(state));
     }
 
     [Test]
@@ -491,5 +476,15 @@ public class ExecutionPayloadEnvelopeImporterTests
         public Hash256 HashTreeRoot(BeaconStateFulu state) => Keccak.Zero;
 
         public Hash256 HashTreeRoot(BeaconStateGloas state) => Keccak.Zero;
+    }
+
+    private void AssertCountedRejectionBeforeEngineCall(PubkeyCache pubkeys, SignedExecutionPayloadEnvelope envelope, Func<IGloasBlockStateProvider> states)
+    {
+        IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
+        long rejectionsBefore = Rejections();
+
+        ExecutionPayloadEnvelopeImportResult result = CreateImporter(states(), engine, pubkeys: pubkeys).Import(envelope);
+
+        AssertCountedRejectionWithoutEngineCall(result, rejectionsBefore, engine);
     }
 }
