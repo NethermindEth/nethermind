@@ -84,6 +84,7 @@ public static class FrameTxTestFrames
         }
 
         return copies;
+    }
 
     /// <summary>A SECP256K1 entry by <paramref name="key"/> over an explicit digest, so entries can be built
     /// independently of each other and of the transaction's signature hash.</summary>
