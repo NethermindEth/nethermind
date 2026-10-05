@@ -172,9 +172,8 @@ internal static partial class RlpHelpers
     {
         int prefix = data[position];
         int totalLength = GetTotalRlpLength(prefix);
-        return totalLength != 0
-            ? totalLength
-            : PeekLongRlpLength(data, position, prefix);
+        if (totalLength == 0) totalLength = PeekLongRlpLength(data, position, prefix);
+        return totalLength;
     }
 
     /// <summary>

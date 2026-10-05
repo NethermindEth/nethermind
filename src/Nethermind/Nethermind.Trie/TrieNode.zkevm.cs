@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
@@ -136,11 +138,81 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void WriteRlp(CappedArray<byte> value) => InitRlp(value);
 
+        /// <summary>Publishes the RLP a node was resolved from, tagged with the witness node the store handed out last.</summary>
+        /// <remarks>
+        /// The tag rides in the length word's upper half, which the guest has no seqlock sequence for, so any later
+        /// <see cref="WriteRlp"/> drops it with the RLP it names. A tag the store did not set for this load is stale, which
+        /// <see cref="KeccakHash.ComputeHash256OfEdited"/> detects: it resumes only from the very array the tag names.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WriteLoadedRlp(CappedArray<byte> value)
+        {
+            _rlpArray = value.UnderlyingArray;
+            _rlpSeqAndLength = (uint)value.Length | (ulong)KeccakHash.LoadedWitnessNode() << 32;
+        }
+
+        /// <summary>Gives this clone of <paramref name="original"/> its RLP, <paramref name="rlp"/>, with the original's witness tag.</summary>
+        /// <remarks>Without the tag a cloned branch could not resume from the witness node it was loaded from. A trie write
+        /// unseals the nodes on its path in place instead, which keeps the tag; see <see cref="Unseal"/>.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void InitClonedRlp(CappedArray<byte> rlp, TrieNode original)
+        {
+            _rlpArray = rlp.UnderlyingArray;
+            _rlpSeqAndLength = original._rlpSeqAndLength;
+        }
+
+        /// <summary>A node's RLP from before it is re-encoded, with its witness tag, for <see cref="ComputeKeccak"/>.</summary>
+        private readonly struct PreviousRlp(byte[]? array, nint tag)
+        {
+            public readonly byte[]? Array = array;
+            public readonly nint Tag = tag;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private PreviousRlp ReadPreviousRlp() => new(_rlpArray, (nint)(_rlpSeqAndLength >> 32));
+
+        /// <summary>Computes the keccak of <paramref name="rlp"/>, this node's encoding.</summary>
+        /// <remarks>A full branch re-encoded from a witness node resumes from the sponge state of its unchanged leading
+        /// rate blocks; see <see cref="KeccakHash.ComputeHash256OfEdited"/>.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
+            rlp.Length == FullBranchRlpLength
+                ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag))
+                : Nethermind.Core.Crypto.Keccak.Compute(rlp);
+
+        /// <summary>Loads, if it has none, and decodes the RLP of this node of unknown type.</summary>
+        /// <remarks>
+        /// Without the std form's wrapping of a decoding error into a <see cref="TrieNodeException"/>: the guest fails the
+        /// block on any exception, and the handler costs every resolve a frame pointer and spilled arguments.
+        /// Inlined into each walk, unlike the std form: nearly every witness node is resolved exactly once, so the
+        /// call and its saved registers were paid per node.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ResolveUnknownNodeWithContext(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
+            ICappedArrayPool? bufferPool) => ResolveUnknownNode(tree, path, readFlags, bufferPool);
+
+        /// <inheritdoc cref="Unseal" path="/summary"/>
+        /// <remarks>This node itself, left as a clone would be: dirty, unhashed, and keeping its RLP and data. The guest's
+        /// raw trie store builds a fresh node for every lookup and caches none, so no other trie or block can hold this
+        /// one, and every ancestor on the path being written is unsealed or replaced too, so none keeps the old hash.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal TrieNode Unseal()
+        {
+            Keccak = null;
+            _blockAndFlags = _dirtyMask;
+            return this;
+        }
+
         /// <inheritdoc cref="PruneTraversedChildren"/>
         /// <remarks>The guest verifies one block and exits, so there is no cache to keep small and nothing
         /// to amortise a re-resolve against: dropping a child only guarantees decoding its RLP again the
         /// next time the path is walked. Over a mainnet block the witness holds 26,025 distinct nodes while
         /// the trie decodes 34,789 times, so 8,764 of those decodes are repeats.</remarks>
         private const bool PruneTraversedChildren = false;
+
+        /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: always.</summary>
+        /// <remarks><see cref="PatriciaTree"/>'s set walk outgrows the inliner's budget and
+        /// would otherwise call it out of line per level, a frame and five saved registers for a slot load and a type test.</remarks>
+        private const MethodImplOptions GetChildWithChildPathInlining = MethodImplOptions.AggressiveInlining;
     }
 }

@@ -15,10 +15,19 @@ internal static class RpcPayloadTypeInfo
     private static readonly ConcurrentDictionary<(JsonSerializerOptions Options, Type Type), JsonTypeInfo> _cache = new();
     private static readonly ConcurrentDictionary<Type, JsonTypeInfo> _canonicalGeneratedCache = new();
 
+    /// <summary>Gets the metadata for a payload's runtime type.</summary>
+    /// <remarks>
+    /// When no resolver has metadata for the runtime type, as with compiler-generated iterators once reflection is disabled,
+    /// the <see cref="object"/> metadata is returned; it dispatches on the runtime type and falls back to the nearest
+    /// ancestor that has metadata, such as the collection interface an iterator implements.
+    /// </remarks>
     public static JsonTypeInfo Get(JsonSerializerOptions options, Type type) =>
         ReferenceEquals(options, EthereumJsonSerializer.JsonOptions)
             ? GetCanonical(type)
-            : _cache.GetOrAdd((options, type), static key => key.Options.GetTypeInfo(key.Type));
+            : _cache.GetOrAdd((options, type), static key => GetOrObject(key.Options, key.Type));
+
+    private static JsonTypeInfo GetOrObject(JsonSerializerOptions options, Type type) =>
+        options.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : options.GetTypeInfo(typeof(object));
 
     private static JsonTypeInfo GetCanonical(Type type)
     {
@@ -32,7 +41,7 @@ internal static class RpcPayloadTypeInfo
             return _canonicalGeneratedCache.GetOrAdd(type, generated);
         }
 
-        return EthereumJsonSerializer.JsonOptions.GetTypeInfo(type);
+        return GetOrObject(EthereumJsonSerializer.JsonOptions, type);
     }
 }
 
