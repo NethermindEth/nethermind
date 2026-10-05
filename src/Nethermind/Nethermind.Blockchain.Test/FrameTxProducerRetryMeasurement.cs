@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
+using Autofac.Features.AttributeFilters;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
@@ -63,6 +65,7 @@ public class FrameTxProducerRetryMeasurement
     private IReadOnlyTxProcessorSource? _source;
     private IReadOnlyTxProcessingScope? _scope;
     private TxPool.TxPool? _pool;
+    private ILifetimeScope? _poolScope;
     private PoolHeadTree _poolHeadTree = null!;
     private ulong _poolHeadNumber;
 
@@ -97,6 +100,8 @@ public class FrameTxProducerRetryMeasurement
     {
         if (_pool is not null) await _pool.DisposeAsync();
         _pool = null;
+        if (_poolScope is not null) await _poolScope.DisposeAsync();
+        _poolScope = null;
         _scope?.Dispose();
         _source?.Dispose();
         _chain?.Dispose();
@@ -591,26 +596,29 @@ public class FrameTxProducerRetryMeasurement
         _poolHeadTree = new PoolHeadTree { Head = BuildPoolHead() };
         _poolHeadTree.BestSuggestedHeader = _poolHeadTree.Head!.Header;
 
-        _pool = new TxPool.TxPool(
-            new EthereumEcdsa(_specProvider.ChainId),
-            new BlobTxStorage(),
-            new ChainHeadInfoProvider(new ChainHeadSpecProvider(_specProvider, _poolHeadTree), _poolHeadTree, poolState)
+        // The pool comes from the chain's module registrations in a scope of its own. Only what the sweep controls
+        // is replaced: the head and state it prices against, its configuration, and no prefix simulator, which is
+        // the admitted-unresolved path this harness measures. The modules wire one, and with it this prefix would be
+        // rejected at admission instead of reaching the producer.
+        _poolScope = _chain!.Container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IChainHeadInfoProvider>(new ChainHeadInfoProvider(
+                new ChainHeadSpecProvider(_specProvider, _poolHeadTree), _poolHeadTree, poolState)
             {
                 // The pool raises TxPoolHeadChanged only while it considers itself synced, and AdvancePoolHead
                 // waits on that event, so pin it rather than leaving it to the pinned head's block number.
                 HasSynced = true
-            },
-            new TxPoolConfig
+            })
+            .AddSingleton<ITxPoolConfig>(new TxPoolConfig
             {
                 GasLimit = BlockGasLimit,
                 FrameTxMaxVerifyGas = 0,
                 FrameTxEvictionRetryBudget = kRetry,
-            },
-            new TxValidator(_specProvider.ChainId),
-            new SpecChangeTxValidator(_specProvider.ChainId),
-            LimboLogs.Instance,
-            new TransactionComparerProvider(_specProvider, _poolHeadTree).GetDefaultComparer(),
-            ShouldGossip.Instance);
+            })
+            .AddSingleton<IComparer<Transaction>>(new TransactionComparerProvider(_specProvider, _poolHeadTree).GetDefaultComparer())
+            .RegisterType<TxPool.TxPool>().WithAttributeFiltering().SingleInstance().ExternallyOwned());
+        _pool = _poolScope.Resolve<TxPool.TxPool>(new TypedParameter(typeof(IFrameTxPrefixSimulator), null));
+        Assert.That(typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(_pool),
+            Is.Null, "the pool must run without a prefix simulator, or the never-approving prefix never reaches the producer");
     }
 
     /// <remarks>The wait is bounded so that a pool that stops raising the event surfaces as a failed case

@@ -10,25 +10,27 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
-using Nethermind.Consensus;
+using Autofac;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -156,22 +158,23 @@ public class FrameTxPeerFloodMeasurement
             return verdict;
         });
 
-        ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
-        gossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
+        // A synced node, so the node's own gossip policies decide to listen.
+        ISyncModeSelector syncMode = Substitute.For<ISyncModeSelector>();
+        syncMode.Current.Returns(SyncMode.WaitingForBlock);
 
-        using Eth68ProtocolHandler handler = new(
-            session,
-            Build.A.SerializationService().WithEth68().TestObject,
-            new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
-            syncServer,
-            RunImmediatelyScheduler.Instance,
-            txPool,
-            Substitute.For<IGossipPolicy>(),
-            new ForkInfo(Substitute.For<ISpecProvider>(), syncServer),
-            LimboLogs.Instance,
-            Substitute.For<ITxPoolConfig>(),
-            Substitute.For<IChainHeadSpecProvider>(),
-            gossipPolicy);
+        // The handler comes from the node's own module registrations and handler factory, so its configuration and
+        // collaborators follow production. Only what the experiment controls is replaced: the pool's verdicts, the
+        // peer's chain, an immediate scheduler so messages run on the simulated clock, and a sync state that
+        // reports the node synced.
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(txPool)
+            .AddSingleton(syncServer)
+            .AddSingleton<IForkInfo>(new ForkInfo(Substitute.For<ISpecProvider>(), syncServer))
+            .AddSingleton<IBackgroundTaskScheduler>(RunImmediatelyScheduler.Instance)
+            .AddSingleton(syncMode)
+            .Build();
+        using Eth68ProtocolHandler handler = CreateEth68(container, session);
         UseClock(handler, clock, seed);
         handler.Init();
         ReceiveStatus(handler, genesis);
@@ -190,6 +193,21 @@ public class FrameTxPeerFloodMeasurement
         }
 
         return new Outcome(submitted, processed, downgradedAt, disconnectedAt, reason);
+    }
+
+    private static Eth68ProtocolHandler CreateEth68(IContainer container, ISession session)
+    {
+        foreach (IProtocolHandlerFactory factory in container.Resolve<IReadOnlyList<IProtocolHandlerFactory>>())
+        {
+            if (factory.ProtocolCode == Protocol.Eth && factory.TryCreate(session, 68, out IProtocolHandler? created)
+                && created is Eth68ProtocolHandler eth68)
+            {
+                return eth68;
+            }
+        }
+
+        Assert.Fail("no registered protocol handler factory creates an eth/68 handler");
+        return null!;
     }
 
     private static AcceptTxResult Verdict(Shape shape, int index) => shape switch

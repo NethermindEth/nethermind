@@ -11,6 +11,8 @@ using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
@@ -21,7 +23,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -93,15 +94,8 @@ public partial class FrameTxFloodMeasurement
 
     private static bool _computeWarmed;
 
-    /// <summary>The node's gossip scheduler settings: <c>InitConfig</c> defaults and the scheduler's own deadline.</summary>
-    private const int GossipSchedulerConcurrency = 2;
-
-    private const int GossipSchedulerCapacity = 2_048;
-
+    /// <summary>The deadline a gossip handler gives the scheduler for one message.</summary>
     private static readonly TimeSpan GossipTaskTimeout = TimeSpan.FromSeconds(2);
-
-    /// <summary>In-flight handlers can finish on either side of a window edge, on each worker.</summary>
-    private const int ScheduledAccountingSlack = 2 * GossipSchedulerConcurrency + 2;
 
     /// <summary>Head cadence for the honest suite: one mainnet slot.</summary>
     private static readonly TimeSpan SlotLength = TimeSpan.FromSeconds(12);
@@ -150,7 +144,7 @@ public partial class FrameTxFloodMeasurement
         using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, [FrameTx(0, ceiling, shape)], BlockGasLimit);
         rig.RunFor(WarmupWindow);
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
-        await using GossipSubmitter submitter = new(_chain, scheduled: false, static () => false);
+        GossipSubmitter submitter = new(_chain, scheduled: false, static () => false);
 
         RunLevels(ceiling, shape, "producer_level", "victim=producer_pass gossip_path=direct ", ProducerLevelsMillions,
             () => rig.Measure(MeasureWindow),
@@ -178,7 +172,7 @@ public partial class FrameTxFloodMeasurement
         using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, [FrameTx(0, ceiling, shape)], BlockGasLimit);
         rig.RunFor(WarmupWindow);
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
-        await using GossipSubmitter submitter = new(_chain, scheduled: false, static () => false);
+        GossipSubmitter submitter = new(_chain, scheduled: false, static () => false);
 
         // The compute block runs on a fresh branch from the parent each time, so passes never accumulate state.
         List<double> LongPasses(TimeSpan window)
@@ -233,7 +227,7 @@ public partial class FrameTxFloodMeasurement
 
         bool isProtected = path == "protected";
         s_blockProcessingSignal = isProtected;
-        await using GossipSubmitter submitter = new(_chain, scheduled: isProtected, () => Volatile.Read(ref _victimActive));
+        GossipSubmitter submitter = new(_chain, scheduled: isProtected, () => Volatile.Read(ref _victimActive));
 
         // The scheduled path returns before the pool sees the transaction, so rejections come from the pool's own
         // counters on both paths.
@@ -473,7 +467,7 @@ public partial class FrameTxFloodMeasurement
 
         long refused = refusals() - refusedBefore;
         int executed = submitter.Read().Executed - executedBefore;
-        Assert.That(Math.Abs(refused - executed), Is.LessThanOrEqualTo(submitter.IsScheduled ? ScheduledAccountingSlack : 1),
+        Assert.That(Math.Abs(refused - executed), Is.LessThanOrEqualTo(submitter.AccountingSlack),
             $"the pool refused or shed {refused} of {executed} submissions in this level; the rest went missing");
         return outcome;
     }
@@ -797,15 +791,16 @@ public partial class FrameTxFloodMeasurement
     }
 
     /// <summary>Submits flood transactions straight to the pool, or as one-transaction gossip tasks on the node's
-    /// <see cref="BackgroundTaskScheduler"/> bound to the chain's main branch processor.</summary>
+    /// <see cref="IBackgroundTaskScheduler"/>, resolved from the chain's container with the node's configuration.</summary>
     /// <remarks>A task whose token is already cancelled when it runs has expired while block processing held the
     /// queue; it is dropped, as <c>HandleSlow</c> drops a message cancelled before its first transaction. A task
     /// already inside <c>SubmitTx</c> when a block starts runs on; the pool preempts its simulation on the processing
     /// flag.</remarks>
-    private sealed class GossipSubmitter : IAsyncDisposable
+    private sealed class GossipSubmitter
     {
         private readonly ITxPool _pool;
-        private readonly BackgroundTaskScheduler? _scheduler;
+        private readonly IBackgroundTaskScheduler? _scheduler;
+        private readonly int _concurrency;
         private readonly Func<bool> _victimActive;
         private readonly Func<FloodTxRequest, CancellationToken, Task> _handle;
         private int _scheduled;
@@ -822,8 +817,8 @@ public partial class FrameTxFloodMeasurement
             _handle = Handle;
             if (scheduled)
             {
-                _scheduler = new BackgroundTaskScheduler(chain.BranchProcessor, chain.ChainHeadInfoProvider,
-                    GossipSchedulerConcurrency, GossipSchedulerCapacity, LimboLogs.Instance);
+                _scheduler = chain.Container.Resolve<IBackgroundTaskScheduler>();
+                _concurrency = chain.Container.Resolve<IInitConfig>().BackgroundTaskConcurrency;
             }
         }
 
@@ -834,6 +829,10 @@ public partial class FrameTxFloodMeasurement
         }
 
         public bool IsScheduled => _scheduler is not null;
+
+        /// <summary>How far the pool's counters may trail the submissions at a window edge: in-flight handlers can
+        /// finish on either side of it, on each worker.</summary>
+        public int AccountingSlack => IsScheduled ? 2 * _concurrency + 2 : 1;
 
         public Counts Read() => new(Volatile.Read(ref _scheduled), Volatile.Read(ref _refused), Volatile.Read(ref _executed),
             Volatile.Read(ref _dropped), Volatile.Read(ref _starts), Volatile.Read(ref _startsDuringVictim));
@@ -875,11 +874,6 @@ public partial class FrameTxFloodMeasurement
             AcceptTxResult result = _pool.SubmitTx(tx, TxHandlingOptions.None);
             Interlocked.Increment(ref _executed);
             return result;
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            if (_scheduler is not null) await _scheduler.DisposeAsync();
         }
     }
 
