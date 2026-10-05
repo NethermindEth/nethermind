@@ -41,7 +41,6 @@ public class Eip8131Tests
     // With EIP-2780 the floor is anchored on the decomposed intrinsic base, which is 21000 for a value transfer to another account.
     private static readonly IReleaseSpec AmsterdamSpec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8131Enabled = true };
 
-
     private static TransactionBuilder<Transaction> ValueTransfer(TxType type) => Build.A.Transaction
         .WithType(type)
         .WithSenderAddress(TestItem.AddressA)
