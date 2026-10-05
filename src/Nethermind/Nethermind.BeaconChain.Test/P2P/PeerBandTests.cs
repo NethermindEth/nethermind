@@ -432,7 +432,7 @@ public class PeerBandTests
     [CancelAfter(60_000)]
     public async Task Failed_status_admission_closes_the_session(bool outbound, CancellationToken token)
     {
-        RefusingStatusSource refusing = new();
+        ScriptedStatusSource refusing = new(static _ => throw new Eth2ReqRespException("status refused for the test"));
         Node remote = CreateNode(refusing);
         Node local = CreateNode();
         SetMatchingStatus(local);
@@ -704,26 +704,5 @@ public class PeerBandTests
                 _lines.Add(text);
             }
         }
-    }
-
-    private sealed class RefusingStatusSource : IBeaconChainStatusSource
-    {
-        private int _requests;
-
-        public int Requests => Volatile.Read(ref _requests);
-
-        public StatusMessageV2 CurrentStatus
-        {
-            get
-            {
-                Interlocked.Increment(ref _requests);
-                throw new Eth2ReqRespException("status refused for the test");
-            }
-        }
-
-        // Unused here: this double exists to fail the status exchange, and nothing on the peer
-        // path reads the API's view of the chain.
-        public Hash256 JustifiedRoot => Hash256.Zero;
-        public bool ExecutionInSync => false;
     }
 }
