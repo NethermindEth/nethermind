@@ -33,6 +33,7 @@ jobs:
           python3 -B -m unittest discover -s "$HARNESS/scripts/rpc-bench" -p 'test_sample_resources.py' -v
           python3 -B -m unittest discover -s "$HARNESS/scripts/rpc-bench" -p 'test_rpc_startup.py' -v
           python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability" -p 'test_guard.py' -v
+          python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability" -p 'test_runner.py' -v
           python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability/native" -p 'test_native_capability.py' -v
       - name: Run one prospective lifecycle capability
         id: native

@@ -1,115 +1,16 @@
-RPC NATIVE CAPABILITY INTEGRATION - V2 - RECOVERY MUST SUCCEED BEFORE DISPATCH
-
-Scope: one prospective baseline lifecycle, warm60s/100rps/seed1001 followed by
-main10s/100rps/seed1. Same9bb024 baseline immutable image, .NET10.0.12, snapshot
-head25490000, trusted json-bench repository/ref. No timing acceptance, GC/retention
-or pooling claim. Four-arm audit quality MUST be FAIL because one arm ran.
-
-Current status - v2 startup correction
-- Inventory37290954063 was independently accepted with SHA256
-  ebbdf4a10ae1f1ca8fad358bda2e963d3909ccdd4aa97569eff7b242bc2ed73d.
-  This package freezes the identical prospective input pins as v1.
-- Native37293502679 failed before workload because the readiness helper compared
-  the exact owned container CID with Docker Names. Its retained evidence remains
-  unchanged. Harness feeba corrects readiness and adds six regression tests.
-- Recovery37295167242 was queued when this package was prepared. No capability
-  rerun is authorized by package preparation: root must first accept exact-owned
-  recovery/quiescence/restoration and an exclusively clear runner queue.
-- Native sidecar, guard and workload are byte-identical to reviewed v1. This is
-  one justified capability retry after correcting the proven startup defect.
-- See validation/RESULTS.json for local POSIX correctness results. Those tests
-  do not establish native lifecycle PASS. No production build or timing is run.
-
-Contents and identities
-- workflow.yml: two distinct run-specific checkouts, operator B at github.sha and
-  immutable runtime harness Afeeba5b89d51fad85931c77b8d3c7fba4ff373ed, both with
-  persist-credentials=false. No image builds and no PR/GitHub comments.
-- native/native_capability.py: copied reviewed EA09CA8A source, only two error
-  labels changed HISTORIC->EXPECTED, plus a small post-prepare copy that retains
-  expected-pins and integration-freeze inside the encrypted private archive.
-  The lifecycle implementation is not rewritten. pidfd helper and regression
-  fixture are unchanged copies.
-- native/harness-pin.json pins A. native/source-pins.json contains all28 hashes
-  computed directly from A's Git blobs, including the EOF-controlled sampler.
-- launch.py verifies clean exact checkouts and frozen bytes/inputs, creates one
-  private owned reservation, then execs the existing sidecar in the same process.
-- guard.py independently requires this run's owner marker, no HOLD, complete
-  native success/closed calls, one valid arm out of four, archived prospective
-  pins and verified encrypted output. It publishes the complete exact-key
-  validated native result (no owner paths) only on success.
-- test_guard.py has six tests including foreign owner, missing result, HOLD,
-  invalid quality, incomplete outcomes and successful guarded upload/release.
-  Existing sidecar tests are included and run by the prospective CI correctness step.
-
-Root-only integration, after accepted recovery
-1. Check that inventory CI succeeded, its source equals99a991..., helper hashes
-   match review, no ownership-HOLD or unexplained missing result remains, and
-   its read-only evidence supports accepting this new prospective identity.
-   Keep historical missing SHA records unchanged. A missing/different old anchor
-   must be explicitly considered; this is never a historical-equivalence claim.
-2. Independently review the exact content-free inventory JSON and record its
-   SHA256. In this staging folder invoke freeze.py --inventory <accepted-json>
-   --approved-inventory-sha256 <exact-reviewed-digest>. This creates expected
-   input pins and a release file exclusively; it refuses overwriting a freeze.
-   The explicit digest is an acceptance input, not auto-selection of observed pins.
-3. Copy package files byte-for-byte into operator B at scripts/rpc-capability/
-   (including workflow.yml there, because the release manifest pins that copy).
-   Copy workflow.yml also to .github/workflows/run-rpc-native-capability.yml.
-   Commit B only after the root review/tests. Do not edit runtime harness A or
-   historical4cf2f0. Do not reformat frozen files after freeze; hashes bind bytes.
-4. Run tests first on a supported Python runtime, including POSIX sampler and
-   harness correctness. The workflow repeats the required original harness,
-   sampler arithmetic, six CID startup regressions, integration guard and sidecar
-   tests before any mutation.
-   Queue must be exclusively clear before capability dispatch. Root alone may
-   dispatch one run at exact B; there is no automatic retry or continuation.
-
-Lifecycle and private retention
-The persistent directory
-/mnt/sda/expb-data/rpc-bench-scratch/rpc-native-capability.lock
-is separate from Actions' concurrency lock. It survives job failure/cancellation.
-Its owner binds run/attempt, exact private root and directory device/inode IDs.
-A stale/foreign lock is never overwritten or removed. Current run private data is
-rpc-private-<run>-<attempt>/ with mode0700 scratch/out/state. Fixed canonical
-snapshot and corpus paths must match the accepted freeze before warm load.
-NODE_CPUSET and NODE_MEMORY are explicitly empty, preserving historical default;
-the sidecar records actual Docker CPU/memory settings in private preload evidence.
-
-HOLD, missing result, failed native call, failed guard or failed upload means no
-always-cleanup, no restore/finalize retry, no automatic archive/upload and no
-reservation release. The sidecar owns its normal teardown/checked CPU restore;
-UNKNOWN exits preserve the journal and private state. Root must establish helper
-quiescence and recover exact owned resources before any further CI/workload.
-GH Actions may release its concurrency slot on failure; the persistent reservation
-and root's queue discipline remain in force. Host loss/kill cannot be converted
-to success merely because a process disappeared.
-
-Only the normal successful path publishes the allowlisted public directory:
-encrypted/raw.tar.gz.cms, encrypted/archive.json, encrypted/recipient.crt,
-audit-status.json and constructed native-capability.json. No plaintext logs,
-requests, response bodies, DB fingerprint listing or private source root is
-uploaded. Native summary says scope=NATIVE_LIFECYCLE_ONLY, full_abba_quality=FAIL,
-timing_result=false, pooling_eligibility=UNKNOWN. Archive status remains
-ENCRYPTED_NOT_DECRYPTION_VERIFIED; upload success does not imply decryptability.
-
-After upload success, guard rechecks owned closure, records artifact ID/digest
-privately, then releases ONLY this reservation. It never deletes private sources.
-Partial/unknown/failure requires manual root review; no blanket cleanup command
-is included. Decryption verification and artifact acceptance remain separate.
-
-Credentials
-GH_TOKEN is present only in the native step, using github.token (contents:read).
-The reviewed sidecar clears inherited JB/REFERENCE knobs and pins
-https://github.com/NethermindEth/json-bench.git; the token is used only by the
-reviewed helper's authenticated fetch. No private encryption key is staged.
-
-Review limits
-All files here are prepared artifacts, not an executed capability. The unchanged
-sidecar governs runtime/image/process/log/fingerprint/CPU checks and normal stop.
-Source hashes, prospective inputs, correct POSIX execution, actual restore and
-final encrypted evidence must all be accepted before any native PASS claim.
-
-V2 freeze is already created by freeze.py from the exact accepted inventory.
-Do not repeat the exclusive-creation step or overwrite v1; integrate this complete
-package as a new operator commit after independent review. Test/startup script is
-part of exact harness feeba and its28 source pins, not a modified sidecar.
+RPC native capability v3: one ordinary queued GitHub job on the reviewed runner.
+Same c2e/feeba workload, images, prospective inputs and lifecycle guards as v2.
+Only launcher change: require exact RUNNER_NAME=reproducible-benchmarks before
+run identity, path access, reservation or node/CPU mutation. Wrong runner refuses.
+Root may enqueue one job behind existing jobs; never cancel or reprioritize them.
+The runner serializes its Actions jobs. Continuous hosted/upstream automatic work
+is not a reason to require the entire repository workflow queue to be empty.
+All live preflight, prior HOLD, foreign container/mount/journal, exact owned-lock,
+private archive, normal stop and CPU restore checks remain unchanged.
+This does not strengthen protection from a future foreign harness after UNKNOWN
+HOLD; an initially empty queue never prevented later automatic dispatches either.
+No comprehensive /proc helper-scan claim is made for the inherited preflight.
+Recovery37297806898 and release37298729707 are independently accepted; the failed
+original37293502679 and undispatched frozen v2 remain unchanged. One corrected
+capability only. Native success still requires full encrypted evidence review.
+No optimization comparison, timing acceptance or corpus pooling claim.

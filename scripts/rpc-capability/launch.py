@@ -20,6 +20,7 @@ def git(repository, *arguments):
 
 def launch(operator, harness):
     if sys.platform != 'linux':raise ValueError('LINUX_REQUIRED')
+    if os.environ.get('RUNNER_NAME') != 'reproducible-benchmarks':raise ValueError('EXACT_RUNNER_REQUIRED')
     run,attempt=guard.run_identity()
     if operator.resolve(strict=True)!=operator or harness.resolve(strict=True)!=harness or operator==harness:
         raise ValueError('DISTINCT_CANONICAL_CHECKOUTS_REQUIRED')

@@ -35,7 +35,7 @@ def freeze(source, approved_digest):
               'snapshot_head_hash':HEAD_HASH,'historical_byte_equivalence_claimed':False}
     # Exclusive creation prevents replacing an accepted freeze with observations from a later attempt.
     with (HERE/'expected-pins.json').open('x',encoding='utf-8',newline='\n') as target:json.dump(expected,target,indent=2)
-    names=['guard.py','launch.py','freeze.py','test_guard.py','workflow.yml','expected-pins.json',
+    names=['guard.py','launch.py','freeze.py','test_guard.py','test_runner.py','workflow.yml','expected-pins.json',
            'native/native_capability.py','native/pidfd_compat.py','native/source-pins.json',
            'native/harness-pin.json','native/test_native_capability.py']
     files={name:hashlib.sha256((HERE/name).read_bytes()).hexdigest() for name in names}
