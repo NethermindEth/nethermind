@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+
 namespace Nethermind.Evm.CodeAnalysis;
 
 /// <summary>Whether the guest's zkVM analyzes jump destinations with ZisK's JUMPDEST bitmap precompile.</summary>
@@ -10,7 +12,8 @@ namespace Nethermind.Evm.CodeAnalysis;
 /// ZisK guest's <c>substitutions.xml</c> stubs it to <see langword="true"/> at link time. ILC then folds the check,
 /// so the ZisK guest calls the precompile directly and the other guests never reference its symbol.
 /// </remarks>
-internal readonly struct ZiskJumpDestFlag
+internal readonly struct ZiskJumpDestFlag : IFlag
 {
+    /// <inheritdoc />
     public static bool IsActive => false;
 }

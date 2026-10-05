@@ -44,7 +44,8 @@ public sealed partial class CodeInfo
     private long[] CreateJumpBitmap()
     {
         long[] bitmap = JumpDestinationAnalyzer.CreateBitmap(CodeLength);
-        if (ZiskJumpDestFlag.IsActive && CodeLength != 0) AnalyzeWithPrecompile(bitmap);
+        // STOP-first code halts before any jump, so it is not worth analyzing.
+        if (ZiskJumpDestFlag.IsActive && CodeLength != 0 && _code.Span[0] != (byte)Instruction.STOP) AnalyzeWithPrecompile(bitmap);
         return bitmap;
     }
 
