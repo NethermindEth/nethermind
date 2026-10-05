@@ -89,17 +89,7 @@ public partial class BeaconSyncOrchestratorTests
         while (rounds < maxRounds && !harness.Importer.Known.Contains(gossip.ComputeMessageRoot()))
         {
             rounds++;
-            using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(token);
-            round.CancelAfter(TimeSpan.FromSeconds(3));
-            try
-            {
-                await harness.Orchestrator.FeedRangeSyncRoundAsync(round.Token);
-            }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested)
-            {
-            }
-
-            await harness.Orchestrator.ProcessQueuedAsync(token);
+            await RunRangeRoundAsync(harness, token, TimeSpan.FromSeconds(3));
         }
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -168,17 +158,7 @@ public partial class BeaconSyncOrchestratorTests
         while (rounds < maxRounds && !harness.Importer.Known.Contains(wallSlotRoot))
         {
             rounds++;
-            using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(token);
-            round.CancelAfter(TimeSpan.FromSeconds(15));
-            try
-            {
-                await harness.Orchestrator.FeedRangeSyncRoundAsync(round.Token);
-            }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested)
-            {
-            }
-
-            await harness.Orchestrator.ProcessQueuedAsync(token);
+            await RunRangeRoundAsync(harness, token, TimeSpan.FromSeconds(15));
         }
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -215,4 +195,19 @@ public partial class BeaconSyncOrchestratorTests
 
     private static int RangeRequests(IBeaconSyncPeer peer) =>
         peer.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IBeaconSyncPeer.RequestBlocksByRangeAsync));
+
+    private static async Task RunRangeRoundAsync(Harness harness, CancellationToken token, TimeSpan timeout)
+    {
+        using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(token);
+        round.CancelAfter(timeout);
+        try
+        {
+            await harness.Orchestrator.FeedRangeSyncRoundAsync(round.Token);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+        }
+
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+    }
 }

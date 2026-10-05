@@ -197,15 +197,7 @@ public class PeerDialPolicyTests
         finally
         {
             await stop.CancelAsync();
-            try
-            {
-                await dialing;
-            }
-            catch (OperationCanceledException)
-            {
-            }
-
-            await local.P2P.DisposeAsync();
+            await AwaitStoppedOperationAndDisposeNodeAsync(dialing, local);
             await remote.P2P.DisposeAsync();
         }
     }
@@ -256,15 +248,7 @@ public class PeerDialPolicyTests
         finally
         {
             await stop.CancelAsync();
-            try
-            {
-                await accepting;
-            }
-            catch (OperationCanceledException)
-            {
-            }
-
-            await local.P2P.DisposeAsync();
+            await AwaitStoppedOperationAndDisposeNodeAsync(accepting, local);
         }
     }
 
@@ -414,5 +398,18 @@ public class PeerDialPolicyTests
         public Hash256 JustifiedRoot => inner.JustifiedRoot;
 
         public bool ExecutionInSync => inner.ExecutionInSync;
+    }
+
+    private static async Task AwaitStoppedOperationAndDisposeNodeAsync(Task operation, Node node)
+    {
+        try
+        {
+            await operation;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        await node.P2P.DisposeAsync();
     }
 }
