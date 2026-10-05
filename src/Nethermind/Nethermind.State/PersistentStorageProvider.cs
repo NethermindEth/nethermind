@@ -1034,11 +1034,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public ref StorageChangeTrace GetValueRefOrNullRef(in UInt256 storageCellIndex)
             => ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex);
 
-        public StorageChangeTrace this[UInt256 key]
-        {
-            set => _dictionary[key] = value;
-        }
-
         public Dictionary<SlotKey, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
         public Dictionary<SlotKey, StorageChangeTrace>.KeyCollection Keys => _dictionary.Keys;
@@ -1426,11 +1421,24 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private partial (int writes, int skipped) WriteChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch);
 
-        private int WriteDeletes(ReadOnlySpan<UInt256> keys, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
+        /// <summary>Marks a pending change as committed, writing its value now unless it clears the slot.</summary>
+        /// <returns><see langword="false"/> when the change clears the slot, so its delete must follow every write.</returns>
+        /// <remarks>Safe while enumerating <see cref="BlockChange"/>: it only overwrites an existing entry, never adds or removes one.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryWriteNow(in UInt256 key, ref StorageChangeTrace change, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
+        {
+            UInt256 after = change.After;
+            change.Set(after, after, isInitialValue: false);
+            if (after.IsZero) return false;
+
+            storageWriteBatch.Set(in key, in after);
+            return true;
+        }
+
+        private static int WriteDeletes(ReadOnlySpan<UInt256> keys, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
             foreach (ref readonly UInt256 key in keys)
             {
-                BlockChange[key] = default;
                 storageWriteBatch.Set(in key, UInt256.Zero);
             }
 

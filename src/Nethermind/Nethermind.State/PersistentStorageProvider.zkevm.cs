@@ -32,25 +32,17 @@ internal sealed partial class PersistentStorageProvider
             foreach (SlotKey key in BlockChange.Keys)
             {
                 ref StorageChangeTrace change = ref BlockChange.GetValueRefOrNullRef(key);
-                UInt256 after = change.After;
-                if (change.IsPendingWrite)
+                if (!change.IsPendingWrite)
                 {
-                    if (after.IsZero)
-                    {
-                        deferredDeletes.Add(key);
-                    }
-                    else
-                    {
-                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
-                        change.Set(after, after, isInitialValue: false);
-                        storageWriteBatch.Set(key, in after);
-
-                        writes++;
-                    }
+                    skipped++;
+                }
+                else if (TryWriteNow(key, ref change, storageWriteBatch))
+                {
+                    writes++;
                 }
                 else
                 {
-                    skipped++;
+                    deferredDeletes.Add(key);
                 }
             }
 
