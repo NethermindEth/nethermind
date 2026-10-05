@@ -7,7 +7,6 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
-using Nethermind.BeaconChain.Types;
 
 namespace Ethereum.ConsensusSpec.Test;
 
@@ -51,17 +50,7 @@ public class SanityTests
     internal static void RunBlocks(SanityCase testCase)
     {
         FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
-        switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
-        {
-            case ForkDriver<BeaconStateFulu> fulu:
-                RunBlocks(testCase, fulu);
-                break;
-            case ForkDriver<BeaconStateGloas> gloas:
-                RunBlocks(testCase, gloas);
-                break;
-            case ForkDriver other:
-                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no state type this suite knows.");
-        }
+        FuluDriverSupport.Dispatch(testCase.Fork, testCase, RunBlocks, RunBlocks);
     }
 
     private static void RunBlocks<TState>(SanityCase testCase, ForkDriver<TState> driver) where TState : class
@@ -93,17 +82,7 @@ public class SanityTests
     private static void RunSlots(SanityCase testCase)
     {
         FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
-        switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
-        {
-            case ForkDriver<BeaconStateFulu> fulu:
-                RunSlots(testCase, fulu);
-                break;
-            case ForkDriver<BeaconStateGloas> gloas:
-                RunSlots(testCase, gloas);
-                break;
-            case ForkDriver other:
-                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no state type this suite knows.");
-        }
+        FuluDriverSupport.Dispatch(testCase.Fork, testCase, RunSlots, RunSlots);
     }
 
     private static void RunSlots<TState>(SanityCase testCase, ForkDriver<TState> driver) where TState : class

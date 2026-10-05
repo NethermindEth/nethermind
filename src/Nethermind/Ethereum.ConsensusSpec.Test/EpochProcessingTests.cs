@@ -100,17 +100,9 @@ public class EpochProcessingTests
                 "(opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
         }
 
-        switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
-        {
-            case ForkDriver<BeaconStateFulu> fulu:
-                Run(testCase, fulu, Handlers);
-                break;
-            case ForkDriver<BeaconStateGloas> gloas:
-                Run(testCase, gloas, GloasHandlers);
-                break;
-            case ForkDriver other:
-                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no epoch_processing handler table.");
-        }
+        FuluDriverSupport.Dispatch(testCase.Fork, testCase,
+            static (testCase, driver) => Run(testCase, driver, Handlers),
+            static (testCase, driver) => Run(testCase, driver, GloasHandlers), "epoch_processing handler table");
     }
 
     private static void Run<TState>(EpochProcessingCase testCase, ForkDriver<TState> driver, Dictionary<string, Action<TState, EpochCache>> handlers)

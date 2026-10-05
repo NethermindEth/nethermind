@@ -6,7 +6,6 @@ using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
-using Nethermind.BeaconChain.Types;
 
 namespace Ethereum.ConsensusSpec.Test;
 
@@ -60,17 +59,9 @@ public class RewardsTests
     private static void Run(RewardsCase testCase)
     {
         FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
-        switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
-        {
-            case ForkDriver<BeaconStateFulu> fulu:
-                Run(testCase, fulu, static state => state.Balances!, static state => state.GetCurrentEpoch(), EpochProcessing.ProcessRewardsAndPenalties);
-                break;
-            case ForkDriver<BeaconStateGloas> gloas:
-                Run(testCase, gloas, static state => state.Balances!, static state => state.GetCurrentEpoch(), GloasEpochProcessing.ProcessRewardsAndPenalties);
-                break;
-            case ForkDriver other:
-                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no state type this suite knows.");
-        }
+        FuluDriverSupport.Dispatch(testCase.Fork, testCase,
+            static (testCase, driver) => Run(testCase, driver, static state => state.Balances!, static state => state.GetCurrentEpoch(), EpochProcessing.ProcessRewardsAndPenalties),
+            static (testCase, driver) => Run(testCase, driver, static state => state.Balances!, static state => state.GetCurrentEpoch(), GloasEpochProcessing.ProcessRewardsAndPenalties));
     }
 
     private static void Run<TState>(RewardsCase testCase, ForkDriver<TState> driver, Func<TState, ulong[]> balancesOf, Func<TState, ulong> epochOf, Action<TState, EpochCache> processRewardsAndPenalties)

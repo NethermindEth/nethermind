@@ -66,6 +66,23 @@ public static class FuluDriverSupport
             ? driver
             : throw new NotImplementedInDriverException($"fork '{fork}' has no ForkDriver; its vectors cannot be carried through this pipeline.");
 
+    internal static void Dispatch<TCase>(string fork, TCase testCase,
+        Action<TCase, ForkDriver<BeaconStateFulu>> fulu, Action<TCase, ForkDriver<BeaconStateGloas>> gloas,
+        string unsupported = "state type this suite knows")
+    {
+        switch (RequireForkDriver(fork))
+        {
+            case ForkDriver<BeaconStateFulu> driver:
+                fulu(testCase, driver);
+                break;
+            case ForkDriver<BeaconStateGloas> driver:
+                gloas(testCase, driver);
+                break;
+            case ForkDriver other:
+                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no {unsupported}.");
+        }
+    }
+
     public static void RequireMainnetPreset(string preset)
     {
         if (preset == nameof(ConsensusPreset.Minimal))
