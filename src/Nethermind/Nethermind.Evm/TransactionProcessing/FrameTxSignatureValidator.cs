@@ -41,7 +41,8 @@ public static class FrameTxSignatureValidator
     }
 
     /// <summary>Validation that stops before the next verifying entry once <paramref name="preempt"/> returns
-    /// <see langword="true"/>, so a caller yielding to other work holds the CPU for at most one more verification.</summary>
+    /// <see langword="true"/>, so a caller yielding to other work holds the CPU for at most one more verification.
+    /// The first verifying entry always runs, so a transaction with a single signature is never stopped.</summary>
     /// <param name="preempted">Set when validation stopped early. No verdict was reached then, so the result is
     /// <see langword="false"/> and <paramref name="error"/> is <see langword="null"/>.</param>
     public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, Func<bool>? preempt, out bool preempted, out string? error)
@@ -66,6 +67,8 @@ public static class FrameTxSignatureValidator
         preempted = false;
         TxFrameSignature[]? signatures = tx.FrameSignatures;
         if (signatures is null || signatures.Length == 0) return true;
+
+        int verifying = 0;
 
         for (int i = 0; i < signatures.Length; i++)
         {
@@ -93,8 +96,10 @@ public static class FrameTxSignatureValidator
                 return Fail(InvalidSignature, out error);
             }
 
-            // Polled per entry rather than once, since the elliptic-curve work is what a caller yields.
-            if (preempt?.Invoke() == true)
+            // Polled per entry rather than once, since the elliptic-curve work is what a caller yields. Not before the
+            // first: one verification is the bound a caller accepts anyway, and stopping there would defer every
+            // ordinary transaction that arrives during the caller's other work.
+            if (verifying++ > 0 && preempt?.Invoke() == true)
             {
                 preempted = true;
                 return false;

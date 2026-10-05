@@ -407,28 +407,7 @@ public class FrameTxSignatureValidatorTests
     }
 
     [Test]
-    public void Validate_PreemptedBeforeAnEntry_StopsWithoutAVerdict()
-    {
-        Transaction tx = CreateFrameTx();
-        tx.FrameSignatures = [DigestEntry(TestItem.PrivateKeyA, 1), DigestEntry(TestItem.PrivateKeyB, 2), DigestEntry(TestItem.PrivateKeyC, 3)];
-        int polls = 0;
-
-        bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
-            () => ++polls > 1, out bool preempted, out string? error);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(valid, Is.False);
-            Assert.That(preempted, Is.True);
-            Assert.That(error, Is.Null, "a preempted validation reached no verdict");
-            Assert.That(polls, Is.EqualTo(2));
-            Assert.That(tx.FrameSignatures[0].Recovered, Is.Not.Null, "the entry before the preemption must have verified");
-            Assert.That(tx.FrameSignatures[1].Recovered, Is.Null, "no recovery may run once preempted");
-        }
-    }
-
-    [Test]
-    public void Validate_NotPreempted_PollsBeforeEachVerifyingEntry()
+    public void Validate_Preempted_StopsBeforeTheSecondVerifyingEntryWithoutAVerdict()
     {
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures =
@@ -436,7 +415,47 @@ public class FrameTxSignatureValidatorTests
             new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0xde, 0xad }),
             DigestEntry(TestItem.PrivateKeyA, 1),
             DigestEntry(TestItem.PrivateKeyB, 2),
+            DigestEntry(TestItem.PrivateKeyC, 3),
         ];
+        int polls = 0;
+
+        bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
+            () => ++polls > 0, out bool preempted, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(preempted, Is.True);
+            Assert.That(error, Is.Null, "a preempted validation reached no verdict");
+            Assert.That(polls, Is.EqualTo(1), "neither the ARBITRARY entry nor the first verifying one is polled");
+            Assert.That(tx.FrameSignatures[1].Recovered, Is.Not.Null, "the first verifying entry always runs");
+            Assert.That(tx.FrameSignatures[2].Recovered, Is.Null, "no recovery may run once preempted");
+        }
+    }
+
+    [Test]
+    public void Validate_SingleSignature_IsNeverPreempted()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [DigestEntry(TestItem.PrivateKeyA, 1)];
+        int polls = 0;
+
+        bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
+            () => ++polls > 0, out bool preempted, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.True, error);
+            Assert.That(preempted, Is.False);
+            Assert.That(polls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Validate_NotPreempted_PollsBeforeEachLaterVerifyingEntry()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [DigestEntry(TestItem.PrivateKeyA, 1), DigestEntry(TestItem.PrivateKeyB, 2), DigestEntry(TestItem.PrivateKeyC, 3)];
         int polls = 0;
 
         bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
@@ -446,7 +465,7 @@ public class FrameTxSignatureValidatorTests
         {
             Assert.That(valid, Is.True, error);
             Assert.That(preempted, Is.False);
-            Assert.That(polls, Is.EqualTo(2), "an ARBITRARY entry does no elliptic-curve work, so it is not polled");
+            Assert.That(polls, Is.EqualTo(2));
         }
     }
 
