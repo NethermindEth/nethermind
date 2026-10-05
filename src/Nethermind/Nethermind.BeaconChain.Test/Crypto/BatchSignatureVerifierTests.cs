@@ -20,28 +20,21 @@ public class BatchSignatureVerifierTests
     private static byte[] Sign(Bls.SecretKey sk, byte[] message) => BlsSigner.Sign(sk, message).Bytes.ToArray();
     private static byte[] Msg(byte fill) => Enumerable.Repeat(fill, 32).ToArray();
 
-    private static BlsSignatureSet MakeSet(int keyIndex, byte[] message)
+    // A different claimed key produces an invalid pairing while both points remain in their subgroups.
+    private static BlsSignatureSet MakeSet(int keyIndex, byte[] message, int? claimedKeyIndex = null)
     {
         Bls.SecretKey sk = DeriveKey(keyIndex);
-        bool ok = BlsSignatureSet.TryCreate(CompressedPubkey(sk), message, Sign(sk, message), out BlsSignatureSet? set);
-        Assert.That(ok, Is.True, "fixture signature must itself be valid");
+        byte[] claimedPk = CompressedPubkey(claimedKeyIndex is int claimed ? DeriveKey(claimed) : sk);
+        bool ok = BlsSignatureSet.TryCreate(claimedPk, message, Sign(sk, message), out BlsSignatureSet? set);
+        Assert.That(ok, Is.True, "fixture points must decode and belong to their subgroups");
         return set!;
     }
 
-    // Both keys are valid subgroup points; only the mismatched pairing makes this signature invalid.
-    private static BlsSignatureSet MakeMismatchedSet(int signerKeyIndex, byte[] message, int claimedKeyIndex)
+    [TestCase(6, TestName = nameof(Agreement_batch_and_serial_both_accept_valid_sets))]
+    [TestCase(0, TestName = "Empty_batch_verifies_true")]
+    public void Agreement_batch_and_serial_both_accept_valid_sets(int count)
     {
-        byte[] sig = Sign(DeriveKey(signerKeyIndex), message);
-        byte[] claimedPk = CompressedPubkey(DeriveKey(claimedKeyIndex));
-        bool ok = BlsSignatureSet.TryCreate(claimedPk, message, sig, out BlsSignatureSet? set);
-        Assert.That(ok, Is.True, "mismatched fixture must still decode - it is invalid only by content");
-        return set!;
-    }
-
-    [Test]
-    public void Agreement_batch_and_serial_both_accept_valid_sets()
-    {
-        List<BlsSignatureSet> sets = [.. Enumerable.Range(0, 6).Select(i => MakeSet(i, Msg((byte)i)))];
+        List<BlsSignatureSet> sets = [.. Enumerable.Range(0, count).Select(i => MakeSet(i, Msg((byte)i)))];
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(BatchSignatureVerifier.VerifyBatch(sets), Is.True);
@@ -52,7 +45,7 @@ public class BatchSignatureVerifierTests
     public void Single_bad_signature_fails_batch_regardless_of_position([Values(0, 2, 4)] int badPosition)
     {
         List<BlsSignatureSet> sets = [.. Enumerable.Range(0, 5).Select(i => MakeSet(i, Msg((byte)(i + 10))))];
-        sets[badPosition] = MakeMismatchedSet(badPosition, Msg((byte)(badPosition + 10)), badPosition + 100);
+        sets[badPosition] = MakeSet(badPosition, Msg((byte)(badPosition + 10)), badPosition + 100);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(BatchSignatureVerifier.VerifyBatch(sets), Is.False, $"batch must reject with the bad set at position {badPosition}");
@@ -64,8 +57,8 @@ public class BatchSignatureVerifierTests
     {
         // Swapped same-message signatures cancel in an unrandomized batch: exponents (sk2-sk1)+(sk1-sk2)=0.
         byte[] message = Msg(0xAB);
-        BlsSignatureSet set1 = MakeMismatchedSet(1, message, 2);
-        BlsSignatureSet set2 = MakeMismatchedSet(2, message, 1);
+        BlsSignatureSet set1 = MakeSet(1, message, 2);
+        BlsSignatureSet set2 = MakeSet(2, message, 1);
         List<BlsSignatureSet> sets = [set1, set2];
 
 
@@ -140,14 +133,6 @@ public class BatchSignatureVerifierTests
 
 
     [Test]
-    public void Empty_batch_verifies_true() =>
-        Assert.Multiple(() =>
-        {
-            Assert.That(BatchSignatureVerifier.VerifyBatch([]), Is.True);
-            Assert.That(BatchSignatureVerifier.FindInvalid([]), Is.EqualTo(-1));
-        });
-
-    [Test]
     public void Never_a_false_accept_over_randomized_inputs()
     {
         // Fixed seed: any failure here reproduces exactly. The property under test is one-sided -
@@ -168,7 +153,7 @@ public class BatchSignatureVerifierTests
                 bool valid = random.Next(2) == 0;
                 sets.Add(valid
                     ? MakeSet(keyIndex, message)
-                    : MakeMismatchedSet(keyIndex, message, keyIndex + 10_000));
+                    : MakeSet(keyIndex, message, keyIndex + 10_000));
             }
 
             bool serialAllValid = BatchSignatureVerifier.FindInvalid(sets) < 0;
