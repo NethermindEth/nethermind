@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -210,7 +209,19 @@ public partial class BlockAccessListManager
 
         public void Rollback() { }
 
-        public void Dispose() => (_parentReaderEnvPool as IDisposable)?.Dispose();
+        public void Dispose()
+        {
+            (_parentReaderEnvPool as IDisposable)?.Dispose();
+            foreach (TxProcessorWithWorldState? processor in _inUse)
+            {
+                processor?.Dispose();
+            }
+
+            while (_processors.TryDequeue(out TxProcessorWithWorldState? processor))
+            {
+                processor.Dispose();
+            }
+        }
 
         private int ClampBalIndex(uint balIndex)
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
@@ -233,6 +244,7 @@ public partial class BlockAccessListManager
             if (Interlocked.Increment(ref _processorCount) > ProcessorPoolSize)
             {
                 Interlocked.Decrement(ref _processorCount);
+                p.Dispose();
                 return;
             }
             _processors.Enqueue(p);
@@ -332,7 +344,7 @@ public partial class BlockAccessListManager
 
         public void Rollback() => _txProcessorWithWorldState.WorldState.Clear();
 
-        public void Dispose() { }
+        public void Dispose() => _txProcessorWithWorldState.Dispose();
 
         public void MergeAndReturnBal(uint _, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null)
         {
@@ -342,11 +354,12 @@ public partial class BlockAccessListManager
         }
     }
 
-    private class TxProcessorWithWorldState
+    private class TxProcessorWithWorldState : IDisposable
     {
         public readonly TracedAccessWorldState WorldState;
         public readonly ITransactionProcessor TxProcessor;
         public readonly ITransactionProcessorAdapter TxProcessorAdapter;
+        private readonly IDisposable _virtualMachine;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
         private BalReadCoverage? _readCoverage;
@@ -367,8 +380,11 @@ public partial class BlockAccessListManager
                 worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
-            (TxProcessor, TxProcessorAdapter) = txProcessorFactory.Create(WorldState, parallel);
+            (TxProcessor, TxProcessorAdapter, _virtualMachine) = txProcessorFactory.Create(WorldState, parallel);
         }
+
+        /// <summary>Hands the data stacks the processor's virtual machine keeps back to the shared pool.</summary>
+        public void Dispose() => _virtualMachine.Dispose();
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader, BalReadStoragePlan? readPlan = null)
         {

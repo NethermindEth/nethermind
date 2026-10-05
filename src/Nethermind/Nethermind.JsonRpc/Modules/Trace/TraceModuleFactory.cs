@@ -42,7 +42,8 @@ public class TraceModuleFactory(
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing(builder, static p => new TraceTransactionProcessorAdapter(p), validationBlockProcessingModules)
+            ConfigureCommonBlockProcessing(builder, static p => new UnpricedCallTraceAdapter(p), validationBlockProcessingModules)
+                .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, UnpricedBlobFeeCalculator>()
                 .AddModule(env));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules)

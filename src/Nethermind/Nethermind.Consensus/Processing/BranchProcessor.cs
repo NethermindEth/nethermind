@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -55,6 +56,8 @@ public class BranchProcessor(
         if (suggestedBlocks.Count == 0) return [];
 
         Block suggestedBlock = suggestedBlocks[0];
+        ParallelUnbalancedWork.WorkerGroup workerGroup =
+            (options.ContainsFlag(ProcessingOptions.ReadOnlyChain) ? null : ParallelUnbalancedWork.GetCurrentGroup()) ?? new(Environment.ProcessorCount);
         // The scope is opened at the target's parent, but baseBlock still selects the prewarmed caches, so an
         // inconsistent pair would warm one state and execute another without any other symptom.
         Debug.Assert(suggestedBlock.IsGenesis ? baseBlock is null : baseBlock?.Hash == suggestedBlock.ParentHash,
@@ -95,13 +98,16 @@ public class BranchProcessor(
 
         try
         {
-            // Start prewarming as early as possible
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-            Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
-
-            blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
-            BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
+            Task? prefetchBlockhash;
+            using (workerGroup.Enter())
+            {
+                // Start prewarming as early as possible.
+                prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
+                prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
+                BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
+            }
 
             BlockHeader? preBlockBaseBlock = baseBlock;
             // Set by the commit-point re-open, which already targets the next block, so the EIP-8347 boundary
@@ -117,6 +123,7 @@ public class BranchProcessor(
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
+                using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)
                 {
                     bool wasEip8347Enabled = spec.IsEip8347Enabled;
@@ -174,6 +181,13 @@ public class BranchProcessor(
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
                 processedBlocks[i] = processedBlock;
+
+                // Only the processed header carries the EIP-8037 dimensions, and its consensus twin is what a
+                // later re-validation of this block is handed, so an inclusion list judged then sees the same gas.
+                // Nothing records them for a block with no transaction to record, and since the header's total is
+                // their maximum, spending no gas puts both at zero.
+                if (processedBlock.GasUsed == 0) processedBlock.Header.GasUsedPerDimension ??= (0, 0);
+                suggestedBlock.Header.GasUsedPerDimension = processedBlock.Header.GasUsedPerDimension;
 
                 // A signal, not a rejection: the block is still committed, and it reads post-execution
                 // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
@@ -286,10 +300,14 @@ public class BranchProcessor(
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {
-        public static void CalculateInBackground(Block suggestedBlock) =>
+        public static void CalculateInBackground(Block suggestedBlock)
+        {
             // Memory has been reserved on the transactions to delay calculate the hashes
             // We calculate the hashes in the background to release that memory
-            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlock), preferLocal: false);
+            TxHashCalculator work = new(suggestedBlock);
+            if (ParallelUnbalancedWork.GetCurrentGroup() is { } group) group.Queue(work);
+            else ThreadPool.UnsafeQueueUserWorkItem(work, preferLocal: false);
+        }
 
         void IThreadPoolWorkItem.Execute()
         {

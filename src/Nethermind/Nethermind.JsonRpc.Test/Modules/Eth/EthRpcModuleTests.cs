@@ -1021,6 +1021,19 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedResponse));
     }
 
+    private static async Task<string> CallLogsMethod(Context ctx, string method, string filter)
+    {
+        string parameter = filter;
+
+        if (method == "eth_getFilterLogs")
+        {
+            using JsonRpcResponse newFilterResponse = await RpcTest.TestRequest(ctx.Test.EthRpcModule, "eth_newFilter", filter);
+            parameter = RpcTest.AssertSuccess<UInt256?>(newFilterResponse)?.ToString() ?? "0x0";
+        }
+
+        return await ctx.Test.TestEthRpc(method, parameter);
+    }
+
     private static IEnumerable<TestCaseData> MaxBlockDepthCases()
     {
         foreach ((string name, int maxBlockDepth, string filter, bool shouldReject) in Cases())
@@ -1057,15 +1070,7 @@ public partial class EthRpcModuleTests
             .WithReceiptConfig(new ReceiptConfig { MaxBlockDepth = maxBlockDepth })
             .Build();
 
-        string parameter = filter;
-
-        if (method == "eth_getFilterLogs")
-        {
-            using JsonRpcResponse newFilterResponse = await RpcTest.TestRequest(ctx.Test.EthRpcModule, "eth_newFilter", filter);
-            parameter = RpcTest.AssertSuccess<UInt256?>(newFilterResponse)?.ToString() ?? "0x0";
-        }
-
-        string serialized = await ctx.Test.TestEthRpc(method, parameter);
+        string serialized = await CallLogsMethod(ctx, method, filter);
 
         if (shouldReject)
         {
@@ -1076,6 +1081,38 @@ public partial class EthRpcModuleTests
         {
             Assert.That(serialized, Does.Not.Contain("\"error\""));
         }
+    }
+
+    private static IEnumerable<TestCaseData> ReversedRangeEndingAtBlockZeroCases()
+    {
+        foreach ((string name, string filter, ulong expectedFromBlock) in Cases())
+        {
+            yield return new TestCaseData("eth_getLogs", filter, expectedFromBlock, false).SetName($"{{m}}_getLogs_{name}_Buffered");
+            yield return new TestCaseData("eth_getLogs", filter, expectedFromBlock, true).SetName($"{{m}}_getLogs_{name}_Stream");
+            yield return new TestCaseData("eth_getFilterLogs", filter, expectedFromBlock, false).SetName($"{{m}}_getFilterLogs_{name}_Buffered");
+            yield return new TestCaseData("eth_getFilterLogs", filter, expectedFromBlock, true).SetName($"{{m}}_getFilterLogs_{name}_Stream");
+        }
+
+        static IEnumerable<(string Name, string Filter, ulong ExpectedFromBlock)> Cases()
+        {
+            yield return ("latest_to_earliest", """{"fromBlock":"latest","toBlock":"earliest"}""", TestBlockchain.HeadNumber);
+            yield return ("latest_to_block_zero", """{"fromBlock":"latest","toBlock":"0x0"}""", TestBlockchain.HeadNumber);
+            yield return ("explicit_from_to_earliest", """{"fromBlock":"0x2","toBlock":"earliest"}""", 2UL);
+        }
+    }
+
+    [TestCaseSource(nameof(ReversedRangeEndingAtBlockZeroCases))]
+    public async Task Eth_logs_reject_reversed_range_ending_at_block_zero(string method, string filter, ulong expectedFromBlock, bool enableLogsStreamMode)
+    {
+        using Context ctx = await Context.Create();
+
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build();
+
+        string serialized = await CallLogsMethod(ctx, method, filter);
+
+        string message = $"From block {expectedFromBlock} is later than to block 0.";
+        Assert.That(serialized, Is.EqualTo(
+            $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}","data":"System.ArgumentException: {{message}}"},"id":67}"""));
     }
 
     [TestCase("eth_getLogs", "{}")]
@@ -2917,7 +2954,7 @@ public partial class EthRpcModuleTests
 
         await test.AddBlock(setCodeTx);
 
-        byte[]? code = test.ReadOnlyState.GetCode(TestItem.AddressB);
+        byte[] code = test.ReadOnlyState.GetCode(TestItem.AddressB).ToArray();
 
         Assert.That(code!.Slice(0, 3), Is.EquivalentTo(Eip7702Constants.DelegationHeader.ToArray()));
 

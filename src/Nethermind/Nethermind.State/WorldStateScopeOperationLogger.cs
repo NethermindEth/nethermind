@@ -85,6 +85,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => innerScope.HintBal(bal, sink);
 
+        public void ApplyBal(ReadOnlyBlockAccessList bal)
+            => innerScope.ApplyBal(bal);
+
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 
         public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
@@ -125,6 +128,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         }
 
         public void HintSet(in UInt256 index) => storageTree.HintSet(in index);
+
+        public void HintSet(in UInt256 index, in UInt256 value) => storageTree.HintSet(in index, in value);
     }
 
     private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch

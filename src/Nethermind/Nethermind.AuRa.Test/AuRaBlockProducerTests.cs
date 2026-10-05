@@ -206,6 +206,15 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
+        public async Task Does_not_produce_block_when_target_block_state_is_unavailable()
+        {
+            Context context = new();
+            context.StateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+            context.StateProvider.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(false);
+            (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
+        }
+
+        [Test]
         public async Task Does_not_produce_block_when_there_is_new_best_suggested_block_not_yet_processed() =>
             (await StartStop(new Context(), true, true)).ShouldProduceBlocks(Quantity.None());
 

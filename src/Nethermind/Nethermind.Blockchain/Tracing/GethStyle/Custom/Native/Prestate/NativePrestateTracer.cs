@@ -265,7 +265,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             if (_worldState!.TryGetAccount(addr, out AccountStruct account))
             {
                 UInt256 nonce = account.Nonce;
-                byte[]? code = _worldState.GetCode(addr);
+                ReadOnlyMemory<byte> code = _worldState.GetCode(addr);
                 _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code));
             }
             else
@@ -291,7 +291,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     }
 
     private static bool IsEmpty(NativePrestateTracerAccount account) =>
-        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code is null;
+        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code.IsEmpty;
 
     private void ProcessDiffState()
     {
@@ -319,7 +319,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 modified = true;
                 diffAccount.Nonce = poststateAccount.Nonce;
             }
-            if (!Bytes.NullableEqualityComparer.Equals(poststateAccount.Code, prestateAccount.Code))
+            if (!poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
             {
                 modified = true;
                 diffAccount.Code = poststateAccount.Code;
@@ -356,7 +356,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 _poststate.Add(addr, diffAccount);
 
             // If no account fields were modified or the account was created then remove it from the prestate trace;
-            // a contract created onto an address that already held state did not create the account.
+            // a created account counts as new when it was empty before, judged by balance, nonce and code alone.
             if (!modified || (_createdAccounts.Contains(addr) && IsEmpty(prestateAccount)))
                 _prestate.Remove(addr);
         }

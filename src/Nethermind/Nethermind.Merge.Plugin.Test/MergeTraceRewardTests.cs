@@ -58,6 +58,8 @@ public class MergeTraceRewardTests
 
         Block block = Build.A.Block.WithParent(blockTree.Head!).TestObject;
         Assert.That(await blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.None), Is.EqualTo(AddBlockResult.Added));
+        // trace_filter rejects a range past the head.
+        blockTree.ForceMainChainForTest([block], forceUpdateHeadBlock: true);
 
         string response = method == "trace_block"
             ? await RpcTest.TestSerializedRequest(traceRpcModule, method, "0x1")
