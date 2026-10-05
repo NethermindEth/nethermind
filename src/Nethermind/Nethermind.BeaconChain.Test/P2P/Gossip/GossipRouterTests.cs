@@ -331,11 +331,7 @@ public partial class GossipRouterTests
 
         router.Start(id => topics[id] = new FakeTopic(), bpo1Digest);
 
-        List<string> expectedTopics = [];
-        foreach (string name in GossipTopics.SubscribedTopicNames)
-        {
-            expectedTopics.Add(GossipTopics.Topic(bpo1Digest, name));
-        }
+        List<string> expectedTopics = [.. GossipTopics.SubscribedTopicNames.Select(name => GossipTopics.Topic(bpo1Digest, name))];
 
         Assert.That(topics.Keys, Is.EquivalentTo(expectedTopics), "all gossip topics subscribed for the starting digest");
 
