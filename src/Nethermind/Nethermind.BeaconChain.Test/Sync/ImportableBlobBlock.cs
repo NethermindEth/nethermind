@@ -28,7 +28,6 @@ namespace Nethermind.BeaconChain.Test.Sync;
 /// <summary>The signed block passes every pre-availability check; only missing columns can defer it.</summary>
 internal sealed class ImportableBlobBlock
 {
-    private const ulong Gwei = 1_000_000_000;
     private const int ValidatorCount = 16;
     private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
 
@@ -245,12 +244,11 @@ internal sealed class ImportableBlobBlock
 
     private static BeaconStateFulu CreateState(BlsPublicKey[] pubkeys)
     {
-        Validator[] validators = new Validator[pubkeys.Length];
-        ulong[] balances = new ulong[pubkeys.Length];
+        BeaconStateFulu state = GloasTestFixtures.CreateFuluState(pubkeys.Length);
+        Validator[] validators = state.Validators!;
         for (int i = 0; i < validators.Length; i++)
         {
             validators[i] = GloasTestFixtures.CreateActiveValidator(pubkeys[i]);
-            balances[i] = 32 * Gwei;
         }
 
         // Every committee seat must map back to a registered validator for sync aggregate rewards.
@@ -260,45 +258,16 @@ internal sealed class ImportableBlobBlock
             committee[i] = pubkeys[i % pubkeys.Length];
         }
 
-        Hash256[] randaoMixes = Enumerable.Repeat(Hash(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
-        Hash256[] blockRoots = Enumerable.Repeat(Hash256.Zero, (int)Presets.SlotsPerHistoricalRoot).ToArray();
-        Hash256[] stateRoots = Enumerable.Repeat(Hash256.Zero, (int)Presets.SlotsPerHistoricalRoot).ToArray();
-
-        return new BeaconStateFulu
-        {
-            GenesisTime = 1_700_000_000,
-            GenesisValidatorsRoot = Hash(0x01),
-            Slot = 0,
-            Fork = new Fork { PreviousVersion = Bytes.FromHexString("0x05000000"), CurrentVersion = Bytes.FromHexString("0x06000000"), Epoch = 0 },
-            BlockRoots = blockRoots,
-            StateRoots = stateRoots,
-            HistoricalRoots = [],
-            Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-            Eth1DataVotes = [],
-            Eth1DepositIndex = 0,
-            Validators = validators,
-            Balances = balances,
-            RandaoMixes = randaoMixes,
-            Slashings = new ulong[(int)Presets.EpochsPerSlashingsVector],
-            PreviousEpochParticipation = new byte[validators.Length],
-            CurrentEpochParticipation = new byte[validators.Length],
-            JustificationBits = new BitArray(4),
-            PreviousJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            InactivityScores = new ulong[validators.Length],
-            CurrentSyncCommittee = new SyncCommittee { Pubkeys = committee, AggregatePubkey = pubkeys[0] },
-            NextSyncCommittee = new SyncCommittee { Pubkeys = committee, AggregatePubkey = pubkeys[0] },
-            LatestExecutionPayloadHeader = new ExecutionPayloadHeader { ParentHash = Hash(0x70), BlockHash = Hash(0x71), PrevRandao = Hash(0x72), GasLimit = 30_000_000, ExtraData = [] },
-            NextWithdrawalIndex = 0,
-            NextWithdrawalValidatorIndex = 0,
-            HistoricalSummaries = [],
-            DepositRequestsStartIndex = Presets.UnsetDepositRequestsStartIndex,
-            PendingDeposits = [],
-            PendingPartialWithdrawals = [],
-            PendingConsolidations = [],
-            ProposerLookahead = new ulong[(int)Presets.ProposerLookaheadSlots],
-        };
+        state.GenesisTime = 1_700_000_000;
+        state.GenesisValidatorsRoot = Hash(0x01);
+        state.LatestBlockHeader = null;
+        state.FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero };
+        state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = committee, AggregatePubkey = pubkeys[0] };
+        state.NextSyncCommittee = new SyncCommittee { Pubkeys = committee, AggregatePubkey = pubkeys[0] };
+        state.LatestExecutionPayloadHeader!.ExtraData = [];
+        state.HistoricalSummaries = [];
+        state.DepositRequestsStartIndex = Presets.UnsetDepositRequestsStartIndex;
+        return state;
     }
 
     private static Hash256 Hash(byte value) => new(Enumerable.Repeat(value, 32).ToArray());
