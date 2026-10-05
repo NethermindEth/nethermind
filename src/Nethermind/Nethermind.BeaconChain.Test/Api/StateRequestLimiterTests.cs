@@ -211,40 +211,29 @@ public class StateRequestLimiterTests
         if (verifyRelease) Assert.That(reached, Is.True, "both the node-wide and the per-client permit must be free after the deadline");
     }
 
-    [Test]
-    public async Task A_slow_but_steady_download_completes_past_the_idle_bound_even_when_one_write_is_larger_than_it_can_send_in_that_time(
-        [Values(16 * 1024, 256 * 1024)] int writeBytes)
+    [TestCase(16 * 1024, 100, 0, TestName = "A_slow_but_steady_download_completes_past_the_idle_bound_even_when_one_write_is_larger_than_it_can_send_in_that_time(16384)")]
+    [TestCase(256 * 1024, 100, 0, TestName = "A_slow_but_steady_download_completes_past_the_idle_bound_even_when_one_write_is_larger_than_it_can_send_in_that_time(262144)")]
+    [TestCase(16, 0, 1600, TestName = "A_state_that_takes_longer_than_the_idle_bound_to_load_is_not_cut_before_its_first_write")]
+    public async Task A_download_with_steady_writes_or_a_slow_load_completes(int writeBytes, int chunkDelayMilliseconds, int loadDelayMilliseconds)
     {
         using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 40, StateResponseIdleTimeoutSeconds = 1 });
-        using PacedStream reader = new(TimeSpan.FromMilliseconds(100), 16 * 1024);
+        using PacedStream reader = new(TimeSpan.FromMilliseconds(chunkDelayMilliseconds), 16 * 1024);
         DefaultHttpContext download = StateRequest(Download, "192.0.2.7");
         download.Response.Body = reader;
         byte[] state = new byte[writeBytes];
 
-        await limiter.InvokeAsync(download, c => c.Response.Body.WriteAsync(state, c.RequestAborted).AsTask()).WaitAsync(Wait);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(reader.Written, Is.EqualTo(state.Length), "every byte reaches a reader that never stalls longer than the idle bound between chunks");
-        Assert.That(download.RequestAborted.IsCancellationRequested, Is.False, "steady writes must complete even when draining 256 KiB takes 1.6 s and the idle bound is 1 s");
-    }
-
-    [Test]
-    public async Task A_state_that_takes_longer_than_the_idle_bound_to_load_is_not_cut_before_its_first_write()
-    {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 40, StateResponseIdleTimeoutSeconds = 1 });
-        PacedStream reader = new(TimeSpan.Zero);
-        DefaultHttpContext download = StateRequest(Download, "192.0.2.7");
-        download.Response.Body = reader;
-
         await limiter.InvokeAsync(download, async c =>
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(1600), c.RequestAborted);
-            await c.Response.Body.WriteAsync(new byte[16], c.RequestAborted);
+            if (loadDelayMilliseconds != 0) await Task.Delay(loadDelayMilliseconds, c.RequestAborted);
+            await c.Response.Body.WriteAsync(state, c.RequestAborted);
         }).WaitAsync(Wait);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(reader.Written, Is.EqualTo(16), "loading a state is the node's own time, not a stalled reader, so only the total cap bounds it");
-        Assert.That(download.RequestAborted.IsCancellationRequested, Is.False);
+        Assert.That(reader.Written, Is.EqualTo(state.Length), "every byte must reach the reader");
+        Assert.That(download.RequestAborted.IsCancellationRequested, Is.False,
+            loadDelayMilliseconds == 0
+                ? "steady writes must complete even when draining 256 KiB takes 1.6 s and the idle bound is 1 s"
+                : "loading a state is the node's own time, not a stalled reader, so only the total cap bounds it");
     }
 
     [TestCase(1, 120, TestName = "A client that stops reading a state cannot hold its permit past the total cap")]
