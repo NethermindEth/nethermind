@@ -35,11 +35,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
     {
         const ulong slot = 13_410_304;
         const ulong column = 5;
-        Hash256 root = Keccak.Compute("canonical");
-        DataColumnSidecarPool serverPool = new();
-        serverPool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: 1));
-        BeaconChainStore serverStore = new(new MemColumnsDb<BeaconChainDbColumns>());
-        serverStore.SetCanonicalRoot(slot, root);
+        (DataColumnSidecarPool serverPool, BeaconChainStore serverStore) = CreateCanonicalSidecarStore(slot, column);
 
         await using BeaconP2P server = CreateHost(serverStore, serverPool);
         await using BeaconP2P client = CreateHost(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new DataColumnSidecarPool());
@@ -59,11 +55,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
     {
         const ulong slot = 13_410_304;
         const ulong column = 5;
-        Hash256 root = Keccak.Compute("canonical");
-        DataColumnSidecarPool serverPool = new();
-        serverPool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: 1));
-        BeaconChainStore serverStore = new(new MemColumnsDb<BeaconChainDbColumns>());
-        serverStore.SetCanonicalRoot(slot, root);
+        (DataColumnSidecarPool serverPool, BeaconChainStore serverStore) = CreateCanonicalSidecarStore(slot, column);
         SlotClock clock = new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + (slot + 1) * Spec.SecondsPerSlot)).UtcDateTime));
 
         await using BeaconP2P server = CreateHost(serverStore, serverPool, clock);
@@ -213,11 +205,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
     {
         const ulong slot = 13_410_304;
         const ulong column = 5;
-        Hash256 root = Keccak.Compute("canonical");
-        DataColumnSidecarPool serverPool = new();
-        serverPool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: 1));
-        BeaconChainStore serverStore = new(new MemColumnsDb<BeaconChainDbColumns>());
-        serverStore.SetCanonicalRoot(slot, root);
+        (DataColumnSidecarPool serverPool, BeaconChainStore serverStore) = CreateCanonicalSidecarStore(slot, column);
 
         await using BeaconP2P server = CreateHost(serverStore, serverPool);
         await using BeaconP2P client = CreateHost(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new DataColumnSidecarPool());
@@ -286,4 +274,14 @@ public class DataColumnSidecarsByRangeLoopbackTests
         new(new BeaconChainConfig { P2PPort = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new BeaconChainStatusHolder(Spec, Timestamper.Default),
             new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance)
         { RequestTimeout = ShortRequestTimeout };
+
+    private static (DataColumnSidecarPool serverPool, BeaconChainStore serverStore) CreateCanonicalSidecarStore(ulong slot, ulong column)
+    {
+        Hash256 root = Keccak.Compute("canonical");
+        DataColumnSidecarPool serverPool = new();
+        serverPool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: 1));
+        BeaconChainStore serverStore = new(new MemColumnsDb<BeaconChainDbColumns>());
+        serverStore.SetCanonicalRoot(slot, root);
+        return (serverPool, serverStore);
+    }
 }
