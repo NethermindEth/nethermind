@@ -1932,15 +1932,15 @@ public class BlockImporterTests
         public bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, BeaconChainSpec spec) => ++Calls == 1;
     }
 
-    private sealed class ValidPayloadEngine(Action? onPayload = null) : IEngineDriver
+    internal class ValidPayloadEngine(Action? onPayload = null) : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload { get; private set; }
+        public bool HasAnsweredNewPayload { get; protected set; }
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
             Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
 
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
+        public virtual ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
             HasAnsweredNewPayload = true;
             onPayload?.Invoke();
@@ -1959,18 +1959,13 @@ public class BlockImporterTests
         });
     }
 
-    private sealed class ScriptedPayloadEngine(params ExecutionStatus[] verdicts) : IEngineDriver
+    private sealed class ScriptedPayloadEngine(params ExecutionStatus[] verdicts) : ValidPayloadEngine, IEngineDriver
     {
         private int _call;
 
         public Hash256? LatestValidHash { get; init; }
-        public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload { get; private set; }
 
-        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
-
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
+        public override ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
             HasAnsweredNewPayload = true;
             return _call < verdicts.Length
