@@ -671,6 +671,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             if (_logger.IsDebug) _logger.Debug($"Suggesting block {currentBlock.Header.ToString(BlockHeader.Format.Short)} with option {suggestOptions}");
+            // Processing can start before SuggestBlock returns, and BAL reconstruction reads these receipts.
             if (shouldProcess && downloadReceipts && receipts is not null)
                 _receiptStorage.Insert(currentBlock, receipts, ensureCanonical: false);
 
