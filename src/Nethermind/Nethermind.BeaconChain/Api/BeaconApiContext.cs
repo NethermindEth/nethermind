@@ -42,9 +42,7 @@ internal sealed record BeaconApiContext(
 {
     /// <summary>Captures one get_head view for all reads in a request (fork-choice.md).</summary>
     public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead(), ForkChoiceSnapshot = ForkChoiceSnapshots?.Current };
-
     public ForkChoiceSnapshot? ForkChoiceSnapshot { get; private init; }
-
     /// <summary>Bounds the blob rebuilds of this host's getBlobs requests that run at once; a request past it is refused, never queued.</summary>
     public ConcurrencyLimiter BlobRebuilds { get; } = new(new ConcurrencyLimiterOptions { PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds, QueueLimit = 0 });
 
@@ -63,11 +61,8 @@ internal sealed record BeaconApiContext(
     private sealed class FrozenHead(HeadSnapshot snapshot) : IBeaconChainStatusSource
     {
         public StatusMessageV2 CurrentStatus => snapshot.Status;
-
         public Hash256 JustifiedRoot => snapshot.JustifiedRoot;
-
         public bool ExecutionInSync => snapshot.ExecutionInSync;
-
         public (StatusMessageV2 Status, Hash256? FullHeadRoot) CurrentHead => (snapshot.Status, snapshot.FullHeadRoot);
     }
 }

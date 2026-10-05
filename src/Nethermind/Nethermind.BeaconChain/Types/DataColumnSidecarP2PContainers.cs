@@ -17,9 +17,7 @@ namespace Nethermind.BeaconChain.Types;
 public partial class DataColumnSidecarsByRangeRequest
 {
     public ulong StartSlot { get; set; }
-
     public ulong Count { get; set; }
-
     [SszList(128)] // NUMBER_OF_COLUMNS
     public ulong[]? Columns { get; set; }
 }
@@ -29,7 +27,6 @@ public partial class DataColumnSidecarsByRangeRequest
 public partial class DataColumnsByRootIdentifier
 {
     public Hash256? BlockRoot { get; set; }
-
     [SszList(128)] // NUMBER_OF_COLUMNS
     public ulong[]? Columns { get; set; }
 }

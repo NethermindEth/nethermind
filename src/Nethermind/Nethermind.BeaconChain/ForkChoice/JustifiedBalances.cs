@@ -12,7 +12,6 @@ public sealed class JustifiedBalances(IReadOnlyList<ulong> effectiveBalances, ul
     public static readonly JustifiedBalances Empty = new([], 0);
 
     public IReadOnlyList<ulong> EffectiveBalances { get; } = effectiveBalances;
-
     public ulong TotalEffectiveBalance { get; } = totalEffectiveBalance;
 
     public static JustifiedBalances FromEffectiveBalances(IReadOnlyList<ulong> effectiveBalances)

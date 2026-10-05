@@ -12,10 +12,8 @@ public partial class Fork
 {
     [SszVector(4)]
     public byte[]? PreviousVersion { get; set; }
-
     [SszVector(4)]
     public byte[]? CurrentVersion { get; set; }
-
     public ulong Epoch { get; set; }
 }
 
@@ -25,7 +23,6 @@ public partial class ForkData
 {
     [SszVector(4)]
     public byte[]? CurrentVersion { get; set; }
-
     public Hash256? GenesisValidatorsRoot { get; set; }
 }
 
@@ -34,7 +31,6 @@ public partial class ForkData
 public partial class Checkpoint
 {
     public ulong Epoch { get; set; }
-
     public Hash256? Root { get; set; }
 }
 
@@ -43,7 +39,6 @@ public partial class Checkpoint
 public partial class SigningData
 {
     public Hash256? ObjectRoot { get; set; }
-
     public Hash256? Domain { get; set; }
 }
 
@@ -52,13 +47,9 @@ public partial class SigningData
 public partial class BeaconBlockHeader
 {
     public ulong Slot { get; set; }
-
     public ulong ProposerIndex { get; set; }
-
     public Hash256? ParentRoot { get; set; }
-
     public Hash256? StateRoot { get; set; }
-
     public Hash256? BodyRoot { get; set; }
 }
 
@@ -67,7 +58,6 @@ public partial class BeaconBlockHeader
 public partial class SignedBeaconBlockHeader
 {
     public BeaconBlockHeader? Message { get; set; }
-
     public BlsSignature Signature { get; set; }
 }
 
@@ -76,9 +66,7 @@ public partial class SignedBeaconBlockHeader
 public partial class Eth1Data
 {
     public Hash256? DepositRoot { get; set; }
-
     public ulong DepositCount { get; set; }
-
     public Hash256? BlockHash { get; set; }
 }
 
@@ -91,19 +79,12 @@ public partial class Eth1Data
 public partial class Validator
 {
     public BlsPublicKey Pubkey { get; set; }
-
     public Hash256? WithdrawalCredentials { get; set; }
-
     public ulong EffectiveBalance { get; set; }
-
     public bool Slashed { get; set; }
-
     public ulong ActivationEligibilityEpoch { get; set; }
-
     public ulong ActivationEpoch { get; set; }
-
     public ulong ExitEpoch { get; set; }
-
     public ulong WithdrawableEpoch { get; set; }
 }
 
@@ -112,6 +93,5 @@ public partial class Validator
 public partial class HistoricalSummary
 {
     public Hash256? BlockSummaryRoot { get; set; }
-
     public Hash256? StateSummaryRoot { get; set; }
 }

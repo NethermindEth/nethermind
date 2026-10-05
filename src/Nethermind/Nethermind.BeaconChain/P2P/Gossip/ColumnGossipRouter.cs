@@ -243,10 +243,8 @@ public sealed class ColumnGossipRouter(
     public event Action<DataColumnSidecar>? DataColumnSidecarReceived;
 
     public long GetDropCount(ColumnGossipDropReason reason) => Interlocked.Read(ref _dropCounts[(int)reason]);
-
     /// <summary>The Fulu KZG cell-proof batches this router has run.</summary>
     internal long KzgBatchCount => Interlocked.Read(ref _kzgBatches);
-
     /// <summary>The header signature pairings this router has run.</summary>
     internal long HeaderSignatureVerificationCount => Interlocked.Read(ref _headerSignatureVerifications);
 

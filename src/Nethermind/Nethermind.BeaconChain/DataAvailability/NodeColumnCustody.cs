@@ -38,12 +38,9 @@ public sealed class NodeColumnCustody
     }
 
     public Hash256 NodeId { get; }
-
     public ulong CustodyGroupCount { get; }
-
     /// <summary>Distinct, sorted columns this node custodies: <c>compute_columns_for_custody_group</c> over <c>get_custody_groups(node_id, custody_group_count)</c>.</summary>
     public IReadOnlyList<ulong> CustodyColumns { get; }
-
     /// <summary>Distinct, sorted columns this node samples every slot; always contains <see cref="CustodyColumns"/>.</summary>
     public IReadOnlyList<ulong> SampledColumns { get; }
 }

@@ -138,13 +138,10 @@ public sealed class RequestTiming
 
     /// <summary>The number of response chunks read.</summary>
     public int Chunks => Volatile.Read(ref _chunks);
-
     /// <summary>Whether the request's channel opened; <c>null</c> when its protocol cannot report.</summary>
     public bool? ChannelOpened => _measured ? Volatile.Read(ref _channelOpenedAt) != 0 : null;
-
     /// <summary>Which attempt at the request this is, from 1: another channel or another protocol version.</summary>
     public int Attempt => Volatile.Read(ref _attempt);
-
     /// <summary>The time since the current request attempt began.</summary>
     public TimeSpan Elapsed => Stopwatch.GetElapsedTime(Volatile.Read(ref _startedAt));
 
@@ -169,7 +166,6 @@ public sealed class RequestTiming
     internal readonly struct Exchange(RequestTiming? timing) : IDisposable
     {
         public RequestTiming? Timing => timing;
-
         public void Dispose() => timing?.Ended();
     }
 }

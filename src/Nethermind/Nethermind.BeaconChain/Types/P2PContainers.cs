@@ -13,13 +13,9 @@ public partial class StatusMessageV1
 {
     [SszVector(4)]
     public byte[]? ForkDigest { get; set; }
-
     public Hash256? FinalizedRoot { get; set; }
-
     public ulong FinalizedEpoch { get; set; }
-
     public Hash256? HeadRoot { get; set; }
-
     public ulong HeadSlot { get; set; }
 }
 
@@ -29,15 +25,10 @@ public partial class StatusMessageV2
 {
     [SszVector(4)]
     public byte[]? ForkDigest { get; set; }
-
     public Hash256? FinalizedRoot { get; set; }
-
     public ulong FinalizedEpoch { get; set; }
-
     public Hash256? HeadRoot { get; set; }
-
     public ulong HeadSlot { get; set; }
-
     public ulong EarliestAvailableSlot { get; set; }
 }
 
@@ -46,13 +37,10 @@ public partial class StatusMessageV2
 public partial class MetaDataV3
 {
     public ulong SeqNumber { get; set; }
-
     [SszVector(64)]
     public BitArray? Attnets { get; set; }
-
     [SszVector(4)]
     public BitArray? Syncnets { get; set; }
-
     public ulong CustodyGroupCount { get; set; }
 }
 
@@ -61,9 +49,7 @@ public partial class MetaDataV3
 public partial class BeaconBlocksByRangeRequest
 {
     public ulong StartSlot { get; set; }
-
     public ulong Count { get; set; }
-
     /// <summary>Deprecated; clients MUST respond as if it were 1.</summary>
     public ulong Step { get; set; }
 }

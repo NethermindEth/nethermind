@@ -31,7 +31,6 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
     private readonly IBeaconStateHasher _hasher = hasher ?? new CachedBeaconStateHasher();
 
     public BeaconChainSpec Spec => ForkCrossingChain.Instance.Spec;
-
     /// <summary>Copy the shared anchor so importer mutation cannot contaminate other cases.</summary>
     public BeaconStateFulu AnchorState { get; } = ForkCrossingChain.Instance.AnchorState.Clone();
     public SignedBeaconBlock AnchorBlock { get; } = new() { Message = ForkCrossingChain.Instance.AnchorBlock, Signature = default };

@@ -48,25 +48,19 @@ public class BeaconChainSpec
     /// outside <see cref="ForChainId"/>, e.g. in tests).
     /// </summary>
     public ulong ChainId { get; init; }
-
     /// <summary>Default checkpoint-sync provider for this network, used when no override is configured.</summary>
     public string? CheckpointSyncUrl { get; init; }
-
     public required ulong SecondsPerSlot { get; init; }
     public required ulong SlotsPerEpoch { get; init; }
     public required ulong GenesisTime { get; init; }
     public required Hash256 GenesisValidatorsRoot { get; init; }
-
     /// <summary>Fork schedule sorted by ascending activation epoch.</summary>
     public required ForkScheduleEntry[] Forks { get; init; }
-
     /// <summary>EIP-7892 blob schedule sorted by ascending activation epoch.</summary>
     public required BlobScheduleEntry[] BlobSchedule { get; init; }
-
     public required ulong ElectraForkEpoch { get; init; }
     public required ulong FuluForkEpoch { get; init; }
     public required ulong MaxBlobsPerBlockElectra { get; init; }
-
     /// <summary>
     /// The Gloas activation epoch, or <see cref="Presets.FarFutureEpoch"/> when this network has none
     /// scheduled yet. <see cref="Presets.FarFutureEpoch"/> is the spec's own placeholder for "TBD"
@@ -77,20 +71,15 @@ public class BeaconChainSpec
     /// <see cref="Forks"/>.
     /// </summary>
     public required ulong GloasForkEpoch { get; init; }
-
     /// <summary>The Gloas <c>fork_version</c>, meaningless while <see cref="GloasForkEpoch"/> is unscheduled.</summary>
     public required byte[] GloasForkVersion { get; init; }
-
     /// <summary>The consensus-layer bootnode records for this network.</summary>
     /// <remarks>Held here rather than in a second switch keyed on chain id, which drifted:
     /// Sepolia was added to the spec and not to the bootnodes, and discovery threw on a
     /// network the spec claimed to support.</remarks>
     public required string[] Bootnodes { get; init; }
-
     public ulong GetEpoch(ulong slot) => slot / SlotsPerEpoch;
-
     public ulong GetSlotAtTime(ulong unixTime) => unixTime < GenesisTime ? 0 : (unixTime - GenesisTime) / SecondsPerSlot;
-
     /// <summary>The fork version live at <paramref name="epoch"/>, from the <see cref="Forks"/> schedule.</summary>
     /// <remarks>
     /// This and <see cref="ForkAtEpoch"/> read different fields, so a spec whose scalar fork epochs
@@ -99,10 +88,8 @@ public class BeaconChainSpec
     /// are held consistent by a test rather than by construction.
     /// </remarks>
     public byte[] VersionForEpoch(ulong epoch) => Forks.Last(f => f.Epoch <= epoch).Version;
-
     /// <summary><c>GENESIS_FORK_VERSION</c>: the phase0 entry of <see cref="Forks"/>, which deposit and BLS-to-execution-change domains use.</summary>
     public byte[] GenesisForkVersion => Forks[0].Version;
-
     /// <summary><c>CAPELLA_FORK_VERSION</c>: the Capella entry of <see cref="Forks"/>, which EIP-7044 fixes as the voluntary-exit domain.</summary>
     public byte[] CapellaForkVersion => Forks[3].Version;
 

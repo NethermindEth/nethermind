@@ -17,13 +17,10 @@ public sealed class InvalidationOperation
     }
 
     public Hash256 HeadBlockRoot { get; }
-
     /// <summary>Whether <see cref="HeadBlockRoot"/> itself is invalidated when <see cref="LatestValidAncestor"/> is not a known ancestor.</summary>
     public bool InvalidateBlockRoot { get; }
-
     /// <summary>The execution block hash of the latest valid ancestor, if reported by the execution layer.</summary>
     public Hash256? LatestValidAncestor { get; }
-
     /// <summary>Invalidate only <paramref name="blockRoot"/> and its descendants; never its ancestors.</summary>
     public static InvalidationOperation InvalidateOne(Hash256 blockRoot) => new(blockRoot, true, null);
 

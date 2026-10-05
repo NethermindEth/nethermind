@@ -27,7 +27,6 @@ public static class GoodbyeReason
 public sealed class GoodbyeProtocol : SingleChunkProtocol<ulong, ulong>
 {
     public override string Id => "/eth2/beacon_chain/req/goodbye/1/ssz_snappy";
-
     protected override int MaxRequestSize => sizeof(ulong);
     protected override int MaxResponseSize => sizeof(ulong);
     protected override byte[] EncodeRequest(ulong request) => Eth2PingProtocol.EncodeUint64(request);

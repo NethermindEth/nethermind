@@ -158,10 +158,8 @@ public sealed class EpochCache
     /// balances or the active set within the memoized epoch (e.g. effective balance updates).
     /// </summary>
     public void InvalidateTotalActiveBalance() => _totalActiveBalance = null;
-
     /// <summary>Returns the committee shuffling for <paramref name="epoch"/>, building and caching it if absent.</summary>
     public CommitteeCache GetCommitteeCache(BeaconStateFulu state, ulong epoch) => _committees.GetOrBuild(state, epoch);
-
     /// <summary><see cref="GetCommitteeCache(BeaconStateFulu, ulong)"/> for a post-fork <see cref="BeaconStateGloas"/>.</summary>
     public CommitteeCache GetCommitteeCache(BeaconStateGloas state, ulong epoch) => _committees.GetOrBuild(state, epoch);
 

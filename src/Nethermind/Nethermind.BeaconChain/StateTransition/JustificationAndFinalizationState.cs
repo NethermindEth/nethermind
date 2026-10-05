@@ -41,11 +41,8 @@ public sealed class JustificationAndFinalizationState
     }
 
     public Checkpoint PreviousJustifiedCheckpoint { get; set; }
-
     public Checkpoint CurrentJustifiedCheckpoint { get; set; }
-
     public Checkpoint FinalizedCheckpoint { get; set; }
-
     public BitArray JustificationBits { get; }
 
     public void ApplyTo(BeaconStateFulu state)

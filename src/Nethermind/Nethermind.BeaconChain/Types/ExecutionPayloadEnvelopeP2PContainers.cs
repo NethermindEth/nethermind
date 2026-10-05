@@ -11,7 +11,6 @@ namespace Nethermind.BeaconChain.Types;
 public partial class ExecutionPayloadEnvelopesByRangeRequest
 {
     public ulong StartSlot { get; set; }
-
     public ulong Count { get; set; }
 }
 

@@ -124,8 +124,6 @@ internal static class SpecConstants
     };
 
     private static string Number(ulong value) => value.ToString();
-
     private static string Hex(byte value) => "0x" + Convert.ToHexStringLower([value]);
-
     private static string Hex(ReadOnlySpan<byte> value) => "0x" + Convert.ToHexStringLower(value);
 }
