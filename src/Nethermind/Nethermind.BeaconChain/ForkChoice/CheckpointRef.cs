@@ -16,7 +16,5 @@ public readonly record struct CheckpointRef(ulong Epoch, Hash256 Root)
     public static CheckpointRef From(Types.Checkpoint checkpoint) =>
         new(checkpoint.Epoch, checkpoint.Root ?? Hash256.Zero);
 
-    public Types.Checkpoint ToCheckpoint() => new() { Epoch = Epoch, Root = Root };
-
     public override string ToString() => $"{Root}@{Epoch}";
 }
