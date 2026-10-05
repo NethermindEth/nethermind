@@ -177,24 +177,38 @@ public class StateRequestLimiterTests
         Assert.That(afterRelease.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK), "a released permit admits the next request");
     }
 
-    [Test]
-    public async Task A_response_unfinished_at_the_deadline_is_aborted_and_its_permits_are_released()
+    [TestCase(1, null, null, true, TestName = "A_response_unfinished_at_the_deadline_is_aborted_and_its_permits_are_released")]
+    [TestCase(40, 1, 0, true, TestName = "A_response_that_stops_being_written_is_cut_at_the_idle_bound_however_generous_the_total_cap")]
+    [TestCase(40, 1, Timeout.Infinite, false, TestName = "A_first_write_that_never_completes_is_cut_at_the_idle_bound_however_generous_the_total_cap")]
+    [TestCase(1, 3600, null, false, TestName = "A_response_never_written_is_cut_at_the_total_cap")]
+    public async Task An_unfinished_response_observes_its_deadline_and_releases_its_permits(
+        int totalSeconds, int? idleSeconds, int? writeDelayMilliseconds, bool verifyRelease)
     {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 1 });
-        DefaultHttpContext slow = StateRequest(Download, "192.0.2.7");
+        BeaconApiConfig config = new() { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = totalSeconds };
+        if (idleSeconds is { } idle) config.StateResponseIdleTimeoutSeconds = idle;
+        if (verifyRelease) config.MaxConcurrentStateRequests = 1;
+        using StateRequestLimiter limiter = new(config);
+        DefaultHttpContext request = StateRequest(Download, "192.0.2.7");
+        if (writeDelayMilliseconds is { } delay) request.Response.Body = new PacedStream(TimeSpan.FromMilliseconds(delay));
 
-        await limiter.InvokeAsync(slow, c => Task.Delay(Timeout.Infinite, c.RequestAborted)).WaitAsync(Wait);
-
-        DefaultHttpContext next = StateRequest(Download, "192.0.2.7");
-        bool reached = false;
-        await limiter.InvokeAsync(next, _ =>
+        await limiter.InvokeAsync(request, async c =>
         {
-            reached = true;
-            return Task.CompletedTask;
-        });
+            if (writeDelayMilliseconds is not null) await c.Response.Body.WriteAsync(new byte[16], c.RequestAborted);
+            if (writeDelayMilliseconds is null or >= 0) await Task.Delay(Timeout.Infinite, c.RequestAborted);
+        }).WaitAsync(Wait);
+
+        bool reached = false;
+        if (verifyRelease)
+        {
+            await limiter.InvokeAsync(StateRequest(Download, "192.0.2.7"), _ =>
+            {
+                reached = true;
+                return Task.CompletedTask;
+            });
+        }
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(slow.RequestAborted.IsCancellationRequested, Is.True, "the handler must see the deadline through RequestAborted");
-        Assert.That(reached, Is.True, "both the node-wide and the per-client permit must be free after the deadline");
+        Assert.That(request.RequestAborted.IsCancellationRequested, Is.True, "the handler must see the configured deadline through RequestAborted");
+        if (verifyRelease) Assert.That(reached, Is.True, "both the node-wide and the per-client permit must be free after the deadline");
     }
 
     [Test]
@@ -215,31 +229,6 @@ public class StateRequestLimiterTests
     }
 
     [Test]
-    public async Task A_response_that_stops_being_written_is_cut_at_the_idle_bound_however_generous_the_total_cap()
-    {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 40, StateResponseIdleTimeoutSeconds = 1 });
-        DefaultHttpContext stalled = StateRequest(Download, "192.0.2.7");
-        stalled.Response.Body = new PacedStream(TimeSpan.Zero);
-
-        await limiter.InvokeAsync(stalled, async c =>
-        {
-            await c.Response.Body.WriteAsync(new byte[16], c.RequestAborted);
-            await Task.Delay(Timeout.Infinite, c.RequestAborted);
-        }).WaitAsync(Wait);
-
-        DefaultHttpContext next = StateRequest(Download, "192.0.2.7");
-        bool reached = false;
-        await limiter.InvokeAsync(next, _ =>
-        {
-            reached = true;
-            return Task.CompletedTask;
-        });
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(stalled.RequestAborted.IsCancellationRequested, Is.True, "the handler must see the idle bound through RequestAborted");
-        Assert.That(reached, Is.True, "the permits of a stalled response are free once it is cut");
-    }
-
-    [Test]
     public async Task A_state_that_takes_longer_than_the_idle_bound_to_load_is_not_cut_before_its_first_write()
     {
         using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 40, StateResponseIdleTimeoutSeconds = 1 });
@@ -256,29 +245,6 @@ public class StateRequestLimiterTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(reader.Written, Is.EqualTo(16), "loading a state is the node's own time, not a stalled reader, so only the total cap bounds it");
         Assert.That(download.RequestAborted.IsCancellationRequested, Is.False);
-    }
-
-    [Test]
-    public async Task A_first_write_that_never_completes_is_cut_at_the_idle_bound_however_generous_the_total_cap()
-    {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 40, StateResponseIdleTimeoutSeconds = 1 });
-        DefaultHttpContext blocked = StateRequest(Download, "192.0.2.7");
-        blocked.Response.Body = new PacedStream(Timeout.InfiniteTimeSpan);
-
-        await limiter.InvokeAsync(blocked, c => c.Response.Body.WriteAsync(new byte[16], c.RequestAborted).AsTask()).WaitAsync(Wait);
-
-        Assert.That(blocked.RequestAborted.IsCancellationRequested, Is.True, "a reader that never takes the first bytes stalls the response as surely as one that stops later");
-    }
-
-    [Test]
-    public async Task A_response_never_written_is_cut_at_the_total_cap()
-    {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 1, StateResponseIdleTimeoutSeconds = 3600 });
-        DefaultHttpContext silent = StateRequest(Download, "192.0.2.7");
-
-        await limiter.InvokeAsync(silent, c => Task.Delay(Timeout.Infinite, c.RequestAborted)).WaitAsync(Wait);
-
-        Assert.That(silent.RequestAborted.IsCancellationRequested, Is.True);
     }
 
     [TestCase(1, 120, TestName = "A client that stops reading a state cannot hold its permit past the total cap")]
