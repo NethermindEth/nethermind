@@ -48,20 +48,11 @@ internal static class DataColumnSidecarTestFixture
         };
     }
 
-    public static BeaconChainSpec WithBlobEntry(BeaconChainSpec spec, BlobScheduleEntry entry) => new()
+    public static BeaconChainSpec WithBlobEntry(BeaconChainSpec spec, BlobScheduleEntry entry) => spec with
     {
-        SecondsPerSlot = spec.SecondsPerSlot,
-        SlotsPerEpoch = spec.SlotsPerEpoch,
-        GenesisTime = spec.GenesisTime,
-        GenesisValidatorsRoot = spec.GenesisValidatorsRoot,
-        Forks = spec.Forks,
+        ChainId = 0,
+        CheckpointSyncUrl = null,
         BlobSchedule = [.. spec.BlobSchedule, entry],
-        ElectraForkEpoch = spec.ElectraForkEpoch,
-        FuluForkEpoch = spec.FuluForkEpoch,
-        MaxBlobsPerBlockElectra = spec.MaxBlobsPerBlockElectra,
-        GloasForkEpoch = spec.GloasForkEpoch,
-        GloasForkVersion = spec.GloasForkVersion,
-        Bootnodes = spec.Bootnodes,
     };
 
     public static void StoreAsImported(BeaconChainStore store, DataColumnSidecar sidecar)

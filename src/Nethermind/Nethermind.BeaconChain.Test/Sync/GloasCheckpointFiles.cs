@@ -44,23 +44,15 @@ internal sealed class GloasCheckpointFiles : IDisposable
 
     public void Dispose() => _directory.Dispose();
 
-    private static BeaconChainSpec WithGloasScheduled(BeaconChainSpec spec, bool fuluInGloasEpoch) => new()
+    private static BeaconChainSpec WithGloasScheduled(BeaconChainSpec spec, bool fuluInGloasEpoch) => spec with
     {
-        SecondsPerSlot = spec.SecondsPerSlot,
-        SlotsPerEpoch = spec.SlotsPerEpoch,
-        GenesisTime = spec.GenesisTime,
-        GenesisValidatorsRoot = spec.GenesisValidatorsRoot,
+        ChainId = 0,
+        CheckpointSyncUrl = null,
         Forks =
         [
             .. fuluInGloasEpoch ? spec.Forks.Select(f => f.Epoch == spec.FuluForkEpoch ? new ForkScheduleEntry(f.Version, spec.GloasForkEpoch) : f) : spec.Forks,
             new ForkScheduleEntry(spec.GloasForkVersion, spec.GloasForkEpoch),
         ],
-        BlobSchedule = spec.BlobSchedule,
-        ElectraForkEpoch = spec.ElectraForkEpoch,
         FuluForkEpoch = fuluInGloasEpoch ? spec.GloasForkEpoch : spec.FuluForkEpoch,
-        MaxBlobsPerBlockElectra = spec.MaxBlobsPerBlockElectra,
-        GloasForkEpoch = spec.GloasForkEpoch,
-        GloasForkVersion = spec.GloasForkVersion,
-        Bootnodes = spec.Bootnodes,
     };
 }

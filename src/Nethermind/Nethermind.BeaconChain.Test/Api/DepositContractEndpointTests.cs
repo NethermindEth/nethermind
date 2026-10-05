@@ -49,20 +49,10 @@ public class DepositContractEndpointTests
     public async Task Refuses_rather_than_invents_an_address_for_a_chain_with_no_network_config()
     {
         BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
-        BeaconChainSpec adHoc = new()
+        BeaconChainSpec adHoc = mainnet with
         {
-            SecondsPerSlot = mainnet.SecondsPerSlot,
-            SlotsPerEpoch = mainnet.SlotsPerEpoch,
-            GenesisTime = mainnet.GenesisTime,
-            GenesisValidatorsRoot = mainnet.GenesisValidatorsRoot,
-            Forks = mainnet.Forks,
-            BlobSchedule = mainnet.BlobSchedule,
-            ElectraForkEpoch = mainnet.ElectraForkEpoch,
-            FuluForkEpoch = mainnet.FuluForkEpoch,
-            MaxBlobsPerBlockElectra = mainnet.MaxBlobsPerBlockElectra,
-            GloasForkEpoch = mainnet.GloasForkEpoch,
-            GloasForkVersion = mainnet.GloasForkVersion,
-            Bootnodes = mainnet.Bootnodes,
+            ChainId = 0,
+            CheckpointSyncUrl = null,
         };
         await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(adHoc);
 

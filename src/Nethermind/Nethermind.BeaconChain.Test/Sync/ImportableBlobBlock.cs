@@ -33,22 +33,10 @@ internal sealed class ImportableBlobBlock
     private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
 
     /// <summary>Activate Fulu at genesis so fixture blocks fall inside the availability window.</summary>
-    public static BeaconChainSpec FuluFromGenesis { get; } = new()
+    public static BeaconChainSpec FuluFromGenesis { get; } = BeaconChainSpec.Mainnet with
     {
-        ChainId = BeaconChainSpec.Mainnet.ChainId,
-        CheckpointSyncUrl = BeaconChainSpec.Mainnet.CheckpointSyncUrl,
-        Bootnodes = BeaconChainSpec.Mainnet.Bootnodes,
-        SecondsPerSlot = BeaconChainSpec.Mainnet.SecondsPerSlot,
-        SlotsPerEpoch = BeaconChainSpec.Mainnet.SlotsPerEpoch,
-        GenesisTime = BeaconChainSpec.Mainnet.GenesisTime,
-        GenesisValidatorsRoot = BeaconChainSpec.Mainnet.GenesisValidatorsRoot,
-        Forks = BeaconChainSpec.Mainnet.Forks,
-        BlobSchedule = BeaconChainSpec.Mainnet.BlobSchedule,
         ElectraForkEpoch = 0,
         FuluForkEpoch = 0,
-        MaxBlobsPerBlockElectra = BeaconChainSpec.Mainnet.MaxBlobsPerBlockElectra,
-        GloasForkEpoch = BeaconChainSpec.Mainnet.GloasForkEpoch,
-        GloasForkVersion = BeaconChainSpec.Mainnet.GloasForkVersion,
     };
 
     public BeaconChainSpec Spec => FuluFromGenesis;
