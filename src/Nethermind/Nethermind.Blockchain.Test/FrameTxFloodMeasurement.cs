@@ -416,7 +416,8 @@ public partial class FrameTxFloodMeasurement
     private static long ShedCount() =>
         Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSimulationsBudgetExhausted)
         + Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSimulationsBusy)
-        + Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSimulationsPreempted);
+        + Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSimulationsPreempted)
+        + Volatile.Read(ref Nethermind.TxPool.Metrics.FrameTxSignatureVerificationsPreempted);
 
     private static void WaitUntil(long dueTimestamp, CancellationToken token)
     {
