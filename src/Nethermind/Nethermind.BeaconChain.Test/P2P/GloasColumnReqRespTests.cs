@@ -163,49 +163,30 @@ public class GloasColumnReqRespTests
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, new(new DataColumnSidecarsByRangeRequest { StartSlot = start, Count = count, Columns = [3] }, Gloas: true)));
     }
 
-    [Test]
-    public void The_Gloas_root_dial_refuses_a_repeated_root_and_column()
+    [TestCase(new ulong[] { 3, 7 }, new ulong[] { 3, 3 }, false, false, "not requested", TestName = "The_Gloas_root_dial_refuses_a_repeated_root_and_column")]
+    [TestCase(new ulong[] { 3, 7 }, new ulong[] { 3, 7, 9 }, false, false, "more than the requested 2 ", TestName = "The_Gloas_root_dial_stops_reading_at_the_requested_column_count")]
+    [TestCase(new ulong[] { 3, 7 }, new ulong[] { 3, 7 }, true, false, null, TestName = "The_Gloas_root_dial_accepts_the_columns_of_one_root_split_over_two_identifiers")]
+    [TestCase(new ulong[] { 3 }, new ulong[] { 3 }, false, true, "not requested", TestName = "The_Gloas_root_dial_refuses_a_sidecar_for_an_unrequested_root")]
+    public async Task The_Gloas_root_dial_validates_requested_roots_and_columns(
+        ulong[] requested, ulong[] served, bool splitIdentifiers, bool otherRoot, string? error)
     {
         Hash256 root = DataColumnSidecarGloasTestFixture.BlockRoot;
-        DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(3, GloasStartSlot, root);
-
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() =>
-            DialRootAsync([new DataColumnsByRootIdentifier { BlockRoot = root, Columns = [3, 7] }], sidecar, sidecar))!;
-        Assert.That(thrown.Message, Does.Contain("not requested"));
-    }
-
-    [Test]
-    public void The_Gloas_root_dial_stops_reading_at_the_requested_column_count()
-    {
-        Hash256 root = DataColumnSidecarGloasTestFixture.BlockRoot;
-
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() =>
-            DialRootAsync([new DataColumnsByRootIdentifier { BlockRoot = root, Columns = [3, 7] }],
-                DataColumnSidecarGloasTestFixture.BuildSidecar(3, GloasStartSlot, root), DataColumnSidecarGloasTestFixture.BuildSidecar(7, GloasStartSlot, root),
-                DataColumnSidecarGloasTestFixture.BuildSidecar(9, GloasStartSlot, root)))!;
-        Assert.That(thrown.Message, Does.Contain("more than the requested 2 "));
-    }
-
-    [Test]
-    public async Task The_Gloas_root_dial_accepts_the_columns_of_one_root_split_over_two_identifiers()
-    {
-        Hash256 root = DataColumnSidecarGloasTestFixture.BlockRoot;
-
-        IReadOnlyList<DataColumnSidecarGloas> read = await DialRootAsync(
-            [new DataColumnsByRootIdentifier { BlockRoot = root, Columns = [3] }, new DataColumnsByRootIdentifier { BlockRoot = root, Columns = [7] }],
-            DataColumnSidecarGloasTestFixture.BuildSidecar(3, GloasStartSlot, root), DataColumnSidecarGloasTestFixture.BuildSidecar(7, GloasStartSlot, root));
-
-        Assert.That(read.Select(static s => s.Index), Is.EqualTo(new[] { 3UL, 7UL }));
-    }
-
-    [Test]
-    public void The_Gloas_root_dial_refuses_a_sidecar_for_an_unrequested_root()
-    {
-        DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(3, GloasStartSlot, Keccak.Compute("other block"));
-
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() =>
-            DialRootAsync([new DataColumnsByRootIdentifier { BlockRoot = DataColumnSidecarGloasTestFixture.BlockRoot, Columns = [3] }], sidecar))!;
-        Assert.That(thrown.Message, Does.Contain("not requested"));
+        DataColumnsByRootIdentifier[] request = splitIdentifiers
+            ? [.. requested.Select(index => new DataColumnsByRootIdentifier { BlockRoot = root, Columns = [index] })]
+            : [new() { BlockRoot = root, Columns = requested }];
+        Dictionary<ulong, DataColumnSidecarGloas> sidecars = served.Distinct().ToDictionary(index => index,
+            index => DataColumnSidecarGloasTestFixture.BuildSidecar(index, GloasStartSlot, otherRoot ? Keccak.Compute("other block") : root));
+        DataColumnSidecarGloas[] response = [.. served.Select(index => sidecars[index])];
+        if (error is null)
+        {
+            IReadOnlyList<DataColumnSidecarGloas> read = await DialRootAsync(request, response);
+            Assert.That(read.Select(static sidecar => sidecar.Index), Is.EqualTo(new[] { 3UL, 7UL }));
+        }
+        else
+        {
+            Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRootAsync(request, response))!;
+            Assert.That(thrown.Message, Does.Contain(error));
+        }
     }
 
     [Test]
