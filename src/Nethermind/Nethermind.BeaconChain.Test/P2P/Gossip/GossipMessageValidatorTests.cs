@@ -295,25 +295,15 @@ public class GossipMessageValidatorTests
         new TestCaseData(topic, data, expected, consumedAs, reason).SetName(name);
 
     private static Message Message(string topic, byte[] data) => new() { Topic = topic, Data = ByteString.CopyFrom(data) };
-
     private static string Topic(byte[] digest, string name) => GossipTopics.Topic(digest, name);
-
     private static byte[] Compress(byte[] ssz) => Snappy.CompressToArray(ssz);
-
     private static byte[] Encode(SignedBeaconBlockGloas block) => Compress(SignedBeaconBlockGloas.Encode(block));
-
     internal static byte[] Encode(SignedAggregateAndProofGloas aggregate) => Compress(SignedAggregateAndProofGloas.Encode(aggregate));
-
     private static byte[] Encode(SignedAggregateAndProof aggregate) => Compress(SignedAggregateAndProof.Encode(aggregate));
-
     internal static byte[] Encode(AttesterSlashingGloas slashing) => Compress(AttesterSlashingGloas.Encode(slashing));
-
     internal static byte[] Encode(AttesterSlashing slashing) => Compress(AttesterSlashing.Encode(slashing));
-
     private static byte[] Encode(SignedBeaconBlock block) => Compress(SignedBeaconBlock.Encode(block));
-
     private static byte[] Encode(SignedExecutionPayloadEnvelope envelope) => Compress(SignedExecutionPayloadEnvelope.Encode(envelope));
-
     private static byte[] Encode(PayloadAttestationMessage message) => Compress(PayloadAttestationMessage.Encode(message));
 
     private static PayloadAttestationMessage PtcVote(ulong slot) =>

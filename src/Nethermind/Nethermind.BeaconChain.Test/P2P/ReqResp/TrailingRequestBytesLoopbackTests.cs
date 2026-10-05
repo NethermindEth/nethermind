@@ -324,20 +324,15 @@ public class TrailingRequestBytesLoopbackTests
         }
 
         public Hash256 JustifiedRoot => Hash256.Zero;
-
         public bool ExecutionInSync => false;
-
         public void Dispose() => _release.Dispose();
     }
 
     private sealed class RawRequestProtocol : ISessionProtocol<byte[], byte[]>
     {
         public string Id { get; set; } = "/test/raw-request/1";
-
         public bool HalfClose { get; set; } = true;
-
         public Func<IChannel, CancellationToken, Task>? AfterRequest { get; set; }
-
         public Func<IChannel, CancellationToken, Task>? AfterResponse { get; set; }
 
         public async Task<byte[]> DialAsync(IChannel downChannel, ISessionContext context, byte[] request)

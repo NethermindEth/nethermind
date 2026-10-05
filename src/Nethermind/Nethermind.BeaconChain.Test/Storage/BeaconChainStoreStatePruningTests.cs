@@ -25,7 +25,6 @@ public class BeaconChainStoreStatePruningTests
 
     [TearDown]
     public void TearDown() => _db.Dispose();
-
     private static Hash256 Root(byte fill) => new(Enumerable.Repeat(fill, Hash256.Size).ToArray());
 
     internal static byte[] StateAt(ulong slot, int length = 256)
@@ -37,9 +36,7 @@ public class BeaconChainStoreStatePruningTests
     }
 
     private void Put(byte rootFill, ulong slot, int length = 256) => _store.PutState(Root(rootFill), StateAt(slot, length));
-
     private bool Has(byte rootFill) => _store.TryGetState(Root(rootFill), out _);
-
     private int StateKeyCount() => _db.GetColumnDb(BeaconChainDbColumns.States).GetAllKeys().Count();
 
     [Test]

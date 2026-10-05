@@ -55,7 +55,6 @@ public class ProposerScoreTests
         private readonly BeaconStateFulu _anchor = Override(chain.Anchor.AnchorState, change);
 
         public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => blockRoot == chain.AnchorRoot ? _anchor : chain.GetBlockState(blockRoot);
-
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
 
         private static BeaconStateFulu Override(BeaconStateFulu anchor, AnchorChange change)

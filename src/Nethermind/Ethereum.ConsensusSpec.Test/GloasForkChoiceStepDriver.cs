@@ -22,9 +22,7 @@ internal static class GloasForkChoiceStepDriver
         public readonly Dictionary<Hash256, BeaconStateGloas> States = [];
 
         public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => null;
-
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => null;
-
         public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot) => States.GetValueOrDefault(blockRoot);
     }
 
@@ -44,7 +42,6 @@ internal static class GloasForkChoiceStepDriver
         public BeaconStateGloas AnchorState => anchorState;
         public PubkeyCache Pubkeys => pubkeys;
         public bool VerifySignatures => verifySignatures;
-
         public byte[] Read(string key) => SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, key + ".ssz_snappy"));
     }
 

@@ -31,18 +31,13 @@ internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasB
     public sealed record Block(Hash256 Root, BeaconStateGloas PostState, SignedBeaconBlockGloas Signed)
     {
         public ulong Slot => Signed.Message!.Slot;
-
         public ulong ProposerIndex => Signed.Message!.ProposerIndex;
-
         public Hash256 BidBlockHash => Signed.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlockHash!;
     }
 
     public ForkCrossingChain Chain => ForkCrossingChain.Instance;
-
     public ForkChoiceRunner Runner { get; }
-
     public Block First { get; }
-
     public static ulong ProposerScore => (ulong)ValidatorCount * 32 * Gwei / Presets.SlotsPerEpoch * ProtoArrayForkChoice.DefaultProposerScoreBoostPercent / 100;
 
     public void TickTo(ulong slot, ulong secondsIntoSlot = 0) =>
@@ -105,8 +100,6 @@ internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasB
     }
 
     public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => Chain.GetBlockState(blockRoot);
-
     public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => Chain.CopyBlockState(blockRoot);
-
     public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot) => _states.GetValueOrDefault(blockRoot) ?? Chain.GetGloasBlockState(blockRoot);
 }

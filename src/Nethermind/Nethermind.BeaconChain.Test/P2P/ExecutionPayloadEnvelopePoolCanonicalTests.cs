@@ -261,11 +261,8 @@ internal sealed class HeadAdvancingStatusSource(params (StatusMessageV2 Status, 
     private int _reads;
 
     public (StatusMessageV2 Status, Hash256? FullHeadRoot) CurrentHead => snapshots[Math.Min(_reads++, snapshots.Length - 1)];
-
     public StatusMessageV2 CurrentStatus => CurrentHead.Status;
-
     public Hash256 JustifiedRoot => Hash256.Zero;
-
     public bool ExecutionInSync => true;
 }
 
@@ -296,11 +293,8 @@ internal sealed class EnvelopeChain
     }
 
     public BeaconChainStore Store { get; }
-
     public BeaconChainStatusHolder Status { get; }
-
     public ExecutionPayloadEnvelopePool Pool { get; }
-
     public long BlockReads => ((MemDb)_db.GetColumnDb(BeaconChainDbColumns.Blocks)).ReadsCount;
 
     // Salt distinguishes blocks at the same slot with the same parent.

@@ -19,7 +19,6 @@ internal static class DataColumnSidecarGloasTestFixture
         [DataColumnKzgFixture.BuildBlob(0x10), DataColumnKzgFixture.BuildBlob(0x20)]);
 
     public static Hash256 BlockRoot { get; } = new(Enumerable.Repeat((byte)0xA1, 32).ToArray());
-
     public static SszKzgCommitment[] Commitments() => [.. Blobs.Value.Select(DataColumnKzgFixture.CommitmentOf)];
 
     public static DataColumnSidecarGloas BuildSidecar(ulong column, ulong slot = 1, Hash256? blockRoot = null) => new()

@@ -1242,47 +1242,28 @@ public partial class BeaconSyncOrchestratorTests
     private sealed class ScriptedImporter : IBlockImporter
     {
         public HashSet<Hash256> Known { get; } = [];
-
         public HashSet<Hash256> Unavailable { get; } = [];
-
         public HashSet<Hash256> RegenerationRefused { get; } = [];
-
         public HashSet<Hash256> RegenerationImpossible { get; } = [];
-
         public HashSet<Hash256> AdmissionRefused { get; } = [];
-
         public ImportRefusal LastRefusal { get; private set; }
 
         bool IBlockImporter.RejectGossip => RejectGossip;
 
         private bool RejectGossip { get; set; }
-
         public HashSet<BlsSignature> ForgedSignatures { get; } = [];
-
         public HashSet<Hash256> Forged { get; } = [];
-
         public HashSet<Hash256> InvalidTransition { get; } = [];
-
         public HashSet<Hash256> EngineDown { get; } = [];
-
         public HashSet<Hash256> Early { get; } = [];
-
         public HashSet<Hash256> UnverifiedPayloads { get; } = [];
-
         public ExecutionPayloadEnvelopeImportResult EnvelopeResult { get; set; } = ExecutionPayloadEnvelopeImportResult.Valid;
-
         public Func<SignedExecutionPayloadEnvelope, ExecutionPayloadEnvelopeImportResult>? EnvelopeVerdict { get; set; }
-
         public List<Hash256> Envelopes { get; } = [];
-
         public List<(bool Envelope, Hash256 Root)> ImportOrder { get; } = [];
-
         public List<bool> ImportedOnPoolThread { get; } = [];
-
         public List<object> GossipOperations { get; } = [];
-
         public List<int> TicksAtGossipOperations { get; } = [];
-
         public Action<ulong>? OnTick { get; set; }
 
         private readonly HashSet<Hash256> _deferred = [];
@@ -1295,12 +1276,8 @@ public partial class BeaconSyncOrchestratorTests
         public HeadView? HeadAfterInvalidation { get; set; }
         public bool ExpectedProposer { get; set; } = true;
         public int ComputeHeadCalls { get; private set; }
-
         public bool IsKnown(Hash256 blockRoot) => Known.Contains(blockRoot);
-
-
         public List<Hash256> RequestedImports { get; } = [];
-
         public List<Hash256> ByRootImports { get; } = [];
 
         public BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool fetchedByRoot = false)
@@ -1371,7 +1348,6 @@ public partial class BeaconSyncOrchestratorTests
         }
 
         public bool? EnvelopeSignature { get; set; } = true;
-
         public bool? VerifyEnvelopeSignature(SignedExecutionPayloadEnvelope envelope) => EnvelopeSignature;
 
         public ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope)
@@ -1412,19 +1388,12 @@ public partial class BeaconSyncOrchestratorTests
         }
 
         public void OnFinalized(CheckpointRef finalized) => Finalizations.Add(finalized);
-
         public bool? OnGossipAggregate(SignedAggregateAndProof aggregate) => Consume(aggregate);
-
         public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => Consume(aggregate);
-
         public bool? AcceptsGossipOperations { get; set; } = true;
-
         public bool? OnGossipAttesterSlashing(AttesterSlashing slashing) => Consume(slashing);
-
         public bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => Consume(slashing);
-
         public bool? OnGossipPayloadAttestation(PayloadAttestationMessage message) => Consume(message);
-
         public Func<ulong, ulong[]?> Ptc { get; set; } = static _ => EveryValidator;
 
         private bool? Consume(object operation)
@@ -1439,18 +1408,13 @@ public partial class BeaconSyncOrchestratorTests
     {
         public Queue<PayloadStatusV1> FcuResponses { get; } = new();
         public List<(Hash256 Head, Hash256 Safe, Hash256 Finalized)> FcuCalls { get; } = [];
-
         public SignedBeaconBlock? CurrentBlock { get; set; }
-
         public Action? OnCall { get; set; }
-
         public int FailingFcuCalls { get; set; }
         public bool IsAvailable { get; private set; } = true;
         public Exception? FcuFailure { get; set; }
         public Task<PayloadStatusV1>? FcuAnswer { get; set; }
-
         public Task<PayloadStatusV1>? PendingFcu { get; set; }
-
         public bool HasAnsweredNewPayload => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
@@ -1478,7 +1442,6 @@ public partial class BeaconSyncOrchestratorTests
         private ulong? _refreshedUpTo;
 
         public int GetBestPeersCalls { get; private set; }
-
         public IBeaconSyncPeer[] OfferedAfterRefresh { get; set; } = [];
 
         public ulong[] StatusRefreshSlots
@@ -1515,15 +1478,10 @@ public partial class BeaconSyncOrchestratorTests
     private sealed class FakeTopic : ITopic
     {
         public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
         public bool IsSubscribed { get; private set; }
-
         public void Subscribe() => IsSubscribed = true;
-
         public void Unsubscribe() => IsSubscribed = false;
-
         public void Publish(byte[] value) { }
-
         public void Publish(IMessage value) { }
     }
 }

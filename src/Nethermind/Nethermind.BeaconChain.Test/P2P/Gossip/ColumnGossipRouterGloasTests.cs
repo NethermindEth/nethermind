@@ -733,15 +733,10 @@ public class ColumnGossipRouterGloasTests
         public event Action<PeerId, byte[]>? OnMessage;
 
         public bool IsSubscribed => true;
-
         public void Subscribe() { }
-
         public void Unsubscribe() { }
-
         public void Publish(byte[] value) { }
-
         public void Publish(IMessage value) { }
-
         public void Deliver(byte[] message) => OnMessage?.Invoke(DeliveringPeer, message);
     }
 }

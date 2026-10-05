@@ -182,7 +182,6 @@ internal static class GloasTestFixtures
     };
 
     private static BlsPublicKey[] FillCommittee(BlsPublicKey pubkey) => Enumerable.Repeat(pubkey, Presets.SyncCommitteeSize).ToArray();
-
     public static Bls.SecretKey ValidatorKey(int validatorIndex) => DeriveKey(ValidatorKeyOffset + validatorIndex);
 
     public static PubkeyCache InstallRealValidatorKeys(BeaconStateGloas state)
@@ -516,7 +515,6 @@ internal static class GloasTestFixtures
         new(DerivedKeys.GetOrAdd(index, static i => new Bls.SecretKey(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)i)).ToLendian()), Bls.ByteOrder.LittleEndian);
 
     public static Hash256 Hash(byte value) => new(Enumerable.Repeat(value, 32).ToArray());
-
     public static BlsPublicKey Pubkey(byte value) => new(Enumerable.Repeat(value, BlsPublicKey.Length).ToArray());
 
     public static byte[] G1PointAtInfinity()

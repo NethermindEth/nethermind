@@ -26,7 +26,6 @@ public static class TestHashes
     }
 
     public static Hash256 GetRoot(ulong i) => FromLow(i + 1);
-
     public static CheckpointRef GetCheckpoint(ulong i) => new(i, GetRoot(i));
 }
 

@@ -32,11 +32,8 @@ public class SszDecoderFuzzTests
     private sealed class Container<T>(int iterations, Action<T>? adjust = null) : ITarget where T : class, ISszCodec<T>
     {
         public int Iterations => iterations;
-
         public byte[][] ValidEncodings(int seed) => SszFuzzer.ValidEncodings(seed, ValidEncodingsPerSeed, adjust);
-
         public void Decode(byte[] ssz) => SszFuzzer.RoundTrip<T>(ssz);
-
         public override string ToString() => typeof(T).Name;
     }
 

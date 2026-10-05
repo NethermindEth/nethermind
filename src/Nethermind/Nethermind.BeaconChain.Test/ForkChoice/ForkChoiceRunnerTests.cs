@@ -1761,9 +1761,7 @@ public class ForkChoiceRunnerTests
     private sealed class InMemoryStates : IForkChoiceStateProvider
     {
         public Dictionary<Hash256, BeaconStateFulu> States { get; } = [];
-
         public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => States.GetValueOrDefault(blockRoot);
-
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
     }
 
@@ -1771,7 +1769,6 @@ public class ForkChoiceRunnerTests
     private sealed class EvictedBeforeCopy(UnsignedChain chain) : IForkChoiceStateProvider
     {
         public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => chain.GetBlockState(blockRoot);
-
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => null;
     }
 

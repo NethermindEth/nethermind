@@ -198,7 +198,6 @@ public class PeerSessionCloseTests
     }
 
     private static string PeerId => PeerManager.ExtractPeerIdForTest(PeerAddress);
-
     private static long DroppedAsSessionClosed() => Metrics.BeaconChainPeersDroppedByReason.GetValueOrDefault(new StringLabel("SessionClosed"));
 
     [Test]

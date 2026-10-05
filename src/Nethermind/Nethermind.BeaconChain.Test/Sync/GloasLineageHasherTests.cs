@@ -115,7 +115,6 @@ public class GloasLineageHasherTests
     internal sealed class CountingStateHasher(IBeaconStateHasher inner) : IBeaconStateHasher
     {
         public int GloasCalls { get; private set; }
-
         public Hash256 HashTreeRoot(BeaconStateFulu state) => inner.HashTreeRoot(state);
 
         public Hash256 HashTreeRoot(BeaconStateGloas state)

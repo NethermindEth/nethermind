@@ -21,7 +21,6 @@ public class BlockSignatureBatchVectorTests
     private readonly record struct Outcome(string? Exception, string? Message, Hash256? Root)
     {
         public bool Accepted => Exception is null;
-
         public override string ToString() => Accepted ? $"accepted with root {Root}" : $"{Exception}: {Message}";
     }
 

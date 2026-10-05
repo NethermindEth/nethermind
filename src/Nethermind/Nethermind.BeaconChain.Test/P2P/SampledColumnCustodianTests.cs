@@ -490,7 +490,6 @@ public class SampledColumnCustodianTests
         }
 
         public Hash256 JustifiedRoot => Hash256.Zero;
-
         public bool ExecutionInSync => false;
     }
 }

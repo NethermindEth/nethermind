@@ -86,32 +86,21 @@ public class GossipDigestWindowTests
     internal sealed class RecordingTopic : ITopic
     {
         public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
         public bool IsSubscribed { get; private set; }
-
         public List<byte[]> Published { get; } = [];
-
         public void Subscribe() => IsSubscribed = true;
-
         public void Unsubscribe() => IsSubscribed = false;
-
         public void Publish(byte[] value) => Published.Add(value);
-
         public void Publish(IMessage value) { }
     }
 
     internal sealed class SilentTopic : ITopic
     {
         public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
         public bool IsSubscribed => true;
-
         public void Subscribe() { }
-
         public void Unsubscribe() { }
-
         public void Publish(byte[] value) { }
-
         public void Publish(IMessage value) { }
     }
 }

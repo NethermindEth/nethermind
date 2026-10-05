@@ -331,16 +331,13 @@ public class GloasContainerTests
     private delegate void MerkleizeDelegate<T>(T value, out UInt256 root);
 
     private static byte[] Filled(int length, byte value) => Enumerable.Repeat(value, length).ToArray();
-
     private static Hash256 Hash(byte value) => new(Filled(Hash256.Size, value));
-
     private static byte[] Hex(string hex) => Bytes.FromHexString(hex);
 
     private static Nethermind.Merge.Plugin.SszRest.SszKzgCommitment Kzg(string hex) =>
         Nethermind.Merge.Plugin.SszRest.SszKzgCommitment.FromSpan(Hex(hex));
 
     private static BlsPublicKey Pubkey(byte value) => new(Filled(BlsPublicKey.Length, value));
-
     private static BlsSignature Signature(byte value) => new(Filled(BlsSignature.Length, value));
 
     private static Nethermind.Merge.Plugin.SszRest.SszKzgCommitment SszKzgCommitmentOf(byte value) =>

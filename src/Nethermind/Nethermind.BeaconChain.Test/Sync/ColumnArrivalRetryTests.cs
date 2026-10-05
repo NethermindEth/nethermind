@@ -228,11 +228,8 @@ public class ColumnArrivalRetryTests
         private int _requests;
 
         public int Requests => Volatile.Read(ref _requests);
-
         public override PeerColumnCustody Custody => faultsBeforeAsking ? throw new InvalidOperationException($"{Id} has no custody") : new(custodied, isAdvertised: true);
-
         public void Answer(IEnumerable<DataColumnSidecar> sidecars) => _answer.TrySetResult([.. sidecars]);
-
         public void Fail() => _answer.TrySetException(new TimeoutException($"{Id} did not answer"));
 
         public override Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)

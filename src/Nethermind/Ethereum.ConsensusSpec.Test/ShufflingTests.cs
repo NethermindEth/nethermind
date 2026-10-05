@@ -60,7 +60,6 @@ public class ShufflingTests
     }
 
     private static string Scalar(YamlMappingNode map, string key) => ((YamlScalarNode)map.Children[new YamlScalarNode(key)]).Value!;
-
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
     private static IEnumerable<TestCaseData> MainnetCases() =>

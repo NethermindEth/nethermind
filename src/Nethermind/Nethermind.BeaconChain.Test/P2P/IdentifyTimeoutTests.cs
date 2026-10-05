@@ -107,7 +107,6 @@ public class IdentifyTimeoutTests
     private sealed class StallingIdentifyProtocol(Stall stall, IProtocolStackSettings settings) : IdentifyProtocol(settings), ISessionListenerProtocol, IProtocol
     {
         public new string Id => stall == Stall.Negotiation ? "/test/not-identify/1.0.0" : base.Id;
-
         public new async Task ListenAsync(IChannel downChannel, ISessionContext context) => await downChannel.ReadAsync(1);
     }
 }

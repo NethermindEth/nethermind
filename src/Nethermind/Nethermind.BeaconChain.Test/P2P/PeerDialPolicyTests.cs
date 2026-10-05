@@ -353,7 +353,6 @@ public class PeerDialPolicyTests
         private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task Entered => _entered.Task;
-
         public void Release() => _released.Set();
 
         public StatusMessageV2 CurrentStatus
@@ -367,9 +366,7 @@ public class PeerDialPolicyTests
         }
 
         public Hash256 JustifiedRoot => inner.JustifiedRoot;
-
         public bool ExecutionInSync => inner.ExecutionInSync;
-
         public void Dispose() => _released.Dispose();
     }
 
@@ -385,7 +382,6 @@ public class PeerDialPolicyTests
         }
 
         public Hash256 JustifiedRoot => inner.JustifiedRoot;
-
         public bool ExecutionInSync => inner.ExecutionInSync;
     }
 

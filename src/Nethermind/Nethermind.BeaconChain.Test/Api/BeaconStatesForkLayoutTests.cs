@@ -165,11 +165,8 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
     };
 
     private static ulong StateSlot(string fork) => StateEpoch(fork) * 32;
-
     private static ulong SlotOf(string fork) => StateSlot(fork);
-
     private static ulong BalanceOf(string fork, int i) => 32_000_000_000 + (ulong)(Marker(fork) * 10 + i);
-
     private static ulong LookaheadAt(string fork, int i) => (ulong)((i + Marker(fork)) % 3);
 
     private static byte[] EncodedState(string fork)

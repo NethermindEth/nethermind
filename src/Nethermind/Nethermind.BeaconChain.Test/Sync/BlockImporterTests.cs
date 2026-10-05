@@ -1967,7 +1967,6 @@ public class BlockImporterTests
     private sealed class AvailableOnce : IDataAvailabilityRule
     {
         public int Calls { get; private set; }
-
         public bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, BeaconChainSpec spec) => ++Calls == 1;
     }
 
@@ -1985,7 +1984,6 @@ public class BlockImporterTests
     private sealed class ValidPayloadEngine(Action? onPayload = null) : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
-
         public bool HasAnsweredNewPayload { get; private set; }
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
@@ -2015,9 +2013,7 @@ public class BlockImporterTests
         private int _call;
 
         public Hash256? LatestValidHash { get; init; }
-
         public SignedBeaconBlock? CurrentBlock { get; set; }
-
         public bool HasAnsweredNewPayload { get; private set; }
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>

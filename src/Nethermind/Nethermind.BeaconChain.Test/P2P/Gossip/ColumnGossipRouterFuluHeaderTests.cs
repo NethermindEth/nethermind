@@ -871,7 +871,6 @@ public class ColumnGossipRouterFuluHeaderTests
     }
 
     private static Validator[] KeyedValidators() => [.. Enumerable.Range(0, Validators).Select(i => new Validator { Pubkey = new BlsPublicKey(new Bls.P1(SecretKey(i)).Compress()) })];
-
     private static DataColumnSidecar SignedSidecar(int signer = 0) => Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer);
 
     private static DataColumnSidecar Signed(DataColumnSidecar sidecar, int signer)
@@ -986,15 +985,10 @@ public class ColumnGossipRouterFuluHeaderTests
     private sealed class SilentTopic : ITopic
     {
         public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
         public bool IsSubscribed => true;
-
         public bool Fails { get; init; }
-
         public List<byte[]> Published { get; } = [];
-
         public void Subscribe() { }
-
         public void Unsubscribe() { }
 
         public void Publish(byte[] value)

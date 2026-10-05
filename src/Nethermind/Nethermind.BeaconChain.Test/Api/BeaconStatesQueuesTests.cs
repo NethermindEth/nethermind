@@ -167,7 +167,6 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
         string.Join(';', item.EnumerateObject().Select(p => $"{p.Name}={p.Value.GetString()}"));
 
     private static string Hex(int length, byte fill) => BeaconApiTestHost.Hex(length, fill);
-
     private static ulong LookaheadAt(int i) => (ulong)(1000 + i * 7);
 
     private static BeaconStateFulu QueueState()

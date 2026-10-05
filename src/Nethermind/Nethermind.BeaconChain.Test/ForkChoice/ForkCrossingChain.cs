@@ -75,19 +75,12 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
     public sealed record ChainBlock(SignedBeaconBlockGloas Block, Hash256 Root, BeaconStateGloas PostState);
 
     public static ForkCrossingChain Instance => Shared.Value;
-
     public BeaconChainSpec Spec { get; } = SyntheticSpec(ForkEpoch);
-
     public BeaconStateFulu AnchorState { get; }
-
     public BeaconBlock AnchorBlock { get; }
-
     public Hash256 AnchorRoot { get; }
-
     public ChainBlock First { get; }
-
     public IReadOnlyList<ChainBlock> Voting { get; }
-
     public ulong[] Committee32 { get; }
 
     /// <summary>These slot-31 voters never cast a later vote that would replace their latest message.</summary>
@@ -105,9 +98,7 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
     }
 
     public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => _fuluStates.GetValueOrDefault(blockRoot);
-
     public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
-
     public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot) => _gloasStates.GetValueOrDefault(blockRoot);
 
     public BeaconStateGloas UpgradedAnchor()

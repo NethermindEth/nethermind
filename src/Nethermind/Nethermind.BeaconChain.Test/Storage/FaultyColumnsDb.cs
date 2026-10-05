@@ -14,9 +14,7 @@ internal sealed class FaultyColumnsDb : IColumnsDb<BeaconChainDbColumns>
     private readonly SlotReadHookMemDb _canonicalIndex = new();
 
     public bool FailReads { set => _sidecars.FailReads = value; }
-
     public bool FailWrites { set => _sidecars.FailWrites = value; }
-
     public bool FailDeletes { set => _sidecars.FailDeletes = value; }
 
     // Callback runs after the next 40-byte record read, before its consumer continues.
@@ -33,13 +31,9 @@ internal sealed class FaultyColumnsDb : IColumnsDb<BeaconChainDbColumns>
     };
 
     public IEnumerable<BeaconChainDbColumns> ColumnKeys => _inner.ColumnKeys;
-
     public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-
     public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
-
     public void Dispose() { }
-
     public void Flush(bool onlyWal = false) { }
 
     private sealed class SlotReadHookMemDb : MemDb
@@ -60,11 +54,8 @@ internal sealed class FaultyColumnsDb : IColumnsDb<BeaconChainDbColumns>
     private sealed class FaultyMemDb : MemDb
     {
         public bool FailReads { get; set; }
-
         public bool FailWrites { get; set; }
-
         public bool FailDeletes { get; set; }
-
         public Action? AfterNextRecordRead { get; set; }
 
         public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)

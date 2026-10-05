@@ -18,7 +18,6 @@ public class CachedHasherFixedVectorTests
     private const int ValidatorCount = 64;
 
     public static IEnumerable<TestCaseData> FuluCases() => Cases(FuluFields, false, "Fulu_cached_hasher_matches_generated_hasher_for_vector_length");
-
     public static IEnumerable<TestCaseData> GloasCases() => Cases(GloasFields, true, "Gloas_cached_hasher_matches_generated_hasher_for_vector_length");
 
     [TestCaseSource(nameof(FuluCases))]

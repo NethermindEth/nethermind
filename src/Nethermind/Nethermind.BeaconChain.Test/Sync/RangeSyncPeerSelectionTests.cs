@@ -442,9 +442,7 @@ public class RangeSyncPeerSelectionTests
         private ulong _statusHeadSlot = staleHeadSlot;
 
         public int Lookups { get; private set; }
-
         public List<ulong> Refreshes { get; } = [];
-
         public List<ulong> ChainClaims { get; } = [];
 
         public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
@@ -486,7 +484,6 @@ public class RangeSyncPeerSelectionTests
         public ImportableBlobBlock Chain { get; } = ImportableBlobBlock.Create();
         public DataColumnSidecarPool SidecarPool { get; } = new();
         public ulong[] Sampled { get; private set; } = [];
-
         public ForkedSignedBeaconBlock[] Blocks { get; private set; } = [];
 
         public static ColumnBatch Create()

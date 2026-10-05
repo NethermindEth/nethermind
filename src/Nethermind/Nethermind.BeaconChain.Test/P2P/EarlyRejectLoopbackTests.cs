@@ -188,7 +188,6 @@ public class EarlyRejectLoopbackTests
     private sealed class RawRequestProtocol : ISessionProtocol<byte[], byte[]>
     {
         public string Id { get; set; } = "/test/raw-request/1";
-
         public bool HalfClose { get; set; } = true;
 
         public async Task<byte[]> DialAsync(IChannel downChannel, ISessionContext context, byte[] request)

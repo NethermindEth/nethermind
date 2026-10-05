@@ -795,7 +795,6 @@ public partial class BeaconSyncOrchestratorTests
         public ScriptedImporter Importer => harness.Importer;
         public BeaconSyncOrchestrator Sync => harness.Orchestrator;
         public IBeaconSyncPeer Peer => peer;
-
         public ForkedSignedBeaconBlock this[int index] => blocks[index];
         public Hash256 Root(int index) => index == -1 ? fullRoot! : blocks[index].ComputeMessageRoot();
         public Task<BlockImportResult> Import(int index, bool fetched = false, IBeaconSyncPeer? supplier = null) => Sync.ImportBlockAsync(this[index], Token, fetchedByRoot: fetched, servedBy: supplier);

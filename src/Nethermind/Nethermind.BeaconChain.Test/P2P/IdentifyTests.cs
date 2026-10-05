@@ -305,7 +305,6 @@ public class IdentifyTests
     }
 
     private static Multiaddress AddressOf(Identity peer) => Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer.PeerId}");
-
     private static Libp2p.Core.State SessionWith(Identity remote) => new() { RemoteAddress = AddressOf(remote), RemotePublicKey = remote.PublicKey };
 
     private static IdentifyMessage AnswerOf(Identity key, Identity? recordSigner, ulong seq, string protocol)

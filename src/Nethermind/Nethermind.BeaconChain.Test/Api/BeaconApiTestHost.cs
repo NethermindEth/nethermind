@@ -124,15 +124,10 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     }
 
     public static Hash256 TestRoot(byte marker) => TestHashes.FromLow(marker);
-
     public static Hash256 FilledHash(byte fill) => new(Filled(32, fill));
-
     public static BlsPublicKey FilledPubkey(byte fill) => new(Filled(48, fill));
-
     public static BlsSignature FilledSignature(byte fill) => new(Filled(96, fill));
-
     public static string Hex(int length, byte fill) => Bytes.ToHexString(Filled(length, fill), withZeroX: true);
-
     private static byte[] Filled(int length, byte fill) => Enumerable.Repeat(fill, length).ToArray();
 
     public static SignedBeaconBlock RichBlock(ulong slot, Hash256 parent)

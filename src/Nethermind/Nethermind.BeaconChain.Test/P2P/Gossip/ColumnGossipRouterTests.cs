@@ -381,7 +381,6 @@ public class ColumnGossipRouterTests
     private sealed class GatedTopic(TaskCompletionSource entered, ManualResetEventSlim release) : ITopic
     {
         public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
         public bool IsSubscribed => false;
 
         public void Subscribe()
@@ -391,9 +390,7 @@ public class ColumnGossipRouterTests
         }
 
         public void Unsubscribe() { }
-
         public void Publish(byte[] value) { }
-
         public void Publish(IMessage value) { }
     }
 }

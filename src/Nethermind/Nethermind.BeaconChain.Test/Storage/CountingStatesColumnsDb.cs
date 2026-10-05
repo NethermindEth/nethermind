@@ -14,15 +14,10 @@ internal sealed class CountingStatesColumnsDb(bool sorted) : IColumnsDb<BeaconCh
     private readonly MemColumnsDb<BeaconChainDbColumns> _inner = new();
 
     public CountingStatesDb States { get; } = new();
-
     public CountingStatesDb Index { get; } = sorted ? new SeekableCountingStatesDb() : new CountingStatesDb();
-
     public IDb GetColumnDb(BeaconChainDbColumns key) => key == BeaconChainDbColumns.States ? States : key == BeaconChainDbColumns.StateSlotIndex ? Index : _inner.GetColumnDb(key);
-
     public IEnumerable<BeaconChainDbColumns> ColumnKeys => _inner.ColumnKeys;
-
     public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-
     public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
 
     public void Dispose()
@@ -37,7 +32,6 @@ internal sealed class CountingStatesColumnsDb(bool sorted) : IColumnsDb<BeaconCh
     internal class CountingStatesDb : MemDb, IDb
     {
         public int KeysRead { get; protected set; }
-
         public void ResetCount() => KeysRead = 0;
 
         public new IEnumerable<byte[]> GetAllKeys(bool ordered = false)
@@ -53,7 +47,6 @@ internal sealed class CountingStatesColumnsDb(bool sorted) : IColumnsDb<BeaconCh
     private sealed class SeekableCountingStatesDb : CountingStatesDb, ISortedKeyValueStore
     {
         public byte[]? FirstKey => Keys.MinBy(key => key, Bytes.Comparer);
-
         public byte[]? LastKey => Keys.MaxBy(key => key, Bytes.Comparer);
 
         public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
@@ -84,9 +77,7 @@ internal sealed class CountingStatesColumnsDb(bool sorted) : IColumnsDb<BeaconCh
             }
 
             public ReadOnlySpan<byte> CurrentKey => entries[_index].Key;
-
             public ReadOnlySpan<byte> CurrentValue => entries[_index].Value;
-
             public void Dispose() { }
         }
     }

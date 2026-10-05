@@ -184,19 +184,12 @@ public class CanonicalIndexReorgTests
 internal sealed class FailableCommitColumnsDb(TestMemColumnsDb<BeaconChainDbColumns> inner) : IColumnsDb<BeaconChainDbColumns>
 {
     public TestMemColumnsDb<BeaconChainDbColumns> Inner => inner;
-
     public bool FailNextCommit { get; set; }
-
     public IDb GetColumnDb(BeaconChainDbColumns key) => inner.GetColumnDb(key);
-
     public IEnumerable<BeaconChainDbColumns> ColumnKeys => inner.ColumnKeys;
-
     public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new Batch(this, inner.StartWriteBatch());
-
     public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => inner.CreateSnapshot();
-
     public void Flush(bool onlyWal) => inner.Flush(onlyWal);
-
     public void Dispose() => inner.Dispose();
 
     private sealed class Batch(FailableCommitColumnsDb owner, IColumnsWriteBatch<BeaconChainDbColumns> real) : IColumnsWriteBatch<BeaconChainDbColumns>
@@ -247,13 +240,9 @@ internal sealed class CanonicalReorgFixture
     public sealed record Reorg(UnsignedChain.ChainBlock B1, UnsignedChain.ChainBlock BHead);
 
     public UnsignedChain Chain { get; }
-
     public FailableCommitColumnsDb Db { get; }
-
     public BeaconChainStore Store { get; }
-
     public BlockImporter Importer { get; }
-
     public TestMemDb BlockIndex => (TestMemDb)Db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
 
     public static CanonicalReorgFixture Create(ITimestamper? time = null)
@@ -335,7 +324,6 @@ internal sealed class CanonicalReorgFixture
     private sealed class ValidEngine : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
-
         public bool HasAnsweredNewPayload => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>

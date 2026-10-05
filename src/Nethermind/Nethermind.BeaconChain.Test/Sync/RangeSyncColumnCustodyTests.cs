@@ -474,9 +474,7 @@ public class RangeSyncColumnCustodyTests
         public SlotClock Clock => fixture.Clock;
         public IBlockImporter Importer => fixture.Importer;
         public ulong[] Sampled => fixture.Sampled;
-
         public static Fixture Create() => new(DeferredBlockColumnFetchTests.Fixture.Create(identity: TestItem.PrivateKeyA.KeyBytes));
-
         public void AdvanceSlots(ulong slots) => fixture.AdvanceSlots(slots);
 
         public StubPeer Peer(string id, ulong[]? custodied = null, PeerColumnCustody? custody = null)

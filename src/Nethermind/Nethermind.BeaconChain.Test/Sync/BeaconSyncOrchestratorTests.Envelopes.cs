@@ -788,9 +788,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     private static ulong RetryAgeSlots => 2 * Spec.SlotsPerEpoch;
-
     private static Hash256 AnchorRoot() => TestChain.BuildLinkedChain(AnchorSlot).AnchorRoot;
-
     private static DateTime SlotStart(ulong slot) => DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + slot * Spec.SecondsPerSlot).AddSeconds(6);
 
     private static async Task<int> TickAtAgeAsync(Harness harness, ulong age, Func<int> attempts)

@@ -188,20 +188,16 @@ public partial class RangeSyncTests
         Func<Hash256[], ForkedSignedBeaconBlock[]>? blockRootHandler = null) : IBeaconSyncPeer
     {
         public PeerColumnCustody Custody { get; } = custody ?? AllColumns;
-
         internal static PeerColumnCustody AllColumns { get; } = new(Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c), isAdvertised: true);
-
         public List<ulong[]> RequestedColumns { get; } = [];
         public List<ulong[]> RequestedGloasColumns { get; } = [];
         public int RootColumnRequests { get; private set; }
         public int RootBlockRequests { get; private set; }
         public List<(ulong Start, ulong Count)> RequestedRanges { get; } = [];
-
         public List<PeerFailureReason> Reports { get; } = [];
         public int Failures => Reports.Count;
         public int Requests { get; private set; }
         public int ColumnRequests { get; private set; }
-
         public string Id => id;
         public ulong HeadSlot => headSlot;
         public ulong EarliestAvailableSlot => earliestAvailableSlot;
