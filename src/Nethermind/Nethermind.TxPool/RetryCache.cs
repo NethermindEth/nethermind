@@ -45,6 +45,9 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly long _overflowGenerationPeriodTimestampTicks;
     private readonly int _maxPreferredRetryResourcesPerHandlerPerTick;
     private readonly TimeProvider _timeProvider;
+
+    /// <summary>Lets the announce path skip the lookup while no unclaimed entry can be alive.</summary>
+    private long _lastUnclaimedPublishedAt = long.MinValue;
     private readonly Task _mainLoopTask;
     private static readonly ObjectPool<HandlerBag<TMessage>> _handlerBagsPool = new DefaultObjectPool<HandlerBag<TMessage>>(new HandlerBagPolicy<TMessage>(), maximumRetained: MaxRetainedHandlerBags);
     private readonly RetryRequestStore _retryRequests = new();
@@ -113,7 +116,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly record struct RetryRequestEntry(
         HandlerBag<TMessage> Handlers,
         long Generation,
-        IMessageHandler<TMessage> SourceHandler,
+        IMessageHandler<TMessage>? SourceHandler,
         long RequestGeneration);
 
     private sealed class PendingHandlerCount
@@ -211,6 +214,21 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             Stripe stripe = GetStripe(resourceId);
             lock (stripe.Sync) return stripe.Entries.TryAdd(resourceId, entry);
+        }
+
+        public bool TryUpdate(in TResourceId resourceId, RetryRequestEntry entry, RetryRequestEntry comparand)
+        {
+            Stripe stripe = GetStripe(resourceId);
+            lock (stripe.Sync)
+            {
+                if (!stripe.Entries.TryGetValue(resourceId, out RetryRequestEntry current) || current != comparand)
+                {
+                    return false;
+                }
+
+                stripe.Entries[resourceId] = entry;
+                return true;
+            }
         }
 
         public bool TryRemove(in TResourceId resourceId, out RetryRequestEntry entry)
@@ -479,6 +497,14 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         if (_retryRequests.TryGetValue(item.ResourceId, out currentEntry)
             && currentEntry.RequestGeneration == item.RequestGeneration)
         {
+            // An unclaimed entry made no request; its bag is left alone so a claim that wins the race stays live.
+            if (currentEntry.SourceHandler is null)
+            {
+                TryRemove(item.ResourceId, currentEntry);
+                retryHandler = null;
+                return false;
+            }
+
             BatchedHandlerPreference handlerPreference = new(
                 batchedRetryRequests?.Requests,
                 _maxPreferredRetryResourcesPerHandlerPerTick);
@@ -535,6 +561,11 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             if (_retryRequests.TryGetValue(resourceId, out RetryRequestEntry existingEntry))
             {
+                if (existingEntry.SourceHandler is null)
+                {
+                    return TryClaim(resourceId, existingEntry, handler) ? AnnounceResult.RequestRequired : AnnounceResult.Delayed;
+                }
+
                 if (ReferenceEquals(existingEntry.SourceHandler, handler))
                 {
                     return AnnounceResult.Delayed;
@@ -705,12 +736,145 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         try
         {
             return _retryRequests.TryGetValue(resourceId, out RetryRequestEntry entry)
+                && entry.SourceHandler is not null
                 && entry.Handlers.TryDefer(entry.Generation);
         }
         finally
         {
             ExitOperation();
         }
+    }
+
+    /// <summary>Tracks a delivered resource nobody requested, so the first peer to announce it later is asked for it once.</summary>
+    /// <remarks>Unclaimed, the entry grants no deferral and expires after the usual timeout; it uses a tracked slot.</remarks>
+    /// <returns><see langword="false"/> when it is already requested or cannot be tracked: treat it as received.</returns>
+    internal bool TryAwaitAnnouncement(in TResourceId resourceId)
+    {
+        if (!TryEnterOperation())
+        {
+            return false;
+        }
+
+        try
+        {
+            return AwaitAnnouncementCore(resourceId);
+        }
+        finally
+        {
+            ExitOperation();
+        }
+    }
+
+    /// <summary>Lets <paramref name="handler"/> make the request an unclaimed entry waits for; true means request it.</summary>
+    internal bool TryClaimUnrequested(in TResourceId resourceId, IMessageHandler<TMessage> handler)
+    {
+        if (!MayHaveUnclaimed() || !TryEnterOperation())
+        {
+            return false;
+        }
+
+        try
+        {
+            return !_token.IsCancellationRequested
+                && _retryRequests.TryGetValue(resourceId, out RetryRequestEntry entry)
+                && entry.SourceHandler is null
+                && TryClaim(resourceId, entry, handler);
+        }
+        finally
+        {
+            ExitOperation();
+        }
+    }
+
+    /// <summary>Whether an unclaimed entry waits for <paramref name="resourceId"/>; a resend must not consume it.</summary>
+    internal bool IsAwaitingAnnouncement(in TResourceId resourceId)
+    {
+        if (!MayHaveUnclaimed() || !TryEnterOperation())
+        {
+            return false;
+        }
+
+        try
+        {
+            return _retryRequests.TryGetValue(resourceId, out RetryRequestEntry entry) && entry.SourceHandler is null;
+        }
+        finally
+        {
+            ExitOperation();
+        }
+    }
+
+    /// <remarks>Twice the timeout leaves room for expiry to run late; past it, no unclaimed entry can be alive.</remarks>
+    private bool MayHaveUnclaimed()
+    {
+        long last = Volatile.Read(ref _lastUnclaimedPublishedAt);
+        return last != long.MinValue && _timeProvider.GetElapsedTime(last) < _timeout * 2;
+    }
+
+    private bool AwaitAnnouncementCore(in TResourceId resourceId)
+    {
+        if (_token.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        if (_retryRequests.TryGetValue(resourceId, out RetryRequestEntry existingEntry))
+        {
+            return existingEntry.SourceHandler is null;
+        }
+
+        if (!TryReserveTrackedSlot())
+        {
+            return false;
+        }
+
+        if (!TryReserveExpiringQueueSlot())
+        {
+            Interlocked.Decrement(ref _trackedRequestsCounter);
+            return false;
+        }
+
+        HandlerBag<TMessage> bag = _handlerBagsPool.Get();
+        RetryRequestEntry entry = new(bag, bag.Activate(), null, Interlocked.Increment(ref _requestGeneration));
+        if (TryPublishTrackedRequest(resourceId, entry))
+        {
+            Volatile.Write(ref _lastUnclaimedPublishedAt, _timeProvider.GetTimestamp());
+            Enqueue(resourceId, entry);
+            return true;
+        }
+
+        Interlocked.Decrement(ref _expiringQueueCounter);
+        Interlocked.Decrement(ref _trackedRequestsCounter);
+        _handlerBagsPool.Return(bag);
+        return _retryRequests.TryGetValue(resourceId, out existingEntry) && existingEntry.SourceHandler is null;
+    }
+
+    private bool TryClaim(in TResourceId resourceId, RetryRequestEntry entry, IMessageHandler<TMessage> handler)
+    {
+        if (!TryReserveHandlerSlot(handler))
+        {
+            _logger.TraceWarn($"{handler} has reached the pending {typeof(TResourceId)} limit, suppressing request");
+            return false;
+        }
+
+        // A claim starts its own timeout under a new generation; without a queue slot it is refused, as nothing
+        // would be left to expire it.
+        if (!TryReserveExpiringQueueSlot())
+        {
+            ReleaseHandlerSlot(handler);
+            return false;
+        }
+
+        RetryRequestEntry claimed = entry with { SourceHandler = handler, RequestGeneration = Interlocked.Increment(ref _requestGeneration) };
+        if (_retryRequests.TryUpdate(resourceId, claimed, entry))
+        {
+            Enqueue(resourceId, claimed);
+            return true;
+        }
+
+        Interlocked.Decrement(ref _expiringQueueCounter);
+        ReleaseHandlerSlot(handler);
+        return false;
     }
 
     private void ReceivedCore(in TResourceId resourceId)
@@ -1221,7 +1385,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     private void Return(RetryRequestEntry entry)
     {
-        ReleaseHandlerSlot(entry.SourceHandler);
+        if (entry.SourceHandler is not null) ReleaseHandlerSlot(entry.SourceHandler);
         HandlerSlotReleaser releaser = new(this);
         if (entry.Handlers.Deactivate(entry.Generation, ref releaser))
         {
