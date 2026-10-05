@@ -175,7 +175,7 @@ public class PeerAdmissionRaceTests
         await DialFromPlainPeerAsync(oldSession, remote.P2P, token);
         await WaitUntilAsync(() => remote.P2P.TryGetEstablishedSession(lower, out _), "fixture: the old session never reached the peer", token);
 
-        await using Relay relay = Relay.Start(PortOf(remote.P2P), closeFirst: 0);
+        await using Relay relay = Relay.Start(PortOf(remote.P2P));
         PeerManager manager = local.CreatePeerManager();
         Task<bool> dial = manager.TryAddPeerAsync(relay.AddressOf(remote.P2P), token);
         await relay.WhenEndedAsync(connection: 2).WaitAsync(Hold, token);
@@ -226,11 +226,11 @@ public class PeerAdmissionRaceTests
         private readonly List<IDisposable> _open = [];
         private Task _accepting = Task.CompletedTask;
 
-        public static Relay Start(int port, int closeFirst)
+        public static Relay Start(int port)
         {
             Relay relay = new();
             relay._front.Start();
-            relay._accepting = relay.AcceptAsync(port, closeFirst, relay._stop.Token);
+            relay._accepting = relay.AcceptAsync(port, relay._stop.Token);
             return relay;
         }
 
@@ -261,7 +261,7 @@ public class PeerAdmissionRaceTests
             }
         }
 
-        private async Task AcceptAsync(int port, int closeFirst, CancellationToken token)
+        private async Task AcceptAsync(int port, CancellationToken token)
         {
             try
             {
@@ -271,13 +271,6 @@ public class PeerAdmissionRaceTests
                     lock (_accepted)
                     {
                         _accepted.Add(_clock.Elapsed);
-                    }
-
-                    if (index < closeFirst)
-                    {
-                        inbound.Close();
-                        EndedOf(index).TrySetResult();
-                        continue;
                     }
 
                     Socket outbound = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
