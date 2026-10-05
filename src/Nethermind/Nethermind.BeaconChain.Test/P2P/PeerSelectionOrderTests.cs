@@ -35,27 +35,19 @@ public class PeerSelectionOrderTests
         Assert.That(readsPerPeer, Has.All.EqualTo(3), "one reading of the cooldown, one of the requests in flight and one of the head slot per peer");
     }
 
-    [Test]
-    public void A_peer_in_cooldown_is_listed_after_all_others_and_the_rest_by_head_slot()
-    {
-        int[] peers = [0, 1, 2, 3, 4];
-        ulong[] heads = [500, 40, 30, 20, 10];
-
-        int[] ordered = PeerManager.OrderForSelection(peers, static peer => peer is 0 or 2, static _ => 0, peer => heads[peer]);
-
-        Assert.That(ordered, Is.EqualTo(new List<int> { 1, 3, 4, 0, 2 }));
-    }
-
-    [Test]
-    public void Among_peers_not_in_cooldown_the_one_with_fewer_requests_in_flight_comes_first_whatever_its_head_slot()
+    [TestCase(false, new[] { 1, 3, 4, 0, 2 }, TestName = "A_peer_in_cooldown_is_listed_after_all_others_and_the_rest_by_head_slot")]
+    [TestCase(true, new[] { 1, 3, 2, 0, 4 }, TestName = "Among_peers_not_in_cooldown_the_one_with_fewer_requests_in_flight_comes_first_whatever_its_head_slot")]
+    public void Selection_orders_cooldown_requests_and_head_slot(bool withRequests, int[] expected)
     {
         int[] peers = [0, 1, 2, 3, 4];
         ulong[] heads = [500, 40, 30, 20, 10];
         int[] inFlight = [2, 0, 1, 0, 0];
 
-        int[] ordered = PeerManager.OrderForSelection(peers, static peer => peer is 4, peer => inFlight[peer], peer => heads[peer]);
+        int[] ordered = PeerManager.OrderForSelection(peers,
+            peer => withRequests ? peer is 4 : peer is 0 or 2,
+            peer => withRequests ? inFlight[peer] : 0, peer => heads[peer]);
 
-        Assert.That(ordered, Is.EqualTo(new List<int> { 1, 3, 2, 0, 4 }), "idle by head slot, then busier, and a peer in cooldown last even when idle");
+        Assert.That(ordered, Is.EqualTo(expected), "idle by head slot, then busier, and a peer in cooldown last even when idle");
     }
 
     [TestCase(0UL, "Sync peers for any head: 0 usable; left out 1 without status")]
