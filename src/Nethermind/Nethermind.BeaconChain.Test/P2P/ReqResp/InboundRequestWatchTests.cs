@@ -25,25 +25,29 @@ public class InboundRequestWatchTests
 
     private static readonly PeerId Requester = new Identity(privateKey: null, KeyType.Secp256K1).PeerId;
 
-    [Test]
+    [TestCase(true, TestName = "The_listener_returns_only_once_the_requester_ended_its_stream_reporting_nothing")]
+    [TestCase(false, TestName = "The_listener_returns_after_the_linger_when_the_requester_never_ends_its_stream")]
     [CancelAfter(30_000)]
-    public async Task The_listener_returns_only_once_the_requester_ended_its_stream_reporting_nothing(CancellationToken token)
+    public async Task Requester_closure_or_linger_expiry_returns_without_a_violation(bool requesterEnds, CancellationToken token)
     {
         List<string> reported = [];
         using LateByteStream stream = new(await RequestBytesAsync(token), lateByte: null);
-        ProbeProtocol protocol = new((_, detail) => reported.Add(detail));
+        Action<PeerId, string> sink = (_, detail) => reported.Add(detail);
+        ProbeProtocol protocol = requesterEnds ? new(sink)
+            : new(sink) { WatchLingerAfterServed = TimeSpan.FromMilliseconds(100) };
         protocol.Enter(Context());
-
         await protocol.ReadAsync(stream, token);
         await stream.WatchStarted.WaitAsync(token);
         Task listenerReturn = protocol.DisposeAsync().AsTask();
         bool returnedBeforeTheRequesterEnded = listenerReturn.IsCompleted;
-        stream.Teardown();
+        if (requesterEnds) stream.Teardown();
         await listenerReturn.WaitAsync(token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(returnedBeforeTheRequesterEnded, Is.False, "the channel is torn down when the listener returns, so the listener waits for the requester");
-        Assert.That(reported, Is.Empty, "a requester that ends its stream is not a violation");
+        if (requesterEnds)
+            Assert.That(returnedBeforeTheRequesterEnded, Is.False, "the channel is torn down when the listener returns, so the listener waits for the requester");
+        Assert.That(reported, Is.Empty, requesterEnds
+            ? "a requester that ends its stream is not a violation" : "the end of the linger is not a violation");
     }
 
     [Test]
@@ -62,22 +66,6 @@ public class InboundRequestWatchTests
 
         Assert.That(await reported.Task.WaitAsync(token), Is.EqualTo(Requester));
         await listenerReturn.WaitAsync(token);
-    }
-
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task The_listener_returns_after_the_linger_when_the_requester_never_ends_its_stream(CancellationToken token)
-    {
-        List<string> reported = [];
-        using LateByteStream stream = new(await RequestBytesAsync(token), lateByte: null);
-        ProbeProtocol protocol = new((_, detail) => reported.Add(detail)) { WatchLingerAfterServed = TimeSpan.FromMilliseconds(100) };
-        protocol.Enter(Context());
-        await protocol.ReadAsync(stream, token);
-        await stream.WatchStarted.WaitAsync(token);
-
-        await protocol.DisposeAsync().AsTask().WaitAsync(token);
-
-        Assert.That(reported, Is.Empty, "the end of the linger is not a violation");
     }
 
     // Completed responses release capacity while closure is watched (consensus-specs networking, Req/Resp interaction).
