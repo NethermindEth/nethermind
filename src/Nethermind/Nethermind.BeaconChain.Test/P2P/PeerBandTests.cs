@@ -335,7 +335,7 @@ public class PeerBandTests
     [TestCase(false, TestName = "A_session_the_remote_opened_is_admitted_and_reported_as_inbound_with_its_agent_string")]
     [TestCase(true, TestName = "Peers_surface_reports_peer_id_direction_state_multiaddr_agent_and_enr_for_a_connected_peer")]
     [CancelAfter(60_000)]
-    public async Task Connected_peer_records_report_the_remote_identity_and_admission_direction(bool outbound, CancellationToken token)
+    public async Task Connected_peer_records_preserve_identity_direction_session_reuse_and_failure_labels(bool outbound, CancellationToken token)
     {
         AdmissionWatch watch = new();
         Node remote = CreateNode();
@@ -376,41 +376,30 @@ public class PeerBandTests
         {
             Assert.That(lookedUp.PeerId, Is.EqualTo(expectedPeerId));
             Assert.That(lookedUp.Enr, Is.EqualTo(discoveredEnr));
+
+            long before = FailureCount("ProtocolViolation");
+            peerManager.GetBestPeers(0).Single().ReportFailure(PeerFailureReason.ProtocolViolation, "some unbounded detail nobody should turn into a label: " + Guid.NewGuid());
+            long after = FailureCount("ProtocolViolation");
+
+            Assert.That(after - before, Is.EqualTo(1), "the closed-cardinality reason, not the free-text detail, is the metric label");
         }
-        else Assert.That(lookedUp.Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
-    }
+        else
+        {
+            Assert.That(lookedUp.Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
+            // Straight at the libp2p layer: the manager's own dial path short-circuits on "already
+            // connected" before it ever dials, so only a direct dial exercises the session reuse.
+            ISession reused = await local.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(remote.P2P)), token);
 
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task Dialing_a_peer_that_already_connected_to_us_reuses_its_session_and_keeps_it_inbound(CancellationToken token)
-    {
-        AdmissionWatch watch = new();
-        Node remote = CreateNode();
-        Node local = CreateNode(logManager: watch.LogManager);
-        SetMatchingStatus(remote, local);
+            Assert.That(local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? established), Is.True, () => watch.Describe("the admitted peer does not match"));
+            Assert.That(reused, Is.SameAs(established), () => watch.Describe("the dial must hand back the session the remote opened, not open a second one"));
+            Assert.That((await local.P2P.GetSessionInfoAsync(reused, token)).Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
+            Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1), () => watch.Describe("one connection, not a second outbound one"));
 
-        await using PeerHostScope nodes = new(local.P2P, remote.P2P);
-        await nodes.StartAsync(token, remote.P2P, local.P2P);
-        PeerManager peerManager = watch.Watch(local, remote);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True, () => watch.Describe("already connected counts as success"));
 
-        await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
-        await watch.AdmittedAsync("the inbound session was never admitted", token);
-        Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("the admitted peer does not match"));
-
-        // Straight at the libp2p layer: the manager's own dial path short-circuits on "already
-        // connected" before it ever dials, so only a direct dial exercises the session reuse.
-        ISession reused = await local.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(remote.P2P)), token);
-
-        Assert.That(local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? established), Is.True, () => watch.Describe("the admitted peer does not match"));
-        Assert.That(reused, Is.SameAs(established), () => watch.Describe("the dial must hand back the session the remote opened, not open a second one"));
-        Assert.That((await local.P2P.GetSessionInfoAsync(reused, token)).Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
-        Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1), () => watch.Describe("one connection, not a second outbound one"));
-
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True, () => watch.Describe("already connected counts as success"));
-
-        IPeerDirectory directory = peerManager;
-        Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("one session, one entry"));
-        Assert.That(directory.Peers.Single().Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), () => watch.Describe("one session, one entry"));
+            Assert.That(directory.Peers.Single().Direction, Is.EqualTo(PeerDirection.Inbound), () => watch.Describe("the admitted peer does not match"));
+        }
     }
 
     [Test]
@@ -485,30 +474,24 @@ public class PeerBandTests
         PeerSessionNodes.WaitUntilAsync(condition, failure, token, pollDelayMilliseconds: 50);
 
     [Test]
-    public async Task Admission_capacity_wait_returns_immediately_below_target()
-    {
-        Node node = CreateNode();
-        node.Config.TargetPeerCount = 5;
-        PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
-
-        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
-        await peerManager.WaitForAdmissionCapacityAsync(cts.Token);
-
-        Assert.That(cts.IsCancellationRequested, Is.False, "an empty pool below the target must not wait at all");
-    }
-
-    [Test]
     [CancelAfter(60_000)]
-    public async Task Admission_capacity_wait_blocks_once_the_pool_is_at_target(CancellationToken token)
+    public async Task Admission_capacity_wait_returns_below_target_and_blocks_at_target(CancellationToken token)
     {
         Node server = CreateNode();
         Node client = CreateNode();
         SetMatchingStatus(server, client);
 
         await using PeerHostScope nodes = new(client.P2P, server.P2P);
-        await nodes.StartAsync(token, server.P2P, client.P2P);
-
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+        int originalTarget = client.Config.TargetPeerCount;
+        client.Config.TargetPeerCount = 5;
+        using (CancellationTokenSource cts = new(TimeSpan.FromSeconds(5)))
+        {
+            await peerManager.WaitForAdmissionCapacityAsync(cts.Token);
+            Assert.That(cts.IsCancellationRequested, Is.False, "an empty pool below the target must not wait at all");
+        }
+        client.Config.TargetPeerCount = originalTarget;
+        await nodes.StartAsync(token, server.P2P, client.P2P);
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
         client.Config.TargetPeerCount = 1;
 
@@ -534,28 +517,6 @@ public class PeerBandTests
         TimeSpan atWatermark = peerManager.NextMaintenanceIntervalForTest;
 
         Assert.That(underPeered, Is.LessThan(atWatermark), "MinPeerCount must actually change behaviour, not just be read into nothing");
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task ReportFailure_reason_is_a_bounded_metric_label_not_the_free_text_detail(CancellationToken token)
-    {
-        Node server = CreateNode();
-        Node client = CreateNode();
-        SetMatchingStatus(server, client);
-
-        await using PeerHostScope nodes = new(client.P2P, server.P2P);
-        await nodes.StartAsync(token, server.P2P, client.P2P);
-
-        PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-        Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
-        IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
-
-        long before = FailureCount("ProtocolViolation");
-        peer.ReportFailure(PeerFailureReason.ProtocolViolation, "some unbounded detail nobody should turn into a label: " + Guid.NewGuid());
-        long after = FailureCount("ProtocolViolation");
-
-        Assert.That(after - before, Is.EqualTo(1), "the closed-cardinality reason, not the free-text detail, is the metric label");
     }
 
     [TestCase("no-such-peer", TestName = "TryGetPeer_refuses_an_unknown_peer_id_rather_than_matching_anything")]
