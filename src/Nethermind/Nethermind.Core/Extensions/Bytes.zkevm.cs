@@ -76,29 +76,30 @@ public static unsafe partial class Bytes
             (nuint)source.Length);
     }
 
-    /// <summary>The zkVM's <c>memmove</c>, which its runtime turns into a DMA precompile.</summary>
+    /// <summary>Copies <paramref name="length"/> bytes from <paramref name="source"/> to <paramref name="destination"/>,
+    /// which may overlap.</summary>
     /// <remarks>
-    /// Raw pointers rather than <c>ref byte</c>: byref arguments make ILC wrap the call in a stub that pins
-    /// both refs in a stack frame, ~10 steps a call. Unpinned pointers are safe because nothing between taking
+    /// Where <see cref="ZiskMemmoveFlag"/> is on, this is the zkVM's <c>memmove</c>, which its runtime turns into a
+    /// DMA precompile; elsewhere it is corelib's copy. Unpinned pointers are safe because nothing between taking
     /// them and the call returning can reach a GC safepoint: the import suppresses the GC transition and the
-    /// callee is a two-instruction thunk. Call only where <see cref="ZiskMemmoveFlag"/> is on.
+    /// callee is a two-instruction thunk.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Memmove(void* destination, void* source, nuint length) => MemmoveImport(destination, source, length);
+    internal static void Memmove(void* destination, void* source, nuint length)
+    {
+        if (ZiskMemmoveFlag.IsActive) Accelerators.Memmove(destination, source, length);
+        else Buffer.MemoryCopy(source, destination, length, length);
+    }
 
-    /// <summary>The zkVM's <c>memset</c>, which its runtime turns into a DMA precompile for a zero fill.</summary>
-    /// <remarks>Takes raw pointers for the reason given on <see cref="Memmove"/>. Call only where
-    /// <see cref="ZiskMemmoveFlag"/> is on.</remarks>
+    /// <summary>Sets <paramref name="length"/> bytes at <paramref name="destination"/> to <paramref name="value"/>.</summary>
+    /// <remarks>Where <see cref="ZiskMemmoveFlag"/> is on, this is the zkVM's <c>memset</c>, which its runtime turns
+    /// into a DMA precompile for a zero fill; elsewhere it is corelib's fill.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Memset(void* destination, int value, nuint length) => MemsetImport(destination, value, length);
-
-    // Behind a wrapper so that a JIT compiling a caller, as the zkEVM test hosts do, never binds the import:
-    // one that suppresses the GC transition is bound when it is compiled in, and the host has no such export.
-    [DllImport("__Internal", EntryPoint = "memmove", ExactSpelling = true), SuppressGCTransition]
-    private static extern void MemmoveImport(void* destination, void* source, nuint length);
-
-    [DllImport("__Internal", EntryPoint = "memset", ExactSpelling = true), SuppressGCTransition]
-    private static extern void MemsetImport(void* destination, int value, nuint length);
+    internal static void Memset(void* destination, byte value, nuint length)
+    {
+        if (ZiskMemmoveFlag.IsActive) Accelerators.Memset(destination, value, length);
+        else Unsafe.InitBlockUnaligned(destination, value, checked((uint)length));
+    }
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowDestinationTooShort() => throw new ArgumentException("Destination is too short.", "destination");

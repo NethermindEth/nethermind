@@ -15,17 +15,19 @@ namespace Nethermind.Core.ZkEvm.Test.Crypto;
 public class KeccakAbsorbTests
 {
     private const int RateBytes = 136;
+    private const int StateBytes = 200;
 
     [Test]
-    public unsafe void Short_absorb_writes_the_message_and_its_pad_byte_into_a_zeroed_state([Range(8, RateBytes - 1)] int length)
+    public unsafe void Short_absorb_zeroes_the_state_and_writes_the_message_and_its_pad_byte([Range(8, RateBytes - 1)] int length)
     {
         byte[] input = new byte[length];
         new Random(length).NextBytes(input);
-        byte[] expected = new byte[RateBytes];
+        byte[] expected = new byte[StateBytes];
         input.CopyTo(expected, 0);
         expected[length] = 0x01;
 
-        ulong[] lanes = new ulong[RateBytes / sizeof(ulong)];
+        ulong[] lanes = new ulong[StateBytes / sizeof(ulong)];
+        lanes.AsSpan().Fill(ulong.MaxValue);
         fixed (byte* data = input)
         {
             KeccakHash.AbsorbShortFixed(ref lanes[0], data, (nuint)length);

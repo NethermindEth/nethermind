@@ -146,17 +146,14 @@ public sealed partial class KeccakHash
         }
         else if (length == 32)
         {
-            ZeroState(ref lane);
             AbsorbShortFixed(ref lane, data, 32);
         }
         else if (length == 64)
         {
-            ZeroState(ref lane);
             AbsorbShortFixed(ref lane, data, 64);
         }
         else if (length == 20)
         {
-            ZeroState(ref lane);
             AbsorbShortFixed(ref lane, data, 20);
         }
         else
@@ -411,12 +408,13 @@ public sealed partial class KeccakHash
         Unsafe.Add(ref lane, 24) = Unsafe.Add(ref source, 24);
     }
 
-    /// <summary>Writes a sub-rate message and its 0x01 pad byte into a zeroed state.</summary>
+    /// <summary>Zeroes a state and writes a sub-rate message and its 0x01 pad byte into it.</summary>
     /// <param name="length">A constant from 8 to 135: each lane up to the padded last word then folds to one
     /// store, and the lanes past it to nothing.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static unsafe void AbsorbShortFixed(ref ulong lane, byte* data, nuint length)
     {
+        ZeroState(ref lane);
         Unsafe.Add(ref lane, 0) = ShortMessageLane(data, length, 0);
         if (1 <= length >> 3) Unsafe.Add(ref lane, 1) = ShortMessageLane(data, length, 1);
         if (2 <= length >> 3) Unsafe.Add(ref lane, 2) = ShortMessageLane(data, length, 2);
