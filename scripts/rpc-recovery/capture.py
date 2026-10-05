@@ -8,7 +8,7 @@ import stat
 import subprocess
 import sys
 
-OLD_RUN = '37309091869'
+OLD_RUN = '37317936571'
 SHARED = Path('/mnt/sda/expb-data/rpc-bench-scratch')
 STORAGE = SHARED / ('rpc-private-' + OLD_RUN + '-1')
 LOCK = SHARED / 'rpc-native-capability.lock'
