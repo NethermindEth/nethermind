@@ -39,19 +39,9 @@ public class BeaconApiHeadSnapshotTests
         "/eth/v2/debug/beacon/states/head",
     ];
 
-    private static IEnumerable<TestCaseData> RequestCases()
-    {
-        foreach (string path in EnvelopeRoutes)
-        {
-            foreach (bool published in new[] { false, true })
-            {
-                yield return new TestCaseData(path, published);
-            }
-        }
-    }
-
-    [TestCaseSource(nameof(RequestCases))]
-    public async Task A_head_published_while_the_request_reads_the_store_does_not_change_its_answer(string path, bool publishedSnapshots)
+    [Test]
+    public async Task A_head_published_while_the_request_reads_the_store_does_not_change_its_answer(
+        [ValueSource(nameof(EnvelopeRoutes))] string path, [Values] bool publishedSnapshots)
     {
         HookedMemDbColumns db = new();
         HeadSnapshotHolder snapshots = new();
