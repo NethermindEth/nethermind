@@ -157,7 +157,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         private static readonly DateTime SyncBehindNow = new(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
-        private const ulong SyncBehindThresholdSeconds = 5 * 60;
+        private const ulong SyncBehindThresholdSeconds = SyncReport.SyncBehindThresholdSeconds;
 
         private const string BehindMessage = "Node is behind the head of the chain by";
         private const string CaughtUpMessage = "Node has caught up with the head of the chain";
@@ -186,12 +186,12 @@ namespace Nethermind.Synchronization.Test
             return harness.Reported(BehindMessage);
         }
 
-        [TestCase(null, TestName = "No head")]
-        [TestCase(0UL, TestName = "Genesis or uninitialized timestamp")]
-        public void Sync_behind_is_not_reported_without_a_meaningful_head(ulong? headTimestamp)
+        [TestCase(false, TestName = "No head")]
+        [TestCase(true, TestName = "Genesis head")]
+        public void Sync_behind_is_not_reported_without_a_meaningful_head(bool hasGenesisHead)
         {
             using SyncBehindHarness harness = new(SyncMode.Full);
-            harness.BlockFinder.Head.Returns(headTimestamp is null ? null : Build.A.Block.WithTimestamp(headTimestamp.Value).TestObject);
+            harness.BlockFinder.Head.Returns(hasGenesisHead ? Build.A.Block.Genesis.WithTimestamp(1).TestObject : null);
 
             harness.Tick();
 
@@ -244,15 +244,33 @@ namespace Nethermind.Synchronization.Test
             Assert.That(harness.Reported(CaughtUpMessage), Is.False);
         }
 
-        /// <summary>Drives a <see cref="SyncReport"/> against a fixed clock and a stubbed head.</summary>
+        [Test]
+        public void Sync_behind_reports_catch_up_eta_from_the_rate_since_the_previous_report()
+        {
+            using SyncBehindHarness harness = new(SyncMode.Full);
+            ProgressLogger blocksDownloaded = harness.SyncReport.FullSyncBlocksDownloaded;
+            blocksDownloaded.TargetValue = 1_000;
+            blocksDownloaded.Update(100);
+            harness.SetHeadBehindBy(10 * 60);
+
+            harness.Tick();
+            Assert.That(harness.Reported("Estimated time to catch up"), Is.False, "no rate before a second sample");
+
+            harness.Clock.Add(TimeSpan.FromMinutes(1));
+            blocksDownloaded.Update(160);
+            harness.SetHeadBehindBy(10 * 60);
+            harness.TickToNextReport();
+
+            Assert.That(harness.Reported("Estimated time to catch up: 14m 0s"), Is.True);
+        }
+
+        /// <summary>Drives a <see cref="SyncReport"/> against a manual clock and a stubbed head.</summary>
         private sealed class SyncBehindHarness : IDisposable
         {
-            /// <summary>Ticks between two sync-behind reports; mirrors the report frequency in <see cref="SyncReport"/>.</summary>
-            private const int ReportFrequency = 6;
-
-            private readonly SyncReport _syncReport;
             private readonly ITimer _timer;
 
+            internal SyncReport SyncReport { get; }
+            internal ManualTimestamper Clock { get; } = new(SyncBehindNow);
             internal InterfaceLogger Logger { get; }
             internal IBlockFinder BlockFinder { get; }
 
@@ -277,20 +295,20 @@ namespace Nethermind.Synchronization.Test
 
                 BlockFinder = Substitute.For<IBlockFinder>();
 
-                _syncReport = new(pool, Substitute.For<INodeStatsManager>(), new SyncConfig { FastSync = true },
-                    Substitute.For<IPivot>(), BlockFinder, new ManualTimestamper(SyncBehindNow), logManager, timerFactory);
-                _syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, syncMode));
+                SyncReport = new(pool, Substitute.For<INodeStatsManager>(), new SyncConfig { FastSync = true },
+                    Substitute.For<IPivot>(), BlockFinder, Clock, logManager, timerFactory);
+                SyncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, syncMode));
             }
 
             internal void SetHeadBehindBy(ulong secondsBehind) =>
-                BlockFinder.Head.Returns(Build.A.Block.WithTimestamp(new UnixTime(SyncBehindNow).Seconds - secondsBehind).TestObject);
+                BlockFinder.Head.Returns(Build.A.Block.WithNumber(1).WithTimestamp(Clock.UnixTime.Seconds - secondsBehind).TestObject);
 
             internal void Tick() => _timer.Elapsed += Raise.Event();
 
             /// <summary>Advances to the next tick on which the sync-behind report runs.</summary>
             internal void TickToNextReport()
             {
-                for (int i = 0; i < ReportFrequency; i++)
+                for (int i = 0; i < SyncReport.SyncBehindReportFrequency; i++)
                 {
                     Tick();
                 }
@@ -301,7 +319,7 @@ namespace Nethermind.Synchronization.Test
                     call.GetMethodInfo().Name is nameof(InterfaceLogger.Info) or nameof(InterfaceLogger.Warn)
                     && call.GetArguments() is [string logged] && logged.Contains(message));
 
-            public void Dispose() => _syncReport.Dispose();
+            public void Dispose() => SyncReport.Dispose();
         }
     }
 }

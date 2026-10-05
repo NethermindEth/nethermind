@@ -32,10 +32,11 @@ namespace Nethermind.Synchronization.Reporting
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
-        private const int SyncBehindReportFrequency = 6; // every 6 ticks x 10s = ~60s
-        private const ulong SyncBehindThresholdSeconds = 5 * 60;
+        internal const int SyncBehindReportFrequency = 6; // every 6 ticks x 10s = ~60s
+        internal const ulong SyncBehindThresholdSeconds = 5 * 60;
         private bool _isBehind;
         private bool _hasBeenAtTip;
+        private (DateTime Time, ulong Blocks)? _lastCatchUpSample;
         private readonly TimeSpan _defaultReportingIntervals;
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, IBlockFinder blockFinder, ITimestamper timestamper, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
@@ -291,16 +292,15 @@ namespace Nethermind.Synchronization.Reporting
             SyncMode currentSyncMode = _currentMode;
             if ((currentSyncMode & (SyncMode.Full | SyncMode.FastSync | SyncMode.WaitingForBlock)) == 0) return;
 
+            // Head stays at genesis during fast sync, so its age says nothing about sync progress.
             Block? head = _blockFinder.Head;
-            if (head is null) return;
+            if (head is null || head.IsGenesis) return;
 
-            ulong headTimestamp = head.Timestamp;
-            if (headTimestamp == 0) return; // genesis or uninitialized
-
-            ulong secondsBehind = _timestamper.UnixTime.Seconds.SaturatingSub(headTimestamp);
+            ulong secondsBehind = _timestamper.UnixTime.Seconds.SaturatingSub(head.Timestamp);
             if (secondsBehind <= SyncBehindThresholdSeconds)
             {
                 _hasBeenAtTip = true;
+                _lastCatchUpSample = null;
                 if (_isBehind)
                 {
                     _isBehind = false;
@@ -322,13 +322,24 @@ namespace Nethermind.Synchronization.Reporting
             else if (_logger.IsInfo) _logger.Info(message);
         }
 
+        /// <remarks>
+        /// The rate is measured between consecutive sync-behind reports rather than taken from
+        /// <see cref="ProgressLogger.CurrentPerSecond"/>, whose window is reset by every <see cref="ProgressLogger.LogProgress"/>.
+        /// </remarks>
         private string FormatCatchUpEta()
         {
-            decimal blocksPerSecond = FullSyncBlocksDownloaded.CurrentPerSecond;
-            ulong blocksRemaining = FullSyncBlocksDownloaded.TargetValue.SaturatingSub(FullSyncBlocksDownloaded.CurrentValue);
-            if (blocksPerSecond <= 0 || blocksRemaining == 0) return "";
+            DateTime now = _timestamper.UtcNow;
+            ulong blocksDownloaded = FullSyncBlocksDownloaded.CurrentValue;
+            (DateTime Time, ulong Blocks)? previous = _lastCatchUpSample;
+            _lastCatchUpSample = (now, blocksDownloaded);
 
-            return $" Estimated time to catch up: {FormatSeconds((ulong)(blocksRemaining / (double)blocksPerSecond))}";
+            if (previous is not { } sample || blocksDownloaded <= sample.Blocks || now <= sample.Time) return "";
+
+            ulong blocksRemaining = FullSyncBlocksDownloaded.TargetValue.SaturatingSub(blocksDownloaded);
+            if (blocksRemaining == 0) return "";
+
+            double blocksPerSecond = (blocksDownloaded - sample.Blocks) / (now - sample.Time).TotalSeconds;
+            return $" Estimated time to catch up: {FormatSeconds((ulong)(blocksRemaining / blocksPerSecond))}";
         }
 
         public void Dispose() => _timer.Dispose();
