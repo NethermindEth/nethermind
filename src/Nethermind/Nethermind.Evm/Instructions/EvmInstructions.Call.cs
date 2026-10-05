@@ -141,9 +141,15 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
 
-        // EIP-2780 charges a flat value-move cost with no state read: the spec performs the
-        // static gas check before any target access, so an OOG here must not touch the BAL.
-        if (hasValueTransfer && !TryConsumeCallValueTransfer<TGasPolicy, TSpec>(ref gas)) goto OutOfGas;
+        if (hasValueTransfer)
+        {
+            // EIP-2780 charges a flat value-move cost with no state read: the spec performs the
+            // static gas check before any target access, so an OOG here must not touch the BAL.
+            bool valueOutOfGas = TSpec.IsEip2780Enabled
+                ? !TGasPolicy.TryConsumeCallValueTransferEip2780(ref gas)
+                : !TGasPolicy.TryConsumeCallValueTransfer(ref gas);
+            if (valueOutOfGas) goto OutOfGas;
+        }
 
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.TryConsumeCallBaseGas(ref gas, spec) ||
@@ -261,15 +267,6 @@ public static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 
-    /// <summary>Charges the value-transfer surcharge a value-bearing <c>CALL</c> pays under the given fork rules.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryConsumeCallValueTransfer<TGasPolicy, TSpec>(ref TGasPolicy gas)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TSpec : struct, ICallSpec =>
-        TSpec.IsEip2780Enabled
-            ? TGasPolicy.TryConsumeCallValueTransferEip2780(ref gas)
-            : TGasPolicy.TryConsumeCallValueTransfer(ref gas);
-
     /// <summary>Whether a transfer to <paramref name="target"/> pays the new-account charge under the given fork rules.</summary>
     /// <remarks>
     /// EIP-8038 charges a value transfer to a dead recipient the NEW_ACCOUNT state cost, separate
@@ -290,9 +287,9 @@ public static partial class EvmInstructions
     /// Executes the EIP-5920 PAY opcode: transfers value to an address without executing any of its code.
     /// </summary>
     /// <remarks>
-    /// Surcharges mirror CALL's under EIP-2780/8037/8038, so the value cost includes CALL_STIPEND though no frame
-    /// receives it. As with CALL, flat charges precede the target read (EIP-7928) and an unused NEW_ACCOUNT state
-    /// charge is refunded. A delegated target's delegation is never resolved.
+    /// The value cost is GAS_CALL_VALUE, or ACCOUNT_WRITE under EIP-8038; the new-account surcharge follows CALL's
+    /// under EIP-2780/8037/8038. As with CALL, flat charges precede the target read (EIP-7928) and an unused
+    /// NEW_ACCOUNT state charge is refunded. A delegated target's delegation is never resolved.
     /// </remarks>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> with 1 pushed on success or 0 on insufficient balance; otherwise an
@@ -320,7 +317,9 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
 
-        if (hasValueTransfer && !TryConsumeCallValueTransfer<TGasPolicy, TSpec>(ref gas)) goto OutOfGas;
+        // PAY enters no frame, so under EIP-8038 its value cost is ACCOUNT_WRITE without CALL_STIPEND, as for SELFDESTRUCT.
+        if (hasValueTransfer && !TGasPolicy.UpdateGas(ref gas, TSpec.IsEip8038Enabled ? Eip8038Constants.AccountWrite : GasCostOf.CallValue))
+            goto OutOfGas;
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, target))
             goto OutOfGas;
 

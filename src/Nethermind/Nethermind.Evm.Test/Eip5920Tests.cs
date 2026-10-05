@@ -32,8 +32,8 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// EIP-5920 PAY opcode on Bogota, where the value and new-account surcharges follow CALL's under
-/// EIP-2780/EIP-8037/EIP-8038 and transfers are logged (EIP-7708).
+/// EIP-5920 PAY opcode on Bogota, where the value cost is EIP-8038's ACCOUNT_WRITE, the new-account surcharge
+/// follows CALL's under EIP-2780/EIP-8037/EIP-8038 and transfers are logged (EIP-7708).
 /// </summary>
 public class Eip5920Tests : VirtualMachineTestsBase
 {
@@ -49,7 +49,7 @@ public class Eip5920Tests : VirtualMachineTestsBase
     protected override ulong Timestamp => MainnetSpecProvider.BogotaBlockTimestamp;
 
     private const ulong ColdAccess = Eip8038Constants.ColdAccountAccess;
-    private const ulong ValueCost = Eip8038Constants.CallValue;
+    private const ulong ValueCost = Eip8038Constants.AccountWrite;
     private const ulong NewAccountCost = GasCostOf.NewAccountState;
 
     protected override TestAllTracerWithOutput CreateTracer() => new LogTracer();
