@@ -100,7 +100,7 @@ public class ForkedStateTransitionTests
 
     private static BeaconStateFulu CreateState(int validatorCount)
     {
-        BeaconStateFulu state = GloasTestFixtures.CreateFuluState(validatorCount == 0 ? 1 : validatorCount);
+        BeaconStateFulu state = GloasTestFixtures.CreateFuluState(validatorCount);
         state.GenesisTime = 0;
         state.GenesisValidatorsRoot = null;
         state.HistoricalRoots = null;
@@ -111,14 +111,6 @@ public class ForkedStateTransitionTests
         state.PendingDeposits = null;
         state.PendingPartialWithdrawals = null;
         state.PendingConsolidations = null;
-        if (validatorCount == 0)
-        {
-            state.Validators = new Validator[validatorCount];
-            state.Balances = new ulong[validatorCount];
-            state.PreviousEpochParticipation = new byte[validatorCount];
-            state.CurrentEpochParticipation = new byte[validatorCount];
-            state.InactivityScores = new ulong[validatorCount];
-        }
         return state;
     }
 

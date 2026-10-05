@@ -89,9 +89,7 @@ public class MessageKeyValidationTests
         BeaconStateFulu fuluState = CreateFuluState(changing + 1);
         Validator[] validators = gloas ? gloasState.Validators! : fuluState.Validators!;
         Hash256 genesisValidatorsRoot = gloas ? gloasState.GenesisValidatorsRoot! : fuluState.GenesisValidatorsRoot!;
-        Validator validator = validators[changing].Clone();
-        validator.WithdrawalCredentials = BlsWithdrawalCredentials(key);
-        validators[changing] = validator;
+        validators[changing].WithdrawalCredentials = BlsWithdrawalCredentials(key);
 
         BlsToExecutionChange change = new() { ValidatorIndex = changing, FromBlsPubkey = key, ToExecutionAddress = new Address(Hash(0xE7).Bytes[12..]) };
         Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot).GenesisForkVersion, genesisValidatorsRoot);
@@ -112,21 +110,8 @@ public class MessageKeyValidationTests
         AssertVerdict(kind, process, "Invalid BLS to execution change signature");
     }
 
-    private static BlsPublicKey SetBuilderKey(BeaconStateGloas state, KeyKind kind, Bls.SecretKey builderSk)
-    {
-        Builder builder = state.Builders![0];
-        BlsPublicKey key = KeyOf(kind, builderSk);
-        state.Builders[0] = new Builder
-        {
-            Pubkey = key,
-            Version = builder.Version,
-            ExecutionAddress = builder.ExecutionAddress,
-            Balance = builder.Balance,
-            DepositEpoch = builder.DepositEpoch,
-            WithdrawableEpoch = builder.WithdrawableEpoch,
-        };
-        return key;
-    }
+    private static BlsPublicKey SetBuilderKey(BeaconStateGloas state, KeyKind kind, Bls.SecretKey builderSk) =>
+        state.Builders![0].Pubkey = KeyOf(kind, builderSk);
 
     private static BlsPublicKey KeyOf(KeyKind kind, Bls.SecretKey sk) => kind switch
     {
