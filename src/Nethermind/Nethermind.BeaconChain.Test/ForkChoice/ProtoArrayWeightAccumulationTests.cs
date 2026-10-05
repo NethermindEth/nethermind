@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.Core.Crypto;
-using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.ForkChoice.ProtoArrayTestBlocks;
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 

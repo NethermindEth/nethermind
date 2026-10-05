@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.SszRest;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 

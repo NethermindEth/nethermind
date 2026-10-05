@@ -1,13 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using Google.Protobuf;
 using Multiformats.Address;
@@ -29,7 +24,6 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using Nethermind.Network.Libp2p;
-using NUnit.Framework;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 

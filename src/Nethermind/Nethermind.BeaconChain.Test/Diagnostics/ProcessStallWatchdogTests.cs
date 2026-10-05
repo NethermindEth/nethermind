@@ -1,15 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Threading;
 using Autofac;
 using Nethermind.BeaconChain.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Logging;
 using NSubstitute;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Diagnostics;
 

@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Storage;

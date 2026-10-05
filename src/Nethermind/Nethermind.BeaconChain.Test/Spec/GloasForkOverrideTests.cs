@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Reflection;
 using Autofac;
 using Autofac.Core;
@@ -9,7 +8,6 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Spec;
 
@@ -96,7 +94,7 @@ public class GloasForkOverrideTests
         string[] changed = [nameof(BeaconChainSpec.Forks), nameof(BeaconChainSpec.GloasForkEpoch), nameof(BeaconChainSpec.GloasForkVersion)];
         foreach (PropertyInfo property in typeof(BeaconChainSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            if (changed.Contains(property.Name)) continue;
+            if (Enumerable.Contains(changed, property.Name)) continue;
             Assert.That(property.GetValue(spec), Is.EqualTo(property.GetValue(BeaconChainSpec.Sepolia)), property.Name);
         }
     }

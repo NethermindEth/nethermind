@@ -6,7 +6,6 @@ using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Libp2p.Core;
-using NUnit.Framework;
 using KeyType = Nethermind.Libp2p.Core.Dto.KeyType;
 
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;

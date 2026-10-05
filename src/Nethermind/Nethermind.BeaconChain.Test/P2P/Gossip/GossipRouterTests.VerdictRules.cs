@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections;
 using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.StateTransition;
@@ -20,7 +17,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Network.Libp2p;
 using NSubstitute;
-using NUnit.Framework;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 

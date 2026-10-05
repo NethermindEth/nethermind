@@ -6,7 +6,6 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Db;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 

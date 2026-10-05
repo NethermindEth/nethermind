@@ -3,7 +3,6 @@
 
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.Core.Crypto;
-using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;

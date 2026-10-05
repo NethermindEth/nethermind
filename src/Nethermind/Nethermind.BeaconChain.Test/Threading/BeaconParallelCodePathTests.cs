@@ -1,10 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
@@ -12,7 +8,6 @@ using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Test.Crypto;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Types;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Threading;
 

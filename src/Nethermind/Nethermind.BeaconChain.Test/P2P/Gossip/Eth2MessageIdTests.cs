@@ -1,14 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Libp2p;
-using NUnit.Framework;
 using Snappier;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;

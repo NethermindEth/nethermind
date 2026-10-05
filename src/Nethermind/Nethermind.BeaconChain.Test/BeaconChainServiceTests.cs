@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Reflection;
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
@@ -17,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test;
 

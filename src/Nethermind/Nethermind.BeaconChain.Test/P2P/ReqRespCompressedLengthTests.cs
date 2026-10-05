@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using System.Threading.Tasks;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.Core.Extensions;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 

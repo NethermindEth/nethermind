@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
@@ -13,7 +11,6 @@ using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 

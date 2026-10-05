@@ -5,7 +5,6 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Types;

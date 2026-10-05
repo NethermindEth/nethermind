@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Google.Protobuf;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
@@ -24,7 +19,6 @@ using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Network.Libp2p;
-using NUnit.Framework;
 using NSubstitute;
 using Libp2pPublicKey = Nethermind.Libp2p.Core.Dto.PublicKey;
 

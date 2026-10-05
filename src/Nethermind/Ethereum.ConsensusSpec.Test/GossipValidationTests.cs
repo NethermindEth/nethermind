@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -19,7 +16,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
-using NUnit.Framework;
 using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;

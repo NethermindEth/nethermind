@@ -1,10 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
@@ -22,7 +18,6 @@ using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Logging;
 using Nethermind.Network.Libp2p;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 

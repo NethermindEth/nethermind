@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Net;
-using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
@@ -16,7 +14,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 

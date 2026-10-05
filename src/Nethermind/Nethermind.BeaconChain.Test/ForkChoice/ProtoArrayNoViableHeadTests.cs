@@ -7,7 +7,6 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.ForkChoice.ProtoArrayTestBlocks;
 using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 

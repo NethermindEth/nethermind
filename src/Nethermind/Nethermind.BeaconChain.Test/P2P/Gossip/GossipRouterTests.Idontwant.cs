@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 using Google.Protobuf;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Types;
@@ -12,7 +9,6 @@ using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Network.Libp2p;
-using NUnit.Framework;
 using Snappier;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;

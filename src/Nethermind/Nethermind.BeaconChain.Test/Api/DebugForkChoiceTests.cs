@@ -4,11 +4,9 @@
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Crypto;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 

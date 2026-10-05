@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
-using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
@@ -19,7 +17,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Merge.Plugin.Data;
-using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
