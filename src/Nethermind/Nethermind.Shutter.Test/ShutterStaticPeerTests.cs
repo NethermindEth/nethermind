@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO.Abstractions;
 using System.Linq;
@@ -10,8 +9,6 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
-using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.KeyStore.Config;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
@@ -25,51 +22,6 @@ namespace Nethermind.Shutter.Test;
 public class ShutterStaticPeerTests
 {
     private static readonly TimeSpan Bound = TimeSpan.FromSeconds(15);
-    private const string Bootnode = "/ip4/127.0.0.1/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW";
-
-    [Test]
-    public void Invalid_bootnodes_prevent_startup(
-        [Values("not-a-multiaddress", "/ip4/127.0.0.1/tcp/9222", "/ip4/127.0.0.1/udp/9222")] string invalid,
-        [Values] bool mixed)
-    {
-        ShutterConfig config = StartupConfig(mixed ? [Bootnode, invalid] : [invalid]);
-        IShutterApi api = Substitute.For<IShutterApi>();
-        RunShutterP2P step = new(config, api, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
-
-        ShutterPlugin.ShutterLoadingException exception = Assert.Throws<ShutterPlugin.ShutterLoadingException>(
-            () => step.Execute(CancellationToken.None))!;
-        Assert.That(exception.InnerException?.Message, Does.Contain("BootnodeP2PAddresses"));
-        api.DidNotReceive().StartP2P(Arg.Any<IEnumerable<Multiaddress>>(), Arg.Any<CancellationToken>());
-    }
-
-    [Test]
-    public async Task Valid_bootnodes_start_with_the_process_exit_token([Values] bool empty)
-    {
-        ShutterConfig config = StartupConfig(empty ? [] : [Bootnode, Bootnode]);
-        IShutterApi api = Substitute.For<IShutterApi>();
-        IProcessExitSource exit = Substitute.For<IProcessExitSource>();
-        using CancellationTokenSource stop = new();
-        exit.Token.Returns(stop.Token);
-        RunShutterP2P step = new(config, api, exit, LimboLogs.Instance);
-
-        await step.Execute(CancellationToken.None);
-
-        await api.Received(1).StartP2P(
-            Arg.Is<IEnumerable<Multiaddress>>(addresses => addresses.Select(address => address.ToString())
-                .SequenceEqual(config.BootnodeP2PAddresses!)), stop.Token);
-    }
-
-    private static ShutterConfig StartupConfig(string[] bootnodes) => new()
-    {
-        Validator = false,
-        SequencerContractAddress = Address.Zero.ToString(),
-        ValidatorRegistryContractAddress = Address.Zero.ToString(),
-        KeyBroadcastContractAddress = Address.Zero.ToString(),
-        KeyperSetManagerContractAddress = Address.Zero.ToString(),
-        BootnodeP2PAddresses = bootnodes
-    };
-
-
     [Test]
     [CancelAfter(60_000)]
     public async Task A_bootnode_is_connected_again_after_its_connection_closes(CancellationToken token)

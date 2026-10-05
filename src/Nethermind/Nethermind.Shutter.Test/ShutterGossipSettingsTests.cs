@@ -20,15 +20,24 @@ namespace Nethermind.Shutter.Test;
 
 public class ShutterGossipSettingsTests
 {
-    [TestCase("/ip4/10.0.0.1/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "An IPv4 address")]
-    [TestCase("/dns4/sequencer.example/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "A DNS name")]
-    [TestCase("/dnsaddr/sequencer.example/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "A dnsaddr name")]
-    [TestCase("/ip4/10.0.0.1/tcp/9222/dnsaddr/sequencer.example/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", false, TestName = "A dnsaddr name after an address")]
-    [TestCase("/ip4/10.0.0.1/udp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", false, TestName = "A transport other than TCP")]
-    [TestCase("/ip4/10.0.0.1/tcp/9222", false, TestName = "No peer id")]
-    [TestCase("not a multiaddr", false, TestName = "Not a multiaddr")]
-    public void Bootnodes_are_checked_at_startup(string bootnode, bool dialable)
+    private static readonly (string? Address, bool Dialable)[] Bootnodes =
+    [
+        ("/ip4/10.0.0.1/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true),
+        ("/dns4/sequencer.example/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true),
+        ("/dnsaddr/sequencer.example/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true),
+        ("/ip4/10.0.0.1/tcp/9222/dnsaddr/sequencer.example/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", false),
+        ("/ip4/10.0.0.1/udp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", false),
+        ("/ip4/10.0.0.1/tcp/9222", false),
+        ("not a multiaddr", false),
+        ("/ip4/127.0.0.1/udp/9222", false),
+        (null, true),
+    ];
+
+    [Test]
+    public void Bootnodes_are_checked_at_startup(
+        [ValueSource(nameof(Bootnodes))] (string? Address, bool Dialable) input, [Values] bool mixed)
     {
+        (string? bootnode, bool dialable) = input;
         ShutterConfig config = new()
         {
             ValidatorRegistryContractAddress = Address.Zero.ToString(),
@@ -36,22 +45,28 @@ public class ShutterGossipSettingsTests
             KeyperSetManagerContractAddress = Address.Zero.ToString(),
             SequencerContractAddress = Address.Zero.ToString(),
             Validator = false,
-            BootnodeP2PAddresses = ["/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", bootnode],
+            BootnodeP2PAddresses = bootnode is null ? [] : [bootnode],
         };
+        if (mixed)
+            config.BootnodeP2PAddresses = ["/ip4/10.0.0.1/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", .. config.BootnodeP2PAddresses];
         IShutterApi api = Substitute.For<IShutterApi>();
         IEnumerable<Multiaddress>? started = null;
         api.StartP2P(Arg.Do<IEnumerable<Multiaddress>>(bootnodes => started = bootnodes), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         TestLogger logger = new();
 
-        RunShutterP2P step = new(config, api, Substitute.For<IProcessExitSource>(), new OneLoggerLogManager(new ILogger(logger)));
+        using CancellationTokenSource stop = new();
+        IProcessExitSource exit = Substitute.For<IProcessExitSource>();
+        exit.Token.Returns(stop.Token);
+        RunShutterP2P step = new(config, api, exit, new OneLoggerLogManager(new ILogger(logger)));
         Assert.That(() => step.Execute(CancellationToken.None), dialable ? Throws.Nothing
             : Throws.TypeOf<ShutterPlugin.ShutterLoadingException>().With.InnerException.Message.Contains("BootnodeP2PAddresses"));
-        api.Received(dialable ? 1 : 0).StartP2P(Arg.Any<IEnumerable<Multiaddress>>(), Arg.Any<CancellationToken>());
+        api.Received(dialable ? 1 : 0).StartP2P(Arg.Any<IEnumerable<Multiaddress>>(), stop.Token);
+        if (!dialable) api.DidNotReceive().StartP2P(Arg.Any<IEnumerable<Multiaddress>>(), Arg.Any<CancellationToken>());
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(started?.Select(static address => address.ToString()), Is.EqualTo(dialable ? config.BootnodeP2PAddresses : null));
-            Assert.That(logger.LogList.Where(line => line.Contains(bootnode)), dialable ? Is.Empty : Has.Exactly(1).Contains("is skipped"));
+            Assert.That(logger.LogList.Where(line => line.Contains("is skipped")), dialable ? Is.Empty : Has.Exactly(1).Contains(bootnode!));
         }
     }
 
