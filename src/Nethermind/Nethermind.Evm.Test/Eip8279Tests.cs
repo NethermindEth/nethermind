@@ -37,7 +37,8 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private const int FloorBindingCalldataBytes = 20_000;
     private const ulong GasLimit = 2_000_000;
 
-    private static readonly IReleaseSpec Spec8279 = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8131Enabled = true, IsEip8279Enabled = true };
+    private static readonly IReleaseSpec Spec8279 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true, IsEip8279Enabled = true };
+    private static readonly IReleaseSpec Spec8131Only = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true };
     private static readonly Address Executing = TestItem.AddressB;
     private static readonly Address ColdAccount = TestItem.AddressC;
     private static readonly Address Callee = TestItem.AddressE;
@@ -96,6 +97,19 @@ public class Eip8279Tests : VirtualMachineTestsBase
     {
         (ulong gasSpent, ulong staticFloor, _, _) = Run(code, GasLimit);
         Assert.That(gasSpent, Is.EqualTo(staticFloor + expectedBytes * Eip8131Constants.FloorGasPerByte));
+    }
+
+    [TestCaseSource(nameof(MeteredBytesCases))]
+    public void Floor_is_not_extended_when_eip8279_is_disabled(byte[] code, ulong meteredBytesWhenEnabled)
+    {
+        (Block block, Transaction tx) = PrepareFloorBindingTx(code, GasLimit);
+        (ulong gasSpent, _, _, EthereumVirtualMachine vm) = Execute(block, tx, Spec8131Only);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gasSpent, Is.EqualTo(IntrinsicGasCalculator.Calculate(tx, Spec8131Only).FloorGas));
+            Assert.That(vm.TxExecutionContext.BalDataMeter, Is.Null);
+        }
     }
 
     [TestCase(false, TestName = "Meter out of gas aborts before the block access list entry")]
@@ -167,7 +181,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
         ulong staticFloor = IntrinsicGasCalculator.Calculate(tx, Spec8279).FloorGas;
         tx.GasLimit = staticFloor + (Eip8279Constants.AddressBytes + Eip8279Constants.NonceBytes) * Eip8131Constants.FloorGasPerByte;
 
-        (_, CallOutputTracer tracer, _) = Execute(block, tx);
+        (_, CallOutputTracer tracer, _, _) = Execute(block, tx);
 
         using (Assert.EnterMultipleScope())
         {
@@ -184,15 +198,16 @@ public class Eip8279Tests : VirtualMachineTestsBase
         byte[] initCode = Bytes.Concat(Prepare.EvmCode.ForInitOf(deployed).Done, new byte[FloorBindingCalldataBytes]);
         (Block block, Transaction tx) = PrepareInitTx(Activation, GasLimit, initCode);
 
-        (ulong gasSpent, _, _) = Execute(block, tx);
+        (ulong gasSpent, _, _, _) = Execute(block, tx);
 
         Assert.That(gasSpent, Is.EqualTo(IntrinsicGasCalculator.Calculate(tx, Spec8279).FloorGas + (ulong)deployed.Length * Eip8131Constants.FloorGasPerByte));
     }
 
-    [TestCase(0, 21_000UL, TestName = "Bare ETH transfer static floor")]
-    [TestCase(1, 21_000UL + 64 * (108 + 51), TestName = "One authorization static floor")]
-    [TestCase(2, 21_000UL + 2 * 64 * (108 + 51), TestName = "Two authorizations static floor")]
-    public void Static_floor_adds_authorization_block_access_list_bytes(int authorizations, ulong expectedFloor)
+    [TestCase(0, true, 21_000UL, TestName = "Bare ETH transfer static floor")]
+    [TestCase(1, true, 21_000UL + 64 * (108 + 51), TestName = "One authorization static floor")]
+    [TestCase(2, true, 21_000UL + 2 * 64 * (108 + 51), TestName = "Two authorizations static floor")]
+    [TestCase(2, false, 21_000UL + 2 * 64 * 108, TestName = "Two authorizations static floor without EIP-8279")]
+    public void Static_floor_adds_authorization_block_access_list_bytes(int authorizations, bool eip8279, ulong expectedFloor)
     {
         TransactionBuilder<Transaction> builder = Build.A.Transaction
             .WithSenderAddress(TestItem.AddressA)
@@ -203,7 +218,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
             builder.WithType(TxType.SetCode).WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressC, 0, new Signature(new byte[64], 0)));
         }
 
-        Assert.That(IntrinsicGasCalculator.Calculate(builder.TestObject, Spec8279).FloorGas, Is.EqualTo(expectedFloor));
+        Assert.That(IntrinsicGasCalculator.Calculate(builder.TestObject, eip8279 ? Spec8279 : Spec8131Only).FloorGas, Is.EqualTo(expectedFloor));
     }
 
     [Test]
@@ -227,7 +242,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private (ulong GasSpent, ulong StaticFloor, CallOutputTracer Tracer, BlockAccessListAtIndex Bal) Run(byte[] code, ulong gasLimit)
     {
         (Block block, Transaction tx) = PrepareFloorBindingTx(code, gasLimit);
-        (ulong gasSpent, CallOutputTracer tracer, BlockAccessListAtIndex bal) = Execute(block, tx);
+        (ulong gasSpent, CallOutputTracer tracer, BlockAccessListAtIndex bal, _) = Execute(block, tx);
         return (gasSpent, IntrinsicGasCalculator.Calculate(tx, Spec8279).FloorGas, tracer, bal);
     }
 
@@ -246,13 +261,13 @@ public class Eip8279Tests : VirtualMachineTestsBase
         return PrepareTx(Activation, gasLimit, code, new byte[FloorBindingCalldataBytes], 1);
     }
 
-    private (ulong GasSpent, CallOutputTracer Tracer, BlockAccessListAtIndex Bal) Execute(Block block, Transaction tx)
+    private (ulong GasSpent, CallOutputTracer Tracer, BlockAccessListAtIndex Bal, EthereumVirtualMachine Vm) Execute(Block block, Transaction tx, IReleaseSpec? spec = null)
     {
-        (_, TransactionProcessor<EthereumGasPolicy> processor, TracedAccessWorldState tracedState) = CreateProcessor();
+        (EthereumVirtualMachine vm, TransactionProcessor<EthereumGasPolicy> processor, TracedAccessWorldState tracedState) = CreateProcessor();
         CallOutputTracer tracer = new();
-        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, Spec8279), tracer);
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, spec ?? Spec8279), tracer);
         Assert.That(result.TransactionExecuted, Is.True, result.ToString());
-        return (tracer.GasSpent, tracer, tracedState.GetGeneratingBlockAccessList()!);
+        return (tracer.GasSpent, tracer, tracedState.GetGeneratingBlockAccessList()!, vm);
     }
 
     private (EthereumVirtualMachine Vm, TransactionProcessor<EthereumGasPolicy> Processor, TracedAccessWorldState TracedState) CreateProcessor()

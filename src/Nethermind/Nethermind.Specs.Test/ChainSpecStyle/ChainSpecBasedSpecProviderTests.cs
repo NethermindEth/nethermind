@@ -947,7 +947,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         yield return new TestCaseData(new ChainParameters { Eip8131TransitionTimestamp = 20 }, (Func<IReleaseSpec, bool>)(static s => s.IsEip8131Enabled))
             .SetName("Eip8131_activates_only_at_its_own_transition_timestamp");
-        yield return new TestCaseData(new ChainParameters { Eip8279TransitionTimestamp = 20 }, (Func<IReleaseSpec, bool>)(static s => s.IsEip8279Enabled))
+        yield return new TestCaseData(new ChainParameters { Eip7805TransitionTimestamp = 10, Eip8279TransitionTimestamp = 20 }, (Func<IReleaseSpec, bool>)(static s => s.IsEip8279Enabled))
             .SetName("Eip8279_activates_only_at_its_own_transition_timestamp");
     }
 
