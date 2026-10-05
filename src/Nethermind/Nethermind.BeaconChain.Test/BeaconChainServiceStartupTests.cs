@@ -153,8 +153,11 @@ public class BeaconChainServiceStartupTests
             Is.TypeOf<InvalidDataException>().And.Message.Contains("BeaconChain.WeakSubjectivityCheckpoint").And.Message.Contains("delete the beaconChain database"));
     }
 
-    [Test]
-    public async Task A_resumed_anchor_goes_on_to_start_with_a_weak_subjectivity_checkpoint_it_proves_or_proved_before([Values] bool recordedBefore)
+    [TestCase(false, false, false)]
+    [TestCase(true, false, false)]
+    [TestCase(true, true, false)]
+    [TestCase(true, true, true)]
+    public async Task A_valid_resumed_anchor_goes_on_to_start(bool gloas, bool weakSubjectivity, bool recordedBefore)
     {
         Hash256 root = recordedBefore ? GloasTestFixtures.Hash(0x5A) : ForkCrossingChain.Instance.First.Root;
         ulong epoch = recordedBefore ? 1_000_000UL : 1UL;
@@ -163,8 +166,8 @@ public class BeaconChainServiceStartupTests
         BinaryPrimitives.WriteUInt64BigEndian(record.AsSpan(Hash256.Size), epoch);
         BeaconChainStore? resumed = null;
 
-        (Exception? refusal, _, int pubkeys) = await ResumeAsync(gloas: true, nextCommittee: false, key: null,
-            weakSubjectivityCheckpoint: $"{root}:{epoch}",
+        (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas, nextCommittee: false, key: null,
+            weakSubjectivityCheckpoint: weakSubjectivity ? $"{root}:{epoch}" : null,
             prepare: store =>
             {
                 resumed = store;
@@ -173,8 +176,9 @@ public class BeaconChainServiceStartupTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(refusal, Is.Null);
-        Assert.That(pubkeys, Is.EqualTo(ForkCrossingChain.Instance.First.PostState.Validators!.Length), "the run went on past the pubkey cache");
-        Assert.That(resumed!.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.EqualTo(record));
+        Assert.That(errors.Select(static e => e.Exception), Has.None.TypeOf<InvalidDataException>(), "no anchor refusal");
+        Assert.That(pubkeys, Is.EqualTo((weakSubjectivity ? ForkCrossingChain.Instance.First.PostState.Validators : ForkCrossingChain.Instance.AnchorState.Validators)!.Length), "the run went on past the pubkey cache");
+        if (weakSubjectivity) Assert.That(resumed!.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.EqualTo(record));
     }
 
     [Test]
@@ -202,16 +206,6 @@ public class BeaconChainServiceStartupTests
     }
 
     [Test]
-    public async Task A_resumed_anchor_with_valid_sync_committee_keys_goes_on_to_start([Values] bool gloas)
-    {
-        (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas, nextCommittee: false, key: null);
-
-        Assert.That(refusal, Is.Null);
-        Assert.That(errors.Select(static e => e.Exception), Has.None.TypeOf<InvalidDataException>(), "no anchor refusal");
-        Assert.That(pubkeys, Is.EqualTo(ForkCrossingChain.Instance.AnchorState.Validators!.Length), "the run went on past the pubkey cache");
-    }
-
-    [Test]
     public void The_start_step_leaves_the_database_untouched_once_an_external_consensus_client_is_detected([Values] bool newerSchema)
     {
         TestErrorLogManager logManager = new();
@@ -234,41 +228,27 @@ public class BeaconChainServiceStartupTests
     }
 
     [Test]
-    public async Task The_first_forkchoice_updated_is_sent_before_the_pubkey_cache_is_built_from_a_resumed_anchor([Values] bool gloas)
+    public async Task The_first_forkchoice_updated_requires_a_matching_resumed_state_and_precedes_its_cache_build([Values] bool gloas, [Values] bool blockMatchesState)
     {
         PubkeyCache pubkeyCache = new();
         KickEngine engine = new(pubkeyCache);
         CacheWrittenMemDb metadata = new();
         BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
-        await using IContainer container = KickContainer(engine, pubkeyCache).AddSingleton(store).Build();
-        SeedAnchor(store, gloas, nextCommittee: false, key: null);
-        BeaconChainService service = container.Resolve<BeaconChainService>();
-        metadata.OnCacheWritten = service.Stop;
-
-        await service.Start();
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(engine.PubkeysHeldAtCall, Is.EqualTo(new[] { 0 }), "one call, made before the cache was built");
-        Assert.That(pubkeyCache.Count, Is.EqualTo((gloas ? ForkCrossingChain.Instance.First.PostState.Validators : ForkCrossingChain.Instance.AnchorState.Validators)!.Length), "the cache was built after the call");
-    }
-
-    [Test]
-    public async Task A_resumed_anchor_whose_block_state_root_does_not_match_its_state_never_reaches_the_execution_layer([Values] bool gloas)
-    {
         TestErrorLogManager logManager = new();
-        PubkeyCache pubkeyCache = new();
-        KickEngine engine = new(pubkeyCache);
-        await using IContainer container = KickContainer(engine, pubkeyCache, logManager).Build();
-        SeedAnchor(container.Resolve<BeaconChainStore>(), gloas, nextCommittee: false, key: null, blockStateRoot: GloasTestFixtures.Hash(0x5A));
+        ContainerBuilder builder = KickContainer(engine, pubkeyCache, blockMatchesState ? null : logManager);
+        if (blockMatchesState) builder.AddSingleton(store);
+        await using IContainer container = builder.Build();
+        SeedAnchor(container.Resolve<BeaconChainStore>(), gloas, nextCommittee: false, key: null, blockStateRoot: blockMatchesState ? null : GloasTestFixtures.Hash(0x5A));
         BeaconChainService service = container.Resolve<BeaconChainService>();
-        engine.OnCall = service.Stop;
+        if (blockMatchesState) metadata.OnCacheWritten = service.Stop;
+        else engine.OnCall = service.Stop;
 
         await service.Start();
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(engine.PubkeysHeldAtCall, Is.Empty, "no forkchoiceUpdated");
-        Assert.That(pubkeyCache.Count, Is.Zero, "no cache");
-        Assert.That(logManager.Errors.Select(static e => e.Exception), Has.One.TypeOf<ForkChoiceException>().With.Message.Contains("state root does not match"));
+        Assert.That(engine.PubkeysHeldAtCall, blockMatchesState ? Is.EqualTo(new[] { 0 }) : Is.Empty, "the call requires a verified anchor and precedes the cache build");
+        Assert.That(pubkeyCache.Count, blockMatchesState ? Is.EqualTo((gloas ? ForkCrossingChain.Instance.First.PostState.Validators : ForkCrossingChain.Instance.AnchorState.Validators)!.Length) : Is.Zero);
+        if (!blockMatchesState) Assert.That(logManager.Errors.Select(static e => e.Exception), Has.One.TypeOf<ForkChoiceException>().With.Message.Contains("state root does not match"));
     }
 
     [Test]

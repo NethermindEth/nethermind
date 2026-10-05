@@ -35,29 +35,39 @@ public class BeaconChainStoreDataColumnTests
         store.TryGetDataColumnSidecarGloas(root, column, out _);
 
     [Test]
-    public void A_stored_sidecar_reads_back_in_its_own_shape_only([Values] bool fulu)
+    public void A_stored_sidecar_reads_back_in_its_own_shape_and_refuses_another_column_index([Values] bool fulu, [Values(3ul, 5ul)] ulong column)
     {
-        (_, BeaconChainStore store) = Create();
+        (MemColumnsDb<BeaconChainDbColumns> db, BeaconChainStore store) = Create();
         Hash256 root = Root("block");
-        DataColumnSidecar fuluSidecar = DataColumnSidecarTestFixture.BuildValidSidecar(5, FirstSlot);
+        DataColumnSidecar fuluSidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, FirstSlot);
         if (fulu)
         {
             store.PutDataColumnSidecar(root, FirstSlot, fuluSidecar);
         }
         else
         {
-            Put(store, root, FirstSlot, 5);
+            Put(store, root, FirstSlot, column);
         }
 
-        bool readAsFulu = store.TryGetDataColumnSidecar(root, 5, out DataColumnSidecar? readFulu);
-        bool readAsGloas = store.TryGetDataColumnSidecarGloas(root, 5, out DataColumnSidecarGloas? readGloas);
+        bool readAsFulu = store.TryGetDataColumnSidecar(root, column, out DataColumnSidecar? readFulu);
+        bool readAsGloas = store.TryGetDataColumnSidecarGloas(root, column, out DataColumnSidecarGloas? readGloas);
 
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(readAsFulu, Is.EqualTo(fulu));
-        Assert.That(readAsGloas, Is.EqualTo(!fulu));
-        Assert.That(fulu ? DataColumnSidecar.Encode(readFulu!) : DataColumnSidecarGloas.Encode(readGloas!),
-            Is.EqualTo(fulu ? DataColumnSidecar.Encode(fuluSidecar) : DataColumnSidecarGloas.Encode(DataColumnSidecarGloasTestFixture.BuildSidecar(5, FirstSlot, root))));
-        Assert.That(store.TryGetDataColumnSidecar(Root("other"), 5, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readAsFulu, Is.EqualTo(fulu));
+            Assert.That(readAsGloas, Is.EqualTo(!fulu));
+            Assert.That(fulu ? DataColumnSidecar.Encode(readFulu!) : DataColumnSidecarGloas.Encode(readGloas!),
+                Is.EqualTo(fulu ? DataColumnSidecar.Encode(fuluSidecar) : DataColumnSidecarGloas.Encode(DataColumnSidecarGloasTestFixture.BuildSidecar(column, FirstSlot, root))));
+            Assert.That(store.TryGetDataColumnSidecar(Root("other"), column, out _), Is.False);
+        }
+
+        IDb table = db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars);
+        table.Set([.. root.Bytes, 0, 0, 0, 0, 0, 0, 0, 4], table.Get([.. root.Bytes, 0, 0, 0, 0, 0, 0, 0, (byte)column])!);
+        Assert.Throws<InvalidDataException>(() =>
+        {
+            if (fulu) store.TryGetDataColumnSidecar(root, 4, out _);
+            else store.TryGetDataColumnSidecarGloas(root, 4, out _);
+        });
     }
 
     [Test]
@@ -72,37 +82,6 @@ public class BeaconChainStoreDataColumnTests
         table.Set(key, truncated ? record[..20] : [.. record[..9], .. record[9..].Select(static b => (byte)~b)]);
 
         Assert.Throws<InvalidDataException>(() => store.TryGetDataColumnSidecarGloas(root, 3, out _));
-    }
-
-    // A record served under another column's index would answer a request with a column the peer did not ask for.
-    [Test]
-    public void A_record_filed_under_another_column_index_is_reported_instead_of_returned([Values] bool fulu)
-    {
-        (MemColumnsDb<BeaconChainDbColumns> db, BeaconChainStore store) = Create();
-        Hash256 root = Root("block");
-        if (fulu)
-        {
-            store.PutDataColumnSidecar(root, FirstSlot, DataColumnSidecarTestFixture.BuildValidSidecar(3, FirstSlot));
-        }
-        else
-        {
-            Put(store, root, FirstSlot, 3);
-        }
-
-        IDb table = db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars);
-        table.Set([.. root.Bytes, 0, 0, 0, 0, 0, 0, 0, 4], table.Get([.. root.Bytes, 0, 0, 0, 0, 0, 0, 0, 3])!);
-
-        Assert.Throws<InvalidDataException>(() =>
-        {
-            if (fulu)
-            {
-                store.TryGetDataColumnSidecar(root, 4, out _);
-            }
-            else
-            {
-                store.TryGetDataColumnSidecarGloas(root, 4, out _);
-            }
-        });
     }
 
     [Test]
