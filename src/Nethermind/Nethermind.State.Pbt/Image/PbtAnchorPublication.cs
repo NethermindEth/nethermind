@@ -233,9 +233,8 @@ internal sealed class PbtAnchorPublication(
         foreach (PbtColumns column in targetDb.ColumnKeys) targetDb.GetColumnDb(column).SyncWal();
         cancellationToken.ThrowIfCancellationRequested();
 
-        // The import bypassed the live persistence: drop what it cached before the write.
+        // The import bypassed the live persistence: reload what it cached before the write.
         coordinator.ResetPersistedStateId();
-        persistence.ClearCaches();
         if (_logger.IsInfo)
             _logger.Info($"Imported the PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} with root {root}: " +
                 $"{stagedAccounts:N0} accounts and {stagedSlots:N0} slots in {importing.Elapsed:hh\\:mm\\:ss}.");

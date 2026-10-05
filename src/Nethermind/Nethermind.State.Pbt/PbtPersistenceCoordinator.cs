@@ -52,15 +52,23 @@ public class PbtPersistenceCoordinator(
         if (current is null)
         {
             using IPbtPersistence.IReader reader = persistence.CreateReader();
-            current = new StrongBox<StateId>(reader.CurrentState);
-            Volatile.Write(ref _currentPersistedState, current);
+            StrongBox<StateId> loaded = new(reader.CurrentState);
+            // A reset can land while this reader is open; its fresher value must win over this one.
+            current = Interlocked.CompareExchange(ref _currentPersistedState, loaded, null) ?? loaded;
         }
 
         return current.Value;
     }
 
-    /// <summary>Forgets the cached persisted pointer after the persistence was written to behind the coordinator's back.</summary>
-    public void ResetPersistedStateId() => Volatile.Write(ref _currentPersistedState, null);
+    /// <summary>Reloads the cached persisted pointer after the persistence was written to behind the coordinator's back.</summary>
+    /// <remarks>Reloaded rather than cleared: a reader opened before the write, still loading the empty pointer, would
+    /// otherwise publish its stale state over the write for good.</remarks>
+    public void ResetPersistedStateId()
+    {
+        persistence.ClearCaches();
+        using IPbtPersistence.IReader reader = persistence.CreateReader();
+        Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(reader.CurrentState));
+    }
 
     /// <summary>Evaluates the persistence triggers, persisting at most a few segments per call; re-invoked on every committed block.</summary>
     /// <returns>Whether anything was persisted, and so whether the persisted state id has advanced.</returns>

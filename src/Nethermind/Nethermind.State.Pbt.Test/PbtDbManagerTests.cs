@@ -578,6 +578,32 @@ public class PbtDbManagerTests
         }
     }
 
+    [Test]
+    public async Task ResetPersistedStateId_IsNotUndoneByAReaderOpenedBeforeIt()
+    {
+        PbtConfig config = new();
+        using MemDb metadata = new();
+        IPbtPersistence persistence = Substitute.For<IPbtPersistence>();
+        IPbtPersistence.IReader beforeImport = Substitute.For<IPbtPersistence.IReader>();
+        beforeImport.CurrentState.Returns(StateId.PreGenesis);
+        IPbtPersistence.IReader afterImport = Substitute.For<IPbtPersistence.IReader>();
+        afterImport.CurrentState.Returns(PersistenceState(2));
+        using ManualResetEventSlim opened = new();
+        using ManualResetEventSlim release = new();
+        // The first reader is a snapshot taken before an anchor import wrote, held open across the import's reset.
+        persistence.CreateReader().Returns(_ => { opened.Set(); release.Wait(); return beforeImport; }, _ => afterImport);
+        PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence, new PbtSnapshotRepository(new MetricsConfig()),
+            new PbtCompactionSchedule(metadata, config, LimboLogs.Instance), NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+
+        Task<StateId> racing = Task.Run(coordinator.GetCurrentPersistedStateId);
+        opened.Wait();
+        coordinator.ResetPersistedStateId();
+        release.Set();
+
+        Assert.That(await racing, Is.EqualTo(PersistenceState(2)));
+        Assert.That(coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(2)));
+    }
+
     private static StateId PersistenceState(int number) => new((ulong)number, TestItem.KeccakA.ValueHash256);
 
     private static PbtSnapshot PersistenceSnapshot(int from, int to, PbtResourcePool pool) =>
