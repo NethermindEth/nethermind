@@ -17,7 +17,8 @@ internal sealed partial class PersistentStorageProvider
     {
         /// <remarks>
         /// ILC block-copies each 104-byte pair through corelib's out-of-line Memmove several times per entry, so
-        /// the guest reaches each entry's key and value in place instead. The host keeps the pair walk.
+        /// the guest reaches each entry's key and value in place instead. The host keeps the pair walk: its dictionary has
+        /// no in-place enumerator accessors.
         /// </remarks>
         [SkipLocalsInit]
         private partial (int writes, int skipped) WriteChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
