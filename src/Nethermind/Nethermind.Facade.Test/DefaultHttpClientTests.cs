@@ -44,9 +44,11 @@ public class DefaultHttpClientTests
     }
 
     [Test]
-    public async Task Should_return_default_after_exhausting_retries([Values(1, 3)] int retries)
+    public async Task Should_return_default_after_exhausting_retries(
+        [Values(1, 3)] int retries,
+        [ValueSource(nameof(TransportExceptions))] Exception exception)
     {
-        using StubHandler handler = new(_ => Task.FromException<HttpResponseMessage>(new HttpRequestException("Connection refused")));
+        using StubHandler handler = new(_ => Task.FromException<HttpResponseMessage>(exception));
         using DefaultHttpClient client = CreateClient(handler, retries);
 
         object? result = await client.GetAsync<object>(Endpoint, CancellationToken.None);
@@ -58,16 +60,11 @@ public class DefaultHttpClientTests
         }
     }
 
-    [Test]
-    public async Task Should_retry_transport_cancellation_that_is_not_requested_by_the_caller()
-    {
-        using StubHandler handler = new(_ => Task.FromException<HttpResponseMessage>(new OperationCanceledException()));
-        using DefaultHttpClient client = CreateClient(handler, retries: 3);
-
-        object? result = await client.GetAsync<object>(Endpoint, CancellationToken.None);
-
-        Assert.That(result, Is.Null);
-    }
+    private static readonly Exception[] TransportExceptions =
+    [
+        new HttpRequestException("Connection refused"),
+        new OperationCanceledException(),
+    ];
 
     private static DefaultHttpClient CreateClient(HttpMessageHandler handler, int retries) =>
         new(new HttpClient(handler), new EthereumJsonSerializer(), LimboLogs.Instance, retries, RetryDelayMilliseconds);
