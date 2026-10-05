@@ -985,6 +985,32 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    [TestCase(10UL, 10UL, false, TestName = "EIP-7979 with EIP-8024")]
+    [TestCase(20UL, 10UL, false, TestName = "EIP-7979 after EIP-8024")]
+    [TestCase(10UL, 20UL, true, TestName = "EIP-7979 before EIP-8024")]
+    [TestCase(10UL, null, true, TestName = "EIP-7979 without EIP-8024")]
+    public void Eip7979_requires_eip8024(ulong eip7979Timestamp, ulong? eip8024Timestamp, bool throws)
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip7979TransitionTimestamp = eip7979Timestamp,
+                Eip8024TransitionTimestamp = eip8024Timestamp,
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        if (throws)
+        {
+            Assert.Throws<ArgumentException>(() => _ = new ChainSpecBasedSpecProvider(chainSpec));
+        }
+        else
+        {
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp)).IsEip7979Enabled, Is.True);
+        }
+    }
+
     [Test]
     public void Eip2200_is_set_correctly_directly()
     {

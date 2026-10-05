@@ -47,6 +47,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, static n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, static n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
             AddBlobScheduleTransitions(transitionTimestamps, _chainSpec);
+            ValidateEip7979(_chainSpec.Parameters);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             // Scans properties of type T / T? on value whose names pass the filter.
@@ -119,6 +120,16 @@ namespace Nethermind.Specs.ChainSpecStyle
                     }
 
                     transitions.Add(settings.Timestamp);
+                }
+            }
+
+            // EIP-7979's CALLDEST analysis treats EIP-8024 immediates as data, so it cannot activate first.
+            static void ValidateEip7979(ChainParameters parameters)
+            {
+                if (parameters.Eip7979TransitionTimestamp is ulong eip7979Timestamp &&
+                    (parameters.Eip8024TransitionTimestamp ?? ulong.MaxValue) > eip7979Timestamp)
+                {
+                    throw new ArgumentException($"{nameof(parameters.Eip7979TransitionTimestamp)} ({eip7979Timestamp}) requires {nameof(parameters.Eip8024TransitionTimestamp)} ({parameters.Eip8024TransitionTimestamp?.ToString() ?? "unset"}) at or before it");
                 }
             }
 
