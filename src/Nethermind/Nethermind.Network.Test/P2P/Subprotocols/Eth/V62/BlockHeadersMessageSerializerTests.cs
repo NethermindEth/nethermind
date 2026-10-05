@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -14,6 +15,33 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 [Parallelizable(ParallelScope.All)]
 public class BlockHeadersMessageSerializerTests
 {
+    [Test]
+    public void A_maximum_size_proof_header_roundtrips()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        header.RecursiveStark = new RecursiveStark(new byte[Eip8288Constants.MaxProofBytes], Keccak.Zero);
+        using BlockHeadersMessage message = new(new ArrayPoolList<BlockHeader>(1) { header });
+        BlockHeadersMessageSerializer serializer = new();
+
+        using BlockHeadersMessage decoded = serializer.Deserialize(serializer.Serialize(message));
+
+        Assert.That(decoded.BlockHeaders[0].RecursiveStark!.StarkProof.Length, Is.EqualTo(Eip8288Constants.MaxProofBytes));
+    }
+
+    [Test]
+    public void Oversized_header_batches_are_rejected_before_encoding_or_decoding()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        header.RecursiveStark = new RecursiveStark(new byte[5 * 1024 * 1024], Keccak.Zero);
+        using BlockHeadersMessage message = new(new ArrayPoolList<BlockHeader>(2) { header, header });
+        BlockHeadersMessageSerializer serializer = new();
+
+        Assert.That(() => serializer.GetLength(message, out _), Throws.InstanceOf<RlpException>());
+        BlockHeader[] headers = [header, header];
+        byte[] encoded = Rlp.Encode(headers).Bytes;
+        Assert.That(() => serializer.Deserialize(encoded), Throws.InstanceOf<RlpException>());
+    }
+
     [Test]
     public void Roundtrip()
     {

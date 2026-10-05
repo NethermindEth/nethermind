@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 //TODO: Redo clique block producer
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
@@ -48,6 +50,28 @@ namespace Nethermind.Consensus.Producers
 
         public long TxByteLength { get; internal set; }
 
-        public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals);
+        /// <summary>EIP-8288 <c>recursive_stark_gas</c> owed by the transactions selected so far.</summary>
+        /// <remarks>Charged to the header only after execution, so selection must hold it back itself.</remarks>
+        public ulong RecursiveStarkGas { get; internal set; }
+
+        internal AggregationInput? InclusionListProofInput { get; set; }
+        internal List<AggregationInput> LeanProofInputs { get; } = [];
+        internal LeanProofBudget LeanProofBudget { get; private set; } = new();
+
+        public override Block WithReplacedHeader(BlockHeader newHeader)
+        {
+            BlockToProduce replacement = new(newHeader, Transactions, Uncles, Withdrawals)
+            {
+                InclusionListTransactions = InclusionListTransactions,
+                InclusionListRecursiveStark = InclusionListRecursiveStark,
+                InclusionListProvenDependencies = InclusionListProvenDependencies,
+                InclusionListProofInput = InclusionListProofInput,
+                TxByteLength = TxByteLength,
+                RecursiveStarkGas = RecursiveStarkGas,
+                LeanProofBudget = LeanProofBudget.Clone()
+            };
+            replacement.LeanProofInputs.AddRange(LeanProofInputs);
+            return replacement;
+        }
     }
 }

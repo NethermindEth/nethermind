@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -25,6 +27,10 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// <remarks>The slot is counted before the filters that follow can reject, so the pool unwinds it once the
     /// outcome is known rather than leaving the sponsor permanently short.</remarks>
     public bool PaymasterReserved;
+
+    internal IDisposable? ProofReservation;
+    internal IDisposable? SenderProofReservation;
+    internal List<FrameDependency>? ProofDependencies;
 
     /// <summary>
     /// The chain head specification the whole submission is judged against.

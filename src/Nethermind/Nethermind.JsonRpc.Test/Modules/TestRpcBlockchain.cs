@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -210,7 +211,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
-            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory());
+            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
+            @this.Container.ResolveOptional<ProofWrapperService>());
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {

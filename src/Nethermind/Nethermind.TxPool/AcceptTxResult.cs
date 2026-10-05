@@ -26,6 +26,12 @@ namespace Nethermind.TxPool
         // Code intentionally kept as nameof(): the success path returns the tx hash, not this Code string.
         public static readonly AcceptTxResult Accepted = new(nameof(Accepted));
 
+        /// <summary>A dependency transaction was submitted without verified EIP-8288 witnesses.</summary>
+        public static readonly AcceptTxResult MissingDependencyProof = new(nameof(MissingDependencyProof), "Submit dependency transactions through eth_sendProofWrapper.");
+
+        /// <summary>The transaction exceeds the deduplicated EIP-8288 mempool dependency limits.</summary>
+        public static readonly AcceptTxResult TooManyDependencies = new(nameof(TooManyDependencies), "Transaction exceeds EIP-8288 dependency limits.");
+
         /// <summary>
         /// A transaction with the same hash has already been added to the pool in the past.
         /// </summary>
@@ -155,6 +161,9 @@ namespace Nethermind.TxPool
 
         /// <summary>An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c>: an exact match, so neither old nor future.</summary>
         public static readonly AcceptTxResult KeyedNonceUnmet = new(TxPoolErrorMessages.KeyedNonceUnmet);
+
+        /// <summary>A frame transaction whose recent-root reference is not committed or usable at the next slot.</summary>
+        public static readonly AcceptTxResult FrameTxRecentRootUnmet = new(TxPoolErrorMessages.FrameTxRecentRootUnmet);
 
         /// <summary>An EIP-8141 frame transaction whose resolved payer's summed pending maximum cost would exceed the payer's balance.</summary>
         public static readonly AcceptTxResult FrameTxPayerExposureExceeded = new(TxPoolErrorMessages.FrameTxPayerExposureExceeded);

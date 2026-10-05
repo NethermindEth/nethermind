@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -12,6 +13,8 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.ProofAggregation;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -44,11 +47,17 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager)
+    IBlockAccessListManager balManager,
+    ILeanProofVerifier leanProofVerifier,
+    LeanProofStore? leanProofStore = null)
     : IBlockProcessor
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
     protected readonly ISpecProvider _specProvider = specProvider;
+    private readonly ProductionProofCache _productionProofCache = leanProofVerifier as ProductionProofCache
+        ?? new(leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier)));
+    private (ValueHash256 Dependencies, ValueHash256 VerificationKey)? _productionProofKey;
+    private byte[]? _productionProof;
     protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockAccessListManager _balManager = balManager;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
@@ -86,6 +95,18 @@ public partial class BlockProcessor(
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
+        if (spec.IsEip8288Enabled && options.ContainsFlag(ProcessingOptions.ProducingBlock) && block is not BlockToProduce)
+        {
+            if (_blockTransactionsExecutor is not IBlockProductionTransactionsExecutor)
+                throw new ArgumentException("EIP-8288 production requires a block-production transaction executor.", nameof(options));
+            block = new BlockToProduce(block.Header, block.Transactions, block.Uncles, block.Withdrawals)
+            {
+                BlockAccessList = block.BlockAccessList,
+                InclusionListTransactions = block.InclusionListTransactions,
+                InclusionListProvenDependencies = block.InclusionListProvenDependencies,
+                InclusionListRecursiveStark = block.InclusionListRecursiveStark
+            };
+        }
         TxReceipt[] receipts;
         bool processed = false;
         try
@@ -179,12 +200,53 @@ public partial class BlockProcessor(
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
+        PrepareProductionProof(block, options, spec, token);
         return FinalizeBlock(block, blockTracer, options, spec, receipts);
     }
 
     protected virtual TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
         IReleaseSpec spec, TxReceipt[] receipts) =>
         FinalizeBlock<OnFlag>(block, blockTracer, spec, receipts);
+
+    private void PrepareProductionProof(Block block, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
+    {
+        if (spec.IsEip8288Enabled && options.ContainsFlag(ProcessingOptions.ProducingBlock))
+        {
+            token.ThrowIfCancellationRequested();
+            List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block);
+            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+            (ValueHash256, ValueHash256) key = (depsHash, new ValueHash256(Eip8288Constants.AggregatedVk));
+            byte[] proof;
+            if (_productionProofKey == key && _productionProof is not null)
+                proof = _productionProof;
+            else
+            {
+                byte[]? prepared = null;
+                if (leanProofStore?.TryGetRecursiveProof(deps, out prepared) == true
+                    && !leanProofVerifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, prepared!))
+                {
+                    leanProofStore.RemoveCachedRecursive(deps, prepared!);
+                    prepared = null;
+                }
+                if (prepared is not null) proof = prepared;
+                else
+                {
+                    AggregationInput input = new();
+                    if (block is BlockToProduce producing)
+                        input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
+                    proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, in depsHash, token);
+                    leanProofStore?.AddCachedRecursive(deps, proof);
+                }
+                token.ThrowIfCancellationRequested();
+                // One verified result per processor/backend; improvement passes reuse it without retaining old blocks.
+                _productionProof = proof;
+                _productionProofKey = key;
+            }
+            token.ThrowIfCancellationRequested();
+            // Headers escape the processor; their mutable bytes cannot alias the improvement cache.
+            block.Header.RecursiveStark = new RecursiveStark((byte[])proof.Clone(), new Hash256(depsHash));
+        }
+    }
 
     /// <summary>
     /// Finalizes the block; <typeparamref name="TComputesCommitments"/> selects whether the blooms, the receipts root,
@@ -209,6 +271,13 @@ public partial class BlockProcessor(
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+        }
+
+        if (spec.IsEip8288Enabled)
+        {
+            (ulong Execution, ulong State)? dimensions = header.GasUsedPerDimension;
+            header.GasUsed += Eip8288Dependencies.DependencyDeclarationCount(block) * Eip8288Constants.LeanStarkVerificationGas;
+            header.GasUsedPerDimension = dimensions;
         }
 
         if (receiptWork is null && TComputesCommitments.IsActive)

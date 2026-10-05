@@ -9,13 +9,20 @@ namespace Nethermind.Evm;
 /// <summary>Pre-state validity of a frame transaction's EIP-8272 recent-root references.</summary>
 public static class RecentRootReferences
 {
+    /// <summary>Checks every reference against its pre-state commitment and usable slot window.</summary>
+    public static bool Validate(IReadOnlyStateProvider state, RecentRootReference[]? references, ulong? currentSlot)
+        => ValidateCore(state, references, currentSlot, null);
+
     /// <summary>
     /// Checks every reference against the pre-state commitment in <c>RECENT_ROOT_ADDRESS</c>, warming the
     /// predeploy and the keys read — for which the intrinsic gas has paid the access-list pre-warm rate; the
     /// reads themselves are uncharged.
     /// </summary>
     /// <returns><see langword="true"/> when every reference is committed and inside the usable window.</returns>
-    public static bool Validate(IWorldState state, RecentRootReference[]? references, ulong? currentSlot, in StackAccessTracker accessTracker)
+    public static bool Validate(IReadOnlyStateProvider state, RecentRootReference[]? references, ulong? currentSlot, in StackAccessTracker accessTracker)
+        => ValidateCore(state, references, currentSlot, accessTracker);
+
+    private static bool ValidateCore(IReadOnlyStateProvider state, RecentRootReference[]? references, ulong? currentSlot, StackAccessTracker? accessTracker)
     {
         if (references is null || references.Length == 0)
         {
@@ -28,11 +35,11 @@ public static class RecentRootReferences
             return false;
         }
 
-        accessTracker.WarmUp(Eip8272Constants.RecentRootAddress);
+        accessTracker?.WarmUp(Eip8272Constants.RecentRootAddress);
         foreach (RecentRootReference reference in references)
         {
             StorageCell cell = RecentRootStore.ReferenceCell(reference.SourceId, reference.Slot);
-            accessTracker.WarmUp(cell);
+            accessTracker?.WarmUp(cell);
             if (!RecentRootStore.IsReferenceValid(state, in cell, reference.SourceId, reference.Slot, reference.Root, slot))
             {
                 return false;

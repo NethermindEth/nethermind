@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Test.ProofAggregation;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,6 +20,8 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
 
+using NSubstitute;
+
 namespace Nethermind.Consensus.Test;
 
 public class InclusionListTxSourceTests
@@ -26,7 +29,8 @@ public class InclusionListTxSourceTests
     private static InclusionListTxSource CreateSource() => new(
         new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
         new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
-        LimboLogs.Instance);
+        LimboLogs.Instance,
+        Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
     private static PayloadAttributes Attributes(byte[][] inclusionList) => new() { InclusionListTransactions = inclusionList };
 
@@ -38,6 +42,89 @@ public class InclusionListTxSourceTests
             Build.A.BlockHeader.WithNumber(1).TestObject,
             30_000_000UL,
             payloadAttributes);
+
+    [Test]
+    public void Legacy_source_preserves_list_and_proof_obligations_without_claiming_verified_coverage()
+    {
+        LegacyInclusionListTxSource legacy = new();
+        IInclusionListTxSource source = legacy;
+        Transaction transaction = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        byte[][] list = [Encode(transaction)];
+        RecursiveStark proof = new([1], Keccak.Zero);
+        byte[] dependencies = [1];
+        PayloadAttributes attributes = new()
+        {
+            InclusionListTransactions = list,
+            InclusionListRecursiveStark = proof,
+            InclusionListProvenDependencies = dependencies
+        };
+
+        source.Set(list, Bogota.Instance, proof, dependencies);
+        BlockToProduce block = new(Build.A.BlockHeader.WithNumber(1).TestObject);
+        source.ApplyInclusionList(block, attributes);
+
+        Assert.That(legacy.List, Is.SameAs(list));
+        Assert.That(block.InclusionListTransactions.Single().Nonce, Is.EqualTo(transaction.Nonce));
+        Assert.That(block.InclusionListRecursiveStark, Is.SameAs(proof));
+        Assert.That(block.InclusionListProvenDependencies, Is.SameAs(dependencies));
+        Assert.That(block.InclusionListProofInput, Is.Null);
+    }
+
+    [Test]
+    public void Payload_improvements_reuse_one_verified_snapshot()
+    {
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        FakeLeanProofVerifier verifier = new(true);
+        LeanProofStore store = new();
+        InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, store);
+        Transaction transaction = FrameTx(0, null!);
+        byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
+        data[31] = Eip8288Constants.LeanSphincsScheme;
+        transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
+        transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
+        byte[][] list = [Encode(transaction)];
+        List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction);
+        byte[] proven = Eip8288Dependencies.Serialize(deps);
+        RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)));
+        PayloadAttributes attributes = new() { InclusionListTransactions = list, InclusionListRecursiveStark = proof, InclusionListProvenDependencies = proven };
+        source.Set(list, spec, proof, proven);
+        source.Set(list, spec, proof, proven);
+        Assert.That(verifier.VerificationCalls, Is.Zero);
+        Assert.That(GetTransactions(source, attributes).Single().Nonce, Is.Zero);
+        BlockToProduce firstBuild = new(Build.A.BlockHeader.WithNumber(1).TestObject);
+        source.ApplyInclusionList(firstBuild, attributes);
+        BlockToProduce nextBuild = new(Build.A.BlockHeader.WithNumber(1).TestObject);
+        source.ApplyInclusionList(nextBuild, attributes);
+        Assert.That(nextBuild.InclusionListTransactions, Is.SameAs(firstBuild.InclusionListTransactions));
+        Assert.That(nextBuild.InclusionListProofInput, Is.SameAs(firstBuild.InclusionListProofInput));
+        source.Set(list, spec, proof, proven);
+        // The registered build owns its snapshot even if the caller mutates the encoded list.
+        list[0][0] = 0xff;
+        for (int improvement = 0; improvement < 12; improvement++)
+            Assert.That(GetTransactions(source, attributes).Single().Nonce, Is.Zero);
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        Assert.That(store.Covers(transaction), Is.True);
+        proof.StarkProof[0] = 2;
+        Assert.That(GetTransactions(source, attributes), Is.Empty);
+    }
+
+    [Test]
+    public void Malformed_dependency_frame_is_rejected_before_proof_verification()
+    {
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        FakeLeanProofVerifier verifier = new(true);
+        InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, new LeanProofStore());
+        Transaction transaction = FrameTx(0, null!);
+        transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[96])];
+        byte[][] list = [Encode(transaction)];
+        RecursiveStark proof = new([1], Keccak.Zero);
+        PayloadAttributes attributes = new() { InclusionListTransactions = list, InclusionListRecursiveStark = proof };
+        source.Set(list, spec, proof);
+        Assert.That(GetTransactions(source, attributes), Is.Empty);
+        Assert.That(verifier.VerificationCalls, Is.Zero);
+    }
 
     [Test]
     public void Empty_when_no_payload_attributes()
@@ -100,7 +187,7 @@ public class InclusionListTxSourceTests
     public void Set_defers_sender_recovery_to_the_first_request()
     {
         CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
-        InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance);
+        InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         byte[][] il = [Encode(tx)];
 
@@ -214,6 +301,15 @@ public class InclusionListTxSourceTests
     }
 
     private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+    private sealed class LegacyInclusionListTxSource : IInclusionListTxSource
+    {
+        public byte[][] List { get; private set; } = [];
+        public bool SupportsBlobs => false;
+        public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec) => List = inclusionListTransactions;
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit,
+            PayloadAttributes payloadAttributes = null, bool filterSource = false) => [];
+    }
 
     private sealed class CountingEcdsa(IEthereumEcdsa inner) : IEthereumEcdsa
     {

@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -24,11 +25,73 @@ public class HeaderStore(
 {
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
+    internal const int MaxCachedProofBytes = 64 * 1024;
+    internal const int MaxLargeProofCacheBytes = 32 * 1024 * 1024;
+    internal const int MaxLargeProofHeaders = 128;
 
     private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
 
     private readonly IHeaderDecoder _headerDecoder = decoder ?? new HeaderDecoder();
     private readonly AssociativeCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
+    private ProofHeaderCache? _proofCache;
+
+    private sealed class ProofHeaderCache
+    {
+        private readonly Lock _lock = new();
+        private readonly LinkedList<BlockHeader> _lru = new();
+        private readonly Dictionary<ValueHash256, System.Collections.Generic.LinkedListNode<BlockHeader>> _headers = [];
+        private int _proofBytes;
+
+        public BlockHeader? Get(ValueHash256 hash)
+        {
+            BlockHeader snapshot;
+            lock (_lock)
+            {
+                if (!_headers.TryGetValue(hash, out System.Collections.Generic.LinkedListNode<BlockHeader>? node)) return null;
+                _lru.Remove(node);
+                _lru.AddLast(node);
+                snapshot = node.Value;
+            }
+            return Snapshot(snapshot);
+        }
+
+        public void Set(BlockHeader header)
+        {
+            BlockHeader snapshot = Snapshot(header);
+            lock (_lock)
+            {
+                DeleteCore(header.Hash!.ValueHash256);
+                int bytes = snapshot.RecursiveStark!.StarkProof.Length;
+                while (_headers.Count >= MaxLargeProofHeaders || bytes > MaxLargeProofCacheBytes - _proofBytes)
+                    DeleteCore(_lru.First!.Value.Hash!.ValueHash256);
+                _headers.Add(snapshot.Hash!.ValueHash256, _lru.AddLast(snapshot));
+                _proofBytes += bytes;
+            }
+        }
+
+        public void Delete(ValueHash256 hash) { lock (_lock) DeleteCore(hash); }
+
+        private void DeleteCore(ValueHash256 hash)
+        {
+            if (!_headers.Remove(hash, out System.Collections.Generic.LinkedListNode<BlockHeader>? node)) return;
+            _lru.Remove(node);
+            _proofBytes -= node.Value.RecursiveStark!.StarkProof.Length;
+        }
+
+        public void Clear()
+        {
+            lock (_lock) { _headers.Clear(); _lru.Clear(); _proofBytes = 0; }
+        }
+
+        private static BlockHeader Snapshot(BlockHeader header)
+        {
+            BlockHeader snapshot = header.Clone();
+            RecursiveStark proof = header.RecursiveStark!;
+            // Neither callers nor cached headers may share mutable proof bytes.
+            snapshot.RecursiveStark = new RecursiveStark((byte[])proof.StarkProof.Clone(), proof.BlockDepsHash);
+            return snapshot;
+        }
+    }
 
     public void Insert(BlockHeader header)
     {
@@ -56,18 +119,34 @@ public class HeaderStore(
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, ulong? blockNumber = null)
     {
         if (_headerCache.Get(in blockHash.ValueHash256) is { } cached) return cached;
+        if (Volatile.Read(ref _proofCache)?.Get(blockHash.ValueHash256) is { } proofHeader) return proofHeader;
 
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
         BlockHeader? header = null;
         if (blockNumber is not null)
         {
-            header = headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            header = headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: false);
         }
-        return header ?? headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+        header ??= headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false);
+        if (shouldCache && header is not null) Cache(header);
+        return header;
     }
 
-    public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);
+    public void Cache(BlockHeader header)
+    {
+        if (header.RecursiveStark?.StarkProof.Length is > MaxCachedProofBytes)
+        {
+            if (header.RecursiveStark.StarkProof.Length > Eip8288Constants.MaxProofBytes) return;
+            _headerCache.Delete(in header.Hash.ValueHash256);
+            ProofHeaderCache cache = Volatile.Read(ref _proofCache) ??
+                Interlocked.CompareExchange(ref _proofCache, new ProofHeaderCache(), null) ?? _proofCache!;
+            cache.Set(header);
+            return;
+        }
+        Volatile.Read(ref _proofCache)?.Delete(header.Hash.ValueHash256);
+        _headerCache.Set(in header.Hash.ValueHash256, header);
+    }
 
     public void Delete(Hash256 blockHash)
     {
@@ -76,6 +155,7 @@ public class HeaderStore(
         blockNumberDb.Delete(blockHash);
         headerDb.Delete(blockHash);
         _headerCache.Delete(in blockHash.ValueHash256);
+        Volatile.Read(ref _proofCache)?.Delete(blockHash.ValueHash256);
     }
 
     public void InsertBlockNumber(Hash256 blockHash, ulong blockNumber)
@@ -167,5 +247,9 @@ public class HeaderStore(
 
     BlockHeader? IHeaderFinder.Get(Hash256 blockHash, ulong? blockNumber) => Get(blockHash, true, blockNumber);
 
-    void IClearableCache.ClearCache() => _headerCache.Clear();
+    void IClearableCache.ClearCache()
+    {
+        _headerCache.Clear();
+        Volatile.Read(ref _proofCache)?.Clear();
+    }
 }

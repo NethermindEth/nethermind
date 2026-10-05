@@ -19,6 +19,7 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -63,7 +64,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IGossipPolicy>(),
                 Substitute.For<IHistoryPruner>(),
                 Substitute.For<ISpecProvider>(),
-                Substitute.For<ILogManager>());
+                Substitute.For<ILogManager>(), new HeaderDecoder());
             NetBridge netBridge = new(enode, syncServer);
             NetRpcModule rpcModule = new(LimboLogs.Instance, netBridge);
             string response = await RpcTest.TestSerializedRequest<INetRpcModule>(rpcModule, "net_version");

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -111,6 +112,52 @@ public class BlockStoreTests
         retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
         retrieved!.EncodedSize = null;
         Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
+    }
+
+    [Test]
+    public void Large_proof_read_does_not_populate_the_body_cache()
+    {
+        using TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        block.Header.RecursiveStark = new(new byte[128 * 1024], TestItem.KeccakA);
+        store.Insert(block);
+        Assert.That(store.Get(block.Number, block.Hash!, shouldCache: true), Is.Not.Null);
+
+        db.Clear();
+        Assert.That(store.Get(block.Number, block.Hash!), Is.Null);
+    }
+
+    [Test, NonParallelizable]
+    public void Body_cache_does_not_retain_eighty_eight_mebibytes_of_proofs()
+    {
+        using TestMemDb db = new();
+        BlockStore store = new(db);
+        WeakReference<byte[]>[] proofs = CacheLargeProofs(store);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        foreach (WeakReference<byte[]> proof in proofs)
+        {
+            Assert.That(proof.TryGetTarget(out _), Is.False);
+        }
+        GC.KeepAlive(store);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference<byte[]>[] CacheLargeProofs(BlockStore store)
+    {
+        WeakReference<byte[]>[] proofs = new WeakReference<byte[]>[11];
+        for (int i = 0; i < proofs.Length; i++)
+        {
+            Block block = Build.A.Block.WithNumber((ulong)i + 1).TestObject;
+            byte[] proof = new byte[Eip8288Constants.MaxProofBytes];
+            proofs[i] = new(proof);
+            block.Header.RecursiveStark = new(proof, TestItem.KeccakA);
+            store.Cache(block);
+        }
+        return proofs;
     }
 
     [Test]

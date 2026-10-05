@@ -17,6 +17,7 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
@@ -66,6 +67,7 @@ public class InitializeNetwork : IStep
     private readonly ILogManager _logManager;
 
     private readonly ILogger _logger;
+    private readonly LeanProofGossip? _leanProofGossip;
 
     public InitializeNetwork(
         ISyncServer _, // Need to be resolved at least once
@@ -89,7 +91,8 @@ public class InitializeNetwork : IStep
         IPruningConfig pruningConfig,
         INodeStorageFactory nodeStorageFactory,
         FlatStateActivationPolicy flatStateActivationPolicy,
-        ILogManager logManager
+        ILogManager logManager,
+        LeanProofGossip? leanProofGossip = null
     )
     {
         _synchronizer = synchronizer;
@@ -113,6 +116,7 @@ public class InitializeNetwork : IStep
         _nodeStorageFactory = nodeStorageFactory;
         _flatStateActivationPolicy = flatStateActivationPolicy;
         _logManager = logManager;
+        _leanProofGossip = leanProofGossip;
 
         _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
@@ -146,6 +150,8 @@ public class InitializeNetwork : IStep
         {
             return;
         }
+
+        _leanProofGossip?.Start();
 
         await InitPeer().ContinueWith(initPeerTask =>
         {

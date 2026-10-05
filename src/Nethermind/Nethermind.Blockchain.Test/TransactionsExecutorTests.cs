@@ -330,6 +330,88 @@ namespace Nethermind.Blockchain.Test
                 Is.EquivalentTo(testCase.ExpectedSelectedTransactions.Select(static transaction => transaction.Hash)));
         }
 
+        [TestCase(0UL, false)]
+        [TestCase(Eip8288Constants.LeanStarkVerificationGas, true)]
+        public void BlockProductionTransactionPicker_reserves_recursive_stark_gas(ulong headroom, bool expectedToFit)
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+            TxFrame dependencyFrame = new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]));
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            tx.Type = TxType.FrameTx;
+            tx.Frames = [dependencyFrame];
+            FrameTxValidation.TryCalculateBlockGasReservations(tx, Eip8288Prototype.Instance, out ulong executionReservation, out _);
+            Block block = Build.A.Block.WithGasLimit(executionReservation + headroom).TestObject;
+            LeanProofStore proofs = new();
+            proofs.AddVerified([dependency], [[1]], null);
+            BlockProcessor.BlockProductionTransactionPicker txPicker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
+
+            BlockProcessor.AddingTxEventArgs args = txPicker.CanAddTransaction(block, tx, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
+
+            Assert.That(args.Action, Is.EqualTo(expectedToFit ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
+        }
+
+        [Test]
+        public void BlockProductionTransactionsExecutor_skips_uncovered_dependencies_before_execution()
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+            Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            transaction.Type = TxType.FrameTx;
+            transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
+                Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+            Block block = Build.A.Block.WithGasLimit(1_000_000).WithTransactions([transaction]).TestObject;
+            BlockToProduce producing = new(block.Header, block.Transactions, block.Uncles);
+            ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
+            IWorldState state = Substitute.For<IWorldState>();
+            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: new());
+            BlockProcessor.BlockProductionTransactionsExecutor executor = new(adapter, state, picker, LimboLogs.Instance,
+                NullBlockAccessListManager.Instance, NullTxPool.Instance);
+
+            TxReceipt[] receipts = executor.ProcessTransactions(producing, ProcessingOptions.ProducingBlock, new());
+
+            adapter.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(producing.Transactions, Is.Empty);
+                Assert.That(receipts, Is.Empty);
+            }
+        }
+
+        [Test]
+        public void BlockProductionTransactionPicker_reserves_recursive_proof_gas_in_state_lane([Values] bool fits, [Values(0UL, 30_000UL)] ulong reserved)
+        {
+            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            tx.Type = TxType.FrameTx;
+            tx.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+            LeanProofStore proofs = new();
+            proofs.AddVerified([dependency], [[1]], null);
+            BlockHeader header = Build.A.BlockHeader.WithGasLimit(1_000_000).TestObject;
+            BlockToProduce block = new(header) { RecursiveStarkGas = reserved };
+            ulong stateUsed = block.GasLimit - reserved - Eip8288Constants.LeanStarkVerificationGas + (fits ? 0UL : 1UL);
+            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
+            BlockProcessor.AddingTxEventArgs result = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, stateUsed);
+            Assert.That(result.Action, Is.EqualTo(fits ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
+        }
+
+        [Test]
+        public void BlockProductionTransactionPicker_caps_generic_stark_verification_work([Values(16, 17)] int count)
+        {
+            FrameDependency[] dependencies = Enumerable.Range(0, count).Select(index =>
+                new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(index.ToString()), default)).ToArray();
+            Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            transaction.Type = TxType.FrameTx;
+            transaction.NonceKeys = [UInt256.Zero];
+            transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanStarkVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))];
+            LeanProofStore proofs = new();
+            proofs.AddVerified(dependencies, Enumerable.Repeat(new byte[] { 1 }, count).ToArray(), null);
+            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
+            Block block = Build.A.Block.WithGasLimit(10_000_000).TestObject;
+            BlockProcessor.AddingTxEventArgs result = picker.CanAddTransaction(block, transaction, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
+            Assert.That(result.Action, Is.EqualTo(count == 16 ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
+            if (count == 17) Assert.That(result.Reason, Is.EqualTo("Generic STARK proof count limit exceeded"));
+        }
+
         [Test]
         public void BlockProductionTransactionsExecutor_calculates_block_size_using_proper_tx_form()
         {

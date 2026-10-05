@@ -81,6 +81,56 @@ public partial class FrameTxProcessorTests
         _transactionProcessor = BuildProcessor(_stateProvider, new EthereumCodeInfoRepository(_stateProvider));
     }
 
+    [TestCase(0, TestName = "Execute_LeadingDependencyFrame_ChargesGas")]
+    [TestCase(1, TestName = "Execute_FailedBatch_DependencyTerminalStillChargesGas")]
+    [TestCase(2, TestName = "Execute_PostTxRevert_DependencyStillChargesGas")]
+    public void Execute_DependencyDeclaration_RemainsCharged(int scenario)
+    {
+        _spec.IsEip8288Enabled = true;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        byte[] dependencyData = new byte[Eip8288Constants.DependencyTripleLength];
+        dependencyData[31] = Eip8288Constants.LeanSphincsScheme;
+        TxFrame dependency = new(FrameMode.DepVerify, FrameFlags.None, null,
+            Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependencyData);
+        TxFrame[] frames = scenario switch
+        {
+            0 => [dependency, SelfVerifyFrame()],
+            1 => [SelfVerifyFrame(), Frame(FrameMode.Default, FrameFlags.AtomicBatch, Observer), dependency],
+            _ => [SelfVerifyFrame(), dependency, Frame(FrameMode.PostTx, target: Observer)]
+        };
+        Transaction tx = FrameTx(0, frames);
+        FrameReceiptTracer tracer = new();
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        TxFrameReceipt receipt = tracer.FrameReceipts![scenario == 0 ? 0 : scenario == 1 ? 2 : 1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receipt.ExecutionGasUsed, Is.EqualTo(Eip8288Constants.LeanSphincsVerificationGas));
+            Assert.That(receipt.StateGasUsed, Is.Zero);
+            Assert.That(receipt.Logs, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void SimulateValidationPrefix_AcceptsLeadingDependencyDeclaration()
+    {
+        _spec.IsEip8288Enabled = true;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        byte[] dependencyData = new byte[Eip8288Constants.DependencyTripleLength];
+        dependencyData[31] = Eip8288Constants.LeanSphincsScheme;
+        Transaction tx = FrameTx(0,
+            new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependencyData),
+            SelfVerifyFrame());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.HasRecognizedValidationPrefix(tx), Is.True);
+            Assert.That(SimulateValidationPrefix(tx).TransactionExecuted, Is.True);
+        }
+    }
+
     [TearDown]
     public void TearDown() => _worldStateCloser?.Dispose();
 

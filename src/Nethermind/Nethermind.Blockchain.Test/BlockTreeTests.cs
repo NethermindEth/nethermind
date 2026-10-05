@@ -2952,6 +2952,58 @@ public class BlockTreeTests
         Assert.That(findFunction(blockTree, invalidBlock.Hash, lookupOptions), Is.EqualTo(foundInvalid ? invalidBlock.Header : null));
     }
 
+    [Test, NonParallelizable]
+    public void Large_invalid_proofs_are_byte_bounded_and_remain_private([Values] bool withInclusionProof)
+    {
+        BlockTree tree = Build.A.BlockTree().WithBadBlockStore(Substitute.For<IBadBlockStore>()).OfChainLength(3).TestObject;
+        byte[] proof = new byte[Eip8288Constants.MaxProofBytes];
+        proof[0] = 7;
+        int bytesPerBlock = proof.Length * (withInclusionProof ? 2 : 1);
+        int capacity = Math.Min(BlockTree.MaxLargeInvalidBlocks, BlockTree.MaxInvalidProofCacheBytes / bytesPerBlock);
+        Block[] invalid = new Block[capacity + 3];
+        for (int i = 0; i < invalid.Length; i++)
+        {
+            invalid[i] = Build.A.Block.WithParent(tree.Head!).WithNumber((ulong)i + 4).TestObject;
+            invalid[i].Header.RecursiveStark = new RecursiveStark(proof, TestItem.KeccakA);
+            if (withInclusionProof)
+            {
+                invalid[i].InclusionListRecursiveStark = new RecursiveStark(proof, TestItem.KeccakB);
+                invalid[i].InclusionListTransactions = [Build.A.Transaction.TestObject];
+            }
+            if (i == capacity) Assert.That(tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
+            tree.ReportBadBlock(invalid[i]);
+        }
+        proof[0] = 255;
+
+        Assert.That(tree.FindBlock(invalid[1].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
+        Assert.That(tree.FindHeader(invalid[1].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
+        Assert.That(tree.SuggestBlock(invalid[1]), Is.EqualTo(AddBlockResult.InvalidBlock), "evicting proof bytes must not forget the invalid hash");
+        Block returned = tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!;
+        Assert.That(returned.Header.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
+        returned.Header.RecursiveStark.StarkProof[0] = 99;
+        if (withInclusionProof)
+        {
+            Assert.That(returned.InclusionListTransactions, Is.SameAs(invalid[0].InclusionListTransactions));
+            Assert.That(returned.InclusionListRecursiveStark!.StarkProof[0], Is.EqualTo(7));
+            returned.InclusionListRecursiveStark.StarkProof[0] = 99;
+        }
+        Block again = tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!;
+        Assert.That(again.Header.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
+        Assert.That(tree.FindHeader(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
+        if (withInclusionProof) Assert.That(again.InclusionListRecursiveStark!.StarkProof[0], Is.EqualTo(7));
+    }
+
+    [Test]
+    public void Oversized_invalid_proof_is_not_retained_but_its_hash_is_rejected()
+    {
+        BlockTree tree = Build.A.BlockTree().WithBadBlockStore(Substitute.For<IBadBlockStore>()).OfChainLength(3).TestObject;
+        Block invalid = Build.A.Block.WithParent(tree.Head!).WithNumber(4).TestObject;
+        invalid.Header.RecursiveStark = new RecursiveStark(new byte[Eip8288Constants.MaxProofBytes + 1], TestItem.KeccakA);
+        tree.ReportBadBlock(invalid);
+        Assert.That(tree.FindBlock(invalid.Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
+        Assert.That(tree.SuggestBlock(invalid), Is.EqualTo(AddBlockResult.InvalidBlock));
+    }
+
     [Test]
     public void On_restart_loads_already_processed_genesis_block([Values] bool wereProcessed)
     {

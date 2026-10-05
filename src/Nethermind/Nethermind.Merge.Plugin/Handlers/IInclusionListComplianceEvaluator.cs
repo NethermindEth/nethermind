@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -19,4 +20,10 @@ public interface IInclusionListComplianceEvaluator
     /// <param name="inclusionListTransactions">Aggregate inclusion list as RLP-encoded EIP-2718 entries.</param>
     /// <returns><c>null</c> when the block, state, or execution gas dimensions needed to judge compliance are unavailable.</returns>
     bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions);
+
+    /// <summary>Evaluates a proof-bearing list using the configured proof verifier.</summary>
+    bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof);
+
+    /// <summary>Evaluates a list against the explicit dependency set committed by its proof.</summary>
+    bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof, byte[]? provenDependencies);
 }

@@ -14,6 +14,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -30,7 +31,8 @@ public class StatelessBlockProcessingEnv(
     Witness witness,
     ISpecProvider specProvider,
     ISealValidator sealValidator,
-    ILogManager logManager)
+    ILogManager logManager,
+    ILeanProofVerifier leanProofVerifier)
 {
     private IBlockProcessor? _blockProcessor;
     private IWorldState? _worldState;
@@ -41,7 +43,7 @@ public class StatelessBlockProcessingEnv(
         ISpecProvider specProvider,
         ISealValidator sealValidator,
         ILogManager logManager,
-        StatelessBlockTree blockTree) : this(witness, specProvider, sealValidator, logManager)
+        StatelessBlockTree blockTree, ILeanProofVerifier leanProofVerifier) : this(witness, specProvider, sealValidator, logManager, leanProofVerifier)
         => _blockTree = blockTree;
     // Per-block: StaticCodeCache.Instance would leak code across blocks and mask deliberately missing
     // witness code. The first fetch of each hash still reads through the world state.
@@ -98,7 +100,8 @@ public class StatelessBlockProcessingEnv(
             headerValidator,
             new UnclesValidator(statelessBlockTree, headerValidator, logManager),
             specProvider,
-            logManager
+            logManager,
+            leanProofVerifier
         );
 
         return new BlockProcessor(
@@ -113,7 +116,8 @@ public class StatelessBlockProcessingEnv(
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor),
-            blockAccessListManager
+            blockAccessListManager,
+            leanProofVerifier
         );
     }
 

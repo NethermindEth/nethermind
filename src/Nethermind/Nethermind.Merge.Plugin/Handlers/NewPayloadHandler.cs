@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -12,10 +13,10 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -57,6 +58,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
+    private readonly ILeanProofVerifier _proofVerifier;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
@@ -86,7 +88,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        ILogManager logManager)
+        ILogManager logManager, ILeanProofVerifier proofVerifier)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -101,6 +103,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader = stateReader;
         _specProvider = specProvider;
         _txValidator = txValidator;
+        _proofVerifier = proofVerifier ?? throw new ArgumentNullException(nameof(proofVerifier));
         _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -143,6 +146,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
+        ValueHash256 inclusionListDigest = ComputeInclusionListDigest(block);
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
 
         string requestStr = $"New Block:  {request}";
@@ -243,7 +247,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             {
                 // bogota.md newPayloadV6 (2.1): a VALID response must carry a compliance answer, so reuse a
                 // cached one only while the verdict is serviceable.
-                if (IsVerdictServiceable(block) && TryGetCachedResult(block, out ResultWrapper<PayloadStatusV1>? cachedResult))
+                if (IsVerdictServiceable(block) && TryGetCachedResult(block, inclusionListDigest, out ResultWrapper<PayloadStatusV1>? cachedResult))
                 {
                     if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
                     return cachedResult;
@@ -253,7 +257,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 if (_stateReader.HasStateForBlock(block.Header)
                     || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && _stateReader.HasStateForBlock(block.Header)))
                 {
-                    if (EvaluateInclusionListFromState(block) is { } fromState)
+                    if (EvaluateInclusionListFromState(block, inclusionListDigest) is { } fromState)
                     {
                         if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
                         return fromState;
@@ -339,7 +343,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
         // never be restored.
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers, inclusionListDigest);
 
         switch (result)
         {
@@ -408,16 +412,25 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader.HasStateForBlock(block.Header) || _blockTree.IsOnMainChainBehindFinalized(block.Header);
 
     // An absent IL digests to default, matching non-IL cache entries.
-    private static ValueHash256 ComputeInclusionListDigest(Block block)
+    internal static ValueHash256 ComputeInclusionListDigest(Block block)
     {
-        if (block.InclusionListTransactions is not { Length: > 0 } il) return default;
-
-        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(il.Length * Keccak.Size, out byte[] buffer);
-        Span<byte> span = buffer.AsSpan(0, il.Length * Keccak.Size);
-        for (int i = 0; i < il.Length; i++)
-            (il[i].Hash ?? Keccak.Zero).Bytes.CopyTo(span.Slice(i * Keccak.Size, Keccak.Size));
-
-        return ValueKeccak.Compute(span);
+        if (block.InclusionListTransactions is not { Length: > 0 } && block.InclusionListRecursiveStark is null && block.InclusionListProvenDependencies is null) return default;
+        KeccakHash hash = KeccakHash.Create();
+        hash.Update("EIP8288 inclusion list"u8);
+        Span<byte> fields = stackalloc byte[sizeof(int) + 1];
+        BinaryPrimitives.WriteInt32BigEndian(fields, block.InclusionListTransactions?.Length ?? 0);
+        fields[^1] = block.InclusionListRecursiveStark is null ? (byte)0 : (byte)1;
+        hash.Update(fields);
+        foreach (Transaction tx in block.InclusionListTransactions ?? []) hash.Update((tx.Hash ?? Keccak.Zero).Bytes);
+        if (block.InclusionListRecursiveStark is { } proof)
+        {
+            hash.Update((proof.BlockDepsHash ?? Keccak.Zero).Bytes);
+            hash.Update(ValueKeccak.Compute(proof.StarkProof ?? []).Bytes);
+        }
+        fields[^1] = block.InclusionListProvenDependencies is null ? (byte)0 : (byte)1;
+        hash.Update(fields[^1..]);
+        if (block.InclusionListProvenDependencies is { } dependencies) hash.Update(ValueKeccak.Compute(dependencies).Bytes);
+        return hash.GenerateValueHash();
     }
 
     /// <summary>Answers an already-committed block's inclusion-list compliance without re-executing it.</summary>
@@ -428,7 +441,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// dimensions appendability is judged on, so the caller must fall through to it rather than guess.
     /// After cache loss or restart, even resending the current head can therefore answer SYNCING.
     /// </remarks>
-    private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block)
+    private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block, ValueHash256 inclusionListDigest)
     {
         Hash256 hash = block.GetOrCalculateHash();
         // A decoded payload has no EIP-8037 dimensions, and neither the state root nor the header's
@@ -440,7 +453,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         ValidationResult result = satisfied.Value ? ValidationResult.Valid : ValidationResult.InclusionListUnsatisfied;
 
-        _latestBlocks?.Set(hash, new CachedPayloadResult(result, null, ComputeInclusionListDigest(block), block.Header.GasUsedPerDimension));
+        _latestBlocks?.Set(hash, new CachedPayloadResult(result, null, inclusionListDigest, block.Header.GasUsedPerDimension));
         return result == ValidationResult.Valid
             ? NewPayloadV1Result.Valid(block.Hash)
             : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
@@ -449,12 +462,20 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <inheritdoc/>
     /// <remarks>Without EIP-8037 gas dimensions, answers only when every possible assignment gives the same verdict.</remarks>
     public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
+        => TryEvaluate(blockHash, inclusionListTransactions, null, null);
+
+    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof)
+        => TryEvaluate(blockHash, inclusionListTransactions, proof, null);
+
+    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof, byte[]? provenDependencies)
     {
         Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         if (block is null || !_stateReader.HasStateForBlock(block.Header)) return null;
         // Gas bounds must not mutate the tree's shared header while another request reads it.
         block = block.WithReplacedBodyCloned(block.Body);
         block.Header.GasUsedPerDimension = RecordedGasDimensions(blockHash);
+        block.InclusionListRecursiveStark = proof;
+        block.InclusionListProvenDependencies = provenDependencies;
 
         // Undecodable entries are dropped rather than failing the answer: a censoring proposer must not be
         // able to escape the check by having one bad entry gossiped into the aggregate.
@@ -464,30 +485,49 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        if (InclusionListValidator.IsBlockFull(block, spec)) return true;
         _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
+        ILeanProofVerifier verifier = new InclusionListProofVerifier(_proofVerifier);
+        bool omittedFrame = false;
+        if (spec.IsEip8288Enabled)
+        {
+            inclusionList = InclusionListProofValidator.SelectEligible(inclusionList, block.InclusionListRecursiveStark,
+                block.InclusionListProvenDependencies, verifier, spec, out _, out _);
+            HashSet<Hash256> included = [];
+            foreach (Transaction tx in block.Transactions) if (tx.Hash is { } hash) included.Add(hash);
+            foreach (Transaction tx in inclusionList)
+                if (tx.SupportsFrames && (tx.Hash is null || !included.Contains(tx.Hash))) omittedFrame = true;
+        }
 
         SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
-        return spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
-            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
-            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator);
+        bool? ordinarySatisfied = spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
+            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec, verifier)
+            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator,
+                block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false);
+        // Ordinary omissions are decidable even if another valid frame needs prefix execution.
+        return ordinarySatisfied == false ? false : omittedFrame ? null : ordinarySatisfied;
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
     /// <remarks>Account reads are shared across the gas bounds.</remarks>
-    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
+    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec, ILeanProofVerifier verifier)
     {
         state = new CachedAccountStateProvider(state);
+        ulong proofGas = spec.IsEip8288Enabled
+            ? (ulong)Eip8288Dependencies.DependencyDeclarationCount(block) * Eip8288Constants.LeanStarkVerificationGas : 0;
+        if (proofGas > block.GasUsed) return null;
+        ulong transactionGas = block.GasUsed - proofGas;
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
         try
         {
-            block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator)) return false;
+            block.Header.GasUsedPerDimension = (transactionGas, transactionGas);
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false)) return false;
 
-            block.Header.GasUsedPerDimension = (block.GasUsed, 0);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator)) return null;
+            block.Header.GasUsedPerDimension = (transactionGas, 0);
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false)) return null;
 
-            block.Header.GasUsedPerDimension = (0, block.GasUsed);
-            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator) ? true : null;
+            block.Header.GasUsedPerDimension = (0, transactionGas);
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false) ? true : null;
         }
         finally
         {
@@ -554,12 +594,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     // Only a "valid block" outcome short-circuits: never resurrect a stale Invalid/Syncing for a block
     // the tree treats as canonical.
-    private bool TryGetCachedResult(Block block, [NotNullWhen(true)] out ResultWrapper<PayloadStatusV1>? result)
+    private bool TryGetCachedResult(Block block, ValueHash256 inclusionListDigest, [NotNullWhen(true)] out ResultWrapper<PayloadStatusV1>? result)
     {
         result = null;
         if (_latestBlocks is null
             || !_latestBlocks.TryGet(block.GetOrCalculateHash(), out CachedPayloadResult cached)
-            || cached.InclusionListDigest != ComputeInclusionListDigest(block))
+            || cached.InclusionListDigest != inclusionListDigest)
             return false;
 
         result = cached.Result switch
@@ -699,10 +739,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers, ValueHash256 ilDigest)
     {
-        ValueHash256 ilDigest = ComputeInclusionListDigest(block);
-
         ValidationCompletion? completion = null;
 
         ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)

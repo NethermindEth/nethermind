@@ -79,6 +79,7 @@ namespace Nethermind.Consensus.Processing
                         if (blockToProduce is not null)
                         {
                             blockToProduce.TxByteLength += currentTx.GetLength(false);
+                            blockToProduce.RecursiveStarkGas += Eip8288Dependencies.RecursiveStarkGas(currentTx);
                         }
                     }
                 }
@@ -121,6 +122,11 @@ namespace Nethermind.Consensus.Processing
                         _transactionProcessed?.Invoke(this,
                             new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
                         balManager.NextTransaction();
+                        if (block is BlockToProduce producing && args.LeanProofInput is { } proofInput)
+                        {
+                            if (proofInput.Deps.Count != 0 || proofInput.RecursiveProofs.Count != 0) producing.LeanProofInputs.Add(proofInput);
+                            producing.LeanProofBudget.Commit(proofInput, args.LeanDependencies);
+                        }
                     }
                     else
                     {

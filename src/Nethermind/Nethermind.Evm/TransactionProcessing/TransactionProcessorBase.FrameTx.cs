@@ -103,7 +103,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // eth_call and the other estimation/tracing entry points reach the processor with validation
         // skipped, so the whole structural constraint set is enforced here and not only in TxValidator.
-        if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out string? malformed))
+        if (!FrameTxValidation.IsWellFormed(tx, spec, out string? malformed))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(malformed!);
         }
@@ -292,6 +292,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchTracker.TakeSnapshot();
             }
 
+            if (frame.Mode == FrameMode.DepVerify)
+            {
+                frameContext.MarkFrameSucceeded(i);
+                frameContext.RecordFrameReceipt(i, frame.ExecutionGasLimit, 0);
+                frameReceipts[i] = new TxFrameReceipt(TxFrameReceipt.StatusSuccess, frame.ExecutionGasLimit, 0, []);
+                totalFrameGasUsed += frame.ExecutionGasLimit;
+                inBatch = false;
+                continue;
+            }
+
             bool isSender = frame.Mode == FrameMode.Sender;
             if (isSender && !frameContext.SenderApproved)
             {
@@ -425,6 +435,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                     int terminal = i;
                     while (terminal < frames.Length && frames[terminal].IsAtomicBatch) terminal++;
+                    // Dependency declarations remain charged even when the batch body is skipped.
+                    if (terminal < frames.Length && frames[terminal].Mode == FrameMode.DepVerify) terminal--;
                     for (int s = i + 1; s <= terminal && s < frames.Length; s++)
                     {
                         frameReceipts[s] = new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, []);
@@ -644,6 +656,19 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 TxFrame frame = frames[i];
                 bool isDeployFrame = OpensDeployPrefix(frames, i);
+                if (frame.Mode == FrameMode.DepVerify)
+                {
+                    verifyGasUsed += frame.ExecutionGasLimit;
+                    if (verifyGasUsed > Eip8141Constants.MaxVerifyGas)
+                    {
+                        return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
+                    }
+                    frameContext.CurrentFrameIndex = i;
+                    frameContext.MarkFrameSucceeded(i);
+                    frameContext.RecordFrameReceipt(i, frame.ExecutionGasLimit, 0);
+                    continue;
+                }
+
 
                 // EIP-8141 § Validation Prefix: the shortest prefix that sets a payer, so a non-VERIFY frame
                 // ends it. An opening deploy frame is the sole non-VERIFY frame the prefix admits.
@@ -789,7 +814,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // RECENTROOTREFLOAD reads the envelope on the strength of this check, so it precedes the prefix.
         // Anchored to the earliest slot the tx could execute in: the head slot is referenceable only from the next.
-        ulong? executionSlot = header.SlotNumber is { } headSlot ? headSlot + 1 : null;
+        ulong? executionSlot = opts.HasFlag(ExecutionOptions.FramePrefixAtExecutionBlock)
+            ? header.SlotNumber : header.SlotNumber is { } headSlot ? headSlot + 1 : null;
         return RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, executionSlot, in accessTracker)
             ? TransactionResult.Ok
             : TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
@@ -798,11 +824,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <summary>Whether frame <paramref name="i"/> is a <c>deploy</c> frame opening the validation prefix.</summary>
     /// <remarks>Positional, as RecognizedPrefixLength reaches index 1 only past an expiry-verify frame at index 0.
     /// Spells the same prologue rule as <see cref="FrameTxValidation.ApprovalSearchStart"/>; a grammar change touches both.</remarks>
-    private static bool OpensDeployPrefix(TxFrame[] frames, int i) =>
-        (i == 0 || (i == 1 && FrameTxValidation.IsExpiryVerifyFrame(frames[0])))
-        && i + 1 < frames.Length
-        && FrameTxValidation.IsDeployFrame(frames[i])
-        && frames[i + 1].Mode == FrameMode.Verify;
+    private static bool OpensDeployPrefix(TxFrame[] frames, int i)
+    {
+        int first = 0;
+        while (first < frames.Length && frames[first].Mode == FrameMode.DepVerify) first++;
+        if (first < frames.Length && FrameTxValidation.IsExpiryVerifyFrame(frames[first])) first++;
+        while (first < frames.Length && frames[first].Mode == FrameMode.DepVerify) first++;
+        if (i != first || !FrameTxValidation.IsDeployFrame(frames[i])) return false;
+        int next = i + 1;
+        while (next < frames.Length && frames[next].Mode == FrameMode.DepVerify) next++;
+        return next < frames.Length && frames[next].Mode == FrameMode.Verify;
+    }
 
     private TransactionSubstate ExecuteFrame<TTracing>(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
         where TTracing : struct, IFlag

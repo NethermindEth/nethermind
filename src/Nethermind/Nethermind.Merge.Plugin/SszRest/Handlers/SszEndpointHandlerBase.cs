@@ -62,6 +62,10 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         {
             length = encode(value, pipe);
         }
+        catch (NotSupportedException) when (pipe.UnflushedBytes == before)
+        {
+            throw;
+        }
         catch
         {
             // Encode advanced bytes into the pipe before throwing; we can't rewind.
@@ -91,12 +95,19 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     {
         using (result)
         {
-            await (result switch
+            try
             {
-                { Result.ResultType: not ResultType.Success } => WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error", result.ErrorCode),
-                { Data: null } => SetNoContent(ctx),
-                { Data: var data } => WriteSszAsync(ctx, data, encode)
-            });
+                await (result switch
+                {
+                    { Result.ResultType: not ResultType.Success } => WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error", result.ErrorCode),
+                    { Data: null } => SetNoContent(ctx),
+                    { Data: var data } => WriteSszAsync(ctx, data, encode)
+                });
+            }
+            catch (NotSupportedException exception) when (!ctx.Response.HasStarted)
+            {
+                await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, exception.Message, MergeErrorCodes.UnsupportedFork);
+            }
         }
     }
 

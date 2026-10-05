@@ -228,6 +228,7 @@ namespace Nethermind.AuRa.Test
                 new ExecutionRequestsProcessor(transactionProcessor),
                 balManager,
                 auRaValidator: null,
+                leanProofVerifier: Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>(),
                 txFilter,
                 contractRewriter: contractRewriter);
 
@@ -236,7 +237,7 @@ namespace Nethermind.AuRa.Test
                 GnosisSpecProvider.Instance,
                 stateProvider,
                 blockhashProvider,
-                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
+                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>(), Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>()),
                 LimboLogs.Instance);
 
             return (branchProcessor, stateProvider, blockTree, stateHeaderProvider);

@@ -21,6 +21,7 @@ internal class TestChainHeadInfoProvider : IChainHeadInfoProvider
     public IReadOnlyStateProvider ReadOnlyStateProvider { get; set; } = null!;
     public ulong HeadNumber { get; set; }
     public ulong HeadTimestamp { get; set; }
+    public ulong? HeadSlotNumber { get; set; }
     public ulong? BlockGasLimit { get; set; } = 30_000_000;
     public UInt256 CurrentBaseFee { get; set; }
     public UInt256 CurrentFeePerBlobGas { get; set; }

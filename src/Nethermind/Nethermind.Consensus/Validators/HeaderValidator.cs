@@ -101,11 +101,35 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateExcessBlobGas(header, parent, spec, ref error))
                    && ValidateRequestsHash(header, spec, ref error)
                    && ValidateBlockAccessListHash(header, spec, ref error)
-                   && ValidateSlotNumber(header, spec, ref error);
+                   && ValidateSlotNumber(header, spec, ref error)
+                   && ValidateRecursiveStarkFields(header, spec, ref error);
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
             Validate<OnFlag>(header, null, false, out error, validateHash: true);
+
+        private static bool ValidateRecursiveStarkFields(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            RecursiveStark? proof = header.RecursiveStark;
+            if (!spec.IsEip8288Enabled)
+            {
+                if (proof is null) return true;
+                error = BlockErrorMessages.RecursiveStarkNotEnabled;
+                return false;
+            }
+            if (proof is null)
+            {
+                if (header.IsGenesis) return true;
+                error = BlockErrorMessages.MissingRecursiveStark;
+                return false;
+            }
+            if (proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes })
+            {
+                error = BlockErrorMessages.InvalidRecursiveStark;
+                return false;
+            }
+            return true;
+        }
 
         protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {

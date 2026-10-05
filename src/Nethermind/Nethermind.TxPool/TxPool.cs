@@ -45,6 +45,7 @@ namespace Nethermind.TxPool
     {
         private const int RevalidationAbandonmentWarningThreshold = 3;
         private const int MarkerPublicationDeferralWarningThreshold = 3;
+        private static readonly AddressAsKey[] RecentRootDependency = [Eip8272Constants.RecentRootAddress];
 
         private readonly RetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
 
@@ -150,6 +151,7 @@ namespace Nethermind.TxPool
         // Lets the per-head expiry pass skip the pool walk entirely when nothing can expire. Maintained by the
         // Inserted/Removed handlers under Interlocked, so readers need only Volatile.Read for visibility.
         private int _expiringFrameTxCount;
+        private readonly LeanProofStore? _leanProofStore;
 
 #if DEBUG
         // Bumped before the bookkeeping either side of a mutation moves, so a half-applied mutation cannot read as drift.
@@ -183,7 +185,8 @@ namespace Nethermind.TxPool
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter[]? incomingTxFilters = null,
             bool thereIsPriorityContract = false,
-            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null)
+            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null,
+            LeanProofStore? leanProofStore = null)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -201,6 +204,7 @@ namespace Nethermind.TxPool
             _frameEvictionRetryBudget = txPoolConfig.FrameTxEvictionRetryBudget;
             _frameRevalidationDeferralBudget = txPoolConfig.FrameTxRevalidationDeferralBudget;
             _frameTxPrefixSimulator = frameTxPrefixSimulator;
+            _leanProofStore = leanProofStore;
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
             _pendingDelegations = new DelegationCache(_specProvider.ChainId);
@@ -243,6 +247,15 @@ namespace Nethermind.TxPool
             {
                 foreach (Transaction restored in _blobTransactions.GetSnapshot())
                 {
+                    if (restored.SupportsFrames && _specProvider.GetCurrentHeadSpec().IsEip8288Enabled
+                        && (!_blobTransactions.TryGetValue(restored.Hash!, out Transaction? full)
+                            || Eip8288Dependencies.ForTransaction(full).Count != 0
+                                && (_leanProofStore is null || !_leanProofStore.PinPending(full, this))))
+                    {
+                        // Dependency witnesses are not persisted with blob transactions.
+                        _blobTransactions.TryRemove(restored.Hash!, out _);
+                        continue;
+                    }
                     if (HasExpiryDeadline(restored)) _expiringFrameTxCount++;
                     // EIP-8141: the bound is summed over the pending set, so a record that survived the restart
                     // has to keep counting against its payer. Restored, not re-gated: the reservation was
@@ -303,6 +316,7 @@ namespace Nethermind.TxPool
                 // the decoder that measures these, and head revalidation would then price a different transaction
                 new FrameTxCalldataStatsFilter(),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, logManager),
+                new DependencyProofTxFilter(leanProofStore),
                 new PriorityFeeTooLowFilter(_headInfo, txPoolConfig, _logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger)
             ];
@@ -316,6 +330,7 @@ namespace Nethermind.TxPool
             List<IIncomingTxFilter> postHashFilters =
             [
                 new MalformedTxFilter(validator, _specChangeTxValidator, ecdsa, _logger),
+                new DependencyProofSenderQuotaTxFilter(leanProofStore), // after sender recovery, before native prefix work
                 new FrameTxMisplacedExpiryFrameFilter(_logger), // before ExpiredFrameTxFilter: leaves the deadline readable from the leading frame alone
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new FrameTxVerifyGasFilter(txPoolConfig, _logger), // after MalformedTxFilter: reads gas limits from an already well-formed frame list
@@ -330,6 +345,7 @@ namespace Nethermind.TxPool
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new KeyedNonceFilter(chainHeadInfoProvider.ReadOnlyStateProvider, txPoolConfig, _transactions, _blobTransactions), // the three above skip keyed sets, this one owns them
+                new RecentRootFilter(chainHeadInfoProvider),
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
                 new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve recovery per signature, up to the decoder's 1024, so let the cheap filters reject first
@@ -574,6 +590,7 @@ namespace Nethermind.TxPool
 
         private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
         {
+            if (args.Value.SupportsFrames) _leanProofStore?.PublishPending(args.Value.Hash!.ValueHash256, this);
             TrackPoolMutation();
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
@@ -603,6 +620,7 @@ namespace Nethermind.TxPool
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
             TrackPoolMutation();
+            if (args.Value.SupportsFrames && args.Value.Hash is { } hash) _leanProofStore?.UnpinPending(hash.ValueHash256, this);
             RemovePendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value))
             {
@@ -657,12 +675,15 @@ namespace Nethermind.TxPool
             // A delegated sender runs the delegate's code, so that account is a dependency too; the sender's
             // own code hash only pins the designation.
             Address? delegated = resolveDelegation ? DelegationTargetOf(tx.SenderAddress!) : null;
-            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (hasDistinctPaymaster ? 1 : 0) + (delegated is not null ? 1 : 0)];
+            bool hasRecentRoots = tx.RecentRootReferences is { Length: > 0 };
+            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (hasDistinctPaymaster ? 1 : 0)
+                + (delegated is not null ? 1 : 0) + (hasRecentRoots ? 1 : 0)];
             int next = 0;
             accounts[next++] = tx.SenderAddress!;
             if (hasDistinctPayer) accounts[next++] = payer!;
             if (hasDistinctPaymaster) accounts[next++] = paymaster!;
-            if (delegated is not null) accounts[next] = delegated;
+            if (delegated is not null) accounts[next++] = delegated;
+            if (hasRecentRoots) accounts[next] = Eip8272Constants.RecentRootAddress;
 
             if (onlyIfTracked) _frameDependencies.Update(tx.Hash!.ValueHash256, accounts);
             else _frameDependencies.Set(tx.Hash!.ValueHash256, accounts);
@@ -1238,7 +1259,12 @@ namespace Nethermind.TxPool
             if (_frameDependencies.Count > 0)
             {
                 if (completeAccountChanges is null) _frameDependencies.CollectAll(_frameTxsToRevalidate);
-                else _frameDependencies.CollectAffected(completeAccountChanges, _frameTxsToRevalidate);
+                else
+                {
+                    _frameDependencies.CollectAffected(completeAccountChanges, _frameTxsToRevalidate);
+                    // Reference age advances even when the commitment account did not change.
+                    _frameDependencies.CollectAffected(RecentRootDependency, _frameTxsToRevalidate);
+                }
             }
 
             // Carried from the previous head: a bound this node spent judged nothing, and a one-off change
@@ -1370,6 +1396,7 @@ namespace Nethermind.TxPool
         private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, out Address? resolvedPayer)
         {
             resolvedPayer = null;
+            if (!RecentRootFilter.IsValid(tx, state, _headInfo.HeadSlotNumber)) return false;
 
             // Matches TxFilteringState: a never-seen sender must read back as code-free, not zero-hashed.
             if (!_accounts.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount)) senderAccount = AccountStruct.TotallyEmpty;
@@ -1510,6 +1537,11 @@ namespace Nethermind.TxPool
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
             if (!canRecycle)
                 PooledBlobBuffers.Disown(tx);
+            if (Volatile.Read(ref _isDisposed))
+            {
+                PooledBlobBuffers.Return(tx);
+                return AcceptTxResult.Invalid.WithMessage("Transaction pool is disposed.");
+            }
             bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
                                   && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
@@ -1559,6 +1591,11 @@ namespace Nethermind.TxPool
             _newHeadLock.EnterReadLock();
             try
             {
+                if (Volatile.Read(ref _isDisposed))
+                {
+                    PooledBlobBuffers.Return(tx);
+                    return AcceptTxResult.Invalid.WithMessage("Transaction pool is disposed.");
+                }
                 IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
                 // Observation and insertion share the head lock so an A -> B -> A transition cannot cross a validation publish unseen.
                 ObserveHeadSpec(headSpec);
@@ -1590,9 +1627,15 @@ namespace Nethermind.TxPool
                     _pendingPaymasters.Decrement(paymaster);
                 }
 
+                state.ProofReservation?.Dispose();
+                state.SenderProofReservation?.Dispose();
                 _newHeadLock.ExitReadLock();
             }
 
+            if (accepted == AcceptTxResult.MissingDependencyProof && tx.Hash is not null)
+            {
+                _hashCache.DeleteFromCurrentBlock(tx.Hash);
+            }
             if (state.FrameSimulationYielded && _retryCache.TryDefer(tx.Hash!))
             {
                 _hashCache.DeleteFromCurrentBlock(tx.Hash!);
@@ -1644,15 +1687,18 @@ namespace Nethermind.TxPool
                 return AcceptTxResult.Invalid;
             }
 
+            TxFilteringState state = default;
             _newHeadLock.EnterReadLock();
             try
             {
-                TxFilteringState state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
+                state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
                 bool canRecycle = false;
                 return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipSamplingDeferredFilters: true);
             }
             finally
             {
+                state.ProofReservation?.Dispose();
+                state.SenderProofReservation?.Dispose();
                 _newHeadLock.ExitReadLock();
             }
         }
@@ -1719,6 +1765,7 @@ namespace Nethermind.TxPool
             // released on Removed. Every other exit, a throw included, must release them here or they leak.
             TxDistinctSortedPool relevantPool = (tx.CarriesBlobs ? _blobTransactions : _transactions);
             bool reservationSettled = false;
+            bool proofPinned = false;
             try
             {
                 bool eip1559Enabled = headSpec.IsEip1559Enabled;
@@ -1729,6 +1776,12 @@ namespace Nethermind.TxPool
                     ? effectiveGasPrice
                     : worstTx.GasBottleneck;
 
+                if (state.ProofDependencies is { Count: > 0 })
+                {
+                    if (_leanProofStore is null || !_leanProofStore.PinPending(tx, this, publish: false))
+                        return AcceptTxResult.MissingDependencyProof;
+                    proofPinned = true;
+                }
                 bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
                 // The reservation is now the pool's, or was already released by a self-eviction Removed.
                 reservationSettled = true;
@@ -1787,6 +1840,8 @@ namespace Nethermind.TxPool
             }
             finally
             {
+                if (proofPinned && !relevantPool.ContainsKey(tx.Hash!.ValueHash256))
+                    _leanProofStore!.UnpinPending(tx.Hash.ValueHash256, this);
                 // The insert can take the record and then throw — the persistent blob pool writes the body inside
                 // it — and the reservations are then the pooled record's, released on its Removed. Membership, not
                 // ownership: a duplicate admission inserting first strands this call's reservation, caught in DEBUG.
@@ -2788,7 +2843,7 @@ namespace Nethermind.TxPool
         public async ValueTask DisposeAsync()
         {
             if (_isDisposed) return;
-            _isDisposed = true;
+            Volatile.Write(ref _isDisposed, true);
             _timer?.Dispose();
             await _cts.CancelAsync();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
@@ -2807,6 +2862,15 @@ namespace Nethermind.TxPool
             await _retryCache.DisposeAsync();
             await _headProcessing;
             await _revalidationProcessing;
+            _newHeadLock.EnterWriteLock();
+            try
+            {
+                _leanProofStore?.ReleasePending(this);
+            }
+            finally
+            {
+                _newHeadLock.ExitWriteLock();
+            }
             _broadcaster.Dispose();
             (_blobTransactions as IDisposable)?.Dispose();
         }
