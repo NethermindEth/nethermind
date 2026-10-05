@@ -164,16 +164,6 @@ public class DataColumnSidecarsReqRespTests
     }
 
     [Test]
-    public void DialAsync_rejects_more_identifiers_than_MaxRequestBlocks_before_writing_to_the_wire()
-    {
-        DataColumnSidecarsByRootProtocol protocol = new(Spec, new DataColumnSidecarPool());
-        DataColumnsByRootIdentifier[] request = Enumerable.Range(0, (int)BlocksProtocolBase.MaxRequestBlocks + 1)
-            .Select(static _ => new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = [0] }).ToArray();
-
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, new(request, Gloas: false)));
-    }
-
-    [Test]
     public async Task Exactly_MaxRequestBlocks_identifiers_at_full_columns_hits_MaxRequestDataColumnSidecars_exactly_and_is_served([Values] bool gloas)
     {
         // MaxRequestBlocks (128) identifiers x NumberOfColumns (128) columns each = exactly
@@ -194,12 +184,13 @@ public class DataColumnSidecarsReqRespTests
         Assert.That(served.Fulu.Count + served.Gloas.Count, Is.Zero);
     }
 
-    [Test]
-    public void The_root_dial_refuses_a_repeated_root_and_column_before_writing_to_the_wire([Values] bool splitOverTwoIdentifiers)
+    [TestCase((int)BlocksProtocolBase.MaxRequestBlocks + 1, new ulong[] { 0 }, new ulong[] { 0 }, TestName = "DialAsync_rejects_more_identifiers_than_MaxRequestBlocks_before_writing_to_the_wire")]
+    [TestCase(2, new ulong[] { 3, 5 }, new ulong[] { 3 }, TestName = "The_root_dial_refuses_a_repeated_root_and_column_before_writing_to_the_wire(True)")]
+    [TestCase(1, new ulong[] { 3, 3 }, null, TestName = "The_root_dial_refuses_a_repeated_root_and_column_before_writing_to_the_wire(False)")]
+    public void The_root_dial_refuses_invalid_identifiers_before_writing_to_the_wire(int identifierCount, ulong[] firstColumns, ulong[]? laterColumns)
     {
-        DataColumnsByRootIdentifier[] request = splitOverTwoIdentifiers
-            ? [new() { BlockRoot = Hash256.Zero, Columns = [3, 5] }, new() { BlockRoot = Hash256.Zero, Columns = [3] }]
-            : [new() { BlockRoot = Hash256.Zero, Columns = [3, 3] }];
+        DataColumnsByRootIdentifier[] request = [.. Enumerable.Range(0, identifierCount)
+            .Select(i => new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = (i == 0 ? firstColumns : laterColumns!).ToArray() })];
 
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new DataColumnSidecarsByRootProtocol(Spec, new DataColumnSidecarPool()).DialAsync(null!, null!, new(request, Gloas: false)));
     }
