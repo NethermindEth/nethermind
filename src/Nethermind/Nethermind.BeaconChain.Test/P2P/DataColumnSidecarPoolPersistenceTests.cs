@@ -342,6 +342,7 @@ public class DataColumnSidecarPoolPersistenceTests
         ulong top = container.Resolve<SlotClock>().CurrentSlot - 50;
         BeaconChainStore store = container.Resolve<BeaconChainStore>();
         DataColumnSidecarPool pool = container.Resolve<DataColumnSidecarPool>();
+        store.EnsureSchemaVersion();
         store.SetAnchor(TestItem.KeccakA, top - 10);
         store.ApplyCanonicalIndexChanges([], top);
 

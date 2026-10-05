@@ -78,6 +78,7 @@ public class BeaconChainServiceGloasAnchorTests
             .AddSingleton(ipResolver)
             .Build();
         BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        store.EnsureSchemaVersion();
         store.PutForkedBlock(child.Root, new ForkedSignedBeaconBlock.OfGloas(child.Block));
         store.SetCanonicalRoot(child.Block.Message.Slot, child.Root);
         service = container.Resolve<BeaconChainService>();
@@ -102,6 +103,7 @@ public class BeaconChainServiceGloasAnchorTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
         ulong blockSlot = gloasBlock ? chain.First.Block.Message!.Slot : chain.AnchorBlock.Slot;
         ulong stateSlot = gloasBlock ? chain.AnchorState.Slot : chain.First.PostState.Slot;
+        store.EnsureSchemaVersion();
         store.PutState(chain.AnchorRoot, gloasBlock ? BeaconStateFulu.Encode(chain.AnchorState) : BeaconStateGloas.Encode(chain.First.PostState));
         store.PutForkedBlock(chain.AnchorRoot, gloasBlock
             ? new ForkedSignedBeaconBlock.OfGloas(chain.First.Block)
