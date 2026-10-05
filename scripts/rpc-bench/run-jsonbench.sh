@@ -163,11 +163,21 @@ if [[ "$reuse_prepared" != "true" ]]; then
     [[ "$fetched" == "true" ]] || die "failed to fetch $JB_REF from $JB_REPO"
     git -C "$work/src" checkout -q FETCH_HEAD
   fi
+  if [[ -n "${RPC_JB_PATCH_PROTOCOL:-}" ]]; then
+    [[ "$RPC_JB_PATCH_PROTOCOL" == "RPC_EXACT_COUNT_V1" && "${RPC_PRIVATE_AUDIT:-false}" == "true" && "$JB_MODE" == "benchmark" && "$JB_REF" == "de1bcfadea47258ccacae2f420141032a82a9ded" && "$JB_REUSE_PREPARED" == "false" ]] || die "exact request protocol mismatch"
+    python3 "$HERE/jsonbench_exact_requests.py" prepare --source "$work/src" > "$work/jsonbench-patch.json" || die "pinned json-bench patch failed"
+    image_tag+="-exact-count-v1"
+  fi
   runner_dockerfile="$work/src/runner/Dockerfile"
   [[ -f "$runner_dockerfile" ]] || die "json-bench runner Dockerfile not found at $runner_dockerfile"
   log "Building $image_tag from runner/Dockerfile..."
   if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then
+    if [[ "${RPC_JB_PATCH_PROTOCOL:-}" == "RPC_EXACT_COUNT_V1" ]]; then
+      python3 "$HERE/jsonbench_exact_requests.py" verify --source "$work/src" > "$work/jsonbench-patch.json" || die "pinned build source verification failed"
+      private_source_head="$JB_REF"
+    else
     private_source_head="$(python3 "$HERE/private_audit.py" verify-source --source "$work/src" --ref "$JB_REF")" || die "private source verification failed"
+    fi
     image_tag="$(docker build -q -f "$runner_dockerfile" -t "$image_tag" "$work/src")" || die "failed to build the json-bench runner image"
     private_built_current=true
   else
@@ -279,6 +289,10 @@ fi
 chmod -R a+rwX "$work/io"   # the runner image runs as uid 1001
 read -ra extra_args_arr <<< "$JB_EXTRA_ARGS"
 docker_common=(--rm --name "$CONTAINER_NAME" --network host -w /jb -v "$work/src:/jb:ro" -v "$work/io:/io")
+if [[ "${RPC_JB_PATCH_PROTOCOL:-}" == "RPC_EXACT_COUNT_V1" ]]; then
+  request_cap="$(python3 "$HERE/jsonbench_exact_requests.py" config --config "$work/io/benchmark.yaml" --phase "$RPC_PRIVATE_AUDIT_PHASE" --cap "$JB_EXACT_REQUEST_CAP")" || die "frozen request configuration mismatch"
+  docker_common+=(-e "RPC_GLOBAL_REQUEST_CAP=$request_cap")
+fi
 [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]] || { docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true; }
 
 if [[ "${RPC_PRIVATE_AUDIT:-false}" == "true" ]]; then

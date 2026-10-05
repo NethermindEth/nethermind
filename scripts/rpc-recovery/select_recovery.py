@@ -27,8 +27,8 @@ def main():
     assert os.geteuid() == 0 and os.environ['GITHUB_RUN_ID'] != recovery.RUN
     os.umask(0o077)
     for module, expected in (
-        (recovery, '0508a53793c4f2fd06775f6343a3218f1586780c1c0d8723f19a523f492a1882'),
-        (absent, 'd5aeac66c7954138d51e8edfa88355e9fe0b63c0e65b5664eb8076fa8063b21a')):
+        (recovery, 'dfd97a31cb258a19d987c3653982946d9d6985d5e01eebc661540ced153390fb'),
+        (absent, 'e55a62922c701f7c57cd5ef56979667ef72be356211f789c366b34d90360e8f0')):
         assert hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest() == expected
     repository = recovery.REPOSITORY
     for name, expected in json.loads((repository / 'scripts/rpc-capability/native/source-pins.json').read_text()).items():
@@ -40,7 +40,7 @@ def main():
     os.environ.update(GITHUB_RUN_ID=recovery.RUN, GITHUB_RUN_ATTEMPT='1',
                       RPC_PRIVATE_STORAGE_ROOT=str(recovery.ROOT), RPC_PRIVATE_SHARED_SCRATCH_ROOT=str(recovery.ROOT.parent))
     owner = guard.owned(recovery.ROOT, recovery.LOCK)
-    assert owner['storage_identity'] == [64512,41881671] and owner['lock_identity'] == [64512,41881670]
+    assert owner['storage_identity'] == [64512,41881741] and owner['lock_identity'] == [64512,41881670]
     entries = [json.loads(line) for line in recovery.output(
         ['docker', 'ps', '-a', '--no-trunc', '--format', '{{json .}}']).splitlines()]
     selected = choose(entries)

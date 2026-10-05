@@ -1,0 +1,25 @@
+--- a/runner/generator/scripts/k6-script.js
++++ b/runner/generator/scripts/k6-script.js
+@@ -18,10 +18,22 @@
+ 
+ export const options = config["options"]
+ 
++const requestCapText = __ENV.RPC_GLOBAL_REQUEST_CAP;
++const requestCap = Number(requestCapText);
++if (!/^[1-9][0-9]*$/.test(requestCapText || '') || !Number.isSafeInteger(requestCap)) {
++  throw new Error('Invalid RPC_GLOBAL_REQUEST_CAP');
++}
++
+ export default async function () {
+   const rpcEndpoint = __ENV.RPC_CLIENT_ENDPOINT;
+   
+   const idx = exec.scenario.iterationInTest;
++  if (!Number.isSafeInteger(idx) || idx < 0) {
++    throw new Error('Invalid global iteration index');
++  }
++  if (idx >= requestCap) {
++    return;
++  }
+   if (idx >= requestsData.length) {
+     throw new Error("No more requests found");
+   }

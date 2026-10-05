@@ -33,7 +33,7 @@ def main():
     assert os.environ.get('RUNNER_NAME')=='reproducible-benchmarks'
     os.umask(0o077)
     assert os.geteuid()==0 and os.environ['GITHUB_RUN_ID']!=RUN
-    assert hashlib.sha256(Path(recovery.__file__).read_bytes()).hexdigest()=='0508a53793c4f2fd06775f6343a3218f1586780c1c0d8723f19a523f492a1882'
+    assert hashlib.sha256(Path(recovery.__file__).read_bytes()).hexdigest()=='dfd97a31cb258a19d987c3653982946d9d6985d5e01eebc661540ced153390fb'
     for relative,digest in json.loads((REPOSITORY/'scripts/rpc-capability/native/source-pins.json').read_text()).items():
         assert hashlib.sha256((REPOSITORY/relative).read_bytes()).hexdigest()==digest
     sys.path.insert(0,str(REPOSITORY/'scripts/rpc-capability'))
@@ -42,7 +42,7 @@ def main():
     os.environ.update(GITHUB_RUN_ID=RUN,GITHUB_RUN_ATTEMPT='1',RPC_PRIVATE_STORAGE_ROOT=str(ROOT),
                       RPC_PRIVATE_SHARED_SCRATCH_ROOT=str(ROOT.parent))
     owner=guard.owned(ROOT,LOCK)
-    assert owner['storage_identity']==[64512,41881671] and owner['lock_identity']==[64512,41881670]
+    assert owner['storage_identity']==[64512,41881741] and owner['lock_identity']==[64512,41881670]
     spec=importlib.util.spec_from_file_location('private_audit',REPOSITORY/'scripts/rpc-bench/private_audit.py')
     audit=importlib.util.module_from_spec(spec);spec.loader.exec_module(audit)
     def checked_output(command,timeout=20):

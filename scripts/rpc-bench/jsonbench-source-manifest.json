@@ -1,0 +1,1315 @@
+{
+  "base_commit": "de1bcfadea47258ccacae2f420141032a82a9ded",
+  "base_tree": "6377178504604eed92ee3b420b68bf94dc1f4b24",
+  "files": {
+    ".claude/skills/compare-nodes/SKILL.md": {
+      "blob": "64b7e1569e0fd1f7c495a99833590560e26f18e5",
+      "mode": "100644"
+    },
+    ".claude/skills/compare-nodes/references/flags.md": {
+      "blob": "c829e989d71296afe00e37ca8e38246e4acceb2c",
+      "mode": "100644"
+    },
+    ".claude/skills/compare-nodes/references/known-differences.md": {
+      "blob": "02e0daf941519f9eced8fe46376ca80ab0c33009",
+      "mode": "100644"
+    },
+    ".claude/skills/compare-nodes/scripts/probe-nodes.sh": {
+      "blob": "6ba82a76c8e7a46f0aa78dc0efcef3bae9ef4566",
+      "mode": "100755"
+    },
+    ".claude/skills/run-benchmark/SKILL.md": {
+      "blob": "f59bb556a260df9112ca73096bc1be8b7f5ae0e0",
+      "mode": "100644"
+    },
+    ".claude/skills/run-benchmark/references/configuration.md": {
+      "blob": "6a85ef5b1e7a15bdfce769d9ca641ae11341492f",
+      "mode": "100644"
+    },
+    ".claude/skills/run-benchmark/references/remote-runs.md": {
+      "blob": "8ea0c17bd3fc15d640abcc699cc18f229a05834f",
+      "mode": "100644"
+    },
+    ".env.example": {
+      "blob": "35c3d9784daa3362a8e62f1063847751b982c76b",
+      "mode": "100644"
+    },
+    ".github/codeql/codeql-config.yml": {
+      "blob": "5973ea5000ee56692199601aff6534071b1d8612",
+      "mode": "100644"
+    },
+    ".github/codeql/extensions/log-sanitizer-model.yml": {
+      "blob": "e5d3a0a9668851bf29617f60e832965d21dfc2f7",
+      "mode": "100644"
+    },
+    ".github/codeql/qlpack.yml": {
+      "blob": "3c4c4652756ac6a019f25e3361797d6ebd62cf98",
+      "mode": "100644"
+    },
+    ".github/workflows/build_docker_image.yml": {
+      "blob": "31bd1f67e73ef538c6d0f68d24931be7c02e6643",
+      "mode": "100644"
+    },
+    ".github/workflows/codeql.yml": {
+      "blob": "3843ccc6e1a2ed367b7943977a32d29b0abe6b6b",
+      "mode": "100644"
+    },
+    ".gitignore": {
+      "blob": "ceb5aa5f6be94ca6e313ee913e7c4b96d27ee95d",
+      "mode": "100644"
+    },
+    ".trivyignore": {
+      "blob": "8cf4278845ba601313fb4fd1de54acd56329fac4",
+      "mode": "100644"
+    },
+    "LICENSE": {
+      "blob": "665bea2155d449d0382971cb542bda11480f6ac7",
+      "mode": "100644"
+    },
+    "README.md": {
+      "blob": "db42b8dd63a4e64b3bead48f66ce8d4eaeca00d7",
+      "mode": "100644"
+    },
+    "SECURITY.md": {
+      "blob": "f86891dec490db5ebc153e70b3ded6774e56a71c",
+      "mode": "100644"
+    },
+    "USAGE.md": {
+      "blob": "42d639882db97735507428b1e3a0a33665e02373",
+      "mode": "100644"
+    },
+    "config/benchmark/ethcall-contracts-head.yaml": {
+      "blob": "55f0ff7b7f475e820e42aa2fee76f752d5603e6c",
+      "mode": "100644"
+    },
+    "config/benchmark/ethcall-contracts.yaml": {
+      "blob": "b1515f6cb2592781ba5543fd68e5a2547e828e7d",
+      "mode": "100644"
+    },
+    "config/benchmark/ethcallchaos-heavy2.yaml": {
+      "blob": "b7c8e2014e5ca73d8a5cb6d59e2ac1ee08e609ae",
+      "mode": "100644"
+    },
+    "config/benchmark/ethcallchaos-load-heavy.yaml": {
+      "blob": "6fbe4126958388ab64b5d173c6099e137b357100",
+      "mode": "100644"
+    },
+    "config/benchmark/ethcallchaos-load.yaml": {
+      "blob": "05bd7ddad4124abcfed24b684309e1a80affaceb",
+      "mode": "100644"
+    },
+    "config/benchmark/ethcallchaos-percategory-validated.yaml": {
+      "blob": "e8946799c946c5d6881a8e0e6dd2f5dfd86dba23",
+      "mode": "100644"
+    },
+    "config/benchmark/ethcallchaos-percategory.yaml": {
+      "blob": "17dfcd8dd35493ed315578c087a82ab0201a4f54",
+      "mode": "100644"
+    },
+    "config/benchmark/example-config.yaml": {
+      "blob": "037f29b03c8bfd73731ecc3f11014aca0617c0f1",
+      "mode": "100644"
+    },
+    "config/benchmark/file-based-example.yaml": {
+      "blob": "7514d112775f832b50bd09d829dd111bc260640e",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/multicall-high-gas-1.yaml": {
+      "blob": "1b4a329c8e5466249b29845b7b36a49bc89581c6",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/multicall-high-gas-2.yaml": {
+      "blob": "358f7eadd38131b34b37e682bd4c90c2f7171cc5",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/multicall-high-gas-3.yaml": {
+      "blob": "56f40bd83393c560b3eb5c0c6a3b452b613bed62",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/multicall-large-1.yaml": {
+      "blob": "d75eacbc31679c02822e6b40c9c6ef6d6bb1419c",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/multicall-med-1.yaml": {
+      "blob": "c7b5e41ab3da077d04f30c2c9001387abd4d3b7d",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/multicall-small-1.yaml": {
+      "blob": "152ee182c723b145531045d5bc391c49c19dd467",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/multicall-small-2.yaml": {
+      "blob": "953899c1ae64deb36f055e86b2b1d4f1caf39ae9",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/single-high-gas-1.yaml": {
+      "blob": "5e2b2959ba8a3b2cc243cfa6b399e52bc83296c0",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/single-high-gas-2.yaml": {
+      "blob": "57cd281aec58e6bfe33568eb5811755489b482dd",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/single-high-gas-3.yaml": {
+      "blob": "100c6f9253fbc34da0fa67c05946b12de134ca4d",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/single-large-calldata-1.yaml": {
+      "blob": "b3c60204eb07e64446e8c18483d3be93c394e9f0",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/single-low-gas-1.yaml": {
+      "blob": "8fa3a5edc25eb65be4bf42219f4a399dad27d31d",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/single-low-gas-2.yaml": {
+      "blob": "e4d951acff15d0df1d3b48a6a0b665c67f8d1307",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/single-low-gas-3.yaml": {
+      "blob": "fd0786b2d1c8bd4598a8c78842ae146abebb951c",
+      "mode": "100644"
+    },
+    "config/benchmark/iso/single-worst-1.yaml": {
+      "blob": "04363781820ce76bf5489c060ceecd0258831332",
+      "mode": "100644"
+    },
+    "config/benchmark/mixed.yaml": {
+      "blob": "acb6e90c0b5dce8d5d2d061954baa32160eb94de",
+      "mode": "100644"
+    },
+    "config/benchmark/new-state-methods-head.yaml": {
+      "blob": "2e444465eded0c55517652af48fab1a3b9d604c7",
+      "mode": "100644"
+    },
+    "config/benchmark/read-heavy.yaml": {
+      "blob": "0fb48add5bcf8aa726e0ce46485ef2da6a2a828a",
+      "mode": "100644"
+    },
+    "config/benchmark/realistic-mix-head.yaml": {
+      "blob": "cfe552da240c8526698cded553ca901491087870",
+      "mode": "100644"
+    },
+    "config/benchmark/realistic-mix-no-logs.yaml": {
+      "blob": "999711f81430191127d5859054fed65e896004a0",
+      "mode": "100644"
+    },
+    "config/benchmark/realistic-mix.yaml": {
+      "blob": "4f4e784aee439da1056af2dd69a4b5353cf75b8e",
+      "mode": "100644"
+    },
+    "config/benchmark/single-low-gas-1-isolated.yaml": {
+      "blob": "8fa3a5edc25eb65be4bf42219f4a399dad27d31d",
+      "mode": "100644"
+    },
+    "config/benchmark/test-config.yaml": {
+      "blob": "9e4753eb86d598078abb4fd8bde027d52c5d1321",
+      "mode": "100644"
+    },
+    "config/clients/clients-production.yaml": {
+      "blob": "2208cbaab30d1055453f7bd39d566880fe85c0ba",
+      "mode": "100644"
+    },
+    "config/clients/clients.yaml": {
+      "blob": "0565298d6f431c8aded16fc72bf3d38765e8973f",
+      "mode": "100644"
+    },
+    "config/clients/test-clients.yaml": {
+      "blob": "8130a9abf355d7752648954311ca313a677b3b1f",
+      "mode": "100644"
+    },
+    "config/compare-openrpc/param_variations.yaml": {
+      "blob": "86c281ba79e066b499321078e8eae53a34cf8a70",
+      "mode": "100644"
+    },
+    "config/compare/defaults.yaml": {
+      "blob": "9bac6678fb771706f19b9983751c621cb9af812c",
+      "mode": "100644"
+    },
+    "config/compare/erigon/MANIFEST-mainnet.md": {
+      "blob": "1c24ef32a4df039a6ac09f3c222484547732d60f",
+      "mode": "100644"
+    },
+    "config/compare/erigon/README.md": {
+      "blob": "66885ea294ef80756b51bb0af37093561363b630",
+      "mode": "100644"
+    },
+    "config/compare/erigon/erigon-mainnet-divergent.yaml": {
+      "blob": "d3b0c6bdf748cde5b187c323e90769155e9c4124",
+      "mode": "100644"
+    },
+    "config/compare/erigon/erigon-mainnet-rules.yaml": {
+      "blob": "1a8fec1227f69db9bfd940501f851500e0c1e9fa",
+      "mode": "100644"
+    },
+    "config/compare/erigon/erigon-mainnet.yaml": {
+      "blob": "4a93eae283109ba2db817b7a46664179afd307db",
+      "mode": "100644"
+    },
+    "config/compare/ethcallchaos-heavy2-compare.yaml": {
+      "blob": "c16ceb1abaae1a211e329e4f5da70071337ae711",
+      "mode": "100644"
+    },
+    "config/compare/ethcallchaos-percategory-compare.yaml": {
+      "blob": "77a598a02953767ce2b2d2dca6e74427ee23fe71",
+      "mode": "100644"
+    },
+    "config/compare/example.yaml": {
+      "blob": "736e3e14dcd3afcb64eb0ff8886d110913b35361",
+      "mode": "100644"
+    },
+    "config/storage/storage-docker.yaml": {
+      "blob": "fb68ecbf5ed1f71e948be3dc063c2b16cb7529af",
+      "mode": "100644"
+    },
+    "config/storage/storage-example.yaml": {
+      "blob": "779d53b5cb8822c77de3511c8a0dac98c3dde21a",
+      "mode": "100644"
+    },
+    "dashboard/.env.example": {
+      "blob": "c10408c418902ecf231d6cd7dca4b632b6500418",
+      "mode": "100644"
+    },
+    "dashboard/.eslintrc.cjs": {
+      "blob": "728fe3b6b0626a262e631f514792de59ac5fbf4b",
+      "mode": "100644"
+    },
+    "dashboard/.gitignore": {
+      "blob": "9c9e2f37ea94a390a9839c46e521621da87ae5f5",
+      "mode": "100644"
+    },
+    "dashboard/Dockerfile": {
+      "blob": "51af788376c39e3b15b5f32c4c30f731eae1785c",
+      "mode": "100644"
+    },
+    "dashboard/README.md": {
+      "blob": "a49b7620250c3a345f38e6db1a46beb09301b159",
+      "mode": "100644"
+    },
+    "dashboard/TEST_SUMMARY.md": {
+      "blob": "3d16c2c2f9aac48786397ff7c2ba6d87ab35a475",
+      "mode": "100644"
+    },
+    "dashboard/index.html": {
+      "blob": "f2f91851da36a961689a19fa68ad43b946c638a5",
+      "mode": "100644"
+    },
+    "dashboard/manual-test.md": {
+      "blob": "98c6c9e54cc7fb1c968ab74ef6cdaf5fae6f76a0",
+      "mode": "100644"
+    },
+    "dashboard/nginx.conf": {
+      "blob": "4d289e32c67e64d88d1a6d1357f0246ec12d650f",
+      "mode": "100644"
+    },
+    "dashboard/package-lock.json": {
+      "blob": "4bdb64a09724c6d3e71e4c754b0117ca21a182b3",
+      "mode": "100644"
+    },
+    "dashboard/package.json": {
+      "blob": "8438ecd63b4f736182618ec3e1ff7b562f084010",
+      "mode": "100644"
+    },
+    "dashboard/postcss.config.js": {
+      "blob": "e99ebc2c0e00cc37de4cefee2bf2a332abb73d8d",
+      "mode": "100644"
+    },
+    "dashboard/public/vite.svg": {
+      "blob": "e7b8dfb1b2a60bd50538bec9f876511b9cac21e3",
+      "mode": "100644"
+    },
+    "dashboard/src/App.tsx": {
+      "blob": "efe472d9310d2e9ee7496b57c48b2716219c1046",
+      "mode": "100644"
+    },
+    "dashboard/src/api/README.md": {
+      "blob": "b424eb34752598660bd004632c5b12561a53a950",
+      "mode": "100644"
+    },
+    "dashboard/src/api/client.ts": {
+      "blob": "7d4625831559d54d71c33a627c435ee5b827fe71",
+      "mode": "100644"
+    },
+    "dashboard/src/api/examples.ts": {
+      "blob": "f99f448bbeb6109523ad8f06d48c15a43bef8272",
+      "mode": "100644"
+    },
+    "dashboard/src/api/hooks.ts": {
+      "blob": "c0cce037f93e8185cfc33e7b53262196d1c20e7f",
+      "mode": "100644"
+    },
+    "dashboard/src/api/index.ts": {
+      "blob": "963bb2b546e506d4bdec6dbdf1975d34a3879542",
+      "mode": "100644"
+    },
+    "dashboard/src/components/BaselineManager.tsx": {
+      "blob": "4523721f3070793528f4882b51a670cf50904028",
+      "mode": "100644"
+    },
+    "dashboard/src/components/Breadcrumb.tsx": {
+      "blob": "3dd231bdfe352bcd9e8b524c2eb44e396d7a0c8d",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ComparisonView.tsx": {
+      "blob": "0101252fe445ddb68e1d8abf0b28ffc6000ec9d1",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ConnectionStatus.tsx": {
+      "blob": "1a1c0f07de7210362b32bb4c759026b64e5eb936",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ErrorBoundary.tsx": {
+      "blob": "b54e417d81fe058311916fd2482db681b20ead09",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ErrorRateChart.tsx": {
+      "blob": "fd27dd10b651f44ab45a4e385f1e61c9f25151f4",
+      "mode": "100644"
+    },
+    "dashboard/src/components/LatencyDistribution.tsx": {
+      "blob": "68c9ca04dec5f26d0ae7de6c0b53a0fb3d6dedaf",
+      "mode": "100644"
+    },
+    "dashboard/src/components/Layout.tsx": {
+      "blob": "f764e16086572cc851be88ad1c73bbb7477f579b",
+      "mode": "100644"
+    },
+    "dashboard/src/components/LoadingSpinner.tsx": {
+      "blob": "7dc49749befd4edcb21bf45476350f7f00b10ec8",
+      "mode": "100644"
+    },
+    "dashboard/src/components/MetricCard.tsx": {
+      "blob": "b26359d43bf3621f2a6750a1cdf99f68ca12b6dd",
+      "mode": "100644"
+    },
+    "dashboard/src/components/RegressionAlert.tsx": {
+      "blob": "6c5753dd6d0f7ca22407619168a44b125a8bbbf5",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ThroughputChart.tsx": {
+      "blob": "2651d269ce9a38ec34dd9067c8c9775a5f8c7136",
+      "mode": "100644"
+    },
+    "dashboard/src/components/TrendChart.tsx": {
+      "blob": "537eaabe2a9f424f1a221f6944d9be38bafe8588",
+      "mode": "100644"
+    },
+    "dashboard/src/components/charts/EnhancedLatencyDistribution.tsx": {
+      "blob": "913604b6a1cfe9ecc79e106c8b974e666ec4f66b",
+      "mode": "100644"
+    },
+    "dashboard/src/components/charts/PerformanceComparisonChart.tsx": {
+      "blob": "cd257c0815a1e1c62fa2a0d565109eccc351a8ff",
+      "mode": "100644"
+    },
+    "dashboard/src/components/charts/index.ts": {
+      "blob": "d1bd1337f24ac57ffce095818ed1e1981f917c8d",
+      "mode": "100644"
+    },
+    "dashboard/src/components/index.ts": {
+      "blob": "d47ab12500fbd460127add2a1306192e19769edc",
+      "mode": "100644"
+    },
+    "dashboard/src/components/metrics/ErrorAnalysisPanel.tsx": {
+      "blob": "2347314aca41cfc70811a7d463a107645c5784d7",
+      "mode": "100644"
+    },
+    "dashboard/src/components/metrics/MethodBreakdownTable.tsx": {
+      "blob": "d0614eb451d9682470f9d8d1c23e7576d588fb5f",
+      "mode": "100644"
+    },
+    "dashboard/src/components/metrics/PerClientMetricsTable.tsx": {
+      "blob": "d175fd6e3944c32d73c5bc5fe8af265d6893be49",
+      "mode": "100644"
+    },
+    "dashboard/src/components/metrics/SystemMetricsPanel.tsx": {
+      "blob": "db938d556f53a10a73803dc73b12a8a71ae151fb",
+      "mode": "100644"
+    },
+    "dashboard/src/components/metrics/index.ts": {
+      "blob": "b6943b8d78649405066549356095f9f7935de890",
+      "mode": "100644"
+    },
+    "dashboard/src/components/metrics/types.ts": {
+      "blob": "293cefb3872a50e57dfbcad4cdb9854d86272621",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ui/ExpandableSection.tsx": {
+      "blob": "0047acc6cbfabb781567e3979ea3c3bcb67d7939",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ui/ExportButton.tsx": {
+      "blob": "087a0edfc09bae060fcdfd49b528ce416a1fd923",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ui/MetricTable.tsx": {
+      "blob": "f843918ca0c1709c10528d30b9623835c612bf6e",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ui/NAValue.tsx": {
+      "blob": "f0b12b51148674a0a14480cd9e282520bdd8dbc7",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ui/README.md": {
+      "blob": "2ce2f43e3d4fe38c9564217d3cde991b75ad6ef6",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ui/example.tsx": {
+      "blob": "c3bc0f0b0b0f3ea6e58fcd96ed5b104c19b4b1dc",
+      "mode": "100644"
+    },
+    "dashboard/src/components/ui/index.ts": {
+      "blob": "ab14582f6861f34a9def092432597ccd6c9cff31",
+      "mode": "100644"
+    },
+    "dashboard/src/hooks/useDetailedMetrics.ts": {
+      "blob": "d8c358b9e8c6c8b009dfac113865c5c127a7e1b4",
+      "mode": "100644"
+    },
+    "dashboard/src/index.css": {
+      "blob": "71596f7f130a5d099fff5e88496404f13ac37d7c",
+      "mode": "100644"
+    },
+    "dashboard/src/main.tsx": {
+      "blob": "54ae7fdb946b44b7568598bdc0fe70b78ccf9c43",
+      "mode": "100644"
+    },
+    "dashboard/src/pages/Baselines.tsx": {
+      "blob": "5266207e44d805ff82f58cc1ef4e42c5911a1f3c",
+      "mode": "100644"
+    },
+    "dashboard/src/pages/Compare.tsx": {
+      "blob": "41c0b718aab2f109a69cd726459da08a138ead47",
+      "mode": "100644"
+    },
+    "dashboard/src/pages/Dashboard.tsx": {
+      "blob": "4ae9e081041e847b8927bb210908883bbb1c5bd5",
+      "mode": "100644"
+    },
+    "dashboard/src/pages/NotFound.tsx": {
+      "blob": "baaf800efa717b3149423daf3cd77a86bb6efc85",
+      "mode": "100644"
+    },
+    "dashboard/src/pages/RunDetails.tsx": {
+      "blob": "55eb94457711bb5c0e2a34924f77fe77c594c3d3",
+      "mode": "100644"
+    },
+    "dashboard/src/pages/index.ts": {
+      "blob": "5685fda6ce49b2ab24caa90cce776626196e2fc3",
+      "mode": "100644"
+    },
+    "dashboard/src/types/api.ts": {
+      "blob": "6cac664f18b5d5e709f4ffcb44ada4bb82e46b52",
+      "mode": "100644"
+    },
+    "dashboard/src/types/detailed-metrics.ts": {
+      "blob": "130901a030b8e59da302fec6a7077e3ae4b38308",
+      "mode": "100644"
+    },
+    "dashboard/src/utils/cn.ts": {
+      "blob": "fb8fd959e3caed2358c395ab479c25504492a134",
+      "mode": "100644"
+    },
+    "dashboard/src/utils/data-transformers.ts": {
+      "blob": "3349492bfc287e8463776cae4cbf1fa490c32bed",
+      "mode": "100644"
+    },
+    "dashboard/src/utils/metric-formatters.ts": {
+      "blob": "44c29ea387e55f7cbecde6d14595816d567b1d17",
+      "mode": "100644"
+    },
+    "dashboard/src/vite-env.d.ts": {
+      "blob": "7005e80603e8653b97dc2f11ba68abafc34dc1b5",
+      "mode": "100644"
+    },
+    "dashboard/tailwind.config.js": {
+      "blob": "3b118b1ed22d09c7f85d246f71da1d19be1394cc",
+      "mode": "100644"
+    },
+    "dashboard/tsconfig.json": {
+      "blob": "e022bc515945faa123def2b0e7ce78a538661e88",
+      "mode": "100644"
+    },
+    "dashboard/tsconfig.node.json": {
+      "blob": "099658cf3d29c0c21bc9b61d0a8b02652ddb92a9",
+      "mode": "100644"
+    },
+    "dashboard/vite.config.ts": {
+      "blob": "edd60c41c012b2b4fb24221c55b807bd9d687fae",
+      "mode": "100644"
+    },
+    "docker-compose.yml": {
+      "blob": "64f743d0cbe3d84f3071f701062d740b50e4f509",
+      "mode": "100644"
+    },
+    "go.mod": {
+      "blob": "e28f56eff28fbf1907809ec682d87d180607990b",
+      "mode": "100644"
+    },
+    "go.sum": {
+      "blob": "5d6dcbc0c655f8120c942bec0f6fd02866577dfb",
+      "mode": "100644"
+    },
+    "metrics/README.md": {
+      "blob": "8d6b7d7a492f7dedafd46acec6d83b863592e42f",
+      "mode": "100644"
+    },
+    "metrics/dashboards/baseline-comparison.json": {
+      "blob": "5a847c5c7b72d4c1af204719b2ab66f00a9870d6",
+      "mode": "100644"
+    },
+    "metrics/dashboards/jsonrpc-benchmark-enhanced.json": {
+      "blob": "0dd0e461d359d70e78a85509d26db9d03eb2ff3c",
+      "mode": "100644"
+    },
+    "metrics/dashboards/k6-dashboard.json": {
+      "blob": "95ec2c97d83c0806b968e482339b00484e840d0b",
+      "mode": "100644"
+    },
+    "metrics/grafana-provisioning/alerting/alerts.yml": {
+      "blob": "5f8e7665f2b4f3c4444472544478bbc7eb9d2682",
+      "mode": "100644"
+    },
+    "metrics/grafana-provisioning/alerting/contact-points.yml": {
+      "blob": "bea2f600c039238232c2032eaef89205f6c3d5c2",
+      "mode": "100644"
+    },
+    "metrics/grafana-provisioning/alerting/notification-policies.yml": {
+      "blob": "6671f96e2aa5f11e3bb3aeb86abd7ea249762b40",
+      "mode": "100644"
+    },
+    "metrics/grafana-provisioning/dashboards/dashboard.yml": {
+      "blob": "f2930101cc61a40849db4837fcb573c6d2bb69d0",
+      "mode": "100644"
+    },
+    "metrics/grafana-provisioning/datasources/datasource.yml": {
+      "blob": "a5c71ce0b78c3bdb4f280c73958df866a66e59a7",
+      "mode": "100644"
+    },
+    "metrics/grafana-provisioning/notifiers/notifiers.yml": {
+      "blob": "b3802d87893fb21758a5648e77283fca7cada167",
+      "mode": "100644"
+    },
+    "metrics/grafana-provisioning/plugins/.gitkeep": {
+      "blob": "c534aba3b9667873007ecd7b03285595a54cc412",
+      "mode": "100644"
+    },
+    "metrics/init-db-clean.sql": {
+      "blob": "349e9c3be6d3239b4ed98f38ca970e22aafb4962",
+      "mode": "100644"
+    },
+    "metrics/init-db.sql": {
+      "blob": "30cf913d4a5cde9ef91a187359fc469cf4617ce1",
+      "mode": "100644"
+    },
+    "metrics/prometheus.yml": {
+      "blob": "a71b9714eb280da983bbc9eb6be1483f4b68c690",
+      "mode": "100644"
+    },
+    "openrpc.json": {
+      "blob": "274d30a2b7582ea42c4a44f3704c8eba58f842dd",
+      "mode": "100644"
+    },
+    "rpc-calls/SOURCES.md": {
+      "blob": "bdb3ff5ffc37d59322f520d39a5b46f9eb928632",
+      "mode": "100644"
+    },
+    "rpc-calls/common-queries.json": {
+      "blob": "695c8f3016c699d73dece7c8c549fd2462cbe0a6",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/aave-mainnet.jsonl": {
+      "blob": "91ca18aa6cb3fb9a31e705566f4dd714322aefa0",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/adai-mainnet.jsonl": {
+      "blob": "69241d6eed7aba66b1835a57ee064b93cc3182b3",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/ausdc-mainnet.jsonl": {
+      "blob": "3b1eeb0a3f88eb9bba867f0156843620a3e88da4",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/azuki-mainnet.jsonl": {
+      "blob": "f7a03445c5ef12c7b2d4cf3b055fdc0a4abd2832",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/bayc-mainnet.jsonl": {
+      "blob": "cac482d769658ff15fb937c079efca5c2e7a16bf",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/cdai-mainnet.jsonl": {
+      "blob": "bb591e460ca991863163abd7afa8cabff9d604cd",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/chainlink-btc-usd-mainnet.jsonl": {
+      "blob": "998c8f803ba04d5dff05f66a186b395e4000f677",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/chainlink-eth-usd-mainnet.jsonl": {
+      "blob": "6962494e0047d5232310f4906f8089f221f3c3aa",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/chainlink-link-usd-mainnet.jsonl": {
+      "blob": "32f33f05132c8fc4362bb7debfd4a457f5b62a6d",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/curve-3pool-mainnet.jsonl": {
+      "blob": "336859e702cf7a68d861478e625d36c6a16588c1",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/curve-steth-eth-mainnet.jsonl": {
+      "blob": "a7791991e3403ccd3cd3c251cb15f85078be107f",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/cusdc-mainnet.jsonl": {
+      "blob": "d0de056dc649eaa9daa7813ab161b6a46aaa1151",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/dai-mainnet.jsonl": {
+      "blob": "f5e63e000a0009aa911e822b408fa606acec337f",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/ens-namewrapper-mainnet.jsonl": {
+      "blob": "38be9e164b2e3c1fea18a4a702002c7288ea167c",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/ens-registry-mainnet.jsonl": {
+      "blob": "6bcd26c3dc7dc0f46e7524b6222dfcbb48da802e",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/link-mainnet.jsonl": {
+      "blob": "9c0cbd0c76b40e0fff24bae306fe54d387697d5e",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/mkr-mainnet.jsonl": {
+      "blob": "bc61efb2e31784938458f8f997c0f727cf0260e7",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/multicall3-mainnet.jsonl": {
+      "blob": "f4ca2d4cf9610bcc0de597bde812427629f9d2fc",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/steth-mainnet.jsonl": {
+      "blob": "de3f926cde84a435bba7e39e6dff26d01ab25684",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/uni-mainnet.jsonl": {
+      "blob": "d4a78ecbe9908e67b18c1f9f287ceb7f96b243bf",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/uniswap-v2-usdc-weth-mainnet.jsonl": {
+      "blob": "b0b401c0cd4cf63ddd8a9d5a5b52560f2d1cbdc1",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/uniswap-v2-usdt-weth-mainnet.jsonl": {
+      "blob": "7a1f2841b8fe7c3a12a1f4716c0bbcded4948918",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/uniswap-v3-dai-usdc-0-01-mainnet.jsonl": {
+      "blob": "f16241b500a0acc545b8c3962f511782f8357251",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/uniswap-v3-usdc-weth-0-05-mainnet.jsonl": {
+      "blob": "a5e9342a7bb36161e76588707e6d5a4cbe7152ba",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/uniswap-v3-wbtc-weth-0-3-mainnet.jsonl": {
+      "blob": "4547ae079086b3ef9f3d458f7718de336c7c70fc",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/usdc-mainnet.jsonl": {
+      "blob": "7ed1f6cf343f19e6c4c6300a571785b136f5e0d1",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/usdt-mainnet.jsonl": {
+      "blob": "ab7858839f0bbed80f884f91d729e4686514892c",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/wbtc-mainnet.jsonl": {
+      "blob": "5fb34501849b0da08758b2e134021fb82cbf34be",
+      "mode": "100644"
+    },
+    "rpc-calls/contracts/weth-mainnet.jsonl": {
+      "blob": "200dec00dfde9cd43901475a075be97fc2e491f3",
+      "mode": "100644"
+    },
+    "rpc-calls/debug_traceCall-mainnet-latest.jsonl": {
+      "blob": "7ebe694ce057c919b4a5b24834c367db33756d3a",
+      "mode": "100644"
+    },
+    "rpc-calls/debug_traceCall-mainnet.jsonl": {
+      "blob": "3339665fbf2b57ad720fb3ca7045e6f72681138e",
+      "mode": "100644"
+    },
+    "rpc-calls/debug_traceTransaction-mainnet.jsonl": {
+      "blob": "eb12464f89724a37806cf6607ad1e7b0904d5a78",
+      "mode": "100644"
+    },
+    "rpc-calls/eth_call-mainnet-latest.jsonl": {
+      "blob": "69b2938981a4aff82b51328b805e35696a3e805a",
+      "mode": "100644"
+    },
+    "rpc-calls/eth_call-mainnet.jsonl": {
+      "blob": "fc16c780884fb17eabc67f9de7c69dc3b4924684",
+      "mode": "100644"
+    },
+    "rpc-calls/eth_estimateGas-mainnet-latest.jsonl": {
+      "blob": "fa76479df94c71a80a441f35389aac21b10f0c7a",
+      "mode": "100644"
+    },
+    "rpc-calls/eth_estimateGas-mainnet.jsonl": {
+      "blob": "1527be3c8698926ec107278492ec8f4d94bab68d",
+      "mode": "100644"
+    },
+    "rpc-calls/eth_getCode-mainnet-latest.jsonl": {
+      "blob": "d2b9aa394932998dd9e967be5eaafcefa2f9854d",
+      "mode": "100644"
+    },
+    "rpc-calls/eth_getCode-mainnet.jsonl": {
+      "blob": "898b67779dedf2cfdb9cb8578b000ce5c39f4005",
+      "mode": "100644"
+    },
+    "rpc-calls/eth_getProof-mainnet-latest.jsonl": {
+      "blob": "ea94397950e18966eee9680d72191c4d3fde38af",
+      "mode": "100644"
+    },
+    "rpc-calls/eth_getProof-mainnet.jsonl": {
+      "blob": "08c21d2f89ec0d3a23c3f7f97038080a1ad2c85c",
+      "mode": "100644"
+    },
+    "rpc-calls/eth_getStorageAt-mainnet-latest.jsonl": {
+      "blob": "2e8dfa4a1f4db75f1cbc963534edab5e927f8ab4",
+      "mode": "100644"
+    },
+    "rpc-calls/eth_getStorageAt-mainnet.jsonl": {
+      "blob": "d766cec0261f6ee89d90aa3b1ebe7225c73df844",
+      "mode": "100644"
+    },
+    "rpc-calls/ethcallchaos-corpus.jsonl": {
+      "blob": "e8712e0fa3bc5c63a879eb68e03b8281a384405d",
+      "mode": "100644"
+    },
+    "rpc-calls/ethcallchaos-heavy.jsonl": {
+      "blob": "e64169f6229ea5409c44d491cab016a3600839d6",
+      "mode": "100644"
+    },
+    "rpc-calls/ethcallchaos-heavy2.jsonl": {
+      "blob": "379d4d0a34d273ad5decaadf60f7fc01d08c8b8d",
+      "mode": "100644"
+    },
+    "rpc-calls/ethcallchaos-percategory-scenarios.jsonl": {
+      "blob": "b5ae52e69774b100fa79277bb125a55ca8d22d6a",
+      "mode": "100644"
+    },
+    "rpc-calls/get-logs-mainnet.jsonl": {
+      "blob": "b9c3b2cf8af7fcbc140b82997275263dab5c5207",
+      "mode": "100644"
+    },
+    "rpc-calls/historical-blocks-mainnet.jsonl": {
+      "blob": "7e4e62fbc37d56eedb939a2e6f7e9db91911b895",
+      "mode": "100644"
+    },
+    "rpc-calls/historical-blocks.jsonl": {
+      "blob": "b60712e65da9b073b0a4189cad7d57574cafc639",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-erigon-compare/README.md": {
+      "blob": "900fc6056d977d3c8039cefa84bf8f19ada291ec",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-erigon-compare/init.sh": {
+      "blob": "d031ae4a75a3391cdfbbf4d301745704699633e2",
+      "mode": "100755"
+    },
+    "rpc-calls/scripts/generate-erigon-compare/main.go": {
+      "blob": "fe9d136bef2570da31a0ec99390caa4acd86808a",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-contracts/README.md": {
+      "blob": "929c16bfe2fbca6d2a42455191a14f63d613858a",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-contracts/contracts.yaml": {
+      "blob": "2af5ca97d83d65724dfced45eff3594d0e7efde9",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-contracts/init.sh": {
+      "blob": "272a506e68564f0a418d15bcee23d2f1ec392ed5",
+      "mode": "100755"
+    },
+    "rpc-calls/scripts/generate-from-contracts/main.go": {
+      "blob": "2dbbe485c0d4c77d1bcf2264975998f33bd2371a",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-erigon-rpc-tests/README.md": {
+      "blob": "030788fb9949efaa5e78fa4938c1ae8b1ce719cf",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-erigon-rpc-tests/init.sh": {
+      "blob": "86e2d144bbf6d18edca1f26a4d40966e4ffa1d3e",
+      "mode": "100755"
+    },
+    "rpc-calls/scripts/generate-from-erigon-rpc-tests/main.go": {
+      "blob": "08766f32a850d631ee99dbf507c60b296573ab55",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-ethcallchaos/README.md": {
+      "blob": "49609043227a2c89273014aa34d5daab4f479b6b",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-ethcallchaos/main.py": {
+      "blob": "fe7ed616dc903a91ebd4609d0ab1dd323a9028df",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-filter/filter-queries-mainnet.json": {
+      "blob": "0dcbecf12541fb1aaa431d098d1f7b03c7e70874",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-filter/main.go": {
+      "blob": "f77be64d111b7e45c873561bde08dfcc8169dd24",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-history/history-queries-mainnet.json": {
+      "blob": "954a461f241906c3e41228f00c133ecb32073eef",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-history/main.go": {
+      "blob": "1e9bec1f4de8c6c776cd47e71fca7d5796147309",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-traces/main.go": {
+      "blob": "4e26c2a7bcde73998924d8c8776beb4f6b68cb56",
+      "mode": "100644"
+    },
+    "rpc-calls/scripts/generate-from-traces/trace-queries-mainnet.json": {
+      "blob": "c78db401cde7a6ca630ec7903945e670f4a22c10",
+      "mode": "100644"
+    },
+    "rpc-calls/token-queries.json": {
+      "blob": "d834ffe880a19eea02faa07399249fc2b3d3e412",
+      "mode": "100644"
+    },
+    "rpc-calls/traces-mainnet.jsonl": {
+      "blob": "d0a7d67b9840a2fcbb6608f4558ca60a49d6c0be",
+      "mode": "100644"
+    },
+    "runner/Dockerfile": {
+      "blob": "46be48559eb3503fa3d7805d2bba78f64cc67871",
+      "mode": "100644"
+    },
+    "runner/INTEGRATION_TESTS.md": {
+      "blob": "295300bdafc64091fda14ecbc8a377d8edb4011b",
+      "mode": "100644"
+    },
+    "runner/Makefile": {
+      "blob": "ab4768d32ca4a699a972f388358316cc3a74bd43",
+      "mode": "100644"
+    },
+    "runner/README_INTEGRATION_TESTS.md": {
+      "blob": "3c505816e9a701899361f9df27b1ce3da89f177d",
+      "mode": "100644"
+    },
+    "runner/analysis/baseline.go": {
+      "blob": "7c3c86fea4d2031ca889434ef7efbba056e0962d",
+      "mode": "100644"
+    },
+    "runner/analysis/regression.go": {
+      "blob": "660bd31b96c4e6bd8ecd5cfa6173dc4285dd93b2",
+      "mode": "100644"
+    },
+    "runner/analysis/trends.go": {
+      "blob": "0cb536957739a934494c4e942fc45aac1b1d4cd1",
+      "mode": "100644"
+    },
+    "runner/analyzer/performance_analyzer.go": {
+      "blob": "1c08ae669c0cd4ff287604ec55547d0087f31af4",
+      "mode": "100644"
+    },
+    "runner/api/TEST_SUITE_SUMMARY.md": {
+      "blob": "f0db0153908438618510d7d3677c78dcdd12b6fa",
+      "mode": "100644"
+    },
+    "runner/api/WEBSOCKET_README.md": {
+      "blob": "faebafcd6816441d2fe4e3328dd6b050a149c2f4",
+      "mode": "100644"
+    },
+    "runner/api/client_metrics.go": {
+      "blob": "9e9fca4400a1603184c6c55ef0722eb307e20b73",
+      "mode": "100644"
+    },
+    "runner/api/grafana_api.go": {
+      "blob": "51784ed150623c723a8d21fc35a18509a3bd26ea",
+      "mode": "100644"
+    },
+    "runner/api/handlers.go": {
+      "blob": "ff35603ed82b42b9447fc095e79e25ba8239fb2c",
+      "mode": "100644"
+    },
+    "runner/api/inputvalidation.go": {
+      "blob": "083a3d75e2a4addac0ea1c03f3faff91d0d63c61",
+      "mode": "100644"
+    },
+    "runner/api/inputvalidation_test.go": {
+      "blob": "db170e9df6feb2c5de8d5e9f72237e604c17d08e",
+      "mode": "100644"
+    },
+    "runner/api/server.go": {
+      "blob": "486d45e6d573017c93a95cc22756261a461e8cc0",
+      "mode": "100644"
+    },
+    "runner/api/test_types.go": {
+      "blob": "46b55267af55f890691bcd301b2686eb19cd7446",
+      "mode": "100644"
+    },
+    "runner/api/websocket.go": {
+      "blob": "7634d846a6efff9fb7fe0532c988aa2da24954d2",
+      "mode": "100644"
+    },
+    "runner/api/websocket_integration_example.go": {
+      "blob": "c44cc71794ec89a6cfffb0a782b517b3272d7aee",
+      "mode": "100644"
+    },
+    "runner/cmd/api.go": {
+      "blob": "ba131437b472d29cf790b8662c8f547b6ef8c28c",
+      "mode": "100644"
+    },
+    "runner/cmd/benchmark.go": {
+      "blob": "9fdf30788f6893c3c70f4532fb593c650902cb5b",
+      "mode": "100644"
+    },
+    "runner/cmd/common.go": {
+      "blob": "d61a68bfbebb06816ad95831481efcb4e7446dfa",
+      "mode": "100644"
+    },
+    "runner/cmd/compare.go": {
+      "blob": "6cabd1aa89a910892f59a3ce8c1523a910e0bb21",
+      "mode": "100644"
+    },
+    "runner/cmd/compare_openrpc.go": {
+      "blob": "f5605db0c7c26de3c8156e1722c6d7b1921e654a",
+      "mode": "100644"
+    },
+    "runner/cmd/debug-client-metrics/build.sh": {
+      "blob": "fb62f05878f2f4f923ca1eaf529e945fc941a173",
+      "mode": "100755"
+    },
+    "runner/cmd/debug-client-metrics/main.go": {
+      "blob": "3a5c195c678bf9291fe6f9fbe93e2100784ff477",
+      "mode": "100644"
+    },
+    "runner/cmd/debug-p99/README.md": {
+      "blob": "3bf29b510450bcd157901c93ef3fa333d0d456ff",
+      "mode": "100644"
+    },
+    "runner/cmd/debug-p99/build.sh": {
+      "blob": "210d60bf69b295f0aee813bc27624dd7a5ee42cb",
+      "mode": "100755"
+    },
+    "runner/cmd/debug-p99/main.go": {
+      "blob": "1a845a7fb7e8668fcab65a14624646d1c4ee999e",
+      "mode": "100644"
+    },
+    "runner/cmd/debug-parser/main.go": {
+      "blob": "ac12a0ad898350fe358f89f414821777cdd8e080",
+      "mode": "100644"
+    },
+    "runner/cmd/debug-run/main.go": {
+      "blob": "0a3d61dde8a72ff6cfcf3d4381c1e760f3fac24e",
+      "mode": "100644"
+    },
+    "runner/cmd/generate_requests.go": {
+      "blob": "668aefb8c8a9190d965763ebe78fa9a49458c85e",
+      "mode": "100644"
+    },
+    "runner/cmd/historic.go": {
+      "blob": "a7a987079d0edde7e0247c8197ca1443bd3fd58e",
+      "mode": "100644"
+    },
+    "runner/cmd/root.go": {
+      "blob": "015e2c9920a3b5db87368541990d6779187fd55d",
+      "mode": "100644"
+    },
+    "runner/cmd/test-save/main.go": {
+      "blob": "126e9e77a4526a9523e04508732774d577aa4f42",
+      "mode": "100644"
+    },
+    "runner/cmd/verify-flow/main.go": {
+      "blob": "9ccfe973750f133aa07b5a10e08769e3d70f15ad",
+      "mode": "100644"
+    },
+    "runner/comparator/block_override.go": {
+      "blob": "d49a902dd280e7cb18aa3fb373efc76e0e500ec3",
+      "mode": "100644"
+    },
+    "runner/comparator/block_override_test.go": {
+      "blob": "905b97ccd39deabf518e96fe740a0f3674896c13",
+      "mode": "100644"
+    },
+    "runner/comparator/comparator.go": {
+      "blob": "d248b4d94bc519aa121157cdd8c5fe56a1011e43",
+      "mode": "100644"
+    },
+    "runner/comparator/compare_config.go": {
+      "blob": "7f8ad6d1dcfd2f58c69e07bfc1add148e66027ba",
+      "mode": "100644"
+    },
+    "runner/comparator/compare_config_test.go": {
+      "blob": "2f1063d68a7adf6cb7237dd62f5e5c838ef73cfa",
+      "mode": "100644"
+    },
+    "runner/comparator/corpus.go": {
+      "blob": "84a7d92117cb3339a2382f9cdee2523dea9dad4c",
+      "mode": "100644"
+    },
+    "runner/comparator/corpus_test.go": {
+      "blob": "ea3fdb77964b3df08834bce8a54bd1df74659aaa",
+      "mode": "100644"
+    },
+    "runner/comparator/diff.go": {
+      "blob": "b85fa7a2395d12bc0b1a9f862fa248334b466308",
+      "mode": "100644"
+    },
+    "runner/comparator/diff_test.go": {
+      "blob": "9734648b9b25b7ff57b73d569b8121e870e861fd",
+      "mode": "100644"
+    },
+    "runner/comparator/integration_extra_test.go": {
+      "blob": "b163b41f0de8d3d39c15c6e5ad8f882685694da3",
+      "mode": "100644"
+    },
+    "runner/comparator/integration_test.go": {
+      "blob": "3fd2e5cecc1bfb3d8bb3b08850e5154990004551",
+      "mode": "100644"
+    },
+    "runner/comparator/jsonrpc.go": {
+      "blob": "a0511bae86947adf741a17837949564547ec0399",
+      "mode": "100644"
+    },
+    "runner/comparator/openrpc_loader.go": {
+      "blob": "c0b16bb6b6dbea5e60d6e27912270597e5ff9e5c",
+      "mode": "100644"
+    },
+    "runner/comparator/output_summary_test.go": {
+      "blob": "31688bd613601a404b2019207784bd9428de5250",
+      "mode": "100644"
+    },
+    "runner/comparator/param_variations.go": {
+      "blob": "c50fb9e2c8c7a8ce34290b2331841d23a59c32df",
+      "mode": "100644"
+    },
+    "runner/comparator/report.go": {
+      "blob": "8fecfb3faee0e802ecf43ce758a06a0421d7ab4d",
+      "mode": "100644"
+    },
+    "runner/comparator/rules.go": {
+      "blob": "d732812a6dbb7e7829025514adb557dfeac0cd1d",
+      "mode": "100644"
+    },
+    "runner/comparator/rules_file_test.go": {
+      "blob": "17276d14dfcb13ff1a43dbaeb582eb255ceca28f",
+      "mode": "100644"
+    },
+    "runner/config/calls.go": {
+      "blob": "581219792cb8a964b3bf57ead050ffe827762eb9",
+      "mode": "100644"
+    },
+    "runner/config/client_registry.go": {
+      "blob": "11301c7422cd12a4acc952e2390c9a58c3356ca5",
+      "mode": "100644"
+    },
+    "runner/config/config.go": {
+      "blob": "363f6c82ad693a153a26e0575a9896e3936f313d",
+      "mode": "100644"
+    },
+    "runner/config/env_substitution.go": {
+      "blob": "6f59a00188004e2b168b7068d816d908945299fe",
+      "mode": "100644"
+    },
+    "runner/config/env_substitution_test.go": {
+      "blob": "fb3ae34a76a8ff511d616b305a7a160854466dc2",
+      "mode": "100644"
+    },
+    "runner/config/file_loader.go": {
+      "blob": "9e47b6d8f4ceac8faf952c318b455085d5b1f028",
+      "mode": "100644"
+    },
+    "runner/config/loader.go": {
+      "blob": "512e578d8ee52a8bfefa6c12cceaa96a614225ce",
+      "mode": "100644"
+    },
+    "runner/config/loader_example.go": {
+      "blob": "ff3ea0d603a1de2964a3e35f924368a419015aff",
+      "mode": "100644"
+    },
+    "runner/config/loader_test.go": {
+      "blob": "800d0cf5951c98bb1eff57c656c2dfdf3f744f7f",
+      "mode": "100644"
+    },
+    "runner/config/outputs.go": {
+      "blob": "0329331bd30459059fb79d755e4f096b5d116075",
+      "mode": "100644"
+    },
+    "runner/config/safe_path.go": {
+      "blob": "3b325a81e776bb9d7505acbd4d4b11675a755f57",
+      "mode": "100644"
+    },
+    "runner/config/storage.go": {
+      "blob": "c91499f43e43fb554a78aa7b8612ec4c25f8541e",
+      "mode": "100644"
+    },
+    "runner/config/storage_test.go": {
+      "blob": "43147c159cc148265d14a2511081970691a20040",
+      "mode": "100644"
+    },
+    "runner/debug_p99_direct.sql": {
+      "blob": "7876f2c70a0150063e24dd1a6f3b13d205c8b36a",
+      "mode": "100644"
+    },
+    "runner/exporter/data_exporter.go": {
+      "blob": "98d8d9ac37a6a11a34374f4781a85634068c2723",
+      "mode": "100644"
+    },
+    "runner/generator/enhanced_html_report.go": {
+      "blob": "43c775cd70f33e4c84718f22f1405444a71aa8df",
+      "mode": "100644"
+    },
+    "runner/generator/historic_integration.go": {
+      "blob": "6cddb6383874b31906b051dbc5098ef732a23b08",
+      "mode": "100644"
+    },
+    "runner/generator/html_report.go": {
+      "blob": "d054cd5faf12a4388608a788142232afd0cf712b",
+      "mode": "100644"
+    },
+    "runner/generator/k6_generator.go": {
+      "blob": "e108b5abab50a5550b075b4df4217fd22cb0a146",
+      "mode": "100644"
+    },
+    "runner/generator/k6_generator_test.go": {
+      "blob": "4cad822c039c16a53b1a8b7f890551b9b2b5de16",
+      "mode": "100644"
+    },
+    "runner/generator/reports_generator.go": {
+      "blob": "0e0236b69b6c8d70687e7015b04642ba58e9fb48",
+      "mode": "100644"
+    },
+    "runner/generator/scripts/example.config.json": {
+      "blob": "10ee2475d9b7fb6ea66e52d47d2021fda7e26d25",
+      "mode": "100644"
+    },
+    "runner/generator/scripts/example.payloads.csv": {
+      "blob": "97b2b411654ba8570895b88eb6bdd7741b5536c2",
+      "mode": "100644"
+    },
+    "runner/generator/scripts/k6-script.js": {
+      "blob": "f2ff86fa97ee756e5bfd5baf3a847a2c7905d19c",
+      "mode": "100644"
+    },
+    "runner/generator/ultimate_html_report.go": {
+      "blob": "37c6e9629970b487cd6221904689c8e2cb80b2e2",
+      "mode": "100644"
+    },
+    "runner/internal/sanitize/sanitize.go": {
+      "blob": "41d043f163d1e24cfec2c47fc88f4895c766884e",
+      "mode": "100644"
+    },
+    "runner/internal/sanitize/sanitize_test.go": {
+      "blob": "6ef16761aa6db11ac7af23d38ff98aefc9ad850a",
+      "mode": "100644"
+    },
+    "runner/main.go": {
+      "blob": "309285a670841430bdc675ef97bc5502f99d8115",
+      "mode": "100644"
+    },
+    "runner/metrics/advanced_calculator.go": {
+      "blob": "c824342138897902d8943a9b1ad78741741f584e",
+      "mode": "100644"
+    },
+    "runner/metrics/results_collection.go": {
+      "blob": "bf0701279b89f30fe24944fcd393f6fd27d4c05a",
+      "mode": "100644"
+    },
+    "runner/metrics/results_collection_test.go": {
+      "blob": "6398ebd825220a3cce8660fc4067f3905305cacc",
+      "mode": "100644"
+    },
+    "runner/metrics/summary_fallback.go": {
+      "blob": "c622cbb54dae12f5dae4255720c9e199f294973e",
+      "mode": "100644"
+    },
+    "runner/metrics/summary_fallback_test.go": {
+      "blob": "d37cba20971da82ee7445acf10bdd39fd891de8a",
+      "mode": "100644"
+    },
+    "runner/metrics/system_collector.go": {
+      "blob": "ab53189ff64b20ff4dc02cb5d841c3babc4ee4dd",
+      "mode": "100644"
+    },
+    "runner/p99_integration_test.go": {
+      "blob": "029cddeb067e47e41035d41b61c8925032173058",
+      "mode": "100644"
+    },
+    "runner/run_tests.sh": {
+      "blob": "1a74d4c39ddef619fb9d5b15bd861c5eb4d14179",
+      "mode": "100755"
+    },
+    "runner/schema/schema.go": {
+      "blob": "d9b42b16e61e7daf1df5b7a326a2094946d5fa78",
+      "mode": "100644"
+    },
+    "runner/storage/grafana_schema.go": {
+      "blob": "66c2af0ca405ba03b4040fd158bb9b89bc1ac361",
+      "mode": "100644"
+    },
+    "runner/storage/historic.go": {
+      "blob": "dcdd59771b8bc874f52f556d48e75c9fe8909da8",
+      "mode": "100644"
+    },
+    "runner/storage/migration.go": {
+      "blob": "65f0f9701faca1a7ac292242efb219d1d4da076f",
+      "mode": "100644"
+    },
+    "runner/storage/migrations.go": {
+      "blob": "33e4c69724c73a69271301125e0ac647f0113808",
+      "mode": "100644"
+    },
+    "runner/storage/postgres.go": {
+      "blob": "536ba17aa943eaec379a2535832273d8a4fab883",
+      "mode": "100644"
+    },
+    "runner/storage/postgres_test.go": {
+      "blob": "394077c26d39793d80dcdf1b7c0553492d5e9bad",
+      "mode": "100644"
+    },
+    "runner/test_config.yaml": {
+      "blob": "50d9d52526320a1a3a9f3470e13f750dc19c91a2",
+      "mode": "100644"
+    },
+    "runner/types/client.go": {
+      "blob": "fd296056c9076a7ae61609bba26351d4bc3edbe1",
+      "mode": "100644"
+    },
+    "runner/types/historic.go": {
+      "blob": "dfdddfc1184d45b09a42ccbfb2e3e01edb8c3aa9",
+      "mode": "100644"
+    },
+    "runner/types/k6.go": {
+      "blob": "025a059d5c50143587c598742c17daa69b1a2cb1",
+      "mode": "100644"
+    },
+    "runner/types/metrics.go": {
+      "blob": "ee1b9462daeeae2da7c24cc0beb4a2e9b84e871b",
+      "mode": "100644"
+    },
+    "runner/types/types.go": {
+      "blob": "b0bbf7b687eb7c70358741bf88c97d3e07740db8",
+      "mode": "100644"
+    },
+    "scripts/run-from-snapshot.sh": {
+      "blob": "b8e2fa9fbda8fdd6b0b944e02061f4e66a4c6734",
+      "mode": "100755"
+    }
+  },
+  "schema": 1
+}

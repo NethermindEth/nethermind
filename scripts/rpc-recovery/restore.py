@@ -1,4 +1,4 @@
-"""Recover only the independently attributed resources of RPC run37309091869."""
+"""Recover only the independently attributed resources of RPC run37317936571."""
 import hashlib
 import importlib.util
 import json
@@ -10,11 +10,11 @@ import stat
 import subprocess
 import sys
 
-RUN = '37309091869'
-CID = 'cbaa31eb4543acd8d535511c077f94672b17a238df6379ae69b5918c154f9413'
+RUN = '37317936571'
+CID = '3db2322ea03b4286813822c03d2055a7448b0dec98153034a3b7c47a6bb63df0'
 ROOT = Path('/mnt/sda/expb-data/rpc-bench-scratch/rpc-private-' + RUN + '-1')
-TOOL_CID = '121035ae72d5fc3e0a9183559e84675ff67450b9ba68933580b3e1a1b364b135'
-VERSION_CID = '1c6dd44587d2cbe264af1caa1091d9765f9b88c6923a9f15d7d06ba014b00e5a'
+TOOL_CID = '588c1ffd3972d8c121767647e6a3965d5a3e008cce02269112d5c95184f2862c'
+VERSION_CID = 'b41a8cd94816944341f7226e724956386b699cb959873bfa6578d0973553ab0d'
 LOCK = ROOT.parent/'rpc-native-capability.lock'
 STATE = ROOT/'state/sweep/nativecap'
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -42,7 +42,7 @@ def journal_bytes(path):
     assert path.resolve(strict=True)==path
     before=path.lstat()
     assert stat.S_ISREG(before.st_mode) and before.st_nlink==1
-    expected=(64512,41882209,33152,1,2156,1791203344062966094,1791203344062966094)
+    expected=(64512,41882421,33152,1,2156,1791207322300234576,1791207322300234576)
     def identity(info):return(info.st_dev,info.st_ino,info.st_mode,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
     assert identity(before)==expected
     with os.fdopen(os.open(path,os.O_RDONLY|os.O_NOFOLLOW),'rb') as source:
@@ -96,7 +96,7 @@ def main():
     os.environ.update(GITHUB_RUN_ID=RUN,GITHUB_RUN_ATTEMPT='1',RPC_PRIVATE_STORAGE_ROOT=str(ROOT),
                       RPC_PRIVATE_SHARED_SCRATCH_ROOT=str(ROOT.parent))
     owner=guard.owned(ROOT,LOCK)
-    assert owner['storage_identity']==[64512,41881671] and owner['lock_identity']==[64512,41881670]
+    assert owner['storage_identity']==[64512,41881741] and owner['lock_identity']==[64512,41881670]
     spec=importlib.util.spec_from_file_location('private_audit',REPOSITORY/'scripts/rpc-bench/private_audit.py')
     audit=importlib.util.module_from_spec(spec);spec.loader.exec_module(audit)
     def audited_output(command,timeout=20):
