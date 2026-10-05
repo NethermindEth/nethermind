@@ -224,25 +224,14 @@ internal sealed class FailableCommitColumnsDb(TestMemColumnsDb<BeaconChainDbColu
     }
 }
 
-internal sealed class CanonicalReorgFixture
+internal sealed class CanonicalReorgFixture(UnsignedChain chain, FailableCommitColumnsDb db, BeaconChainStore store, BlockImporter importer, ITimestamper time)
 {
-    private readonly ITimestamper _time;
-
-    private CanonicalReorgFixture(UnsignedChain chain, FailableCommitColumnsDb db, BeaconChainStore store, BlockImporter importer, ITimestamper time)
-    {
-        _time = time;
-        Chain = chain;
-        Db = db;
-        Store = store;
-        Importer = importer;
-    }
-
     public sealed record Reorg(UnsignedChain.ChainBlock B1, UnsignedChain.ChainBlock BHead);
 
-    public UnsignedChain Chain { get; }
-    public FailableCommitColumnsDb Db { get; }
-    public BeaconChainStore Store { get; }
-    public BlockImporter Importer { get; }
+    public UnsignedChain Chain { get; } = chain;
+    public FailableCommitColumnsDb Db { get; } = db;
+    public BeaconChainStore Store { get; } = store;
+    public BlockImporter Importer { get; } = importer;
     public TestMemDb BlockIndex => (TestMemDb)Db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
 
     public static CanonicalReorgFixture Create(ITimestamper? time = null)
@@ -255,7 +244,7 @@ internal sealed class CanonicalReorgFixture
         return new CanonicalReorgFixture(chain, db, store, CreateImporter(chain, store, time), time);
     }
 
-    public CanonicalReorgFixture Restart() => new(Chain, Db, Store, CreateImporter(Chain, Store, _time), _time);
+    public CanonicalReorgFixture Restart() => new(Chain, Db, Store, CreateImporter(Chain, Store, time), time);
 
     private static BlockImporter CreateImporter(UnsignedChain chain, BeaconChainStore store, ITimestamper time)
     {

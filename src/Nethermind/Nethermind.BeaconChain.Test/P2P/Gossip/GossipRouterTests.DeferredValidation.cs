@@ -258,36 +258,15 @@ public partial class GossipRouterTests
 
     private static readonly string BlockTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
 
-    private sealed class DeferredFixture : IAsyncDisposable
+    private sealed class DeferredFixture(IContainer container, PubsubRouter pubsub, GossipRouter router, DeferredGossipValidation validation, List<GossipVerdict> raised,
+        (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) sender, (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) neighbor) : IAsyncDisposable
     {
-        private readonly IContainer _container;
-        private readonly List<Rpc> _sentToNeighbor;
-        private readonly List<Rpc> _sentToSender;
-        private readonly Action<Rpc> _fromSender;
-        private readonly Action<Rpc> _fromNeighbor;
-
-        private DeferredFixture(IContainer container, PubsubRouter pubsub, GossipRouter router, DeferredGossipValidation validation, List<GossipVerdict> raised,
-            (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) sender, (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) neighbor)
-        {
-            _container = container;
-            Pubsub = pubsub;
-            Router = router;
-            Validation = validation;
-            Raised = raised;
-            _fromSender = sender.Receive;
-            _fromNeighbor = neighbor.Receive;
-            _sentToNeighbor = neighbor.Sent;
-            _sentToSender = sender.Sent;
-            Sender = sender.Peer;
-            Neighbor = neighbor.Peer;
-        }
-
-        public PubsubRouter Pubsub { get; }
-        public GossipRouter Router { get; }
-        public DeferredGossipValidation Validation { get; }
-        public List<GossipVerdict> Raised { get; }
-        public PeerId Sender { get; }
-        public PeerId Neighbor { get; }
+        public PubsubRouter Pubsub { get; } = pubsub;
+        public GossipRouter Router { get; } = router;
+        public DeferredGossipValidation Validation { get; } = validation;
+        public List<GossipVerdict> Raised { get; } = raised;
+        public PeerId Sender { get; } = sender.Peer;
+        public PeerId Neighbor { get; } = neighbor.Peer;
 
         public static async Task<DeferredFixture> Create(int maxPending, long maxPendingBytes, TimeSpan timeout, string protocol = PubsubRouter.GossipsubProtocolVersionV11, int maxPendingVotes = 1024,
             TimeProvider? time = null)
@@ -322,19 +301,19 @@ public partial class GossipRouterTests
             ReceiveRpc(from, rpc);
         }
 
-        public void ReceiveRpc(PeerId from, Rpc rpc) => (from == Sender ? _fromSender : _fromNeighbor)(rpc);
-        public IReadOnlyList<Rpc> SentTo(PeerId peer) => peer == Sender ? _sentToSender : _sentToNeighbor;
+        public void ReceiveRpc(PeerId from, Rpc rpc) => (from == Sender ? sender.Receive : neighbor.Receive)(rpc);
+        public IReadOnlyList<Rpc> SentTo(PeerId peer) => peer == Sender ? sender.Sent : neighbor.Sent;
 
         public IEnumerable<MessageId> IdontwantsTo(PeerId peer) =>
             SentTo(peer).SelectMany(static rpc => rpc.Control?.Idontwant ?? []).SelectMany(static idontwant => idontwant.MessageIDs).Select(static id => new MessageId(id.ToByteArray()));
 
         public bool SentToNeighbor(byte[] data) =>
-            _sentToNeighbor.SelectMany(static rpc => rpc.Publish).Any(message => message.Topic == BlockTopic && message.Data.Span.SequenceEqual(data));
+            neighbor.Sent.SelectMany(static rpc => rpc.Publish).Any(message => message.Topic == BlockTopic && message.Data.Span.SequenceEqual(data));
 
         public ValueTask DisposeAsync()
         {
             Pubsub.Dispose();
-            _container.Dispose();
+            container.Dispose();
             return ValueTask.CompletedTask;
         }
     }
