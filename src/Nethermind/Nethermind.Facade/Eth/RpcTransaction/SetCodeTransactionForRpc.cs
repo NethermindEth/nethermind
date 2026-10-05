@@ -4,9 +4,11 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
+[GenerateJsonWriter]
 public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<SetCodeTransactionForRpc>
 {
     public new static TxType TxType => TxType.SetCode;

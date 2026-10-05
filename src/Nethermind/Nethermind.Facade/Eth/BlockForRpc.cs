@@ -16,6 +16,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.Facade.Eth;
 
+[GenerateJsonWriter]
 public class BlockForRpc
 {
     private static IRlpDecoder<Block> _blockDecoder = new BlockDecoder();
