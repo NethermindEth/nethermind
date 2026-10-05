@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -90,8 +91,11 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     /// <remarks>Through <see cref="KeccakHash.ComputeHash256OfWitnessNodes"/>, which lets the commit re-hash an edited
     /// branch from its first changed rate block; <see cref="Find"/> tells it which node it hands out.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void HashNodes(byte[][] nodes, int count, Span<NodeKey> keys) =>
+    private static void HashNodes(byte[][] nodes, int count, Span<NodeKey> keys)
+    {
+        Debug.Assert(Unsafe.SizeOf<NodeKey>() == Unsafe.SizeOf<ValueHash256>(), "NodeKey is reinterpreted as its keccak");
         KeccakHash.ComputeHash256OfWitnessNodes(nodes, count, MemoryMarshal.Cast<NodeKey, ValueHash256>(keys));
+    }
 
     /// <inheritdoc/>
     /// <remarks>The scheme is fixed: only <c>FullPruner</c> reassigns it, and it does not run in the guest.</remarks>
