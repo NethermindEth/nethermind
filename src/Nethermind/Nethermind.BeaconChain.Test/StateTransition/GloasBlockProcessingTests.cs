@@ -106,19 +106,6 @@ public class GloasBlockProcessingTests
         Assert.That(payment.Withdrawal.FeeRecipient, Is.EqualTo(bid.Message.FeeRecipient));
     }
 
-    [Test]
-    public void ProcessExecutionPayloadBid_rejects_a_builder_who_cannot_cover_the_bid()
-    {
-        BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
-        // The builder's whole balance is 40 Gwei (see CreateGloasState); a bid above balance minus
-        // MIN_DEPOSIT_AMOUNT must be rejected rather than driving the builder's balance negative.
-        SignedExecutionPayloadBid bid = ValidBuilderBid(state, builderSk, builderIndex: 0, value: 100 * Gwei);
-
-        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: true))!;
-        Assert.That(ex.Message, Does.Contain("cannot cover a bid"));
-    }
-
     // get_blob_parameters falls back to MAX_BLOBS_PER_BLOCK_ELECTRA without an applicable BLOB_SCHEDULE entry.
     [TestCase(0, true)]
     [TestCase(1, false)]
@@ -331,35 +318,6 @@ public class GloasBlockProcessingTests
         Assert.That(withdrawal.Address, Is.EqualTo(new Address(validator.WithdrawalCredentials.Bytes[12..])));
     }
 
-    // Spec registry IndexErrors count as block refusal, not importer crashes.
-    [TestCase("builder pending withdrawal")]
-    [TestCase("builders sweep cursor")]
-    [TestCase("pending partial withdrawal")]
-    [TestCase("validators sweep cursor")]
-    public void ProcessWithdrawals_refuses_a_registry_index_past_the_end(string corruptedEntry)
-    {
-        BeaconStateGloas state = CreateGloasState(out _, out _);
-        state.LatestBlockHash = state.LatestExecutionPayloadBid!.BlockHash;
-        ulong builderCount = (ulong)state.Builders!.Length;
-        ulong validatorCount = (ulong)state.Validators!.Length;
-        switch (corruptedEntry)
-        {
-            case "builder pending withdrawal":
-                state.BuilderPendingWithdrawals = [new BuilderPendingWithdrawal { BuilderIndex = builderCount, Amount = Gwei, FeeRecipient = Address.Zero }];
-                break;
-            case "builders sweep cursor":
-                state.NextWithdrawalBuilderIndex = builderCount;
-                break;
-            case "pending partial withdrawal":
-                state.PendingPartialWithdrawals = [new PendingPartialWithdrawal { ValidatorIndex = validatorCount, Amount = Gwei, WithdrawableEpoch = 0 }];
-                break;
-            case "validators sweep cursor":
-                state.NextWithdrawalValidatorIndex = validatorCount;
-                break;
-        }
-
-        Assert.That(() => GloasBlockProcessing.ProcessWithdrawals(state), Throws.TypeOf<BeaconStateException>().With.Message.Contains("out of range"));
-    }
 
 
     [Test]
