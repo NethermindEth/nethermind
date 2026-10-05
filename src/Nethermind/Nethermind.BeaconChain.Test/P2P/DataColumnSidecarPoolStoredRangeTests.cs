@@ -39,11 +39,8 @@ public class DataColumnSidecarPoolStoredRangeTests
             store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, TestItem.PrivateKeyA.KeyBytes);
         }
 
-        List<(ulong Slot, Hash256? Root)> canonical = [];
-        for (ulong slot = First; slot <= Last; slot++)
-        {
-            canonical.Add((slot, RootAt(slot)));
-        }
+        List<(ulong Slot, Hash256? Root)> canonical = [.. Enumerable.Range(0, (int)(Last - First + 1))
+            .Select(static i => (First + (ulong)i, (Hash256?)RootAt(First + (ulong)i)))];
 
         store.ApplyCanonicalIndexChanges(canonical, Last);
         DataColumnSidecarPool pool = new(store: store);
