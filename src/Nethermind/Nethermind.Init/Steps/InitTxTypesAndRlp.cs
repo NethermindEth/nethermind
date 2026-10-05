@@ -8,6 +8,8 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
+using Autofac;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
@@ -30,6 +32,12 @@ namespace Nethermind.Init.Steps
             {
                 plugin.InitTxTypesAndRlpDecoders(api);
             }
+
+            // The DI block decoders resolve EIP-7668 activation, which the scanned defaults cannot.
+            IHeaderDecoder headerDecoder = api.Context.Resolve<IHeaderDecoder>();
+            Rlp.RegisterDecoder(typeof(BlockHeader), headerDecoder);
+            Rlp.RegisterDecoder(typeof(Block), api.Context.Resolve<BlockDecoder>());
+            Rlp.RegisterDecoder(typeof(BlockBody), api.Context.Resolve<BlockBodyDecoder>());
 
             RlpLimit.InitMaxBlockGas(api.Config<IBlocksConfig>().MaxGasLimit);
 

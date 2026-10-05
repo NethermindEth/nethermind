@@ -36,7 +36,7 @@ namespace Ethereum.Test.Base
         private static Bloom ParseBloom(string hex)
         {
             byte[] bytes = Bytes.FromHexString(hex);
-            return bytes.Length == 0 ? Bloom.Removed : new Bloom(bytes);
+            return bytes.Length == 0 ? Bloom.ZeroLength : new Bloom(bytes);
         }
 
         private static ForkActivation TransitionForkActivation(string transitionInfo)

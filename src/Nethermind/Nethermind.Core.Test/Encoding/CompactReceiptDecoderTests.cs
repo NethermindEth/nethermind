@@ -147,16 +147,15 @@ namespace Nethermind.Core.Test.Encoding
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Decode_computes_bloom_unless_eip7668(bool eip7668)
+        [Test]
+        public void Decode_computes_bloom_unless_eip7668([Values] bool eip7668)
         {
             TxReceipt txReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
             CompactReceiptStorageDecoder decoder = new();
             RlpReader ctx = new(decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes);
             RlpBehaviors behaviors = eip7668 ? RlpBehaviors.Storage | RlpBehaviors.Eip7668Receipts : RlpBehaviors.Storage;
 
-            AssertBloomSetOnDecode(decoder.DecodeGuardNotNull(ref ctx, behaviors), eip7668 ? Bloom.Removed : txReceipt.Bloom);
+            AssertBloomSetOnDecode(decoder.DecodeGuardNotNull(ref ctx, behaviors), eip7668 ? Bloom.ZeroLength : txReceipt.Bloom);
         }
 
         /// <remarks>The bloom is set by the decoder itself, not computed lazily by a later reader.</remarks>

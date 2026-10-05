@@ -535,7 +535,7 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <remarks>
         /// After EIP-7668 the compact encoding skips computing each bloom and a receipt synced without one would
-        /// compute it lazily, so every bloom is set to <see cref="Bloom.Removed"/>. A chain that never schedules
+        /// compute it lazily, so every bloom is set to <see cref="Bloom.ZeroLength"/>. A chain that never schedules
         /// the EIP skips the spec lookup.
         /// </remarks>
         private TxReceipt[] Decode(in Span<byte> receiptsData, BlockHeader header)
@@ -543,7 +543,7 @@ namespace Nethermind.Blockchain.Receipts
             if (!_eip7668EverEnabled || !_specProvider.GetSpec(header).IsEip7668Enabled) return _storageDecoder.Decode(in receiptsData);
 
             TxReceipt[] receipts = _storageDecoder.Decode(in receiptsData, RlpBehaviors.Eip7668Receipts);
-            receipts.RemoveBlooms();
+            receipts.SetZeroLengthBlooms();
             return receipts;
         }
 
@@ -632,7 +632,7 @@ namespace Nethermind.Blockchain.Receipts
             // and the DB write both defer: reads serve the receipts objects, never the bytes, so the RLP is only
             // needed by the queued write and is produced on the consumer instead of on the processing path.
             _receiptsRecovery.TryRecover(block, txReceipts, false);
-            if (spec.IsEip7668Enabled) txReceipts.RemoveBlooms();
+            if (spec.IsEip7668Enabled) txReceipts.SetZeroLengthBlooms();
 
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
@@ -842,7 +842,7 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             _receiptsRecovery.TryRecover(block, txReceipts, false);
-            if (spec.IsEip7668Enabled) txReceipts.RemoveBlooms();
+            if (spec.IsEip7668Enabled) txReceipts.SetZeroLengthBlooms();
 
             ulong blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;

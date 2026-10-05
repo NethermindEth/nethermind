@@ -19,14 +19,13 @@ public class Bloom : IEquatable<Bloom>
 {
     public static readonly Bloom Empty = new();
 
-    /// <summary>The zero-length logs bloom that EIP-7668 requires in headers and receipts.</summary>
+    /// <summary>The zero-length (0 bytes long) logs bloom that EIP-7668 requires in headers and receipts.</summary>
     /// <remarks>
-    /// Unlike <see cref="Empty"/> (256 zero bytes) it exposes no bytes and RLP-encodes as <c>0x80</c>.
-    /// It carries no filter information, so it matches every query: its hidden bits are all set,
-    /// which keeps <see cref="Matches(BloomExtract)"/> check-free. It must never be accumulated into a real bloom,
-    /// and its <see cref="BloomStructRef"/> has no bytes, so callers check <see cref="Bytes"/> for emptiness before matching it.
+    /// Unlike <see cref="Empty"/> (256 zero bytes) it exposes no <see cref="Bytes"/> and RLP-encodes as <c>0x80</c>.
+    /// Its unexposed storage has every bit set, so <see cref="Matches(BloomExtract)"/> matches every query without a check.
+    /// Its <see cref="BloomStructRef"/> has no bytes, so struct-ref callers check <see cref="Bytes"/> for emptiness first.
     /// </remarks>
-    public static readonly Bloom Removed = CreateRemoved();
+    public static readonly Bloom ZeroLength = CreateZeroLength();
     public const int BitLength = 2048;
     public const int ByteLength = BitLength / 8;
     private BloomData _bloomData;
@@ -59,7 +58,7 @@ public class Bloom : IEquatable<Bloom>
 
     public Bloom(ReadOnlySpan<byte> bytes) => bytes.CopyTo(_bloomData.AsSpan());
 
-    private static Bloom CreateRemoved()
+    private static Bloom CreateZeroLength()
     {
         Bloom bloom = new();
         bloom._bloomData.AsSpan().Fill(byte.MaxValue);
@@ -67,12 +66,12 @@ public class Bloom : IEquatable<Bloom>
     }
 
     [JsonIgnore]
-    public Span<byte> Bytes => IsRemoved ? default : _bloomData.AsSpan();
+    public Span<byte> Bytes => IsZeroLength ? default : _bloomData.AsSpan();
     [JsonIgnore]
-    public ReadOnlySpan<byte> ReadOnlyBytes => IsRemoved ? default : _bloomData.AsReadOnlySpan();
-    /// <summary>Whether this is the zero-length <see cref="Removed"/> bloom.</summary>
+    public ReadOnlySpan<byte> ReadOnlyBytes => IsZeroLength ? default : _bloomData.AsReadOnlySpan();
+    /// <summary>Whether this is the zero-length <see cref="ZeroLength"/> bloom.</summary>
     [JsonIgnore]
-    public bool IsRemoved => ReferenceEquals(this, Removed);
+    public bool IsZeroLength => ReferenceEquals(this, ZeroLength);
     private Span<ulong> ULongs => _bloomData.AsULongs();
 
     public void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
@@ -117,7 +116,9 @@ public class Bloom : IEquatable<Bloom>
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
 
-        return Nethermind.Core.Extensions.Bytes.AreEqual(ReadOnlyBytes, other.ReadOnlyBytes);
+        // Raw data keeps the getters' EIP-7668 check off this path; ZeroLength's storage could equal a full bloom's.
+        return Nethermind.Core.Extensions.Bytes.AreEqual(_bloomData.AsReadOnlySpan(), other._bloomData.AsReadOnlySpan())
+               && !IsZeroLength && !other.IsZeroLength;
     }
 
     public override bool Equals(object? obj)
@@ -169,7 +170,7 @@ public class Bloom : IEquatable<Bloom>
             return;
         }
 
-        Debug.Assert(!bloom.IsRemoved || IsRemoved, "EIP-7668: Bloom.Removed must not be accumulated into a real bloom.");
+        Debug.Assert(!bloom.IsZeroLength || IsZeroLength, "EIP-7668: Bloom.ZeroLength must not be accumulated into a real bloom.");
         _bloomData.AsSpan().Or(bloom._bloomData.AsReadOnlySpan());
     }
 
@@ -260,7 +261,7 @@ public class Bloom : IEquatable<Bloom>
 
     public Bloom Clone()
     {
-        if (IsRemoved) return this;
+        if (IsZeroLength) return this;
 
         Bloom clone = new();
         ReadOnlyBytes.CopyTo(clone.Bytes);

@@ -255,7 +255,7 @@ public static class RlpWriterExtensions
                 writer.WriteByte(0);
                 writer.WriteZero(256);
             }
-            else if (bloom is null || bloom.IsRemoved)
+            else if (bloom is null || bloom.IsZeroLength)
             {
                 writer.WriteByte(EmptyArrayByte);
             }

@@ -145,7 +145,7 @@ public sealed class EraExporter(
 
                     if (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash)
                     {
-                        Hash256 computedRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(block.Number), receipts, _receiptDecoder);
+                        Hash256 computedRoot = ReceiptTrie.CalculateRoot(specProvider.GetSpec(block.Header), receipts, _receiptDecoder);
                         if (computedRoot != block.Header.ReceiptsRoot)
                         {
                             throw new EraException(

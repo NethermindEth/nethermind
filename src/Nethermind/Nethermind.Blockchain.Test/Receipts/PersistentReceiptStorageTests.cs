@@ -442,9 +442,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Get_serves_zero_length_blooms_after_eip7668(bool eip7668)
+    [Test]
+    public void Get_serves_zero_length_blooms_after_eip7668([Values] bool eip7668)
     {
         _specProvider.NextForkSpec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
         // The storage reads whether the chain ever schedules EIP-7668 on construction.
@@ -457,7 +456,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _storage.Insert(block, [receipt]);
         _storage.ClearCache();
 
-        Assert.That(_storage.Get(block).Select(static r => r.Bloom.IsRemoved), Is.All.EqualTo(eip7668));
+        Assert.That(_storage.Get(block).Select(static r => r.Bloom.IsZeroLength), Is.All.EqualTo(eip7668));
     }
 
     [Test]

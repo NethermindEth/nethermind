@@ -45,7 +45,8 @@ public enum RlpBehaviors
 
     /// <summary>
     /// EIP-7668: encodes the receipt bloom as a zero-length string, whatever bloom the receipt holds;
-    /// the compact storage decoder sets <c>Bloom.Removed</c> instead of computing the bloom.
+    /// the receipt message decoder accepts a zero-length bloom and the compact storage decoder sets
+    /// <c>Bloom.ZeroLength</c> instead of computing the bloom.
     /// </summary>
     Eip7668Receipts = 1024
 }

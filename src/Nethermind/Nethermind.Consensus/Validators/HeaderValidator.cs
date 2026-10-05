@@ -457,7 +457,7 @@ namespace Nethermind.Consensus.Validators
         /// <remarks>Genesis is exempt: it keeps the bloom it was declared with.</remarks>
         protected bool ValidateBloom(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
-            if (header.IsGenesis || spec.IsEip7668Enabled == (header.Bloom?.IsRemoved ?? false))
+            if (header.IsGenesis || spec.IsEip7668Enabled == (header.Bloom?.IsZeroLength ?? false))
             {
                 return true;
             }

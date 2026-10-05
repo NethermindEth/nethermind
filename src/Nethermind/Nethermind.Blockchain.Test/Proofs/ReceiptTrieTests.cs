@@ -77,10 +77,10 @@ public class ReceiptTrieTests
     {
         IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
         TxReceipt[] receipts = [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject];
-        TxReceipt[] removed = [Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.Removed).TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.Removed).TestObject];
+        TxReceipt[] zeroLength = [Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.ZeroLength).TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.ZeroLength).TestObject];
 
         AssertRootMatches(spec, receipts, _decoder);
-        Assert.That(ReceiptTrie.CalculateRoot(spec, receipts, _decoder) == ReceiptTrie.CalculateRoot(Bogota.Instance, removed, _decoder), Is.EqualTo(eip7668));
+        Assert.That(ReceiptTrie.CalculateRoot(spec, receipts, _decoder) == ReceiptTrie.CalculateRoot(Bogota.Instance, zeroLength, _decoder), Is.EqualTo(eip7668));
     }
 
     [Test]

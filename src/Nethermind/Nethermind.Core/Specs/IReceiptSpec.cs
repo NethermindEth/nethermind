@@ -24,7 +24,7 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>
         /// The logs bloom of the header and of every receipt is a zero-length byte string (RLP <c>0x80</c>)
-        /// instead of the 256-byte filter; see <see cref="Bloom.Removed"/>.
+        /// instead of the 256-byte filter; see <see cref="Bloom.ZeroLength"/>.
         /// </remarks>
         bool IsEip7668Enabled { get; }
 

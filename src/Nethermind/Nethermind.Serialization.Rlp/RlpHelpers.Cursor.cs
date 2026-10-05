@@ -679,36 +679,54 @@ internal static partial class RlpHelpers
         return position;
     }
 
-    /// <summary>Decodes a bloom that must be present as a plain 256-byte string, or the zero-length EIP-7668 bloom.</summary>
-    /// <remarks>
-    /// Unlike <see cref="DecodeBloomOrNull"/> this does not accept the legacy sequence form.
-    /// An RLP null decodes as <see cref="Bloom.Removed"/>; whether it is allowed is left to validation.
-    /// </remarks>
+    /// <summary>Decodes a bloom that must be present as a plain 256-byte string.</summary>
+    /// <remarks>Unlike <see cref="DecodeBloomOrNull"/> this does not accept the legacy sequence form.</remarks>
     /// <returns>The position past the item.</returns>
-    /// <exception cref="RlpException">The item is neither a 256-byte nor an empty string.</exception>
+    /// <exception cref="RlpException">The item is not a 256-byte string.</exception>
     public static int DecodeBloom(ReadOnlySpan<byte> data, int position, out Bloom bloom)
     {
-        if (data[position] == Rlp.EmptyByteArrayByte)
-        {
-            bloom = Bloom.Removed;
-            return position + 1;
-        }
-
         position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> bloomBytes, RlpLimit.Bloom, Bloom.ByteLength);
         bloom = CreateBloom(bloomBytes);
         return position;
     }
 
-    /// <summary>Decodes a bloom, interning <see cref="Bloom.Empty"/>; an RLP null decodes as <see cref="Bloom.Removed"/> (EIP-7668).</summary>
+    /// <summary>Decodes a bloom like <see cref="DecodeBloom(ReadOnlySpan{byte}, int, out Bloom)"/>, but reads an RLP null as <see cref="Bloom.ZeroLength"/>.</summary>
     /// <remarks>
-    /// The result is never null, but a zero-length bloom is accepted at every fork: the decoder has no spec,
-    /// so a pre-fork one is rejected by the receipts-root check, whose encoding it cannot match.
+    /// For decoders that check EIP-7668 activation once the header is decoded; any other length fails exactly as in
+    /// <see cref="DecodeBloom(ReadOnlySpan{byte}, int, out Bloom)"/>.
     /// </remarks>
     /// <returns>The position past the item.</returns>
+    /// <exception cref="RlpException">The item is neither a 256-byte nor an empty string.</exception>
+    public static int DecodeBloomOrZeroLength(ReadOnlySpan<byte> data, int position, out Bloom bloom)
+    {
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> bloomBytes, RlpLimit.Bloom);
+        if (bloomBytes.IsEmpty)
+        {
+            bloom = Bloom.ZeroLength;
+            return position;
+        }
+
+        Rlp.GuardSize(actual: bloomBytes.Length, expected: Bloom.ByteLength);
+        bloom = CreateBloom(bloomBytes);
+        return position;
+    }
+
+    /// <inheritdoc cref="DecodeBloomOrNull"/>
+    /// <exception cref="RlpException">The item is an RLP null.</exception>
     public static int DecodeBloomNonNull(ReadOnlySpan<byte> data, int position, out Bloom bloom)
     {
         position = DecodeBloomOrNull(data, position, out Bloom? value);
-        bloom = value ?? Bloom.Removed;
+        bloom = value ?? ThrowNullDecodedValue<Bloom>();
+        return position;
+    }
+
+    /// <inheritdoc cref="DecodeBloomOrNull"/>
+    /// <remarks>An RLP null decodes as <see cref="Bloom.ZeroLength"/> only when <paramref name="rlpBehaviors"/> has <see cref="RlpBehaviors.Eip7668Receipts"/>.</remarks>
+    /// <exception cref="RlpException">The item is an RLP null and EIP-7668 blooms are not allowed.</exception>
+    public static int DecodeBloomNonNull(ReadOnlySpan<byte> data, int position, out Bloom bloom, RlpBehaviors rlpBehaviors)
+    {
+        position = DecodeBloomOrNull(data, position, out Bloom? value);
+        bloom = value ?? ((rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0 ? Bloom.ZeroLength : ThrowNullDecodedValue<Bloom>());
         return position;
     }
 

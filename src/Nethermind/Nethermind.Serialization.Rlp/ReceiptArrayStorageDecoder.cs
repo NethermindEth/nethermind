@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using System;
+using System.Runtime.CompilerServices;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
@@ -116,9 +117,12 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public TxReceipt[] Decode(in Span<byte> receiptsData) => Decode(in receiptsData, RlpBehaviors.None);
+
     /// <param name="receiptsData">The stored receipts.</param>
     /// <param name="compactBehaviors">Extra behaviors for the compact encoding, e.g. <see cref="RlpBehaviors.Eip7668Receipts"/>.</param>
-    public TxReceipt[] Decode(in Span<byte> receiptsData, RlpBehaviors compactBehaviors = RlpBehaviors.None)
+    public TxReceipt[] Decode(in Span<byte> receiptsData, RlpBehaviors compactBehaviors)
     {
         if (receiptsData.Length == 0 || receiptsData[0] == Rlp.EmptyListByte)
         {

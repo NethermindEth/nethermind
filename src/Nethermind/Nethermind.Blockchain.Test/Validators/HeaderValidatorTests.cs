@@ -229,7 +229,7 @@ public class HeaderValidatorTests
             .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
             .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
             .WithSlotNumber(0)
-            .WithBloom(zeroLengthBloom ? Bloom.Removed : Bloom.Empty)
+            .WithBloom(zeroLengthBloom ? Bloom.ZeroLength : Bloom.Empty)
             .TestObject;
         header.Hash = header.CalculateHash();
 

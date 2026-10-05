@@ -7,6 +7,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
+using Nethermind.Serialization.Ssz.Merkleization;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -44,7 +46,7 @@ namespace Nethermind.Core.Test
         public void Removed_matches_any_item()
         {
             LogEntry[] entries = GetLogEntries(10, 3);
-            Assert.That(entries.Select(static e => Bloom.Removed.Matches(e)), Is.All.True);
+            Assert.That(entries.Select(static e => Bloom.ZeroLength.Matches(e)), Is.All.True);
         }
 
         [Test]
@@ -52,9 +54,32 @@ namespace Nethermind.Core.Test
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(Bloom.Removed.ReadOnlyBytes.Length, Is.Zero);
-                Assert.That(Bloom.Removed, Is.Not.EqualTo(Bloom.Empty));
-                Assert.That(Bloom.Removed.Clone(), Is.SameAs(Bloom.Removed));
+                Assert.That(Bloom.ZeroLength.ReadOnlyBytes.Length, Is.Zero);
+                Assert.That(Bloom.ZeroLength, Is.Not.EqualTo(Bloom.Empty));
+                Assert.That(Bloom.ZeroLength.Clone(), Is.SameAs(Bloom.ZeroLength));
+            }
+        }
+
+        [Test]
+        public void Removed_ssz_encodes_and_merkleizes_as_zero_bloom()
+        {
+            byte[] buffer = new byte[Bloom.ByteLength];
+            Array.Fill(buffer, byte.MaxValue);
+            BloomSszVectorTypeConverter.ToSpan(buffer, Bloom.ZeroLength);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(buffer, Is.All.Zero);
+                Assert.That(Root(Bloom.ZeroLength), Is.EqualTo(Root(Bloom.Empty)));
+            }
+
+            static UInt256 Root(Bloom bloom)
+            {
+                Span<UInt256> chunks = stackalloc UInt256[2];
+                Merkleizer merkleizer = new(chunks);
+                BloomSszVectorTypeConverter.Feed(ref merkleizer, bloom);
+                merkleizer.CalculateRoot(out UInt256 root);
+                return root;
             }
         }
 

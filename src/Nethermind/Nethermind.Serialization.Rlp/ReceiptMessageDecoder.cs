@@ -55,7 +55,7 @@ namespace Nethermind.Serialization.Rlp
             // When skipBloom is true (slim receipt), bloom is absent from the stream — nothing to skip.
             if (!skipBloom)
             {
-                txReceipt.Bloom = rlp.DecodeBloomNonNull(ref position);
+                txReceipt.Bloom = rlp.DecodeBloomNonNull(ref position, rlpBehaviors);
             }
 
             rlp.ReadSequenceLength(ref position, out int logsLength);
@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         private static Bloom GetBloom(TxReceipt item, RlpBehaviors rlpBehaviors)
-            => (rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0 ? Bloom.Removed : item.Bloom;
+            => (rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0 ? Bloom.ZeroLength : item.Bloom;
 
         private static LogEntry[] GetLogs(TxReceipt item)
             => item.Logs ?? throw new RlpException("Receipt logs are null.");

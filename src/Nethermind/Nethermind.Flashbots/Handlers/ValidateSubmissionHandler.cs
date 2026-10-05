@@ -90,7 +90,7 @@ public class ValidateSubmissionHandler(
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
         // The converter reads "0x" as the EIP-7668 bloom; before the fork it is the zero bloom, as it always was.
-        if (block.Header.Bloom is { IsRemoved: true } && !releaseSpec.IsEip7668Enabled) block.Header.Bloom = new Bloom();
+        if (block.Header.Bloom is { IsZeroLength: true } && !releaseSpec.IsEip7668Enabled) block.Header.Bloom = new Bloom();
 
         if (!ValidateBlock(block, request.Message, request.RegisteredGasLimit, releaseSpec, out string? error))
         {

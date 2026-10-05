@@ -27,7 +27,7 @@ public class BloomConverter : JsonConverter<Bloom>
         return bytesArray is null ? null : Create(bytesArray);
 
         // EIP-7668: "0x" is the zero-length bloom.
-        static Bloom Create(ReadOnlySpan<byte> bytes) => bytes.IsEmpty ? Bloom.Removed : new Bloom(bytes);
+        static Bloom Create(ReadOnlySpan<byte> bytes) => bytes.IsEmpty ? Bloom.ZeroLength : new Bloom(bytes);
     }
 
     public override void Write(

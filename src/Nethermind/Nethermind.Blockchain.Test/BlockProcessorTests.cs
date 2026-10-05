@@ -199,13 +199,46 @@ public partial class BlockProcessorTests
         TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
         FilterLog[] logs = chain.LogFinder.FindLogs(FilterBuilder.New().FromBlock(block.Number).ToBlock(block.Number).WithAddress(contract).Build()).ToArray();
 
+        // Pre-EIP-7668 semantics, computed independently: each receipt bloom from its logs, the header bloom their union.
+        Bloom[] logBlooms = receipts.Select(static r => new Bloom(r.Logs)).ToArray();
+        TxReceipt[] withLogBlooms = receipts.Select((r, i) => new TxReceipt(r) { Bloom = logBlooms[i] }).ToArray();
+        Bloom expectedHeaderBloom = eip7668 ? Bloom.ZeroLength : new Bloom(logBlooms);
+        Hash256 expectedRoot = ReceiptTrie.CalculateRoot(eip7668 ? spec : Bogota.Instance, withLogBlooms, new ReceiptMessageDecoder());
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(block.Header.Bloom!.IsRemoved, Is.EqualTo(eip7668));
+            Assert.That(block.Header.Bloom!.IsZeroLength, Is.EqualTo(eip7668));
+            Assert.That(block.Header.Bloom, Is.EqualTo(expectedHeaderBloom));
             Assert.That(block.Header.Bloom.Matches(contract), Is.True);
-            Assert.That(receipts.Select(static r => r.Bloom.IsRemoved), Is.All.EqualTo(eip7668));
-            Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(ReceiptTrie.CalculateRoot(spec, receipts, new ReceiptMessageDecoder())));
+            Assert.That(receipts.Select(static r => r.Bloom.IsZeroLength), Is.All.EqualTo(eip7668));
+            Assert.That(receipts.Select(static r => r.Bloom), Is.EqualTo(eip7668 ? receipts.Select(static _ => Bloom.ZeroLength) : logBlooms));
+            Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(expectedRoot));
             Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { contract }));
+        }
+    }
+
+    /// <remarks>Block-builder validation passes its own <see cref="BlockReceiptsTracer"/>, whose block-trace end must not
+    /// replace the EIP-7668 bloom with one accumulated from its receipts.</remarks>
+    [Test]
+    public async Task Eip7668_ReprocessingWithOuterReceiptsTracer_KeepsHeaderBloomAndHash([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
+        byte[] logInInitCode = Prepare.EvmCode.PushData(TestItem.KeccakA.Bytes.ToArray()).PushData(0).PushData(0).Op(Instruction.LOG1).Done;
+        Transaction deploy = Build.A.Transaction.WithCode(logInInitCode).WithTo(null).WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await chain.AddBlock(deploy);
+
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        (Block processed, _) = chain.BlockProcessor.ProcessOne(block,
+            ProcessingOptions.ReadOnlyChain | ProcessingOptions.ForceProcessing, new BlockReceiptsTracer(), spec, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed.Header.Bloom, Is.EqualTo(block.Header.Bloom));
+            Assert.That(processed.Header.Hash, Is.EqualTo(block.Hash));
         }
     }
 
