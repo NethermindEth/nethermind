@@ -57,7 +57,8 @@ public static partial class Merkle
     /// <remarks>
     /// A 64-byte message is exactly one block, and the block after it is always the same padding, so the
     /// generic hash's alignment check, padding logic and result copies all drop out. Chunks that already lie
-    /// side by side, as the siblings of a merkle level do, are absorbed where they are.
+    /// side by side, as the siblings of a merkle level do, are absorbed where they are. One parameter block serves
+    /// both compressions, so the second rewrites only its block pointer.
     /// </remarks>
     [SkipLocalsInit]
     private static unsafe void HashPairWithSha256F(in UInt256 left, in UInt256 right, out UInt256 parent)
@@ -70,7 +71,7 @@ public static partial class Merkle
         state.Word3 = initialState[3];
 
         bool adjacent = Unsafe.AreSame(ref Unsafe.Add(ref Unsafe.AsRef(in left), 1), ref Unsafe.AsRef(in right));
-        Sha256FParameters parameters;
+        Accelerators.Sha256FParameters parameters;
         parameters.State = (ulong*)&state;
         fixed (UInt256* pair = &left)
         {
@@ -78,20 +79,20 @@ public static partial class Merkle
             Sha256Block block;
             if (adjacent && ((nuint)pair & 7) == 0)
             {
-                parameters.Input = (ulong*)pair;
+                parameters.Block = (ulong*)pair;
             }
             else
             {
                 block.Left = left;
                 block.Right = right;
-                parameters.Input = (ulong*)&block;
+                parameters.Block = (ulong*)&block;
             }
 
-            Sha256F(&parameters);
+            Accelerators.Sha256F(&parameters);
         }
 
-        parameters.Input = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
-        Sha256F(&parameters);
+        parameters.Block = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
+        Accelerators.Sha256F(&parameters);
 
         parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
     }
@@ -111,22 +112,6 @@ public static partial class Merkle
     [
         0x80UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0x0002_0000_0000_0000UL
     ];
-
-    /// <summary>ZisK's SHA-256 compression precompile, called directly rather than through <see cref="Accelerators.Sha256F"/>.</summary>
-    /// <remarks>
-    /// One parameter block serves both compressions of a pair, so the second call rewrites only its input
-    /// pointer, where the accelerator zeroes and refills a fresh block each call.
-    /// <see cref="Sha256FParameters"/> mirrors the ZiskOS <c>syscall_sha256_f</c> ABI that Nethermind.Zkvm.Abstractions
-    /// also encodes; nothing checks the two agree at compile time, so recheck it when that package is bumped.
-    /// </remarks>
-    [DllImport("__Internal", EntryPoint = "syscall_sha256_f", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe void Sha256F(Sha256FParameters* parameters);
-
-    private unsafe struct Sha256FParameters
-    {
-        public ulong* State;
-        public ulong* Input;
-    }
 
     private struct Sha256State
     {
