@@ -24,6 +24,31 @@ namespace Nethermind.Evm.Test.Tracing;
 public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 {
     [Test]
+    public void Serialized_trace_reflects_entry_mutations([Values(0, 1)] long limit)
+    {
+        byte[] code = Prepare.EvmCode.PushData("0x1").Op(Instruction.STOP).Done;
+        using GethLikeTxTrace trace = ExecuteAndTrace(GethTraceOptions.Default with { Limit = limit }, code);
+        EthereumJsonSerializer serializer = new();
+        using JsonDocument original = JsonDocument.Parse(serializer.Serialize(trace));
+        Assert.That(original.RootElement.GetProperty("structLogs").GetArrayLength(), Is.EqualTo(limit == 0 ? 2 : 1));
+
+        GethTxTraceEntry entry = trace.Entries[0];
+        entry.ProgramCounter = 123;
+        trace.Entries.Clear();
+        trace.Entries.Add(entry);
+        trace.Entries.Add(new GethTxTraceEntry { Opcode = "ADDED" });
+
+        using JsonDocument modified = JsonDocument.Parse(serializer.Serialize(trace));
+        JsonElement entries = modified.RootElement.GetProperty("structLogs");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.GetArrayLength(), Is.EqualTo(2));
+            Assert.That(entries[0].GetProperty("pc").GetInt64(), Is.EqualTo(123));
+            Assert.That(entries[1].GetProperty("op").GetString(), Is.EqualTo("ADDED"));
+        }
+    }
+
+    [Test]
     public void Can_trace_gas_halt_with_stop()
     {
         byte[] code = Prepare.EvmCode

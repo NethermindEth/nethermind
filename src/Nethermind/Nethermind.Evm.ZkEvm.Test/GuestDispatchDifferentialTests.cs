@@ -152,7 +152,7 @@ public class GuestDispatchDifferentialTests
         int snippets = random.Next(10, 90);
         for (int s = 0; s < snippets; s++)
         {
-            int pick = random.Next(100);
+            int pick = random.Next(105);
             switch (pick)
             {
                 case < 8: code.Add((byte)Instruction.JUMPDEST); break;
@@ -200,7 +200,15 @@ public class GuestDispatchDifferentialTests
                 case < 88:
                     {
                         // A comparison and the branch on it, sometimes inverted.
-                        code.Add(random.Next(4) switch { 0 => (byte)Instruction.LT, 1 => (byte)Instruction.GT, 2 => (byte)Instruction.EQ, _ => (byte)Instruction.ISZERO });
+                        code.Add(random.Next(6) switch
+                        {
+                            0 => (byte)Instruction.LT,
+                            1 => (byte)Instruction.GT,
+                            2 => (byte)Instruction.SLT,
+                            3 => (byte)Instruction.SGT,
+                            4 => (byte)Instruction.EQ,
+                            _ => (byte)Instruction.ISZERO
+                        });
                         if (random.Next(2) == 0) code.Add((byte)Instruction.ISZERO);
                         destinationImmediates.Add(code.Count + 1);
                         code.AddRange([(byte)Instruction.PUSH2, 0, 0, (byte)Instruction.JUMPI]);
@@ -214,6 +222,11 @@ public class GuestDispatchDifferentialTests
                 case < 96: code.AddRange([(byte)Instruction.PUSH2, (byte)random.Next(0, 5), (byte)random.Next(256), (byte)Instruction.MLOAD]); break;
                 case < 98: code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(0, 100), (byte)Instruction.CALLDATALOAD]); break;
                 case < 99: code.Add((byte)Instruction.STOP); break;
+                case < 100: code.Add((byte)Instruction.MUL); break;
+                case < 101: code.Add((byte)Instruction.DIV); break;
+                case < 102: code.Add((byte)Instruction.SLT); break;
+                case < 103: code.Add((byte)Instruction.SGT); break;
+                case < 104: code.Add((byte)Instruction.CALLDATASIZE); break;
                 default: code.Add((byte)random.Next(256)); break;
             }
         }
@@ -297,9 +310,9 @@ public class GuestDispatchDifferentialTests
         {
             EvmStack stack = new(head, vm.Tracer, ref stackBytes[start], codeInfo.ExecutionCodeSpan, codeInfo);
             stack.HoistInputData(inputData);
-            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Vm = vm };
-            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
-                entries[codeInfo.CodeSpan[0]])(ref stack, gas, ref state, 0, stack.Head, entries, ref stack.Code, stack.CodeLength);
+            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Vm = vm, Memory = ref frame.Memory };
+            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                entries[codeInfo.CodeSpan[0]])(ref stack, gas, ref state, ref stack.Code, stack.Head, entries, ref stack.Code, ref stack.Bottom);
             pc = state.FinalProgramCounter;
             finalHead = state.Head;
         }

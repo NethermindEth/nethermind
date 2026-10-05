@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -159,7 +160,7 @@ public abstract class NodesManager(string path, ILogger logger)
 
         try
         {
-            rawNodes = JsonSerializer.Deserialize<HashSet<string>>(data);
+            rawNodes = JsonSerializer.Deserialize(data, NodesJsonContext.Default.HashSetString);
         }
         catch (JsonException)
         {
@@ -236,7 +237,7 @@ public abstract class NodesManager(string path, ILogger logger)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        string contents = JsonSerializer.Serialize(
+        string contents = TypeInfoJsonSerializer.Serialize(
             _persistedNodes.Select(static n => n.Value.ToString()),
             EthereumJsonSerializer.JsonOptionsIndented
             );
@@ -244,3 +245,6 @@ public abstract class NodesManager(string path, ILogger logger)
         return File.WriteAllTextAsync(path, contents, cancellationToken);
     }
 }
+
+[JsonSerializable(typeof(HashSet<string>))]
+internal partial class NodesJsonContext : JsonSerializerContext;

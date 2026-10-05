@@ -89,29 +89,22 @@ internal sealed partial class PersistentStorageProvider
             int writes = 0;
             int skipped = 0;
 
+            // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
             using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
 
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
             {
-                UInt256 after = kvp.Value.After;
-                if (kvp.Value.Before != after || kvp.Value.IsInitialValue)
+                if (!kvp.Value.IsPendingWrite)
                 {
-                    if (after.IsZero)
-                    {
-                        deferredDeletes.Add(kvp.Key);
-                    }
-                    else
-                    {
-                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
-                        BlockChange[kvp.Key] = new(after, after);
-                        storageWriteBatch.Set(kvp.Key, in after);
-
-                        writes++;
-                    }
+                    skipped++;
+                }
+                else if (CommitAndWriteUnlessDelete(kvp.Key, ref BlockChange.GetValueRefOrNullRef(kvp.Key), storageWriteBatch))
+                {
+                    writes++;
                 }
                 else
                 {
-                    skipped++;
+                    deferredDeletes.Add(kvp.Key);
                 }
             }
 

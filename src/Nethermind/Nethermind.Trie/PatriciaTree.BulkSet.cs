@@ -290,7 +290,7 @@ public partial class PatriciaTree
                     nonNullChildCount++;
 
                 if (node.IsSealed)
-                    node = node.Clone();
+                    node = node.Unseal();
 
                 node.SetChild(i, newChild);
             }
@@ -338,7 +338,7 @@ public partial class PatriciaTree
                     nonNullChildCount++;
 
                 if (node.IsSealed)
-                    node = node.Clone();
+                    node = node.Unseal();
 
                 node.SetChild(nib, newChild);
             }
