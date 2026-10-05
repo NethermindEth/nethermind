@@ -23,9 +23,12 @@ jobs:
           pip install emoji
 
       - name: Update config files
+        id: update
         run: python3 scripts/sync-settings.py -k ${{ secrets.ETHERSCAN_API_KEY }}
 
+      # Still open the PR for the chains that did update; the job stays red for the ones that did not.
       - name: Create GitHub app token
+        if: ${{ !cancelled() && steps.update.conclusion != 'skipped' }}
         id: gh-app
         uses: actions/create-github-app-token@v3
         with:
@@ -33,6 +36,7 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Create a pull request
+        if: ${{ !cancelled() && steps.update.conclusion != 'skipped' }}
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
