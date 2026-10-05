@@ -67,7 +67,6 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             // Crypto
             .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton<ITxSender>(NullTxSender.Instance)
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()

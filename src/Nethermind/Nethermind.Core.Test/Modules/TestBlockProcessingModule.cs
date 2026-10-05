@@ -10,17 +10,12 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
 public class TestBlockProcessingModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
-            .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
-
-            .AddSingleton<ITxPool, TxPool.TxPool>()
-
             // Seems to be only used by block producer.
             .AddScoped<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
             .AddScoped<IComparer<Transaction>, ITransactionComparerProvider>(txComparer => txComparer.GetDefaultComparer())
