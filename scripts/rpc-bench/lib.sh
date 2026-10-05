@@ -502,12 +502,22 @@ rpc_head() {
   rpc_post "$1" '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null | jq -r '.result // empty' 2>/dev/null || true
 }
 
+node_container_is_running() {
+  if [[ "$1" =~ ^[0-9a-f]{64}$ ]]; then
+    local state
+    state="$(docker container inspect --format '{{.Id}} {{.State.Running}}' "$1" 2>/dev/null)" || return 1
+    [[ "$state" == "$1 true" ]]
+  else
+    docker ps --format '{{.Names}}' | grep -qx "$1"
+  fi
+}
+
 # Block until the node serves a non-genesis eth_blockNumber. $1=url, $2=timeout s, $3=container.
 wait_for_rpc() {
   local url="$1" timeout="${2:-1800}" container="${3:-}" elapsed=0 interval=5 head
   log "Waiting for JSON-RPC at $url (timeout ${timeout}s)..."
   while true; do
-    if [[ -n "$container" ]] && ! docker ps --format '{{.Names}}' | grep -qx "$container"; then
+    if [[ -n "$container" ]] && ! node_container_is_running "$container"; then
       docker logs "$container" 2>&1 | tail -n 100 || true
       die "node container died before serving JSON-RPC"
     fi
