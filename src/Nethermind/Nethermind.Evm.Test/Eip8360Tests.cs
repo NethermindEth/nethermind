@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -17,6 +22,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -481,21 +487,138 @@ public class Eip8360Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Trace_module_reports_a_tcreate_action()
+    public void Trace_module_reports_a_tcreate_action_and_a_balance_only_state_diff([Values(0, 5)] int endowment)
     {
-        InstallCode(Factory, TCreateAndStore(EmptyInit, 0));
+        Address tcreated = InstallTracedFactory(endowment);
         (Block block, Transaction tx) = BuildFactoryCall();
-        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace);
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
 
         ExecuteFactoryCall(block, tx, tracer);
 
-        ParityTraceAction create = tracer.BuildResult().Action!.Subtraces[0];
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        ParityTraceAction create = trace.Action!.Subtraces[0];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(create.CallType, Is.EqualTo("create"));
             Assert.That(create.CreationMethod, Is.EqualTo("tcreate"));
-            Assert.That(create.To, Is.EqualTo(TCreateAddress(Factory, EmptyInit)));
+            Assert.That(create.To, Is.EqualTo(tcreated));
+            Assert.That(create.Result!.Address, Is.EqualTo(tcreated));
+            if (endowment == 0)
+            {
+                Assert.That(trace.StateChanges!.ContainsKey(tcreated), Is.False, "the wiped account leaves no state");
+            }
+            else
+            {
+                Assert.That(JsonSerializer.Serialize(trace.StateChanges![tcreated], EthereumJsonSerializer.JsonOptions),
+                    Is.EqualTo($$$"""{"balance":{"+":"0x{{{endowment:x}}}"},"code":{"+":"0x"},"nonce":{"+":"0x0"},"storage":{}}"""),
+                    "born with the balance only");
+            }
         }
+    }
+
+    [Test]
+    public void Call_tracer_reports_a_tcreate_frame([Values(0, 5)] int endowment)
+    {
+        Address tcreated = InstallTracedFactory(endowment);
+        (Block block, Transaction tx) = BuildFactoryCall();
+        using NativeCallTracer tracer = new(tx, EnabledSpec, GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer });
+
+        ExecuteFactoryCall(block, tx, tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        string json = JsonSerializer.Serialize(trace.CustomTracerResult!.Value, EthereumJsonSerializer.JsonOptions);
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement create = document.RootElement.GetProperty("calls")[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(create.GetProperty("type").GetString(), Is.EqualTo("TCREATE"));
+            Assert.That(create.GetProperty("to").GetString(), Is.EqualTo(tcreated.ToString()));
+            Assert.That(create.GetProperty("value").GetString(), Is.EqualTo($"0x{endowment:x}"));
+        }
+    }
+
+    [Test]
+    public void Prestate_tracer_shows_the_wipe_and_no_transient_storage([Values(0, 5)] int endowment, [Values] bool diffMode)
+    {
+        Address tcreated = InstallTracedFactory(endowment);
+        (Block block, Transaction tx) = BuildFactoryCall();
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = NativePrestateTracer.PrestateTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>(diffMode ? """{"diffMode":true}""" : """{"diffMode":false}""")
+        };
+        using NativePrestateTracer tracer = new(TestState, options, tx.Hash, Sender, Factory, block.Beneficiary, tx);
+
+        ExecuteFactoryCall(block, tx, tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            if (diffMode)
+            {
+                NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)trace.CustomTracerResult!.Value;
+                Assert.That(diff.pre.ContainsKey(tcreated), Is.False, "the account was created by the transaction");
+                Assert.That(diff.post.TryGetValue(tcreated, out NativePrestateTracerAccount? post), Is.EqualTo(endowment != 0));
+                if (endowment != 0)
+                {
+                    Assert.That(post!.Balance, Is.EqualTo((UInt256?)(UInt256)endowment));
+                    Assert.That(post.Nonce, Is.Null, "the nonce is reset");
+                    Assert.That(post.Code.IsEmpty, Is.True, "the code is removed");
+                    Assert.That(post.Storage, Is.Null);
+                }
+            }
+            else
+            {
+                Dictionary<AddressAsKey, NativePrestateTracerAccount> prestate = (Dictionary<AddressAsKey, NativePrestateTracerAccount>)trace.CustomTracerResult!.Value;
+                Assert.That(prestate[tcreated].Storage, Is.Null, "SSTORE and SLOAD of a TCREATE account read no state");
+                Assert.That(prestate[Factory].Storage, Is.Not.Null, "the factory's own slots are still captured");
+            }
+        }
+    }
+
+    [TestCase(0, 0)]
+    [TestCase(5, 0)]
+    [TestCase(5, 5)]
+    public void Estimated_gas_covers_the_balance_tables(int endowment, int sentOut)
+    {
+        // Draining the endowment refills its state gas, so the peak exceeds the gas used.
+        byte[] init = sentOut == 0 ? EmptyInit : Prepare.EvmCode.CallWithValue(Sink, CallGas, (UInt256)sentOut).Op(Instruction.POP).STOP().Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        InstallCode(Factory, HaltIfZero(Prepare.EvmCode.TCreate(init, Salt, (UInt256)endowment).Done), 100);
+        (Block block, Transaction tx) = BuildFactoryCall();
+        BlockExecutionContext context = new(block.Header, Spec);
+
+        GasEstimation estimation = new GasEstimator(_processor, TestState).Estimate(tx, context, errorMargin: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(estimation.Error, Is.Null);
+            Assert.That(CallWithGasLimit(estimation.Gas, context), Is.EqualTo(StatusCode.Success));
+            Assert.That(CallWithGasLimit(estimation.Gas - 1, context), Is.EqualTo(StatusCode.Failure));
+            Assert.That(TestState.AccountExists(tcreated), Is.False, "estimation leaves no state behind");
+        }
+    }
+
+    private Address InstallTracedFactory(int endowment)
+    {
+        byte[] init = Prepare.EvmCode.SSTORE(0, [7]).PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP)
+            .ForInitOf(ReturnWord(Prepare.EvmCode.PushData(42))).Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        InstallCode(Factory, Prepare.EvmCode
+            .Data(TCreateAndStore(init, (UInt256)endowment))
+            .Data(CallAndStoreWord(tcreated, UInt256.Zero, slot: 1))
+            .STOP()
+            .Done, 100);
+        return tcreated;
+    }
+
+    private byte CallWithGasLimit(ulong gasLimit, in BlockExecutionContext context)
+    {
+        Transaction tx = Build.A.Transaction.WithTo(Factory).WithGasLimit(gasLimit).WithNonce(TestState.GetNonce(Sender))
+            .SignedAndResolved(_ecdsa, SenderKey).TestObject;
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.CallAndRestore(tx, context, tracer);
+        return tracer.StatusCode;
     }
 
     private static Address TCreateAddress(Address deployer, byte[] init) => ContractAddress.FromTransientCreate(deployer, Salt, init);

@@ -33,6 +33,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
     private readonly HashSet<AddressAsKey> _deletedAccounts;
+    // EIP-8360: storage opcodes of these accounts act on transient storage, so they read no state.
+    private HashSet<AddressAsKey>? _transientCreates;
     private readonly bool _diffMode;
 
     public NativePrestateTracer(
@@ -189,7 +191,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         {
             case Instruction.SLOAD:
             case Instruction.SSTORE:
-                if (stackLen >= 1)
+                if (stackLen >= 1 && _transientCreates?.Contains(_executingAccount!) != true)
                 {
                     UInt256 index = stack.PeekUInt256(0);
                     LookupStorage(_executingAccount!, index);
@@ -234,6 +236,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                         LookupAccount(address);
                         if (_diffMode)
                             _createdAccounts.Add(address);
+                        if (_op == Instruction.TCREATE)
+                            (_transientCreates ??= []).Add(address);
                     }
                     catch
                     {
