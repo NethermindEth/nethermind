@@ -33,6 +33,24 @@ public class OperationsTests
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(OperationCase testCase) => Execute(testCase);
 
+    /// <summary>Runs required successful-operation vectors independently of the full Mainnet suite opt-in.</summary>
+    [TestCase("fulu", "bls_to_execution_change", "success")]
+    [TestCase("gloas", "bls_to_execution_change", "success")]
+    [TestCase("fulu", "voluntary_exit", "basic")]
+    [TestCase("gloas", "voluntary_exit", "basic")]
+    [TestCase("fulu", "proposer_slashing", "basic")]
+    [TestCase("gloas", "proposer_slashing", "basic")]
+    public void Required_successful_operation_contract(string fork, string operation, string name)
+    {
+        string path = Path.Combine(ConsensusSpecArchive.GetRoot(ConsensusPreset.Mainnet),
+            "tests", "mainnet", fork, "operations", operation, "pyspec_tests", name);
+        string operand = operation == "bls_to_execution_change" ? "address_change.ssz_snappy" : $"{operation}.ssz_snappy";
+        foreach (string file in new[] { "pre.ssz_snappy", "post.ssz_snappy", operand })
+            Assert.That(File.Exists(Path.Combine(path, file)), Is.True, $"mandatory positive vector is missing {file}");
+        Assert.That(() => Run(new OperationCase(nameof(ConsensusPreset.Mainnet), fork, operation, path,
+            $"mainnet/{fork}/operations/{operation}/pyspec_tests/{name}")), Throws.Nothing);
+    }
+
     /// <summary>Handlers of a fork's table that the fork has no vectors for at <see cref="ConsensusSpecArchive.Version"/>.</summary>
     private static readonly Dictionary<string, string[]> OperationsAbsentByFork = new(StringComparer.Ordinal)
     {

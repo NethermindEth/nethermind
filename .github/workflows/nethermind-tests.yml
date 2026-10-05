@@ -472,8 +472,8 @@ jobs:
         project:
           - Ethereum.ConsensusSpec.Test
     env:
-      # The mainnet preset is ~900 MB compressed and several GB extracted, so pull requests run the
-      # minimal preset only and pushes cover both.
+      # The mainnet preset is ~900 MB compressed and several GB extracted. Pull requests run minimal
+      # plus the six mandatory mainnet operation cases; pushes enumerate both full suites.
       NETHERMIND_CONSENSUS_SPEC_MAINNET: ${{ github.event_name == 'push' && '1' || '' }}
     steps:
       - name: Check out repository

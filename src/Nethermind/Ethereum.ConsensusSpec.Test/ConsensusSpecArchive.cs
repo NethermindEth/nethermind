@@ -38,9 +38,9 @@ public static class ConsensusSpecArchive
     public const string Version = "v1.7.0-beta.2";
 
     /// <summary>
-    /// Set NETHERMIND_CONSENSUS_SPEC_MAINNET=1 to include the mainnet-preset vectors. Off by default:
-    /// mainnet.tar.gz is on the order of 900 MB compressed and several GB decompressed even before
-    /// selective extraction, which is too slow for a default `dotnet test` run.
+    /// Set NETHERMIND_CONSENSUS_SPEC_MAINNET=1 to enumerate the full mainnet-preset suites. Six required
+    /// successful operation cases run regardless. mainnet.tar.gz is on the order of 900 MB compressed
+    /// and several GB decompressed even before selective extraction.
     /// </summary>
     public static bool MainnetEnabled { get; } =
         Environment.GetEnvironmentVariable("NETHERMIND_CONSENSUS_SPEC_MAINNET") == "1";
