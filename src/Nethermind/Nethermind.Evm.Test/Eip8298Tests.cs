@@ -14,6 +14,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -29,8 +30,8 @@ public class Eip8298Tests : VirtualMachineTestsBase
     private bool _eip8298Enabled = true;
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
-    protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
-    protected override ISpecProvider SpecProvider => new TestSpecProvider(new Amsterdam { IsEip8298Enabled = _eip8298Enabled });
+    protected override ulong Timestamp => MainnetSpecProvider.BogotaBlockTimestamp;
+    protected override ISpecProvider SpecProvider => new TestSpecProvider(new OverridableReleaseSpec(Bogota.Instance) { IsEip8298Enabled = _eip8298Enabled });
 
     // Disable access tracing so cold/warm account access is charged per EIP-2929
     // (the default tracer pre-warms accesses, masking the cold cost in gas assertions).
@@ -240,18 +241,43 @@ public class Eip8298Tests : VirtualMachineTestsBase
     public void Initcode_AdoptedCode_TracedAsSuccessfulCreation(CreationKind kind)
     {
         DeploySource();
-        byte[] initCode = AdoptingInitCode(0xef, 32);
+
+        ParityTraceAction creation = TraceCreation(kind, AdoptingInitCode(0xef, 32), 0);
+
+        Assert.That(creation.Error, Is.Null);
+        Assert.That(creation.Result!.Code, Is.EqualTo(SourceCode));
+    }
+
+    [TestCase(CreationKind.Transaction)]
+    [TestCase(CreationKind.Create)]
+    public void Creation_WithoutSetCodeFrom_TracedTheSameWithEip8298Off(CreationKind kind)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(SourceCode).Done;
+
+        ParityTraceAction enabled = TraceCreation(kind, initCode, 0);
+        _eip8298Enabled = false;
+        ParityTraceAction disabled = TraceCreation(kind, initCode, 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enabled.Result!.Code, Is.EqualTo(SourceCode), "enabled code");
+            Assert.That(disabled.Result!.Code, Is.EqualTo(SourceCode), "disabled code");
+            Assert.That(enabled.Result.GasUsed, Is.EqualTo(disabled.Result.GasUsed), "gas");
+        }
+    }
+
+    private ParityTraceAction TraceCreation(CreationKind kind, byte[] initCode, int run)
+    {
+        SenderRecipientAndMiner accounts = new() { SenderKey = run == 0 ? TestItem.PrivateKeyA : TestItem.PrivateKeyF };
         (Block block, Transaction tx) = kind == CreationKind.Transaction
-            ? PrepareInitTx(Activation, 1_000_000, initCode)
+            ? PrepareInitTx(Activation, 1_000_000, initCode, accounts)
             : PrepareTx(Activation, 1_000_000, Prepare.EvmCode.Create(initCode, 0).STOP().Done);
         ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace);
 
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         ParityTraceAction action = tracer.BuildResult().Action!;
-        ParityTraceAction creation = kind == CreationKind.Transaction ? action : action.Subtraces[0];
-        Assert.That(creation.Error, Is.Null);
-        Assert.That(creation.Result!.Code, Is.EqualTo(SourceCode));
+        return kind == CreationKind.Transaction ? action : action.Subtraces[0];
     }
 
     // Creation completion only consults EIP-8298 once SETCODEFROM has run, so plain creations must not change.
@@ -368,8 +394,8 @@ public class Eip8298Tests : VirtualMachineTestsBase
     public class Eip8298DisabledTests : VirtualMachineTestsBase
     {
         protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
-        protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
-        protected override ISpecProvider SpecProvider => new TestSpecProvider(new Amsterdam { IsEip8298Enabled = false });
+        protected override ulong Timestamp => MainnetSpecProvider.BogotaBlockTimestamp;
+        protected override ISpecProvider SpecProvider => new TestSpecProvider(Bogota.Instance);
 
         [Test]
         public void Opcode_WhenDisabled_Fails()

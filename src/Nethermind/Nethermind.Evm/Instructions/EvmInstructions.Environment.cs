@@ -675,8 +675,8 @@ public static partial class EvmInstructions
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, source)) goto OutOfGas;
 
         // Valid source: exists, has code, and that code is regular deployed code (not 0xEF-prefixed per EIP-3541/7702).
+        // A missing account reads as the empty code hash, so the code check also covers existence.
         IWorldState state = vm.WorldState;
-        if (!state.AccountExists(source)) goto InvalidSource;
         ValueHash256 codeHash = state.GetCodeHash(source);
         if (codeHash == ValueKeccak.OfAnEmptyString) goto InvalidSource;
         // The repository resolves a precompile address to the precompile rather than to the code held in state.
