@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Threading;
 
@@ -18,11 +19,11 @@ internal static partial class Eip2537
     /// <summary>
     /// Runs <paramref name="decoder"/> for every index in [0, <paramref name="count"/>), stopping early once one fails.
     /// </summary>
-    /// <returns>A failure if any item failed to decode, otherwise <see cref="Result.Success"/>.</returns>
+    /// <returns>The failure of the lowest index that failed to decode, otherwise <see cref="Result.Success"/>.</returns>
     /// <remarks>
     /// Items are decoded within a worker budget: the caller decodes too and never waits for a helper that has not
     /// started, so a call cannot stall when the thread pool is saturated (for example by block prewarming).
-    /// Which failure is returned when several items fail is unspecified.
+    /// The failure reported is the one decoding the items in order meets first, whatever order they run in.
     /// </remarks>
     internal static Result DecodeAll<TDecoder>(int count, TDecoder decoder) where TDecoder : struct, IItemDecoder
     {
@@ -54,14 +55,26 @@ internal static partial class Eip2537
 
     private sealed class DecodeAllState<TDecoder>(TDecoder decoder) where TDecoder : struct, IItemDecoder
     {
+        private readonly Lock _lock = new();
+        private int _failedIndex = int.MaxValue;
+
         public Result Result { get; private set; } = Result.Success;
 
         public void Decode(int index)
         {
-            if (!Result) return;
+            // an item after a known failure cannot change which failure is reported
+            if (index > Volatile.Read(ref _failedIndex)) return;
             Result local = decoder.Decode(index);
-            // racy but safe: workers only ever store a failure, so the result after the barrier fails iff any item did
-            if (!local) Result = local;
+            if (local) return;
+
+            lock (_lock)
+            {
+                if (index < _failedIndex)
+                {
+                    Result = local;
+                    Volatile.Write(ref _failedIndex, index);
+                }
+            }
         }
     }
 }

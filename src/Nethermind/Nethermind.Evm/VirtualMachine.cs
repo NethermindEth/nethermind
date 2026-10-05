@@ -1430,7 +1430,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(precompile, output.Error)
+                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(output.Error)
             };
         }
         catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
@@ -1464,9 +1464,9 @@ public partial class VirtualMachine<TGasPolicy>(
         _ => throw new ArgumentOutOfRangeException(nameof(exception)),
     };
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    protected static string GetErrorString(IPrecompile precompile, string? error)
-        => $"Precompile {precompile.Name} failed with error: {error}";
+    /// <summary>The error of a call whose precompile rejected its input: the precompile's own reason, as go-ethereum reports it.</summary>
+    protected static string GetErrorString(string? error)
+        => error ?? EvmExceptionType.PrecompileFailure.GetEvmExceptionDescription()!;
 
     /// <summary>
     /// Executes an EVM call by preparing the execution environment, including account balance adjustments,

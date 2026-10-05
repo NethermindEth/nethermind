@@ -95,7 +95,7 @@ public class TaikoVirtualMachine(
                     exceptionType: EvmExceptionType.PrecompileFailure
                 )
                 {
-                    SubstateError = GetErrorString(precompile, output.Error)
+                    SubstateError = GetErrorString(output.Error)
                 };
             }
 
