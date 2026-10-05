@@ -20,10 +20,9 @@ namespace Nethermind.BeaconChain.Test.Types;
 // Independent roots: ethereum/ssz-specs using spec-declared fields, not production encoders. Named-field/root cases come from original consensus-spec ssz_static fixtures. Body round-trip alone is not an independent oracle.
 public class GloasContainerTests
 {
-    [Test]
-    public void Builder_hash_tree_root_matches_an_independently_computed_value()
+    private static IEnumerable<TestCaseData> IndependentRootCases()
     {
-        Builder builder = new()
+        yield return new TestCaseData((Action)(() => AssertRoundTripsAndMatchesRoot(new Builder
         {
             Pubkey = Pubkey(0xA0),
             Version = 0,
@@ -31,28 +30,16 @@ public class GloasContainerTests
             Balance = 32_000_000_000,
             DepositEpoch = 500_000,
             WithdrawableEpoch = ulong.MaxValue,
-        };
+        }, "0x85b4caa9007afd4605ad383f45294c3efb78ae4ce35348da60ead199ae166463"))).SetName("Builder_hash_tree_root_matches_an_independently_computed_value");
 
-        AssertRoundTripsAndMatchesRoot(builder, "0x85b4caa9007afd4605ad383f45294c3efb78ae4ce35348da60ead199ae166463");
-    }
-
-    [Test]
-    public void BuilderPendingWithdrawal_hash_tree_root_matches_an_independently_computed_value()
-    {
-        BuilderPendingWithdrawal withdrawal = new()
+        yield return new TestCaseData((Action)(() => AssertRoundTripsAndMatchesRoot(new BuilderPendingWithdrawal
         {
             FeeRecipient = new Address(Filled(Address.Size, 0xB0)),
             Amount = 1_000_000_000,
             BuilderIndex = 7,
-        };
+        }, "0x807a2c0b918f9fdeaa0d8f84cc7b87aa441c8091c7b07abe50f81fc0a99bfbd6"))).SetName("BuilderPendingWithdrawal_hash_tree_root_matches_an_independently_computed_value");
 
-        AssertRoundTripsAndMatchesRoot(withdrawal, "0x807a2c0b918f9fdeaa0d8f84cc7b87aa441c8091c7b07abe50f81fc0a99bfbd6");
-    }
-
-    [Test]
-    public void BuilderPendingPayment_hash_tree_root_matches_an_independently_computed_value()
-    {
-        BuilderPendingPayment payment = new()
+        yield return new TestCaseData((Action)(() => AssertRoundTripsAndMatchesRoot(new BuilderPendingPayment
         {
             Weight = 123_456,
             Withdrawal = new BuilderPendingWithdrawal
@@ -62,55 +49,31 @@ public class GloasContainerTests
                 BuilderIndex = 7,
             },
             ProposerIndex = 42,
-        };
+        }, "0xfea1afeaba53f8ec3224a442a92ff2963fca55f27377fb0d3bfbc4d876c09469"))).SetName("BuilderPendingPayment_hash_tree_root_matches_an_independently_computed_value");
 
-        AssertRoundTripsAndMatchesRoot(payment, "0xfea1afeaba53f8ec3224a442a92ff2963fca55f27377fb0d3bfbc4d876c09469");
-    }
-
-    [Test]
-    public void BuilderDepositRequest_hash_tree_root_matches_an_independently_computed_value()
-    {
-        BuilderDepositRequest request = new()
+        yield return new TestCaseData((Action)(() => AssertRoundTripsAndMatchesRoot(new BuilderDepositRequest
         {
             Pubkey = Pubkey(0xC0),
             WithdrawalCredentials = Hash(0xC1),
             Amount = 32_000_000_000,
             Signature = Signature(0xC2),
-        };
+        }, "0x9583b5073b93f6c43168ee4d30fb805338b6616184f318d9b5acd291ccccb4e5"))).SetName("BuilderDepositRequest_hash_tree_root_matches_an_independently_computed_value");
 
-        AssertRoundTripsAndMatchesRoot(request, "0x9583b5073b93f6c43168ee4d30fb805338b6616184f318d9b5acd291ccccb4e5");
-    }
-
-    [Test]
-    public void BuilderExitRequest_hash_tree_root_matches_an_independently_computed_value()
-    {
-        BuilderExitRequest request = new()
+        yield return new TestCaseData((Action)(() => AssertRoundTripsAndMatchesRoot(new BuilderExitRequest
         {
             SourceAddress = new Address(Filled(Address.Size, 0xD0)),
             Pubkey = Pubkey(0xD1),
-        };
+        }, "0xff55245250859ea9c1cc7a15a196a9bc37b1ee348fb71b6ae1c51d40eaa1feb0"))).SetName("BuilderExitRequest_hash_tree_root_matches_an_independently_computed_value");
 
-        AssertRoundTripsAndMatchesRoot(request, "0xff55245250859ea9c1cc7a15a196a9bc37b1ee348fb71b6ae1c51d40eaa1feb0");
-    }
-
-    [Test]
-    public void PayloadAttestationData_hash_tree_root_matches_an_independently_computed_value()
-    {
-        PayloadAttestationData data = new()
+        yield return new TestCaseData((Action)(() => AssertRoundTripsAndMatchesRoot(new PayloadAttestationData
         {
             BeaconBlockRoot = Hash(0xE0),
             Slot = 11_649_024,
             PayloadPresent = true,
             BlobDataAvailable = false,
-        };
+        }, "0xfadac1fabeb7d8313dc7cd07feb19348bda5a2d662454db338c7043cdc4e5226"))).SetName("PayloadAttestationData_hash_tree_root_matches_an_independently_computed_value");
 
-        AssertRoundTripsAndMatchesRoot(data, "0xfadac1fabeb7d8313dc7cd07feb19348bda5a2d662454db338c7043cdc4e5226");
-    }
-
-    [Test]
-    public void PayloadAttestationMessage_hash_tree_root_matches_an_independently_computed_value()
-    {
-        PayloadAttestationMessage message = new()
+        yield return new TestCaseData((Action)(() => AssertRoundTripsAndMatchesRoot(new PayloadAttestationMessage
         {
             ValidatorIndex = 17,
             Data = new PayloadAttestationData
@@ -121,14 +84,14 @@ public class GloasContainerTests
                 BlobDataAvailable = false,
             },
             Signature = Signature(0xE1),
-        };
+        }, "0xdddbeec88a8d1479ff53e12e675553f0bedbef6a503f8d43e1ce51f810e74c96"))).SetName("PayloadAttestationMessage_hash_tree_root_matches_an_independently_computed_value");
 
-        AssertRoundTripsAndMatchesRoot(message, "0xdddbeec88a8d1479ff53e12e675553f0bedbef6a503f8d43e1ce51f810e74c96");
+        yield return new TestCaseData((Action)(() => AssertRoundTripsAndMatchesRoot(new ExecutionPayloadBid(), "0x83b932ee5875c06aa35328e3c3e3c976c703f2f4b1bc98e32991ceabbb2e4b63")))
+            .SetName("ExecutionPayloadBid_all_default_hash_tree_root_matches_an_independently_computed_value");
     }
 
-    [Test]
-    public void ExecutionPayloadBid_all_default_hash_tree_root_matches_an_independently_computed_value() =>
-        AssertRoundTripsAndMatchesRoot(new ExecutionPayloadBid(), "0x83b932ee5875c06aa35328e3c3e3c976c703f2f4b1bc98e32991ceabbb2e4b63");
+    [TestCaseSource(nameof(IndependentRootCases))]
+    public void Container_hash_tree_root_matches_an_independently_computed_value(Action check) => check();
 
     [Test]
     public void ExecutionPayloadBid_with_values_round_trips_with_a_stable_root()
