@@ -26,7 +26,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
-/// <summary>The size, block, aggregate and attester slashing rules that return a verdict without beacon state.</summary>
 public partial class GossipRouterTests
 {
     private const int MaxSignedAggregateAndProofSizeGloas = 16829;
@@ -310,7 +309,6 @@ public partial class GossipRouterTests
         return stream.ToArray();
     }
 
-    /// <summary>Valid snappy of exactly <paramref name="compressedLength"/> bytes built from one-byte literals, in the short and the long tag form.</summary>
     private static byte[] SnappyOfExactLength(int compressedLength, out int uncompressedLength)
     {
         // A one-byte literal costs 2 bytes as tag 0x00 and 3 bytes as the long tag 0xF0 with a length byte.

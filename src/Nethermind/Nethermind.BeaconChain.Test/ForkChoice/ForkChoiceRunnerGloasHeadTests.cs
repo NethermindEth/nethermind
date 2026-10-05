@@ -15,40 +15,24 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// The Gloas <c>get_head</c> of <see cref="ForkChoiceRunner.GetHeadNode"/> (specs/gloas/fork-choice.md): the walk over PENDING,
-/// EMPTY and FULL nodes, <c>get_weight</c>, <c>get_payload_status_tiebreaker</c>, <c>should_extend_payload</c> and
-/// <c>should_apply_proposer_boost</c>.
-/// </summary>
 [HardTimeout(60_000)]
 public class ForkChoiceRunnerGloasHeadTests
 {
     public enum PayloadDecision
     {
-        /// <summary>The block is from the current slot, so the tiebreaker is the status itself and FULL outranks EMPTY.</summary>
         CurrentSlot,
 
-        /// <summary>The PTC voted the payload timely and its data available.</summary>
         PtcQuorum,
 
-        /// <summary>No block holds the proposer boost.</summary>
         NoBoost,
 
-        /// <summary>The boosted block builds on the block's FULL node.</summary>
         BoostBuildsOnFull,
 
-        /// <summary>The boosted block builds on the block's EMPTY node, and the PTC did not vote the payload timely: an EMPTY outcome.</summary>
         BoostBuildsOnEmpty,
 
-        /// <summary>As <see cref="BoostBuildsOnEmpty"/>, but the PTC voted the payload timely and its data unavailable: also EMPTY.</summary>
         PtcTimelyDataUnavailable,
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>get_payload_status_tiebreaker</c> and <c>should_extend_payload</c>: the EMPTY and FULL nodes of
-    /// a previous-slot block weigh nothing, so FULL is taken when the PTC saw a timely, available payload, when no boosted block
-    /// builds on this block's EMPTY node, and EMPTY otherwise. The head then continues into the children of the chosen node.
-    /// </summary>
     [Test]
     public void Payload_decision_of_a_verified_block_follows_should_extend_payload([Values] PayloadDecision decision)
     {
@@ -86,10 +70,6 @@ public class ForkChoiceRunnerGloasHeadTests
         Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(expected));
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>should_extend_payload</c>: a boosted block that is not a child of the previous-slot block says
-    /// nothing about its payload, so the payload is extended even though that boosted block builds on its own parent's EMPTY node.
-    /// </summary>
     [Test]
     public void Payload_decision_ignores_a_boosted_block_on_another_parent()
     {
@@ -100,7 +80,6 @@ public class ForkChoiceRunnerGloasHeadTests
         GloasForkChoiceHarness.Block decided = harness.Child(first, first.Slot + 1, full: false, 0xC1);
         harness.Import(decided);
         harness.Runner.OnExecutionPayloadVerified(decided.Root);
-        // The committee's votes keep the head on the decided block against its boosted sibling.
         harness.CommitteeVotes(decided, decided.Slot, index: 0);
 
         harness.TickTo(decided.Slot + 1);
@@ -111,11 +90,6 @@ public class ForkChoiceRunnerGloasHeadTests
         Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(decided.Root, ForkChoicePayloadStatus.Full)));
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>get_weight</c>: an EMPTY or FULL node of the previous slot's block weighs zero, so the votes
-    /// for its EMPTY node cannot outweigh the tiebreaker, which extends the payload here. A slot later the same votes decide by weight.
-    /// The PENDING node keeps them either way.
-    /// </summary>
     [Test]
     public void Payload_nodes_of_the_previous_slot_weigh_nothing([Values] bool previousSlot)
     {
@@ -138,24 +112,15 @@ public class ForkChoiceRunnerGloasHeadTests
     {
         NoEquivocation,
 
-        /// <summary>The parent's proposer published a second block for the parent's slot 8 s in, before the 9 s PTC deadline.</summary>
         EquivocationBeforePtcDeadline,
 
-        /// <summary>The second block arrived at 9 s, at the PTC deadline and so not PTC-timely.</summary>
         EquivocationAtPtcDeadline,
 
-        /// <summary>The equivocating parent holds a committee's votes, so it is not weak.</summary>
         EquivocationWithStrongParent,
 
-        /// <summary>The boosted block is two slots after its equivocating parent.</summary>
         EquivocationWithParentTwoSlotsBack,
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>should_apply_proposer_boost</c> and <c>record_block_timeliness</c>: the boost counts unless the
-    /// boosted block's parent is from the previous slot, is weak, and its proposer published another block for that slot before the
-    /// PTC deadline. The boosted block has no votes, so its PENDING weight is the proposer score exactly when the boost applies.
-    /// </summary>
     [Test]
     public void Proposer_boost_is_withheld_only_after_an_early_equivocation_by_a_weak_previous_slot_parent([Values] BoostCase boostCase)
     {
@@ -194,17 +159,12 @@ public class ForkChoiceRunnerGloasHeadTests
         ulong parentVotes = boostCase == BoostCase.EquivocationWithStrongParent ? GloasForkChoiceHarness.CommitteeWeight : 0;
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(boost));
-        // is_ancestor: the boost reaches the payload nodes the boosted block descends through, never its own or those off the path.
         Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Empty)), Is.Zero);
         Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Full)), Is.Zero);
         Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Empty)), Is.EqualTo(parentVotes + boost));
         Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Full)), Is.Zero);
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>should_apply_proposer_boost</c> reads the proposer of the boosted block's parent, and
-    /// <c>get_forkchoice_store</c> records the anchor's. A boosted child of a weak Gloas anchor keeps its boost.
-    /// </summary>
     [Test]
     public void A_boosted_child_of_a_weak_gloas_anchor_keeps_its_boost()
     {
@@ -218,11 +178,6 @@ public class ForkChoiceRunnerGloasHeadTests
         Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(child.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(GloasForkChoiceHarness.ProposerScore));
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>should_apply_proposer_boost</c> reads the proposer of the boosted block's parent, which can be
-    /// the finalized block itself. Pruning drops proposer records by slot, but a block still in the tree keeps its own, so a weak
-    /// finalized parent neither stalls the head nor loses the boost of its child.
-    /// </summary>
     [Test]
     public void A_boosted_child_of_the_finalized_block_keeps_its_boost_after_pruning()
     {
@@ -245,11 +200,6 @@ public class ForkChoiceRunnerGloasHeadTests
         Assert.That(harness.Runner.GetWeight(new ForkChoiceNode(child.Root, ForkChoicePayloadStatus.Pending)), Is.EqualTo(GloasForkChoiceHarness.ProposerScore));
     }
 
-    /// <summary>
-    /// The spec's <c>store.block_timeliness</c> is never pruned, so a PTC-timely proposal on a fork that finality left behind still
-    /// makes the parent's proposer an early equivocator, and the boost stays withheld, until finality passes that fork block's slot.
-    /// The fork block (slot 321) is imported before the finalized block (slot 320), so the proto-array's prune removes it.
-    /// </summary>
     [Test]
     public void A_pruned_fork_block_still_withholds_the_boost_until_finality_passes_its_slot()
     {
@@ -296,10 +246,6 @@ public class ForkChoiceRunnerGloasHeadTests
         Assert.That(harness.Runner.GetWeight(boostedNode), Is.Zero);
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>get_head</c>: among children of equal weight the greater root wins. Two late siblings with no
-    /// votes and no boost weigh the same.
-    /// </summary>
     [Test]
     public void Equal_weight_siblings_are_decided_by_the_greater_root()
     {
@@ -317,11 +263,6 @@ public class ForkChoiceRunnerGloasHeadTests
         Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(greater, ForkChoicePayloadStatus.Empty)));
     }
 
-    /// <summary>
-    /// specs/phase0/fork-choice.md <c>filter_block_tree</c>: once the first Gloas block is justified, a leaf whose voting source
-    /// is still the genesis epoch is not viable, so the head skips it for the vote-less justifying chain however heavy it is.
-    /// A stale block whose only child is such a leaf is dropped too, since no descendant of it is viable.
-    /// </summary>
     [Test]
     public void A_subtree_with_a_stale_voting_source_is_not_the_head([Values] bool staleHasChild)
     {
@@ -348,11 +289,6 @@ public class ForkChoiceRunnerGloasHeadTests
         Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(chain.Voting[^1].Root, ForkChoicePayloadStatus.Empty)));
     }
 
-    /// <summary>
-    /// The Gloas <c>get_head</c> starts at <c>GLOAS_FORK_EPOCH</c>. In the last slot before it the Fulu <c>get_head</c> counts the
-    /// proposer boost (specs/phase0/fork-choice.md <c>get_weight</c>) where Gloas <c>should_apply_proposer_boost</c> would withhold it:
-    /// the boosted block's parent is weak and its proposer equivocated before the PTC deadline.
-    /// </summary>
     [Test]
     public void The_last_pre_gloas_slot_keeps_the_fulu_proposer_boost()
     {
@@ -361,7 +297,6 @@ public class ForkChoiceRunnerGloasHeadTests
         ulong boostedSlot = spec.SlotsPerEpoch - 1;
         ForkChoiceRunner runner = new(spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
         UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, boostedSlot - 1, 0xA1);
-        // Validator 0 proposes every slot, so this is the parent's proposer equivocating; its root wins an equal-weight tie.
         UnsignedChain.ChainBlock equivocation = Enumerable.Range(0xB1, 16)
             .Select(fill => chain.Extend(chain.AnchorRoot, boostedSlot - 1, (byte)fill))
             .First(block => block.Root.CompareTo(parent.Root) > 0);
@@ -378,11 +313,6 @@ public class ForkChoiceRunnerGloasHeadTests
         Assert.That(runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(boosted.Root, ForkChoicePayloadStatus.Empty)));
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>get_node_children</c>: a pre-Gloas block is never in <c>store.payloads</c>, so as the head it is
-    /// its EMPTY node, before the fork (the Fulu <c>get_head</c>) and after it. A FULL head would lead attesters to an index-1 vote
-    /// that <c>validate_on_attestation</c> refuses.
-    /// </summary>
     [Test]
     public void A_pre_gloas_head_is_its_empty_node_on_both_sides_of_the_fork([Values] bool afterFork)
     {
@@ -392,11 +322,6 @@ public class ForkChoiceRunnerGloasHeadTests
         Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(harness.Chain.AnchorRoot, ForkChoicePayloadStatus.Empty)));
     }
 
-    /// <summary>
-    /// specs/phase0/fork-choice.md <c>filter_block_tree</c> with specs/bellatrix/optimistic-sync.md: an invalidated block leaves the
-    /// tree, so a parent whose only child was invalidated is a leaf again and heads the chain, rather than dropping out as a parent
-    /// of no viable branch.
-    /// </summary>
     [Test]
     public void A_block_whose_only_child_is_invalid_is_a_viable_leaf()
     {

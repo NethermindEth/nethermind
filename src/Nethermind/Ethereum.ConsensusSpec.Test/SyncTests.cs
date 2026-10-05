@@ -7,11 +7,7 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>sync</c> suite, which reuses the fork_choice format with on_payload_info steps
-/// (tests/formats/sync/README.md), through <see cref="ForkChoiceStepDriver"/>. Fulu only, and mainnet-preset only for
-/// the same reason as <see cref="ForkChoiceTests"/>.
-/// </summary>
+/// <remarks>Mainnet only; minimal state decoding is unsupported as in <see cref="ForkChoiceTests"/>.</remarks>
 [TestFixture]
 public class SyncTests
 {
@@ -20,14 +16,10 @@ public class SyncTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(ForkChoiceCase testCase) => Execute(testCase);
-
-    // A wrong suite path or an emptied case source enumerates zero vectors, and zero vectors run green.
     [Test]
     public void Every_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset) =>
         Assert.That(FuluDriverSupport.TestedCases<ForkChoiceCase>(preset, MinimalCases, MainnetCases).Select(static testCase => testCase.VectorName.Split('/')[3]).Distinct(),
             Is.EquivalentTo(new[] { "optimistic" }));
-
-    // Not-implemented vectors are Inconclusive, so a driver that reports every mainnet vector that way still runs green.
     [Test]
     public void Every_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(

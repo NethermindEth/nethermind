@@ -26,7 +26,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>Loopback beacon nodes on one fork, for tests that drive real libp2p sessions between them.</summary>
 internal static class PeerSessionNodes
 {
     private const ulong AnchorSlot = 13_410_304;
@@ -47,8 +46,6 @@ internal static class PeerSessionNodes
         EarliestAvailableSlot = AnchorSlot,
     };
 
-    /// <param name="served">What the node answers <c>status</c> with; defaults to its own holder.</param>
-    /// <param name="privateKey">The node's secp256k1 libp2p key; a fresh one by default.</param>
     public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null, Lazy<IBeaconSyncPeerPool>? peerPool = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
@@ -64,8 +61,7 @@ internal static class PeerSessionNodes
         return new Node(p2p, statusHolder, config);
     }
 
-    /// <summary>Dials <paramref name="to"/> from <paramref name="from"/> once and returns when both nodes finished identify on the session.</summary>
-    /// <remarks>Both sides open an identify stream as the session starts, so the dial also proves the multiplexer keeps both streams.</remarks>
+    // Both sides open identify streams as the session starts, exercising multiplexer stream retention.
     public static async Task<ISession> DialAsync(BeaconP2P from, BeaconP2P to, CancellationToken token)
     {
         ISession session = await from.DialPeerAsync(LoopbackAddress(to), token);
@@ -77,7 +73,6 @@ internal static class PeerSessionNodes
         return session;
     }
 
-    /// <summary>Dials <paramref name="server"/> from a plain peer once and returns when the server finished identify on the session.</summary>
     public static async Task<ISession> DialFromPlainPeerAsync(ILocalPeer requester, BeaconP2P server, CancellationToken token)
     {
         ISession session = await requester.DialAsync(LoopbackAddress(server), token).WaitAsync(token);
@@ -89,8 +84,7 @@ internal static class PeerSessionNodes
         return session;
     }
 
-    /// <summary>Dials <paramref name="to"/>, which refuses the session, from <paramref name="from"/>; the dial's own outcome is not checked.</summary>
-    /// <remarks>A dial ends only after the dialer's own identify, so the refusing node can already have closed the session and failed the dial.</remarks>
+    // The refusing node may close the session before the dialer finishes identify, failing the dial.
     public static async Task DialToBeRefusedAsync(BeaconP2P from, BeaconP2P to, CancellationToken token)
     {
         try
@@ -102,7 +96,6 @@ internal static class PeerSessionNodes
         }
     }
 
-    /// <summary>Whether <paramref name="node"/> holds a session with <paramref name="peerId"/> whose identify completed, waiting for it to end.</summary>
     private static async Task<bool> HasIdentifiedSessionAsync(BeaconP2P node, PeerId peerId, CancellationToken token)
     {
         if (SessionWith(node, peerId) is not { } session)
@@ -149,7 +142,6 @@ internal static class PeerSessionNodes
         return withPeerId ? $"{address}/p2p/{node.LocalPeerId}" : address;
     }
 
-    /// <summary>Polls a condition; fails the test instead of hanging once <paramref name="within"/> or the token runs out.</summary>
     public static async Task WaitUntilAsync(Func<bool> condition, string failure, CancellationToken token, TimeSpan? within = null, int pollDelayMilliseconds = 20)
     {
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -166,8 +158,6 @@ internal static class PeerSessionNodes
     }
 }
 
-/// <summary>Answers each inbound <c>status</c> request, numbered from 1 in arrival order, through a script that may block or throw.</summary>
-/// <remarks>A throw becomes an error chunk; a block holds the answer on the serving thread.</remarks>
 internal sealed class ScriptedStatusSource(Func<int, StatusMessageV2> answer) : IBeaconChainStatusSource
 {
     private int _requests;
@@ -181,14 +171,12 @@ internal sealed class ScriptedStatusSource(Func<int, StatusMessageV2> answer) : 
     public bool ExecutionInSync => false;
 }
 
-/// <summary>A plain libp2p peer on loopback that never identifies its own sessions and answers identify with the given protocol.</summary>
 internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsyncDisposable
 {
     public LocalPeer Peer => peer;
 
     public Multiaddress Address => peer.ListenAddresses.First();
 
-    /// <param name="statusSource">When given, the peer also answers <c>status</c> v2 from it, and nothing else of the eth2 protocols.</param>
     public static async Task<PlainPeer> StartAsync(Func<IProtocolStackSettings, IdentifyProtocol> identify, CancellationToken token, IBeaconChainStatusSource? statusSource = null,
         bool pingOnDial = false, Identity? identity = null)
     {

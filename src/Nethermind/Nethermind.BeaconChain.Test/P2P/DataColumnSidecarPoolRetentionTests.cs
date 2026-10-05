@@ -13,16 +13,11 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// The served maps evict the lowest slot first, so the slots a node can still serve completely are always one
-/// suffix of the chain: a node that answers ByRange from that suffix never skips a column it was given.
-/// </summary>
 public class DataColumnSidecarPoolRetentionTests
 {
     private const int Capacity = 4;
     private const ulong Column = 3;
 
-    /// <summary>Under recency eviction, old-slot columns arriving late would push out the newest block's columns first.</summary>
     [Test]
     public void A_flood_of_lower_slot_columns_never_evicts_a_higher_slot_column_before_a_lower_one([Values] bool gloas)
     {
@@ -71,7 +66,6 @@ public class DataColumnSidecarPoolRetentionTests
         Assert.That(afterSecondSlotEvicted, Is.EqualTo(12UL), "slot 10's last column, then slot 11's, went next");
     }
 
-    /// <summary>A slot below the first one given was never seen whole, so a late or refused old sidecar must not mark the slots in between complete.</summary>
     [TestCase(new ulong[] { 100, 101, 102, 103 }, 49UL, 100UL, TestName = "A refused old sidecar leaves the mark of a full pool")]
     [TestCase(new ulong[] { 100 }, 49UL, 100UL, TestName = "A late old sidecar leaves the mark of a pool with room")]
     [TestCase(new ulong[] { ulong.MaxValue }, 0UL, ulong.MaxValue, TestName = "A first sidecar at the last slot is not forgotten")]
@@ -89,7 +83,6 @@ public class DataColumnSidecarPoolRetentionTests
         }
     }
 
-    /// <summary>A refused column is dropped once the recent set churns it out, so its slot must not be reported complete.</summary>
     [Test]
     public void A_slot_whose_column_was_refused_stays_below_the_mark_after_the_recent_set_drops_it([Values] bool gloas)
     {
@@ -105,10 +98,6 @@ public class DataColumnSidecarPoolRetentionTests
         Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(16UL), "so the mark sits above slot 15");
     }
 
-    /// <summary>
-    /// Range sync adds verified columns for blocks below the head slots gossip already filled the pool with; the importer
-    /// reads the same pool next, so a column the slot-ordered set refuses must still be found or sync cannot advance.
-    /// </summary>
     [Test]
     public void A_column_below_every_held_slot_is_still_found_after_the_retained_set_refuses_it([Values] bool gloas)
     {
@@ -124,10 +113,6 @@ public class DataColumnSidecarPoolRetentionTests
         Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(100UL), "a column held only for import is not counted as retained");
     }
 
-    /// <summary>
-    /// Gossip adds a Fulu sidecar before its proposer is checked, so sidecars for forged headers can fill the pool at the head
-    /// slot; the lowest slot then evicts its oldest entry, so the genuine block's later column displaces a forged one.
-    /// </summary>
     [Test]
     public void At_the_lowest_held_slot_a_new_column_evicts_the_oldest_one_of_that_slot([Values] bool gloas)
     {
@@ -138,7 +123,6 @@ public class DataColumnSidecarPoolRetentionTests
         Hash256 genuine = Keccak.Compute("genuine");
         Add(pool, gloas, headSlot, genuine);
 
-        // Older-slot columns churn the recent set, so only the slot-ordered set can still hold the head slot's columns.
         for (ulong column = 0; column < Capacity; column++) Add(pool, gloas, headSlot - 1, RootFor(headSlot - 1), column);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -146,7 +130,6 @@ public class DataColumnSidecarPoolRetentionTests
         Assert.That(forged.Select(root => Holds(pool, gloas, root)), Is.EqualTo(new[] { false, true, true, true }), "the oldest column of that slot made room");
     }
 
-    /// <summary>A Fulu slot evicted from its own map leaves the Gloas map's slots complete, but the mark is one suffix for both.</summary>
     [Test]
     public void Earliest_completely_servable_slot_spans_both_forks()
     {
@@ -177,7 +160,6 @@ public class DataColumnSidecarPoolRetentionTests
         Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(7UL), "a replacement is not an eviction");
     }
 
-    /// <summary>Readers and writers share the served maps; an unguarded read during an eviction corrupts or throws.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task Reads_racing_evictions_never_fail(CancellationToken token)

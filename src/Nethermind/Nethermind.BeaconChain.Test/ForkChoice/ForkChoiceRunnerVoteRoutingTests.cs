@@ -14,18 +14,11 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// specs/gloas/fork-choice.md <c>update_latest_messages</c> and <c>get_supported_node</c> through
-/// <see cref="ForkChoiceRunner.OnAttestation(AttestationGloas, bool, bool)"/>: a Gloas-slot vote for a block from an
-/// earlier slot supports its FULL node when <c>data.index</c> is 1 and its EMPTY node when it is 0; a vote in the
-/// block's own slot, or in a pre-Gloas slot, supports its PENDING node only.
-/// </summary>
 [HardTimeout(60_000)]
 public class ForkChoiceRunnerVoteRoutingTests
 {
     private const ulong EffectiveBalance = 32 * Gwei;
 
-    /// <summary>With 2048 validators and 32 slots, each slot has one committee of 64.</summary>
     private const ulong CommitteeSize = 64;
 
     private static IEnumerable<TestCaseData> Votes()
@@ -40,10 +33,6 @@ public class ForkChoiceRunnerVoteRoutingTests
         }
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>is_parent_node_full</c>: a Gloas block builds on its parent's FULL node exactly when its
-    /// bid's <c>parent_block_hash</c> is the parent bid's <c>block_hash</c>; without that, every vote is routed as if FULL.
-    /// </summary>
     [Test]
     public void Gloas_blocks_record_whether_they_build_on_their_parents_full_or_empty_payload([Values] bool full)
     {

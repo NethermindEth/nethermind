@@ -11,10 +11,6 @@ using KeyType = Nethermind.Libp2p.Core.Dto.KeyType;
 
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
-/// <summary>
-/// The libp2p peer id and the ENR are derived from the same stored key by two libraries; if they disagree after a restart,
-/// every peer that dials this node from its ENR expects another peer id and the handshake fails.
-/// </summary>
 public class IdentityKeyTests
 {
     [TestCase("0xb71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291", TestName = "EIP-778 key, top bit set")]
@@ -39,7 +35,6 @@ public class IdentityKeyTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(loaded, Is.EqualTo(BeaconDiscovery.DerivePeerId(new PrivateKey(stored).CompressedPublicKey)), stored.ToHexString());
-                // A first start runs on the generated identity, every restart on the stored bytes.
                 Assert.That(generated.PeerId.ToString(), Is.EqualTo(loaded), stored.ToHexString());
             }
         }

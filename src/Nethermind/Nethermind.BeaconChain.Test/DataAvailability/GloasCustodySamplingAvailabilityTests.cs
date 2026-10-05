@@ -19,10 +19,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
-/// <summary>
-/// Gloas <c>is_data_available</c> for an envelope's block: the columns this node custodies and samples,
-/// each verified against the commitments of the bid the block committed, which the sidecars do not carry.
-/// </summary>
 public class GloasCustodySamplingAvailabilityTests
 {
     private const ulong BlockSlot = 1;
@@ -90,7 +86,6 @@ public class GloasCustodySamplingAvailabilityTests
         Assert.That(isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid()), Is.False, "a served entry is re-proved at every check");
     }
 
-    /// <summary>The sidecars carry no commitments, so only a rule reading the bid's can see this swap.</summary>
     [Test]
     public void Held_columns_do_not_count_against_a_bid_committing_other_commitments()
     {
@@ -118,10 +113,7 @@ public class GloasCustodySamplingAvailabilityTests
         Assert.That(pool.PendingGloasCount, Is.Zero);
     }
 
-    /// <summary>
-    /// Slot is not bound by KZG, and a pending sidecar predates its block, so no gossip check has matched
-    /// its slot to the block's; served, it would claim a slot its block does not occupy.
-    /// </summary>
+    // KZG does not bind slot; pending sidecars have not yet been matched to their block.
     [TestCase(false, TestName = "A_pending_column_that_fails_against_the_bid_is_not_served")]
     [TestCase(true, TestName = "A_pending_column_naming_another_slot_is_not_served")]
     public void A_pending_column_that_fails_bid_validation_is_not_served(bool wrongSlot)
@@ -142,10 +134,7 @@ public class GloasCustodySamplingAvailabilityTests
         Assert.That(pool.PendingGloasCount, Is.Zero, wrongSlot ? null : "a candidate that fails against the block's bid can never verify");
     }
 
-    /// <summary>
-    /// Pending sidecars are unverified and keyed only by the root and column they name, so a forgery from
-    /// one peer must not hide a valid sidecar from another, whichever arrives first.
-    /// </summary>
+    // Pending entries are unverified and keyed by claimed root/column; a forgery must not hide another peer's valid sidecar.
     [Test]
     public void A_forged_pending_column_does_not_hide_a_valid_one_from_another_peer([Values] bool forgedFirst)
     {
@@ -167,10 +156,6 @@ public class GloasCustodySamplingAvailabilityTests
         Assert.That(pool.PendingGloasCount, Is.Zero);
     }
 
-    /// <summary>
-    /// The window is Fulu's wall-clock window, keyed on the bid's slot and re-read at every check: the
-    /// block stays inside it until the clock is more than <c>MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS</c> epochs past it.
-    /// </summary>
     [Test]
     public void The_window_follows_the_wall_clock_at_every_check()
     {
@@ -190,7 +175,6 @@ public class GloasCustodySamplingAvailabilityTests
         Assert.That(oneEpochPast, Is.True, "the network no longer guarantees to serve these columns, so none can be demanded");
     }
 
-    /// <summary>Typed as the <see cref="ExecutionPayloadEnvelopeImporter"/> delegate, so the rule's signature cannot drift from it.</summary>
     private static Func<Hash256, ExecutionPayloadBid, bool> CreateRule(NodeColumnCustody? custody, DataColumnSidecarPool pool, SlotClock clock) =>
         new GloasCustodySamplingAvailability(new TestEngineDriver.FixedCustodySource(custody), pool, clock, Spec).IsDataAvailable;
 

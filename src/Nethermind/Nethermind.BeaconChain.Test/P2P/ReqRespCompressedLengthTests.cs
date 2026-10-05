@@ -11,7 +11,6 @@ namespace Nethermind.BeaconChain.Test.P2P;
 
 public class ReqRespCompressedLengthTests
 {
-    // Stream identifier (10 bytes), a padding frame (4 + padding) and ping(1) as one uncompressed frame (4 + 4 + 8) after varint(8).
     private const string StreamIdentifier = "0xff060000734e61507059";
     private const string PingFrame = "0x010c00000175de410100000000000000";
 

@@ -33,12 +33,7 @@ public class BeaconChainStoreEnvelopeRetentionTests
         UnknownWithNoAnchor,
     }
 
-    /// <summary>
-    /// gloas/p2p-interface.md ExecutionPayloadEnvelopesByRange/ByRoot serve
-    /// <c>[max(GLOAS_FORK_EPOCH, current_epoch - compute_min_epochs_for_block_requests()), current_epoch]</c>, and replay after a restart
-    /// starts from the persisted anchor, so finalization prunes only below both. With no anchor, a checkpoint block fork choice does not
-    /// hold may sit below its epoch's start slot, so nothing outside the window is known to be safe to prune.
-    /// </summary>
+    // Envelope pruning must stay below both the serve window and persisted replay anchor (gloas/p2p-interface.md). Without an anchor, only window expiry proves safety.
     [Test]
     public void Finalization_prunes_envelopes_below_the_serve_window_and_the_persisted_anchor([Values] FinalizedCheckpoint checkpoint)
     {
@@ -83,7 +78,6 @@ public class BeaconChainStoreEnvelopeRetentionTests
         Assert.That(store.TryGetExecutionPayloadEnvelope(inWindow.Message!.BeaconBlockRoot!, out _), Is.True, "in the window");
     }
 
-    /// <summary>phase0/p2p-interface.md <c>MAX_PAYLOAD_SIZE</c>: every read refuses a longer record, so none is written.</summary>
     [Test]
     public void Put_stores_an_envelope_of_max_payload_size_and_refuses_one_byte_more([Values(0, 1)] int overLimit)
     {
@@ -118,10 +112,6 @@ public class BeaconChainStoreEnvelopeRetentionTests
         Inverted,
     }
 
-    /// <summary>
-    /// An unusable slot bounds record is rebuilt from the slot index and written back, so no stored envelope escapes a later prune
-    /// and a store inside the rebuilt bounds does not leave the damaged record to be rebuilt again.
-    /// </summary>
     [Test]
     public void Damaged_slot_bounds_are_rebuilt_so_every_envelope_is_still_pruned([Values] BoundsDamage damage, [Values] bool storeAfterDamage)
     {
@@ -144,7 +134,6 @@ public class BeaconChainStoreEnvelopeRetentionTests
         Assert.That(column.GetAllKeys(), Is.Empty, "no record, slot index entry or slot bounds survive pruning past every envelope");
     }
 
-    /// <summary>A damaged slot bounds record over an empty slot index is removed, so later prunes do not scan the column for it again.</summary>
     [Test]
     public void Damaged_slot_bounds_with_no_stored_envelope_are_removed([Values] BoundsDamage damage)
     {
@@ -158,10 +147,6 @@ public class BeaconChainStoreEnvelopeRetentionTests
         Assert.That(column.GetAllKeys(), Is.Empty);
     }
 
-    /// <summary>
-    /// A database last opened by a build that had the envelope column at an older schema version is restamped without the children
-    /// index rebuild; a newer version is refused, as <c>A_database_from_a_newer_schema_version_is_refused_and_left_unstamped</c> shows.
-    /// </summary>
     [Test]
     public void Database_at_the_children_index_version_upgrades_without_a_rebuild_and_keeps_its_envelopes()
     {
@@ -196,7 +181,6 @@ public class BeaconChainStoreEnvelopeRetentionTests
         _ => throw new ArgumentOutOfRangeException(nameof(damage)),
     };
 
-    /// <summary>Encodes the inclusive stored slot bounds.</summary>
     internal static byte[] Bounds(ulong lowest, ulong highest)
     {
         byte[] value = new byte[2 * sizeof(ulong)];

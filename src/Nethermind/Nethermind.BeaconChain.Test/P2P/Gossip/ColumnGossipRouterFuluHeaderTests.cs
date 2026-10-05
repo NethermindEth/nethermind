@@ -77,7 +77,6 @@ public class ColumnGossipRouterFuluHeaderTests
         List<MessageValidity> verdicts = [];
         for (int i = 0; i < forgeries; i++)
         {
-            // Distinct header roots over valid cells, claiming both known and unknown proposer indices.
             DataColumnSidecar forged = DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot, proposerIndex: (ulong)(i % (2 * Validators)));
             forged.SignedBlockHeader!.Message!.StateRoot = new Hash256(BitConverter.GetBytes(i).Concat(new byte[28]).ToArray());
             forged.SignedBlockHeader.Signature = new BlsSignature(Enumerable.Repeat((byte)(i + 1), BlsSignature.Length).ToArray());
@@ -158,7 +157,6 @@ public class ColumnGossipRouterFuluHeaderTests
         }
         else
         {
-            // As range sync adds a column it verified.
             pool.Add(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), CurrentSlot, honest);
         }
 
@@ -174,12 +172,10 @@ public class ColumnGossipRouterFuluHeaderTests
         Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(copies));
     }
 
-    // A column sync pooled proves which cells and proofs are valid under its header, so a copy is judged against it without KZG.
     [Test]
     public void Metrics_A_copy_of_a_column_sync_already_pooled_runs_no_KZG_and_only_an_equal_copy_is_forwarded([Values] bool imported, [Values] bool alteredCopy, [Values] bool proposerCovered)
     {
         ProposerLookaheadHolder lookaheads = new() { Current = proposerCovered ? Lookahead(ParentRoot, 0) : null };
-        // Import verified the proposer; otherwise only a covered expected proposer lets a copy be forwarded.
         bool forwardable = imported || proposerCovered;
         (ColumnGossipRouter router, DataColumnSidecarPool pool, BeaconChainStore store) = Create(Ancestry.DescendsFromFinalized, lookaheads: lookaheads);
         DataColumnSidecar honest = SignedSidecar();
@@ -210,7 +206,6 @@ public class ColumnGossipRouterFuluHeaderTests
         (ColumnGossipRouter router, _, BeaconChainStore store) = Create(Ancestry.NoSource, subnets: AllSubnets, withPubkeys: false);
         IEnumerable<ulong> forgedIndices = forgedColumns == 1 ? [honestColumn] : Enumerable.Range(0, forgedColumns).Select(i => (ulong)i);
 
-        // Valid cells under another state root: a header with the honest (slot, proposer_index) that is not the honest one.
         foreach (ulong index in forgedIndices)
         {
             DataColumnSidecar forged = DataColumnSidecarTestFixture.BuildValidSidecar(index, CurrentSlot);
@@ -351,7 +346,6 @@ public class ColumnGossipRouterFuluHeaderTests
             BitConverter.TryWriteBytes(rootBytes, i);
             rootBytes[^1] = 0xEE;
             Hash256 root = new(rootBytes);
-            // Every chain node sits after the finalized slot and before the sidecar's.
             nodes.Add(Node(FinalizedSlot + 1, root, tip));
             tip = root;
         }
@@ -389,7 +383,6 @@ public class ColumnGossipRouterFuluHeaderTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(publishedDependentRoot, Is.EqualTo(chain.AnchorRoot), "the importer publishes into the container's holder");
-        // Accepted only if the router reads both the lookahead and the key cache the test wrote.
         Assert.That(verdict, Is.EqualTo(expectedProposer ? MessageValidity.Accepted : MessageValidity.Rejected));
         Assert.That(router.GetDropCount(ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(expectedProposer ? 0 : 1));
         Assert.That((raised, router.KzgBatchCount), Is.EqualTo(expectedProposer ? (1, 1L) : (0, 0L)));
@@ -472,7 +465,6 @@ public class ColumnGossipRouterFuluHeaderTests
         ulong acceptedBefore = Metrics.BeaconChainGossipAccepted;
         MessageValidity first = router.Handle(Column, gloasTopic: false, Message(honest));
         StoreAsImported(store, honest);
-        // The importer publishes a snapshot holding the block, whose finalized ancestry is then known.
         snapshots.Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: false);
         MessageValidity second = router.Handle(Column, gloasTopic: false, Message(honest));
         MessageValidity third = router.Handle(Column, gloasTopic: false, Message(honest));
@@ -481,14 +473,12 @@ public class ColumnGossipRouterFuluHeaderTests
         MessageValidity[] expected = order is ImportOrder.UncoveredUntilImport or ImportOrder.AncestryUnknownUntilImport
             ? [MessageValidity.Ignored, MessageValidity.Accepted, MessageValidity.Ignored]
             : [MessageValidity.Accepted, MessageValidity.Ignored, MessageValidity.Ignored];
-        // With ancestry unknown the first copy is consumed but not forwarded: two messages, two accepted outcomes.
         Assert.That(Metrics.BeaconChainGossipAccepted, Is.EqualTo(acceptedBefore + (order == ImportOrder.AncestryUnknownUntilImport ? 2UL : 1UL)));
         Assert.That(new[] { first, second, third }, Is.EqualTo(expected));
         Assert.That((raised, router.KzgBatchCount), Is.EqualTo((1, 1L)), "consumed once, verified once");
         Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True);
     }
 
-    // Every column of a block carries the same signed header and inclusion proof, so copies with altered cells cost nothing to make.
     [Test]
     public void Altered_copies_under_the_real_header_run_at_most_the_KZG_batch_bound([Values] bool imported, [Values(0, 1, 200)] int alteredBeforeHonest)
     {
@@ -508,7 +498,6 @@ public class ColumnGossipRouterFuluHeaderTests
         bool withinBound = alteredBeforeHonest < ColumnGossipRouter.KzgBatchesPerColumn;
         if (!withinBound)
         {
-            // As range sync adds a column it verified.
             pool.Add(blockRoot, CurrentSlot, honest);
         }
 
@@ -608,11 +597,7 @@ public class ColumnGossipRouterFuluHeaderTests
         }
     }
 
-    /// <summary>
-    /// A sidecar whose expected proposer cannot be verified yet is ignored at once, so while it is queued its message holds no pending
-    /// verdict, or room for one, in the pubsub router; the retry that verifies it pools it and gives no other verdict.
-    /// </summary>
-    /// <remarks>fulu/p2p-interface.md: a sidecar whose proposer_index cannot immediately be verified MAY be queued; do not REJECT, instead IGNORE.</remarks>
+    // fulu/p2p-interface.md: an unverifiable proposer_index MAY be queued; IGNORE rather than REJECT.
     [Test]
     public void A_queued_sidecar_is_ignored_at_once_and_pooled_by_the_retry()
     {
@@ -641,12 +626,7 @@ public class ColumnGossipRouterFuluHeaderTests
         Assert.That(pool.TryGet(blockRoot, Column, out _), Is.True, "the retry pools the queued sidecar");
     }
 
-    /// <summary>
-    /// A Fulu block is judged on its header as a sidecar is: accepted once the parent, slot, finalized-ancestor, expected-proposer and
-    /// signature rules pass, before its data or execution payload, so it is forwarded and announced early; a REJECT is never raised for import,
-    /// and a block those sources cannot check yet is ignored at once while it still imports.
-    /// </summary>
-    /// <remarks>phase0 p2p-interface.md beacon_block; the signing root of a block is its header's root.</remarks>
+    // phase0 p2p-interface.md beacon_block: the block signing root is its header root.
     [TestCase(0, 0UL, true, MessageValidity.Accepted, 1, TestName = "Fulu_block_header_that_verifies_is_accepted_at_once")]
     [TestCase(0, 1UL, true, MessageValidity.Rejected, 0, TestName = "Fulu_block_from_an_unexpected_proposer_is_rejected")]
     [TestCase(1, 0UL, true, MessageValidity.Rejected, 0, TestName = "Fulu_block_with_an_invalid_signature_is_rejected")]
@@ -663,8 +643,7 @@ public class ColumnGossipRouterFuluHeaderTests
         Assert.That(routed, Is.EqualTo(expected == MessageValidity.Rejected ? MessageValidity.Rejected : MessageValidity.Ignored));
     }
 
-    /// <summary>A child of a parent whose execution payload fork choice invalidated is ignored, not accepted, though its header verifies.</summary>
-    /// <remarks>bellatrix p2p-interface.md beacon_block: the parent passes all validation, execution included; fork choice keeps an invalidated node.</remarks>
+    // bellatrix p2p-interface.md beacon_block: the parent passes execution validation too.
     [Test]
     public async Task Fulu_block_parent_ignore_precedes_later_rejections([Values] bool unknownParent, [Values] BlockFault fault)
     {
@@ -724,10 +703,6 @@ public class ColumnGossipRouterFuluHeaderTests
         }
     }
 
-    /// <summary>
-    /// A block accepted on its header that the import pipeline refuses for local load is throttled instead, and its claims are released, so a
-    /// later copy is checked again and reaches import rather than being forwarded without ever being imported here.
-    /// </summary>
     [Test]
     public void Fulu_block_refused_by_the_import_queue_is_throttled_and_accepted_on_a_later_copy()
     {
@@ -774,7 +749,6 @@ public class ColumnGossipRouterFuluHeaderTests
         return (router, headers);
     }
 
-    // As DeferredGossipValidation does: the verdict of the checks that ran is given unless the import pipeline took the verdict over.
     private static (MessageValidity Routed, List<MessageValidity> Given) HandleBlock(GossipRouter router, SignedBeaconBlock block)
     {
         List<MessageValidity> given = [];
@@ -788,7 +762,6 @@ public class ColumnGossipRouterFuluHeaderTests
         return (routed, given);
     }
 
-    /// <summary>A Fulu block on <see cref="ParentRoot"/> at <see cref="CurrentSlot"/> by validator 0, signed by <paramref name="signer"/>'s key.</summary>
     private static SignedBeaconBlock SignedBlock(int signer, Hash256 graffiti)
     {
         SignedBeaconBlock block = TestChain.CreateBlock(CurrentSlot, ParentRoot);
@@ -835,7 +808,6 @@ public class ColumnGossipRouterFuluHeaderTests
     {
         const ulong flooder = 1;
         ForkChoiceSnapshotHolder snapshots = new() { Current = Snapshot(Ancestry.BlockAndParentNotInSnapshot, parentInSnapshot: true) };
-        // Starts an epoch early so the lookahead covers every slot the flood signs.
         ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(ParentRoot, 0, Spec.GetEpoch(CurrentSlot) - 1) };
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(null, subnets: AllSubnets, lookaheads: lookaheads, forkChoice: snapshots);
         DataColumnSidecar honest = SignedSidecar();
@@ -893,8 +865,7 @@ public class ColumnGossipRouterFuluHeaderTests
         }
     }
 
-    /// <summary>Stores a block under <paramref name="sidecar"/>'s header root with the header's signature, as import would have.</summary>
-    /// <remarks>The store trusts its key as the block root, so the block body is not made to hash to the header's body root.</remarks>
+    // The store trusts its key as the block root, so the body need not hash to the header body root.
     private static Bls.SecretKey SecretKey(int index) => new(new Bls.SecretKey(MasterSecretKey, Bls.ByteOrder.LittleEndian), (uint)index);
 
     private static PubkeyCache Pubkeys()
@@ -908,7 +879,6 @@ public class ColumnGossipRouterFuluHeaderTests
 
     private static DataColumnSidecar SignedSidecar(int signer = 0) => Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer);
 
-    /// <summary>Signs the header of <paramref name="sidecar"/> with validator <paramref name="signer"/>'s key, whatever proposer index it claims.</summary>
     private static DataColumnSidecar Signed(DataColumnSidecar sidecar, int signer)
     {
         if (signer != Unsigned)
@@ -964,7 +934,6 @@ public class ColumnGossipRouterFuluHeaderTests
 
     private static void ParentInLookahead(DataColumnSidecar sidecar) => sidecar.SignedBlockHeader!.Message!.ParentRoot = MidRoot;
 
-    /// <summary>A lookahead from a state at <paramref name="epoch"/> naming <paramref name="expectedProposer"/> for <see cref="CurrentSlot"/> when it covers it, and another validator for every other slot.</summary>
     private static ProposerLookaheadSnapshot Lookahead(Hash256 dependentRoot, ulong expectedProposer, ulong? epoch = null)
     {
         ulong lookaheadEpoch = epoch ?? Spec.GetEpoch(CurrentSlot);
@@ -995,7 +964,6 @@ public class ColumnGossipRouterFuluHeaderTests
         return (router, pool, store);
     }
 
-    // The fixture header sits at CurrentSlot on ParentRoot; ParentRoot sits at the finalized epoch's start slot.
     private static ForkChoiceSnapshot Snapshot(Ancestry ancestry, bool parentInSnapshot)
     {
         Hash256 blockRoot = SszRoots.HashTreeRoot(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot).SignedBlockHeader!.Message!);

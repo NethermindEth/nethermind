@@ -25,18 +25,12 @@ using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// A state from before Electra must reach the caller as a labelled, actionable 501 and nothing else may: an
-/// unrelated <see cref="NotSupportedException"/> is a 500 that echoes no internal text. The JSON-only
-/// endpoints must also not claim an SSZ representation they do not serve.
-/// </summary>
 public class BeaconApiErrorMappingTests
 {
     // Sepolia is the only network with a real, non-far-future GloasForkEpoch (353024), so it is the
     // only spec that can actually drive BeaconStateCodec into its NotSupportedException branch.
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Sepolia;
 
-    // Text that must never reach the wire: an unrelated layer's exception message.
     private const string UnrelatedInternalDetail = "internal detail from an unrelated layer";
 
     private BeaconApiTestHost _host = null!;
@@ -49,8 +43,6 @@ public class BeaconApiErrorMappingTests
         _host = await BeaconApiTestHost.StartAsync(Spec, forkAwareStore: false);
         _host.Client.Timeout = TimeSpan.FromSeconds(5);
 
-        // The real endpoint pipeline (MapAll, with its error middleware) plus routes it does not own,
-        // so exceptions no real endpoint raises can still be pushed through the real error mapping.
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -77,9 +69,6 @@ public class BeaconApiErrorMappingTests
     [Test]
     public async Task An_unrelated_NotSupportedException_is_a_500_that_leaks_nothing()
     {
-        // Catching NotSupportedException by type turned every such exception from any layer into a
-        // "not implemented" 501 carrying the exception's own text: a wrong answer that reads as a
-        // considered one, and an internal message handed to an unauthenticated caller.
         HttpResponseMessage response = await _pipelineClient.GetAsync("/test/not-supported");
         string raw = await response.Content.ReadAsStringAsync();
 
@@ -101,10 +90,6 @@ public class BeaconApiErrorMappingTests
         Assert.That(body.RootElement.GetProperty("message").GetString(), Is.EqualTo(BeaconApiEndpoints.UnsupportedForkMessage));
     }
 
-    /// <summary>
-    /// Streams success bytes through the same writer the state endpoint uses until its flush
-    /// checkpoint has started the response, then fails like a handler bug would.
-    /// </summary>
     private static async Task FaultAfterFirstFlush(HttpContext c)
     {
         const long fillerLimit = 1024 * 1024;
@@ -122,11 +107,6 @@ public class BeaconApiErrorMappingTests
         throw new InvalidOperationException(UnrelatedInternalDetail);
     }
 
-    /// <summary>
-    /// Once success bytes are on the wire no error envelope can follow them. Letting the response
-    /// complete normally sent the chunked terminator, and the client parsed a clean 200 whose JSON
-    /// simply stopped; only an aborted connection tells it the body is incomplete.
-    /// </summary>
     [Test]
     public void A_handler_failure_after_the_first_flush_is_a_transport_error_not_a_well_terminated_200() =>
         Assert.ThrowsAsync<HttpRequestException>(() => _pipelineClient.GetAsync("/test/fault-after-flush"),
@@ -154,8 +134,6 @@ public class BeaconApiErrorMappingTests
         HttpResponseMessage response = await _host.Client.GetAsync(string.Format(routeTemplate, preElectraSlot));
         string raw = await response.Content.ReadAsStringAsync();
 
-        // Only ApiStateDecoding turns the codec's refusal into the API-owned UnsupportedForkException the
-        // middleware maps to 501, so a 500 here means StateIdResolver is still calling BeaconStateCodec directly.
         Assert.That((int)response.StatusCode, Is.EqualTo(501), $"a fork this driver cannot decode is a labelled capability gap, not a 500; body: {raw}");
         JsonDocument body = JsonDocument.Parse(raw);
         Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo(501));

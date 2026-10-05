@@ -21,16 +21,9 @@ using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// Real state transitions through the Gloas block-processing pipeline (<see cref="GloasBlockProcessing"/>):
-/// the bid/envelope split, the binding of envelope verification to the named block's frozen
-/// post-state, withdrawals computed from state, and the builder-payment machinery for a payload
-/// settled within the epoch it was committed in. Fixtures come from <see cref="GloasTestFixtures"/>.
-/// </summary>
 [HardTimeout(60_000)]
 public class GloasBlockProcessingTests
 {
-    // ---- Bid processing: signature verification actually gates state mutation ----
 
     [Test]
     public void ProcessExecutionPayloadBid_rejects_a_bid_whose_signature_does_not_match_the_registered_builder()
@@ -129,10 +122,7 @@ public class GloasBlockProcessingTests
         Assert.That(ex.Message, Does.Contain("cannot cover a bid"));
     }
 
-    /// <summary>
-    /// Spec <c>get_blob_parameters</c> falls back to <c>MAX_BLOBS_PER_BLOCK_ELECTRA</c> when no <c>BLOB_SCHEDULE</c>
-    /// entry applies, independent of <c>FULU_FORK_EPOCH</c>; mainnet's Fulu epoch is far past this state's.
-    /// </summary>
+    // get_blob_parameters falls back to MAX_BLOBS_PER_BLOCK_ELECTRA without an applicable BLOB_SCHEDULE entry.
     [TestCase(0, true)]
     [TestCase(1, false)]
     public void ProcessExecutionPayloadBid_caps_blob_commitments_at_the_electra_limit_before_any_blob_schedule_entry(int overLimit, bool accepted)
@@ -151,7 +141,6 @@ public class GloasBlockProcessingTests
             Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.Contains("blob commitments"));
     }
 
-    // ---- Envelope verification: a pure check against the committed bid, no state mutation ----
 
     [Test]
     public void VerifyExecutionPayloadEnvelope_rejects_an_envelope_whose_payload_does_not_match_the_committed_bid()
@@ -187,15 +176,8 @@ public class GloasBlockProcessingTests
         Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore));
     }
 
-    // ---- Envelope verification is bound to the frozen post-state of the block the envelope names ----
 
-    /// <summary>
-    /// The reproduction of the defect the binding exists for. Two states that differ only in the bid
-    /// they committed; the second is the post-state of a block that was never produced. An envelope
-    /// built against that second state is self-consistent, so the spec's per-field checks accept it -
-    /// which is exactly what the first assertion pins. Only resolving the state by the envelope's own
-    /// block root, against the set of blocks that really exist, rejects it.
-    /// </summary>
+    // A self-consistent envelope for a nonexistent post-state passes field checks; binding to its block root must refuse it.
     [Test]
     public void VerifyExecutionPayloadEnvelope_rejects_an_envelope_for_a_block_whose_post_state_is_not_known_even_though_the_envelope_is_self_consistent()
     {
@@ -275,7 +257,6 @@ public class GloasBlockProcessingTests
         Assert.DoesNotThrow(() => GloasBlockProcessing.VerifyExecutionPayloadEnvelope(cache, envelope, new AcceptingNotifier(), new PubkeyCache()));
     }
 
-    // ---- The two-step apply: bid committed in one block, applied and paid out in the next ----
 
     [Test]
     public void The_two_step_apply_settles_and_pays_the_builder_exactly_one_block_after_the_bid_was_committed()
@@ -326,7 +307,6 @@ public class GloasBlockProcessingTests
         Assert.That(rootAfterBlock2, Is.Not.EqualTo(rootAfterBlock1First), "settling and paying out the builder must actually change the state root");
     }
 
-    // ---- Withdrawals computed from state alone ----
 
     [Test]
     public void ProcessWithdrawals_pays_a_fully_withdrawable_validator_computed_entirely_from_state()
@@ -354,10 +334,7 @@ public class GloasBlockProcessingTests
         Assert.That(withdrawal.Address, Is.EqualTo(new Address(validator.WithdrawalCredentials.Bytes[12..])));
     }
 
-    /// <summary>
-    /// The spec's registry reads in <c>process_withdrawals</c> raise <c>IndexError</c> past the end, which its
-    /// tests count as a failed assert; each one must refuse the block rather than crash.
-    /// </summary>
+    // Spec registry IndexErrors count as block refusal, not importer crashes.
     [TestCase("builder pending withdrawal")]
     [TestCase("builders sweep cursor")]
     [TestCase("pending partial withdrawal")]
@@ -387,7 +364,6 @@ public class GloasBlockProcessingTests
         Assert.That(() => GloasBlockProcessing.ProcessWithdrawals(state), Throws.TypeOf<BeaconStateException>().With.Message.Contains("out of range"));
     }
 
-    // ---- The progressive operation lists carry no SSZ bound, so process_operations asserts the limits ----
 
     [Test]
     public void ProcessOperations_rejects_an_operation_list_over_its_spec_bound_before_processing_any_of_it()
@@ -416,7 +392,6 @@ public class GloasBlockProcessingTests
         ExecutionRequestsRoot = bid.ExecutionRequestsRoot,
     };
 
-    /// <summary>A provider with a bug: it answers <paramref name="root"/> with a state that is not that block's post-state.</summary>
     private sealed class MisboundStates(Hash256 root, BeaconStateGloas state) : IGloasBlockStateProvider
     {
         public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot) => blockRoot == root ? state : null;

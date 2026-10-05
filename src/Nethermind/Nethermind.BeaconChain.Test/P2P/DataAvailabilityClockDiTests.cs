@@ -20,10 +20,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// The data availability window moves with the wall clock, so range sync, the import gate and by-range serving must
-/// read one clock: two clocks would let range sync skip columns the importer still demands, or the reverse.
-/// </summary>
 public class DataAvailabilityClockDiTests
 {
     [Test]
@@ -43,7 +39,6 @@ public class DataAvailabilityClockDiTests
         Assert.That(handedOut.Select(static h => h.Instance), Is.All.SameAs(registered));
     }
 
-    /// <summary>A missing registration must fail the container, not hand these a private clock or none at all.</summary>
     [Test]
     public void Range_sync_and_the_importer_factory_do_not_resolve_without_a_registered_clock([Values] bool registerClock)
     {

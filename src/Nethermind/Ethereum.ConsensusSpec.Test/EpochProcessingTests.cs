@@ -11,13 +11,6 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>epoch_processing</c> suite: each sub-transition folder maps directly to
-/// one <c>EpochProcessing.Process*</c> method, applied to the fixture's pre-state and compared by root
-/// against its post-state. Driven for the same forks as <see cref="OperationsTests"/>, through the same
-/// <see cref="ForkDriver"/>; no sub-transition reads the proposer index, so the Electra carry-through
-/// needs nothing beyond the fork's state shape. Gloas maps to the <c>GloasEpochProcessing.Process*</c> methods.
-/// </summary>
 [TestFixture]
 public class EpochProcessingTests
 {
@@ -72,13 +65,10 @@ public class EpochProcessingTests
     /// <summary>Handlers with no mainnet vectors at <see cref="ConsensusSpecArchive.Version"/>; only the minimal preset generates them.</summary>
     private static readonly string[] MinimalOnlySubTransitions = ["sync_committee_updates"];
 
-    /// <summary>Handlers of a fork's table that the fork has no vectors for; process_proposer_lookahead is introduced in fulu (EIP-7917).</summary>
     private static readonly Dictionary<string, string[]> SubTransitionsAbsentByFork = new(StringComparer.Ordinal)
     {
         ["electra"] = ["proposer_lookahead"],
     };
-
-    // A wrong suite path or an emptied case source enumerates zero vectors; a renamed or dropped handler leaves its vectors not-implemented; both run green.
     [Test]
     public void Every_fork_and_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
@@ -97,8 +87,6 @@ public class EpochProcessingTests
             }
         }
     }
-
-    // Not-implemented vectors are Inconclusive, so a handler that reports every mainnet vector that way still runs green.
     [Test]
     public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
@@ -143,13 +131,7 @@ public class EpochProcessingTests
         // Primes the incremental hasher so the post-state root is taken as a diff against the pre-state, as in production.
         driver.CachedRoot(state, cache);
 
-        // Most epoch_processing vectors are unconditional (no invalid-input case: a sub-transition
-        // is a mechanical fold over existing state, not a signature or bounds check on attacker
-        // input) - but some ARE, e.g. registry_updates/invalid_large_withdrawable_epoch supplies a
-        // validator whose churn-adjusted exit epoch overflows uint64 and carries no post.ssz_snappy,
-        // meaning the reference implementation also cannot produce a valid post-state for it. Absent
-        // post.ssz_snappy is therefore "expect this sub-transition to fail", exactly like operations
-        // and sanity/blocks - discovered by this suite's own mutation-testing pass, not assumed.
+        // Missing post-state means rejection, including registry_updates uint64-overflow vectors.
         string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
         FuluDriverSupport.AssertTransition(driver, postPath, state, cache,
             () => apply(state, cache), "the sub-transition",

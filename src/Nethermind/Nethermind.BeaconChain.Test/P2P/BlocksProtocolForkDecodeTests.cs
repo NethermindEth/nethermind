@@ -23,12 +23,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// <c>beacon_blocks_by_range</c> and <c>beacon_blocks_by_root</c> v2 carry the fork digest of each block's
-/// slot epoch as context bytes, and from Gloas that digest selects <c>gloas.SignedBeaconBlock</c>
-/// (gloas/p2p-interface.md). Decoding every chunk as Fulu would fail each Gloas block and penalize every
-/// peer that serves one, so range sync could never cross the fork.
-/// </summary>
 public class BlocksProtocolForkDecodeTests
 {
     private static readonly ForkedSignedBeaconBlock LastFuluBlock = new ForkedSignedBeaconBlock.OfFulu(CreateMinimalBlock(FirstGloasSlot - 1));

@@ -18,7 +18,6 @@ internal static class OperationVectorHandlers
 {
     internal readonly record struct OpContext<TState>(TState State, EpochCache Cache, PubkeyCache Pubkeys, bool VerifySignatures, bool ExecutionValid, BeaconChainSpec Spec, string CasePath);
 
-    /// <summary>operation folder name -> (operand file name, action applied to the decoded state).</summary>
     internal static readonly Dictionary<string, (string? File, Action<OpContext<BeaconStateFulu>, byte[], BlockSignatureBatch?> Apply)> Handlers = new(StringComparer.Ordinal)
     {
         ["attestation"] = ("attestation.ssz_snappy", (ctx, ssz, batch) =>

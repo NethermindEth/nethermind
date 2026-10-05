@@ -17,21 +17,11 @@ using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// The Gloas seed derivation must be bounded the way the Fulu one is (the mix epoch checked raw,
-/// never inflated by <c>EPOCHS_PER_HISTORICAL_VECTOR</c> before the modulo), and
-/// <see cref="EpochCache"/>'s two memos must be keyed by exactly what each cached value depends on:
-/// the committee shuffling by the shuffling decision root, the total active balance by the epoch
-/// boundary root. Sibling states inside one epoch legitimately share both; states that diverged
-/// inside the previous epoch share the first and must not share the second. The committee memo is
-/// shared across the Gloas upgrade, so both forks must compute identical committees.
-/// </summary>
 [HardTimeout(60_000)]
 public class GloasSeedAndEpochCacheTests
 {
     private const ulong Gwei = 1_000_000_000;
 
-    // ---- get_seed over BeaconStateGloas ----
 
     [Test]
     public void GetSeed_for_gloas_resolves_previous_current_and_next_epoch_to_the_correct_mix()
@@ -83,7 +73,6 @@ public class GloasSeedAndEpochCacheTests
         Assert.That(gloas.GetSeed(currentEpoch, DomainType.BeaconAttester), Is.Not.EqualTo(gloas.GetSeed(currentEpoch, DomainType.PtcAttester)), "the domain must reach the preimage");
     }
 
-    // ---- EpochCache keys: what each memo depends on ----
 
     [Test]
     public void GetEpochBoundaryRoot_is_the_block_root_of_the_last_slot_before_the_epoch_and_zero_at_genesis()
@@ -163,7 +152,6 @@ public class GloasSeedAndEpochCacheTests
         Assert.That(next.Epoch, Is.EqualTo(nextEpoch));
     }
 
-    // ---- One committee LRU across the Fulu -> Gloas upgrade ----
 
     [Test]
     public void Committees_of_a_fulu_state_and_the_gloas_state_upgraded_from_it_are_identical_so_the_shared_cache_may_serve_either([Values(-1, 0, 1)] int epochOffset)
@@ -200,11 +188,6 @@ public class GloasSeedAndEpochCacheTests
     private const int ExitAfterUpgrade = 64;
     private const int ExitTwoAfterUpgrade = 64;
 
-    /// <summary>
-    /// A Fulu state at the first slot of <see cref="UpgradeEpoch"/> with a distinct block root per
-    /// slot, a distinct RANDAO mix per epoch, and validators in the bands above. Built by hand
-    /// rather than through slot processing: only the fields committees read need to be real.
-    /// </summary>
     private static BeaconStateFulu CreateUpgradableFuluState()
     {
         BeaconStateFulu state = GloasTestFixtures.CreateFuluState(AlwaysActive + ExitAtUpgrade + ActivateAfterUpgrade + ExitAfterUpgrade + ExitTwoAfterUpgrade);
@@ -230,11 +213,7 @@ public class GloasSeedAndEpochCacheTests
         return state;
     }
 
-    /// <summary>
-    /// Spec <c>get_beacon_committee</c> for every (slot, index) of <paramref name="epoch"/>, from the
-    /// fixture's bands and mixes via the per-index <c>compute_shuffled_index</c> and
-    /// <c>compute_committee</c>, never through <see cref="CommitteeCache"/>.
-    /// </summary>
+    // Independent committee oracle: per-index compute_shuffled_index/compute_committee, never CommitteeCache.
     private static int[][] ExpectedCommittees(ulong epoch)
     {
         List<int> active = [];
@@ -302,7 +281,6 @@ public class GloasSeedAndEpochCacheTests
         return new Hash256(bytes);
     }
 
-    // ---- Fixtures ----
 
     private static ulong DecisionSlot(ulong epoch)
     {
@@ -310,11 +288,6 @@ public class GloasSeedAndEpochCacheTests
         return decisionSlot > 0 ? decisionSlot - 1 : 0;
     }
 
-    /// <summary>
-    /// A state at the first slot of <paramref name="epoch"/> on a branch that diverged from the
-    /// common history at <paramref name="divergedAtSlot"/>: every block root from that slot on is
-    /// <paramref name="branchRoot"/>, since forked block roots never re-converge.
-    /// </summary>
     private static BeaconStateGloas CreateBranchState(ulong epoch, ulong divergedAtSlot, Hash256 branchRoot, int validatorCount, ulong slotsIntoEpoch = 0)
     {
         BeaconStateGloas state = CreateGloasState(epoch, validatorCount);

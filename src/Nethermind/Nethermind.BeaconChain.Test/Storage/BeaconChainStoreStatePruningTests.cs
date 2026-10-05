@@ -11,10 +11,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
-/// <summary>
-/// Persisted states are kept only while a justification or a replay can still read them: advancing the anchor to the
-/// finalized checkpoint reclaims every older snapshot, old anchor and evicted checkpoint candidate.
-/// </summary>
 [TestFixture]
 public class BeaconChainStoreStatePruningTests
 {
@@ -35,7 +31,6 @@ public class BeaconChainStoreStatePruningTests
 
     private static Hash256 Root(byte fill) => new(Enumerable.Repeat(fill, Hash256.Size).ToArray());
 
-    /// <summary>State bytes whose slot field reads <paramref name="slot"/>, padded to <paramref name="length"/> so a long one spans several chunks.</summary>
     internal static byte[] StateAt(ulong slot, int length = 256)
     {
         byte[] ssz = new byte[length];
@@ -84,7 +79,6 @@ public class BeaconChainStoreStatePruningTests
         Assert.That(StateKeyCount(), Is.EqualTo(2), "only the anchor's manifest and its one chunk remain");
     }
 
-    /// <summary>Without finality the anchor does not move, so no state a still-possible justification can read is touched.</summary>
     [Test]
     public void States_above_the_anchor_survive_however_many_are_persisted_under_non_finality()
     {
@@ -116,8 +110,7 @@ public class BeaconChainStoreStatePruningTests
         Assert.That(new[] { Has(1), Has(2), Has(3) }, Is.EqualTo(new[] { false, true, true }));
     }
 
-    /// <summary>A record whose slot cannot be read may still be a state some reader resolves, so it is not swept up with the finalized range.</summary>
-    /// <remarks>A rewrite to an empty state leaves the old chunk 0 behind; the manifest, not that chunk, says the state has no slot.</remarks>
+    // An empty rewrite leaves old chunk 0; the manifest determines whether a slot exists.
     [TestCase(false, TestName = "A_state_with_no_readable_slot_is_kept")]
     [TestCase(true, TestName = "An_empty_state_rewritten_over_a_stale_chunk_is_kept")]
     public void A_state_without_a_readable_slot_is_kept(bool rewrite)

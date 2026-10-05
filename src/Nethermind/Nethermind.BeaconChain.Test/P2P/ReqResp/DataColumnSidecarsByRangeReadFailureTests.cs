@@ -20,7 +20,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.ReqResp;
 
-/// <summary>Held columns must not be silently omitted (fulu/p2p-interface.md, DataColumnSidecarsByRange).</summary>
 public class DataColumnSidecarsByRangeReadFailureTests
 {
     private const ulong First = 13_410_304;
@@ -116,7 +115,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
         (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, _, BeaconChainStore store) = ServerWithStoredColumns(gloas, stored: [Column + 1]);
         DataColumnSidecarPool writer = new(store: store);
         Action arrive = () => AddColumn(writer, gloas, Column, First);
-        // Concurrent arrivals must remain servable (fulu/p2p-interface.md, DataColumnSidecarsByRange).
         db.AfterNextRecordRead = gloas ? () => db.AfterNextRecordRead = arrive : arrive;
 
         List<ResponseChunk> chunks = await RequestAsync(protocol, First, 1, token);

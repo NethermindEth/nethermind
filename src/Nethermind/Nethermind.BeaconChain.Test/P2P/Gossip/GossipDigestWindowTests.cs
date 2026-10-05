@@ -80,7 +80,6 @@ public class GossipDigestWindowTests
     internal static DateTime EpochStart(BeaconChainSpec spec, ulong epoch) =>
         DateTime.UnixEpoch.AddSeconds(spec.GenesisTime + epoch * spec.SlotsPerEpoch * spec.SecondsPerSlot);
 
-    // An undecodable payload is dropped as unknown only when its digest is outside the window.
     private static bool IsAccepted(GossipMessageValidator validator, GossipRouter router, byte[] digest)
     {
         long unknownBefore = router.GetDropCount(GossipDropReason.UnknownTopic);
@@ -88,7 +87,6 @@ public class GossipDigestWindowTests
         return router.GetDropCount(GossipDropReason.UnknownTopic) == unknownBefore;
     }
 
-    /// <summary>A pubsub topic that records its subscription state and delivers nothing.</summary>
     internal sealed class RecordingTopic : ITopic
     {
         public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }

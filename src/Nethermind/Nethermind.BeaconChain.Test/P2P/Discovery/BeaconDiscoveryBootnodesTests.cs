@@ -20,10 +20,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
-/// <summary>
-/// The spec having bootnodes is not the same as discovery dialing them: the two were wired through
-/// a separate chain-id switch that drifted, leaving a supported network discovery could not start on.
-/// </summary>
 public class BeaconDiscoveryBootnodesTests
 {
     private static BeaconDiscovery Discovery(BeaconChainSpec spec, string? configBootnodes = null)

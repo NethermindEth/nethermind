@@ -10,10 +10,8 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>Builds parent-linked minimal block chains for the P2P tests.</summary>
 internal static class TestChain
 {
-    /// <summary>Creates an anchor block at <paramref name="anchorSlot"/> and parent-linked blocks at each of <paramref name="slots"/>.</summary>
     public static (SignedBeaconBlock Anchor, Hash256 AnchorRoot, SignedBeaconBlock[] Blocks) BuildLinkedChain(ulong anchorSlot, params ulong[] slots)
     {
         SignedBeaconBlock anchor = CreateBlock(anchorSlot, Hash256.Zero);
@@ -30,7 +28,6 @@ internal static class TestChain
         return (anchor, anchorRoot, blocks);
     }
 
-    /// <summary>Persists the chain as the canonical anchored history of <paramref name="store"/>.</summary>
     public static void Persist(BeaconChainStore store, SignedBeaconBlock anchor, Hash256 anchorRoot, IEnumerable<SignedBeaconBlock> blocks)
     {
         store.SetAnchor(anchorRoot, anchor.Message!.Slot);

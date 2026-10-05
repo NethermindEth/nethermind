@@ -37,11 +37,6 @@ using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// A real Kestrel host on an ephemeral port over an in-memory store, for endpoint tests that need
-/// to put blocks and states in and read HTTP out. Also builds the deliberately busy block and state
-/// fixtures the JSON body tests compare against.
-/// </summary>
 internal sealed class BeaconApiTestHost : IAsyncDisposable
 {
     public BeaconChainSpec Spec { get; }
@@ -51,7 +46,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     public BeaconChainStore Store { get; }
     public BeaconApiHost Host { get; }
     public HttpClient Client { get; private set; } = null!;
-    /// <summary>A real but unstarted peer manager the node/peers routes read, or <c>null</c> when the host runs without one.</summary>
     public PeerManager? PeerManager { get; }
 
     private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots, IColumnsDb<BeaconChainDbColumns>? db, BeaconApiConfig? apiConfig, ILogManager? logManager, bool withPeerManager, HeadSnapshotHolder? headSnapshots, IEngineDriver? engine, bool forkAwareStore)
@@ -78,14 +72,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
             metadataSource, engine ?? new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots, headSnapshots: headSnapshots);
     }
 
-    /// <param name="forkChoiceSnapshots">The holder the debug fork-choice endpoint reads; <c>null</c> runs the host without one, as the driver-less configurations do.</param>
-    /// <param name="db">The store's columns; <c>null</c> uses a fresh in-memory set.</param>
-    /// <param name="apiConfig">API limits to run with; the listener fields are always overwritten with a loopback ephemeral port.</param>
-    /// <param name="logManager">Where the host logs; <c>null</c> discards every entry.</param>
-    /// <param name="withPeerManager">Whether to give the host a <see cref="PeerManager"/>, seeded by tests through <see cref="PeerManager.ReserveDialingForTest"/>.</param>
-    /// <param name="headSnapshots">The head snapshots the host serves requests from; <c>null</c> reads the status holder once per request instead.</param>
-    /// <param name="engine">The execution driver used by the host.</param>
-    /// <param name="forkAwareStore">Whether the store decodes blocks using the network's fork schedule.</param>
     public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
         IColumnsDb<BeaconChainDbColumns>? db = null, BeaconApiConfig? apiConfig = null, ILogManager? logManager = null, bool withPeerManager = false, HeadSnapshotHolder? headSnapshots = null,
         IEngineDriver? engine = null, bool forkAwareStore = true)
@@ -113,7 +99,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         return Client.SendAsync(request);
     }
 
-    /// <summary>Writes a block exactly as the pre-index store did, bypassing the children index.</summary>
     public void WriteLegacyBlock(Hash256 root, SignedBeaconBlock block) =>
         Db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
 
@@ -129,7 +114,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     public static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync());
 
-    /// <summary>Reads the complete body and checks success before the caller decodes it.</summary>
     public static async Task<string> ReadSuccessfulBodyAsync(HttpResponseMessage response)
     {
         string raw = await response.Content.ReadAsStringAsync();
@@ -137,7 +121,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         return raw;
     }
 
-    /// <summary>Checks that the HTTP status and JSON error code name the same failure.</summary>
     public static async Task AssertErrorAsync(HttpResponseMessage response, HttpStatusCode expected)
     {
         Assert.That(response.StatusCode, Is.EqualTo(expected));
@@ -157,7 +140,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
 
     private static byte[] Filled(int length, byte fill) => Enumerable.Repeat(fill, length).ToArray();
 
-    /// <summary>A block with one of every body operation populated, so a field the writer forgets or mislabels has somewhere to be missed from.</summary>
     public static SignedBeaconBlock RichBlock(ulong slot, Hash256 parent)
     {
         BitArray aggregationBits = new(3);
@@ -266,7 +248,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         };
     }
 
-    /// <summary>Creates a sparse Fulu state with zero headers, retaining the supplied fork and registry arrays.</summary>
     public static BeaconStateFulu MinimalState(BeaconChainSpec spec, ulong slot, Fork fork, Validator[] validators, ulong[] balances, Hash256[] randaoMixes) => new()
     {
         GenesisTime = spec.GenesisTime,
@@ -299,7 +280,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         },
     };
 
-    /// <summary>A Fulu state with a few validators and every list non-empty, so each list field is exercised with real elements.</summary>
     public static BeaconStateFulu RichState(BeaconChainSpec spec, ulong slot)
     {
         Hash256[] randaoMixes = Enumerable.Repeat(FilledHash(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
@@ -383,7 +363,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         };
     }
 
-    /// <summary>A well-formed block with an empty body at <paramref name="slot"/>, for endpoints that only need something decodable in the store.</summary>
     public static SignedBeaconBlock MinimalBlock(ulong slot)
     {
         SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(slot);
@@ -397,7 +376,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     }
 }
 
-/// <summary>An engine that reports every payload and fork choice as valid; availability is settable for sync-status endpoint tests.</summary>
 internal sealed class NoOpEngineDriver : IEngineDriver
 {
     public SignedBeaconBlock? CurrentBlock { get; set; }
@@ -410,7 +388,6 @@ internal sealed class NoOpEngineDriver : IEngineDriver
     public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
 }
 
-/// <summary>An exit source whose token is cancelled by <see cref="Exit"/> and by nothing else.</summary>
 internal sealed class NoOpProcessExitSource : IProcessExitSource
 {
     private readonly CancellationTokenSource _cts = new();

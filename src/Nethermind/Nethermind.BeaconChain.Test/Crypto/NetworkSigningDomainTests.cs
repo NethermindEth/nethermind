@@ -15,10 +15,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
-/// <summary>
-/// Deposits, BLS-to-execution changes and voluntary exits sign over a config fork version, which differs per network.
-/// A testnet node that used mainnet's versions dropped every new-validator deposit and stalled at the first epoch boundary.
-/// </summary>
 public class NetworkSigningDomainTests
 {
     private static readonly string[] Networks = [nameof(BeaconChainSpec.Mainnet), nameof(BeaconChainSpec.Hoodi), nameof(BeaconChainSpec.Sepolia)];

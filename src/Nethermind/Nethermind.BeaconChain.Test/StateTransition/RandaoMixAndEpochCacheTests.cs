@@ -15,14 +15,6 @@ using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// <see cref="BeaconStateAccessors.GetRandaoMix"/> must refuse an epoch outside the historical
-/// vector's window instead of silently wrapping into a different epoch's mix, and
-/// <see cref="EpochCache"/>'s total-active-balance memo must refuse reuse across two states that
-/// diverged anywhere before the memoized epoch's boundary - including inside the previous epoch,
-/// after the shuffling-decision slot, where the committee shuffling still agrees but the effective
-/// balances the boundary recomputed do not.
-/// </summary>
 public class RandaoMixAndEpochCacheTests
 {
     private const ulong Gwei = 1_000_000_000;
@@ -67,9 +59,7 @@ public class RandaoMixAndEpochCacheTests
     [Test]
     public void GetSeed_still_resolves_previous_current_and_next_epoch_to_the_correct_mix()
     {
-        // GetSeed feeds GetRandaoMix a value shifted by (EPOCHS_PER_HISTORICAL_VECTOR - lookahead -
-        // 1) in the old code, now a plain "epoch - lookahead - 1"; both must land on the same slot,
-        // and that slot must now pass the new bounds check instead of being rejected by it.
+        // Seed lookback and the historical-window check must resolve the same mix.
         ulong currentEpoch = Presets.EpochsPerHistoricalVector + 100;
         BeaconStateFulu state = CreateState(currentEpoch, validatorCount: 4);
 
@@ -161,7 +151,6 @@ public class RandaoMixAndEpochCacheTests
         Assert.That(second, Is.EqualTo(first), "repeated calls for the same branch and epoch must not be treated as a conflict");
     }
 
-    /// <summary>Checks the seed preimage against distinctive mixes for the previous, current and next epochs.</summary>
     internal static void AssertSeedMatchesReference(ulong currentEpoch, Hash256[] randaoMixes, Func<ulong, byte[], Hash256> getSeed)
     {
         byte[] domain = [1, 2, 3, 4];
@@ -184,7 +173,6 @@ public class RandaoMixAndEpochCacheTests
         }
     }
 
-    /// <summary>Creates the minimal state used to test RANDAO windows and epoch-cache keys.</summary>
     internal static BeaconStateFulu CreateState(ulong currentEpoch, int validatorCount)
     {
         BeaconStateFulu state = GloasTestFixtures.CreateMinimalFuluState(validatorCount, FromFirstByte(0x01));
@@ -193,9 +181,6 @@ public class RandaoMixAndEpochCacheTests
         return state;
     }
 
-    /// <summary>A state at <paramref name="epoch"/> on a branch that forked from the common history
-    /// at the shuffling-decision slot, so its decision root is <paramref name="decisionSlotRoot"/>
-    /// (a "conflicting fork" for <see cref="EpochCache"/> purposes).</summary>
     private static BeaconStateFulu CreateBranchState(ulong epoch, Hash256 decisionSlotRoot, int validatorCount)
     {
         BeaconStateFulu state = CreateBranchState(epoch, DecisionSlot(epoch), decisionSlotRoot, validatorCount);
@@ -203,11 +188,6 @@ public class RandaoMixAndEpochCacheTests
         return state;
     }
 
-    /// <summary>
-    /// A state at the first slot of <paramref name="epoch"/> on a branch that forked from the common
-    /// history at <paramref name="forkSlot"/>: every block root from that slot on is
-    /// <paramref name="branchRoot"/>, since forked block roots never re-converge.
-    /// </summary>
     private static BeaconStateFulu CreateBranchState(ulong epoch, ulong forkSlot, Hash256 branchRoot, int validatorCount, ulong slotsIntoEpoch = 0)
     {
         BeaconStateFulu state = CreateState(epoch, validatorCount);
@@ -226,7 +206,6 @@ public class RandaoMixAndEpochCacheTests
 
     private static Hash256[] CreateFilledBlockRoots() => Enumerable.Repeat(FromFirstByte(0x02), (int)Presets.SlotsPerHistoricalRoot).ToArray();
 
-    /// <summary>Sync rewards go to the validators behind each committee pubkey; a stale memo would pay the previous period's committee.</summary>
     [Test]
     public void Sync_committee_indices_map_repeated_members_and_follow_a_new_committee()
     {
@@ -245,7 +224,6 @@ public class RandaoMixAndEpochCacheTests
         Assert.Throws<BeaconStateException>(() => cache.GetSyncCommitteeIndices(new SyncCommittee { Pubkeys = [Pubkey(9)] }, validators));
     }
 
-    /// <summary>A member missing from the registry maps to -1 without failing, and that incomplete map is not reused for a later registry.</summary>
     [Test]
     public void Sync_committee_indices_mark_a_missing_member_and_look_it_up_again()
     {

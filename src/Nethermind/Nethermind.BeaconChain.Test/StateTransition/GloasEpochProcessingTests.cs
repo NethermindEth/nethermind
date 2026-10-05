@@ -17,27 +17,12 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// Gloas epoch processing (<see cref="GloasEpochProcessing"/>) pinned two ways: differentially
-/// against the already-tested Fulu pipeline for every step Gloas left unchanged, and directly for
-/// the three steps it changed - the builder payment window rotation (and the three settlement
-/// branches in block processing that depend on it), the PTC window rotation, and the payload
-/// availability reset in <c>process_slot</c> - plus the EIP-8061 pending-deposit queue, which draws
-/// on the new capped activation churn.
-/// </summary>
 [HardTimeout(60_000)]
 public class GloasEpochProcessingTests
 {
     private static readonly ulong SlotsPerEpoch = Presets.SlotsPerEpoch;
 
-    // ---- The defect this replaces: a same-slot-in-epoch bid one epoch later used to throw ----
 
-    /// <summary>
-    /// Before epoch processing existed, the payment window never rotated, so a bid at the same
-    /// slot-in-epoch as a still-unsettled payment from the previous epoch had to throw by name
-    /// rather than overwrite it. With the rotation in place the old payment has moved to the
-    /// lower half and the new one lands in a cleared address; neither is lost.
-    /// </summary>
     [Test]
     public void A_bid_at_the_same_slot_in_epoch_as_an_unsettled_payment_from_the_previous_epoch_lands_beside_it_not_on_top_of_it()
     {
@@ -67,7 +52,6 @@ public class GloasEpochProcessingTests
         Assert.That(state.BuilderPendingPayments[0].Withdrawal!.Amount, Is.EqualTo(firstBidValue), "the second payment must not destroy the first");
     }
 
-    // ---- The three settlement branches of apply_parent_execution_payload ----
 
     [Test]
     public void A_payload_committed_in_the_previous_epoch_is_settled_through_the_rotated_lower_half_and_paid()
@@ -119,9 +103,7 @@ public class GloasEpochProcessingTests
         Assert.That(state.BuilderPendingWithdrawals, Is.Empty);
     }
 
-    // ---- process_builder_pending_payments in isolation ----
 
-    /// <summary><c>get_builder_payment_quorum_threshold</c>: 60% of one slot's share of the total active balance, 2048 x 32 ETH / 32 slots here.</summary>
     [Test]
     public void Builder_payment_quorum_is_sixty_percent_of_a_slots_share_of_the_active_balance()
     {
@@ -156,7 +138,6 @@ public class GloasEpochProcessingTests
         Assert.That(state.BuilderPendingPayments, Has.Length.EqualTo((int)Presets.BuilderPendingPaymentsLength));
     }
 
-    // ---- process_ptc_window ----
 
     [Test]
     public void ProcessPtcWindow_shifts_one_epoch_and_fills_the_last_with_the_committees_the_fork_transition_would_compute()
@@ -170,7 +151,7 @@ public class GloasEpochProcessingTests
 
         // The Fulu-typed initializer computes epochs (currentEpoch, currentEpoch + 1) from the same
         // validators and mixes; asking it for epoch 2 onward yields the epoch-3 committees the Gloas
-        // rotation must have produced, through independently written seed/committee/selection code.
+        // rotation must have produced. The shared initializer is a consistency check, not an independent PTC oracle.
         PayloadTimelinessCommittee[] expected = GloasForkTransition.InitializePtcWindow(pre, state.GetCurrentEpoch() + 1);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -186,12 +167,7 @@ public class GloasEpochProcessingTests
             "a real committee draws from many validators; an all-equal committee means the seed or candidate list is wrong");
     }
 
-    // ---- get_beacon_proposer_indices (EIP-8045: slashed validators excluded) ----
 
-    /// <summary>
-    /// The fixture states used elsewhere in this file never slash anyone, so they cannot catch a
-    /// broken or dropped exclusion; this pins it directly by slashing every candidate but one.
-    /// </summary>
     [Test]
     public void GetBeaconProposerIndices_never_selects_a_slashed_validator()
     {
@@ -205,7 +181,6 @@ public class GloasEpochProcessingTests
         Assert.That(proposerIndices, Has.All.EqualTo(0ul), "validator 0 is the only unslashed candidate, so every slot must land on it");
     }
 
-    // ---- get_next_sync_committee (eth_aggregate_pubkeys asserts KeyValidate on every member) ----
 
     private static readonly BlsPublicKey[] SyncCommitteeKeys = [.. Enumerable.Range(0, 4).Select(i => new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress()))];
 
@@ -257,10 +232,6 @@ public class GloasEpochProcessingTests
                 validator.ExitEpoch = 1;
         }), Throws.TypeOf<BeaconStateException>());
 
-    /// <summary>
-    /// Runs <c>process_sync_committee_updates</c> at the last epoch of the first sync committee period
-    /// over a registry holding <see cref="SyncCommitteeKeys"/>, after <paramref name="configure"/> edits it.
-    /// </summary>
     private static SyncCommittee RotateSyncCommittee(bool gloas, Action<Validator[]> configure)
     {
         ulong slot = (Presets.EpochsPerSyncCommitteePeriod - 1) * SlotsPerEpoch;
@@ -284,7 +255,6 @@ public class GloasEpochProcessingTests
         return state.NextSyncCommittee!;
     }
 
-    // ---- Everything Gloas left unchanged must agree with the Fulu pipeline ----
 
     [Test]
     public void Crossing_an_epoch_boundary_produces_the_same_validator_balance_and_lookahead_updates_as_the_fulu_pipeline()
@@ -338,15 +308,7 @@ public class GloasEpochProcessingTests
         Assert.That(availability[32], Is.True, "the slot already processed under Fulu keeps its upgrade-time value");
     }
 
-    // ---- process_justification_and_finalization, computed without mutating ----
 
-    /// <summary>
-    /// Fork choice's pulled-up tip of a Gloas block is the non-mutating weighing, so it must be exactly
-    /// what the epoch transition applies, and it must leave the post-state it reads untouched. Each case
-    /// isolates one of the four finalization rules of <c>weigh_justification_and_finalization</c>: only
-    /// that rule's bits and epoch distance line up. Old checkpoint roots are 0xB0 plus their epoch and
-    /// epoch-start block roots 0xA0 plus theirs, so a new checkpoint shows which source its root came from.
-    /// </summary>
     [TestCase(3ul, 1ul, 2ul, new[] { true, true, false, false }, false, 2ul, 0xA2, 1ul, 0xB1, new[] { false, true, true, false },
         TestName = "bits_1_and_2_finalize_the_old_previous_justified_two_epochs_back")]
     [TestCase(4ul, 1ul, 2ul, new[] { false, true, true, false }, false, 3ul, 0xA3, 1ul, 0xB1, new[] { false, true, true, true },
@@ -402,7 +364,6 @@ public class GloasEpochProcessingTests
         Assert.That(state.JustificationBits!.Cast<bool>(), Is.EqualTo(expectedBits).AsCollection);
     }
 
-    // ---- EIP-8061: pending deposits draw on the capped activation churn ----
 
     [TestCase(2048, 32UL, 128UL, 128UL)] // 65,536 ETH / 2^15 is under the 128 ETH floor
     [TestCase(8192, 1001UL, 250UL, 250UL)] // 8,200,192 ETH / 2^15 = 250.25 ETH, floored to a whole increment
@@ -417,10 +378,6 @@ public class GloasEpochProcessingTests
         Assert.That(state.GetActivationChurnLimit(cache), Is.EqualTo(expectedActivationEth * Gwei));
     }
 
-    /// <summary>
-    /// Exits draw on the uncapped exit churn (EIP-8061): with a 512 ETH exit churn a 400 ETH exit fits in the first
-    /// exit epoch, which the 256 ETH activation churn would push one epoch later.
-    /// </summary>
     [Test]
     public void ComputeExitEpochAndUpdateChurn_draws_on_the_uncapped_exit_churn()
     {
@@ -437,7 +394,6 @@ public class GloasEpochProcessingTests
         Assert.That(state.ExitBalanceToConsume, Is.EqualTo(112 * Gwei));
     }
 
-    /// <summary>The fixture state with a registry of <paramref name="validatorCount"/> active validators at <paramref name="effectiveBalanceEth"/>; only the registry feeds the churn limits.</summary>
     private static BeaconStateGloas StateWithRegistry(int validatorCount, ulong effectiveBalanceEth)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
@@ -501,10 +457,6 @@ public class GloasEpochProcessingTests
         Assert.That(state.DepositBalanceToConsume, Is.Zero);
     }
 
-    /// <summary>
-    /// A validator counts as withdrawn only once its <c>withdrawable_epoch</c> is before the next epoch; one withdrawable
-    /// exactly at the next epoch is still exiting, so its deposit is postponed like any exiting validator's.
-    /// </summary>
     [TestCase(1ul, true, TestName = "ProcessPendingDeposits_credits_a_withdrawn_validators_deposit_outside_the_churn")]
     [TestCase(0ul, false, TestName = "ProcessPendingDeposits_postpones_the_deposit_of_a_validator_withdrawable_at_the_next_epoch")]
     public void ProcessPendingDeposits_credits_a_withdrawn_validators_deposit_outside_the_churn(ulong epochsBeforeNextEpoch, bool withdrawn)

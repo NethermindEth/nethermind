@@ -21,7 +21,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>Every API response describes one published get_head view (fork-choice.md).</summary>
 public class BeaconApiHeadSnapshotTests
 {
     private const ulong Slot = 412_500 * 32 + 7;

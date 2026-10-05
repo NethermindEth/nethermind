@@ -10,11 +10,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// The state writer's promise is that a multi-hundred-MB body reaches the client as it is produced.
-/// That only holds if the checkpoint actually flushes; a threshold measured against a counter that
-/// can never reach it turns the stream into a whole-body buffer.
-/// </summary>
 public class BeaconJsonStreamTests
 {
     private const int ThresholdBytes = 64 * 1024;

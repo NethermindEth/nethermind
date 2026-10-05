@@ -23,9 +23,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 public class GloasForkTransitionTests
 {
     private const ulong Gwei = 1_000_000_000;
-    // Large enough that every (slot, committee) slice in a 32-slot epoch gets at least one member;
-    // with too few validators most slices are empty and ComputeBalanceWeightedSelection has nothing
-    // to sample from.
+    // PTC sampling needs a nonempty committee at every slot.
     private const int ValidatorCount = 2048;
     private static readonly byte[] GloasVersion = Bytes.FromHexString("0x07000000");
     // PAYLOAD_BUILDER_VERSION, Uint8(0) in specs/gloas/beacon-chain.md.
@@ -35,8 +33,7 @@ public class GloasForkTransitionTests
     public void UpgradeToGloas_preserves_the_fields_the_spec_says_carry_over()
     {
         BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
-        // Distinctive non-zero values: every one of these is asserted by value below, and a fixture
-        // that leaves them at their default makes those assertions pass against a dropped field.
+
         pre.Slot = 64;
         pre.Eth1DepositIndex = 7;
         pre.NextWithdrawalIndex = 11;
@@ -158,8 +155,7 @@ public class GloasForkTransitionTests
             Assert.That((post.PtcWindow![i].Indices ?? []).All(static idx => idx == 0), Is.True,
                 $"empty-previous-epoch committee {i} must be all-zero, matching the spec's placeholder history");
         }
-        // At least one real (post-lookahead) committee must contain a nonzero, in-range index -
-        // otherwise ComputePtc silently produced nothing and this test would not be able to fail.
+
         Assert.That(post.PtcWindow!.Skip((int)Presets.SlotsPerEpoch).SelectMany(static c => c.Indices!).Any(static idx => idx != 0), Is.True);
     }
 
@@ -263,10 +259,7 @@ public class GloasForkTransitionTests
         Assert.That(builder.WithdrawableEpoch, Is.EqualTo(Presets.FarFutureEpoch));
     }
 
-    /// <summary>
-    /// is_pending_validator (specs/gloas/beacon-chain.md) keeps a builder-credential deposit queued only when an
-    /// earlier kept deposit for the same pubkey carries a valid signature; otherwise the builder is onboarded.
-    /// </summary>
+    // is_pending_validator keeps builder deposits only behind an earlier valid same-pubkey deposit (specs/gloas/beacon-chain.md).
     [TestCase(true, true, false, true, false, TestName = "valid_earlier_deposit_for_the_pubkey_keeps_the_builder_deposit")]
     [TestCase(true, false, false, true, true, TestName = "invalid_earlier_deposit_for_the_pubkey_does_not_block_onboarding")]
     [TestCase(false, true, false, true, true, TestName = "valid_earlier_deposit_for_another_pubkey_does_not_block_onboarding")]
@@ -324,15 +317,7 @@ public class GloasForkTransitionTests
         Assert.That(post.Builders![0].Balance, Is.EqualTo(35 * Gwei));
     }
 
-    /// <summary>
-    /// Every post-fork entry of ptc_window is compute_ptc for its slot (specs/gloas/fork.md initialize_ptc_window,
-    /// specs/gloas/beacon-chain.md compute_ptc), recomputed here from the spec text rather than through the upgrade.
-    /// </summary>
-    /// <remarks>
-    /// 8192 validators give two committees per slot, so the candidate list is a concatenation. Distinct randao mixes
-    /// make the seed of each epoch differ in its mix as well as its epoch bytes. Effective balances from 32 to 2048 ETH
-    /// make each draw depend on which validator's balance weights it.
-    /// </remarks>
+    // Independent compute_ptc oracle (specs/gloas/beacon-chain.md):8192validators yield two committees/slot; distinct mixes and32â€“2048ETH balances exercise seed and weighting.
     [Test]
     public void UpgradeToGloas_fills_the_ptc_window_with_the_spec_committee_of_each_slot()
     {
@@ -355,8 +340,7 @@ public class GloasForkTransitionTests
         }
     }
 
-    /// <summary>compute_ptc transcribed from specs/gloas/beacon-chain.md.</summary>
-    /// <remarks>The candidate committees come from the production Fulu shuffling, which the Fulu shuffling vectors cover.</remarks>
+    // Spec compute_ptc oracle; candidate committees use production Fulu shuffling, covered separately by official vectors.
     private static ulong[] SpecComputePtc(BeaconStateFulu state, ulong slot)
     {
         ulong epoch = slot / Presets.SlotsPerEpoch;
@@ -495,7 +479,6 @@ public class GloasForkTransitionTests
         return new Hash256(bytes);
     }
 
-    /// <summary>A distinct pubkey per validator index, unlike <see cref="Pubkey"/>'s single repeated fill byte.</summary>
     private static BlsPublicKey PubkeyForIndex(int index)
     {
         byte[] bytes = Enumerable.Repeat((byte)0x50, BlsPublicKey.Length).ToArray();

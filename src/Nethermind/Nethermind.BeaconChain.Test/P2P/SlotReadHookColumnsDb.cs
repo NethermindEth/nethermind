@@ -11,7 +11,6 @@ using Nethermind.Db;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>A column store whose canonical index runs <see cref="OnRead"/> once, just before the first read of one slot's entry.</summary>
 internal sealed class SlotReadHookColumnsDb(ulong slot) : IColumnsDb<BeaconChainDbColumns>
 {
     private readonly MemColumnsDb<BeaconChainDbColumns> _inner = new();

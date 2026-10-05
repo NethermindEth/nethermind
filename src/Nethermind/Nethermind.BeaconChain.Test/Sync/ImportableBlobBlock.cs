@@ -27,25 +27,14 @@ using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransiti
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// A genesis-like Fulu anchor and one fully valid, genuinely signed child block carrying blob
-/// commitments, plus the real column sidecars for it (real KZG cells and proofs, and an inclusion
-/// proof folded from the block body's own field roots). Every check the import pipeline runs before
-/// data availability - proposer and RANDAO signatures, payload consistency, the post-state root -
-/// passes, so the availability gate is the only thing left that can reject this block.
-/// </summary>
+/// <summary>The signed block passes every pre-availability check; only missing columns can defer it.</summary>
 internal sealed class ImportableBlobBlock
 {
     private const ulong Gwei = 1_000_000_000;
     private const int ValidatorCount = 16;
     private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
 
-    /// <summary>
-    /// Mainnet parameters with Electra and Fulu live from genesis, so the spec agrees that the slot-0
-    /// anchor is a Fulu state. Under mainnet's own fork epochs every slot of this fixture sits below
-    /// the <see cref="DataAvailabilityBoundary"/> (floored at <c>FULU_FORK_EPOCH</c>) and no column
-    /// would ever be demanded for <see cref="Block"/>.
-    /// </summary>
+    /// <summary>Activate Fulu at genesis so fixture blocks fall inside the availability window.</summary>
     public static BeaconChainSpec FuluFromGenesis { get; } = new()
     {
         ChainId = BeaconChainSpec.Mainnet.ChainId,
@@ -72,20 +61,16 @@ internal sealed class ImportableBlobBlock
 
     public required Hash256 AnchorRoot { get; init; }
 
-    /// <summary>Built from the anchor registry, as <c>BeaconChainService</c> does before the importer runs.</summary>
     public required PubkeyCache Pubkeys { get; init; }
 
     public required SignedBeaconBlock Block { get; init; }
 
     public required Hash256 BlockRoot { get; init; }
 
-    /// <summary>All <see cref="Eip7594DasConstants.NumberOfColumns"/> sidecars of <see cref="Block"/>, indexed by column.</summary>
     public required DataColumnSidecar[] Columns { get; init; }
 
-    /// <summary>A wall clock stopped at the first slot of <paramref name="epoch"/> under <see cref="Spec"/>, for placing <see cref="Block"/> inside or below the data availability window.</summary>
     public SlotClock ClockAtEpoch(ulong epoch) => ClockAtSlot(epoch * Spec.SlotsPerEpoch);
 
-    /// <summary>A wall clock stopped at the start of <paramref name="slot"/> under <see cref="Spec"/>; a block after it is from the future.</summary>
     public SlotClock ClockAtSlot(ulong slot) =>
         new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + slot * Spec.SecondsPerSlot)).UtcDateTime));
 
@@ -120,7 +105,6 @@ internal sealed class ImportableBlobBlock
         DataColumnKzgFixture.BlobFixture[] blobs = [.. Enumerable.Range(0, blobCount).Select(i => DataColumnKzgFixture.BuildBlob((byte)(0x10 * (i + 1))))];
         SszKzgCommitment[] commitments = [.. blobs.Select(DataColumnKzgFixture.CommitmentOf)];
 
-        // The lookahead is all zeros, so validator 0 proposes slot 1.
         Bls.SecretKey proposerKey = DeriveKey(0);
         BeaconBlock block = TestChain.CreateBlock(slot: 1, parentRoot: anchorRoot).Message!;
         block.ProposerIndex = 0;
@@ -156,7 +140,7 @@ internal sealed class ImportableBlobBlock
         };
     }
 
-    /// <summary>Builds matching blocks and sidecars for verification (fulu/p2p-interface.md), without a valid state transition.</summary>
+    /// <summary>These blocks have valid sidecar proofs but no valid state transition.</summary>
     public static (SignedBeaconBlock Block, Hash256 Root, DataColumnSidecar[] Columns) BlobBlockAt(ulong slot, Hash256 parentRoot, int blobCount = 1)
     {
         DataColumnKzgFixture.BlobFixture[] blobs = [.. Enumerable.Range(0, blobCount).Select(i => DataColumnKzgFixture.BuildBlob((byte)(0x10 * (i + 1))))];
@@ -201,7 +185,6 @@ internal sealed class ImportableBlobBlock
         return columns;
     }
 
-    /// <summary>A block at slot 1 with no blob commitments, otherwise identical in validity to <see cref="Block"/>.</summary>
     public static ImportableBlobBlock CreateWithoutBlobs() => Create(blobCount: 0);
 
     internal static Bls.SecretKey DeriveKey(int index) => new(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)index));
@@ -211,7 +194,6 @@ internal sealed class ImportableBlobBlock
 
     internal static BlsSignature SignAs(ulong validatorIndex, Hash256 objectRoot, Hash256 domain) => Sign(DeriveKey((int)validatorIndex), objectRoot, domain);
 
-    /// <summary><c>hash_tree_root(epoch)</c>: one little-endian uint64 chunk.</summary>
     internal static Hash256 EpochRoot(ulong epoch)
     {
         byte[] root = new byte[32];
@@ -219,12 +201,7 @@ internal sealed class ImportableBlobBlock
         return new Hash256(root);
     }
 
-    /// <summary>
-    /// The depth-4 branch proving <c>blob_kzg_commitments</c> (field 11 of the 13-field body) against
-    /// <c>hash_tree_root(body)</c>, folded here from each field's own root rather than taken from the
-    /// codec, so a sidecar built from it is only valid if the body really merkleizes this way. The
-    /// operation lists are empty in this fixture, which is what the fixed empty-list roots assume.
-    /// </summary>
+    /// <summary>Build the depth-4 commitments proof from independent body-field roots; fixed empty-list roots assume empty operations.</summary>
     private static Hash256[] KzgCommitmentsInclusionProof(BeaconBlockBody body)
     {
         Hash256[] level = new Hash256[1 << Eip7594DasConstants.KzgCommitmentsInclusionProofDepth];

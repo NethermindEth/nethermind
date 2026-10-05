@@ -30,10 +30,6 @@ using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// <see cref="ExecutionPayloadEnvelopeImporter"/> driven through the production <see cref="EngineDriver"/>
-/// over a scripted engine RPC module, so the engine's own status strings are what gets mapped.
-/// </summary>
 [HardTimeout(60_000)]
 public class ExecutionPayloadEnvelopeImporterTests
 {
@@ -41,11 +37,6 @@ public class ExecutionPayloadEnvelopeImporterTests
 
     private readonly List<IContainer> _containers = [];
 
-    /// <summary>
-    /// SYNCING and ACCEPTED are "not rejected, not validated". Reporting either as
-    /// <see cref="ExecutionPayloadEnvelopeImportResult.Valid"/> would let the caller mark the block's
-    /// payload valid in fork choice, which cannot be unwound.
-    /// </summary>
     [TestCase(PayloadStatus.Valid, ExecutionPayloadEnvelopeImportResult.Valid, 0)]
     [TestCase(PayloadStatus.Syncing, ExecutionPayloadEnvelopeImportResult.Optimistic, 0)]
     [TestCase(PayloadStatus.Accepted, ExecutionPayloadEnvelopeImportResult.Optimistic, 0)]
@@ -65,10 +56,6 @@ public class ExecutionPayloadEnvelopeImporterTests
         engine.ReceivedWithAnyArgs(1).engine_newPayloadV5(default!, default!, default, default);
     }
 
-    /// <summary>
-    /// The block-root check hashes the block's post-state, which the import that produced it already hashed: the hasher the importer
-    /// is given supplies that root, and a root it gets wrong refuses the envelope before the engine is asked.
-    /// </summary>
     [Test]
     public void The_block_root_check_takes_the_state_root_from_the_supplied_hasher([Values] bool hasherAgrees)
     {
@@ -125,12 +112,7 @@ public class ExecutionPayloadEnvelopeImporterTests
         engine.DidNotReceiveWithAnyArgs().engine_newPayloadV5(default!, default!, default, default);
     }
 
-    /// <summary>
-    /// Each envelope is validly signed by the registered builder key, so only the spec checks can
-    /// refuse them: one commits to a block hash the block's bid never named, the others name a
-    /// builder index outside the one-entry registry (the first index past its end, and one far past it),
-    /// which must be a rejection rather than an index exception.
-    /// </summary>
+    /// <summary>Correct signatures isolate the bid/hash and builder-index checks; out-of-range indices must reject without throwing.</summary>
     [TestCase(0ul, (byte)0x77, TestName = "Rejects_an_envelope_that_does_not_match_the_committed_bid")]
     [TestCase(1ul, (byte)0x88, TestName = "Rejects_an_envelope_naming_the_first_builder_index_past_the_registry")]
     [TestCase(7ul, (byte)0x88, TestName = "Rejects_an_envelope_naming_a_builder_outside_the_registry")]
@@ -148,11 +130,6 @@ public class ExecutionPayloadEnvelopeImporterTests
         AssertCountedRejectionWithoutEngineCall(result, rejectionsBefore, engine);
     }
 
-    /// <summary>
-    /// A self-built envelope names <c>BUILDER_INDEX_SELF_BUILD</c>, which is never inside the builder
-    /// registry; it is signed by the block's proposer and must still verify, also when the pubkey cache
-    /// lags the registry, which the importer extends from the block's post-state rather than let the lookup throw.
-    /// </summary>
     [Test]
     public void A_self_built_envelope_signed_by_the_proposer_is_accepted([Values] bool cacheLagsRegistry)
     {
@@ -172,10 +149,6 @@ public class ExecutionPayloadEnvelopeImporterTests
         engine.ReceivedWithAnyArgs(1).engine_newPayloadV5(default!, default!, default, default);
     }
 
-    /// <summary>
-    /// The spec's <c>state.validators[header.proposer_index]</c> fails a self-built envelope whose block names a proposer outside
-    /// the registry; the importer rejects it instead of letting the cache lookup throw out of the import worker.
-    /// </summary>
     [Test]
     public void A_self_built_envelope_whose_proposer_is_outside_the_registry_is_a_counted_rejection()
     {
@@ -186,10 +159,6 @@ public class ExecutionPayloadEnvelopeImporterTests
         AssertCountedRejectionBeforeEngineCall(pubkeys, envelope, () => states);
     }
 
-    /// <summary>
-    /// The envelope rejection is counted under its own source-agnostic operation label and under no other, so it neither
-    /// renames silently nor lands on a sibling's label (body_attestation, gossip_aggregate and the rest); a dashboard reads these names.
-    /// </summary>
     [Test]
     public void An_envelope_rejection_is_counted_under_its_settled_operation_label_only()
     {
@@ -215,12 +184,6 @@ public class ExecutionPayloadEnvelopeImporterTests
         Assert.That(counted, Is.EqualTo(new[] { "execution_payload_envelope" }));
     }
 
-    /// <summary>
-    /// The envelope is otherwise valid; only its signature is replaced. A wrong key or a signature
-    /// made under a domain other than <c>DOMAIN_BEACON_BUILDER</c> must fail
-    /// <c>verify_execution_payload_envelope_signature</c> on both paths: a registered builder's
-    /// envelope, and a self-built one, which the block's proposer signs.
-    /// </summary>
     [TestCase(false, false, TestName = "Rejects_a_builder_envelope_signed_by_a_key_other_than_the_builder")]
     [TestCase(false, true, TestName = "Rejects_a_builder_envelope_signed_by_the_builder_under_the_proposer_domain")]
     [TestCase(true, false, TestName = "Rejects_a_self_built_envelope_signed_by_a_validator_other_than_the_proposer")]
@@ -254,11 +217,7 @@ public class ExecutionPayloadEnvelopeImporterTests
         AssertCountedRejectionBeforeEngineCall(pubkeys, forged, () => new BlockStates().Add(state));
     }
 
-    /// <summary>
-    /// One field of an otherwise valid, correctly re-signed envelope is changed so that exactly one
-    /// assert of <c>verify_execution_payload_envelope</c> (specs/gloas/fork-choice.md) fails. The store
-    /// answers the envelope's own root, so the lookup never decides the outcome; only that assert does.
-    /// </summary>
+    /// <summary>Re-sign the changed envelope and resolve its own block root so only the selected spec assertion can reject it.</summary>
     [TestCaseSource(nameof(SpecCheckViolations))]
     public void An_envelope_failing_a_spec_check_is_a_counted_rejection_decided_before_the_engine_is_called(Action<ExecutionPayloadEnvelope> violate)
     {
@@ -303,11 +262,6 @@ public class ExecutionPayloadEnvelopeImporterTests
         static TestCaseData Violation(string name, Action<ExecutionPayloadEnvelope> violate) => new TestCaseData(violate).SetName(name);
     }
 
-    /// <summary>
-    /// The block committed a self-build bid, but a registered builder delivers the envelope, validly
-    /// signed with its own key and matching every other field. Only
-    /// <c>envelope.builder_index == bid.builder_index</c> stops a builder from filling a slot it never won.
-    /// </summary>
     [Test]
     public void Rejects_an_envelope_from_a_builder_other_than_the_one_the_block_committed_to()
     {
@@ -350,10 +304,6 @@ public class ExecutionPayloadEnvelopeImporterTests
         Assert.That(Rejections(), Is.EqualTo(rejectionsBefore), "an unevaluated envelope is not an invalid one");
     }
 
-    /// <summary>
-    /// <see cref="ExecutionStatus.Irrelevant"/> is no verdict at all, and <see cref="EngineDriver"/> never
-    /// returns it, so only a faulty notifier can. Counting it as a rejection would blame the envelope's sender for our bug.
-    /// </summary>
     [Test]
     public void A_notifier_that_returns_irrelevant_fails_loudly_and_is_not_counted_as_a_rejection()
     {
@@ -370,11 +320,6 @@ public class ExecutionPayloadEnvelopeImporterTests
         notifier.ReceivedWithAnyArgs(1).NotifyNewPayload(default!, default!, default!, default!);
     }
 
-    /// <summary>
-    /// Two retained blocks whose post-states committed different bids. Each envelope must be judged
-    /// against its own block: availability is asked about that block's bid, the engine is sent that
-    /// envelope's payload, and each verdict is the one the engine gave for that payload.
-    /// </summary>
     [Test]
     public void Each_envelope_is_verified_against_the_post_state_of_its_own_block()
     {
@@ -446,7 +391,6 @@ public class ExecutionPayloadEnvelopeImporterTests
         _containers.Clear();
     }
 
-    /// <summary>An importer over the <see cref="EngineDriver"/> the production module wires in front of <paramref name="engine"/>.</summary>
     private ExecutionPayloadEnvelopeImporter CreateImporter(IGloasBlockStateProvider states, IEngineRpcModule engine, Func<Hash256, ExecutionPayloadBid, bool>? isDataAvailable = null, PubkeyCache? pubkeys = null, IBeaconStateHasher? hasher = null)
     {
         IContainer container = BeaconChainTestContainer.Builder(engine: engine, config: new BeaconChainConfig { Enabled = true }).Build();

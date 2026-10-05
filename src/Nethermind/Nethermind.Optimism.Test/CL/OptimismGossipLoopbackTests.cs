@@ -29,15 +29,13 @@ public class OptimismGossipLoopbackTests
 {
     private const string BlocksTopic = "/optimism/10/2/blocks";
 
-    /// <summary>rollup-node-p2p.md: block gossip may carry up to 10 MiB, so a block of any legal size crosses a real session whole.</summary>
-    /// <remarks>An RPC over the receiver's bound, or one truncated in the yamux channel, ends the read loop and disconnects the peer.</remarks>
+    // rollup-node-p2p.md permits block gossip up to 10 MiB, spanning multiple yamux frames.
     [TestCase(64, TestName = "A small block message reaches the other host")]
     [TestCase(280 * 1024, TestName = "A block message over one yamux window reaches the other host")]
     [TestCase(1024 * 1024 + 4096, TestName = "A block message over one mebibyte reaches the other host")]
     [CancelAfter(60_000)]
     public Task A_block_message_reaches_the_other_host(int size, CancellationToken token) => PublishAndReceiveAsync(size, token);
 
-    /// <summary>The receiver reads an RPC and an IWANT answer up to max_compressed_len(10 MiB) + 1024 bytes, not the library's 1 MiB and 512 KiB.</summary>
     [Test]
     public void Block_gossip_bounds_admit_the_op_stack_maximum()
     {
@@ -72,9 +70,6 @@ public class OptimismGossipLoopbackTests
         Assert.That(await received.Task, Is.EqualTo(block));
     }
 
-    /// <summary>A static peer the router holds no gossip connection to is connected by the static peer check, at first and again after its
-    /// connection closed.</summary>
-    /// <remarks>The router never redials a peer whose reconnection it suppressed, and discovering a known peer again does nothing.</remarks>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_static_peer_is_connected_by_the_static_peer_check_again_after_a_disconnect(CancellationToken token)
@@ -115,8 +110,6 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, routing, sequencerId, token);
     }
 
-    /// <summary>A gossip dial that has not connected the peer by the next check is cancelled before another starts, so a peer that stalls
-    /// in negotiation holds one gossip channel, not one per check.</summary>
     [Test]
     public async Task A_stalled_gossip_dial_is_cancelled_before_the_next_check_dials_again()
     {
@@ -148,9 +141,6 @@ public class OptimismGossipLoopbackTests
         }
     }
 
-    /// <summary>A dial that cannot start, to addresses any peer can announce for another through pubsub peer discovery, does not keep that
-    /// peer from being connected later.</summary>
-    /// <remarks>Nethermind.Libp2p 1.0.0 kept such a dial as the pending dial of the peer id for good.</remarks>
     [TestCase("/dns4/sequencer.invalid/tcp/{port}/p2p/{id}", TestName = "A name whose first lookup fails")]
     [TestCase("/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name")]
     [TestCase("/ip4/127.0.0.1/tcp/{port}/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name after an address")]
@@ -172,7 +162,6 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
-    /// <summary>A static peer named by a host the hosts file maps is connected, as the operating system resolver finds it.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_static_peer_named_in_the_hosts_file_is_connected(CancellationToken token)
@@ -187,7 +176,6 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
-    /// <summary>A static peer named by /dns, whose name has IPv4 addresses only, is connected at its IPv4 address.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_static_peer_named_by_dns_with_ipv4_only_is_connected(CancellationToken token)
@@ -202,7 +190,6 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
-    /// <summary>A name whose DNS server never answers is given up within the resolution deadline, and the other addresses of the peer are still dialed.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_name_that_never_resolves_does_not_hold_the_other_addresses(CancellationToken token)
@@ -219,7 +206,6 @@ public class OptimismGossipLoopbackTests
         Assert.That(session.RemoteAddress.GetPeerId(), Is.EqualTo(sequencerId));
     }
 
-    /// <summary>A static peer named by a dnsaddr TXT record is connected at the address the record names.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_static_peer_named_by_dnsaddr_is_connected(CancellationToken token)
@@ -234,7 +220,6 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
-    /// <summary>A dial its caller stopped waiting for, which then fails, leaves no unobserved failure behind.</summary>
     [Test]
     [NonParallelizable]
     [CancelAfter(60_000)]
@@ -259,7 +244,6 @@ public class OptimismGossipLoopbackTests
         try
         {
             await AbandonAsync(node.Peer, Multiaddress.Decode(refusing), token);
-            // The library dial fails within milliseconds on a refused connection; its task is then collectable.
             await Task.Delay(1000, token);
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -281,8 +265,6 @@ public class OptimismGossipLoopbackTests
         Assert.That(async () => await peer.DialAsync(address, abandoned.Token), Throws.InstanceOf<OperationCanceledException>(), "fixture: the caller stops waiting");
     }
 
-    /// <summary>A dial its caller cancelled before it began does not keep the peer from being dialed afterwards.</summary>
-    /// <remarks>Nethermind.Libp2p 1.0.0 kept such a dial as the pending dial of the peer id for good.</remarks>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_cancelled_dial_does_not_lose_the_peer(CancellationToken token)
@@ -296,8 +278,6 @@ public class OptimismGossipLoopbackTests
         Assert.That(await node.Peer.DialAsync(sequencer.Address, token).WaitAsync(TimeSpan.FromSeconds(20), token), Is.Not.Null);
     }
 
-    /// <summary>A dial still running when its peer is disposed leaves no session open: disposal does not end a dial in flight.</summary>
-    /// <param name="callerStopsWaiting">The caller cancels first while another waiter keeps the library dial running.</param>
     [Test]
     [CancelAfter(90_000)]
     public async Task A_peer_disposed_during_a_dial_leaves_no_session_open([Values] bool callerStopsWaiting, CancellationToken token)
@@ -307,7 +287,6 @@ public class OptimismGossipLoopbackTests
         await AssertNoSessionAfterShutdownAsync(node.Peer, sequencer, () => node.ShutDownAsync(), callerStopsWaiting, token);
     }
 
-    /// <summary>A dial still running when the CL P2P host shuts down leaves no session open.</summary>
     [Test]
     [CancelAfter(90_000)]
     public async Task A_host_shut_down_during_a_dial_leaves_no_session_open(CancellationToken token)
@@ -325,7 +304,6 @@ public class OptimismGossipLoopbackTests
 
         try
         {
-            // As OptimismCL shuts down: the run token stops the listener, then the host is disposed.
             await AssertNoSessionAfterShutdownAsync(peer, sequencer, async () => { await stop.CancelAsync(); p2p.Dispose(); }, callerStopsWaiting: false, token);
         }
         finally
@@ -335,7 +313,6 @@ public class OptimismGossipLoopbackTests
         }
     }
 
-    // Starts a dial from dialer, shuts down while it runs, and checks the session the dial opens at remote is closed.
     private static async Task AssertNoSessionAfterShutdownAsync(ILocalPeer dialer, Host remote, Func<ValueTask> shutdown, bool callerStopsWaiting, CancellationToken token)
     {
         LocalPeer remotePeer = (LocalPeer)remote.Peer;
@@ -370,8 +347,7 @@ public class OptimismGossipLoopbackTests
 
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
 
-        // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
-        // a session left open was still open after 40 s.
+        // Dial timeout is 15 s; a remote losing the connection mid-handshake can take another 30 s to drop it.
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
         bounded.CancelAfter(TimeSpan.FromSeconds(45));
         while (remotePeer.Sessions.Count > 0 && !bounded.IsCancellationRequested)
@@ -382,7 +358,6 @@ public class OptimismGossipLoopbackTests
         Assert.That(remotePeer.Sessions, Is.Empty, "the dial finished after shutdown and its session stayed open");
     }
 
-    /// <summary>A connected peer whose stored addresses were replaced by a set of two peer ids is still dialed by its existing session.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_connected_peer_is_dialed_by_its_session_whatever_its_stored_addresses(CancellationToken token)
@@ -398,7 +373,6 @@ public class OptimismGossipLoopbackTests
         Assert.That(await node.Peer.DialAsync(sequencerId, token), Is.SameAs(session));
     }
 
-    // Runs the static peer check as its timer does, more often: the peer can refuse a dial while it still holds an earlier session.
     private static async Task KeepUntilConnectedAsync(StaticPeerKeeper keeper, Host node, IRoutingStateContainer routing, PeerId peerId, CancellationToken token)
     {
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -415,7 +389,6 @@ public class OptimismGossipLoopbackTests
         }
     }
 
-    /// <summary>Answers every name with the loopback address and <paramref name="txt"/>, after failing the first query as a lookup that times out does.</summary>
     private sealed class LoopbackDns(string txt, bool noIpv6 = false, bool silent = false) : IDnsLookup
     {
         private int _queries;
@@ -465,7 +438,6 @@ public class OptimismGossipLoopbackTests
             return new Host(services, peer, listening);
         }
 
-        /// <summary>Shuts the peer down as a host does: the listener stops with the run token, then the peer is disposed.</summary>
         public async ValueTask ShutDownAsync()
         {
             await listening.CancelAsync();

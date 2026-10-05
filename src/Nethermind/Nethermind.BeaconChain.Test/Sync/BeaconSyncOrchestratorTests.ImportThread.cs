@@ -16,10 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// The importer's engine call blocks its thread until the execution layer answers, so every import must leave the thread pool free:
-/// a slow newPayload would otherwise hold a pool thread for its whole duration, and a burst of them would starve everything else.
-/// </summary>
+/// <summary>The engine call blocks its caller; the import thread must not be a thread-pool thread.</summary>
 public partial class BeaconSyncOrchestratorTests
 {
     public enum ImportEntryPoint
@@ -87,7 +84,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.ImportedOnPoolThread, Is.All.False);
     }
 
-    /// <summary>Gossip blocks arrive a slot apart, so the thread must outlive that gap instead of being started for every import.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task The_import_thread_is_kept_between_imports_that_are_seconds_apart()
@@ -101,7 +97,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(second, Is.SameAs(first));
     }
 
-    /// <summary>A thread that cannot start must fail its caller and leave the next import free to start one, not queue it for a thread that never runs.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task An_import_thread_that_fails_to_start_does_not_hold_back_the_imports_after_it()

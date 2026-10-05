@@ -18,10 +18,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// A gossip block past the head whose parent no peer returns by root showed the chain moving on while every peer's last status
-/// said it had not (Hoodi, 16:05-16:10): the head then waited minutes for gossip. The pool must hear of it, and range sync must bring the parent.
-/// </summary>
 public partial class BeaconSyncOrchestratorTests
 {
     [TestCase(WallSlot, WallSlot, TestName = "a block at the wall slot signals that slot")]
@@ -69,7 +65,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Pool.StatusRefreshSlots, Is.EqualTo(new[] { WallSlot, WallSlot + 1 }));
     }
 
-    // The log's case end to end: stale statuses, a by-root fetch that times out on every peer, and range sync from the head.
     [Test]
     [CancelAfter(60_000)]
     public async Task A_gossip_block_whose_ancestor_no_peer_returns_by_root_imports_once_range_sync_brings_the_ancestor(CancellationToken token)
@@ -98,13 +93,11 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot).Where(static s => s == WallSlot).Count(), Is.EqualTo(1));
     }
 
-    /// <summary>Range sync that already reached the wall clock waits a slot between rounds; a failed ancestor fetch must not wait that out.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_failed_ancestor_fetch_starts_a_range_sync_round_without_waiting_out_the_slot(CancellationToken token)
     {
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 1, WallSlot);
-        // Its status covers the wall slot, but it has none of the blocks, so the first round ends at once.
         RangeSyncTests.StubPeer empty = new("empty", WallSlot, static (_, _) => []);
         IBeaconSyncPeer stale = StalePeerServing(chain[..^1]);
         Harness harness = CreateHarness(anchorSlot: NearHeadAnchorSlot, peers: [empty]);
@@ -116,7 +109,6 @@ public partial class BeaconSyncOrchestratorTests
             await Task.Delay(10, token);
         }
 
-        // The round has ended and the feed waits for the next slot.
         await Task.Delay(TimeSpan.FromMilliseconds(300), token);
         harness.Pool.OfferedAfterRefresh = [stale];
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(new ForkedSignedBeaconBlock.OfFulu(chain[^1]), token);
@@ -136,10 +128,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(untilNextRound, Is.LessThan(bound));
     }
 
-    /// <summary>
-    /// Mainnet shape: the head tens of slots behind, no gossip block to link, every status stale and most peers timing out by range.
-    /// The slot tick alone must tell the pool, and range sync must reach the wall clock through the one peer that serves.
-    /// </summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_head_tens_of_slots_behind_with_most_peers_timing_out_reaches_the_wall_clock(CancellationToken token)
@@ -176,7 +164,6 @@ public partial class BeaconSyncOrchestratorTests
         return peer;
     }
 
-    /// <summary>A peer whose last status is our head: it times out every by-root request and serves <paramref name="chain"/> by range.</summary>
     private static IBeaconSyncPeer StalePeerServing(SignedBeaconBlock[] chain, ulong headSlot = NearHeadAnchorSlot)
     {
         IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();

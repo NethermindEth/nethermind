@@ -39,11 +39,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Spec;
 
-/// <summary>
-/// Every <see cref="BeaconFork"/> value against every site that dispatches on the fork. Each table below must name every
-/// value, so a new fork fails here until each site handles it or refuses it by name, instead of compiling and throwing
-/// the generic fall-through at runtime.
-/// </summary>
 [HardTimeout(60_000)]
 public class ForkDispatchTests
 {
@@ -404,7 +399,6 @@ public class ForkDispatchTests
         return (new ForkedBeaconState.OfFulu(state), new ForkedSignedBeaconBlock.OfGloas(block), Spec);
     }
 
-    /// <summary>A beacon API serving the Gloas checkpoint of <see cref="ForkCrossingChain.First"/> under the <paramref name="consensusVersion"/> label.</summary>
     private static async Task<WebApplication> StartCheckpointProviderAsync(string consensusVersion)
     {
         ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;

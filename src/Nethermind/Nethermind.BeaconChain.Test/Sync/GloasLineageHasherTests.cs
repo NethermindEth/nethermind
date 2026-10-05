@@ -13,15 +13,10 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// The Gloas lineage hashes each post-state through a <see cref="CachedBeaconStateHasher"/> that the envelope's state-root check shares,
-/// instead of merkleizing the whole state twice per slot.
-/// </summary>
 public class GloasLineageHasherTests
 {
     private const ulong ForkSlot = 32;
 
-    /// <summary>A block whose parent is the lineage reuses its hasher; a fork branch starts with a fresh one, so an invalid fork block cannot disturb the lineage's memo.</summary>
     [Test]
     public void Lineage_keeps_a_cached_hasher_and_a_fork_branch_adopts_a_fresh_one()
     {
@@ -70,7 +65,6 @@ public class GloasLineageHasherTests
         }
     }
 
-    /// <summary>The envelope of the lineage block is checked through the lineage hasher, and passes with it.</summary>
     [Test]
     public void Envelope_of_the_lineage_block_is_verified_through_the_lineage_hasher()
     {
@@ -88,7 +82,6 @@ public class GloasLineageHasherTests
         Assert.That(spy.GloasCalls, Is.EqualTo(1));
     }
 
-    /// <summary>A rough comparison for the report: re-hashing the state a block import just hashed, once through each hasher. Not asserted.</summary>
     [Test]
     public void Report_the_cost_of_rehashing_a_post_state_with_each_hasher()
     {
@@ -121,7 +114,6 @@ public class GloasLineageHasherTests
 
     private static IBeaconStateHasher LineageHasher(BlockImporter importer) => LineageCache(importer).Hasher;
 
-    /// <summary>Delegates to <paramref name="inner"/> and counts the Gloas roots it is asked for.</summary>
     internal sealed class CountingStateHasher(IBeaconStateHasher inner) : IBeaconStateHasher
     {
         public int GloasCalls { get; private set; }

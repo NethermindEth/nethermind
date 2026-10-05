@@ -86,7 +86,6 @@ public class ChannelOpenRetryTests
         Assert.That(failure!.ChannelNeverOpened, Is.True, "the second channel never opened, whatever the first did");
     }
 
-    /// <summary>An attempt is either abandoned or opened, never both, so an abandoned channel that opens late sends nothing and marks nothing.</summary>
     [Test]
     public void An_abandoned_attempt_cannot_open_and_an_opened_one_cannot_be_abandoned()
     {
@@ -210,7 +209,6 @@ public class ChannelOpenRetryTests
         Task<ISession> dial = peer.DialAsync(session.RemoteAddress, token);
         Task answer = Task.Run(() =>
         {
-            // Leave the first open unanswered, as when negotiation never reaches the identify probe.
             using IEnumerator<UpgradeOptions> requests = context.DialRequests.GetEnumerator();
             Assert.That(requests.MoveNext(), Is.True);
             UpgradeOptions first = requests.Current;
@@ -250,7 +248,6 @@ public class ChannelOpenRetryTests
         throw new UnreachableException();
     }
 
-    /// <summary>A session whose first <paramref name="drops"/> block requests never reach the protocol, as when the peer's first frames are dropped.</summary>
     private sealed class DroppingOpener
     {
         private readonly ConcurrentQueue<CancellationToken> _tokens = new();
@@ -286,10 +283,8 @@ public class ChannelOpenRetryTests
 
         public bool FirstCancelled => _tokens.TryPeek(out CancellationToken first) && first.IsCancellationRequested;
 
-        /// <summary>For each attempt after the first, whether the one before it had been cancelled when it began.</summary>
         public bool[] EarlierCancelledWhenOpened => [.. _earlierCancelled];
 
-        /// <summary>Reaches the protocol only once the request has given up on this channel, as a negotiation that completes late does.</summary>
         private async Task<IReadOnlyList<ForkedSignedBeaconBlock>> OpenWhenAbandonedAsync(Hash256[] request, CancellationToken token)
         {
             try
@@ -298,7 +293,6 @@ public class ChannelOpenRetryTests
             }
             catch (OperationCanceledException)
             {
-                // After the second channel has started, as the late negotiation the request cannot tell apart.
                 await Task.Delay(OpenBound / 2, CancellationToken.None);
                 Interlocked.Increment(ref _lateOpens);
                 using RequestTiming.Exchange exchange = RequestTiming.Open(request);

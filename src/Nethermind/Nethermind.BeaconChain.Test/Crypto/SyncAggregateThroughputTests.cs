@@ -17,10 +17,6 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
-/// <summary>
-/// Wall-clock comparison of the sync aggregate check over cached public keys against decompressing
-/// each participant's committee pubkey, on a Hoodi-sized registry with every member participating.
-/// </summary>
 [TestFixture]
 [Explicit("Timing comparison; run on demand with --output Detailed")]
 public class SyncAggregateThroughputTests
@@ -75,7 +71,7 @@ public class SyncAggregateThroughputTests
         }
     }
 
-    /// <summary>The reference aggregation: each participant's committee key decompressed per set bit, with no subgroup check.</summary>
+    // Reference aggregation decompresses each participating key without subgroup checks; this isolates cache cost.
     private static void AggregateDecompressing(BlsPublicKey[] committee, BitArray bits)
     {
         BlsSigner.AggregatedPublicKey participants = new(stackalloc long[Bls.P1.Sz]);
@@ -92,7 +88,6 @@ public class SyncAggregateThroughputTests
         SignatureSets.AggregateSyncParticipants(bits, committee, indices, pubkeys, participants);
     }
 
-    /// <summary>The cached aggregation without comparing each cached key with the committee's, to cost that comparison.</summary>
     private static void AggregateCachedWithoutComparison(BitArray bits, int[] indices, PubkeyCache pubkeys)
     {
         Bls.P1 participants = new(stackalloc long[Bls.P1.Sz]);

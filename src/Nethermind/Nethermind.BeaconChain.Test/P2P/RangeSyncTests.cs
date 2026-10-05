@@ -42,7 +42,6 @@ public partial class RangeSyncTests
     [CancelAfter(30_000)]
     public async Task Yields_continuity_verified_blocks_and_refetches_bad_batches_from_another_peer(BadPeerBehavior behavior, CancellationToken token)
     {
-        // Slot 15 stays empty to exercise count-based requests returning only existing blocks.
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) =
             TestChain.BuildLinkedChain(AnchorSlot, 11, 12, 13, 14, 16, 17, 18);
 
@@ -63,12 +62,6 @@ public partial class RangeSyncTests
         Assert.That(goodPeer.Requests, Is.GreaterThanOrEqualTo(1), "good peer served the refetch");
     }
 
-    /// <summary>
-    /// Base case for gap 49 ("range sync cannot satisfy the data availability gate"): before this fix
-    /// nothing in <c>Sync/</c> ever called the by-range column request, so a range-synced blob block's
-    /// sampled columns were never in the pool and <see cref="DataAvailability.CustodySamplingAvailability"/>
-    /// rejected it forever.
-    /// </summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task Range_synced_blob_block_gets_its_sampled_columns_fetched_and_verified(CancellationToken token)
@@ -76,7 +69,6 @@ public partial class RangeSyncTests
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, chain.Spec, store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
-        // Resolves the identity and local custody exactly as Start does, without binding a socket.
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         NodeColumnCustody custody = new DiscoveryNodeCustodySource(discovery).Current!;
 
@@ -129,10 +121,6 @@ public partial class RangeSyncTests
         Assert.That(peer.ColumnRequests, Is.EqualTo(expectedRequests));
     }
 
-    /// <summary>
-    /// Gossip fills the pool with head-slot columns while range sync is still behind; the importer checks the columns range
-    /// sync fetched in the same pool, so refusing them for being older than every held slot would stall sync for good.
-    /// </summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_range_synced_blob_block_imports_while_the_pool_is_full_of_higher_slot_columns(CancellationToken token)
@@ -169,7 +157,6 @@ public partial class RangeSyncTests
         Assert.That(results, Is.EqualTo(new[] { BlockImportResult.Imported }));
     }
 
-    /// <summary>A wall clock stopped at genesis, which puts every Fulu or later block inside the data availability window.</summary>
     internal static SlotClock ClockAtGenesis(BeaconChainSpec spec) =>
         new(spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime));
 
@@ -206,12 +193,10 @@ public partial class RangeSyncTests
         ulong earliestAvailableSlot = 0,
         Func<Hash256[], ForkedSignedBeaconBlock[]>? blockRootHandler = null) : IBeaconSyncPeer
     {
-        /// <summary>Every column, as a supernode would custody, unless the test narrows it.</summary>
         public PeerColumnCustody Custody { get; } = custody ?? AllColumns;
 
         internal static PeerColumnCustody AllColumns { get; } = new(Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c), isAdvertised: true);
 
-        /// <summary>The columns of every by-range and by-root column request, in order.</summary>
         public List<ulong[]> RequestedColumns { get; } = [];
         public List<ulong[]> RequestedGloasColumns { get; } = [];
         public int RootColumnRequests { get; private set; }

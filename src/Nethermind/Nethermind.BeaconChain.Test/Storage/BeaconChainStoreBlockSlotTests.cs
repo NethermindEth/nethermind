@@ -18,19 +18,15 @@ using Snappier;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
-/// <summary>The stored block's slot, read from the SSZ prefix alone so a caller can filter by slot before paying for a decode.</summary>
 public class BeaconChainStoreBlockSlotTests
 {
     private const ulong Slot = 412_500 * 32 + 3;
     private static readonly Hash256 Root = BeaconApiTestHost.TestRoot(0x40);
 
-    /// <summary>A length varint longer than five bytes, which Snappier rejects before reading any block.</summary>
     internal static readonly byte[] NotSnappy = [0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
 
-    /// <summary>A length varint claiming 2^32 - 1 bytes, which Snappier's full decompression reports as <see cref="OverflowException"/>.</summary>
     internal static readonly byte[] ClaimsFourGiB = [0xff, 0xff, 0xff, 0xff, 0x0f, 0x00];
 
-    /// <summary>A length varint claiming 0x7FFFFFF0 bytes, which Snappier's full decompression tries to allocate.</summary>
     internal static readonly byte[] ClaimsTwoGiB = [0xf0, 0xff, 0xff, 0xff, 0x07, 0x00];
 
     private MemColumnsDb<BeaconChainDbColumns> _db = null!;

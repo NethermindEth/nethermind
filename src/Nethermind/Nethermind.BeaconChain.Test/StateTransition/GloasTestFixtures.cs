@@ -22,20 +22,11 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// Real Gloas states and blocks for the state-transition tests: a Fulu state advanced through the
-/// unmodified Fulu pipeline to the fork boundary, upgraded with <see cref="GloasForkTransition.UpgradeToGloas"/>,
-/// plus signed bids, envelopes and minimal blocks valid against it. Every fixture uses distinctive,
-/// non-zero values for whatever field a test asserts on - an assertion that would pass against a
-/// dropped or zeroed field is not a real assertion.
-/// </summary>
 internal static class GloasTestFixtures
 {
     public const ulong Gwei = 1_000_000_000;
 
-    // Large enough that every (slot, committee) slice in a 32-slot epoch gets at least one member
-    // during PTC computation; with too few validators most slices are empty and
-    // ComputeBalanceWeightedSelection has nothing to sample from.
+    // PTC sampling needs a nonempty committee at every slot.
     public const int ValidatorCount = 2048;
 
     // Keeps validator keys clear of the builder key (200) and the deposit keys tests derive (300+).
@@ -55,7 +46,6 @@ internal static class GloasTestFixtures
     private static readonly ConcurrentDictionary<int, byte[]> DerivedKeys = new();
     private static readonly ConcurrentDictionary<int, BlsPublicKey> ValidatorPubkeys = new();
 
-    /// <summary>The spec whose <c>GLOAS_FORK_EPOCH</c> is the epoch <see cref="CreateGloasState"/> upgrades at.</summary>
     public static BeaconChainSpec UpgradeEpochSpec() => SyntheticSpec(BoundarySlot / Presets.SlotsPerEpoch);
 
     public static BeaconChainSpec SyntheticSpec(ulong gloasForkEpoch = 0, byte[]? gloasForkVersion = null) => new()
@@ -74,12 +64,6 @@ internal static class GloasTestFixtures
         Bootnodes = [],
     };
 
-    /// <summary>
-    /// A post-upgrade Gloas state at the fork boundary slot (<see cref="BoundarySlot"/>), with one
-    /// active, payload-builder-version builder (secret key <paramref name="builderSk"/>, index 0,
-    /// starting balance 40 Gwei returned as <paramref name="builderStartingBalance"/>) and everyone
-    /// proposing from validator 0, so a single derived key signs both blocks and (where exercised) RANDAO.
-    /// </summary>
     public static BeaconStateGloas CreateGloasState(out Bls.SecretKey builderSk, out ulong builderStartingBalance)
     {
         builderSk = DeriveKey(BuilderKeyIndex);
@@ -105,10 +89,6 @@ internal static class GloasTestFixtures
         return state;
     }
 
-    /// <summary>
-    /// The Fulu state <see cref="CreateGloasState"/> upgrades, advanced from slot 0 to the boundary
-    /// under the unmodified Fulu pipeline. Deterministic: two calls yield equal states.
-    /// </summary>
     public static BeaconStateFulu CreateFuluStateAtBoundary(int validatorCount) =>
         FixtureCopier.Copy(FuluStatesAtBoundary.GetOrAdd(validatorCount, static count => new Lazy<BeaconStateFulu>(() => BuildFuluStateAtBoundary(count))).Value);
 
@@ -119,7 +99,6 @@ internal static class GloasTestFixtures
         return state;
     }
 
-    /// <summary>A minimal epoch-zero state with independent registry arrays and the requested RANDAO mix and activation pattern.</summary>
     internal static BeaconStateFulu CreateMinimalFuluState(int validatorCount, Hash256 randaoMix, ulong effectiveBalance = 32 * Gwei, int inactiveEvery = 0)
     {
         Hash256[] randaoMixes = Enumerable.Repeat(randaoMix, (int)Presets.EpochsPerHistoricalVector).ToArray();
@@ -182,8 +161,7 @@ internal static class GloasTestFixtures
             InactivityScores = new ulong[validatorCount],
             PreviousJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
             CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash256.Zero },
-            // Epoch 1 (not 0): the builder onboarded by CreateGloasState has DepositEpoch = 0, and
-            // is_active_builder requires deposit_epoch strictly less than the finalized epoch.
+            // Builder activity requires finalized epoch strictly after deposit epoch 0.
             FinalizedCheckpoint = new Checkpoint { Epoch = 1, Root = Hash256.Zero },
             JustificationBits = new BitArray(4),
             CurrentSyncCommittee = new SyncCommittee { Pubkeys = FillCommittee(validators[0].Pubkey), AggregatePubkey = Pubkey(0x60) },
@@ -196,7 +174,6 @@ internal static class GloasTestFixtures
         };
     }
 
-    /// <summary>An active, unslashed genesis validator with a 32 ETH effective balance and the given pubkey.</summary>
     public static Validator CreateActiveValidator(BlsPublicKey pubkey) => new()
     {
         Pubkey = pubkey,
@@ -210,15 +187,8 @@ internal static class GloasTestFixtures
 
     private static BlsPublicKey[] FillCommittee(BlsPublicKey pubkey) => Enumerable.Repeat(pubkey, Presets.SyncCommitteeSize).ToArray();
 
-    /// <summary>The key <see cref="InstallRealValidatorKeys"/> gives validator <paramref name="validatorIndex"/>.</summary>
     public static Bls.SecretKey ValidatorKey(int validatorIndex) => DeriveKey(ValidatorKeyOffset + validatorIndex);
 
-    /// <summary>
-    /// Replaces every validator's placeholder pubkey with the real key <see cref="ValidatorKey"/>
-    /// derives for it and returns the decompressed cache the signature checks read. The sync
-    /// committees are re-pointed at validator 0's new key so <see cref="ApplyBlock"/> still
-    /// resolves their members.
-    /// </summary>
     public static PubkeyCache InstallRealValidatorKeys(BeaconStateGloas state)
     {
         Validator[] validators = state.Validators!;
@@ -236,7 +206,6 @@ internal static class GloasTestFixtures
         return pubkeys;
     }
 
-    /// <summary>A header for <paramref name="slot"/> claiming <paramref name="proposerIndex"/>, signed by that validator's <see cref="ValidatorKey"/> over <c>DOMAIN_BEACON_PROPOSER</c>.</summary>
     public static SignedBeaconBlockHeader SignedHeader(BeaconStateGloas state, ulong slot, int proposerIndex, Hash256 bodyRoot)
     {
         BeaconBlockHeader header = new()
@@ -252,14 +221,12 @@ internal static class GloasTestFixtures
         return new SignedBeaconBlockHeader { Message = header, Signature = Sign(ValidatorKey(proposerIndex), signingRoot) };
     }
 
-    /// <summary>Two validly signed, distinct headers for the same slot from <paramref name="proposerIndex"/>.</summary>
     public static ProposerSlashing Equivocation(BeaconStateGloas state, ulong slot, int proposerIndex) => new()
     {
         SignedHeader1 = SignedHeader(state, slot, proposerIndex, Hash(0x21)),
         SignedHeader2 = SignedHeader(state, slot, proposerIndex, Hash(0x22)),
     };
 
-    /// <summary>Attestation data voting for distinct roots derived from <paramref name="fill"/>, with the given slot and source/target epochs.</summary>
     public static AttestationData Vote(ulong slot, ulong sourceEpoch, ulong targetEpoch, byte fill) => new()
     {
         Slot = slot,
@@ -269,7 +236,6 @@ internal static class GloasTestFixtures
         Target = new Checkpoint { Epoch = targetEpoch, Root = Hash((byte)(fill + 2)) },
     };
 
-    /// <summary>An indexed attestation by <paramref name="validatorIndices"/> over <paramref name="data"/>, aggregate-signed with their <see cref="ValidatorKey"/>s under <c>DOMAIN_BEACON_ATTESTER</c>.</summary>
     public static IndexedAttestationGloas SignedIndexedAttestation(BeaconStateGloas state, AttestationData data, int[] validatorIndices)
     {
         Hash256 domain = state.GetDomain(DomainType.BeaconAttester, data.Target!.Epoch);
@@ -282,7 +248,6 @@ internal static class GloasTestFixtures
         };
     }
 
-    /// <summary>A voluntary exit for <paramref name="validatorIndex"/>, signed with its <see cref="ValidatorKey"/> over the fork-agnostic Capella exit domain.</summary>
     public static SignedVoluntaryExit SignedExit(BeaconStateGloas state, int validatorIndex, ulong epoch)
     {
         VoluntaryExit exit = new() { Epoch = epoch, ValidatorIndex = (ulong)validatorIndex };
@@ -291,7 +256,6 @@ internal static class GloasTestFixtures
         return new SignedVoluntaryExit { Message = exit, Signature = Sign(ValidatorKey(validatorIndex), signingRoot) };
     }
 
-    /// <summary>A BLS-to-execution change for <paramref name="validatorIndex"/> from <paramref name="fromKey"/>'s pubkey, signed by that key over the genesis-version domain.</summary>
     public static SignedBlsToExecutionChange SignedBlsChange(BeaconStateGloas state, int validatorIndex, Bls.SecretKey fromKey, Address toAddress)
     {
         BlsToExecutionChange change = new()
@@ -305,7 +269,6 @@ internal static class GloasTestFixtures
         return new SignedBlsToExecutionChange { Message = change, Signature = Sign(fromKey, signingRoot) };
     }
 
-    /// <summary>The 0x00-prefixed withdrawal credentials committing to <paramref name="pubkey"/>.</summary>
     public static Hash256 BlsWithdrawalCredentials(BlsPublicKey pubkey)
     {
         byte[] credentials = System.Security.Cryptography.SHA256.HashData(pubkey.Bytes);
@@ -313,11 +276,6 @@ internal static class GloasTestFixtures
         return new Hash256(credentials);
     }
 
-    /// <summary>
-    /// An aggregate over committee <paramref name="committeeIndex"/> at <c>data.Slot</c> with every
-    /// member attesting, signed with their <see cref="ValidatorKey"/>s when <paramref name="sign"/>
-    /// (a state still carrying placeholder pubkeys can only be processed unverified).
-    /// </summary>
     public static AttestationGloas CommitteeAttestation(BeaconStateGloas state, AttestationData data, CommitteeCache committees, int committeeIndex, bool sign)
     {
         int[] committee = committees.GetBeaconCommittee(data.Slot, committeeIndex).ToArray();
@@ -340,7 +298,6 @@ internal static class GloasTestFixtures
         };
     }
 
-    /// <summary>The same aggregate in the Fulu container, for the differential tests.</summary>
     public static Attestation ToFuluAttestation(AttestationGloas attestation) => new()
     {
         AggregationBits = attestation.AggregationBits,
@@ -349,7 +306,6 @@ internal static class GloasTestFixtures
         CommitteeBits = attestation.CommitteeBits,
     };
 
-    /// <summary>A vote at <paramref name="slot"/> for <paramref name="headRoot"/>, sourced from the checkpoint the state has justified for <paramref name="targetEpoch"/> and targeting that epoch's boundary root.</summary>
     public static AttestationData VoteFor(BeaconStateGloas state, ulong slot, ulong targetEpoch, Hash256 headRoot, ulong index = 0) => new()
     {
         Slot = slot,
@@ -359,11 +315,7 @@ internal static class GloasTestFixtures
         Target = new Checkpoint { Epoch = targetEpoch, Root = state.GetBlockRoot(targetEpoch) },
     };
 
-    /// <summary>
-    /// A PTC aggregate for <c>data.Slot</c> with the committee <paramref name="positions"/> set,
-    /// signed (when <paramref name="sign"/>) by the validators at those positions under
-    /// <c>DOMAIN_PTC_ATTESTER</c>, once per position since a repeated member is aggregated per occurrence.
-    /// </summary>
+    // Repeated PTC members sign once per seat, not once per distinct validator.
     public static PayloadAttestation PtcAttestation(BeaconStateGloas state, PayloadAttestationData data, int[] positions, bool sign)
     {
         BitArray bits = new((int)Presets.PtcSize);
@@ -383,7 +335,7 @@ internal static class GloasTestFixtures
         return new PayloadAttestation { AggregationBits = bits, Data = data, Signature = signature };
     }
 
-    /// <summary>The aggregate of each listed validator's signature over <paramref name="signingRoot"/>; a repeated index signs (and so must be aggregated) once per occurrence.</summary>
+    // Repeated indices contribute a signature once per occurrence.
     public static BlsSignature AggregateSignature(Hash256 signingRoot, IReadOnlyList<int> validatorIndices)
     {
         BlsSigner.Signature aggregate = BlsSigner.Sign(ValidatorKey(validatorIndices[0]), signingRoot.Bytes);
@@ -397,7 +349,6 @@ internal static class GloasTestFixtures
     public static BlsSignature Sign(Bls.SecretKey key, Hash256 signingRoot) =>
         new(BlsSigner.Sign(key, signingRoot.Bytes).Bytes);
 
-    /// <summary>Returns <paramref name="signature"/> with one byte flipped: still 96 well-formed bytes, just not the right ones.</summary>
     public static BlsSignature Corrupt(BlsSignature signature)
     {
         byte[] corrupted = signature.Bytes.ToArray();
@@ -405,7 +356,6 @@ internal static class GloasTestFixtures
         return new BlsSignature(corrupted);
     }
 
-    /// <summary>Checks that a refused operation reports the expected reason and leaves its state unchanged.</summary>
     public static void AssertRefusedWithoutMutation(BeaconStateGloas state, Action process, string expectedMessage, string mutationMessage)
     {
         Hash256 rootBefore = SszRoots.HashTreeRoot(state);
@@ -414,7 +364,6 @@ internal static class GloasTestFixtures
         Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), mutationMessage);
     }
 
-    /// <summary>A builder-signed bid over <c>DOMAIN_BEACON_BUILDER</c>, valid against <paramref name="state"/> as it stands.</summary>
     public static SignedExecutionPayloadBid ValidBuilderBid(BeaconStateGloas state, Bls.SecretKey builderSk, ulong builderIndex, ulong value, byte blockHashFill = 0x88)
     {
         ExecutionPayloadBid message = new()
@@ -438,7 +387,6 @@ internal static class GloasTestFixtures
         return new SignedExecutionPayloadBid { Message = message, Signature = signature };
     }
 
-    /// <summary>A zero-value self-build bid (no builder, no signature to verify) at <paramref name="state"/>'s current slot.</summary>
     public static SignedExecutionPayloadBid SelfBuildBid(BeaconStateGloas state, Hash256 parentBlockHash, Hash256 blockHash) => new()
     {
         Message = new ExecutionPayloadBid
@@ -458,10 +406,6 @@ internal static class GloasTestFixtures
         Signature = new BlsSignature(G2PointAtInfinity()),
     };
 
-    /// <summary>
-    /// The root of the block whose post-state is <paramref name="state"/>: the latest block header
-    /// completed with the state root the next <c>process_slot</c> would write into it.
-    /// </summary>
     public static Hash256 BlockRootOf(BeaconStateGloas state) => SszRoots.HashTreeRoot(new BeaconBlockHeader
     {
         Slot = state.LatestBlockHeader!.Slot,
@@ -471,8 +415,6 @@ internal static class GloasTestFixtures
         BodyRoot = state.LatestBlockHeader.BodyRoot,
     });
 
-    /// <summary>A builder-signed envelope for the block whose post-state is <paramref name="state"/>, consistent with <paramref name="bid"/>.</summary>
-    /// <param name="blockRoot">That block's root when the caller has it; otherwise <see cref="BlockRootOf"/> hashes the whole state.</param>
     public static SignedExecutionPayloadEnvelope ValidEnvelope(BeaconStateGloas state, ExecutionPayloadBid bid, Bls.SecretKey builderSk, ulong builderIndex, Hash256? blockRoot = null)
     {
         ExecutionPayloadEnvelope message = new()
@@ -503,7 +445,6 @@ internal static class GloasTestFixtures
         return new SignedExecutionPayloadEnvelope { Message = message, Signature = signature };
     }
 
-    /// <summary>A block carrying <paramref name="bid"/> and otherwise-empty operations, at <paramref name="state"/>'s current slot.</summary>
     public static SignedBeaconBlockGloas MinimalBlock(BeaconStateGloas state, SignedExecutionPayloadBid bid) => new()
     {
         Message = new BeaconBlockGloas
@@ -532,11 +473,10 @@ internal static class GloasTestFixtures
         Signature = default,
     };
 
-    /// <summary>Applies <paramref name="block"/> to <paramref name="state"/> through the real pipeline, signatures skipped (the fixtures' RANDAO reveal is unsigned).</summary>
+    // Fixture RANDAO reveals are unsigned; ApplyBlock deliberately skips signatures.
     public static void ApplyBlock(BeaconStateGloas state, SignedBeaconBlockGloas block, EpochCache cache) =>
         GloasBlockProcessing.ProcessBlock(state, block.Message!, cache, new PubkeyCache(), new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: false);
 
-    /// <summary>A queued top-up for the validator already at <paramref name="validatorIndex"/>; a known pubkey is credited without a signature check.</summary>
     public static PendingDeposit TopUpDeposit(BeaconStateGloas state, int validatorIndex, ulong amount, ulong slot) => new()
     {
         Pubkey = state.Validators![validatorIndex].Pubkey,
@@ -546,11 +486,6 @@ internal static class GloasTestFixtures
         Slot = slot,
     };
 
-    /// <summary>
-    /// A queued deposit for a pubkey not in the registry (the key <see cref="DeriveKey"/> derives for
-    /// <paramref name="keyIndex"/>), signed over the genesis deposit domain by that key unless
-    /// <paramref name="signerKeyIndex"/> names another one.
-    /// </summary>
     public static PendingDeposit NewValidatorDeposit(int keyIndex, ulong amount, ulong slot, int? signerKeyIndex = null)
     {
         Hash256 withdrawalCredentials = EthWithdrawalCredentials(0xEE);
@@ -558,7 +493,6 @@ internal static class GloasTestFixtures
         return new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount, Signature = signature, Slot = slot };
     }
 
-    /// <summary>Signs a deposit over the genesis deposit domain, optionally with a different key than the deposited pubkey.</summary>
     public static (BlsPublicKey Pubkey, BlsSignature Signature) SignDeposit(Bls.SecretKey key, Hash256 withdrawalCredentials, ulong amount, int? signerKeyIndex = null)
     {
         BlsPublicKey pubkey = new(new Bls.P1(key).Compress());
@@ -589,7 +523,6 @@ internal static class GloasTestFixtures
 
     public static BlsPublicKey Pubkey(byte value) => new(Enumerable.Repeat(value, BlsPublicKey.Length).ToArray());
 
-    /// <summary>The canonical compressed BLS G1 point at infinity, in a fresh mutable array.</summary>
     public static byte[] G1PointAtInfinity()
     {
         byte[] bytes = new byte[BlsPublicKey.Length];
@@ -597,7 +530,6 @@ internal static class GloasTestFixtures
         return bytes;
     }
 
-    /// <summary>The compressed BLS G2 point at infinity - duplicated as bytes here rather than reaching into <c>Crypto.SignatureSets</c>'s internal constant from a test assembly.</summary>
     public static byte[] G2PointAtInfinity()
     {
         byte[] bytes = new byte[BlsSignature.Length];
@@ -605,12 +537,7 @@ internal static class GloasTestFixtures
         return bytes;
     }
 
-    /// <summary>Deep copies a cached fixture so the copy shares no mutable object with it.</summary>
-    /// <remarks>
-    /// Unlike <see cref="GloasStateClone"/>, which shares elements the state transition never writes
-    /// in place, this also copies every element object, because tests do write them in place. Nulls
-    /// and aliasing inside the graph are kept; a struct holding a mutable reference is refused.
-    /// </remarks>
+    // Tests mutate element objects in place, so this copier must deep-copy beyond production GloasStateClone; preserve graph aliases and nulls.
     private static class FixtureCopier
     {
         private static readonly Func<object, object> ShallowCopy =
@@ -686,12 +613,10 @@ internal static class GloasTestFixtures
         public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) => ExecutionStatus.Valid;
     }
 
-    /// <summary>The spec store's <c>block_states</c> as a plain dictionary: exactly the roots a test says exist, nothing else.</summary>
     public sealed class BlockStates : IGloasBlockStateProvider
     {
         private readonly Dictionary<Hash256, BeaconStateGloas> _states = [];
 
-        /// <summary>Freezes <paramref name="state"/> as the post-state of the block it was produced by.</summary>
         public BlockStates Add(BeaconStateGloas state)
         {
             _states.Add(BlockRootOf(state), state);

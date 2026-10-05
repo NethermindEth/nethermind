@@ -14,12 +14,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Test.Engine;
 
-/// <summary>Builds an <see cref="EngineDriver"/> on a Sepolia clock, for tests that do not exercise the fork-dependent forkchoice call.</summary>
 internal static class TestEngineDriver
 {
     public static readonly BeaconChainSpec Spec = BeaconChainSpec.Sepolia;
 
-    /// <summary>A driver whose clock stands at <paramref name="slot"/> and whose node identity is <paramref name="custody"/>.</summary>
     public static EngineDriver Create(ExternalClDetector detector, ulong slot = 0, NodeColumnCustody? custody = null, ILogManager? logManager = null, TimeSpan? forkchoiceTimeout = null) =>
         new(detector, logManager ?? LimboLogs.Instance, ClockAt(slot), Spec, new FixedCustodySource(custody)) { ForkchoiceTimeout = forkchoiceTimeout ?? TimeSpan.FromSeconds(8) };
 

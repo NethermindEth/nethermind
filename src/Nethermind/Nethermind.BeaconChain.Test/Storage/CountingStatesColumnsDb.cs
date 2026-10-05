@@ -11,8 +11,7 @@ using Nethermind.Db;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
-/// <summary>An in-memory column database whose state table counts the keys a scan or a range view hands out, as an iterator over a disk table would read them.</summary>
-/// <param name="sorted">Whether the state table can seek, as the disk table can; otherwise it can only be walked in key order.</param>
+// Sorted tables support disk-like seeking; otherwise range reads must walk keys.
 internal sealed class CountingStatesColumnsDb(bool sorted) : IColumnsDb<BeaconChainDbColumns>
 {
     private readonly MemColumnsDb<BeaconChainDbColumns> _inner = new();
@@ -40,7 +39,6 @@ internal sealed class CountingStatesColumnsDb(bool sorted) : IColumnsDb<BeaconCh
 
     internal class CountingStatesDb : MemDb, IDb
     {
-        /// <summary>The keys handed out by <see cref="GetAllKeys"/> and by range views since the last reset.</summary>
         public int KeysRead { get; protected set; }
 
         public void ResetCount() => KeysRead = 0;

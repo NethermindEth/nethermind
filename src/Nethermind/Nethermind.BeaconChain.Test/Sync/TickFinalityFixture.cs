@@ -9,10 +9,7 @@ using Nethermind.BeaconChain.Sync;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// Stands in for justification no short fixture chain reaches: sets the unrealized finalized checkpoint ahead of the realized one, which
-/// only the next epoch-boundary tick (specs/phase0/fork-choice.md on_tick) adopts.
-/// </summary>
+/// <summary>Inject unrealized finality; only the epoch-boundary tick may realize it.</summary>
 internal static class TickFinalityFixture
 {
     public static void SetUnrealizedFinality(BlockImporter importer, CheckpointRef checkpoint)

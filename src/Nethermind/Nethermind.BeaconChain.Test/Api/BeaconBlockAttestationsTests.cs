@@ -13,7 +13,6 @@ using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>beacon-APIs v5.0.0-alpha.2 <c>getBlockAttestationsV2</c> for Fulu blocks; the Gloas shape is covered in <see cref="BeaconApiGloasBlockTests"/>.</summary>
 public class BeaconBlockAttestationsTests : BeaconApiFixture
 {
     private const string Json = "application/json";
@@ -74,7 +73,6 @@ public class BeaconBlockAttestationsTests : BeaconApiFixture
         await ReadEnvelope($"/eth/v2/beacon/blocks/{RichSlot}/attestations", expectedFinalized: true);
     }
 
-    /// <summary>apis/beacon/blocks/attestations.v2.yaml: malformed id 400, unretained block 404; the operation offers JSON only, so octet-only Accept is 406.</summary>
     [TestCase("not-a-block", Json, HttpStatusCode.BadRequest)]
     [TestCase("1", Json, HttpStatusCode.NotFound)]
     [TestCase("0x00000000000000000000000000000000000000000000000000000000000000ee", Json, HttpStatusCode.NotFound)]

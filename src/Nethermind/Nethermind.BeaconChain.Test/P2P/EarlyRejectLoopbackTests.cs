@@ -21,10 +21,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// A listener that rejects a request before reading all of it must still answer with an error chunk over a real
-/// TCP, noise and yamux session, promptly rather than after its own response timeout.
-/// </summary>
 public class EarlyRejectLoopbackTests
 {
     private const string StatusV2 = "/eth2/beacon_chain/req/status/2/ssz_snappy";
@@ -72,14 +68,12 @@ public class EarlyRejectLoopbackTests
     [TestCase(Goodbye, Request.DeclaredLengthAboveTheMaximum)]
     [TestCase(Ping, Request.VarintLongerThanTenBytes)]
     [TestCase(Goodbye, Request.VarintLongerThanTenBytes)]
-    // A zero length prefix is refused where the request type has a nonzero minimum size.
     [TestCase(StatusV2, Request.ZeroLength)]
     [TestCase(BlocksByRange, Request.ZeroLength)]
     [TestCase(EnvelopesByRange, Request.ZeroLength)]
     [TestCase(ColumnsByRange, Request.ZeroLength)]
     [TestCase(Ping, Request.ZeroLength)]
     [TestCase(Goodbye, Request.ZeroLength)]
-    // The requester sends the zero prefix and keeps the stream open: a fixed-size request needs no more framing, so the refusal must not wait for a half-close.
     [TestCase(StatusV2, Request.ZeroLengthStreamHeldOpen)]
     [TestCase(BlocksByRange, Request.ZeroLengthStreamHeldOpen)]
     [TestCase(EnvelopesByRange, Request.ZeroLengthStreamHeldOpen)]
@@ -108,7 +102,6 @@ public class EarlyRejectLoopbackTests
         Assert.That(elapsed, Is.LessThan(Prompt), "answered at once, not by the listener's own timeout");
     }
 
-    // A list that may be empty has nothing to send, so it must close the stream at once.
     [TestCase(BlocksByRoot, Request.ZeroLength)]
     [TestCase(EnvelopesByRoot, Request.ZeroLength)]
     [TestCase(ColumnsByRoot, Request.ZeroLength)]
@@ -125,7 +118,6 @@ public class EarlyRejectLoopbackTests
         Assert.That(elapsed, Is.LessThan(Prompt), "closed at once, not by the listener's own timeout");
     }
 
-    /// <summary>Sends the request from a fresh plain libp2p peer and returns the whole response and how long it took.</summary>
     private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token)
     {
         ServiceProvider services = new ServiceCollection()
@@ -165,7 +157,6 @@ public class EarlyRejectLoopbackTests
         switch (request)
         {
             case Request.DeclaredLengthAboveTheMaximum:
-                // Above every request maximum, the widest being the column by-root list.
                 using (MemoryStream stream = new())
                 {
                     await ReqRespFraming.WriteRequestAsync(stream, new byte[200_000], token);
@@ -198,7 +189,6 @@ public class EarlyRejectLoopbackTests
         }
     }
 
-    /// <summary>Sends the given bytes as a whole request under whichever protocol id it is set to, then reads the response to its end.</summary>
     private sealed class RawRequestProtocol : ISessionProtocol<byte[], byte[]>
     {
         public string Id { get; set; } = "/test/raw-request/1";

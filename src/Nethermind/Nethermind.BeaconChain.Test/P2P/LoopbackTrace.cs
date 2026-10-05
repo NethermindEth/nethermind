@@ -14,10 +14,7 @@ using NUnit.Framework.Interfaces;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// Every log line of the loopback nodes a test creates, libp2p's own included, kept in memory and written to a file only when the test fails.
-/// </summary>
-/// <remarks>Off unless <c>BEACONCHAIN_LOOPBACK_TRACE=1</c>; tests then run with Trace logging, which is slower. Files go to the temp directory.</remarks>
+// BEACONCHAIN_LOOPBACK_TRACE=1 enables Trace logs and writes failures to the temp directory.
 internal static class LoopbackTrace
 {
     private static readonly ConcurrentQueue<string> Lines = new();
@@ -25,10 +22,8 @@ internal static class LoopbackTrace
 
     public static bool Enabled { get; } = Environment.GetEnvironmentVariable("BEACONCHAIN_LOOPBACK_TRACE") == "1";
 
-    /// <summary>A log manager tagging each line with a new node number; <c>null</c> when tracing is off.</summary>
     public static ILogManager? NewNode() => Enabled ? new SinkLogManager($"n{Interlocked.Increment(ref _nodes)}") : null;
 
-    /// <summary>A log manager under <paramref name="tag"/> when tracing is on, otherwise <paramref name="fallback"/>.</summary>
     public static ILogManager Or(ILogManager fallback, string tag = "pm") => Enabled ? new SinkLogManager(tag) : fallback;
 
     [AttributeUsage(AttributeTargets.Assembly)]

@@ -10,10 +10,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Types;
 
-/// <summary>
-/// Sync links blocks by parent root and asks peers for blocks by root, so a root taken over the signed
-/// container instead of the message would make every Gloas block look unlinked and every by-root reply unrequested.
-/// </summary>
 public class ForkedSignedBeaconBlockTests
 {
     [Test]

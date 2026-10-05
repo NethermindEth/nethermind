@@ -43,21 +43,12 @@ using Snappier;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// The production data availability gate as <see cref="BlockImporter"/> applies it, driven end to
-/// end through <see cref="BlockImporter.Import"/> with a genuinely valid signed blob block
-/// (<see cref="ImportableBlobBlock"/>): availability is the only check left that can defer it.
-/// At the base of this change the importer passed no columns at all to a rule that demands every
-/// column, so every blob-carrying block was rejected; the positive case here is what proves the
-/// gate now admits the blocks a base-custody node is actually able to verify.
-/// </summary>
 [HardTimeout(60_000)]
 public class BlockImporterTests
 {
     private static readonly Hash256 NodeId = new([.. Enumerable.Repeat((byte)0x42, 32)]);
     private static readonly Hash256 UnknownBlockRoot = new([.. Enumerable.Repeat((byte)0x99, 32)]);
 
-    /// <summary>A base-custody node: four custody groups, eight sampled columns per slot on mainnet.</summary>
     private static NodeColumnCustody BaseCustody() => new(NodeId, Eip7594DasConstants.CustodyRequirement);
 
     [Test]
@@ -185,10 +176,6 @@ public class BlockImporterTests
         Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "a block with no blobs needs no columns");
     }
 
-    /// <summary>
-    /// fork-choice.md on_block: refuse distant future blocks before linear process_slots work.
-    /// A block within MAXIMUM_GOSSIP_CLOCK_DISPARITY waits for its slot; an older block still imports.
-    /// </summary>
     [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs + 1, BlockImportResult.Invalid)]
     [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs, BlockImportResult.FutureSlot)]
     [TestCase(1UL, -1_200_000L, BlockImportResult.Imported)]
@@ -212,10 +199,6 @@ public class BlockImporterTests
         Assert.That(warnings.Messages.Any(w => w.Contains("before its state transition")), Is.EqualTo(expected == BlockImportResult.Invalid));
     }
 
-    /// <summary>
-    /// fork-choice.md on_block: early blocks wait without moving fork-choice time or mutating a trusted replay's lineage.
-    /// Untrusted blocks verify their proposer signature before reserving a retry, so a forged copy cannot displace them.
-    /// </summary>
     [Test]
     public void Block_before_its_slot_starts_imports_once_the_slot_starts([Values] bool slotTickFirst, [Values] bool trusted)
     {
@@ -250,13 +233,6 @@ public class BlockImporterTests
         Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));
     }
 
-    /// <summary>
-    /// specs/phase0/fork-choice.md <c>on_block</c> reads timeliness from <c>store.time</c>, which follows the node's clock: only a
-    /// block of the current slot that arrives before <c>get_attestation_due_ms</c> (<c>ATTESTATION_DUE_BPS</c>, 3999 ms into a
-    /// 12 s slot) is timely and takes the proposer boost. With no boost set before the import, a boost still unset after it
-    /// means the block was recorded not timely. The node's own <c>engine_newPayload</c> latency is not lateness of the block,
-    /// and <c>store.time</c> is whole seconds, so the fraction of a second past the last whole second never makes a block late.
-    /// </summary>
     [TestCase(0UL, 11500L, 1UL, true)]
     [TestCase(0UL, 11500L, 5UL, true)]
     [TestCase(1UL, 1000L, 0UL, true)]
@@ -299,7 +275,6 @@ public class BlockImporterTests
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, chain.Spec, store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
-        // Resolves the identity and local custody exactly as Start does, without binding a socket.
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         NodeColumnCustody custody = new DiscoveryNodeCustodySource(discovery).Current!;
         DataColumnSidecarPool pool = new();
@@ -475,7 +450,6 @@ public class BlockImporterTests
         static ForkChoiceSnapshotNode Node(ulong slot, int id, int? parent) =>
             new(slot, Root(id), parent is { } p ? Root(p) : null, 0, 0, 0, ExecutionStatus.Valid, Hash256.Zero);
 
-        // Proto-array order, parents before children: A at 10, B at 20, C at 32, D at 40, and E at 35 forking from B.
         ForkChoiceSnapshotNode[] nodes = [Node(10, 0xA, null), Node(20, 0xB, 0xA), Node(32, 0xC, 0xB), Node(35, 0xE, 0xB), Node(40, 0xD, 0xC)];
 
         Assert.That(ProposerLookaheadSnapshot.FindDependentRoot(nodes, Root(from), startSlot), Is.EqualTo(expected is { } id ? Root(id) : null));
@@ -502,13 +476,6 @@ public class BlockImporterTests
         }
     }
 
-    /// <summary>
-    /// An import must take the execution verdict from the <c>newPayload</c> call it made itself.
-    /// Taking it from state shared with every other caller of the engine binds it to whichever
-    /// call ran last, which can admit a block to fork choice as <see cref="ExecutionStatus.Valid"/>
-    /// when the execution layer only accepted it optimistically. Fork choice cannot undo that:
-    /// invalidating a node it already holds as valid throws, so the block is stuck in the tree.
-    /// </summary>
     [TestCase(ExecutionStatus.Optimistic, false)]
     [TestCase(ExecutionStatus.Valid, true)]
     public void Import_takes_the_verdict_from_its_own_engine_call(ExecutionStatus verdict, bool sealedAgainstInvalidation)
@@ -518,7 +485,6 @@ public class BlockImporterTests
         DataColumnSidecarPool pool = new();
         Hold(pool, chain, custody.SampledColumns);
         ScriptedPayloadEngine engine = new(ExecutionStatus.Valid, verdict);
-        // Another caller's block was answered VALID on this same engine just before the import.
         engine.NotifyNewPayload(chain.Block.Message!.Body!);
         BlockImporter importer = CreateImporter(chain, custody, pool, engine: engine);
 
@@ -533,13 +499,6 @@ public class BlockImporterTests
             "a block admitted as valid is sealed against invalidation; one admitted optimistically must stay invalidatable");
     }
 
-    /// <summary>
-    /// A block whose payload the execution layer never evaluated must stay importable. Two ways
-    /// this used to go wrong: the failed call was reported as SYNCING and the block was imported
-    /// optimistically anyway; and aborting the transition part-way leaves a trusted replay's
-    /// in-place state with <c>LatestBlockHeader</c> already advanced, so the retry fails its own
-    /// header check and the block is dropped as invalid for good.
-    /// </summary>
     [TestCase(true)]
     [TestCase(false)]
     public void Block_whose_engine_call_fails_is_deferred_and_stays_importable(bool verifySignatures)
@@ -560,12 +519,7 @@ public class BlockImporterTests
         Assert.That(retried, Is.EqualTo(BlockImportResult.Imported), "the same block must import once the engine answers again");
     }
 
-    /// <summary>
-    /// A block trailing its columns must never reach the engine at all: the availability check has
-    /// to run before <c>newPayload</c>, not just produce the right label afterwards. A test that
-    /// only asserted the returned result would still pass if a future edit moved the check back
-    /// after the transition (gap 111's failure mode), so this asserts against a spy engine instead.
-    /// </summary>
+    /// <summary>The spy engine proves availability is checked before newPayload; the returned label alone cannot prove ordering.</summary>
     [Test]
     public void Blob_block_missing_columns_never_calls_the_engine()
     {
@@ -584,7 +538,6 @@ public class BlockImporterTests
         Assert.That(engine.HasAnsweredNewPayload, Is.False, "the engine must not be consulted for a block that cannot be recorded anyway");
     }
 
-    /// <summary>The same block must import once its missing columns are later pooled, not stay dropped forever.</summary>
     [Test]
     public void Blob_block_missing_columns_imports_once_the_missing_column_is_pooled()
     {
@@ -606,11 +559,6 @@ public class BlockImporterTests
         Assert.That(retried, Is.EqualTo(BlockImportResult.Imported), "the same block must import once the missing column arrives");
     }
 
-    /// <summary>
-    /// The importer's half of the body replay fork choice leaves to its callers: a block whose body
-    /// slashes the two validators whose votes hold the head must move the head to the competing
-    /// branch, which only happens if the accepted slashing is handed on to fork choice.
-    /// </summary>
     [Test]
     public void Body_attester_slashing_moves_the_head_off_the_equivocators_branch()
     {
@@ -638,12 +586,6 @@ public class BlockImporterTests
         Assert.That(importer.LineageRoot, Is.EqualTo(scenario.B.Root), "a head on a competing branch is a reorg the lineage follows");
     }
 
-    /// <summary>
-    /// After checkpoint sync several epochs behind, <c>get_head</c> keeps the head on the anchor until an imported block's voting
-    /// source is viable (phase0/fork-choice.md <c>filter_block_tree</c>). Range sync keeps extending the chain above it, so the head
-    /// step must leave the lineage on the block being extended: on the anchor, every later block copies its parent's state and
-    /// hashes it without the cached hasher, which costs seconds per block on a large registry.
-    /// </summary>
     [Test]
     public void Head_falling_back_to_an_ancestor_leaves_the_lineage_on_the_chain_being_extended()
     {
@@ -669,11 +611,6 @@ public class BlockImporterTests
         Assert.That(importer.LineageRoot, Is.EqualTo(c.Root), "the next block must import onto the lineage, not onto a copy of its parent's state");
     }
 
-    /// <summary>
-    /// A head that falls back to an ancestor because the execution layer invalidated the blocks above it is a reorg:
-    /// the lineage must leave the invalid branch, or gossip proposer checks read that branch's schedule and drop
-    /// a valid replacement block that extends the ancestor in a later epoch.
-    /// </summary>
     [Test]
     public void Head_falling_back_to_an_ancestor_after_invalidation_moves_the_lineage_to_it()
     {
@@ -682,7 +619,6 @@ public class BlockImporterTests
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(),
             engine: new ScriptedPayloadEngine(ExecutionStatus.Optimistic, ExecutionStatus.Optimistic, ExecutionStatus.Optimistic));
         UnsignedChain.ChainBlock ancestor = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x70);
-        // The first block of the next epoch retains the ancestor's post-state, as a reorg onto it needs.
         UnsignedChain.ChainBlock invalid = chain.Extend(ancestor.Root, slot: Presets.SlotsPerEpoch, payloadHashByte: 0x71);
         UnsignedChain.ChainBlock invalidChild = chain.Extend(invalid.Root, slot: Presets.SlotsPerEpoch + 1, payloadHashByte: 0x72);
         importer.OnSlotTick(invalidChild.Block.Message!.Slot);
@@ -698,7 +634,6 @@ public class BlockImporterTests
         Assert.That(importer.LineageRoot, Is.EqualTo(ancestor.Root), "the lineage must leave the invalid branch for the head");
     }
 
-    // consensus-specs v1.7.0-beta.2 fork choice on_block requires the parent post-state even after its other child takes the lineage.
     [Test]
     public void Branch_built_on_a_mid_epoch_parent_imports_and_takes_the_head([Values] bool gossip, [Values] bool stateEvicted)
     {
@@ -780,10 +715,6 @@ public class BlockImporterTests
         Assert.That(regenerated!.Slot, Is.EqualTo(third.PostState.Slot));
     }
 
-    /// <summary>
-    /// A peer's vote can name an old fork block whose state must be regenerated; that state must not push a retained
-    /// epoch-boundary or justified state out, or the next import or finalization needing it finds it gone.
-    /// </summary>
     [Test]
     public void Regenerated_state_does_not_evict_a_retained_state()
     {
@@ -814,10 +745,6 @@ public class BlockImporterTests
         Assert.That(states.GetHeldBlockState(second.Root), Is.SameAs(regenerated), "the regenerated state is still held for the next request");
     }
 
-    /// <summary>
-    /// Fork choice only ever copies a block state to advance it, so a copy that needed a regeneration must not join the small
-    /// tier that keeps a regenerated parent for the next sibling import: a vote naming old blocks would churn it.
-    /// </summary>
     [Test]
     public void Copy_of_a_regenerated_state_is_not_held()
     {
@@ -865,10 +792,6 @@ public class BlockImporterTests
         Assert.That(SszRoots.HashTreeRoot(chain.Anchor.AnchorState), Is.EqualTo(expectedAnchor));
     }
 
-    /// <summary>
-    /// Regeneration runs on the import worker, so in long non-finality it must not replay an unbounded run of stored blocks:
-    /// one epoch of blocks above the nearest held state is replayed, and one block more is refused with a warning before any replay.
-    /// </summary>
     [Test]
     public void Regeneration_replays_at_most_one_epoch_of_stored_blocks([Values] bool beyondBound)
     {
@@ -912,10 +835,6 @@ public class BlockImporterTests
         Assert.That(warnings.Messages, beyondBound ? Has.One.Contains($"no ancestor state is held within {chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
     }
 
-    /// <summary>
-    /// Gossip validation verifies no block signature, so a forged child of an evicted Fulu block must be refused before it
-    /// costs a regeneration, or forged children would spend the slot's budget and a real reorg block would be refused.
-    /// </summary>
     [Test]
     public void Forged_children_of_evicted_blocks_do_not_spend_the_regeneration_budget()
     {
@@ -936,7 +855,6 @@ public class BlockImporterTests
         UnsignedChain.ChainBlock sibling = chain.Extend(lineage[3].Root, slot: 6, payloadHashByte: 0x90, signed: true);
         BlockImportResult[] fixture = [.. lineage.Select(b => importer.Import(b.Block, b.Root, verifySignatures: false))];
 
-        // Each forged child copies a real child's message under a new root and keeps the real child's signature.
         BlockImportResult[] forged = [.. new[] { 1, 2 }.Select(i =>
         {
             BeaconBlock real = lineage[i + 1].Block.Message!;
@@ -954,11 +872,6 @@ public class BlockImporterTests
         Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the real block on an evicted parent still has the slot's regeneration budget");
     }
 
-    /// <summary>
-    /// Regeneration replays at most one epoch, so the checkpoint block state of each epoch must outlive the small LRU that
-    /// fork branch imports churn: the epoch's first block, or the block before its start slot when that slot is empty,
-    /// on the followed lineage or on a branch.
-    /// </summary>
     [Test]
     public void Checkpoint_block_state_outlives_branch_churn_so_regeneration_stays_within_one_epoch([Values] bool onBranch, [Values] bool startSlotEmpty, [Values] bool gossip)
     {
@@ -977,7 +890,6 @@ public class BlockImporterTests
         // Built before any import: a trusted import advances the anchor's state in place as the lineage.
         UnsignedChain.ChainBlock[] churn = [.. Enumerable.Range(0, 9).Select(_ => Extend(chain.AnchorRoot, epochStart + 5))];
 
-        // A dense run of blocks below the boundary, so the nearest state held without a checkpoint state is the anchor, more than an epoch below.
         Hash256 forkPoint = chain.AnchorRoot;
         for (ulong slot = 1; slot <= epochStart - 3; slot++)
         {
@@ -988,7 +900,6 @@ public class BlockImporterTests
 
         if (onBranch)
         {
-            // The lineage follows another chain through the boundary, so every block below is imported as a fork branch.
             Hash256 lineageTip = forkPoint;
             for (ulong slot = epochStart - 2; slot <= epochStart + 8; slot++)
             {
@@ -1012,7 +923,6 @@ public class BlockImporterTests
             tip = segment[slot].Root;
         }
 
-        // Fork branch imports off the target's ancestry retain every post-state in the LRU, pushing out every state retained before them.
         fixture.AddRange(churn.Select(Import));
 
         Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
@@ -1023,10 +933,6 @@ public class BlockImporterTests
         Assert.That(warnings.Messages, Has.None.Contains("Cannot regenerate"));
     }
 
-    /// <summary>
-    /// A body attestation the transition accepts but fork choice refuses (its head is a block this
-    /// node never saw) must neither sink the block nor vanish: the refusal is counted.
-    /// </summary>
     [Test]
     public void Body_attestation_refused_by_fork_choice_is_tolerated_and_counted()
     {
@@ -1049,13 +955,6 @@ public class BlockImporterTests
         Assert.That(RefusedByForkChoice("body_attestation") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
     }
 
-    /// <summary>
-    /// The transition checks a body vote with the committees of its block's state, but fork choice reads its aggregation bits
-    /// through its target's state (specs/phase0/fork-choice.md on_attestation). A proposer can name an ancestor whose epoch-2
-    /// shuffling differs (P at slot 30, before the decision block A at slot 31), so that bit then names another validator: the
-    /// signature must be checked again, and this unsigned vote must credit nobody. A vote for A, whose shuffling is the block's,
-    /// still counts without a signature.
-    /// </summary>
     [Test]
     public void Body_attestation_for_a_target_of_another_shuffling_is_checked_against_its_signature()
     {
@@ -1113,11 +1012,6 @@ public class BlockImporterTests
         return new EpochCache().GetCommitteeCache(state, epoch);
     }
 
-    /// <summary>
-    /// A body attester slashing the transition accepts but fork choice refuses is counted, not dropped silently.
-    /// The block's pre-state has a validator the justified state has not onboarded yet, so the slashing is valid
-    /// for the transition and out of range for <c>on_attester_slashing</c>, which checks it against the justified state.
-    /// </summary>
     [Test]
     public void Body_attester_slashing_refused_by_fork_choice_is_tolerated_and_counted()
     {
@@ -1141,10 +1035,6 @@ public class BlockImporterTests
         Assert.That(RefusedByForkChoice("body_attester_slashing") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
     }
 
-    /// <summary>
-    /// The snapshot <see cref="BlockImporter.ComputeHead"/> publishes carries the weights of the head it chose: votes
-    /// replayed from block bodies are weighed only by <c>get_head</c>, so a copy taken before it shows none of them.
-    /// </summary>
     [Test]
     public void ComputeHead_publishes_the_weights_its_head_was_chosen_by()
     {
@@ -1168,10 +1058,6 @@ public class BlockImporterTests
         Assert.That(published.Nodes.Single(n => n.Root == scenario.B.Root).Weight, Is.EqualTo(vote), "B carries the slot-5 vote");
     }
 
-    /// <summary>
-    /// A child of a block whose payload the execution layer declared INVALID is refused before its state transition,
-    /// so the engine is never asked about it (specs/bellatrix/optimistic-sync.md). The engine answers one call only.
-    /// </summary>
     [Test]
     public void Child_of_an_invalid_parent_is_refused_before_any_engine_call()
     {
@@ -1192,7 +1078,6 @@ public class BlockImporterTests
         Assert.That(failed.Contains(child.Root), Is.True, "column gossip must reject a sidecar whose parent the importer refused");
     }
 
-    // specs/bellatrix/optimistic-sync.md: apply the verdict to the payloads its head hash and latestValidHash name.
     [Test]
     public void Invalid_new_payload_invalidates_the_optimistic_blocks_after_its_latest_valid_hash([Values(-1, 0, 1, 2)] int latestValid, [Values] bool offLineage)
     {
@@ -1233,7 +1118,6 @@ public class BlockImporterTests
         }
     }
 
-    // specs/bellatrix/optimistic-sync.md: apply the verdict to the payloads its head hash and latestValidHash name.
     [TestCase(PayloadStatus.Valid, ExecutionStatus.Valid, ExecutionStatus.Valid)]
     [TestCase(PayloadStatus.Invalid, ExecutionStatus.Optimistic, ExecutionStatus.Invalid)]
     [TestCase(PayloadStatus.Syncing, ExecutionStatus.Optimistic, ExecutionStatus.Optimistic)]
@@ -1261,7 +1145,6 @@ public class BlockImporterTests
         Assert.That(nodes.Single(n => n.Root == side.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
     }
 
-    /// <summary>fulu/p2p-interface.md data_column_sidecar_{subnet_id}: [REJECT] the sidecar's block's parent passes validation.</summary>
     [Test]
     public void Block_refused_by_the_state_transition_is_recorded_as_failed()
     {
@@ -1283,10 +1166,6 @@ public class BlockImporterTests
         Assert.That(failed.Count, Is.EqualTo(1));
     }
 
-    /// <summary>
-    /// The proposer signature is not part of the block root, so a copy carrying a forged one must not mark the root of the honest
-    /// block, or its child sidecars would be rejected.
-    /// </summary>
     [Test]
     public void Block_with_only_a_bad_proposer_signature_is_not_recorded_as_failed()
     {
@@ -1307,10 +1186,6 @@ public class BlockImporterTests
         Assert.That(failed.Contains(chain.BlockRoot), Is.False);
     }
 
-    /// <summary>
-    /// A block at or below the finalized slot may be a perfectly valid block of a dead branch, so only a refusal that no later time
-    /// can undo is recorded: sidecars of an honest block must not be rejected.
-    /// </summary>
     [TestCase(0UL, false, TestName = "Block_at_the_finalized_slot_is_not_recorded_as_failed")]
     [TestCase(2UL, true, TestName = "Block_not_after_its_parents_slot_is_recorded_as_failed")]
     public void Refusal_before_the_state_transition_is_recorded_only_for_a_validation_failure(ulong slot, bool recorded)
@@ -1332,10 +1207,6 @@ public class BlockImporterTests
         Assert.That(failed.Contains(root), Is.EqualTo(recorded));
     }
 
-    /// <summary>
-    /// phase0/fork-choice.md on_block: a block that does not descend from the finalized checkpoint block can never become canonical,
-    /// so its refusal is a validation failure.
-    /// </summary>
     [Test]
     public void Block_off_the_finalized_chain_is_recorded_as_failed()
     {
@@ -1354,7 +1225,6 @@ public class BlockImporterTests
             state.FinalizedCheckpoint = new Checkpoint { Epoch = 1, Root = chain.AnchorRoot };
         }
 
-        // Its post-state finalizes epoch 1 on the anchor, which leaves this block, the checkpoint block of epoch 1 on its own chain, off the finalized chain.
         UnsignedChain.ChainBlock offChain = chain.Extend(first.Root, slot: Presets.SlotsPerEpoch, payloadHashByte: 0xa2);
         UnsignedChain.ChainBlock child = chain.Extend(offChain.Root, slot: Presets.SlotsPerEpoch + 1, payloadHashByte: 0xa3);
         Assert.That(importer.Import(offChain.Block, offChain.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
@@ -1368,11 +1238,6 @@ public class BlockImporterTests
         Assert.That(failed.Contains(child.Root), Is.True);
     }
 
-    /// <summary>
-    /// The tick that precedes on_block pulls up unrealized finality (phase0/fork-choice.md on_tick), which the checks before the
-    /// transition never saw. A block on a branch that tick finalizes away can never become canonical, so its refusal is recorded;
-    /// a block at the new finalized slot may still be a valid block of a dead branch and is not.
-    /// </summary>
     [TestCase(Presets.SlotsPerEpoch + 1, true, TestName = "Block_refused_after_the_tick_finalized_a_conflicting_branch_is_recorded_as_failed")]
     [TestCase(Presets.SlotsPerEpoch, false, TestName = "Block_refused_after_the_tick_at_the_finalized_slot_is_not_recorded_as_failed")]
     public void Refusal_by_fork_choice_after_the_tick_is_recorded_only_for_a_validation_failure(ulong slot, bool recorded)
@@ -1385,7 +1250,6 @@ public class BlockImporterTests
         UnsignedChain.ChainBlock offChain = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
         UnsignedChain.ChainBlock child = chain.Extend(offChain.Root, slot, payloadHashByte: 0xa2);
         Assert.That(importer.Import(offChain.Block, offChain.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
-        // Epoch 1 finalizes on the anchor, which leaves the slot-1 block off the finalized chain, but only once the store ticks into epoch 1.
         TickFinalityFixture.SetUnrealizedFinality(importer, new CheckpointRef(1, chain.AnchorRoot));
         time.Set(TickFinalityFixture.SlotStart(chain.Spec, slot));
 
@@ -1470,7 +1334,6 @@ public class BlockImporterTests
         Assert.That(failed.Contains(brokenRoot), Is.True);
     }
 
-    /// <summary>The Gloas arm of the tick-driven refusal: on_block refuses a block on a branch that the tick's pulled-up finality left.</summary>
     [Test]
     public void Gloas_block_refused_after_the_tick_finalized_a_conflicting_branch_is_recorded_as_failed()
     {
@@ -2041,7 +1904,6 @@ public class BlockImporterTests
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
         importer.ComputeHead();
         long refusedBefore = RefusedByForkChoice("gossip_attester_slashing");
-        // The same vote twice is not slashable, so fork choice refuses it before any signature check.
         AttestationData data = chain.Vote(1, chain.AnchorRoot).Data!;
 
         AttesterSlashing slashing = new()
@@ -2058,7 +1920,6 @@ public class BlockImporterTests
         Assert.That(accepted, Is.False, "a refused slashing must not mark its indices seen");
     }
 
-    /// <summary>An anchor with one new validator's signed deposit queued, which the first epoch transition onboards.</summary>
     internal static (BeaconStateFulu State, SignedBeaconBlock Block, Hash256 Root) AnchorWithQueuedValidator(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock)
     {
         BeaconStateFulu state = anchorState.Clone();
@@ -2068,7 +1929,6 @@ public class BlockImporterTests
         return (state, new SignedBeaconBlock { Message = message, Signature = anchorBlock.Signature }, SszRoots.HashTreeRoot(message));
     }
 
-    /// <summary>An unsigned, sealed child of <paramref name="parentRoot"/> at <paramref name="slot"/> carrying <paramref name="slashings"/>, as <see cref="UnsignedChain.Extend"/> builds one.</summary>
     private static (SignedBeaconBlock Block, Hash256 Root, BeaconStateFulu PostState) UnsignedChild(BeaconStateFulu parentState, Hash256 parentRoot, ulong slot, AttesterSlashing[] slashings)
     {
         BlsSignature unsigned = new(SignatureSets.G2PointAtInfinity);
@@ -2145,7 +2005,6 @@ public class BlockImporterTests
         }
     }
 
-    /// <summary>Fails the first <c>newPayload</c> call and answers VALID afterwards: a transient engine outage.</summary>
     private static ValidPayloadEngine UnavailableThenValidEngine()
     {
         bool failedOnce = false;
@@ -2157,10 +2016,6 @@ public class BlockImporterTests
         });
     }
 
-    /// <summary>
-    /// Answers each <c>newPayload</c> call with the next scripted verdict, so a test can put an
-    /// unrelated answer on the engine before the one the import under test should record.
-    /// </summary>
     private sealed class ScriptedPayloadEngine(params ExecutionStatus[] verdicts) : IEngineDriver
     {
         private int _call;

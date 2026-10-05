@@ -29,10 +29,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// <see cref="RangeSync"/> fetches a Gloas block's sampled columns and verifies each against the bid of the
-/// block it names, since a Gloas sidecar carries neither commitments nor a signed header of its own.
-/// </summary>
 public class RangeSyncGloasColumnsTests
 {
     private const ulong AnchorSlot = 16;
@@ -117,8 +113,6 @@ public class RangeSyncGloasColumnsTests
 
     // KZG does not bind a sidecar's slot, and served-map availability does not re-check it.
     // Tampered later copies prove duplicate suppression: verification would otherwise report a failure.
-    // Repeating an invalid pair must cost one KZG verification and one penalty, not one per copy.
-    // A valid earlier reply remains pooled; a later peer's copy is neither verified nor held against that peer.
     public enum ColumnReply
     {
         BadSidecar,
@@ -131,7 +125,6 @@ public class RangeSyncGloasColumnsTests
         AlreadySupplied,
     }
 
-    /// <summary>The batch's unvalidated bid may name another slot; sidecars must name the block slot.</summary>
     [TestCase(ColumnReply.BidSlot, BadSidecar.WrongSlot, TestName = "A_range_sidecar_must_name_the_block_slot_even_when_the_bid_names_another")]
     [TestCase(ColumnReply.BadSidecar, BadSidecar.WrongSlot, TestName = "A_range_sidecar_breaking_one_rule_is_not_pooled_and_penalizes_the_peer(WrongSlot)")]
     [TestCase(ColumnReply.BadSidecar, BadSidecar.RootOutsideBatch, TestName = "A_range_sidecar_breaking_one_rule_is_not_pooled_and_penalizes_the_peer(RootOutsideBatch)")]
@@ -311,7 +304,6 @@ public class RangeSyncGloasColumnsTests
         Assert.That(peers.Sum(static p => p.Failures), Is.Zero);
     }
 
-    /// <summary>A later round asks exactly the window from the first slot still missing a column to the last one.</summary>
     [TestCase(false, true, GloasSlot, 2UL, TestName = "A_later_range_round_spans_exactly_the_slots_still_lacking_a_column(True,2UL)")]
     [TestCase(false, false, GloasSlot, 1UL, TestName = "A_later_range_round_spans_exactly_the_slots_still_lacking_a_column(False,1UL)")]
     [TestCase(true, true, SecondGloasSlot, 1UL, TestName = "A_later_range_round_requests_only_from_the_first_slot_still_missing_a_column")]
@@ -443,10 +435,6 @@ public class RangeSyncGloasColumnsTests
         }
     }
 
-    /// <summary>
-    /// The block-only peer supplies no columns. The custodian serves the second Gloas block, either after the batch peer
-    /// lacks custody or from inside the requested range; blocks below its earliest slot are left to the by-root retry.
-    /// </summary>
     [TestCase(false, TestName = "Gloas_range_asks_a_custodian_rather_than_the_batch_peer")]
     [TestCase(true, TestName = "Gloas_range_falls_back_to_a_custodian_serving_from_inside_the_range")]
     [CancelAfter(30_000)]
@@ -464,7 +452,6 @@ public class RangeSyncGloasColumnsTests
         }, id: "late", earliestAvailableSlot: SecondGloasSlot, headSlot: SecondGloasSlot);
         DataColumnSidecarPool pool = new();
 
-        // With the Fulu anchor, round-robin gives the second batch to the block-only peer.
         RangeSyncTests.StubPeer[] peers = fromInside ? [blocksOnly, late] : [late, blocksOnly];
         List<ForkedSignedBeaconBlock> yielded = await RunAsync(pool, discovery, clock: null, chain, SecondGloasSlot, token, peers);
 
@@ -539,7 +526,6 @@ public class RangeSyncGloasColumnsTests
             Assert.That(sampled.Where(c => coverage != RootColumnCoverage.OneWithheld || c != sampled[^1]).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
     }
 
-    /// <summary>The by-root requests of one fetch run together, so peers that never answer cost one request timeout between them, not one each.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task By_root_peers_that_never_answer_cost_one_request_timeout_per_fetch(CancellationToken token)
@@ -563,7 +549,6 @@ public class RangeSyncGloasColumnsTests
         Assert.That(peers.Select(static p => p.Failures), Is.All.EqualTo(1));
     }
 
-    /// <summary>Repeated fetches for one block rotate through the peers, so peers answering with nothing do not hide one that serves the columns.</summary>
     [Test]
     public async Task By_root_fetches_sharing_a_rotation_reach_the_peer_behind_three_that_answer_nothing()
     {
@@ -589,7 +574,6 @@ public class RangeSyncGloasColumnsTests
         Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
     }
 
-    /// <summary>Mirrors <see cref="GloasCustodySamplingAvailability.IsDataAvailable"/>: nothing is demanded without blobs or before the window, and nothing can be proven without an identity.</summary>
     [TestCase(ByRootShortcut.NoCustodyIdentity, false)]
     [TestCase(ByRootShortcut.BeforeWindow, true)]
     [TestCase(ByRootShortcut.NoBlobs, true)]
@@ -645,7 +629,6 @@ public class RangeSyncGloasColumnsTests
     private static RangeSync CreateSync(DataColumnSidecarPool pool, BeaconDiscovery? discovery, SlotClock? clock, params IBeaconSyncPeer[] peers) =>
         new(new RangeSyncTests.StubPool(peers), LimboLogs.Instance, pool, Spec, clock ?? RangeSyncTests.ClockAtGenesis(Spec), discovery);
 
-    /// <summary>Resolves the identity and local custody exactly as Start does, without binding a socket.</summary>
     private static BeaconDiscovery CreateDiscovery()
     {
         BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
@@ -670,7 +653,6 @@ public class RangeSyncGloasColumnsTests
             : null;
     }
 
-    /// <summary>A Fulu blob block at the last Fulu slot and its Gloas blob child at the fork slot, above a Fulu anchor.</summary>
     private sealed class StraddlingChain
     {
         public required Hash256 AnchorRoot { get; init; }
@@ -721,7 +703,6 @@ public class RangeSyncGloasColumnsTests
         public RangeSyncTests.StubPeer HonestPeer(string id, PeerColumnCustody? custody = null) =>
             CreatePeer((_, _, columns) => [.. columns.Select(GloasSidecar)], id: id, custody: custody);
 
-        /// <summary>Serves <see cref="Blocks"/> by range and no Fulu sidecars, recording each Fulu column window.</summary>
         public RangeSyncTests.StubPeer CreatePeer(Func<ulong, ulong, ulong[], DataColumnSidecarGloas[]> gloasColumnHandler, List<(ulong StartSlot, ulong Count)>? fuluWindows = null, string id = "peer", PeerColumnCustody? custody = null, ulong earliestAvailableSlot = 0, ulong headSlot = GloasSlot) => new(
             id,
             headSlot,

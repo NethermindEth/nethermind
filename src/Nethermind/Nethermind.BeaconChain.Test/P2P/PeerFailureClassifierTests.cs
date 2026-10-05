@@ -8,8 +8,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>A dead session must classify as <see cref="PeerFailureReason.SessionClosed"/> so the peer manager drops it at once
-/// instead of spending a failure budget on a peer that can never answer again.</summary>
 public class PeerFailureClassifierTests
 {
     [TestCase("Channel closed", PeerFailureReason.SessionClosed)]

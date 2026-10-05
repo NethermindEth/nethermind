@@ -12,18 +12,9 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// specs/gloas/fork-choice.md <c>store.payload_timeliness_vote</c>, <c>store.payload_data_availability_vote</c>,
-/// <c>on_payload_attestation_message</c> and <c>notify_ptc_messages</c> through <see cref="ForkChoiceRunner"/>.
-/// </summary>
 [HardTimeout(60_000)]
 public class ForkChoiceRunnerPtcVoteTests
 {
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>payload_timeliness</c> and <c>payload_data_availability</c>: strictly more than
-    /// <c>PTC_SIZE // 2</c> seats must vote the value, so an even split never decides it, and seats that did not vote or voted
-    /// the other way do not count.
-    /// </summary>
     [Test]
     public void A_payload_decision_needs_strictly_more_than_half_the_ptc([Values(256, 257)] int matching, [Values] bool restVotedOtherwise)
     {
@@ -36,11 +27,6 @@ public class ForkChoiceRunnerPtcVoteTests
         Assert.That(PtcVotes.HasQuorum(votes, false), Is.False);
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>on_payload_attestation_message</c>: a validator can hold several PTC seats, and its vote is
-    /// written at every one, the timeliness and availability votes each from their own field. A single seat would undercount it.
-    /// A correctly signed wire vote passes <c>is_valid_indexed_payload_attestation</c>.
-    /// </summary>
     [Test]
     public void A_member_vote_is_written_at_every_seat_it_holds()
     {
@@ -63,7 +49,6 @@ public class ForkChoiceRunnerPtcVoteTests
         Assert.That(availability.Count(static v => v is not null), Is.EqualTo(seats.Length));
     }
 
-    /// <summary>specs/gloas/fork-choice.md <c>on_payload_attestation_message</c>: a vote whose slot is not its block's returns early, before the current-slot check, and writes nothing.</summary>
     [Test]
     public void A_vote_for_another_slot_than_its_block_is_ignored()
     {
@@ -96,11 +81,6 @@ public class ForkChoiceRunnerPtcVoteTests
 
     public enum RefusedVote { NotInPtc, WireVoteNotForTheCurrentSlot, BadSignature, UnknownBlock, PreGloasBlock, MissingData, MissingBlockRoot }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>on_payload_attestation_message</c>: the block must be known and a Gloas block (<c>get_ptc</c>
-    /// asserts a Gloas epoch), the voter a PTC member, and a wire vote for the current slot with a valid signature. A refused
-    /// vote writes nothing; a vote from a block skips only the slot and signature checks.
-    /// </summary>
     [Test]
     public void Refused_votes_write_nothing_and_block_votes_skip_only_slot_and_signature([Values] RefusedVote refusal, [Values] bool isFromBlock)
     {
@@ -138,10 +118,6 @@ public class ForkChoiceRunnerPtcVoteTests
         Assert.That(harness.Runner.GetPtcVotes(first.Root)!.Value.Timeliness.Count(static v => v is not null), refused ? Is.Zero : Is.GreaterThan(0));
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>get_forkchoice_store</c> (#5545): a Gloas anchor starts with <c>[None] * PTC_SIZE</c> votes,
-    /// so a PTC vote for it right after startup is recorded, not refused for a missing entry.
-    /// </summary>
     [Test]
     public void A_gloas_anchor_takes_ptc_votes_right_after_startup()
     {
@@ -158,11 +134,6 @@ public class ForkChoiceRunnerPtcVoteTests
         Assert.That(runner.GetPtcVotes(chain.First.Root)!.Value.Timeliness, Has.Some.True);
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>on_block</c> calls <c>notify_ptc_messages</c>: a block's payload attestations vote for its
-    /// parent's payload from inside <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlockGloas, BeaconStateGloas)"/>, at every seat
-    /// of each attester, with no caller replay.
-    /// </summary>
     [Test]
     public void A_block_payload_attestations_are_applied_by_on_block()
     {
@@ -179,10 +150,6 @@ public class ForkChoiceRunnerPtcVoteTests
         Assert.That(Enumerable.Range(0, ptc.Length).Where(seat => timeliness[seat] is true), Is.EqualTo(Enumerable.Range(0, ptc.Length).Where(seat => ptc[seat] == ptc[0])));
     }
 
-    /// <summary>
-    /// Every body payload attestation is resolved before the block is registered, so a block refused for one of them leaves
-    /// neither itself nor the votes of the others behind; a partial write would count votes of a block fork choice never held.
-    /// </summary>
     [Test]
     public void A_block_refused_for_one_payload_attestation_writes_none_of_them()
     {

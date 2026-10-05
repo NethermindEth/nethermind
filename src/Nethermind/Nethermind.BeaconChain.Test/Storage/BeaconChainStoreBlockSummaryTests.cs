@@ -19,7 +19,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
-/// <summary>Checks durable block summaries used by gloas/p2p-interface.md sidecar validation.</summary>
 public class BeaconChainStoreBlockSummaryTests
 {
     private static readonly Hash256 GloasRoot = Keccak.Compute("gloas block");
@@ -28,7 +27,6 @@ public class BeaconChainStoreBlockSummaryTests
     private MemColumnsDb<BeaconChainDbColumns> _db = null!;
     private BeaconChainStore _store = null!;
 
-    /// <summary>Creates an isolated database for gloas/p2p-interface.md summary checks.</summary>
     [SetUp]
     public void CreateStore()
     {
@@ -36,11 +34,9 @@ public class BeaconChainStoreBlockSummaryTests
         _store = new BeaconChainStore(_db, Sepolia);
     }
 
-    /// <summary>Releases the database used by gloas/p2p-interface.md summary checks.</summary>
     [TearDown]
     public void DisposeStore() => _db.Dispose();
 
-    /// <summary>The summary keeps its fork, slot and commitments across persistence and restart.</summary>
     [TestCase(false, false)]
     [TestCase(true, false)]
     [TestCase(true, true)]
@@ -67,7 +63,6 @@ public class BeaconChainStoreBlockSummaryTests
         }
     }
 
-    /// <summary>Deleting the block removes its summary and prevents a late backfill from restoring it.</summary>
     [Test]
     public void Deleted_blocks_have_no_summary([Values] bool backfillAfterDeletion)
     {
@@ -81,7 +76,6 @@ public class BeaconChainStoreBlockSummaryTests
         Assert.That(_store.TryGetBlockSummary(GloasRoot, out _), Is.False);
     }
 
-    /// <summary>Checks that concurrent deletion cannot leave stale block fields for gloas/p2p-interface.md validation.</summary>
     [Test]
     public void Deletion_cannot_leave_a_summary_backfill_in_progress()
     {
@@ -114,7 +108,6 @@ public class BeaconChainStoreBlockSummaryTests
         Assert.That(store.TryGetBlockSummary(GloasRoot, out _), Is.False);
     }
 
-    /// <summary>Checks that legacy block fields can be persisted for subsequent gloas/p2p-interface.md validation.</summary>
     [Test]
     public void A_block_stored_before_the_index_has_no_summary_until_one_is_written()
     {
@@ -133,7 +126,6 @@ public class BeaconChainStoreBlockSummaryTests
         Assert.That(written.Commitments, Is.Not.Empty);
     }
 
-    /// <summary>Checks that malformed records cannot supply fields for gloas/p2p-interface.md validation.</summary>
     [TestCase(new byte[] { }, TestName = "An empty summary entry is not a summary")]
     [TestCase(new byte[] { 1, 0, 0, 0, 0, 0, 0, 0 }, TestName = "A summary entry with no slot is not a summary")]
     [TestCase(new byte[] { 9, 0, 0, 0, 0, 0, 0, 0, 1 }, TestName = "A summary entry of an unknown shape is not a summary")]
@@ -146,7 +138,6 @@ public class BeaconChainStoreBlockSummaryTests
         Assert.That(_store.TryGetBlockSummary(GloasRoot, out _), Is.False);
     }
 
-    /// <summary>Checks that invalid commitment counts cannot supply a bid for gloas/p2p-interface.md validation.</summary>
     [Test]
     public void A_summary_with_invalid_commitment_count_reads_as_absent([Values] bool gloas)
     {

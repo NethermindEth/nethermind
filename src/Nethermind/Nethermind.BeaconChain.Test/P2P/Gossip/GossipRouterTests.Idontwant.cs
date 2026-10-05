@@ -17,14 +17,9 @@ using Snappier;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
-/// <summary>Gossipsub v1.2 IDONTWANT under the host's settings, with simulated v1.2 peers.</summary>
 public partial class GossipRouterTests
 {
-    /// <summary>
-    /// A large message is announced with IDONTWANT to the other v1.2 mesh peers only once its deferred verdict accepts it, ahead of the
-    /// message itself, and never to the peer that delivered it nor for a message that is not accepted.
-    /// </summary>
-    /// <remarks>gossipsub v1.2: IDONTWANT tells mesh peers not to send a message already received; it follows validation, so an unvalidated message is not announced.</remarks>
+    // gossipsub v1.2 IDONTWANT follows validation, so unvalidated messages are not announced.
     [TestCase(MessageValidity.Accepted)]
     [TestCase(MessageValidity.Rejected)]
     [TestCase(MessageValidity.Ignored)]
@@ -54,10 +49,6 @@ public partial class GossipRouterTests
         }
     }
 
-    /// <summary>
-    /// A v1.2 peer's IDONTWANT stops this node sending it that message until the announcement expires. A heartbeat's budget keeps two blocks
-    /// of announcements sent one entry each, and announcements past it are not kept, so no peer can make the node withhold every message.
-    /// </summary>
     [TestCase(0, true, false, TestName = "Peer_idontwant_withholds_the_message_while_unexpired")]
     [TestCase(2, true, false, TestName = "Peer_idontwant_withholds_the_message_for_three_heartbeats")]
     [TestCase(3, true, true, TestName = "Peer_idontwant_expires_after_its_heartbeats")]
@@ -68,7 +59,6 @@ public partial class GossipRouterTests
         byte[] block = LargeBlockMessage(CurrentSlot);
         const int budget = BeaconP2P.MaxIdontwantControlsPerHeartbeat;
         Rpc announcements = new() { Control = new ControlMessage() };
-        // One entry per announced message, as an honest peer sends them: the block's is the last within the budget, or the first past it.
         for (int i = 0; i < (withinBudget ? budget - 1 : budget); i++)
         {
             byte[] filler = new byte[20];

@@ -22,14 +22,9 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
-/// <summary>The router's deferred validation of eth2 gossip under the host's settings, with simulated peers.</summary>
 public partial class GossipRouterTests
 {
-    /// <summary>
-    /// A block the router defers is sent to the other mesh peer only once its verdict is <see cref="MessageValidity.Accepted"/>, and
-    /// a verdict other than accept leaves its id cached, so the same message from another peer is not validated again.
-    /// </summary>
-    /// <remarks>phase0 p2p-interface.md "Topics and messages": ACCEPT once every validation passed; REJECT and IGNORE are not forwarded.</remarks>
+    // phase0 p2p-interface.md: REJECT and IGNORE are not forwarded.
     [TestCase(MessageValidity.Accepted)]
     [TestCase(MessageValidity.Rejected)]
     [TestCase(MessageValidity.Ignored)]
@@ -52,11 +47,7 @@ public partial class GossipRouterTests
         Assert.That((fixture.Pubsub.PendingValidationCount, fixture.Validation.PendingBytes), Is.EqualTo((0, 0L)), "a given verdict releases its message");
     }
 
-    /// <summary>
-    /// Past the bound on messages or bytes awaiting a verdict a message is throttled: it is not validated, cached or forwarded, so the same
-    /// message is validated once the bound frees.
-    /// </summary>
-    /// <remarks>phase0 p2p-interface.md "Topics and messages": clients SHOULD maintain maximum queue sizes to avoid DoS vectors.</remarks>
+    // phase0 p2p-interface.md: queue bounds SHOULD prevent DoS.
     [Test]
     public async Task Message_past_the_pending_bound_is_throttled_and_validated_once_the_bound_frees([Values] bool byBytes)
     {
@@ -78,10 +69,6 @@ public partial class GossipRouterTests
         Assert.That(fixture.Raised, Has.Count.EqualTo(2), "the throttled message is validated once the bound frees");
     }
 
-    /// <summary>
-    /// One delivering peer holds at most its share of the messages awaiting a verdict, so cheap unsigned messages from it cannot throttle the
-    /// gossip of every other peer; votes are not counted, as the vote queue bounds them.
-    /// </summary>
     [Test]
     public async Task One_peer_holds_at_most_its_share_of_the_pending_messages()
     {
@@ -107,10 +94,6 @@ public partial class GossipRouterTests
         Assert.That(fixture.Validation.Verify(fixture.Sender, vote), Is.EqualTo(MessageValidity.Deferred), "a vote is not held to the peer's share");
     }
 
-    /// <summary>
-    /// A batched IWANT answer carrying many columns and a block from one peer is not held to the peer's share, as each column is checked as
-    /// it is dispatched; only the block counts against it.
-    /// </summary>
     [Test]
     public async Task One_rpc_of_many_columns_from_one_peer_is_not_held_to_its_share()
     {
@@ -127,10 +110,6 @@ public partial class GossipRouterTests
         Assert.That(block, Is.EqualTo(MessageValidity.Deferred));
     }
 
-    /// <summary>
-    /// Aggregates and payload attestations are reserved apart, up to the vote queue: past it they are throttled, and a full vote bound
-    /// leaves the room for blocks, columns and envelopes untouched. Every message is reserved before the router dispatches it.
-    /// </summary>
     [Test]
     public async Task Votes_are_held_to_their_own_bound_and_leave_the_room_of_other_gossip()
     {
@@ -146,10 +125,6 @@ public partial class GossipRouterTests
         Assert.That((fixture.Validation.PendingVotes, fixture.Validation.Pending), Is.EqualTo((2, 1)), "each deferred message is reserved before it is dispatched");
     }
 
-    /// <summary>
-    /// A verdict not given within the timeout is abandoned without caching the message's id, so another copy is validated again, and a
-    /// verdict given after that neither forwards the message nor charges its sender.
-    /// </summary>
     [Test]
     public async Task Verdict_not_given_in_time_is_abandoned_and_a_later_copy_is_validated_again()
     {
@@ -162,7 +137,6 @@ public partial class GossipRouterTests
         GossipVerdict abandoned = fixture.Raised.Single();
         await abandoned.Completion.WaitAsync(TimeSpan.FromSeconds(10));
         bool lateApplied = abandoned.Complete(MessageValidity.Accepted);
-        // The router drops the pending message when the validation task ends, just after the verdict is abandoned.
         for (int i = 0; i < 500 && fixture.Pubsub.PendingValidationCount > 0; i++)
         {
             await Task.Delay(10);
@@ -180,11 +154,7 @@ public partial class GossipRouterTests
         Assert.That(fixture.Router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1), "the router validated the copy again, as it cached no id for the abandoned message");
     }
 
-    /// <summary>
-    /// A block for the next slot that arrives early is ignored at once, so no verdict waits a slot before any signature is checked, and the
-    /// held block is still raised for import once its slot starts.
-    /// </summary>
-    /// <remarks>phase0 p2p-interface.md beacon_block: [IGNORE] a future slot, which a client MAY queue.</remarks>
+    // phase0 p2p-interface.md beacon_block: future slots are IGNOREd and MAY be queued.
     [Test]
     public void Early_next_slot_block_is_ignored_at_once_and_imported_once_its_slot_starts()
     {
@@ -205,10 +175,6 @@ public partial class GossipRouterTests
         Assert.That(raised.SingleOrDefault(), Is.Not.SameAs(verdict), "with a verdict no router waits on");
     }
 
-    /// <summary>
-    /// A message its consumer refuses for local load is checked again when a copy arrives, as the pubsub router keeps no id for it, also when
-    /// the refusal comes once a block held for its slot is raised.
-    /// </summary>
     [Test]
     public void Message_refused_for_local_load_is_checked_again_when_a_copy_arrives([Values] bool heldForItsSlot)
     {
@@ -232,10 +198,6 @@ public partial class GossipRouterTests
         Assert.That((raised, router.GetDropCount(GossipDropReason.Duplicate)), Is.EqualTo((2, 0L)));
     }
 
-    /// <summary>
-    /// The room reserved for a message the router never dispatches, as one it skips once it expired while an earlier message of its RPC was
-    /// still being checked, is released when the reservation expires, so it is not lost to later gossip.
-    /// </summary>
     [Test]
     public async Task Reservation_of_a_message_never_dispatched_is_released_when_it_expires()
     {
@@ -258,7 +220,6 @@ public partial class GossipRouterTests
         Assert.That((fixture.Validation.Pending, fixture.Validation.PendingVotes), Is.EqualTo((2, 0)), "the expired reservations are released, the later ones kept");
     }
 
-    /// <summary>A clock a test moves by hand.</summary>
     private sealed class SteppedTime(DateTimeOffset start) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = start;
@@ -304,7 +265,6 @@ public partial class GossipRouterTests
 
     private static readonly string BlockTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
 
-    /// <summary>A pubsub router with the host's settings and deferred validation, a sending peer and a mesh neighbor, and the verdicts of the blocks it raised.</summary>
     private sealed class DeferredFixture : IAsyncDisposable
     {
         private readonly IContainer _container;

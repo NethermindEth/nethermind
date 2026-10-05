@@ -24,10 +24,6 @@ using Snappier;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// Framing and DoS-limit tests for the data column sidecar req/resp protocols, mirroring
-/// <c>ReqRespLimitsTests</c>' pattern for the block protocols.
-/// </summary>
 public class DataColumnSidecarsReqRespTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
@@ -220,7 +216,6 @@ public class DataColumnSidecarsReqRespTests
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new DataColumnSidecarsByRootProtocol(Spec, new DataColumnSidecarPool()).DialAsync(null!, null!, new(request, Gloas: false)));
     }
 
-    /// <summary>A reply cut short must leave the caller every chunk read before the cut, or the batch asks for them again.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task The_real_dial_hands_out_each_chunk_read_before_the_reply_is_cut_short(CancellationToken token)
@@ -236,7 +231,6 @@ public class DataColumnSidecarsReqRespTests
         Assert.That(thrown!.Message, Does.StartWith("Truncated response chunk"));
     }
 
-    /// <summary>A chunk outside the requested slots or columns is a protocol violation and must never reach the caller's pool of kept sidecars.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task The_real_dial_refuses_a_chunk_outside_the_request_before_handing_it_out([Values] bool unrequestedColumn, CancellationToken token)
@@ -254,7 +248,6 @@ public class DataColumnSidecarsReqRespTests
 
     private static (ulong Slot, ulong Column) Key(DataColumnSidecar sidecar) => (sidecar.SignedBlockHeader!.Message!.Slot, sidecar.Index);
 
-    /// <summary>The request budget must cut a reply even when each chunk arrives within its own timeout.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task The_real_dial_is_cut_at_the_budget_scaled_to_the_request_though_each_chunk_arrives_in_time(CancellationToken token)
@@ -304,7 +297,6 @@ public class DataColumnSidecarsReqRespTests
             }
             catch (OperationCanceledException) when (chunkGap > TimeSpan.Zero)
             {
-                // The dialer cut the reply and stopped reading while this server was still dripping chunks.
             }
         }, token);
 
@@ -322,7 +314,6 @@ public class DataColumnSidecarsReqRespTests
             }
             catch (Exception e) when (e is OperationCanceledException or IOException)
             {
-                // Raised only by the stop above, once the dial is over.
             }
         }
     }
@@ -357,7 +348,6 @@ public class DataColumnSidecarsReqRespTests
         return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, contextBytes, DataColumnSidecar.Encode(sidecar), token);
     }
 
-    /// <summary>Exposes the protected chunked-response reader for direct testing.</summary>
     private sealed class TestDataColumnSidecarsProtocol(BeaconChainSpec spec) : DataColumnSidecarsProtocolBase(spec)
     {
         public const string ProtocolId = "/test/data-column-sidecars-limits/1";

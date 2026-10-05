@@ -8,14 +8,7 @@ using Nethermind.Core.Crypto;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Hashes every state through an incremental hasher that lives as long as the vector, as production keeps
-/// one per lineage, and fails when its root differs from the full hasher's; returns the full root.
-/// </summary>
-/// <remarks>
-/// Returning the full root keeps the pipeline's behavior identical to a run without the check, so a
-/// vector still fails only for the reason it would have failed before.
-/// </remarks>
+/// <summary>Checks a lineage-lifetime incremental hasher against full roots, returning the full root to preserve vector behavior.</summary>
 internal sealed class DifferentialBeaconStateHasher(IBeaconStateHasher incremental, IBeaconStateHasher full) : IBeaconStateHasher
 {
     public DifferentialBeaconStateHasher() : this(new CachedBeaconStateHasher(), new FullBeaconStateHasher())
@@ -34,8 +27,5 @@ internal sealed class DifferentialBeaconStateHasher(IBeaconStateHasher increment
             : throw new HasherDivergenceException($"the incremental hasher's root {incrementalRoot} differs from the full hasher's {fullRoot} for the state at slot {slot}");
 }
 
-/// <summary>
-/// The incremental hasher disagreed with the full one. Deliberately not a spec rejection, so an invalid
-/// vector cannot pass by being "rejected" through it.
-/// </summary>
+/// <summary>Hasher disagreement, deliberately distinct from a spec rejection so invalid vectors cannot pass through it.</summary>
 internal sealed class HasherDivergenceException(string message) : Exception(message);

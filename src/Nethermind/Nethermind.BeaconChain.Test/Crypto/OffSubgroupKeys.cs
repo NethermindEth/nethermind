@@ -10,7 +10,6 @@ using Nethermind.Crypto;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
-/// <summary>Points outside their prime-order subgroups: public keys that still verify their secret key's signatures, and signatures outside G2.</summary>
 internal static class OffSubgroupKeys
 {
     // ethereum/bls12-381-tests v0.1.2 deserialization_fails_not_in_G1: an on-curve point outside G1.
@@ -25,11 +24,7 @@ internal static class OffSubgroupKeys
     // The G1 subgroup order r, little-endian: r times a point keeps only its component outside the subgroup.
     private static readonly byte[] SubgroupOrder = Reversed(Bytes.FromHexString("0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001"));
 
-    /// <summary>
-    /// <c>[sk]G + T</c> for a nonzero torsion point <c>T</c>: it pairs with G2 points as <c>[sk]G</c> does, so
-    /// <c>sk</c>'s signatures verify under it, and only a subgroup check tells it apart. With <paramref name="negateTorsion"/>
-    /// it is <c>[sk]G - T</c>, whose torsion cancels the other's in a sum.
-    /// </summary>
+    // [sk]G+T pairs like [sk]G; only subgroup validation detects torsion. Opposite torsion cancels when keys are summed.
     public static BlsPublicKey WithTorsion(Bls.SecretKey key, bool negateTorsion = false)
     {
         Bls.P1Affine outside = new(new long[Bls.P1Affine.Sz]);
@@ -51,10 +46,8 @@ internal static class OffSubgroupKeys
         return new BlsPublicKey(point.Compress());
     }
 
-    /// <summary>ethereum/bls12-381-tests v0.1.2 <c>deserialization_fails_not_in_G2</c>: an on-curve G2 point outside the subgroup.</summary>
     public static BlsSignature NotInG2Signature() => new(NotInG2);
 
-    /// <summary><paramref name="signature"/> plus a nonzero G2 torsion point: on the curve, outside G2.</summary>
     public static BlsSignature WithG2Torsion(BlsSignature signature)
     {
         Bls.P2Affine outside = new(new long[Bls.P2Affine.Sz]);
@@ -78,10 +71,7 @@ internal static class OffSubgroupKeys
         return new BlsSignature(result.Compress());
     }
 
-    /// <summary>
-    /// Every point of order <paramref name="prime"/> on the twist over Fp2, compressed, for a prime that divides the G2
-    /// cofactor: each is in the cofactor part of the twist group, so adding it to a signature leaves G2.
-    /// </summary>
+    // Adding a nonzero twist-cofactor point to a signature leaves G2.
     public static IReadOnlyCollection<byte[]> G2TorsionOfOrder(int prime)
     {
         BigInteger cofactorFree = G2Cofactor * new BigInteger(SubgroupOrder, isUnsigned: true);
@@ -113,7 +103,6 @@ internal static class OffSubgroupKeys
         return span.Values;
     }
 
-    /// <summary>The nonzero points <c>[i]A + [j]B</c> over one or two generators, keyed by encoding.</summary>
     private static Dictionary<string, byte[]> Span(List<byte[]> generators, int prime)
     {
         Dictionary<string, byte[]> span = [];

@@ -18,18 +18,11 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// JSON bodies for <c>/eth/v2/beacon/blocks/{id}</c> and <c>/eth/v2/debug/beacon/states/{id}</c>,
-/// and <c>/eth/v1/beacon/headers?parent_root</c>. Expected values are written from the fixture's
-/// construction (a bit pattern, a byte fill, a decimal), never read back from the response, so a
-/// writer that emits the wrong encoding for a field type fails here rather than passing on shape.
-/// </summary>
 public class BeaconJsonBodiesTests : BeaconApiFixture
 {
     private const string Json = "application/json";
     private const string Octet = "application/octet-stream";
 
-    // epoch 412,500: past FuluForkEpoch (411,392) on BeaconChainSpec.Mainnet, so the codec accepts the state and ForkAtEpoch says fulu.
     private const ulong Slot = 412_500 * 32 + 7;
 
     [OneTimeSetUp]
@@ -294,7 +287,6 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         Assert.That(malformed.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
-    /// <summary>getBlockHeaders answers a filter that matches nothing with an empty, non-finalized list, whether the parent was never seen or was pruned.</summary>
     [Test]
     public async Task Headers_by_parent_root_answers_an_unknown_or_pruned_parent_with_an_empty_list([Values] bool pruned)
     {
@@ -474,7 +466,6 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         Assert.That(body.GetProperty("data")[0].GetProperty("root").GetString(), Is.EqualTo(root.ToString()));
     }
 
-    /// <summary>Beacon API Finalized requires the state slot cutoff and canonicality at its latest block's slot.</summary>
     [Test]
     public async Task State_finalized_flag_uses_the_block_slot_and_the_state_slot_cutoff([Values(0, 5)] int offset)
     {
@@ -494,7 +485,6 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
     }
 }
 
-/// <summary>Sepolia schedules Gloas, so children of one parent can straddle the fork boundary there.</summary>
 public class BeaconJsonBodiesGloasTests : BeaconApiFixture
 {
 

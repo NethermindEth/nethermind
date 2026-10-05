@@ -26,13 +26,8 @@ using KeyType = Nethermind.Libp2p.Core.Dto.KeyType;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// A peer whose libp2p session closed can never answer again: it leaves the pool at once, without a failure counted against it,
-/// so selection and the failure budget never see it and the dial loop can replace it.
-/// </summary>
 public class PeerSessionCloseTests
 {
-    // A real peer id, so an inbound violation can name it.
     private static readonly Identity PeerIdentity = new(privateKey: null, KeyType.Secp256K1);
     private static readonly string PeerAddress = $"/ip4/10.0.0.1/tcp/9000/p2p/{PeerIdentity.PeerId}";
 
@@ -64,7 +59,6 @@ public class PeerSessionCloseTests
 
         Assert.DoesNotThrowAsync(() => replacement.WaitAsync(ReplacementBound, token), "the dial loop is let through as soon as the peer leaves, not at its next poll");
         IOException? queued = Assert.ThrowsAsync<IOException>(async () => await requests[2]);
-        // What sync and the health check do with such a failure.
         peer.ReportFailure(PeerFailureClassifier.Classify(queued!), queued!.Message);
         await manager.HandleHealthFailureAsync(peer, queued, startedAt: 0, token);
 
@@ -96,7 +90,6 @@ public class PeerSessionCloseTests
 
         await session.DisconnectAsync();
 
-        // The removal writes the disconnect record after any dial outcome.
         await WaitUntilAsync(() => manager.GetPeerDiagnostics().Any(static peer => peer.DisconnectCount == 1), "the peer's removal never finished", token, ReplacementBound);
         Assert.That(discovery.DialHistory.Quality(PeerAddress), Is.Zero, "the address is dialed again at once, as for a peer never dialed");
     }
@@ -181,8 +174,6 @@ public class PeerSessionCloseTests
         await WaitUntilAsync(() => manager.IsBannedForTest(PeerId), "the stale drop reset the fault streak", token, ReplacementBound);
     }
 
-    /// <summary>Admits a peer on a new session, has it break the protocol as <paramref name="violation"/> says, and closes the session.</summary>
-    /// <param name="round">The disconnects the peer id has once this returns.</param>
     private static async Task<IBeaconSyncPeer> ViolateAndCloseAsync(PeerManager manager, BeaconP2P p2p, Violation violation, int round, CancellationToken token)
     {
         LocalPeer.Session session = RequestFailureCauseTests.AddWedgedSession(p2p);
@@ -250,7 +241,6 @@ public class PeerSessionCloseTests
             await CloseAsync(identity, disconnects: 1);
         }
 
-        // The oldest kept id closes again, so its first entry is the next to go and must not take the new one with it.
         Identity again = identities[churn - manager.ClosedPeerCapacity];
         await CloseAsync(again, disconnects: 2);
 

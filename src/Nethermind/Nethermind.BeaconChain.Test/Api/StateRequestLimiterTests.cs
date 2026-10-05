@@ -27,11 +27,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// A node that serves checkpoint sync must bound the requests that load a whole beacon state:
-/// beyond the bound they are refused at once, never queued, so memory stays bounded however many
-/// clients ask.
-/// </summary>
 public class StateRequestLimiterTests
 {
     private const string Octet = "application/octet-stream";

@@ -11,13 +11,8 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>A head change reads the canonical index no higher than the clock's next slot, whatever top slot the store recorded.</summary>
 public class BlockImporterCanonicalIndexBoundTests
 {
-    /// <summary>
-    /// The recorded top slot is a stored value: a corrupted one must cost a bounded number of reads, not stall the import worker
-    /// on its first head change. Entries a real previous run left above the head are still cleared.
-    /// </summary>
     [Test]
     public void A_corrupted_top_slot_does_not_stall_the_head_change_and_nearby_stale_entries_are_cleared()
     {
@@ -35,10 +30,6 @@ public class BlockImporterCanonicalIndexBoundTests
         Assert.That(restarted.Store.GetCanonicalIndexTopSlot(), Is.EqualTo(0UL), "the recorded top slot is repaired to the head's");
     }
 
-    /// <summary>
-    /// A rollback of the head can leave real entries far above it, up to the clock: a fixed distance above the head would leave them
-    /// marked canonical, and the top slot repair would then forget them.
-    /// </summary>
     [Test]
     public void A_stale_entry_far_above_the_new_head_but_within_the_clock_is_cleared()
     {

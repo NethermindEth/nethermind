@@ -17,11 +17,6 @@ using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// The state endpoints decode a stored state in the layout of the fork its slot belongs to (Electra, Fulu or Gloas) and
-/// serve every field that fork has. Each fork's state carries its own marker values, so a field read from another
-/// layout, or a version named after another fork, fails here.
-/// </summary>
 public class BeaconStatesForkLayoutTests : BeaconApiFixture
 {
     private const string Json = "application/json";
@@ -41,7 +36,6 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
             ulong slot = SlotOf(fork);
             Hash256 root = TestRoot((byte)(0xc0 + Marker(fork)));
             _host.Store.PutState(root, EncodedState(fork));
-            // A state id resolves through the canonical index to the stored state; no block is read.
             _host.Store.SetCanonicalRoot(slot, root);
         }
     }
@@ -78,7 +72,6 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
         Assert.That((await ssz.Content.ReadAsByteArrayAsync()).Length, Is.EqualTo(64 * sizeof(ulong)));
     }
 
-    /// <summary>apis/beacon/states/proposer_lookahead.yaml: a state before Fulu is 400.</summary>
     [Test]
     public async Task Proposer_lookahead_of_an_electra_state_is_400()
     {
@@ -86,7 +79,6 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
-    /// <summary>The unversioned state endpoints read the same fields from every layout.</summary>
     [Test]
     public async Task Unversioned_state_endpoints_read_each_fork_layout(
         [Values("electra", "fulu", "gloas")] string fork,
