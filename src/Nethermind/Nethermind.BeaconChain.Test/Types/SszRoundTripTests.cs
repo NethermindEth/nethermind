@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.SszRest;
+using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 using Transaction = Nethermind.BeaconChain.Types.Transaction;
 using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
 
@@ -281,7 +282,5 @@ public class SszRoundTripTests
     }
 
     private static byte[] Filled(int length, byte value) => Enumerable.Repeat(value, length).ToArray();
-    private static Hash256 Hash(byte value) => new(Filled(Hash256.Size, value));
-    private static BlsPublicKey Pubkey(byte value) => new(Filled(BlsPublicKey.Length, value));
     private static BlsSignature Signature(byte value) => new(Filled(BlsSignature.Length, value));
 }

@@ -60,17 +60,26 @@ public class BeaconChainStoreStatePruningTests
         Assert.That((root, slot), Is.EqualTo((Root(4), 96ul)));
     }
 
-    [Test]
-    public void A_deleted_multi_chunk_state_leaves_no_manifest_or_chunk_behind()
+    [TestCase(true, 10ul, 50ul, 10 * 1024 * 1024 + 5, TestName = "A_deleted_multi_chunk_state_leaves_no_manifest_or_chunk_behind")]
+    [TestCase(false, 5ul, 6ul, 9 * 1024 * 1024, TestName = "DeleteState_removes_one_state_and_ignores_a_root_with_none")]
+    public void Removing_a_multi_chunk_state_keeps_only_the_other_states_manifest_and_chunk(bool prune, ulong removedSlot, ulong keptSlot, int length)
     {
-        Put(1, slot: 10, length: 10 * 1024 * 1024 + 5);
-        Put(2, slot: 50);
-        int keysWithLargeState = StateKeyCount();
+        Put(1, removedSlot, length);
+        Put(2, keptSlot);
+        int keysWithLargeState = prune ? StateKeyCount() : 0;
+        if (prune)
+        {
+            _store.SetAnchor(Root(2), keptSlot);
+            Assert.That(keysWithLargeState, Is.GreaterThan(4), "fixture bug: the large state must span chunks");
+        }
+        else
+        {
+            _store.DeleteState(Root(1));
+            _store.DeleteState(Root(3));
+            Assert.That(new[] { Has(1), Has(2) }, Is.EqualTo(new[] { false, true }));
+        }
 
-        _store.SetAnchor(Root(2), 50);
-
-        Assert.That(keysWithLargeState, Is.GreaterThan(4), "fixture bug: the large state must span chunks");
-        Assert.That(StateKeyCount(), Is.EqualTo(2), "only the anchor's manifest and its one chunk remain");
+        Assert.That(StateKeyCount(), Is.EqualTo(2), prune ? "only the anchor's manifest and its one chunk remain" : null);
     }
 
     [Test]
@@ -142,18 +151,5 @@ public class BeaconChainStoreStatePruningTests
         Assert.That(loaded, Is.EqualTo(anchorState));
         Assert.That(reopened.TryGetState(Root(4), out _), Is.True, "a state above the anchor is still there to replay from");
         Assert.That(reopened.TryGetState(Root(1), out _) || reopened.TryGetState(Root(2), out _), Is.False);
-    }
-
-    [Test]
-    public void DeleteState_removes_one_state_and_ignores_a_root_with_none()
-    {
-        Put(1, slot: 5, length: 9 * 1024 * 1024);
-        Put(2, slot: 6);
-
-        _store.DeleteState(Root(1));
-        _store.DeleteState(Root(3));
-
-        Assert.That(new[] { Has(1), Has(2) }, Is.EqualTo(new[] { false, true }));
-        Assert.That(StateKeyCount(), Is.EqualTo(2));
     }
 }
