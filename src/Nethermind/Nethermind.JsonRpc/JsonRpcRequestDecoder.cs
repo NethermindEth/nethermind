@@ -61,15 +61,17 @@ internal static class JsonRpcRequestDecoder
     }
 
     /// <summary>
-    /// Narrows <paramref name="memory"/> to exactly one complete JSON document whose root is
-    /// <paramref name="expectedRootToken"/>, rejecting leading or trailing non-whitespace.
+    /// Narrows <paramref name="memory"/> to exactly one complete JSON array, rejecting leading or trailing
+    /// non-whitespace, and counts its items.
     /// </summary>
-    public static bool TryGetSingleDocumentBody(
+    /// <remarks>The validation pass skips each item in turn, so the count comes with it at no extra cost.</remarks>
+    public static bool TryGetBatchBody(
         ReadOnlyMemory<byte> memory,
-        JsonTokenType expectedRootToken,
-        out ReadOnlyMemory<byte> documentBody)
+        out ReadOnlyMemory<byte> batchBody,
+        out int itemCount)
     {
-        documentBody = default;
+        batchBody = default;
+        itemCount = 0;
 
         ReadOnlyMemory<byte> body = memory[CountLeadingJsonWhitespace(memory.Span)..];
         if (body.IsEmpty)
@@ -78,27 +80,49 @@ internal static class JsonRpcRequestDecoder
         }
 
         Utf8JsonReader reader = new(body.Span, isFinalBlock: true, state: default);
-        if (!reader.Read() || reader.TokenType != expectedRootToken)
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
         {
             return false;
         }
 
-        reader.Skip();
-        int documentLength = checked((int)reader.BytesConsumed);
-        if (HasNonWhitespace(body.Span[documentLength..]))
+        int count = 0;
+        while (reader.Read())
         {
-            return false;
+            if (reader.TokenType == JsonTokenType.EndArray)
+            {
+                int batchLength = checked((int)reader.BytesConsumed);
+                if (HasNonWhitespace(body.Span[batchLength..]))
+                {
+                    return false;
+                }
+
+                batchBody = body[..batchLength];
+                itemCount = count;
+                return true;
+            }
+
+            reader.Skip();
+            count++;
         }
 
-        documentBody = body[..documentLength];
-        return true;
+        return false;
     }
 
-    /// <summary>Reads one JSON object body as a request, keeping <c>params</c> as a slice of <paramref name="objectBody"/>.</summary>
-    public static bool TryReadObjectRequest(
-        ReadOnlyMemory<byte> objectBody,
-        [NotNullWhen(true)] out JsonRpcRequest? request) =>
-        TryReadObjectRequest(objectBody, out request, out _);
+    /// <summary>Reads the JSON object <paramref name="reader"/> is on as a request, keeping <c>params</c> as a slice of <paramref name="readerBody"/>.</summary>
+    /// <param name="readerBody">The bytes <paramref name="reader"/> reads; its token positions are offsets into them.</param>
+    /// <param name="reader">On the object's start; left on its end once the request is read, and not moved if reading throws.</param>
+    public static JsonRpcRequest ReadObjectRequest(ReadOnlyMemory<byte> readerBody, ref Utf8JsonReader reader)
+    {
+        Utf8JsonReader objectReader = reader;
+        JsonRpcEnvelope envelope = new JsonRpcEnvelopeReader(readerBody.Span).ReadObject(ref objectReader);
+        reader = objectReader;
+
+        ReadOnlyMemory<byte> paramsUtf8 = envelope.HasParams
+            ? readerBody.Slice(envelope.ParamsStart, envelope.ParamsLength)
+            : default;
+
+        return CreateRequest(envelope, paramsElement: default, paramsUtf8);
+    }
 
     private static bool TryReadObjectRequest(
         ReadOnlyMemory<byte> objectBody,
