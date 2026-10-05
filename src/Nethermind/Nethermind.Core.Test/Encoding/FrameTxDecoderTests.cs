@@ -744,7 +744,7 @@ public class FrameTxDecoderTests
                 Assert.That(actual[i].ExecutionGasLimit, Is.EqualTo(expected[i].ExecutionGasLimit), $"frame {i} execution gas limit");
                 Assert.That(actual[i].StateGasLimit, Is.EqualTo(expected[i].StateGasLimit), $"frame {i} state gas limit");
                 Assert.That(actual[i].Value, Is.EqualTo(expected[i].Value), $"frame {i} value");
-                Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"frame {i} data");
+                Assert.That(actual[i].Data, Is.SequenceEqualTo(expected[i].Data), $"frame {i} data");
             }
         }
     }
@@ -758,8 +758,8 @@ public class FrameTxDecoderTests
             {
                 Assert.That(actual[i].Scheme, Is.EqualTo(expected[i].Scheme), $"signature {i} scheme");
                 Assert.That(actual[i].Signer, Is.EqualTo(expected[i].Signer), $"signature {i} signer");
-                Assert.That(actual[i].Msg.ToArray(), Is.EqualTo(expected[i].Msg.ToArray()), $"signature {i} msg");
-                Assert.That(actual[i].Signature.ToArray(), Is.EqualTo(expected[i].Signature.ToArray()), $"signature {i} bytes");
+                Assert.That(actual[i].Msg, Is.SequenceEqualTo(expected[i].Msg), $"signature {i} msg");
+                Assert.That(actual[i].Signature, Is.SequenceEqualTo(expected[i].Signature), $"signature {i} bytes");
             }
         }
     }

@@ -20,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
@@ -114,6 +115,27 @@ public partial class FrameTxProcessorTests
             Assert.That(gas.GasRefund, hasRefund ? Is.GreaterThan(0) : Is.Zero);
             Assert.That(gas.GasRefund, Is.EqualTo(tracer.TraceResult.MaxUsedGas - tracer.TraceResult.GasUsed));
             Assert.That(gas.GasRefund, Is.LessThanOrEqualTo(tracer.TraceResult.MaxUsedGas / RefundHelper.MaxRefundQuotientEIP3529));
+        }
+    }
+
+    [Test]
+    public void FrameTransactions_RequireActivation([Values] bool simulate, [Values] bool enabled)
+    {
+        _spec.IsEip8141Enabled = enabled;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        TransactionResult result = simulate ? CallAndRestore(tx) : Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(enabled));
+        if (!enabled)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+                Assert.That(result.ErrorDescription, Does.Contain(TxErrorMessages.InvalidTxType(Spec.Name)));
+                Assert.That(_stateProvider.GetNonce(Sender), Is.Zero);
+            }
         }
     }
 
@@ -551,7 +573,7 @@ public partial class FrameTxProcessorTests
             Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert leaves the frame transaction included");
             Assert.That(_stateProvider.AccountExists(child), Is.True,
                 "a contract created in the validation prefix and self-destructed in a rolled-back body frame must be restored, not finalized for deletion");
-            Assert.That(_stateProvider.GetCode(child).ToArray(), Is.EqualTo(childRuntime), "the restored contract keeps its runtime code");
+            Assert.That(_stateProvider.GetCode(child), Is.SequenceEqualTo(childRuntime), "the restored contract keeps its runtime code");
         }
     }
 
