@@ -27,8 +27,8 @@ namespace Nethermind.TxPool.Filters;
 /// signature, so the cheap state filters must reject what they can before any of it is spent on a payload.
 /// Records <see cref="TxFilteringState.FrameSignaturesVerified"/> so a downstream filter can assert
 /// pre-validation from what ran rather than from this filter's position in the chain.
-/// A gossiped transaction's verification yields to block processing between signatures and is deferred,
-/// as <see cref="FrameTxSimulationFilter"/> defers its simulation.
+/// A gossiped transaction's verification yields between signatures to block processing and to this node's block
+/// building, and is deferred, as <see cref="FrameTxSimulationFilter"/> defers its simulation.
 /// </remarks>
 internal sealed class FrameTxSignatureFilter(
     IChainHeadSpecProvider specProvider,
@@ -37,7 +37,7 @@ internal sealed class FrameTxSignatureFilter(
     IChainHeadInfoProvider? headInfo = null)
     : IIncomingTxFilter
 {
-    private readonly Func<bool>? _isProcessingBlock = headInfo is null ? null : () => headInfo.IsProcessingBlock;
+    private readonly Func<bool>? _blockWorkInProgress = headInfo is null ? null : () => headInfo.IsProcessingBlock || headInfo.IsBuildingBlock;
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
@@ -54,13 +54,13 @@ internal sealed class FrameTxSignatureFilter(
             ? SecP256r1Precompile.Instance
             : null;
         bool local = (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
-        if (!FrameTxSignatureValidator.Validate(tx, ecdsa, p256Precompile, spec, local ? null : _isProcessingBlock, out bool preempted, out string? error))
+        if (!FrameTxSignatureValidator.Validate(tx, ecdsa, p256Precompile, spec, local ? null : _blockWorkInProgress, out bool preempted, out string? error))
         {
             if (preempted)
             {
                 Interlocked.Increment(ref Metrics.FrameTxSignatureVerificationsPreempted);
                 state.FrameValidationYielded = !tx.CarriesBlobs;
-                if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash}, its signature verification yielded to block processing.");
+                if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash}, its signature verification yielded to block processing or building.");
                 return AcceptTxResult.FrameSimulationDeferred.WithMessage(TxPoolErrorMessages.FrameSignatureVerificationDeferred);
             }
 

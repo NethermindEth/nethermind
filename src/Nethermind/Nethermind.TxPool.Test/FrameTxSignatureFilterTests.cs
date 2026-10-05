@@ -111,16 +111,18 @@ internal class FrameTxSignatureFilterTests
         Assert.That(verified, Is.True);
     }
 
-    [TestCase(TxHandlingOptions.None, false, true)]
-    [TestCase(TxHandlingOptions.None, true, false)]
-    [TestCase(TxHandlingOptions.PersistentBroadcast, false, false)]
-    public void Accept_WhileProcessingABlock_DefersOnlyAGossipedVerification(TxHandlingOptions options, bool carriesBlobs, bool refetchable)
+    [TestCase(TxHandlingOptions.None, false, true, false)]
+    [TestCase(TxHandlingOptions.None, false, true, true)]
+    [TestCase(TxHandlingOptions.None, true, false, false)]
+    [TestCase(TxHandlingOptions.PersistentBroadcast, false, false, false)]
+    public void Accept_DuringBlockWork_DefersOnlyAGossipedVerification(TxHandlingOptions options, bool carriesBlobs, bool refetchable, bool building)
     {
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
         if (carriesBlobs) tx.BlobVersionedHashes = [TestItem.KeccakA.BytesToArray()];
         SignSecp256k1(tx, TestItem.PrivateKeyA, signer: null);
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
-        headInfo.IsProcessingBlock.Returns(true);
+        if (building) headInfo.IsBuildingBlock.Returns(true);
+        else headInfo.IsProcessingBlock.Returns(true);
         bool deferred = options == TxHandlingOptions.None;
         long invalid = Metrics.PendingTransactionsFrameTxSignatureInvalid;
         long preempted = Metrics.FrameTxSignatureVerificationsPreempted;
