@@ -218,13 +218,22 @@ public class HeaderValidatorTests
     public void When_orphaned_header_bloom_length_matches_eip7668([Values] bool eip7668, [Values] bool zeroLengthBloom)
     {
         bool expectedResult = eip7668 == zeroLengthBloom;
-        IReleaseSpec spec = new OverridableReleaseSpec(Byzantium.Instance) { IsEip7668Enabled = eip7668 };
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
         _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec),
             new OneLoggerLogManager(new(_testLogger)));
-        _block.Header.Bloom = zeroLengthBloom ? Bloom.Removed : Bloom.Empty;
-        _block.Header.Hash = _block.CalculateHash();
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .WithSlotNumber(0)
+            .WithBloom(zeroLengthBloom ? Bloom.Removed : Bloom.Empty)
+            .TestObject;
+        header.Hash = header.CalculateHash();
 
-        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+        bool result = _validator.ValidateOrphaned(header, out string? error);
 
         using (Assert.EnterMultipleScope())
         {

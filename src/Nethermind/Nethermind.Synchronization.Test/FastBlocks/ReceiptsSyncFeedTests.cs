@@ -19,6 +19,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -436,8 +437,8 @@ public class ReceiptsSyncFeedTests
         // A number-only lookup misses a timestamp fork, so it would expect 256-byte blooms in the root.
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(static ci => ci.Arg<ForkActivation>().Timestamp is null
-            ? Istanbul.Instance
-            : new ReleaseSpec { IsEip658Enabled = true, IsEip7668Enabled = true });
+            ? Bogota.Instance
+            : new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true });
         LoadScenario(new Scenario(specProvider, 1024, 1), _syncConfig, specProvider);
 
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();

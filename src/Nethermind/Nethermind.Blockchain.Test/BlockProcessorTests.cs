@@ -187,11 +187,11 @@ public partial class BlockProcessorTests
     [Test]
     public async Task Eip7668_ProducedBlock_HasZeroLengthBloomsAndLogsStayFindable([Values] bool eip7668)
     {
-        IReleaseSpec spec = new OverridableReleaseSpec(Prague.Instance) { IsEip7668Enabled = eip7668 };
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
         byte[] logInInitCode = Prepare.EvmCode.PushData(TestItem.KeccakA.Bytes.ToArray()).PushData(0).PushData(0).Op(Instruction.LOG1).Done;
-        Transaction deploy = Build.A.Transaction.WithCode(logInInitCode).WithTo(null).WithGasLimit(100_000)
+        Transaction deploy = Build.A.Transaction.WithCode(logInInitCode).WithTo(null).WithGasLimit(1_000_000)
             .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Address contract = ContractAddress.From(TestItem.AddressB, deploy.Nonce);
 
@@ -204,7 +204,7 @@ public partial class BlockProcessorTests
             Assert.That(block.Header.Bloom!.IsRemoved, Is.EqualTo(eip7668));
             Assert.That(block.Header.Bloom.Matches(contract), Is.True);
             Assert.That(receipts.Select(static r => r.Bloom.IsRemoved), Is.All.EqualTo(eip7668));
-            Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(ReceiptTrie.CalculateRoot(Prague.Instance, receipts, new ReceiptMessageDecoder())));
+            Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(ReceiptTrie.CalculateRoot(spec, receipts, new ReceiptMessageDecoder())));
             Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { contract }));
         }
     }
