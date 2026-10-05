@@ -313,26 +313,18 @@ public class DataColumnSidecarNetworkingTests
     private readonly record struct ColumnVerdict(RouterAction Action, ColumnGossipDropReason? Drop = null)
     {
         public static readonly ColumnVerdict Raised = new(RouterAction.Raised);
-
         public static ColumnVerdict Ignored(ColumnGossipDropReason drop) => new(RouterAction.Ignored, drop);
-
         public static ColumnVerdict Rejected(ColumnGossipDropReason drop) => new(RouterAction.Rejected, drop);
-
         public override string ToString() => Drop is null ? Action.ToString() : $"{Action} as {Drop}";
     }
 
     private sealed class NullTopic : ITopic
     {
         public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-
         public bool IsSubscribed => true;
-
         public void Subscribe() { }
-
         public void Unsubscribe() { }
-
         public void Publish(byte[] value) { }
-
         public void Publish(IMessage value) { }
     }
 }
