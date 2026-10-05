@@ -1,4 +1,4 @@
-"""Recover only the independently attributed resources of RPC run37293502679."""
+"""Recover only the independently attributed resources of RPC run37309091869."""
 import hashlib
 import importlib.util
 import json
@@ -10,9 +10,11 @@ import stat
 import subprocess
 import sys
 
-RUN = '37293502679'
-CID = '5d2b600363359dcda9ae92ef8a1228246ae014b35350361b90a6ab9544491e39'
+RUN = '37309091869'
+CID = 'cbaa31eb4543acd8d535511c077f94672b17a238df6379ae69b5918c154f9413'
 ROOT = Path('/mnt/sda/expb-data/rpc-bench-scratch/rpc-private-' + RUN + '-1')
+TOOL_CID = '121035ae72d5fc3e0a9183559e84675ff67450b9ba68933580b3e1a1b364b135'
+VERSION_CID = '1c6dd44587d2cbe264af1caa1091d9765f9b88c6923a9f15d7d06ba014b00e5a'
 LOCK = ROOT.parent/'rpc-native-capability.lock'
 STATE = ROOT/'state/sweep/nativecap'
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -40,7 +42,7 @@ def journal_bytes(path):
     assert path.resolve(strict=True)==path
     before=path.lstat()
     assert stat.S_ISREG(before.st_mode) and before.st_nlink==1
-    expected=(64512,41880642,33152,1,2156,1791194305487325216,1791194305487325216)
+    expected=(64512,41882209,33152,1,2156,1791203344062966094,1791203344062966094)
     def identity(info):return(info.st_dev,info.st_ino,info.st_mode,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
     assert identity(before)==expected
     with os.fdopen(os.open(path,os.O_RDONLY|os.O_NOFOLLOW),'rb') as source:
@@ -56,6 +58,8 @@ def scan_helpers(allow_node):
     tokens=[str(ROOT).encode(),('rpc-capability-operator-'+RUN+'-1').encode(),
             ('rpc-capability-harness-'+RUN+'-1').encode(),('GITHUB_RUN_ID='+RUN+'\0').encode()]
     matches=[]
+    container_tokens=[value.encode() for value in (TOOL_CID,VERSION_CID)]
+    if not allow_node:container_tokens.append(CID.encode())
     for proc in Path('/proc').iterdir():
         if not proc.name.isdecimal() or int(proc.name)==os.getpid(): continue
         try:
@@ -69,7 +73,8 @@ def scan_helpers(allow_node):
                 for fd in (proc/'fd').iterdir():
                     try: references.append(os.readlink(fd).encode())
                     except FileNotFoundError: pass
-            if any(token in entry for token in tokens for entry in references):
+            if (any(token in command or token in cgroup for token in container_tokens)
+                    or any(token in entry for token in tokens for entry in references)):
                 if not (allow_node and CID.encode() in cgroup):
                     matches.append({'pid':int(proc.name),'stat':(proc/'stat').read_text(),'command':command.decode(errors='replace')})
         except (FileNotFoundError,ProcessLookupError): continue
@@ -79,6 +84,7 @@ def scan_helpers(allow_node):
 
 
 def main():
+    assert os.environ.get('RUNNER_NAME')=='reproducible-benchmarks'
     os.umask(0o077)
     assert os.geteuid()==0 and os.environ['GITHUB_RUN_ID']!=RUN
     pins=json.loads((REPOSITORY/'scripts/rpc-capability/native/source-pins.json').read_text())
@@ -89,7 +95,8 @@ def main():
     new_run,new_attempt=os.environ['GITHUB_RUN_ID'],os.environ['GITHUB_RUN_ATTEMPT']
     os.environ.update(GITHUB_RUN_ID=RUN,GITHUB_RUN_ATTEMPT='1',RPC_PRIVATE_STORAGE_ROOT=str(ROOT),
                       RPC_PRIVATE_SHARED_SCRATCH_ROOT=str(ROOT.parent))
-    guard.owned(ROOT,LOCK)
+    owner=guard.owned(ROOT,LOCK)
+    assert owner['storage_identity']==[64512,41881671] and owner['lock_identity']==[64512,41881670]
     spec=importlib.util.spec_from_file_location('private_audit',REPOSITORY/'scripts/rpc-bench/private_audit.py')
     audit=importlib.util.module_from_spec(spec);spec.loader.exec_module(audit)
     def audited_output(command,timeout=20):
@@ -99,7 +106,7 @@ def main():
     audit.command_output=audited_output
     audit.context();audit.storage_context()
     failure=guard.read(ROOT/'native-capability.json')
-    assert failure['outcomes']=={'preflight':0,'prepare':0,'cpu-attempt':0,'cpu-apply':0,'start':1}
+    assert failure['outcomes']=={'preflight':0,'prepare':0,'cpu-attempt':0,'cpu-apply':0,'start':0,'node-cid':0,'container-pin':0,'image-pin':0,'warm':1}
     assert failure['ownership']=='UNKNOWN_HOLD_NO_CLEANUP_OR_NEXT_DISPATCH'
     assert audit.owned_cid(STATE,'node')==CID
     inspect=json.loads(output(['docker','inspect',CID]))[0]
@@ -107,7 +114,7 @@ def main():
     assert any(m['Source']==str(ROOT/'scratch/run/merged') and m['Destination']=='/execution-data' and m['RW'] for m in inspect['Mounts'])
     def no_foreign():
         entries=[json.loads(line) for line in output(['docker','ps','-a','--no-trunc','--format','{{json .}}']).splitlines()]
-        assert not any(x['ID']!=CID and (x['Names'].startswith(('rpcbench-','nethermind-rpcbench','ethcallchaos-bench','jsonbench-','expb')) or 'expb=' in x['Labels']) for x in entries)
+        assert not any(x['ID']!=CID for x in entries), 'FOREIGN_DOCKER_CONTAINER'
         assert not output(['docker','ps','-aq','--filter','label=expb']).strip()
     no_foreign()
     mount=guard.read(STATE/'node-mount.json')
