@@ -47,6 +47,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, static n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, static n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
             AddBlobScheduleTransitions(transitionTimestamps, _chainSpec);
+            ValidateEip8272Activation(_chainSpec.Parameters);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             // Scans properties of type T / T? on value whose names pass the filter.
@@ -87,6 +88,20 @@ namespace Nethermind.Specs.ChainSpecStyle
                             }
                         }
                     }
+                }
+            }
+
+            static void ValidateEip8272Activation(ChainParameters parameters)
+            {
+                if (parameters.Eip8272TransitionTimestamp is not ulong eip8272Timestamp)
+                {
+                    return;
+                }
+
+                if ((parameters.Eip8141TransitionTimestamp ?? ulong.MaxValue) > eip8272Timestamp
+                    || (parameters.Eip7843TransitionTimestamp ?? ulong.MaxValue) > eip8272Timestamp)
+                {
+                    throw new ArgumentException($"EIP-8272 activates at {eip8272Timestamp}, before EIP-8141 ({parameters.Eip8141TransitionTimestamp?.ToString() ?? "unset"}) or EIP-7843 ({parameters.Eip7843TransitionTimestamp?.ToString() ?? "unset"})");
                 }
             }
 

@@ -957,6 +957,7 @@ public class ChainSpecBasedSpecProviderTests
             Parameters = new ChainParameters
             {
                 Eip8141TransitionTimestamp = eip8141Timestamp,
+                Eip7843TransitionTimestamp = eip8141Timestamp,
                 Eip8250TransitionTimestamp = eip8250Timestamp,
                 Eip8272TransitionTimestamp = eip8272Timestamp,
                 Eip7906TransitionTimestamp = eip7906Timestamp,
@@ -982,6 +983,37 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7805Timestamp)).IsEip7805Enabled, Is.True);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp - 1)).IsEip8037Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp)).IsEip8037Enabled, Is.True);
+        }
+    }
+
+    [TestCase(10UL, 10UL, 10UL, false)]
+    [TestCase(10UL, 5UL, 10UL, false)]
+    [TestCase(10UL, 20UL, 10UL, true)]
+    [TestCase(10UL, 10UL, 20UL, true)]
+    [TestCase(10UL, null, 10UL, true)]
+    [TestCase(10UL, 10UL, null, true)]
+    public void Eip8272_must_not_activate_before_eip8141_and_eip7843(ulong eip8272Timestamp, ulong? eip8141Timestamp, ulong? eip7843Timestamp, bool throws)
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip8141TransitionTimestamp = eip8141Timestamp,
+                Eip7843TransitionTimestamp = eip7843Timestamp,
+                Eip8272TransitionTimestamp = eip8272Timestamp,
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        Action build = () => _ = new ChainSpecBasedSpecProvider(chainSpec);
+
+        if (throws)
+        {
+            Assert.That(build, Throws.ArgumentException);
+        }
+        else
+        {
+            Assert.That(build, Throws.Nothing);
         }
     }
 
