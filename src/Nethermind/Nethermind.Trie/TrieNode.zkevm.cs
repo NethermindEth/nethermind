@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
@@ -136,11 +137,37 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void WriteRlp(CappedArray<byte> value) => InitRlp(value);
 
+        /// <summary>Loads, if it has none, and decodes the RLP of this node of unknown type.</summary>
+        /// <remarks>
+        /// Without the std form's wrapping of a decoding error into a <see cref="TrieNodeException"/>: the guest fails the
+        /// block on any exception, and the handler costs every resolve a frame pointer and spilled arguments.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void ResolveUnknownNodeWithContext(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
+            ICappedArrayPool? bufferPool) => ResolveUnknownNode(tree, path, readFlags, bufferPool);
+
+        /// <inheritdoc cref="Unseal" path="/summary"/>
+        /// <remarks>This node itself, left as a clone would be: dirty, unhashed, and keeping its RLP and data. The guest's
+        /// raw trie store builds a fresh node for every lookup and caches none, so no other trie or block can hold this
+        /// one, and every ancestor on the path being written is unsealed or replaced too, so none keeps the old hash.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal TrieNode Unseal()
+        {
+            Keccak = null;
+            _blockAndFlags = _dirtyMask;
+            return this;
+        }
+
         /// <inheritdoc cref="PruneTraversedChildren"/>
         /// <remarks>The guest verifies one block and exits, so there is no cache to keep small and nothing
         /// to amortise a re-resolve against: dropping a child only guarantees decoding its RLP again the
         /// next time the path is walked. Over a mainnet block the witness holds 26,025 distinct nodes while
         /// the trie decodes 34,789 times, so 8,764 of those decodes are repeats.</remarks>
         private const bool PruneTraversedChildren = false;
+
+        /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: always.</summary>
+        /// <remarks><see cref="PatriciaTree"/>'s set walk outgrows the inliner's budget and
+        /// would otherwise call it out of line per level, a frame and five saved registers for a slot load and a type test.</remarks>
+        private const MethodImplOptions GetChildWithChildPathInlining = MethodImplOptions.AggressiveInlining;
     }
 }

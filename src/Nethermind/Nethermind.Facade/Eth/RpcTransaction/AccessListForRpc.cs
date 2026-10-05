@@ -25,7 +25,7 @@ public class AccessListForRpc
 
     private AccessListForRpc(AccessList accessList) : this() => _accessList = accessList;
 
-    private class Item
+    internal class Item
     {
         public Address Address { get; set; }
 
@@ -114,7 +114,7 @@ public class AccessListForRpc
 
                     if (isAddress)
                     {
-                        address = JsonSerializer.Deserialize<Address>(ref reader, options);
+                        address = TypeInfoJsonSerializer.Deserialize<Address>(ref reader, options);
                     }
                     else if (isStorageKeys)
                     {
@@ -173,7 +173,7 @@ public class AccessListForRpc
         {
             if (value._accessList is null)
             {
-                JsonSerializer.Serialize(writer, value._items, options);
+                TypeInfoJsonSerializer.Serialize(writer, value._items, options);
                 return;
             }
 

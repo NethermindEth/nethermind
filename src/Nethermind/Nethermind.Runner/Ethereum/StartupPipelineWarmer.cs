@@ -293,7 +293,7 @@ internal static class StartupPipelineWarmer
         if (unexpectedReceipts != 0)
             throw new InvalidOperationException("Startup warmup did not exercise the expected transfer, storage, and revert paths.");
 
-        object call = new { from = keys[0].Address, to = StorageContract, gas = "0xf4240", input = new byte[32] };
+        object call = new WarmupCall(keys[0].Address, StorageContract, "0xf4240", new byte[32]);
         JsonElement callResult = await PostAsync(client, serializer, address, "eth_call", [call, "latest"], cancellationToken);
         if (callResult.GetString() != "0x")
             throw new InvalidOperationException("Startup warmup contract call returned unexpected data.");
@@ -522,14 +522,14 @@ internal static class StartupPipelineWarmer
             : spec.IsEip7843Enabled ? "engine_forkchoiceUpdatedV4"
             : spec.IsEip4844Enabled ? "engine_forkchoiceUpdatedV3"
             : spec.WithdrawalsEnabled ? "engine_forkchoiceUpdatedV2" : "engine_forkchoiceUpdatedV1";
-        object forkchoiceState = new { headBlockHash = block.Hash, safeBlockHash = block.Hash, finalizedBlockHash = block.Hash };
+        object forkchoiceState = new ForkchoiceStateV1(block.Hash!, block.Hash!, block.Hash!);
         EnsureValid((await PostAsync(client, serializer, address, forkchoiceUpdated, [forkchoiceState, null], cancellationToken)).GetProperty("payloadStatus"), forkchoiceUpdated);
     }
 
     private static async Task<JsonElement> PostAsync(HttpClient client, EthereumJsonSerializer serializer, string address, string method, object?[] parameters,
         CancellationToken cancellationToken)
     {
-        using StringContent content = new(serializer.Serialize(new { jsonrpc = "2.0", id = 1, method, @params = parameters }), Encoding.UTF8, "application/json");
+        using StringContent content = new(serializer.Serialize(new WarmupRequest(method, parameters)), Encoding.UTF8, "application/json");
         using HttpResponseMessage response = await client.PostAsync(address, content, cancellationToken);
         response.EnsureSuccessStatusCode();
         string json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -543,4 +543,12 @@ internal static class StartupPipelineWarmer
         if (payloadStatus.GetProperty("status").GetString() != "VALID")
             throw new InvalidOperationException($"Startup warmup {method} returned {payloadStatus}");
     }
+
+    internal sealed record WarmupRequest(string Method, object?[] Params)
+    {
+        public string Jsonrpc => "2.0";
+        public int Id => 1;
+    }
+
+    internal sealed record WarmupCall(Address From, Address To, string Gas, byte[] Input);
 }
