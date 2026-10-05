@@ -40,7 +40,6 @@ public static partial class BlockProcessing
     /// <summary>Spec <c>is_valid_switch_to_compounding_request</c>.</summary>
     private static partial bool IsValidSwitchToCompoundingRequest(ForkState state, ConsolidationRequest request)
     {
-        // Switching to compounding requires source and target to be the same validator.
         if (request.SourcePubkey != request.TargetPubkey)
             return false;
         if (FindValidatorIndex(state, request.SourcePubkey) is not int sourceIndex)

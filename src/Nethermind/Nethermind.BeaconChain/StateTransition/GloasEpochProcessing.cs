@@ -15,15 +15,12 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// consensus-specs commit as <see cref="GloasBlockProcessing"/> (see that type's remarks).
 /// </summary>
 /// <remarks>
-/// Relative to the Fulu <see cref="EpochProcessing"/> the pinned spec changes four things:
-/// <c>process_builder_pending_payments</c> (new, between pending consolidations and effective
-/// balance updates) rotates the builder payment window, <c>process_ptc_window</c> (new, last)
-/// rotates the payload timeliness committees, <c>process_pending_deposits</c> consumes the EIP-8061
-/// activation-only churn and drops the retired Eth1-bridge gate, and proposer selection excludes
-/// slashed validators (EIP-8045). Common validator loops are shared with the Fulu pipeline through
-/// array-based kernels. The total-active-balance
-/// memo in <see cref="EpochCache"/> stays valid until <see cref="ProcessEffectiveBalanceUpdates"/>
-/// invalidates it, exactly as in the Fulu pipeline.
+/// Compared with Fulu, <c>process_builder_pending_payments</c> rotates payments between pending
+/// consolidations and effective balance updates; <c>process_ptc_window</c> rotates committees last.
+/// Deposits use activation-only churn without the Eth1-bridge gate (EIP-8061); proposer selection
+/// excludes slashed validators (EIP-8045). Array-based validator kernels are shared with Fulu.
+/// As in Fulu, <see cref="EpochCache"/>'s total-active-balance memo remains valid until
+/// <see cref="ProcessEffectiveBalanceUpdates"/> invalidates it.
 /// </remarks>
 public static partial class GloasEpochProcessing
 {
@@ -63,10 +60,9 @@ public static partial class GloasEpochProcessing
     public static partial void ProcessPendingConsolidations(BeaconStateGloas state);
 
     /// <summary>
-    /// Gloas <c>process_builder_pending_payments</c> (new): the previous epoch's payments that reached
-    /// the PTC quorum are queued for withdrawal, the current epoch's half becomes the previous half,
-    /// and a zeroed half takes its place. This rotation is what lets the per-slot payment address
-    /// (<c>SLOTS_PER_EPOCH + slot % SLOTS_PER_EPOCH</c>) be reused every epoch.
+    /// Gloas <c>process_builder_pending_payments</c>: queue previous-epoch payments meeting the PTC quorum,
+    /// rotate the current half into the previous half, and zero the new current half.
+    /// Rotation permits reuse of <c>SLOTS_PER_EPOCH + slot % SLOTS_PER_EPOCH</c> each epoch.
     /// </summary>
     public static void ProcessBuilderPendingPayments(BeaconStateGloas state, EpochCache cache)
     {
@@ -82,8 +78,7 @@ public static partial class GloasEpochProcessing
         }
         state.BuilderPendingWithdrawals = [.. queued];
 
-        // The vector is written in place, so a state that shares the array (the Fulu pre-state does
-        // not: the upgrade builds a fresh one) would observe the rotation; matches the spec's slicing.
+        // Matches spec slicing in place: shared arrays observe the rotation; the Fulu upgrade creates a fresh array.
         Array.Copy(payments, slotsPerEpoch, payments, 0, slotsPerEpoch);
         for (int i = slotsPerEpoch; i < payments.Length; i++)
         {
@@ -139,9 +134,8 @@ public static partial class GloasEpochProcessing
     /// the epoch <c>MIN_SEED_LOOKAHEAD + 1</c> ahead, whose seed this epoch's RANDAO just fixed.
     /// </summary>
     /// <remarks>
-    /// Builds the shuffling directly rather than through <see cref="EpochCache.GetCommitteeCache(BeaconStateGloas, ulong)"/>:
-    /// that LRU keys on the shuffling decision root, which for the epoch being filled is the block at
-    /// this very slot and so is not yet in <c>block_roots</c>.
+    /// Bypasses <see cref="EpochCache.GetCommitteeCache(BeaconStateGloas, ulong)"/>: its LRU key is this
+    /// slot's shuffling decision root, which is not yet in <c>block_roots</c>.
     /// </remarks>
     public static void ProcessPtcWindow(BeaconStateGloas state)
     {

@@ -478,11 +478,9 @@ public static partial class GloasBlockProcessing
     /// child's slot, settles the parent's builder payment, and advances the chain's execution tip.
     /// </summary>
     /// <remarks>
-    /// The payment is read back through the window <see cref="GloasEpochProcessing.ProcessBuilderPendingPayments"/>
-    /// rotates at every boundary: the upper half while the parent's epoch is still current, the lower
-    /// half one epoch later, and once the entry has been evicted altogether the bid's own value is
-    /// queued directly. Each branch reads a different address for the same slot, which is why the
-    /// rotation and this method must agree on the layout and are tested together.
+    /// <see cref="GloasEpochProcessing.ProcessBuilderPendingPayments"/> rotates the payment window at epoch boundaries:
+    /// read its upper half for a current-epoch parent, lower half for the previous epoch,
+    /// or queue the bid's value directly after eviction. Both methods must use the same layout.
     /// </remarks>
     private static void ApplyParentExecutionPayload(BeaconStateGloas state, ExecutionRequestsGloas requests, ulong parentSlot, ExecutionPayloadBid parentBid, EpochCache cache)
     {
@@ -595,10 +593,9 @@ public static partial class GloasBlockProcessing
     }
 
     /// <summary>
-    /// Spec <c>is_valid_builder_deposit_signature</c>: a proof-of-possession over
-    /// <c>DOMAIN_BUILDER_DEPOSIT</c>, computed fork-agnostically (genesis fork version, zero
-    /// genesis validators root) exactly like a validator deposit's own domain - a distinct domain
-    /// type, not a duplicate of <see cref="Crypto.DepositSignatureVerifier"/>'s.
+    /// Spec <c>is_valid_builder_deposit_signature</c>: proof of possession under
+    /// <c>DOMAIN_BUILDER_DEPOSIT</c>, using the genesis fork version and zero genesis validators root.
+    /// The domain is fork-agnostic but distinct from validator deposits.
     /// </summary>
     private static bool IsValidBuilderDepositSignature(Hash256 genesisValidatorsRoot, BuilderDepositRequest request)
     {
