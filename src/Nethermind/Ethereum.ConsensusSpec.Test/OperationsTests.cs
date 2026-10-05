@@ -47,7 +47,7 @@ public class OperationsTests
         string operand = operation == "bls_to_execution_change" ? "address_change.ssz_snappy" : $"{operation}.ssz_snappy";
         foreach (string file in new[] { "pre.ssz_snappy", "post.ssz_snappy", operand })
             Assert.That(File.Exists(Path.Combine(path, file)), Is.True, $"mandatory positive vector is missing {file}");
-        Assert.That(() => Run(new OperationCase(nameof(ConsensusPreset.Mainnet), fork, operation, path,
+        Assert.That(() => Execute(new OperationCase(nameof(ConsensusPreset.Mainnet), fork, operation, path,
             $"mainnet/{fork}/operations/{operation}/pyspec_tests/{name}")), Throws.Nothing);
     }
 
