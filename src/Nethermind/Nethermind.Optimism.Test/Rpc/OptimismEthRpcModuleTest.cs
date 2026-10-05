@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -27,6 +28,9 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -62,7 +66,7 @@ public class OptimismEthRpcModuleTest
         return rf;
     }
 
-    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder) =>
+    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder, ISpecProvider? specProvider = null) =>
         TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
             .WithBlockFinder(blockFinder)
@@ -73,7 +77,7 @@ public class OptimismEthRpcModuleTest
                 ecdsa: Substitute.For<IEthereumEcdsa>(),
                 sealer: Substitute.For<ITxSealer>(),
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
-            .Build();
+            .Build(specProvider);
 
     private sealed class NoRecoveryEthereumEcdsa(IEthereumEcdsa signer) : IEthereumEcdsa
     {
@@ -534,6 +538,31 @@ public class OptimismEthRpcModuleTest
             Assert.That(firstTx["depositReceiptVersion"]!.Value<string>(), Is.EqualTo(expectedDepositVersion));
         Assert.That(secondTx["hash"]!.Value<string>(), Is.EqualTo(regularTx.Hash!.Bytes.ToHexString(withZeroX: true)));
         Assert.That(secondTx["depositReceiptVersion"], Is.Null);
+    }
+
+    [Test]
+    public async Task GetBlockReceipts_logIndex_follows_eip8116([Values] bool eip8116Enabled)
+    {
+        Transaction depositTx = Build.A.Transaction.WithType(TxType.DepositTx).WithHash(TestItem.KeccakA).WithSenderAddress(TestItem.AddressA).TestObject;
+        Transaction regularTx = Build.A.Transaction.WithType(TxType.EIP1559).WithHash(TestItem.KeccakB).WithSenderAddress(TestItem.AddressA).TestObject;
+        Block block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakC).TestObject)
+            .WithTransactions(depositTx, regularTx)
+            .TestObject;
+        LogEntry[] logs = [Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject];
+        OptimismTxReceipt depositReceipt = new() { Sender = TestItem.AddressA, TxType = depositTx.Type, TxHash = depositTx.Hash!, BlockHash = block.Hash, BlockNumber = 1, Index = 0, Logs = logs };
+        TxReceipt regularReceipt = new() { Sender = TestItem.AddressA, TxType = regularTx.Type, TxHash = regularTx.Hash!, BlockHash = block.Hash, BlockNumber = 1, Index = 1, Logs = logs };
+        IReleaseSpec spec = eip8116Enabled ? new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = true } : Bogota.Instance;
+
+        TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, depositReceipt, regularReceipt), new TestSpecProvider(spec));
+
+        JToken result = JToken.Parse(await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", new BlockParameter(block.Number)))["result"]!;
+        string[] secondReceiptLogIndexes = eip8116Enabled ? ["0x0", "0x1"] : ["0x2", "0x3"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result[0]!["logs"]!.Select(static l => (string)l["logIndex"]!), Is.EqualTo(new[] { "0x0", "0x1" }));
+            Assert.That(result[1]!["logs"]!.Select(static l => (string)l["logIndex"]!), Is.EqualTo(secondReceiptLogIndexes));
+        }
     }
 
     [Test]
