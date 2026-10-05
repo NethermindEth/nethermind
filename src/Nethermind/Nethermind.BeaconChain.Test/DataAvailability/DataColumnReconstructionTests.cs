@@ -67,11 +67,18 @@ public class DataColumnReconstructionTests
         }
     }
 
-    [Test]
-    public void Reconstruction_from_one_fewer_than_the_threshold_fails()
+    [TestCase(0, false, TestName = "Reconstruction_rejects_an_empty_input")]
+    [TestCase(Eip7594DasConstants.RequiredColumnsForReconstruction - 1, false, TestName = "Reconstruction_from_one_fewer_than_the_threshold_fails")]
+    [TestCase(Eip7594DasConstants.RequiredColumnsForReconstruction - 1, true, TestName = "Reconstruction_counts_duplicate_indices_only_once_towards_the_threshold")]
+    public void Reconstruction_requires_enough_distinct_columns(int distinctColumns, bool repeatLast)
     {
-        (DataColumnSidecar[] fullMatrix, _) = BuildFullMatrix();
-        DataColumnSidecar[] held = [.. fullMatrix.Take(Eip7594DasConstants.RequiredColumnsForReconstruction - 1)];
+        DataColumnSidecar[] held = [];
+        if (distinctColumns > 0)
+        {
+            (DataColumnSidecar[] fullMatrix, _) = BuildFullMatrix();
+            held = [.. fullMatrix.Take(distinctColumns)];
+            if (repeatLast) held = [.. held, held[^1]];
+        }
 
         bool ok = DataColumnReconstruction.TryReconstruct(held, out DataColumnSidecar[] recoveredMatrix);
 
@@ -96,27 +103,5 @@ public class DataColumnReconstructionTests
         ];
 
         Assert.That(DataColumnReconstruction.TryReconstruct(held, out _), Is.False);
-    }
-
-    [Test]
-    public void Reconstruction_counts_duplicate_indices_only_once_towards_the_threshold()
-    {
-        (DataColumnSidecar[] fullMatrix, _) = BuildFullMatrix();
-        // 63 distinct columns, the last one repeated: still only 63 distinct columns of evidence.
-        DataColumnSidecar[] held = [.. fullMatrix.Take(Eip7594DasConstants.RequiredColumnsForReconstruction - 1), fullMatrix[Eip7594DasConstants.RequiredColumnsForReconstruction - 2]];
-
-        bool ok = DataColumnReconstruction.TryReconstruct(held, out _);
-
-        Assert.That(ok, Is.False);
-    }
-
-    [Test]
-    public void Reconstruction_rejects_an_empty_input()
-    {
-        bool ok = DataColumnReconstruction.TryReconstruct([], out DataColumnSidecar[] recoveredMatrix);
-
-        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(ok, Is.False);
-        Assert.That(recoveredMatrix, Is.Empty);
     }
 }
