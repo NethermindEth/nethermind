@@ -37,6 +37,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     public BeaconChainSpec Spec { get; }
     public BeaconChainStatusHolder StatusHolder { get; }
     internal SlotClock Clock { get; }
+    internal ManualTimestamper Timestamper { get; }
     public IColumnsDb<BeaconChainDbColumns> Db { get; }
     public BeaconChainStore Store { get; }
     public BeaconApiHost Host { get; }
@@ -47,10 +48,10 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     {
         Spec = spec;
         Db = db ?? new MemColumnsDb<BeaconChainDbColumns>();
-        ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime);
-        StatusHolder = new BeaconChainStatusHolder(spec, timestamper);
+        Timestamper = new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime);
+        StatusHolder = new BeaconChainStatusHolder(spec, Timestamper);
         Store = new BeaconChainStore(Db, forkAwareStore ? spec : null);
-        Clock = new SlotClock(spec, timestamper);
+        Clock = new SlotClock(spec, Timestamper);
         BeaconChainConfig chainConfig = new();
         LocalMetadataSource metadataSource = new();
         if (withPeerManager)
