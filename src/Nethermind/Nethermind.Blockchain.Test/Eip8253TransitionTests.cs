@@ -131,7 +131,7 @@ public class Eip8253TransitionTests
     [Test]
     public void Parent_is_looked_up_only_until_a_processed_block_shows_the_fork_is_active([Values] bool producing)
     {
-        IReleaseSpec eip8253 = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8253Enabled = true };
+        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true };
         TestSpecProvider specProvider = new(eip8253) { NextForkSpec = eip8253, AllowTestChainOverride = false };
         BlockHeader[] chain = new BlockHeader[4];
         for (int i = 0; i < chain.Length; i++)
@@ -173,8 +173,8 @@ public class Eip8253TransitionTests
 
     private static async Task<BasicTestBlockchain> CreateChain(ulong chainId, ulong forkBlockNumber, bool parallelExecution)
     {
-        IReleaseSpec eip8253 = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8253Enabled = true };
-        TestSpecProvider specProvider = new(forkBlockNumber == 0 ? eip8253 : Amsterdam.Instance)
+        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true };
+        TestSpecProvider specProvider = new(forkBlockNumber == 0 ? eip8253 : Bogota.Instance)
         {
             NextForkSpec = eip8253,
             ForkOnBlockNumber = forkBlockNumber == 0 ? null : forkBlockNumber,
