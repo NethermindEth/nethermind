@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
 using System.Reflection;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
@@ -15,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Merge.Plugin.SszRest;
-using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
 

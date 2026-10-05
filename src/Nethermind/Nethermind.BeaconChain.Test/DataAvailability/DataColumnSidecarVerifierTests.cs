@@ -7,7 +7,6 @@ using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Merge.Plugin.SszRest;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 

@@ -1,12 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
-using System.Linq;
 using System.Security.Cryptography;
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
@@ -23,7 +19,6 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using NSubstitute;
 using NSubstitute.Extensions;
-using NUnit.Framework;
 using BeaconExecutionPayload = Nethermind.BeaconChain.Types.ExecutionPayload;
 using BeaconTransaction = Nethermind.BeaconChain.Types.Transaction;
 using BeaconWithdrawal = Nethermind.BeaconChain.Types.Withdrawal;

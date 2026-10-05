@@ -1,13 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Google.Protobuf;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
@@ -20,7 +15,6 @@ using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Network.Libp2p;
 using NSubstitute;
-using NUnit.Framework;
 using IdentifyMessage = Nethermind.Libp2p.Protocols.Identify.Dto.Identify;
 
 namespace Nethermind.BeaconChain.Test.P2P;

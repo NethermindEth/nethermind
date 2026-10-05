@@ -9,7 +9,6 @@ using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 

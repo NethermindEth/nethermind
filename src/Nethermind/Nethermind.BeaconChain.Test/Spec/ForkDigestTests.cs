@@ -3,7 +3,6 @@
 
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Extensions;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Spec;
 

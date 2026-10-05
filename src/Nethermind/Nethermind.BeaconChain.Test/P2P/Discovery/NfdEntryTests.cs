@@ -5,7 +5,6 @@ using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
-using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
