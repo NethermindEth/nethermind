@@ -40,11 +40,8 @@ public static partial class BeaconStateAccessors
     public static ulong ComputeActivationExitEpoch(ulong epoch) => epoch + 1 + Presets.MaxSeedLookahead;
 
     public static partial ulong GetCurrentEpoch(this BeaconStateElectra state);
-
     public static partial ulong GetPreviousEpoch(this BeaconStateFulu state);
-
     public static partial Hash256 GetBlockRoot(this BeaconStateFulu state, ulong epoch);
-
     public static partial Hash256 GetBlockRootAtSlot(this BeaconStateFulu state, ulong slot);
 
     internal static Hash256 GetBlockRootAtSlot(ulong stateSlot, Hash256[] blockRoots, ulong slot)
@@ -55,7 +52,6 @@ public static partial class BeaconStateAccessors
     }
 
     public static partial Hash256 GetRandaoMix(this BeaconStateElectra state, ulong epoch);
-
     public static partial Hash256 GetSeed(this BeaconStateElectra state, ulong epoch, ReadOnlySpan<byte> domainType);
 
     public static bool IsActiveValidator(this Validator validator, ulong epoch) =>
@@ -111,13 +107,9 @@ public static partial class BeaconStateAccessors
     }
 
     public static partial ulong GetPendingBalanceToWithdraw(this BeaconStateFulu state, int validatorIndex);
-
     public static partial int[] GetActiveValidatorIndices(this BeaconStateElectra state, ulong epoch);
-
     public static partial ulong GetTotalBalance(this BeaconStateFulu state, IEnumerable<int> indices);
-
     public static partial ulong GetTotalActiveBalance(this BeaconStateFulu state, EpochCache cache);
-
     public static partial ulong GetBaseRewardPerIncrement(this BeaconStateFulu state, EpochCache cache);
 
     /// <summary>Spec <c>integer_squareroot</c> (with the Deneb special case for <c>2^64 - 1</c>).</summary>
@@ -167,7 +159,6 @@ public static partial class BeaconStateAccessors
         state.GetBalanceChurnLimit(cache) - state.GetActivationExitChurnLimit(cache);
 
     public static partial Hash256 GetDomain(this BeaconStateFulu state, ReadOnlySpan<byte> domainType, ulong? epoch = null);
-
     public static partial ulong GetBeaconProposerIndex(this BeaconStateFulu state);
 
     /// <summary>Returns the proposer index at <paramref name="slot"/> from the EIP-7917 lookahead.</summary>
@@ -234,8 +225,6 @@ public static partial class BeaconStateAccessors
     }
 
     public static partial Hash256 GetShufflingDecisionRoot(this BeaconStateFulu state, ulong epoch);
-
     public static partial ulong[] GetAttestingIndices(this BeaconStateFulu state, Attestation attestation, CommitteeCache committees);
-
     public static partial IndexedAttestation GetIndexedAttestation(this BeaconStateFulu state, Attestation attestation, CommitteeCache committees);
 }

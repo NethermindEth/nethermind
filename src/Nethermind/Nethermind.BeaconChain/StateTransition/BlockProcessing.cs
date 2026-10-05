@@ -332,11 +332,8 @@ public static partial class BlockProcessing
     }
 
     public static partial void ProcessProposerSlashing(BeaconStateFulu state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null);
-
     private static partial bool HeaderEquals(BeaconBlockHeader a, BeaconBlockHeader b);
-
     public static partial void ProcessAttesterSlashing(BeaconStateFulu state, AttesterSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null);
-
     public static partial bool IsValidIndexedAttestation(BeaconStateFulu state, IndexedAttestation attestation, PubkeyCache pubkeys, bool verifySignature, BlockSignatureBatch.Deferral? deferral = null);
 
     /// <summary>
@@ -415,15 +412,10 @@ public static partial class BlockProcessing
     }
 
     public static partial void ProcessVoluntaryExit(BeaconStateFulu state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
-
     public static partial void ProcessBlsToExecutionChange(BeaconStateFulu state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null);
-
     public static partial void ProcessDepositRequest(BeaconStateFulu state, DepositRequest request);
-
     public static partial void ProcessWithdrawalRequest(BeaconStateFulu state, WithdrawalRequest request, EpochCache cache);
-
     public static partial void ProcessConsolidationRequest(BeaconStateFulu state, ConsolidationRequest request, EpochCache cache);
-
     private static partial bool IsValidSwitchToCompoundingRequest(BeaconStateFulu state, ConsolidationRequest request);
 
     /// <summary>Spec <c>switch_to_compounding_validator</c>.</summary>
