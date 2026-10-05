@@ -22,27 +22,21 @@ public class PeerStatusRefreshTests
         ulong head = status.HeadSlot;
         Node server = CreateNode(new ScriptedStatusSource(n => WithHead(status, n == 1 ? head : head + ChainAheadBy)));
         TestLogRecorder log = new(TestLogLevels.Debug);
-        try
-        {
-            PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log);
-            Assert.That(peerManager.GetBestPeers(head + 1), Is.Empty, "fixture: the admission status is behind the chain");
-            // The admission's own request would otherwise hold the first refresh back.
-            peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
+        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log);
+        Assert.That(peerManager.GetBestPeers(head + 1), Is.Empty, "fixture: the admission status is behind the chain");
+        // The admission's own request would otherwise hold the first refresh back.
+        peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
 
-            Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy, Reason);
-            await PeerSessionNodes.WaitUntilAsync(() => peerManager.GetBestPeers(head + 1).Count == 1, "the peer's status was not asked again", token);
-            peerManager.MinStatusRefreshInterval = TimeSpan.FromHours(1);
-            Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy + 1, Reason);
+        Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy, Reason);
+        await PeerSessionNodes.WaitUntilAsync(() => peerManager.GetBestPeers(head + 1).Count == 1, "the peer's status was not asked again", token);
+        peerManager.MinStatusRefreshInterval = TimeSpan.FromHours(1);
+        Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy + 1, Reason);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(peerManager.GetBestPeers(head + 1).Single().HeadSlot, Is.EqualTo(head + ChainAheadBy));
-                Assert.That(log.Messages.Count(static l => l.Contains(Reason, StringComparison.Ordinal)), Is.EqualTo(1), "one Debug line per trigger that asks, none for one the interval holds back");
-            }
-        }
-        finally
+        using (Assert.EnterMultipleScope())
         {
-            await PeerHealthCheckRoundTests.DisposeAsync(client, [server]);
+            Assert.That(peerManager.GetBestPeers(head + 1).Single().HeadSlot, Is.EqualTo(head + ChainAheadBy));
+            Assert.That(log.Messages.Count(static l => l.Contains(Reason, StringComparison.Ordinal)), Is.EqualTo(1), "one Debug line per trigger that asks, none for one the interval holds back");
         }
     }
 
@@ -52,21 +46,15 @@ public class PeerStatusRefreshTests
         (Node client, StatusMessageV2 status) = CreateClient();
         ulong head = status.HeadSlot;
         Node server = CreateNode(new ScriptedStatusSource(n => n == 1 ? status : throw new Eth2ReqRespException("status refused for the test")));
-        try
-        {
-            PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token);
-            Assert.That(peerManager.GetBestPeers(head + 1), Is.Empty, "fixture: the admission status is behind the chain");
-            peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
+        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token);
+        Assert.That(peerManager.GetBestPeers(head + 1), Is.Empty, "fixture: the admission status is behind the chain");
+        peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
 
-            Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy, Reason);
-            await PeerSessionNodes.WaitUntilAsync(() => peerManager.GetBestPeers(head + 1).Count == 1, "a peer whose refresh failed stayed out of range sync", token);
+        Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy, Reason);
+        await PeerSessionNodes.WaitUntilAsync(() => peerManager.GetBestPeers(head + 1).Count == 1, "a peer whose refresh failed stayed out of range sync", token);
 
-            Assert.That(peerManager.GetBestPeers(head + ChainAheadBy + 1), Is.Empty, "nothing shows the chain past the signalled slot");
-        }
-        finally
-        {
-            await PeerHealthCheckRoundTests.DisposeAsync(client, [server]);
-        }
+        Assert.That(peerManager.GetBestPeers(head + ChainAheadBy + 1), Is.Empty, "nothing shows the chain past the signalled slot");
     }
 
     [Test]
@@ -76,27 +64,21 @@ public class PeerStatusRefreshTests
         ulong head = status.HeadSlot;
         ScriptedStatusSource source = new(n => n == 1 ? status : throw new Eth2ReqRespException("status refused for the test"));
         Node server = CreateNode(source);
-        try
-        {
-            PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token);
-            peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
-            int admissionRequests = source.Requests;
+        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token);
+        peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
+        int admissionRequests = source.Requests;
 
-            Pool(peerManager).RefreshStatusesBelow(head + ChainAheadBy, Reason);
-            await PeerSessionNodes.WaitUntilAsync(() => source.Requests > admissionRequests, "fixture: the peer's status was not asked again", token);
+        Pool(peerManager).RefreshStatusesBelow(head + ChainAheadBy, Reason);
+        await PeerSessionNodes.WaitUntilAsync(() => source.Requests > admissionRequests, "fixture: the peer's status was not asked again", token);
 
-            // The failure is recorded just after the refused reply, so the peer is watched for a while rather than checked once.
-            using CancellationTokenSource watch = CancellationTokenSource.CreateLinkedTokenSource(token);
-            watch.CancelAfter(TimeSpan.FromSeconds(1));
-            while (!watch.IsCancellationRequested)
-            {
-                Assert.That(peerManager.GetBestPeers(head + 1), Is.Empty);
-                await Task.Delay(20, CancellationToken.None);
-            }
-        }
-        finally
+        // The failure is recorded just after the refused reply, so the peer is watched for a while rather than checked once.
+        using CancellationTokenSource watch = CancellationTokenSource.CreateLinkedTokenSource(token);
+        watch.CancelAfter(TimeSpan.FromSeconds(1));
+        while (!watch.IsCancellationRequested)
         {
-            await PeerHealthCheckRoundTests.DisposeAsync(client, [server]);
+            Assert.That(peerManager.GetBestPeers(head + 1), Is.Empty);
+            await Task.Delay(20, CancellationToken.None);
         }
     }
 
@@ -108,31 +90,25 @@ public class PeerStatusRefreshTests
         ulong head = status.HeadSlot;
         Node server = CreateNode(new ScriptedStatusSource(n => n == 1 ? status : throw new Eth2ReqRespException("status refused for the test")));
         TestLogRecorder log = new(TestLogLevels.Debug);
-        try
+        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log);
+        peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
+        const int failedRefreshes = 8;
+        await PeerSessionNodes.WaitUntilAsync(() =>
         {
-            PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log);
-            peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
-            const int failedRefreshes = 8;
-            await PeerSessionNodes.WaitUntilAsync(() =>
-            {
-                Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy, Reason);
-                return log.Messages.Count(static l => l.Contains(Reason, StringComparison.Ordinal)) > failedRefreshes;
-            }, "the refreshes did not run one after another", token, TimeSpan.FromSeconds(60));
+            Pool(peerManager).RefreshStatusesBehind(head + ChainAheadBy, Reason);
+            return log.Messages.Count(static l => l.Contains(Reason, StringComparison.Ordinal)) > failedRefreshes;
+        }, "the refreshes did not run one after another", token, TimeSpan.FromSeconds(60));
 
-            IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
-            int failuresAfterRefreshes = PeerManager.ConsecutiveFailuresForTest(peer);
-            await peerManager.RunMaintenanceRoundAsync(token);
+        IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
+        int failuresAfterRefreshes = PeerManager.ConsecutiveFailuresForTest(peer);
+        await peerManager.RunMaintenanceRoundAsync(token);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(failuresAfterRefreshes, Is.Zero);
-                Assert.That(peerManager.PeerCount, Is.EqualTo(1), "one failed health check does not drop the peer");
-                Assert.That(peerManager.IsBannedForTest(server.P2P.LocalPeerId!.ToString()), Is.False);
-            }
-        }
-        finally
+        using (Assert.EnterMultipleScope())
         {
-            await PeerHealthCheckRoundTests.DisposeAsync(client, [server]);
+            Assert.That(failuresAfterRefreshes, Is.Zero);
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "one failed health check does not drop the peer");
+            Assert.That(peerManager.IsBannedForTest(server.P2P.LocalPeerId!.ToString()), Is.False);
         }
     }
 

@@ -34,36 +34,29 @@ public class PeerDialPolicyTests
         await using BeaconDiscovery discovery = new(local.Config, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
             new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), clock, LimboLogs.Instance);
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await using PeerHostScope hosts = new(remote.P2P, local.P2P);
+        await remote.P2P.StartAsync(token);
+        await local.P2P.StartAsync(token);
+        PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, discovery, clock);
+        manager.PeerAdmitted += _ =>
+        {
+            caller.Cancel();
+            throw new InvalidOperationException("caller cancelled during admission");
+        };
+        string address = LoopbackAddress(remote.P2P);
+        int quality = discovery.DialHistory.Quality(address);
         try
         {
-            await remote.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, discovery, clock);
-            manager.PeerAdmitted += _ =>
-            {
-                caller.Cancel();
-                throw new InvalidOperationException("caller cancelled during admission");
-            };
-            string address = LoopbackAddress(remote.P2P);
-            int quality = discovery.DialHistory.Quality(address);
-            try
-            {
-                await manager.TryAddPeerAsync(address, caller.Token);
-            }
-            catch (OperationCanceledException) when (caller.IsCancellationRequested)
-            {
-            }
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(caller.IsCancellationRequested, Is.True, "the admission callback never ran");
-                Assert.That(discovery.DialHistory.Quality(address), Is.EqualTo(quality), "caller cancellation was recorded as an endpoint failure");
-            }
+            await manager.TryAddPeerAsync(address, caller.Token);
         }
-        finally
+        catch (OperationCanceledException) when (caller.IsCancellationRequested)
         {
-            await local.P2P.DisposeAsync();
-            await remote.P2P.DisposeAsync();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caller.IsCancellationRequested, Is.True, "the admission callback never ran");
+            Assert.That(discovery.DialHistory.Quality(address), Is.EqualTo(quality), "caller cancellation was recorded as an endpoint failure");
         }
     }
 
@@ -118,31 +111,24 @@ public class PeerDialPolicyTests
         SetMatchingStatus(local, remote);
         local.StatusHolder.CurrentStatus.FinalizedRoot = Root(1);
         remote.StatusHolder.CurrentStatus.FinalizedRoot = Root(conflicting ? 2 : 1);
-        try
-        {
-            await remote.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            ManualTimestamper clock = new();
-            PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: clock);
+        await using PeerHostScope hosts = new(remote.P2P, local.P2P);
+        await remote.P2P.StartAsync(token);
+        await local.P2P.StartAsync(token);
+        ManualTimestamper clock = new();
+        PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: clock);
 
-            Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.EqualTo(!conflicting));
-            if (conflicting)
+        Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.EqualTo(!conflicting));
+        if (conflicting)
+        {
+            // The recorded disconnect proves the refusal was for the checkpoint, not a failed dial.
+            PeerManager.PeerDiagnostics diagnostics = manager.GetPeerDiagnostics().Single(d => d.PeerId == remote.P2P.LocalPeerId!.ToString());
+            using (Assert.EnterMultipleScope())
             {
-                // The recorded disconnect proves the refusal was for the checkpoint, not a failed dial.
-                PeerManager.PeerDiagnostics diagnostics = manager.GetPeerDiagnostics().Single(d => d.PeerId == remote.P2P.LocalPeerId!.ToString());
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(diagnostics.LastDisconnectReason, Is.EqualTo("IrrelevantNetwork"));
-                    Assert.That(diagnostics.LastDisconnectDetail, Does.Contain("finalized checkpoint"));
-                }
-
-                await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session of a peer on a disjoint finalized chain was left open");
+                Assert.That(diagnostics.LastDisconnectReason, Is.EqualTo("IrrelevantNetwork"));
+                Assert.That(diagnostics.LastDisconnectDetail, Does.Contain("finalized checkpoint"));
             }
-        }
-        finally
-        {
-            await local.P2P.DisposeAsync();
-            await remote.P2P.DisposeAsync();
+
+            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session of a peer on a disjoint finalized chain was left open");
         }
     }
 
@@ -258,31 +244,24 @@ public class PeerDialPolicyTests
             HeadRoot = Hash256.Zero,
         };
         Node remote = CreateNode(new ScriptedStatusSource(_ => Volatile.Read(ref compatible) ? local.StatusHolder.CurrentStatus : incompatible));
-        try
-        {
-            await remote.P2P.StartAsync(token);
-            await local.P2P.StartAsync(token);
-            local.Config.StaticPeers = LoopbackAddress(remote.P2P);
-            PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: new ManualTimestamper());
+        await using PeerHostScope hosts = new(remote.P2P, local.P2P);
+        await remote.P2P.StartAsync(token);
+        await local.P2P.StartAsync(token);
+        local.Config.StaticPeers = LoopbackAddress(remote.P2P);
+        PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: new ManualTimestamper());
 
+        await manager.RunMaintenanceRoundAsync(token);
+        Assert.That(manager.PeerCount, Is.Zero, "a static peer on another fork was admitted");
+        await WaitUntilAsync(() => remote.P2P.SessionCountForTest == 0 && local.P2P.SessionCountForTest == 0, token, "the session of the peer on another fork was left open");
+
+        Volatile.Write(ref compatible, true);
+        // The clock never moves, so only a dial that ignores the backoff of the failed one can connect.
+        for (int round = 0; round < 3 && manager.PeerCount == 0; round++)
+        {
             await manager.RunMaintenanceRoundAsync(token);
-            Assert.That(manager.PeerCount, Is.Zero, "a static peer on another fork was admitted");
-            await WaitUntilAsync(() => remote.P2P.SessionCountForTest == 0 && local.P2P.SessionCountForTest == 0, token, "the session of the peer on another fork was left open");
-
-            Volatile.Write(ref compatible, true);
-            // The clock never moves, so only a dial that ignores the backoff of the failed one can connect.
-            for (int round = 0; round < 3 && manager.PeerCount == 0; round++)
-            {
-                await manager.RunMaintenanceRoundAsync(token);
-            }
-
-            Assert.That(manager.PeerCount, Is.EqualTo(1), "a configured static peer waited out a discovery backoff");
         }
-        finally
-        {
-            await local.P2P.DisposeAsync();
-            await remote.P2P.DisposeAsync();
-        }
+
+        Assert.That(manager.PeerCount, Is.EqualTo(1), "a configured static peer waited out a discovery backoff");
     }
 
     [Test]
