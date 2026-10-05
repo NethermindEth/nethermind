@@ -70,26 +70,28 @@ public static partial class Merkle
         state.Word3 = initialState[3];
 
         bool adjacent = Unsafe.AreSame(ref Unsafe.Add(ref Unsafe.AsRef(in left), 1), ref Unsafe.AsRef(in right));
+        Sha256FParameters parameters;
+        parameters.State = (ulong*)&state;
         fixed (UInt256* pair = &left)
         {
             // The precompile requires 8-byte aligned operands; the locals and the RVA padding block are.
             Sha256Block block;
-            ulong* input;
             if (adjacent && ((nuint)pair & 7) == 0)
             {
-                input = (ulong*)pair;
+                parameters.Input = (ulong*)pair;
             }
             else
             {
                 block.Left = left;
                 block.Right = right;
-                input = (ulong*)&block;
+                parameters.Input = (ulong*)&block;
             }
 
-            Accelerators.Sha256F((ulong*)&state, input);
+            Sha256F(&parameters);
         }
 
-        Accelerators.Sha256F((ulong*)&state, (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage)));
+        parameters.Input = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
+        Sha256F(&parameters);
 
         parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
     }
@@ -109,6 +111,22 @@ public static partial class Merkle
     [
         0x80UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0x0002_0000_0000_0000UL
     ];
+
+    /// <summary>ZisK's SHA-256 compression precompile, called directly rather than through <see cref="Accelerators.Sha256F"/>.</summary>
+    /// <remarks>
+    /// One parameter block serves both compressions of a pair, so the second call rewrites only its input
+    /// pointer, where the accelerator zeroes and refills a fresh block each call.
+    /// <see cref="Sha256FParameters"/> mirrors the ZiskOS <c>syscall_sha256_f</c> ABI that Nethermind.Zkvm.Abstractions
+    /// also encodes; nothing checks the two agree at compile time, so recheck it when that package is bumped.
+    /// </remarks>
+    [DllImport("__Internal", EntryPoint = "syscall_sha256_f", ExactSpelling = true), SuppressGCTransition]
+    private static extern unsafe void Sha256F(Sha256FParameters* parameters);
+
+    private unsafe struct Sha256FParameters
+    {
+        public ulong* State;
+        public ulong* Input;
+    }
 
     private struct Sha256State
     {
