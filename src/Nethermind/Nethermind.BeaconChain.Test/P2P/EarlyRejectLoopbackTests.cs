@@ -117,7 +117,7 @@ public class EarlyRejectLoopbackTests
     private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token)
     {
         ServiceProvider services = new ServiceCollection()
-            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(LimboLogs.Instance))
+            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(LoopbackTrace.Or(LimboLogs.Instance, "requester")))
             .AddSingleton<RawRequestProtocol>()
             .AddLibp2p(static builder => builder.AddProtocol<RawRequestProtocol>())
             .BuildServiceProvider();
