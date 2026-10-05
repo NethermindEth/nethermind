@@ -13,6 +13,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm;
 
@@ -24,7 +25,8 @@ namespace Nethermind.Evm;
 /// <paramref name="nonceKeys"/> is set.</param>
 /// <param name="frames">The envelope's frames, in execution order.</param>
 /// <param name="signatures">The envelope's signature entries, already validated when execution begins.</param>
-/// <param name="sigHash">The canonical signature hash the entries that carry no explicit <c>msg</c> sign.</param>
+/// <param name="transaction">The envelope <see cref="SigHash"/> is computed from on first read.</param>
+/// <param name="sigHash">The canonical signature hash when validation already computed it.</param>
 /// <param name="maxCost">The gas and blob-gas cost the payer's approval reserves up front.</param>
 /// <param name="maxPriorityFeePerGas">EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</param>
 /// <param name="maxFeePerGas">EIP-1559 <c>max_fee_per_gas</c> of the envelope.</param>
@@ -37,7 +39,8 @@ public sealed class FrameTxContext(
     ulong nonce,
     TxFrame[] frames,
     TxFrameSignature[] signatures,
-    ValueHash256 sigHash,
+    Transaction transaction,
+    ValueHash256? sigHash,
     in UInt256 maxCost,
     in UInt256 maxPriorityFeePerGas,
     in UInt256 maxFeePerGas,
@@ -76,7 +79,11 @@ public sealed class FrameTxContext(
     public TxFrameSignature[] Signatures { get; } = signatures;
 
     /// <summary>The hash entries carrying no explicit <c>msg</c> are taken to have signed.</summary>
-    public ValueHash256 SigHash { get; } = sigHash;
+    /// <remarks>Computed on first read unless validation supplied it: only a canonical-hash signature entry and
+    /// <c>TXPARAM(0x08)</c> need it.</remarks>
+    public ValueHash256 SigHash => _sigHash ??= FrameTxSigHash.ComputeValue(transaction);
+
+    private ValueHash256? _sigHash = sigHash;
 
     /// <summary>The cost an approving payer reserves up front: the whole gas budget plus blob gas at the
     /// envelope's maximum prices.</summary>
