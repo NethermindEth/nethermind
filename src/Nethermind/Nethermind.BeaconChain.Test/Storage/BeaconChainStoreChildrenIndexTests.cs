@@ -88,7 +88,7 @@ public class BeaconChainStoreChildrenIndexTests
                     _store.DeleteBlock(root);
                     break;
                 case IndexAction.Block:
-                    Assert.That(_store.TryGetBlock(root, out _), Is.EqualTo(step.Exists));
+                    Assert.That(_store.TryGetForkedBlock(root, out _), Is.EqualTo(step.Exists));
                     break;
                 case IndexAction.Children:
                     Assert.That(_store.TryGetChildren(root, out Hash256[] children, out bool complete), Is.EqualTo(step.Exists));

@@ -61,7 +61,7 @@ public class CheckpointSyncTests
             Assert.That(anchorSlot, Is.EqualTo(block.Message.Slot));
             Assert.That(store.TryGetState(anchor.BlockRoot, out byte[]? persistedState), Is.True);
             Assert.That(persistedState!.Length, Is.GreaterThan(100 * 1024 * 1024));
-            Assert.That(store.TryGetBlock(anchor.BlockRoot, out _), Is.True);
+            Assert.That(store.TryGetForkedBlock(anchor.BlockRoot, out _), Is.True);
         });
 
         // The unroutable URL proves the second start resumes from the persisted anchor without HTTP:
