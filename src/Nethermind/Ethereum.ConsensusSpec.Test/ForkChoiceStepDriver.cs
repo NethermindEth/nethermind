@@ -32,7 +32,7 @@ internal static class ForkChoiceStepDriver
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
     }
 
-    private sealed class FixedNewPayloadNotifier(ExecutionStatus status) : INewPayloadNotifier
+    internal sealed class FixedNewPayloadNotifier(ExecutionStatus status) : INewPayloadNotifier
     {
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => status;
     }

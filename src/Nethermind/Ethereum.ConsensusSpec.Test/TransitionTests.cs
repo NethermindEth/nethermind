@@ -14,14 +14,8 @@ namespace Ethereum.ConsensusSpec.Test;
 [TestFixture]
 public class TransitionTests
 {
-    private sealed class ValidPayloadNotifier : INewPayloadNotifier
-    {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
-    }
-
     [TestCaseSource(nameof(MinimalCases))]
     public void Transition(TransitionCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Transition_mainnet(TransitionCase testCase) => Execute(testCase);
     [Test]
@@ -58,7 +52,7 @@ public class TransitionTests
         ForkedBeaconState state = new ForkedBeaconState.OfFulu(pre);
         EpochCache cache = new() { Hasher = new DifferentialBeaconStateHasher() };
         PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(pre.Validators!);
-        ValidPayloadNotifier notifier = new();
+        ForkChoiceStepDriver.FixedNewPayloadNotifier notifier = new(ExecutionStatus.Valid);
 
         string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
         bool expectSuccess = File.Exists(postPath);
