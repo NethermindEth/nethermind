@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
