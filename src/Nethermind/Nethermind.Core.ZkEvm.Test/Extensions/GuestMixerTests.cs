@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -182,13 +181,15 @@ public class GuestMixerTests
         Assert.That(after, Has.Count.EqualTo(collisions.Count), "replacement seed");
     }
 
-    /// <summary>Checks the 32-byte mixer against an independent widening-product reference.</summary>
+    private static readonly UInt256[] ReferenceSeeds = [UInt256.Zero, UInt256.MaxValue, SeedGuestHashes.Seed, SecondSeed];
+
+    /// <summary>Checks the 32-byte mixer against a reference with BigInteger products and finalization.</summary>
     [Test]
-    public void Guest_word_mixer_matches_reference()
+    public void Guest_word_mixer_matches_reference([ValueSource(nameof(ReferenceSeeds))] UInt256 seed)
     {
-        UInt256 seed = SeedGuestHashes.Seed;
         SpanExtensions.SeedHashes(seed);
-        foreach (UInt256 value in new[] { UInt256.Zero, UInt256.One, UInt256.MaxValue, SecondSeed })
+        foreach (UInt256 value in new[] { UInt256.Zero, UInt256.One, UInt256.MaxValue, SecondSeed,
+            new UInt256(0xffffffff00000000UL, 0xffffffffUL, 0xffffffff00000000UL, 0xffffffffUL) })
         {
             ulong expected = ReferenceMix(value, seed);
             byte[] bytes = value.ToLittleEndian();
@@ -343,6 +344,15 @@ public class GuestMixerTests
     {
         BigInteger product = (BigInteger)a * b;
         return (ulong)(product & ulong.MaxValue) ^ (ulong)(product >> 64);
+    }
+
+    [Test]
+    public void Multiply_fold_matches_full_width_product(
+        [Values(0UL, 1UL, 0xffffffffUL, 0x100000000UL, 0xffffffff00000000UL, 0x8000000000000000UL, ulong.MaxValue)] ulong a,
+        [Values(0UL, 1UL, 0xffffffffUL, 0x100000000UL, 0xffffffff00000000UL, 0x8000000000000000UL, ulong.MaxValue)] ulong b)
+    {
+        ulong actual = (ulong)SpanExtensions.MumFold(a ^ 0x9E3779B97F4A7C15UL, b ^ 0xBF58476D1CE4E5B9UL);
+        Assert.That(actual, Is.EqualTo(ReferenceFold(a, b)));
     }
 
     /// <summary>Recomputes the 32-byte lane mixer in <see cref="BigInteger"/> arithmetic.</summary>

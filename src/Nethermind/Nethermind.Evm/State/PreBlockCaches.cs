@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,10 +20,11 @@ public class PreBlockCaches
 {
     private readonly Func<CacheType>[] _clearCaches;
 
-    private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
+    private readonly SeqlockCache<StorageCell, UInt256> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache;
     private readonly PrecompileCaches _precompileCaches;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
+    private volatile CodePrefetcher? _codePrefetcher;
     private int _consumerScopes;
 
     private readonly Lock _reconcileLock = new();
@@ -33,6 +35,8 @@ public class PreBlockCaches
     private Task? _pendingWriteBack;
     // State root the account and storage caches reflect; null until PrepareFor establishes one.
     private Hash256? _validFor;
+    // See BypassesStorageCache.
+    private readonly WipedContracts _storageBypass;
 
     [ThreadStatic]
     private static StorageReadCapture? _currentStorageReadCapture;
@@ -41,8 +45,9 @@ public class PreBlockCaches
 
     public PreBlockCaches(PreBlockCachesConfig config, PrecompileCaches precompileCaches)
     {
-        _storageCache = new SeqlockCache<StorageCell, byte[]>(config.StorageCacheSetsBits);
+        _storageCache = new SeqlockCache<StorageCell, UInt256>(config.StorageCacheSetsBits);
         _stateCache = new SeqlockCache<AddressAsKey, Account>(config.StateCacheSetsBits);
+        _storageBypass = new WipedContracts(config.MaxStorageWipesBeforeClear);
         _precompileCaches = precompileCaches;
         _clearCaches =
         [
@@ -53,8 +58,29 @@ public class PreBlockCaches
         _writeBack = new WriteBackBatch(this);
     }
 
-    public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
+    public SeqlockCache<StorageCell, UInt256> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
+
+    /// <summary>
+    /// Whether reads of <paramref name="address"/>'s storage must bypass <see cref="StorageCache"/>: a committed block
+    /// wiped the storage the contract held before it, so any of its slots still cached may be stale.
+    /// </summary>
+    /// <remarks>
+    /// A contract's cached slots cannot be enumerated, so a wipe cannot remove them; the contract bypasses the cache
+    /// instead until the next clear of the storage cache drops those slots with everything else. Past
+    /// <see cref="PreBlockCachesConfig.MaxStorageWipesBeforeClear"/> such contracts, the write-back clears the storage
+    /// cache at once.
+    /// <para>
+    /// The set only grows in a write-back and only empties once the storage cache has been cleared, so a
+    /// <see langword="true"/> is always safe to act on, and a <see langword="false"/> holds until the next write-back.
+    /// Anything that reads the storage cache for a block therefore asks after the driver has prepared the caches for
+    /// it, which joins the write-back of the block before.
+    /// </para>
+    /// </remarks>
+    public bool BypassesStorageCache(Address address) => _storageBypass.Contains(address);
+
+    /// <summary>The number of contracts currently bypassing the storage cache; see <see cref="BypassesStorageCache"/>.</summary>
+    internal int StorageBypassCount => _storageBypass.Count;
 
     /// <summary>
     /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
@@ -64,6 +90,16 @@ public class PreBlockCaches
     {
         get => _mainScope;
         set => _mainScope = value;
+    }
+
+    /// <summary>
+    /// Code the consumer scope is reading ahead from the block access list, for every scope reading the block to take
+    /// from; null outside a consumer scope.
+    /// </summary>
+    public CodePrefetcher? CodePrefetcher
+    {
+        get => _codePrefetcher;
+        set => _codePrefetcher = value;
     }
 
     /// <summary>
@@ -143,6 +179,7 @@ public class PreBlockCaches
             isDirty |= clearCache();
         }
 
+        _storageBypass.Clear();
         _validFor = null;
         return isDirty;
     }
@@ -151,6 +188,7 @@ public class PreBlockCaches
     private void ClearStateCachesCore()
     {
         _storageCache.Clear();
+        _storageBypass.Clear();
         _stateCache.Clear();
         _validFor = null;
     }
@@ -243,9 +281,10 @@ public class PreBlockCaches
     /// its start calls <see cref="PrepareFor"/>, which joins, before the session's own thread exists.
     /// </para>
     /// <para>
-    /// <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/> drops the whole storage cache, because a
-    /// contract's pre-block slots cannot be enumerated. The batch then stops accepting storage writes, so the snapshot
-    /// ends there instead of refilling the cache with the one block it holds.
+    /// <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/> makes the contract bypass the storage cache (see
+    /// <see cref="BypassesStorageCache"/>) and the rest of the block is written back as usual. When it clears the whole
+    /// storage cache instead, the batch stops accepting storage writes, so the snapshot ends there instead of refilling
+    /// the cache with the one block it holds.
     /// </para>
     /// </remarks>
     /// <param name="takeSnapshot">
@@ -352,7 +391,7 @@ public class PreBlockCaches
 
             if (_writeBack.Contended)
             {
-                // Another writer got in, so the caches describe neither the base nor the committed state.
+                // A partial write-back cannot serve the committed state.
                 ClearStateCachesCore();
                 if (logger.IsInfo) ReportCachesCleared(logger);
             }
@@ -366,11 +405,11 @@ public class PreBlockCaches
     /// <remarks>Out of line because it must be rare.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ReportCachesCleared(ILogger logger) =>
-        logger.Info("Pre-block caches cleared by a writer that overlapped the write-back");
+        logger.Info("Pre-block caches cleared because write-back could not complete");
 
     private sealed class WriteBackBatch(PreBlockCaches caches) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly StorageWriteBackBatch _storage = new(caches._storageCache);
+        private readonly StorageWriteBackBatch _storage = new(caches);
         private bool _contended;
 
         public bool Contended => _contended || _storage.Contended;
@@ -400,43 +439,140 @@ public class PreBlockCaches
         // One contract at a time: the writer disposes each storage batch before creating the next.
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
         {
-            _storage.Address = key;
+            _storage.Start(key);
             return _storage;
         }
 
         public void Dispose() { }
     }
 
-    private sealed class StorageWriteBackBatch(SeqlockCache<StorageCell, byte[]> storageCache) : IWorldStateScopeProvider.IStorageWriteBatch
+    /// <summary>
+    /// Writes one contract's slots into the storage cache, or, on <see cref="Clear"/>, makes the contract bypass it
+    /// (see <see cref="BypassesStorageCache"/>).
+    /// </summary>
+    private sealed class StorageWriteBackBatch(PreBlockCaches caches) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public Address Address { get; set; } = null!;
+        private Address _address = null!;
+        private bool _skip;
+
         public bool Contended { get; set; }
         public ILogger Logger { get; set; }
         public bool Cleared { get; set; }
 
-        public void Set(in UInt256 index, byte[] value)
+        public void Start(Address address)
         {
-            if (Contended) return;
+            _address = address;
+            // A contract that bypasses the cache is never read from it, so writing its slots would only take room.
+            _skip = caches.BypassesStorageCache(address);
+        }
 
-            StorageCell cell = new(Address, in index);
-            if (!storageCache.TrySetExclusive(in cell, value)) Contended = true;
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            // Past a whole-cache clear the bypass no longer names the contracts wiped before it, so write nothing more.
+            if (Contended || Cleared || _skip) return;
+
+            StorageCell cell = new(_address, in index);
+            if (!caches._storageCache.TrySetExclusive(in cell, in value)) Contended = true;
         }
 
         public void Clear()
         {
             if (Cleared) return;
 
-            storageCache.Clear();
+            _skip = true;
+            WipedContracts bypass = caches._storageBypass;
+            if (bypass.Contains(_address)) return;
+
+            // Bypassing from here on is safe at once, whatever the rest of the write-back does: every way out of it that
+            // does not move the identity to this block clears the storage cache, and the bypass with it.
+            if (bypass.TryAdd(_address))
+            {
+                if (Logger.IsDebug) ReportStorageBypassed(Logger, _address);
+                return;
+            }
+
+            // Too many to bypass: drop everything instead, which also forgets the contracts already bypassed.
+            caches._storageCache.Clear();
+            bypass.Clear();
             Cleared = true;
-            if (Logger.IsInfo) ReportStorageCacheCleared(Logger, Address);
+            if (Logger.IsInfo) ReportStorageCacheCleared(Logger, bypass.Capacity);
         }
 
-        /// <remarks>Out of line because it must be rare.</remarks>
+        /// <remarks>Out of line because it is rare: once per <see cref="PreBlockCachesConfig.MaxStorageWipesBeforeClear"/> wipes.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void ReportStorageCacheCleared(ILogger logger, Address address) =>
-            logger.Info($"Pre-block storage cache cleared by {address}");
+        private static void ReportStorageCacheCleared(ILogger logger, int limit) =>
+            logger.Info($"Pre-block storage cache cleared: more contracts wiped their storage than the limit of {limit}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ReportStorageBypassed(ILogger logger, Address address) =>
+            logger.Debug($"Pre-block storage cache bypasses {address}, which wiped its storage");
 
         public void Dispose() { }
+    }
+
+    /// <summary>
+    /// The contracts bypassing the storage cache: an append-only open-addressing set with one writer and lock-free readers.
+    /// </summary>
+    /// <remarks>
+    /// Written only under the reconcile lock, by the write-back and by the clears. A reader sees an address once its slot
+    /// is published and never loses it until <see cref="Clear"/>, which only follows a clear of the storage cache, when
+    /// missing an address is harmless because its slots are gone. Filled to at most half its table, so a probe always
+    /// ends at an empty slot, and allocation-free after construction.
+    /// </remarks>
+    private sealed class WipedContracts
+    {
+        private readonly Address?[] _slots;
+        private readonly int _capacity;
+        private int _count;
+
+        public WipedContracts(int capacity)
+        {
+            // Bounded so that twice the capacity still rounds to a positive power of two.
+            _capacity = Math.Clamp(capacity, 0, 1 << 29);
+            _slots = new Address?[Math.Max(2, (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(_capacity, 1) * 2))];
+        }
+
+        public int Count => Volatile.Read(ref _count);
+
+        public int Capacity => _capacity;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Contains(Address address) => Volatile.Read(ref _count) != 0 && ContainsCore(address);
+
+        private bool ContainsCore(Address address)
+        {
+            Address?[] slots = _slots;
+            int mask = slots.Length - 1;
+            for (int i = address.GetHashCode() & mask; ; i = (i + 1) & mask)
+            {
+                Address? slot = Volatile.Read(ref slots[i]);
+                if (slot is null) return false;
+                if (slot.Equals(address)) return true;
+            }
+        }
+
+        /// <summary>Adds an address not yet in the set; single writer.</summary>
+        /// <returns><see langword="false"/> when the set is full and nothing was added.</returns>
+        public bool TryAdd(Address address)
+        {
+            if (_count >= _capacity) return false;
+
+            Address?[] slots = _slots;
+            int mask = slots.Length - 1;
+            int i = address.GetHashCode() & mask;
+            while (slots[i] is not null) i = (i + 1) & mask;
+            Volatile.Write(ref slots[i], address);
+            Volatile.Write(ref _count, _count + 1);
+            return true;
+        }
+
+        /// <summary>Empties the set; single writer, and only once the storage cache it describes has been cleared.</summary>
+        public void Clear()
+        {
+            if (_count == 0) return;
+            Volatile.Write(ref _count, 0);
+            Array.Clear(_slots);
+        }
     }
 
     /// <summary>
@@ -462,12 +598,18 @@ public class PreBlockCaches
 
         internal PreBlockCaches Owner { get; }
 
+        /// <summary>The value a skipped read returns; one unless the caller asks for another.</summary>
+        public UInt256 Placeholder { get; set; } = UInt256.One;
+
         /// <summary>Distinct cells encountered while backing reads were skipped.</summary>
         /// <remarks>Exposed as the concrete pooled set so consumers enumerate without boxing; treat as read-only.</remarks>
         public PooledSet<StorageCell> Cells => _cells;
 
         /// <summary>Records a missed storage cell while the shared cell budget lasts.</summary>
-        /// <remarks>The budget gate is approximate under concurrent captures (a small transient overshoot is possible); callers needing a hard bound must clamp when consuming <see cref="Cells"/>.</remarks>
+        /// <remarks>
+        /// Each distinct cell claims one credit from the budget atomically, so captures sharing one budget together never
+        /// record more cells than it held.
+        /// </remarks>
         /// <exception cref="InvalidOperationException">Called from a thread other than the one that created the capture.</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Record(in StorageCell storageCell)
@@ -477,9 +619,19 @@ public class PreBlockCaches
                 throw new InvalidOperationException("A capture must only record on the thread that created it.");
             }
 
-            if (Volatile.Read(ref _remainingCells.Value) > 0 && _cells.Add(storageCell))
+            if (_cells.Contains(storageCell)) return;
+
+            int remaining = Volatile.Read(ref _remainingCells.Value);
+            while (remaining > 0)
             {
-                Interlocked.Decrement(ref _remainingCells.Value);
+                int observed = Interlocked.CompareExchange(ref _remainingCells.Value, remaining - 1, remaining);
+                if (observed == remaining)
+                {
+                    _cells.Add(storageCell);
+                    return;
+                }
+
+                remaining = observed;
             }
         }
 
@@ -516,11 +668,20 @@ public sealed record PreBlockCachesConfig
     /// </summary>
     /// <remarks>
     /// Above the ~140K-slot working set of a single 300M-gas block, with room for the blocks before it. An entry is
-    /// 56 bytes of array, the slot index being most of it, and keeps its value alive on top of that.
+    /// 80 bytes, including the slot index and numeric value, with no separate value allocation.
     /// </remarks>
     public int StorageCacheSetsBits { get; init; } = 18;
 
     public int SurvivingPrecompileCacheMaxEntries { get; init; } = 16384;
+
+    /// <summary>
+    /// How many contracts that wiped their storage may bypass the storage cache before it is cleared instead. Default 4096.
+    /// </summary>
+    /// <remarks>
+    /// See <see cref="PreBlockCaches.BypassesStorageCache"/>. Pre-Cancun history wipes contracts in a large share of
+    /// blocks; the cap turns what would be a clear per such block into one per this many wipes.
+    /// </remarks>
+    public int MaxStorageWipesBeforeClear { get; init; } = 4096;
 }
 
 [Flags]

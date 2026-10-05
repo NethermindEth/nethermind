@@ -118,7 +118,7 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
             };
 
             ApplyUnzenPinnedFields(header);
-            return new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
+            return new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
         }
 
         Result<Block> result = base.TryGetBlock(totalDifficulty);

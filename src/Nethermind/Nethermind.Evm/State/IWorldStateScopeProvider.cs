@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -16,17 +17,43 @@ namespace Nethermind.Evm.State;
 /// </summary>
 public interface IWorldStateScopeProvider
 {
+    /// <summary>Checks root availability, respecting processing usage where the backend distinguishes it.</summary>
+    /// <remarks>Does not verify the integrity or availability of every descendant trie node.</remarks>
     bool HasRoot(BlockHeader? baseBlock);
 
+    /// <summary>
+    /// Attempts to open the state required to execute <paramref name="targetBlock"/>.
+    /// </summary>
+    /// <remarks>
+    /// The scope is anchored at the target block's parent, while the target header is retained by the provider for
+    /// backend-specific decisions. Returns <c>false</c> when the parent header or its state is unavailable. This is
+    /// best-effort for backends that cannot pin state; subsequent reads may still report a missing node.
+    /// </remarks>
+    /// <param name="targetBlock">The block that will be executed.</param>
+    /// <param name="scope">The acquired scope, or <c>null</c> when acquisition fails.</param>
+    /// <returns><c>true</c> when a scope was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IScope? scope);
+
+    /// <summary>
+    /// Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.
+    /// </summary>
+    /// <remarks>This check is advisory and does not reserve or pin the state.</remarks>
+    bool HasStateForTargetBlock(BlockHeader targetBlock);
+
+    /// <summary>Attempts to open the state committed at <paramref name="baseBlock"/> (pre-genesis when <c>null</c>).</summary>
     /// <param name="metrics">
     /// Per-scope accumulator the world state folds into the global counters at commit/scope end. Scopes
     /// that record state/storage access metrics (e.g. the prewarmer) increment it; others ignore it.
     /// </param>
-    IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
+    /// <param name="scope">The acquired scope, or <c>null</c> when the state is unavailable.</param>
+    /// <returns><c>true</c> when a scope was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IScope? scope);
 
     public interface IScope : IDisposable
     {
         Hash256 RootHash { get; }
+
+        bool StorageRootsAreAuthoritative => true;
 
         void UpdateRootHash();
 
@@ -34,10 +61,10 @@ public interface IWorldStateScopeProvider
         /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
         /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
         /// </summary>
-        void HintWarmAccount(in ValueAddress address) { }
+        void HintWarmAccount(Address address) { }
 
-        /// <inheritdoc cref="HintWarmAccount"/>
-        void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
+        /// <inheritdoc cref="HintWarmAccount(Address)"/>
+        void HintWarmSlot(Address address, in UInt256 index) { }
 
         /// <summary>
         /// Get the account information for the following address.
@@ -109,6 +136,16 @@ public interface IWorldStateScopeProvider
         /// <param name="sink">Optional sink that receives each account/slot value read during the pass.</param>
         /// <returns>A task that completes when the asynchronous warmup finishes.</returns>
         Task HintBal(ReadOnlyBlockAccessList bal, IAsyncBalReaderSink? sink = null);
+
+        /// <summary>
+        /// Writes the final balance, nonce, code and storage values of every account the Block Access List changed.
+        /// </summary>
+        /// <remarks>
+        /// Under EIP-158 an account left empty is removed along with its storage. The root hash is not updated;
+        /// call <see cref="UpdateRootHash"/> afterwards. See <see cref="ScopeBalApplier"/> for the generic implementation.
+        /// </remarks>
+        /// <param name="bal">The Block Access List whose last change per field is applied.</param>
+        void ApplyBal(ReadOnlyBlockAccessList bal);
     }
 
     /// <summary>
@@ -129,7 +166,7 @@ public interface IWorldStateScopeProvider
         /// </summary>
         /// <param name="storageCell">The storage cell (address + slot index).</param>
         /// <param name="value">The storage value bytes.</param>
-        void OnStorageRead(in StorageCell storageCell, byte[] value);
+        void OnStorageRead(in StorageCell storageCell, in UInt256 value);
 
         /// <summary>
         /// Returns whether the BAL reader should still fetch the given account.
@@ -156,7 +193,9 @@ public interface IWorldStateScopeProvider
 
     public interface ICodeDb
     {
-        byte[]? GetCode(in ValueHash256 codeHash);
+        /// <summary>The code stored under <paramref name="codeHash"/>, or <c>default</c> when it is missing.</summary>
+        /// <remarks>Return empty code as <c>Array.Empty&lt;byte&gt;()</c>: <see cref="ReadOnlyMemory{T}.Empty"/> is <c>default</c>, which callers read as missing.</remarks>
+        ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash);
 
         ICodeSetter BeginCodeWrite();
 
@@ -180,13 +219,16 @@ public interface IWorldStateScopeProvider
     {
         Hash256 RootHash { get; }
 
-        byte[] Get(in UInt256 index);
+        void Get(in UInt256 index, out UInt256 value);
 
         /// <summary>
         /// Hint that a slot is being written. Backends may use this to start asynchronous
         /// trie warm-up for the slot path.
         /// </summary>
-        void HintSet(in UInt256 index, byte[]? value);
+        void HintSet(in UInt256 index);
+
+        /// <summary>Hint that a transaction committed <paramref name="value"/> to a slot.</summary>
+        void HintSet(in UInt256 index, in UInt256 value) => HintSet(in index);
     }
 
     /// <summary>
@@ -237,7 +279,8 @@ public interface IWorldStateScopeProvider
 
     public interface IStorageWriteBatch : IDisposable
     {
-        void Set(in UInt256 index, byte[] value);
+        /// <summary>Writes the slot value.</summary>
+        void Set(in UInt256 index, in UInt256 value);
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.

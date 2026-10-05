@@ -53,11 +53,6 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-        static Rlp()
-        {
-            RegisterDecoders(typeof(Rlp).Assembly);
-            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
-        }
 
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
@@ -77,15 +72,13 @@ namespace Nethermind.Serialization.Rlp
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = [];
         private static readonly Lock _decoderLock = new();
-        private static readonly CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
 
         public static void ResetDecoders()
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
             Volatile.Write(ref _decodersSnapshot, null);
-            RegisterDecoders(typeof(Rlp).Assembly);
-            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+            RegisterDefaultDecoders();
         }
 
         public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
@@ -258,7 +251,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static CappedArray<byte> EncodeToCappedArray(int item, ICappedArrayPool? bufferPool = null)
         {
-            CappedArray<byte>[] cache = s_intPreEncodes;
+            CappedArray<byte>[] cache = IntPreEncodes.Cache;
             if ((uint)item < (uint)cache.Length)
             {
                 return cache[item];
@@ -499,6 +492,7 @@ namespace Nethermind.Serialization.Rlp
             return 1 + lengthOfLength + length;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int SerializeLength(int value, Span<byte> destination)
         {
             // We assume 0 <= value <= int.MaxValue
@@ -529,10 +523,7 @@ namespace Nethermind.Serialization.Rlp
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfLength(int value)
-        {
-            int bits = 32 - BitOperations.LeadingZeroCount((uint)value | 1);
-            return (bits + 7) >>> 3;
-        }
+            => sizeof(ulong) - Core.Extensions.Bytes.LeadingZeroBytes((uint)value | 1);
 
         public static Rlp Encode(Hash256? keccak)
         {
@@ -676,7 +667,7 @@ namespace Nethermind.Serialization.Rlp
                 size = 1 + sizeof(ulong);
             }
 
-            return size - (BitOperations.LeadingZeroCount(value) / 8);
+            return size - Core.Extensions.Bytes.LeadingZeroBytes(value);
         }
 
         public static int LengthOfByteArrayList(IByteArrayList? list)
@@ -723,7 +714,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // everything has a length prefix
-                return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount(value) / 8);
+                return 1 + sizeof(ulong) - Core.Extensions.Bytes.LeadingZeroBytes(value);
             }
         }
 
@@ -819,6 +810,7 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOf(ReadOnlySpan<byte> array) => array.Length == 0 ? 1 : LengthOfByteString(array.Length, array[0]);
 
         // Assumes that length is greater then 0
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfByteString(int length, byte firstByte)
         {
             if (length == 0)
@@ -884,11 +876,18 @@ namespace Nethermind.Serialization.Rlp
 
         private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
 
+        // A field initializer rather than a static constructor keeps the type beforefieldinit, so static methods
+        // that read no static field (e.g. LengthOf) need no type initialization check on every call. Declared after
+        // every other initialized static field: registration constructs decoders, which may read them.
+        private static readonly bool _defaultDecodersRegistered = RegisterDefaultDecoders();
+
         [StackTraceHidden]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
-            RlpLimit l = limit ?? RlpLimit.DefaultLimit;
+            // Equal to RlpLimit.DefaultLimit; constructing it spares every inlined guard the static read and its
+            // type initialization check.
+            RlpLimit l = limit ?? new RlpLimit();
             // First test rejects either bound being negative.
             if ((bytesLeft | l.Limit) < 0 || (uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
             {
@@ -950,6 +949,14 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return cache;
+        }
+
+        /// <remarks>
+        /// A separate type so the table is built on first use rather than by the <see cref="Rlp"/> type initializer.
+        /// </remarks>
+        private static class IntPreEncodes
+        {
+            public static readonly CappedArray<byte>[] Cache = CreatePreEncodes();
         }
     }
 

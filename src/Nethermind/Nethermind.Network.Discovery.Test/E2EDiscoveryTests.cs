@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -52,6 +53,8 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
         discoveryConfig.DiscoveryVersion = discoveryVersion;
         discoveryConfig.UseDefaultDiscv5Bootnodes = false;
+        // The default 30 s bootstrap cadence leaves a node whose first bootnode exchange was lost isolated for most of the discovery window.
+        ((DiscoveryConfig)discoveryConfig).DiscoveryInterval = 2000;
 
         IForkInfo forkInfo = Substitute.For<IForkInfo>();
         forkInfo.GetForkId(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(new ForkId(0, 0));
@@ -61,6 +64,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         builder
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
             .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2EDiscoveryTests)}-{discoveryVersion}"));
+        builder.RegisterInstance(Substitute.For<IPeerManager>()).As<IPeerManager>();
         builder.RegisterInstance(forkInfo).As<IForkInfo>();
         return builder.Build();
     }
@@ -88,6 +92,12 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         HashSet<PublicKey> nodeKeys = GetNodeKeys(nodes);
 
+        ConcurrentDictionary<PublicKey, byte>[] discoveredPeers = new ConcurrentDictionary<PublicKey, byte>[nodes.Length];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            discoveredPeers[i] = TrackDiscoveredPeers(nodes[i].Resolve<IPeerPool>());
+        }
+
         foreach (IContainer node in nodes)
         {
             await node.Resolve<PseudoNethermindRunner>().StartDiscovery(cancellationTokenSource.Token);
@@ -96,7 +106,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         Task[] waitTasks = new Task[nodes.Length];
         for (int i = 0; i < nodes.Length; i++)
         {
-            waitTasks[i] = AssertPeerPoolContainsExpectedNodes(nodes[i], nodeKeys, cancellationTokenSource.Token);
+            waitTasks[i] = AssertDiscoveredExpectedNodes(nodes[i], discoveredPeers[i], nodeKeys, cancellationTokenSource.Token);
         }
 
         await Task.WhenAll(waitTasks);
@@ -113,9 +123,20 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         return nodeKeys;
     }
 
-    private static async Task AssertPeerPoolContainsExpectedNodes(IContainer node, HashSet<PublicKey> nodeKeys, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Records every peer the pool admits rather than reading its current contents: without a session, a peer
+    /// is dropped from the pool whenever discovery evicts it after a missed ping, and discv4 does not
+    /// republish a recently published node, so a slow runner can permanently lose an already discovered peer.
+    /// </remarks>
+    private static ConcurrentDictionary<PublicKey, byte> TrackDiscoveredPeers(IPeerPool pool)
     {
-        IPeerPool pool = node.Resolve<IPeerPool>();
+        ConcurrentDictionary<PublicKey, byte> discovered = new();
+        pool.PeerAdded += (_, e) => discovered.TryAdd(e.Peer.Node.Id, 0);
+        return discovered;
+    }
+
+    private static async Task AssertDiscoveredExpectedNodes(IContainer node, ConcurrentDictionary<PublicKey, byte> discovered, HashSet<PublicKey> nodeKeys, CancellationToken cancellationToken)
+    {
         PublicKey localKey = node.Resolve<IEnode>().PublicKey;
         HashSet<PublicKey> expectedKeys = [.. nodeKeys];
         expectedKeys.Remove(localKey);
@@ -126,8 +147,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         while (!linkedToken.IsCancellationRequested)
         {
-            HashSet<PublicKey> actualKeys = GetPeerKeys(pool);
-            if (actualKeys.SetEquals(expectedKeys))
+            if (expectedKeys.SetEquals(GetDiscoveredKeys(discovered)))
             {
                 return;
             }
@@ -142,15 +162,15 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
             }
         }
 
-        Assert.That(GetPeerKeys(pool), Is.EquivalentTo(expectedKeys), $"Node {localKey} did not discover all peers before {PeerDiscoveryTimeout}.");
+        Assert.That(GetDiscoveredKeys(discovered), Is.EquivalentTo(expectedKeys), $"Node {localKey} did not discover all peers before {PeerDiscoveryTimeout}.");
     }
 
-    private static HashSet<PublicKey> GetPeerKeys(IPeerPool pool)
+    private static HashSet<PublicKey> GetDiscoveredKeys(ConcurrentDictionary<PublicKey, byte> discovered)
     {
         HashSet<PublicKey> peerKeys = [];
-        foreach (KeyValuePair<PublicKeyAsKey, Peer> peer in pool.Peers)
+        foreach (KeyValuePair<PublicKey, byte> entry in discovered)
         {
-            peerKeys.Add(peer.Value.Node.Id);
+            peerKeys.Add(entry.Key);
         }
 
         return peerKeys;

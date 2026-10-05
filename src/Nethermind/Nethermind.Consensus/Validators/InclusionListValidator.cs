@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -67,7 +68,11 @@ public static class InclusionListValidator
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
-            if (!included[i] && CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
+            if (included[i]) continue;
+            // The rules below judge appendability on the account nonce, which a frame transaction does not
+            // use (EIP-8369 Profile 2), so reading one through them reports an honest payload as censoring.
+            if (il[i].SupportsFrames) continue;
+            if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
         }
         return true;
     }
@@ -75,12 +80,15 @@ public static class InclusionListValidator
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
         if (tx.SenderAddress is null) return false;
-        // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the
-        // way GasLimit - tx.GasLimit would for an oversized tx.
-        if (tx.GasLimit > block.GasLimit - block.GasUsed) return false;
+        if (!FitsRemainingBlockGas(tx, block, spec)) return false;
         // Appendability must match normal execution, so reuse the full well-formedness check, not a subset.
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
+        if (tx.SupportsBlobs
+            && (BlobGasCalculator.CalculateBlobGas(tx) > spec.GasCosts.MaxBlobGasPerBlock - (block.Header.BlobGasUsed ?? 0)
+                || !BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee)
+                || (tx.MaxFeePerBlobGas ?? UInt256.Zero) < blobBaseFee))
+            return false;
 
         senderCache ??= [];
         ref AccountStruct account = ref CollectionsMarshal.GetValueRefOrAddDefault(senderCache, tx.SenderAddress, out bool cached);
@@ -102,6 +110,23 @@ public static class InclusionListValidator
             return false;
 
         return SpendableBalance(block, tx.SenderAddress, in account) >= txCost && account.Nonce == tx.Nonce;
+    }
+
+    /// <summary>Whether an appended transaction's worst-case block gas still fits.</summary>
+    /// <remarks>EIP-8037 admits a transaction only if both its execution and its state reservation fit the
+    /// matching dimension, so measuring it against the header's max(execution, state) rejects transactions the
+    /// spec judges includable. Callers whose block carries no dimensions must not put an EIP-8037 block to this
+    /// check — the max alone under-reports censorship — which is why the engine API declines to answer instead.</remarks>
+    private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec)
+    {
+        // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the
+        // way GasLimit - tx.GasLimit would for an oversized tx.
+        if (!spec.IsEip8037Enabled) return tx.GasLimit <= block.GasLimit - block.GasUsed;
+
+        (ulong execution, ulong state) = block.Header.GasUsedPerDimension ?? (block.GasUsed, block.GasUsed);
+        return Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation)
+            && Eip8037BlockGasInclusionCheck.Validate(block.GasLimit, execution, state, executionReservation, stateReservation)
+                == Eip8037BlockGasInclusionCheck.Outcome.Ok;
     }
 
     /// <summary>Balance the sender would have had when an appended transaction executed.</summary>

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -43,7 +42,7 @@ public class AccountAccessForRpc
             StorageChanges = Map(account.StorageChanges, static sc => new SlotChangesForRpc
             {
                 Key = sc.Key.ToValueHash(),
-                Changes = Map(sc.Changes, static c => new StorageChangeForRpc { Index = c.Index, Value = ToValueHash(c.Value) }),
+                Changes = Map(sc.Changes, static c => new StorageChangeForRpc { Index = c.Index, Value = c.Value.ToValueHash() }),
             }),
             StorageReads = Map(account.StorageReads, static r => r.ToValueHash()),
             BalanceChanges = Map(account.BalanceChanges, static c => new BalanceChangeForRpc { Index = c.Index, Value = c.Value }),
@@ -64,9 +63,6 @@ public class AccountAccessForRpc
 
         return result;
     }
-
-    // EvmWord already holds the 32 big-endian bytes.
-    private static ValueHash256 ToValueHash(in EvmWord word) => Unsafe.BitCast<EvmWord, ValueHash256>(word);
 }
 
 public readonly struct SlotChangesForRpc

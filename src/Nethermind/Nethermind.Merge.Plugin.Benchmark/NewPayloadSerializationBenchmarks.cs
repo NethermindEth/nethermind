@@ -20,9 +20,10 @@ using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Ssz;
-using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Benchmark;
 
@@ -68,7 +69,7 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         _jsonBody = EncodeJsonBody(payload, blobHashes, parentRoot);
         _jsonPayloadOnly = JsonSerializer.SerializeToUtf8Bytes(payload, EthereumJsonSerializer.JsonOptions);
 
-        IEngineRpcModule engine = BuildEngineStub();
+        IEngineRpcModule engine = EngineBenchmarkHost.CreateEngine(ValidTask, static args => ((ExecutionPayload)args![0]!).TryGetTransactions());
         _sszHost = BuildSszServer(engine);
         _jsonHost = EngineBenchmarkHost.BuildJsonServer(engine);
         _sszServer = _sszHost.GetTestServer();
@@ -118,7 +119,8 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         using ByteArrayContent content = new(_sszBody);
         content.Headers.ContentType = EngineBenchmarkHost.OctetStream;
 
-        using HttpRequestMessage req = new(HttpMethod.Post, "/engine/v3/payloads") { Content = content };
+        using HttpRequestMessage req = new(HttpMethod.Post, "/engine/v1/payloads") { Content = content };
+        req.Headers.Add(SszMiddleware.ForkHeaderName, "cancun");
         req.Headers.Authorization = EngineBenchmarkHost.Authorization;
         req.Headers.Accept.Add(EngineBenchmarkHost.OctetAccept);
 
@@ -163,13 +165,29 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         Withdrawals = EngineBenchmarkHost.BuildWithdrawals(EngineBenchmarkHost.CapellaMaxWithdrawals),
     };
 
+    /// <summary>Signed EIP-1559 transactions of about <paramref name="sizeEach"/> bytes each.</summary>
+    /// <remarks>
+    /// They must decode: the SSZ path decodes every transaction to derive the blob versioned hashes, and the engine
+    /// stub decodes them on both paths, as the real handler does.
+    /// </remarks>
     private static byte[][] BuildTransactions(int count, int sizeEach)
     {
         byte[][] txs = new byte[count][];
         for (int i = 0; i < count; i++)
         {
-            txs[i] = new byte[sizeEach];
-            txs[i][0] = 0x02; // EIP-1559 type byte
+            byte[] callData = new byte[sizeEach - 120];
+            new Random(i).NextBytes(callData);
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithChainId(BlockchainIds.Mainnet)
+                .WithNonce((ulong)i)
+                .WithGasLimit(100_000)
+                .WithMaxFeePerGas(30 * Unit.GWei)
+                .WithMaxPriorityFeePerGas(1 * Unit.GWei)
+                .WithTo(TestItem.Addresses[i % TestItem.Addresses.Length])
+                .WithData(callData)
+                .SignedAndResolved().TestObject;
+            txs[i] = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
         }
         return txs;
     }
@@ -218,17 +236,6 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         w.Flush();
 
         return buffer.WrittenSpan.ToArray();
-    }
-
-    private static IEngineRpcModule BuildEngineStub()
-    {
-        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
-        engine.engine_newPayloadV1(default!).ReturnsForAnyArgs(ValidTask);
-        engine.engine_newPayloadV2(default!).ReturnsForAnyArgs(ValidTask);
-        engine.engine_newPayloadV3(default!, default!, default!).ReturnsForAnyArgs(ValidTask);
-        engine.engine_newPayloadV4(default!, default!, default!, default!).ReturnsForAnyArgs(ValidTask);
-        engine.engine_newPayloadV5(default!, default!, default!, default!).ReturnsForAnyArgs(ValidTask);
-        return engine;
     }
 
     private static IHost BuildSszServer(IEngineRpcModule engine)

@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -33,6 +34,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     private readonly bool _includeTxHash;
     private readonly TxTraceFilter? _storeFilter;
     private readonly JsonSerializerOptions _jsonOptions;
+    private readonly ISpecProvider? _specProvider;
 
     private ParityLikeTxTrace? _pendingRewardTrace;
     private Block? _block;
@@ -46,9 +48,11 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         Utf8JsonWriter writer,
         PipeWriter? pipeWriter,
         CancellationToken cancellationToken,
-        TxTraceFilter? storeFilter = null)
-        : base(types)
+        TxTraceFilter? storeFilter = null,
+        ISpecProvider? specProvider = null)
+        : base(types, specProvider)
     {
+        _specProvider = specProvider;
         ArgumentNullException.ThrowIfNull(writer);
         _defaultTypes = types;
         _mode = mode;
@@ -67,9 +71,11 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         bool includeTxHash,
         Utf8JsonWriter writer,
         PipeWriter? pipeWriter,
-        CancellationToken cancellationToken)
-        : base(txHash, types)
+        CancellationToken cancellationToken,
+        ISpecProvider? specProvider = null)
+        : base(txHash, types, specProvider)
     {
+        _specProvider = specProvider;
         ArgumentNullException.ThrowIfNull(writer);
         _defaultTypes = types;
         _mode = mode;
@@ -87,9 +93,11 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         bool includeTxHash,
         Utf8JsonWriter writer,
         PipeWriter? pipeWriter,
-        CancellationToken cancellationToken)
-        : base(typesByTransaction)
+        CancellationToken cancellationToken,
+        ISpecProvider? specProvider = null)
+        : base(typesByTransaction, specProvider)
     {
+        _specProvider = specProvider;
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(typesByTransaction);
         _defaultTypes = defaultTypes;
@@ -125,7 +133,8 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         {
             _reusableTxTracer?.ReleaseResources();
             _reusableTxTracer = new StreamingParityLikeTxTracer(
-                _block!, tx, resolvedTypes, _writer, _pipeWriter, _cancellationToken, fillVmTraceSlot);
+                _block!, tx, resolvedTypes, _writer, _pipeWriter, _cancellationToken, fillVmTraceSlot,
+                spec: _specProvider?.GetSpec(_block!.Header));
             _reusableTxTracerTypes = resolvedTypes;
         }
         else
@@ -170,6 +179,23 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         EmitTrace(_pendingRewardTrace);
         _pendingRewardTrace.Action = null;
         _pendingRewardTrace = null;
+        FlushPipe();
+    }
+
+    /// <summary>Writes traces produced elsewhere, in the order given, exactly as they would have been streamed while
+    /// being produced here. Called once per transaction as the parallel tracer finishes it, so the response leaves
+    /// while the rest of the block is still being traced.</summary>
+    public void WriteTraces(IReadOnlyCollection<ParityLikeTxTrace> traces)
+    {
+        foreach (ParityLikeTxTrace trace in traces)
+        {
+            _cancellationToken.ThrowIfCancellationRequested();
+            if (_mode == ParityTraceStreamMode.Replay)
+                ParityReplayEnvelopeWriter.WriteFromTrace(_writer, trace, _includeTxHash, _jsonOptions);
+            else
+                EmitStoreItems(trace);
+        }
+
         FlushPipe();
     }
 

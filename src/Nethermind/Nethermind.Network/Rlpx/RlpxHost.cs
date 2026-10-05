@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,6 +19,8 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
@@ -36,7 +39,6 @@ namespace Nethermind.Network.Rlpx
 
         private bool _isInitialized;
         public int LocalPort { get; }
-        private readonly IPAddress _localIp;
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -47,13 +49,13 @@ namespace Nethermind.Network.Rlpx
         private readonly TimeSpan _sendLatency;
         private readonly TimeSpan _connectTimeout;
         private readonly IChannelFactory? _channelFactory;
-        private readonly Func<IServerChannel> _createServerChannel;
         private readonly Func<IChannel> _createClientChannel;
         private readonly Action<Task<IChannel>, object?> _disconnectConnectedChannel;
         private readonly Action<Task, object?> _onChannelCloseCompleted;
         private readonly Action<Task, object?> _markDisconnectedAfterCloseDelay;
         private readonly NodeFilter _nodeFilter;
         private readonly IPrivilegedIpProvider _privilegedIpProvider;
+        private readonly NetworkListenerState _listenerState;
         private readonly ConcurrentDictionary<Guid, SessionActivitySubscription> _sessionActivitySubscriptions = new();
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
@@ -68,6 +70,7 @@ namespace Nethermind.Network.Rlpx
             IIPResolver ipResolver,
             IPrivilegedIpProvider privilegedIpProvider,
             ILogManager logManager,
+            NetworkListenerState listenerState,
             IChannelFactory? channelFactory = null)
         {
             ArgumentNullException.ThrowIfNull(serializationService);
@@ -92,15 +95,13 @@ namespace Nethermind.Network.Rlpx
             _sessionMonitor = sessionMonitor;
             _disconnectsAnalyzer = disconnectsAnalyzer;
             _handshakeService = handshakeService;
+            _listenerState = listenerState;
             LocalPort = networkConfig.P2PPort;
-            // RlpxHost is injected as Lazy<> into InitializeNetwork, whose async Initialize() runs after its
-            // SetupKeyStore dependency has awaited Resolve() and warmed the cache, so this does not block.
+            // The peer filter needs the resolved external address before it can accept connections.
             IIPResolver.NethermindIp ips = ipResolver.Resolve().GetAwaiter().GetResult();
-            _localIp = ips.LocalIp;
             _sendLatency = TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs);
             _connectTimeout = TimeSpan.FromMilliseconds(networkConfig.ConnectTimeoutMs);
             _channelFactory = channelFactory;
-            _createServerChannel = CreateServerChannel;
             _createClientChannel = CreateClientChannel;
             _disconnectConnectedChannel = DisconnectConnectedChannel;
             _onChannelCloseCompleted = OnChannelCloseCompleted;
@@ -134,37 +135,7 @@ namespace Nethermind.Network.Rlpx
                 _bossGroup = new MultithreadEventLoopGroup(threads);
                 _workerGroup = new MultithreadEventLoopGroup(threads);
 
-                ServerBootstrap bootstrap = new();
-                bootstrap
-                    .Group(_bossGroup, _workerGroup)
-                    .ChannelFactory(_createServerChannel)
-                    .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
-                    .Option(ChannelOption.SoBacklog, 100)
-                    .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
-                    .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
-                    .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
-                    .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
-                    .ChildHandler(new InboundChannelInitializer(this));
-
-                Task<IChannel> openTask = NetworkHelper.HandlePortTakenError(
-                    () => bootstrap.BindAsync(_localIp, LocalPort),
-                    LocalPort);
-
-                _bootstrapChannel = await openTask.ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
-                        return null;
-                    }
-
-                    return t.Result;
-                });
-
-                if (_bootstrapChannel is null)
-                {
-                    ThrowBootstrapChannelInitializationFailed();
-                }
+                _bootstrapChannel = await BindListenerAsync();
             }
             catch (Exception ex)
             {
@@ -180,24 +151,143 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
+        private async Task<IChannel> BindListenerAsync()
+        {
+            IPAddress bindAddress = _listenerState.PreferredAddress;
+            try
+            {
+                return await BindAsync(bindAddress);
+            }
+            catch (Exception e) when (!bindAddress.Equals(_listenerState.FallbackAddress))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind {nameof(RlpxHost)} on {bindAddress}:{LocalPort}. Retrying on {_listenerState.FallbackAddress}:{LocalPort}. {e}");
+                return await BindAsync(_listenerState.FallbackAddress);
+            }
+        }
+
+        private async Task<IChannel> BindAsync(IPAddress address)
+        {
+            IServerChannel? createdChannel = null;
+            ServerBootstrap bootstrap = CreateServerBootstrap(() => createdChannel = CreateServerChannel(address));
+            try
+            {
+                IChannel channel = await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(address, LocalPort), LocalPort);
+                IPEndPoint? endpoint = channel.TryGetLocalIPEndpoint();
+                if (endpoint is not null)
+                {
+                    _ = _listenerState.TrackRlpxAddress(endpoint.Address, channel.CloseCompletion);
+                }
+
+                return channel;
+            }
+            catch
+            {
+                await createdChannel.CloseFailedBindAsync(_logger, nameof(RlpxHost));
+                throw;
+            }
+        }
+
+        private ServerBootstrap CreateServerBootstrap(Func<IServerChannel> channelFactory)
+            => new ServerBootstrap()
+                .Group(_bossGroup, _workerGroup)
+                .ChannelFactory(channelFactory)
+                .Option(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
+                .Option(ChannelOption.SoBacklog, 100)
+                .ChildOption(ChannelOption.Allocator, NethermindBuffers.RlpxAllocator)
+                .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB)
+                .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
+                .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
+                .ChildHandler(new InboundChannelInitializer(this));
+
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowAlreadyInitialized()
             => throw new InvalidOperationException($"{nameof(RlpxHost)} already initialized.");
 
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowBootstrapChannelInitializationFailed()
-            => throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetworkExceptionType.Other);
+        private IServerChannel CreateServerChannel(IPAddress address)
+        {
+            if (_channelFactory is not null)
+            {
+                return _channelFactory.CreateServer();
+            }
 
-        private IServerChannel CreateServerChannel()
-            => _channelFactory?.CreateServer() ?? new TcpServerSocketChannel();
+            return new TcpServerSocketChannel(CreateServerSocket(address));
+        }
+
+        private static Socket CreateServerSocket(IPAddress address)
+        {
+            Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            try
+            {
+                if (address.AddressFamily == AddressFamily.InterNetworkV6)
+                {
+                    socket.DualMode = DiscoveryAddressSupport.SupportsFamily(address, AddressFamily.InterNetwork);
+                    if (socket.DualMode)
+                    {
+                        // A dual-mode bind must not share its IPv4 port, or the advertised capability is ambiguous.
+                        socket.ExclusiveAddressUse = true;
+                    }
+                }
+
+                return socket;
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
 
         private IChannel CreateClientChannel()
             => _channelFactory?.CreateClient() ?? new TcpSocketChannel();
 
-        public async Task<bool> ConnectAsync(Node node)
+        public async Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
+            bool allowNonRoutable = node.Address.Address.IsLoopbackOrPrivateOrLinkLocal;
+            bool primaryAccepted = IsDialAddressAcceptable(node.Address.Address, allowNonRoutable);
+            if (!primaryAccepted)
+            {
+                if (_logger.IsTrace) TraceRejectedDialEndpoint(node, node.Address);
+            }
+            else if (await TryConnect(node, cancellationToken))
+            {
+                return true;
+            }
+
+            if (!TryCreateAlternateDialNode(node, allowNonRoutable, out Node? alternate))
+            {
+                return false;
+            }
+
+            bool exactOnly = alternate.IsStatic || alternate.IsBootnode;
+            bool privileged = _privilegedIpProvider.IsPrivileged(alternate.Address.Address);
+            if (!privileged && !_nodeFilter.WouldAccept(alternate.Address.Address, exactOnly))
+            {
+                if (_logger.IsTrace) TraceFilteredDialEndpoint(alternate);
+                return false;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_logger.IsDebug)
+            {
+                string reason = primaryAccepted ? "Failed to connect" : "Rejected dial endpoint";
+                _logger.Debug($"{reason} for {node:s} on {node.Address}, retrying on {alternate.Address}");
+            }
+
+            bool connected = await TryConnect(alternate, cancellationToken);
+            if (connected && !privileged)
+            {
+                _nodeFilter.Touch(alternate.Address.Address, exactOnly);
+            }
+
+            return connected;
+        }
+
+        private async Task<bool> TryConnect(Node node, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ConnectionAttempt attempt = new();
             Bootstrap clientBootstrap = new();
             clientBootstrap
                 .Group(_workerGroup)
@@ -207,34 +297,107 @@ namespace Nethermind.Network.Rlpx
                 .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB)
                 .Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default)
                 .Option(ChannelOption.ConnectTimeout, _connectTimeout);
-            clientBootstrap.Handler(new OutboundChannelInitializer(this, node));
+            clientBootstrap.Handler(new OutboundChannelInitializer(this, node, attempt));
 
             Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
-            using CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource delayCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             Task firstTask = await Task.WhenAny(connectTask, Task.Delay(_connectTimeout.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
             if (firstTask != connectTask)
             {
+                bool abandoned = attempt.TryAbandon();
                 if (_logger.IsTrace) TraceConnectionTimedOut(node);
+                if (!abandoned)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        DisconnectWhenConnected(connectTask);
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
 
-                _ = connectTask.ContinueWith(
-                    _disconnectConnectedChannel,
-                    null,
-                    CancellationToken.None,
-                    TaskContinuationOptions.ExecuteSynchronously,
-                    TaskScheduler.Default);
+                    await connectTask;
+                    return true;
+                }
 
+                DisconnectWhenConnected(connectTask);
+                cancellationToken.ThrowIfCancellationRequested();
                 return false;
             }
 
             delayCancellation.Cancel();
+            if (connectTask.IsCanceled)
+            {
+                if (!attempt.TryAbandon())
+                {
+                    return true;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                return false;
+            }
+
             if (connectTask.IsFaulted)
             {
+                if (!attempt.TryAbandon())
+                {
+                    return true;
+                }
+
                 if (_logger.IsTrace) TraceConnectionFailure(node, connectTask.Exception!);
                 return false;
             }
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connected");
             return true;
+        }
+
+        private void DisconnectWhenConnected(Task<IChannel> connectTask) =>
+            _ = connectTask.ContinueWith(
+                _disconnectConnectedChannel,
+                null,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+
+        internal static bool TryCreateAlternateDialNode(Node node, bool allowNonRoutable, [NotNullWhen(true)] out Node? alternate)
+        {
+            NodeRecord? record = node.Enr;
+            AddressFamily alternateFamily = node.Address.AddressFamily switch
+            {
+                AddressFamily.InterNetwork => AddressFamily.InterNetworkV6,
+                AddressFamily.InterNetworkV6 => AddressFamily.InterNetwork,
+                _ => AddressFamily.Unknown
+            };
+            bool familySupported = alternateFamily switch
+            {
+                AddressFamily.InterNetwork => Socket.OSSupportsIPv4,
+                AddressFamily.InterNetworkV6 => Socket.OSSupportsIPv6,
+                _ => false
+            };
+            if (!familySupported || record is null || !node.IsVerifiedEnr(record) ||
+                record.EnrSequence < node.HighestObservedEnrSequence ||
+                !Node.TryFromEnr(record, alternateFamily, out alternate) ||
+                alternate.Id != node.Id || alternate.Address.Equals(node.Address) ||
+                (IPAddress.IsLoopback(alternate.Address.Address) && !IPAddress.IsLoopback(node.Address.Address)) ||
+                !IsDialAddressAcceptable(alternate.Address.Address, allowNonRoutable))
+            {
+                alternate = null;
+                return false;
+            }
+
+            alternate.MergeEnrStateFrom(node);
+            alternate.IsStatic = node.IsStatic;
+            alternate.IsTrusted = node.IsTrusted;
+            alternate.IsBootnode = node.IsBootnode;
+            return true;
+        }
+
+        internal static bool IsDialAddressAcceptable(IPAddress address, bool allowNonRoutable)
+        {
+            ParsedIPAddress parsed = ParsedIPAddress.Parse(address);
+            return !parsed.IsWildcardOrNone &&
+                   !parsed.IsMulticast &&
+                   !parsed.IsSpecialUseAddress &&
+                   (allowNonRoutable || !parsed.IsLoopbackOrPrivateOrLinkLocal);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -244,6 +407,14 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceConnectionFailure(Node node, Exception exception) =>
             _logger.Trace($"|NetworkTrace| {node:s} error when OUT connecting {exception}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceRejectedDialEndpoint(Node node, IPEndPoint endpoint) =>
+            _logger.Trace($"|NetworkTrace| {node:s} rejected OUT endpoint {endpoint}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceFilteredDialEndpoint(Node node) =>
+            _logger.Trace($"|NetworkTrace| {node:s} rejected filtered OUT endpoint {node.Address}");
 
         public event EventHandler<SessionEventArgs> SessionCreated;
         public event SessionDisconnectedEventHandler SessionDisconnected;
@@ -265,54 +436,60 @@ namespace Nethermind.Network.Rlpx
 
         /// <summary>
         /// Rejects inbound connections from IPs already seen within the filter window.
-        /// Outgoing connections are filtered earlier by <see cref="ShouldContact"/> before <see cref="ConnectAsync"/>.
+        /// Primary outgoing endpoints are recorded by <see cref="ShouldContact"/> before <see cref="ConnectAsync"/>;
+        /// fallback endpoints are checked without mutation and recorded only after connecting.
         /// </summary>
-        private bool ShouldRejectInbound(ISession session, IChannel channel)
+        private bool ShouldRejectInbound(ISession session, IChannel channel, IPAddress? inboundRemoteIp)
         {
-            if (session.Direction == ConnectionDirection.In
-                && channel.RemoteAddress is IPEndPoint remoteEndpoint
-                && !_privilegedIpProvider.IsPrivileged(remoteEndpoint.Address)
-                && !_nodeFilter.TryAccept(remoteEndpoint.Address))
+            if (session.Direction == ConnectionDirection.In && inboundRemoteIp is not null)
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteEndpoint.Address}");
-                _ = channel.CloseAsync();
-                return true;
+                if (!_privilegedIpProvider.IsPrivileged(inboundRemoteIp) && !_nodeFilter.TryAccept(inboundRemoteIp))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {inboundRemoteIp}");
+                    _ = channel.CloseAsync();
+                    return true;
+                }
             }
 
             return false;
         }
 
-        private void InitializeChannel(IChannel channel, ISession session)
+        private void InitializeChannel(IChannel channel, ISession session, IPAddress? inboundRemoteIp)
         {
-            if (session.Direction == ConnectionDirection.In)
-            {
-                Metrics.IncomingConnections++;
-            }
-            else
-            {
-                Metrics.OutgoingConnections++;
-            }
-
+            Metrics.IncomingConnections++;
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
 
-            if (ShouldRejectInbound(session, channel))
+            if (ShouldRejectInbound(session, channel, inboundRemoteIp))
             {
                 return;
             }
 
             SetTcpSocketOptions(channel);
+            ActivateSession(channel, session);
+            AddHandshakeHandlers(channel, session, HandshakeRole.Recipient);
+        }
 
-            TrackSessionActivity(session);
-            _sessionMonitor.AddSession(session);
-            SessionCreated?.Invoke(this, new SessionEventArgs(session));
+        private void InitializeOutboundChannel(IChannel channel, ISession session, ConnectionAttempt attempt)
+        {
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Initializing {session} channel");
+            SetTcpSocketOptions(channel);
+            channel.Pipeline.AddLast("out-session-activation", new OutboundSessionActivationHandler(this, session, attempt));
+            AddHandshakeHandlers(channel, session, HandshakeRole.Initiator);
+        }
 
-            HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
+        private void AddHandshakeHandlers(IChannel channel, ISession session, HandshakeRole role)
+        {
             NettyHandshakeHandler handshakeHandler = new(_serializationService, _handshakeService, session, role, _logManager, _group, _sendLatency);
-
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
+        }
+
+        private void ActivateSession(IChannel channel, ISession session)
+        {
+            TrackSessionActivity(session);
+            _sessionMonitor.AddSession(session);
 
             _ = channel.CloseCompletion.ContinueWith(
                 _onChannelCloseCompleted,
@@ -320,6 +497,8 @@ namespace Nethermind.Network.Rlpx
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
+
+            SessionCreated?.Invoke(this, new SessionEventArgs(session));
         }
 
         private void SetTcpSocketOptions(IChannel channel)
@@ -532,21 +711,55 @@ namespace Nethermind.Network.Rlpx
             {
                 Session session = new(_rlpxHost.LocalPort, channel, _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
                 IPEndPoint? ipEndPoint = channel.RemoteAddress.ToIPEndpoint();
-                session.RemoteHost = ipEndPoint.Address.ToString();
+                IPAddress remoteIp = ipEndPoint.Address.NormalizeMappedIPv4();
+                session.RemoteHost = remoteIp.ToString();
                 session.RemotePort = ipEndPoint.Port;
-                _rlpxHost.InitializeChannel(channel, session);
+                _rlpxHost.InitializeChannel(channel, session, remoteIp);
             }
         }
 
-        private sealed class OutboundChannelInitializer(RlpxHost rlpxHost, Node node) : ChannelInitializer<IChannel>
+        private sealed class OutboundChannelInitializer(RlpxHost rlpxHost, Node node, ConnectionAttempt attempt) : ChannelInitializer<IChannel>
         {
             private readonly RlpxHost _rlpxHost = rlpxHost;
             private readonly Node _node = node;
+            private readonly ConnectionAttempt _attempt = attempt;
 
             protected override void InitChannel(IChannel channel)
             {
                 Session session = new(_rlpxHost.LocalPort, _node, channel, _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
-                _rlpxHost.InitializeChannel(channel, session);
+                _rlpxHost.InitializeOutboundChannel(channel, session, _attempt);
+            }
+        }
+
+        private sealed class ConnectionAttempt
+        {
+            private int _state;
+
+            public bool TryActivate() => Interlocked.CompareExchange(ref _state, 1, 0) == 0;
+
+            public bool TryAbandon() => Interlocked.CompareExchange(ref _state, 2, 0) == 0;
+        }
+
+        private sealed class OutboundSessionActivationHandler(RlpxHost rlpxHost, ISession session, ConnectionAttempt attempt) : ChannelHandlerAdapter
+        {
+            private readonly RlpxHost _rlpxHost = rlpxHost;
+            private readonly ISession _session = session;
+            private readonly ConnectionAttempt _attempt = attempt;
+
+            public override void ChannelActive(IChannelHandlerContext context)
+            {
+                if (_attempt.TryActivate())
+                {
+                    Metrics.OutgoingConnections++;
+                    _rlpxHost.ActivateSession(context.Channel, _session);
+                }
+                else
+                {
+                    _ = context.CloseAsync();
+                    return;
+                }
+
+                base.ChannelActive(context);
             }
         }
 

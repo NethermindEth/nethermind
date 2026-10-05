@@ -8,6 +8,7 @@
     <Project Path="../../src/Nethermind/Nethermind.Core/Nethermind.Core.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Crypto/Nethermind.Crypto.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Db/Nethermind.Db.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Evm.Fody/Nethermind.Evm.Fody.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />

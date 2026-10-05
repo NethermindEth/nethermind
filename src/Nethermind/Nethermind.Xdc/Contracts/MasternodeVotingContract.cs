@@ -10,9 +10,12 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Xdc.Contracts;
 
@@ -72,27 +75,10 @@ internal class MasternodeVotingContract(
     }
 
 
-    public Address GetCandidateOwner(IWorldState worldState, Address candidate)
-    {
-        const int ValidatorsStateSlot = (byte)CandidateContractSlots.ValidatorsState;
-        Span<byte> mappingKeyInput = stackalloc byte[64];
-        mappingKeyInput.Clear();
-        candidate.Bytes.CopyTo(mappingKeyInput.Slice(12, Address.Size));
-        mappingKeyInput[63] = ValidatorsStateSlot;
-        ValueHash256 slotHash = ValueKeccak.Compute(mappingKeyInput);
-        UInt256 slot = new(slotHash.Bytes, isBigEndian: true);
+    public Address GetCandidateOwner(IWorldState worldState, Address candidate) =>
+        ReadAddress(worldState, ValidatorsStateSlot(candidate));
 
-        StorageCell cell = new(ContractAddress!, slot);
-        ReadOnlySpan<byte> storageValue = worldState.Get(cell);
-
-        // Right-align into a 32-byte buffer and take the last 20 bytes to get the owner address,
-        // mirroring Go's GetOwner: common.HexToAddress(GetState(...).Hex()).
-        // Unknown candidates return all-zero bytes → Address.Zero.
-        Span<byte> raw = stackalloc byte[32];
-        storageValue.CopyTo(raw.Slice(32 - storageValue.Length));
-        return new Address(raw.Slice(32 - Address.Size));
-    }
-
+    [SkipLocalsInit]
     public Address[] GetVoters(IWorldState worldState, Address candidate)
     {
         // mapping(address => address[]) voters: the length sits at the mapping slot, the entries at keccak of it.
@@ -103,8 +89,8 @@ internal class MasternodeVotingContract(
             return [];
         }
 
-        Span<byte> arraySlotBytes = stackalloc byte[32];
-        arraySlot.ToBigEndian(arraySlotBytes);
+        EvmWord arraySlotWord = arraySlot.ToBigEndianWord();
+        ReadOnlySpan<byte> arraySlotBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref arraySlotWord, 1));
         UInt256 entrySlot = new(ValueKeccak.Compute(arraySlotBytes).Bytes, isBigEndian: true);
 
         Address[] voters = new Address[(ulong)length];
@@ -136,18 +122,17 @@ internal class MasternodeVotingContract(
 
     private UInt256 ReadSlot(IWorldState worldState, in UInt256 slot)
     {
-        ReadOnlySpan<byte> value = worldState.Get(new StorageCell(ContractAddress!, slot));
-        return value.IsEmpty ? UInt256.Zero : new UInt256(value, isBigEndian: true);
+        worldState.Get(new StorageCell(ContractAddress!, slot), out UInt256 value);
+        return value;
     }
 
+    [SkipLocalsInit]
     private Address ReadAddress(IWorldState worldState, in UInt256 slot)
     {
-        ReadOnlySpan<byte> value = worldState.Get(new StorageCell(ContractAddress!, slot));
+        worldState.Get(new StorageCell(ContractAddress!, slot), out UInt256 value);
 
-        // Storage values are stored trimmed, so right-align before taking the low 20 bytes.
-        Span<byte> raw = stackalloc byte[32];
-        raw.Clear();
-        value.CopyTo(raw.Slice(32 - value.Length));
+        EvmWord word = value.ToBigEndianWord();
+        ReadOnlySpan<byte> raw = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1));
         return new Address(raw.Slice(32 - Address.Size));
     }
 
@@ -166,32 +151,6 @@ internal class MasternodeVotingContract(
         object[] decoded = DecodeReturnData("getCandidates", result);
         return (Address[])decoded[0]!;
     }
-
-    /// <summary>
-    /// Optimization to get candidates directly from storage without going through EVM call
-    /// </summary>
-    /// <param name="header"></param>
-    /// <returns></returns>
-    public Address[] GetCandidatesFromState(BlockHeader header)
-    {
-        CandidateContractSlots variableSlot = CandidateContractSlots.Candidates;
-        Span<byte> input = [(byte)variableSlot];
-        UInt256 slot = new(Keccak.Compute(input).Bytes);
-        using IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope source = txProcessorSource.Build(header);
-        IWorldState worldState = source.WorldState;
-        ReadOnlySpan<byte> storageCell = worldState.Get(new StorageCell(ContractAddress, slot));
-        UInt256 length = new(storageCell);
-        Address[] candidates = new Address[(ulong)length];
-        for (int i = 0; i < length; i++)
-        {
-            UInt256 key = CalculateArrayKey(slot, (ulong)i, 1);
-            candidates[i] = new Address(worldState.Get(new StorageCell(ContractAddress, key)));
-        }
-        return candidates;
-    }
-
-    private UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size) => slot + new UInt256(index * size);
 
     /// <summary>
     /// Returns an array of masternode candidates sorted by stake

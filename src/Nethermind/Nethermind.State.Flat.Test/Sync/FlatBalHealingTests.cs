@@ -217,6 +217,83 @@ public class FlatBalHealingTests
         _syncStore.Received(1).FinalizeSync(lastPivot);
     }
 
+    public static IEnumerable<TestCaseData> RevivalCases()
+    {
+        (string Name, BalanceChange[] Changes, uint ReviveIndex, int EmptyBlocks, bool SeparateDeletion)[] scenarios =
+        [
+            ("transaction", [new(1, 0), new(2, 100)], 2, 0, false),
+            ("repeated transaction", [new(1, 0), new(2, 100), new(3, 0), new(4, 100)], 4, 0, false),
+            ("block", [new(1, 100)], 1, 0, true),
+            ("chunk", [new(1, 100)], 1, 15, true)
+        ];
+        foreach ((string name, BalanceChange[] changes, uint reviveIndex, int emptyBlocks, bool separateDeletion) in scenarios)
+        {
+            foreach (bool writesStorageAfterRevival in new[] { false, true })
+                yield return new TestCaseData(changes, reviveIndex, emptyBlocks, separateDeletion, writesStorageAfterRevival)
+                    .SetName($"Revived account loses old storage across {name}, new storage: {writesStorageAfterRevival}");
+        }
+    }
+
+    [TestCaseSource(nameof(RevivalCases))]
+    public async Task Revived_account_loses_its_old_storage(
+        BalanceChange[] balanceChanges, uint reviveIndex, int emptyBlocks, bool separateDeletion, bool writesStorageAfterRevival)
+    {
+        // A code-less, nonce-zero payer with positive balance and storage is a valid nonempty prestate.
+        SeedInitialState(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05])]), Acc(TestItem.AddressB, 200));
+        byte[]? code = writesStorageAfterRevival ? [0x00] : null;
+        Hash256 expected = BuildRoot(
+            Acc(TestItem.AddressA, 100, nonce: writesStorageAfterRevival ? 1UL : 0, code: code,
+                slots: writesStorageAfterRevival ? [new Slot(2, [0x07])] : []),
+            Acc(TestItem.AddressB, 200));
+
+        BlockHeader firstPivot = Pivot(0, TestItem.KeccakA);
+        BlockHeader lastPivot = firstPivot;
+        for (int i = 0; i < emptyBlocks; i++) lastPivot = SetupBlock(lastPivot, TestItem.KeccakA, EmptyBal());
+        if (separateDeletion)
+            lastPivot = SetupBlock(lastPivot, TestItem.KeccakA, BalanceBal(TestItem.AddressA, 0));
+
+        ReadOnlyAccountChanges changes = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(balanceChanges)
+            .WithNonceChanges(writesStorageAfterRevival ? [new NonceChange(reviveIndex, 1)] : [])
+            .WithCodeChanges(writesStorageAfterRevival ? [new CodeChange(reviveIndex, code!)] : [])
+            .TestObject;
+        if (writesStorageAfterRevival)
+            changes = new ReadOnlyAccountChanges(changes.Address,
+                [new ReadOnlySlotChanges(2, [new StorageChange(reviveIndex + 1, 7)])], [],
+                changes.BalanceChanges, changes.NonceChanges, changes.CodeChanges);
+        lastPivot = SetupBlock(lastPivot, expected, Bal(changes));
+
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True, "healing must reach the root after deletion and revival");
+            Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "old storage must be wiped");
+            Assert.That(FlatSlotExists(TestItem.AddressA, 2), Is.EqualTo(writesStorageAfterRevival));
+        }
+    }
+
+    [Test]
+    public async Task Changes_at_the_same_transaction_index_do_not_delete_a_nonempty_account()
+    {
+        SeedInitialState(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05])]));
+        Hash256 expected = BuildRoot(Acc(TestItem.AddressA, 0, nonce: 1, slots: [new Slot(1, [0x05])]));
+        BlockHeader firstPivot = Pivot(0, TestItem.KeccakA);
+        ReadOnlyAccountChanges changes = Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(1, 0))
+            .WithNonceChanges(new NonceChange(1, 1)).TestObject;
+        BlockHeader lastPivot = SetupBlock(firstPivot, expected, Bal(changes));
+
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.True);
+        }
+    }
+
     [Test]
     public async Task Read_only_empty_account_is_preserved_during_healing()
     {
@@ -426,7 +503,7 @@ public class FlatBalHealingTests
     private bool FlatSlotExists(Address address, UInt256 slot)
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.Sync);
-        SlotValue value = default;
+        UInt256 value = default;
         return reader.TryGetSlot(address, slot, ref value);
     }
 
@@ -493,7 +570,7 @@ public class FlatBalHealingTests
                 foreach (Slot slot in slots)
                 {
                     storage.Set(slot.Key, slot.Value);
-                    batch.SetStorage(spec.Address, slot.Key, SlotValue.FromSpanWithoutLeadingZero(slot.Value));
+                    batch.SetStorage(spec.Address, slot.Key, BaseFlatPersistence.DecodeSlotValue(slot.Value));
                 }
                 storage.Commit();
                 account = account.WithChangedStorageRoot(storage.RootHash);

@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -27,18 +28,14 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         int transactionLength = decoderContext.ReadSequenceLength();
         int lastCheck = decoderContext.Position + transactionLength;
 
-        DecodePayload(transaction, ref decoderContext, rlpBehaviors);
+        // ReadSequenceLength does not check the declared length against the bytes on hand, so the payload
+        // extent is the envelope this transaction was handed, not what its own header claims.
+        DecodePayload(transaction, ref decoderContext,
+            Math.Min(lastCheck, txSequenceStart + transactionSequence.Length), rlpBehaviors);
 
         if (decoderContext.Position < lastCheck)
         {
-            try
-            {
-                transaction.Signature = DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
-            }
-            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
-            {
-                throw new RlpException("RLP data is truncated: transaction signature is incomplete.", e);
-            }
+            DecodeTrailing(transaction, ref decoderContext, rlpBehaviors);
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
@@ -49,6 +46,18 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
             CalculateHash(transaction, txSequenceStart, transactionSequence, ref decoderContext);
+        }
+    }
+
+    protected virtual void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+    {
+        try
+        {
+            transaction.Signature = DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            throw new RlpException("RLP data is truncated: transaction signature is incomplete.", e);
         }
     }
 
@@ -93,40 +102,60 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         return txPayloadLength;
     }
 
-    protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <summary>Decodes the payload fields, up to <paramref name="payloadEnd"/>.</summary>
+    /// <remarks>The reader can span a whole message, so a decoder sizing an allocation from the bytes on hand
+    /// must bound it by <paramref name="payloadEnd"/> and not by the reader's length.</remarks>
+    protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors)
     {
-        transaction.Nonce = DecodeNonce(ref decoderContext);
+        LiteRlpReader rlp = new(decoderContext.Data);
+        decoderContext.Position = DecodeNonce(rlp, decoderContext.Position, out ulong nonce);
+        transaction.Nonce = nonce;
+
+        // The gas price is a virtual extension point, so the cursor goes back to the reader here.
         DecodeGasPrice(transaction, ref decoderContext);
-        transaction.GasLimit = decoderContext.DecodeULong();
-        transaction.To = decoderContext.DecodeAddressOrNull();
-        transaction.Value = decoderContext.DecodeUInt256();
+
+        int position = decoderContext.Position;
+        rlp.DecodeULong(ref position, out ulong gasLimit);
+        transaction.GasLimit = gasLimit;
+        transaction.To = rlp.DecodeAddressOrNull(ref position);
+        rlp.DecodeUInt256(ref position, out UInt256 value);
+        transaction.Value = value;
+        decoderContext.Position = position;
+
+        // The Memory-returning byte-string decode is reader-only, so it takes the cursor back.
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
     }
 
-    private static ulong DecodeNonce(ref RlpReader decoderContext)
+    private static int DecodeNonce(LiteRlpReader rlp, int position, out ulong nonce)
     {
-        if (decoderContext.PeekPrefixAndContentLength().ContentLength <= sizeof(ulong))
+        (_, int contentLength) = rlp.PeekPrefixAndContentLength(position);
+        if (contentLength <= sizeof(ulong))
         {
-            return decoderContext.DecodeULong();
+            rlp.DecodeULong(ref position, out nonce);
+            return position;
         }
 
-        int position = decoderContext.Position;
-        ReadOnlySpan<byte> nonceBytes = decoderContext.DecodeByteArraySpan(RlpLimit.DefaultLimit);
+        int noncePosition = position;
+        _ = RlpHelpers.DecodeByteArraySpan(rlp.Data, position, out ReadOnlySpan<byte> nonceBytes, RlpLimit.DefaultLimit);
         if (nonceBytes[0] == 0)
         {
-            RlpHelpers.ThrowNonCanonicalInteger(position);
+            RlpHelpers.ThrowNonCanonicalInteger(noncePosition);
         }
 
-        return RlpHelpers.ThrowNonceTooWide(position);
+        nonce = default;
+        return RlpHelpers.ThrowNonceTooWide(noncePosition);
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();
 
     protected Signature? DecodeSignature(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        ulong v = decoderContext.DecodeULong();
-        ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
-        ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
+        LiteRlpReader rlp = new(decoderContext.Data);
+        int position = decoderContext.Position;
+        rlp.DecodeULong(ref position, out ulong v);
+        position = RlpHelpers.DecodeByteArraySpanUpTo32(rlp.Data, position, out ReadOnlySpan<byte> rBytes);
+        position = RlpHelpers.DecodeByteArraySpanUpTo32(rlp.Data, position, out ReadOnlySpan<byte> sBytes);
+        decoderContext.Position = position;
         return DecodeSignature(v, rBytes, sBytes, transaction.Signature, rlpBehaviors);
     }
 

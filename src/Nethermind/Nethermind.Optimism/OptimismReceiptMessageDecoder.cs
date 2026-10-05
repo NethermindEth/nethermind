@@ -55,14 +55,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
 
         int logEntriesCheck = ctx.ReadSequenceLength() + ctx.Position;
 
-        int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(logEntriesCheck);
-        ctx.GuardLimit(numberOfReceipts);
-        LogEntry[] entries = new LogEntry[numberOfReceipts];
-        for (int i = 0; i < numberOfReceipts; i++)
-        {
-            entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
-        }
-        txReceipt.Logs = entries;
+        txReceipt.Logs = LogEntryDecoder.DecodeLogs(ref ctx, logEntriesCheck);
 
         if (lastCheck > ctx.Position)
         {

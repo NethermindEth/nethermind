@@ -15,6 +15,8 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
+    ITrieNodeCache trieNodeCache,
+    IHistoricalTrieVisitor historicalTrieVisitor,
     ILogManager logManager
 ) : IStateReader
 {
@@ -31,38 +33,53 @@ public class FlatStateReader(
         return false;
     }
 
-    public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+    public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
     {
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
-        return reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address)) ?? [];
+        reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out UInt256? slot);
+        value = slot.GetValueOrDefault();
     }
 
-    public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];
+    public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
 
-    public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : codeDb[codeHash.Bytes];
+    public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
 
     public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
     {
         StateId stateId = new(baseBlock);
 
-        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        bool historical = reader.IsHistorical;
+        if (historical) reader.Dispose();
 
-        if (reader.IsHistorical)
+        if (historical)
         {
+            try
+            {
+                if (historicalTrieVisitor.TryRunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics)) return;
+            }
+            catch (StateUnavailableException e)
+            {
+                throw StateUnavailable(baseBlock, $"State proof at historical block {stateId.BlockNumber} is unavailable", e);
+            }
+
             throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
         }
 
-        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
-
-        PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
-        patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+        using (reader)
+        {
+            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : trieNodeCache);
+            PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
+            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+        }
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
     /// <summary>
     /// Translates "state unavailable" into <see cref="MissingTrieNodeException"/> — the hash-based reader's
-    /// contract, which JSON-RPC maps to resource-not-found instead of an internal error.
+    /// contract — keeping the cause as inner, so JSON-RPC answers resource-unavailable (-32002) for a
+    /// <see cref="StateNotRetainedException"/> and resource-not-found otherwise.
     /// </summary>
     private ReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock)
     {

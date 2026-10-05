@@ -11,6 +11,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core;
 using System.Collections.Generic;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Crypto;
@@ -67,7 +68,7 @@ public class TxPoolContentListsTests
         scope.TransactionProcessor.Returns(transactionProcessor);
 
         IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
-        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
+        shareableTxProcessor.TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(call => call.Succeed(1, scope));
 
         TaikoEngineRpcModule taikoAuthRpcModule = CreateRpcModule(txPool, blockFinder, shareableTxProcessor);
 
@@ -165,7 +166,7 @@ public class TxPoolContentListsTests
         scope.TransactionProcessor.Returns(transactionProcessor);
 
         IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
-        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
+        shareableTxProcessor.TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(call => call.Succeed(1, scope));
 
         TaikoEngineRpcModule rpcModule = CreateRpcModule(txPool, blockFinder, shareableTxProcessor,
             new Config.SurgeConfig { MaxGasLimitRatio = maxGasLimitRatio });
@@ -224,7 +225,7 @@ public class TxPoolContentListsTests
         scope.TransactionProcessor.Returns(transactionProcessor);
 
         IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
-        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
+        shareableTxProcessor.TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(call => call.Succeed(1, scope));
 
         TaikoEngineRpcModule rpcModule = CreateRpcModule(txPool, blockFinder, shareableTxProcessor,
             new Config.SurgeConfig { MaxGasLimitRatio = surgeMaxGasLimitRatio });
@@ -261,6 +262,7 @@ public class TxPoolContentListsTests
             Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
             Substitute.For<IHandler<Hash256?, InclusionListBytes>>(),
             Substitute.For<Nethermind.Consensus.Transactions.IInclusionListTxSource>(),
+            Substitute.For<IInclusionListComplianceEvaluator>(),
             Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>>(),
             Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
             Substitute.For<IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>>(),
@@ -268,9 +270,11 @@ public class TxPoolContentListsTests
             Substitute.For<IBlobCustodyTracker>(),
             Substitute.For<ISpecProvider>(),
             null!,
+            Substitute.For<Nethermind.Consensus.Processing.IBlockProcessingQueue>(),
             Substitute.For<ILogManager>(),
             txPool,
             blockFinder,
+            Substitute.For<IBlockTree>(),
             shareableTxProcessor,
             TxDecoder.Instance,
             Substitute.For<IL1OriginStore>(),

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 
 namespace Nethermind.Core.Tasks;
 
@@ -23,6 +24,7 @@ public static class Wait
     /// Results implementing <see cref="IDisposable"/> are disposed when rejected by <paramref name="cond"/>.
     /// Tasks abandoned on return or failure have their results disposed when they complete.
     /// This method does not wait for abandoned tasks, so their disposal may happen after it returns.
+    /// Callers must arrange cancellation of the supplied tasks; this method waits until one completes.
     /// </remarks>
     public static async Task<T> AnyWhere<T>(Func<T, bool> cond, params IEnumerable<Task<T>> tasks)
     {
@@ -42,7 +44,8 @@ public static class Wait
                 }
 
                 taskSet.Remove(resolved);
-                Discard(result);
+
+                TryDiscard(result);
             }
 
             throw new UnreachableException();
@@ -53,10 +56,23 @@ public static class Wait
         }
     }
 
-    private static void Discard<T>(T result)
+    private static void TryDiscard<T>(T result)
     {
-        if (result is IDisposable disposable) disposable.Dispose();
+        try
+        {
+            if (result is IDisposable disposable) disposable.Dispose();
+        }
+        catch (Exception exception)
+        {
+            // A failing diagnostic must neither delay the completing thread nor escape cleanup.
+            _ = ReportDiscardFailure(exception);
+        }
     }
+
+    internal static Task ReportDiscardFailure(Exception exception) =>
+        Task.Run(() => Static.LogManager.GetLogger(nameof(Wait)).Error("Failed to dispose a task result", exception))
+            .ContinueWith(static completed => { _ = completed.Exception; }, CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
     private static void DiscardRemaining<T>(HashSet<Task<T>> tasks)
     {
@@ -64,7 +80,10 @@ public static class Wait
         {
             _ = task.ContinueWith(static abandoned =>
             {
-                if (abandoned.IsCompletedSuccessfully) Discard(abandoned.Result);
+                if (abandoned.IsCompletedSuccessfully)
+                {
+                    TryDiscard(abandoned.Result);
+                }
                 // Observe a failure too, so abandoning it does not raise UnobservedTaskException.
                 else _ = abandoned.Exception;
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);

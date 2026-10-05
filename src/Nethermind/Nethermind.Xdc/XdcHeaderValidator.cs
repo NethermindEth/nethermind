@@ -21,7 +21,7 @@ public class XdcHeaderValidator(
     ISpecProvider specProvider,
     ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error, bool validateHash)
     {
         ArgumentNullException.ThrowIfNull(parent);
         if (header is not XdcBlockHeader xdcHeader)
@@ -65,7 +65,7 @@ public class XdcHeaderValidator(
             return false;
         }
 
-        if (!base.Validate<TOrphaned>(header, parent, isUncle, out error))
+        if (!base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash))
         {
             return false;
         }
@@ -133,5 +133,7 @@ public class XdcHeaderValidator(
         return true;
     }
 
-    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
+    protected override bool ValidateBlobGasFields(BlockHeader header, IReleaseSpec spec, ref string? error) => true;
+
+    protected override bool ValidateExcessBlobGas(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 }

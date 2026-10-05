@@ -44,7 +44,9 @@ namespace Nethermind.Synchronization.FastBlocks
         public override void Dispose()
         {
             base.Dispose();
-            Response?.Dispose();
+            IOwnedReadOnlyList<BlockHeader?>? response = Response;
+            Response = null;
+            response?.Dispose();
         }
     }
 }

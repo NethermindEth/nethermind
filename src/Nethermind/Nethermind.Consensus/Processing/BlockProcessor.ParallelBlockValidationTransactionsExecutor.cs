@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Eip2930;
@@ -29,9 +31,12 @@ public partial class BlockProcessor
         IBlockAccessListManager balManager,
         ILogManager logManager,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
-        : IBlockProcessor.IBlockTransactionsExecutor
+        : IBlockProcessor.IBlockTransactionsExecutor,
+          BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
+        private readonly List<TxProcessedEventArgs>? _pendingTransactionProcessedEvents =
+            transactionProcessedEventHandler is null ? null : [];
         private IncrementalValidationWorkItem? _incrementalValidationWorkItem;
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
         private GasValidationResultSlot[] _gasResultPool = [];
@@ -52,6 +57,8 @@ public partial class BlockProcessor
                 return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
             }
 
+            ClearTransactionProcessedEvents();
+            _pendingTransactionProcessedEvents?.EnsureCapacity(block.Transactions.Length);
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
@@ -110,6 +117,9 @@ public partial class BlockProcessor
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
                 if (shouldValidateBal) balManager.ValidateBlockAccessList(block, i + 1);
+
+                _pendingTransactionProcessedEvents?.Add(
+                    new TxProcessedEventArgs((int)i, currentTx, block.Header, receiptsTracer.TxReceipts[(int)i]));
             }
 
             return [.. receiptsTracer.TxReceipts];
@@ -117,6 +127,7 @@ public partial class BlockProcessor
 
         private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer outerReceiptsTracer, CancellationToken token)
         {
+            using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
             int len = block.Transactions.Length;
             bool isBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
             IBlockTracer parallelSafeTracer = GetParallelSafeTracer(outerReceiptsTracer.OtherTracer);
@@ -142,14 +153,21 @@ public partial class BlockProcessor
             _pooledSlotsInUse = len;
 
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
-            incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
             try
             {
                 try
                 {
-                    // Iterations: 0 = ApplyStateChanges, 1..len = tx (scheduled order =
+                    incrementalValidation.Schedule(
+                        balManager,
+                        block,
+                        gasResults,
+                        receiptsTracers,
+                        transactionProcessedEventHandler is null ? null : this,
+                        token);
+
+                    // Iterations: 0 = ApplyBal, 1..len = tx (scheduled order =
                     // _txExecutionOrder[i-1]; balIndex = scheduledTxIndex+1). Pre-execution
                     // (StoreBeaconRoot + ApplyBlockhashStateChanges) ran sequentially in
                     // BlockProcessor.ProcessBlock before this method was called.
@@ -176,7 +194,14 @@ public partial class BlockProcessor
                                 if (i == 0)
                                 {
                                     state.balManager.WaitForBalWarmup();
-                                    BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                    ReadOnlyBlockAccessList bal = state.block.BlockAccessList;
+                                    // The world state never sees the BAL's writes, so its account changes would miss them.
+                                    if (state.isBlockProcessingThread) state.block.AccountChanges = bal.GetStateChangedAddresses();
+                                    // Pre-block writes on the shared state (e.g. AuRa's system accounts) are only committed to
+                                    // the journal; flush them to the scope before the BAL's values are laid over them.
+                                    state.stateProvider.Commit(state.specProvider.GetSpec(state.block.Header));
+                                    state.stateProvider.ApplyBal(bal);
+                                    state.stateProvider.RecalculateStateRoot();
                                     return state;
                                 }
 
@@ -265,6 +290,32 @@ public partial class BlockProcessor
                 // consistent on success.
                 HarvestPerTxReceiptsIntoOuter(receiptsTracers, len, outerReceiptsTracer);
             }
+        }
+
+        void BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler.OnTransactionProcessed(TxProcessedEventArgs args) =>
+            _pendingTransactionProcessedEvents?.Add(args);
+
+        /// <inheritdoc/>
+        public void PublishTransactionProcessedEvents()
+        {
+            inner.PublishTransactionProcessedEvents();
+
+            if (_pendingTransactionProcessedEvents is null)
+            {
+                return;
+            }
+
+            foreach (TxProcessedEventArgs pending in _pendingTransactionProcessedEvents)
+            {
+                transactionProcessedEventHandler!.OnTransactionProcessed(pending);
+            }
+        }
+
+        /// <inheritdoc/>
+        public void ClearTransactionProcessedEvents()
+        {
+            _pendingTransactionProcessedEvents?.Clear();
+            inner.ClearTransactionProcessedEvents();
         }
 
         private void EnsureParallelBuffers(int length)
@@ -371,6 +422,7 @@ public partial class BlockProcessor
                 ReadOnlySpan<TxReceipt> receipts = perTxTracers[i].TxReceipts;
                 if (receipts.IsEmpty) continue;
                 TxReceipt receipt = receipts[0];
+                receipt.Index = i;
                 cumulativeGas += receipt.GasUsed;
                 receipt.GasUsedTotal = cumulativeGas;
                 outer.SetReceipt(i, receipt);

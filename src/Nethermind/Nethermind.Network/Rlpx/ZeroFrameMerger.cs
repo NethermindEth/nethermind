@@ -15,7 +15,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroFrameMerger(ILogManager logManager) : ByteToMessageDecoder
+    public class ZeroFrameMerger(ILogManager logManager) : MessageToMessageDecoder<IByteBuffer>
     {
         private readonly ILogger _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -31,13 +31,7 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
-            // Note that each input is a full frame header16|payload that are automatically released by the base class.
-            // If the input is not a full and valid frame we can throw as this is an unexpected behaviour from the
-            // decoder up the pipeline.
-
-            // Moreover we will never receive more than a full packet in a single input so the input buffer
-            // is expected to have no readable bytes after the merging operation.
-
+            // ZeroFrameDecoder emits one complete authenticated frame per message.
             if (_logger.IsTrace) _logger.Trace("Merging frames");
             if (input.ReferenceCount != 1)
             {
@@ -51,9 +45,6 @@ namespace Nethermind.Network.Rlpx
             catch
             {
                 ReleaseInProgressPacket();
-                // The upstream decoder emits exactly one complete frame per input. Do not retain the rejected
-                // frame's payload and padding in ByteToMessageDecoder's cumulation when the peer stays connected.
-                input.SkipBytes(input.ReadableBytes);
                 throw;
             }
         }
@@ -61,6 +52,8 @@ namespace Nethermind.Network.Rlpx
         private void DecodeFrame(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
             FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
+            if (input.ReadableBytes != frame.PayloadSize)
+                ThrowInvalidFrameLength(input.ReadableBytes, frame.PayloadSize);
             if (frame.TotalPacketSize.HasValue || _zeroPacket is null)
             {
                 if (_zeroPacket is not null)
@@ -72,7 +65,13 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 ReadFirstChunk(context, input, frame);
-                _currentContextId = frame.TotalPacketSize.HasValue ? frame.ContextId : null;
+                if (!frame.TotalPacketSize.HasValue)
+                {
+                    output.Add(_zeroPacket!);
+                    ResetInProgressPacket();
+                    return;
+                }
+                _currentContextId = frame.ContextId;
             }
             else
             {
@@ -140,7 +139,9 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                content = input.ReadRetainedSlice(frame.Size - read);
+                input.SetWriterIndex(input.WriterIndex - frame.Padding);
+                // The message decoder releases its input after Decode; the packet owns the retained reference.
+                content = (IByteBuffer)input.Retain();
             }
 
             _zeroPacket = new ZeroPacket(content)
@@ -184,6 +185,10 @@ namespace Nethermind.Network.Rlpx
                 throw new CorruptedFrameException(exception);
             }
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidFrameLength(int actual, int expected)
+            => throw new CorruptedFrameException($"Decoded frame has {actual} payload bytes, expected {expected}");
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowFrameSizeExceedsRemaining(int frameSize, int remainingPacketSize)

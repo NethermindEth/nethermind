@@ -58,6 +58,43 @@ public static partial class IReleaseSpecExtensions
         public bool CLZEnabled => spec.IsEip7939Enabled;
         public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
 
+        // Each fork is detected by one marker EIP it introduces, so a chain enabling EIPs selectively
+        // counts as being at the fork once that marker is on.
+        /// <summary>Whether Shanghai is active, marked by EIP-4895 withdrawals.</summary>
+        public bool IsShanghaiEnabled => spec.WithdrawalsEnabled;
+        /// <summary>Whether Cancun is active, marked by EIP-4844 blob transactions.</summary>
+        public bool IsCancunEnabled => spec.IsEip4844Enabled;
+        /// <summary>Whether Prague is active, marked by the EIP-7685 execution requests.</summary>
+        public bool IsPragueEnabled => spec.RequestsEnabled;
+        /// <summary>Whether Osaka is active, marked by EIP-7594 PeerDAS.</summary>
+        public bool IsOsakaEnabled => spec.IsEip7594Enabled;
+        /// <summary>Whether Amsterdam is active, marked by EIP-7928 block-level access lists.</summary>
+        public bool IsAmsterdamEnabled => spec.BlockLevelAccessListsEnabled;
+        /// <summary>Whether Bogota is active, marked by EIP-7805 inclusion lists.</summary>
+        public bool IsBogotaEnabled => spec.InclusionListsEnabled;
+
+        /// <summary>The per-transaction gas limit cap.</summary>
+        /// <remarks>
+        /// EIP-8037's absolute cap on <c>tx.gas</c> across both gas dimensions, EIP-7825's execution-gas
+        /// cap before it, uncapped earlier.
+        /// </remarks>
+        public ulong GetTxGasLimitCap()
+            => spec.IsEip8037Enabled ? Eip8037Constants.TxMaxTotalGasLimit
+                : spec.IsEip7825Enabled ? Eip7825Constants.DefaultTxGasLimitCap
+                : ulong.MaxValue;
+
+        /// <summary>The part of <see cref="GetTxGasLimitCap"/> the transaction processor rejects by itself,
+        /// including when validation is skipped.</summary>
+        /// <remarks>
+        /// EIP-7825's execution-gas cap is checked by <c>GasLimitCapTxValidator</c> and the gas estimator only, so a
+        /// caller that defaults an omitted gas limit for <c>eth_call</c>-style requests must clamp by this rather than
+        /// by <see cref="GetTxGasLimitCap"/>; the wider cap would silently drop a gas-less request to EIP-7825's
+        /// 16,777,216 — below a typical <c>JsonRpc.GasCap</c> and below the block gas limit — without rejecting
+        /// anything the processor would have run.
+        /// </remarks>
+        public ulong GetProcessorEnforcedTxGasLimitCap()
+            => spec.IsEip8037Enabled ? Eip8037Constants.TxMaxTotalGasLimit : ulong.MaxValue;
+
         /// <summary>
         /// Returns a spec with EIP-158 disabled so state-override commits preserve synthetic accounts with storage.
         /// </summary>

@@ -41,6 +41,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
+    private StateId _lastClearedPersistedStateId = StateId.PreGenesis;
+    private long _lastClearedRemovedBaseSnapshotCount;
+
     // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
     private readonly Task _clearBundleCacheTask;
 
@@ -53,6 +56,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
+    private readonly double _inMemorySlotFilterBitsPerKey;
 
     public FlatDbManager(
         IResourcePool resourcePool,
@@ -74,6 +78,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
+        _inMemorySlotFilterBitsPerKey = config.InMemorySnapshotBloomBitsPerKey;
 
         // Must run before any background worker or read can access the persisted tier.
         persistedSnapshotLoader.Load();
@@ -88,8 +93,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorStallTimeout = TimeSpan.FromSeconds(0.5 * blocksConfig.SecondsPerSlot * _compactSize);
         _inlineCompaction = config.InlineCompaction;
 
-        // Keep worker cancellation under this manager's control so process-exit cancellation cannot
-        // preempt the ordered channel drain in DisposeAsync. Producer-side waits still observe process exit.
+        // Keep worker cancellation under this manager's control so process-exit cancellation cannot preempt the
+        // ordered channel drain in DisposeAsync. A job that fails is logged and the worker takes the next one; only
+        // a worker that stops, cancelled or failed outside its jobs, cancels the others, so no producer is left
+        // waiting for space on a channel nobody reads any more.
         _processExitToken = processExitSource.Token;
         _cancelTokenSource = new();
 
@@ -117,6 +124,16 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            _cancelTokenSource.Cancel();
+        }
+        catch
+        {
+            _cancelTokenSource.Cancel();
+            throw;
+        }
+        finally
+        {
+            _compactorJobs.Writer.TryComplete();
         }
     }
 
@@ -131,10 +148,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
-        if (_snapshotCompactor.DoCompactSnapshot(stateId))
-        {
-            ClearReadOnlyBundleCache();
-        }
+        _snapshotCompactor.DoCompactSnapshot(stateId);
 
         // Trigger persistence job.
         await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
@@ -151,6 +165,17 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            _cancelTokenSource.Cancel();
+        }
+        catch
+        {
+            _cancelTokenSource.Cancel();
+            throw;
+        }
+        finally
+        {
+            // No producer may wait for space after the only consumer has stopped.
+            _persistenceJobs.Writer.TryComplete();
         }
     }
 
@@ -161,7 +186,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
-        ClearReadOnlyBundleCache();
+        long removedBaseSnapshotCount = _snapshotRepository.RemovedBaseSnapshotCount;
+        if (currentPersistedStateId != _lastClearedPersistedStateId
+            || removedBaseSnapshotCount != _lastClearedRemovedBaseSnapshotCount)
+        {
+            _lastClearedPersistedStateId = currentPersistedStateId;
+            _lastClearedRemovedBaseSnapshotCount = removedBaseSnapshotCount;
+            ClearReadOnlyBundleCache();
+        }
     }
 
     private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
@@ -179,13 +211,29 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            _cancelTokenSource.Cancel();
+        }
+        catch
+        {
+            _cancelTokenSource.Cancel();
+            throw;
+        }
+        finally
+        {
+            _populateTrieNodeCacheJobs.Writer.TryComplete();
         }
     }
 
     private void PopulateTrieNodeCache(TransientResource transientResource)
     {
-        _trieNodeCache.Add(transientResource);
-        transientResource.ReleaseLease();
+        try
+        {
+            _trieNodeCache.Add(transientResource);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
     }
 
     private async Task NotifyWhenSlow(string name, Func<Task> closure)
@@ -242,11 +290,19 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
     private static readonly StringLabel _depthPersistedLabel = new("persisted");
 
-    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
+        GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
+
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock, ReaderFlags readerFlags)
     {
         // A linked-list snapshot chain was considered but rejected: the constantly moving chain makes
         // invalidation error-prone.
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
+
+        // Bundles built with non-default reader flags hold specially-configured readers; keep them out of
+        // the shared cache so ordinary consumers never inherit them, and never serve a cached (flagless)
+        // bundle for such a request.
+        bool shareable = readerFlags == ReaderFlags.None;
 
         if (baseBlock == StateId.PreGenesis)
         {
@@ -259,7 +315,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         while (true)
         {
             // Fastpath: Share a recently created ReadOnlySnapshotBundle
-            if (_readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease()) return bundle;
+            if (shareable && _readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease()) return bundle;
 
             if (attempt == 1) sw = Stopwatch.GetTimestamp();
             if (attempt != 0)
@@ -273,7 +329,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 Thread.Sleep(delayMs);
             }
 
-            IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader();
+            IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader(readerFlags);
             AssembledSnapshotResult assembled;
             try
             {
@@ -295,9 +351,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 assembled.Dispose();
                 persistenceReader.Dispose();
 
-                if (!_snapshotRepository.HasState(baseBlock))
+                if (!HasStateForBlock(baseBlock))
                 {
-                    throw new StateUnavailableException($"State {baseBlock} no longer exists; concurrently removed.");
+                    throw new StateNotRetainedException($"No state available for block {baseBlock.BlockNumber} with state root {baseBlock.StateRoot}");
                 }
 
                 attempt++;
@@ -308,8 +364,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReportBundleMetrics(assembled);
 
+            // Flagged bundles are one-off full scans (trie verification) that never read through the slot filter, so
+            // only shared bundles get bits per key. Nothing is built here: the first filtered read builds the filter.
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
-                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
+                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics),
+                slotFilterBitsPerKey: shareable ? _inMemorySlotFilterBitsPerKey : 0);
+
+            if (!shareable) return res;
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))
@@ -441,6 +502,17 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Persist every snapshot up to the committed head into RocksDB and clear the caches.
+    /// </summary>
+    /// <remarks>
+    /// Persists every tier up to the committed head, finalized or not, and prunes both tiers behind it.
+    /// That collapses the reorg window to zero: the single RocksDB state ends up at an unfinalized block,
+    /// and a later reorg below it cannot be served because the branch-point state no longer exists and
+    /// <see cref="AddSnapshot"/> rejects snapshots at or below the persisted block. Only for special cases
+    /// that need the state at the tip in RocksDB — genesis load and tests — never on the normal
+    /// shutdown path, where the persisted-snapshot tier is already durable and reloaded on start.
+    /// </remarks>
     public void FlushCache(CancellationToken cancellationToken)
     {
         if (_logger.IsInfo) _logger.Info("FlatDbManager FlushCache started.");
@@ -463,16 +535,21 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         return false;
     }
 
+    public void DropStateNotReachableFrom(in StateId head)
+    {
+        _persistenceManager.DropStateNotReachableFrom(head);
+        // Cached bundles lease the snapshots they were assembled over; without this the pruned ones stay
+        // alive until the periodic clear.
+        ClearReadOnlyBundleCache();
+    }
+
     /// <inheritdoc/>
     /// <remarks>
-    /// Persists the in-memory tier before tearing the workers down, so the flat state on disk matches
-    /// the block tree. Without it the process exits with the state up to <c>MinReorgDepth</c> blocks
-    /// behind the last committed block, and the next start has to re-run that branch from the persisted
-    /// base — a path that only survives as far as the next compaction boundary.
-    ///
-    /// The queues are completed in feed order — the compactor writes into the persistence queue, so it
-    /// has to drain first — and both are drained before the flush, so nothing still in flight is lost.
-    /// Cancellation comes after, otherwise it would abort the very work being drained.
+    /// Drains the queues in feed order — the compactor writes into the persistence queue, so it has to
+    /// drain first — before cancelling, so in-flight finality-driven persistence is not lost. It does not
+    /// <see cref="FlushCache"/>: that would persist the unfinalized tail and break reorgs across the
+    /// restart. The in-memory tier is re-executed from the persisted-snapshot tier on the next start.
+    /// If a worker stops before draining, sibling waits are cancelled instead; a failed job does not stop a worker.
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
@@ -487,8 +564,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             _persistenceJobs.Writer.TryComplete();
             await _persistenceTask;
-
-            FlushCache(CancellationToken.None);
         }
         finally
         {

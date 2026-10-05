@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -24,11 +25,20 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public bool IsInScope => State.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
 
-    public IDisposable BeginScope(BlockHeader? baseBlock)
-        => State.BeginScope(baseBlock);
+    public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        => State.TryBeginScope(baseBlock, out scopeCloser);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        => State.TryBeginScopeAtTarget(targetBlock, out scopeCloser);
+
+    public bool HasStateForTargetBlock(BlockHeader targetBlock)
+        => State.HasStateForTargetBlock(targetBlock);
 
     public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);
+
+    public void ApplyBal(ReadOnlyBlockAccessList bal)
+        => State.ApplyBal(bal);
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => State.HasStateForBlock(baseBlock);
@@ -45,10 +55,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual ref readonly ValueHash256 GetCodeHash(Address address)
         => ref State.GetCodeHash(address);
 
-    public virtual byte[]? GetCode(Address address)
+    public virtual ReadOnlyMemory<byte> GetCode(Address address)
         => State.GetCode(address);
 
-    public virtual byte[]? GetCode(in ValueHash256 codeHash)
+    public virtual ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         => State.GetCode(in codeHash);
 
     public virtual bool IsContract(Address address)
@@ -60,19 +70,24 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual bool IsDeadAccount(Address address)
         => State.IsDeadAccount(address);
 
-    public virtual ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
-        => State.GetOriginal(in storageCell);
+    public virtual void GetOriginal(in StorageCell storageCell, out UInt256 value)
+        => State.GetOriginal(in storageCell, out value);
 
-    public virtual ReadOnlySpan<byte> Get(in StorageCell storageCell)
-        => State.Get(in storageCell);
+    public virtual void Get(in StorageCell storageCell, out UInt256 value)
+        => State.Get(in storageCell, out value);
 
-    public virtual void Set(in StorageCell storageCell, byte[] newValue)
+    public virtual void Set(in StorageCell storageCell, in UInt256 newValue)
         => State.Set(in storageCell, newValue);
 
-    public virtual ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
-        => State.GetTransientState(in storageCell);
+    /// <inheritdoc/>
+    /// <remarks>Preserves interception by decorators that only override the ordinary write.</remarks>
+    public virtual void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+        => Set(in storageCell, in newValue);
 
-    public virtual void SetTransientState(in StorageCell storageCell, byte[] newValue)
+    public virtual void GetTransientState(in StorageCell storageCell, out UInt256 value)
+        => State.GetTransientState(in storageCell, out value);
+
+    public virtual void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         => State.SetTransientState(in storageCell, newValue);
 
     public virtual void Reset(bool resetBlockChanges = true)
@@ -86,6 +101,8 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         => State.WarmUp(accessList, cancellationToken);
+
+    public virtual bool TryApplyAccountOverlay(IStateReadOverlay overlay) => State.TryApplyAccountOverlay(overlay);
 
     public void WarmUp(Address address)
         => State.WarmUp(address);

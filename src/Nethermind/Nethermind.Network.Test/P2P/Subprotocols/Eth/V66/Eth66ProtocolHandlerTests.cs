@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Net;
 using System.Reflection;
@@ -220,7 +221,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_pooled_transactions()
         {
-            using Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage msg66 = new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
+            using Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage msg66 = new(new[] { Keccak.Zero, TestItem.KeccakA }.Select(static h => h.ValueHash256).ToArray().ToPooledList());
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg66, Eth66MessageCode.GetPooledTransactions);
@@ -235,8 +236,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _handler = CreateHandler(backgroundTaskScheduler);
             _handler.Init();
 
-            using GetPooledTransactionsMessage66 firstMessage = new(new[] { Keccak.Zero }.ToPooledList());
-            using GetPooledTransactionsMessage66 secondMessage = new(new[] { TestItem.KeccakA }.ToPooledList());
+            using GetPooledTransactionsMessage66 firstMessage = new(new[] { Keccak.Zero }.Select(static h => h.ValueHash256).ToArray().ToPooledList());
+            using GetPooledTransactionsMessage66 secondMessage = new(new[] { TestItem.KeccakA }.Select(static h => h.ValueHash256).ToArray().ToPooledList());
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(firstMessage, Eth66MessageCode.GetPooledTransactions);
@@ -353,6 +354,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Assert.That(act, Throws.TypeOf<SubprotocolException>());
         }
 
+        [Test]
+        public void Should_reject_unrequested_response_before_decoding(
+            [Values(Eth66MessageCode.BlockHeaders, Eth66MessageCode.BlockBodies, Eth66MessageCode.Receipts, Eth66MessageCode.NodeData)] int messageCode)
+        {
+            HandleIncomingStatusMessage();
+            UndecodableResponse.AssertRejectedAsUnrequested(_handler.HandleMessage, messageCode);
+        }
+
 
         [TestCase(0, 0)]
         [TestCase(1, 1)]
@@ -404,7 +413,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage66>(m =>
                 m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakA));
             _transactionPool.DidNotReceive().NotifyAboutTx(
-                Arg.Any<Hash256>(),
+                Arg.Any<ValueHash256>(),
                 Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
         }
 

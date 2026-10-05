@@ -180,7 +180,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     private BlockBody DecodeBody(Memory<byte> buffer)
     {
         RlpReader ctx = new(buffer.Span);
-        return _blockBodyDecoder.Decode(ref ctx)!;
+        return _blockBodyDecoder.Decode(ref ctx, RlpBehaviors.SkipPooledTransactions)!;
     }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)

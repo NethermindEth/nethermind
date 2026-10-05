@@ -11,9 +11,11 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -25,7 +27,6 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
@@ -54,6 +55,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
         IInclusionListTxSource inclusionListTxSource,
+        IInclusionListComplianceEvaluator inclusionListComplianceEvaluator,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
         IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
@@ -61,9 +63,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IBlobCustodyTracker blobCustodyTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
+        IBlockProcessingQueue processingQueue,
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
+        IBlockTree blockTree,
         IShareableTxProcessorSource txProcessorSource,
         IRlpDecoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
@@ -87,6 +91,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 getPayloadBodiesByRangeV2Handler,
                 getInclusionListTransactionsHandler,
                 inclusionListTxSource,
+                inclusionListComplianceEvaluator,
                 newPayloadWithWitnessHandlerV4,
                 newPayloadWithWitnessHandlerV5,
                 newPayloadWithWitnessHandlerV6,
@@ -94,7 +99,9 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 blobCustodyTracker,
                 specProvider,
                 gcKeeper,
-                logManager), ITaikoEngineRpcModule
+                processingQueue,
+                logManager,
+                blockTree), ITaikoEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
@@ -118,15 +125,18 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
         IInclusionListTxSource inclusionListTxSource,
+        IInclusionListComplianceEvaluator inclusionListComplianceEvaluator,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
         IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
+        IBlockProcessingQueue processingQueue,
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
+        IBlockTree blockTree,
         IShareableTxProcessorSource txProcessorSource,
         IRlpDecoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
@@ -151,6 +161,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             getPayloadBodiesByRangeV2Handler,
             getInclusionListTransactionsHandler,
             inclusionListTxSource,
+            inclusionListComplianceEvaluator,
             newPayloadWithWitnessHandlerV4,
             newPayloadWithWitnessHandlerV5,
             newPayloadWithWitnessHandlerV6,
@@ -158,9 +169,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             new BlobCustodyTracker(),
             specProvider,
             gcKeeper,
+            processingQueue,
             logManager,
             txPool,
             blockFinder,
+            blockTree,
             txProcessorSource,
             txDecoder,
             l1OriginStore,
@@ -275,8 +288,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
 
-        using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(head);
+        if (!txProcessorSource.TryBuild(head, out IReadOnlyTxProcessingScope? scope))
+        {
+            return ResultWrapper<PreBuiltTxList[]?>.Fail($"No state available for block {head.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+        }
 
+        using IReadOnlyTxProcessingScope _ = scope;
         return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,
                 Keccak.OfAnEmptySequenceRlp,

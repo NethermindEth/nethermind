@@ -45,7 +45,7 @@ namespace Nethermind.Core.Caching;
 ///     <description>LruCache / ClockCache / AssociativeCache</description>
 ///   </listheader>
 ///   <item><term>Eviction scope</term><description>Global / Global / Within one 8-way set</description></item>
-///   <item><term>Read path</term><description>McsLock / bitmap update / lock-free seqlock read</description></item>
+///   <item><term>Read path</term><description>McsLock / bitmap update / lock-free seqlock read, spinning briefly on an in-flight write of a key with the same tag</description></item>
 ///   <item><term>Write path</term><description>McsLock / global lock / set-local gate</description></item>
 ///   <item><term>Capacity</term><description>Exact / Exact / Rounded to setCount × 8</description></item>
 ///   <item><term>Clear</term><description>O(n) zeroing / O(n) zeroing / O(1) epoch bump + optional O(n) reference release</description></item>
@@ -61,7 +61,7 @@ namespace Nethermind.Core.Caching;
 /// Use <see cref="ClockCache{TKey,TValue}"/> for value-type TValues (it uses an McsLock that
 /// makes reads and writes mutually exclusive, preventing tearing).</para>
 /// </summary>
-public sealed class AssociativeCache<TKey, TValue>
+public sealed partial class AssociativeCache<TKey, TValue>
     where TKey : struct, IHash64bit<TKey>
     where TValue : class?
 {
@@ -114,16 +114,22 @@ public sealed class AssociativeCache<TKey, TValue>
     /// <summary>Lookup that refreshes the eviction ticker on hit.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGet(in TKey key, out TValue? value)
-        => TryGetCore<OnFlag>(in key, out value);
+        => TryGetCore<OnFlag>(in key, key.GetHashCode64(), out value);
+
+    /// <summary><see cref="TryGet(in TKey, out TValue)"/> with the key's <see cref="IHash64bit{TKey}.GetHashCode64"/> already computed.</summary>
+    /// <remarks>For callers probing several caches with one key, so the key is hashed once.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryGet(in TKey key, long hashCode, out TValue? value)
+        => TryGetCore<OnFlag>(in key, hashCode, out value);
 
     /// <summary>Lookup without refreshing the eviction ticker. Use for Set-then-Get patterns.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGetNoRefresh(in TKey key, out TValue? value)
-        => TryGetCore<OffFlag>(in key, out value);
+        => TryGetCore<OffFlag>(in key, key.GetHashCode64(), out value);
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool TryGetCore<TRefreshTicker>(in TKey key, out TValue? value)
+    private bool TryGetCore<TRefreshTicker>(in TKey key, long hashCode, out TValue? value)
         where TRefreshTicker : struct, IFlag
     {
         if (_setCount == 0)
@@ -132,7 +138,6 @@ public sealed class AssociativeCache<TKey, TValue>
             return false;
         }
 
-        long hashCode = key.GetHashCode64();
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
 
@@ -147,17 +152,19 @@ public sealed class AssociativeCache<TKey, TValue>
             ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
             long h1 = Volatile.Read(ref e.Header);
 
-            if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
+            if ((h1 & TagMask) != expectedTag) continue;
 
-            // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e.Key;
             TValue? storedValue = e.Value;
             // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e.Header);
-            if (h1 == h2 && storedKey.Equals(in key))
+            bool settled = (h1 & LockMarker) == 0 && h1 == h2;
+            SettleRead(ref e, expectedTag, ref settled, ref storedKey, ref storedValue);
+            if (!settled) continue;
+
+            if (storedKey.Equals(in key))
             {
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
                 // Eviction age uses the high-resolution clock rather than a shared counter: a
@@ -171,7 +178,11 @@ public sealed class AssociativeCache<TKey, TValue>
                 // x64/ARM64 hardware. A race with a concurrent Set only affects eviction ranking,
                 // not key/value correctness — the "losing" ticker value is simply slightly stale.
                 if (TRefreshTicker.IsActive)
-                    e.Ticker = Stopwatch.GetTimestamp();
+                {
+                    bool newest = false;
+                    CheckNewestInSet(ref entries, baseIdx, i, e.Ticker, ref newest);
+                    if (!newest) e.Ticker = Stopwatch.GetTimestamp();
+                }
                 value = storedValue;
                 return true;
             }
@@ -181,7 +192,10 @@ public sealed class AssociativeCache<TKey, TValue>
         return false;
     }
 
-    public bool Set(in TKey key, TValue? val)
+    public bool Set(in TKey key, TValue? val) => Set(in key, key.GetHashCode64(), val);
+
+    /// <summary><see cref="Set(in TKey, TValue)"/> with the key's <see cref="IHash64bit{TKey}.GetHashCode64"/> already computed.</summary>
+    internal bool Set(in TKey key, long hashCode, TValue? val)
     {
         if (_setCount == 0) return true;
 
@@ -190,7 +204,6 @@ public sealed class AssociativeCache<TKey, TValue>
             return Delete(in key);
         }
 
-        long hashCode = key.GetHashCode64();
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
         long hashPart = ExtractHashPart(hashCode, _hashShift);
@@ -233,7 +246,12 @@ public sealed class AssociativeCache<TKey, TValue>
                 {
                     if ((h & HashMask) == hashPart && e.Key.Equals(in key))
                     {
-                        WriteEntry(ref e, h, in key, val, tagToStore, Stopwatch.GetTimestamp());
+                        // Re-caching the stored instance, as lookups that cache every hit do, only refreshes the
+                        // ticker: locking the entry would make concurrent readers wait for an unchanged value.
+                        if (ReferenceEquals(e.Value, val))
+                            e.Ticker = Stopwatch.GetTimestamp();
+                        else
+                            WriteEntry(ref e, h, in key, val, tagToStore, Stopwatch.GetTimestamp());
                         return false;
                     }
                 }
@@ -262,7 +280,7 @@ public sealed class AssociativeCache<TKey, TValue>
             bool evictingLive = (existing & EpochOccMask) == epochOccTag;
 
             WriteEntry(ref te, existing, in key, val, tagToStore, timestamp);
-            AdjustCountIfEpoch(ref _epochAndCount, epochTag, evictingLive ? 0 : 1);
+            if (!evictingLive) AdjustCountIfEpoch(ref _epochAndCount, epochTag, 1);
 
             // Final check: if Clear() raced after the write, the entry has a stale epoch
             // tag and is invisible to readers. AdjustCountIfEpoch already skipped the
@@ -415,6 +433,17 @@ public sealed class AssociativeCache<TKey, TValue>
     // stamp written into the entry is still the raw timestamp.
     [ThreadStatic] private static int _evictProbe;
 
+    /// <summary>
+    /// Sets <paramref name="newest"/> when <paramref name="ticker"/> is newer than every other ticker in the set, so
+    /// refreshing the entry at <paramref name="way"/> cannot change its rank; a tie is not newest.
+    /// </summary>
+    /// <remarks>
+    /// Implemented only for the host, where a refresh's clock read and ticker write are what threads hitting one entry
+    /// contend on. The zkEVM guest runs single-threaded, where the scan only adds work, so without an implementation the
+    /// compiler drops the call and every hit refreshes.
+    /// </remarks>
+    static partial void CheckNewestInSet(ref Entry entries, int baseIdx, int way, long ticker, ref bool newest);
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int Pick3RandomEvictEntry(ref Entry entries, int baseIdx, long now, int probe)
     {
@@ -426,6 +455,17 @@ public sealed class AssociativeCache<TKey, TValue>
 
         return Pick3RandomEvict(ta, tb, tc, a, b, c);
     }
+
+    /// <summary>
+    /// Re-reads an entry carrying <paramref name="expectedTag"/> that was locked or changed while its key and value
+    /// were copied, setting <paramref name="settled"/> when <paramref name="key"/> and <paramref name="value"/> then
+    /// hold a consistent copy.
+    /// </summary>
+    /// <remarks>
+    /// Implemented only for the host. The zkEVM guest runs single-threaded, so no entry is seen mid-write there, and
+    /// without an implementation the compiler drops the call along with its arguments.
+    /// </remarks>
+    static partial void SettleRead(ref Entry entry, long expectedTag, ref bool settled, ref TKey key, ref TValue? value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteEntry(ref Entry entry, long existing, in TKey key, TValue? value, long tagToStore, long ticker)

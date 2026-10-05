@@ -5,9 +5,15 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Test.Runner;
 using NUnit.Framework;
 
@@ -17,11 +23,17 @@ namespace Nethermind.State.Test.Runner.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockchainTestStreamingTracerTests
 {
+    private const long BeforeTransitionDestroyRefund = (long)RefundOf.DestroyBeforeEip3529;
+    private const long AfterTransitionDestroyRefund = 0;
+
     [Test]
     public void Tracer_writes_to_provided_output()
     {
         using MemoryStream output = new();
-        BlockchainTestStreamingTracer tracer = new(new GethTraceOptions(), output);
+        BlockchainTestStreamingTracer tracer = new(
+            new GethTraceOptions(),
+            new TestSingleReleaseSpecProvider(London.Instance),
+            output);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
         Transaction tx = Build.A.Transaction.WithValue(1).TestObject;
@@ -41,7 +53,10 @@ public class BlockchainTestStreamingTracerTests
     public void Tracer_handles_blocks_and_transactions(int blockCount, int txPerBlock)
     {
         using MemoryStream output = new();
-        BlockchainTestStreamingTracer tracer = new(new GethTraceOptions(), output);
+        BlockchainTestStreamingTracer tracer = new(
+            new GethTraceOptions(),
+            new TestSingleReleaseSpecProvider(London.Instance),
+            output);
 
         for (int b = 0; b < blockCount; b++)
         {
@@ -63,9 +78,84 @@ public class BlockchainTestStreamingTracerTests
     public void Tracer_disposes_cleanly()
     {
         using MemoryStream output = new();
-        BlockchainTestStreamingTracer tracer = new(new GethTraceOptions(), output);
+        BlockchainTestStreamingTracer tracer = new(
+            new GethTraceOptions(),
+            new TestSingleReleaseSpecProvider(London.Instance),
+            output);
 
         Assert.DoesNotThrow(tracer.Dispose);
         Assert.DoesNotThrow(tracer.Dispose); // Double dispose should be safe
+    }
+
+    [TestCase(Instruction.PREVRANDAO, "DIFFICULTY")]
+    [TestCase((Instruction)0xd0, "DATALOAD")]
+    [TestCase((Instruction)0x0f, "opcode 0xf not defined")]
+    public void Tracer_writes_geth_opcode_name(Instruction opcode, string expectedName)
+    {
+        using MemoryStream output = new();
+        using BlockchainTestStreamingTracer tracer = new(
+            new GethTraceOptions(),
+            new TestSingleReleaseSpecProvider(London.Instance),
+            output);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        tracer.StartNewBlockTrace(block);
+        GethLikeTxFileTracer txTracer = (GethLikeTxFileTracer)tracer.StartNewTxTrace(null);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: default, inputData: ReadOnlyMemory<byte>.Empty);
+        txTracer.StartOperation(0, opcode, 100, in environment);
+        txTracer.ReportOperationRemainingGas(100);
+        tracer.EndTxTrace();
+
+        string firstLine = Encoding.UTF8.GetString(output.ToArray()).Split(Environment.NewLine)[0];
+        using JsonDocument operation = JsonDocument.Parse(firstLine);
+        Assert.That(operation.RootElement.GetProperty("opName").GetString(), Is.EqualTo(expectedName));
+    }
+
+    [TestCase(0UL, BeforeTransitionDestroyRefund)]
+    [TestCase(9UL, BeforeTransitionDestroyRefund)]
+    [TestCase(10UL, AfterTransitionDestroyRefund)]
+    [TestCase(11UL, AfterTransitionDestroyRefund)]
+    public void Tracer_selects_destroy_refund_at_block_transition(ulong blockNumber, long expectedRefund)
+    {
+        long refund = TraceDestroyRefund(new ForkActivation(10), blockNumber, timestamp: 0);
+
+        Assert.That(refund, Is.EqualTo(expectedRefund));
+    }
+
+    [TestCase(9UL, BeforeTransitionDestroyRefund)]
+    [TestCase(10UL, AfterTransitionDestroyRefund)]
+    [TestCase(11UL, AfterTransitionDestroyRefund)]
+    public void Tracer_selects_destroy_refund_at_timestamp_transition(ulong timestamp, long expectedRefund)
+    {
+        long refund = TraceDestroyRefund(ForkActivation.TimestampOnly(10), blockNumber: 1, timestamp: timestamp);
+
+        Assert.That(refund, Is.EqualTo(expectedRefund));
+    }
+
+    private static long TraceDestroyRefund(ForkActivation transition, ulong blockNumber, ulong timestamp)
+    {
+        using MemoryStream output = new();
+        ISpecProvider specProvider = new CustomSpecProvider(
+            ((ForkActivation)0, Frontier.Instance),
+            (transition, London.Instance));
+        using BlockchainTestStreamingTracer tracer = new(
+            new GethTraceOptions(),
+            specProvider,
+            output);
+        Block block = Build.A.Block.WithNumber(blockNumber).WithTimestamp(timestamp).TestObject;
+
+        tracer.StartNewBlockTrace(block);
+        GethLikeTxFileTracer txTracer = (GethLikeTxFileTracer)tracer.StartNewTxTrace(null);
+        txTracer.ReportSelfDestruct(Address.Zero, default, Address.Zero);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: default, inputData: ReadOnlyMemory<byte>.Empty);
+        txTracer.StartOperation(0, Instruction.STOP, 100, in environment);
+        txTracer.ReportOperationRemainingGas(100);
+        tracer.EndTxTrace();
+
+        string firstLine = Encoding.UTF8.GetString(output.ToArray()).Split(Environment.NewLine)[0];
+        using JsonDocument operation = JsonDocument.Parse(firstLine);
+        return operation.RootElement.GetProperty("refund").GetInt64();
     }
 }

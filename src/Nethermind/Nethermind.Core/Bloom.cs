@@ -56,6 +56,7 @@ public class Bloom : IEquatable<Bloom>
     public ReadOnlySpan<byte> ReadOnlyBytes => _bloomData.AsReadOnlySpan();
     private Span<ulong> ULongs => _bloomData.AsULongs();
 
+    [SkipLocalsInit]
     public void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
     {
         if (ReferenceEquals(this, Empty))
@@ -221,8 +222,8 @@ public class Bloom : IEquatable<Bloom>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
     {
-        ref byte k = ref MemoryMarshal.GetReference(ValueKeccak.Compute(sequence).BytesAsSpan);
-        ulong u = Unsafe.ReadUnaligned<ulong>(ref k);
+        KeccakCache.ComputeTo(sequence, out ValueHash256 keccak);
+        ulong u = Unsafe.ReadUnaligned<ulong>(ref Unsafe.As<ValueHash256, byte>(ref keccak));
         u = BinaryPrimitives.ReverseEndianness(u);
         return new BloomExtract(u);
     }

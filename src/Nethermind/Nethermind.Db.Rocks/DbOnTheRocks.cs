@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -43,6 +44,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private static readonly FlushOptions _defaultFlushOptions = new();
 
     private bool _isDisposing;
+    private int _pinnedSlices;
+    private bool _nativeCloseDeferred;
+    private int _nativeClosed;
     private bool _isDisposed;
 
     private readonly ConcurrentHashSet<IWriteBatch> _currentBatches = [];
@@ -77,8 +81,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private readonly List<OptionsHandle> _doNotGcOptions = [];
 
     private readonly IRocksDbConfig _perTableDbConfig;
-    internal bool VerifyChecksum => _perTableDbConfig.VerifyChecksum ?? true;
-    internal ulong ReadAheadSize => _perTableDbConfig.ReadAheadSize ?? 256UL.KiB;
+    internal bool VerifyChecksum { get; }
+    internal ulong ReadAheadSize { get; }
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
@@ -91,6 +95,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private ITunableDb.TuneType _currentTune = ITunableDb.TuneType.Default;
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
+    private string RepairedMarkerPath => Path.Join(_fullPath, "repaired.marker");
+
+    public bool WasRepairedOnOpen { get; private set; }
 
     private readonly List<IDisposable> _metricsUpdaters = [];
 
@@ -124,6 +131,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem = fileSystem ?? new RealFileSystem();
         _rocksDbConfigFactory = rocksDbConfigFactory;
         _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
+        VerifyChecksum = _perTableDbConfig.VerifyChecksum ?? true;
+        ReadAheadSize = _perTableDbConfig.ReadAheadSize ?? 256UL.KiB;
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = CreateLazyReadAheadIteratorManager(null);
         _seekIteratorManager = CreateLazySeekIteratorManager(null);
@@ -356,17 +365,36 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private void RepairIfCorrupted(DbOptions dbOptions)
     {
         string corruptMarker = CorruptMarkerPath;
+        bool persistRepairMarker = _settings.PersistRepairMarkerUntilAcknowledged;
 
-        if (!_fileSystem.File.Exists(corruptMarker))
+        if (_fileSystem.File.Exists(corruptMarker))
         {
+            if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {_fullPath}. Attempting repair...");
+            RepairDb(dbOptions, _fullPath!);
+
+            WasRepairedOnOpen = true;
+            if (persistRepairMarker)
+            {
+                _fileSystem.File.WriteAllText(RepairedMarkerPath, DateTime.UtcNow.ToString("O"));
+                if (_logger.IsWarn) _logger.Warn("Repair completed. Some data may be lost. Wrote repaired.marker.");
+            }
+            else if (_logger.IsWarn)
+            {
+                _logger.Warn("Repair completed. Some data may be lost.");
+            }
+
+            _fileSystem.File.Delete(corruptMarker);
             return;
         }
 
-        if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {_fullPath}. Attempting repair...");
-        RepairDb(dbOptions, _fullPath!);
+        if (persistRepairMarker && _fileSystem.File.Exists(RepairedMarkerPath))
+            WasRepairedOnOpen = true;
+    }
 
-        if (_logger.IsWarn) _logger.Warn($"Repair completed. Some data may be lost. Consider a full resync.");
-        _fileSystem.File.Delete(corruptMarker);
+    public void AcknowledgeRepair()
+    {
+        _fileSystem.File.Delete(RepairedMarkerPath);
+        WasRepairedOnOpen = false;
     }
 
     protected virtual void RepairDb(DbOptions dbOptions, string path) => RocksDb.Repair(dbOptions, path);
@@ -768,7 +796,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
         Iterator iterator = wrapper.Iterator;
 
-        if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
+        if (iterator.Valid() && TryCloseReadAhead(iterator, key, iteratorManager.SequentialKeys, out byte[]? closeRes))
         {
             return closeRes;
         }
@@ -843,16 +871,23 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// <param name="key"></param>
     /// <param name="result"></param>
     /// <returns></returns>
-    private static bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, out byte[]? result)
+    private static bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out byte[]? result)
     {
         // Probably hash db. Can't really do this with hashdb. Even with batched trie visitor, its going to skip a lot.
-        if (key.Length <= 32)
+        if (!sequentialKeys && key.Length <= 32)
         {
             result = null;
             return false;
         }
 
         iterator.Next();
+        // Next() can exhaust the iterator; key()/Next() on an invalid iterator is undefined per the RocksDB API.
+        if (!iterator.Valid())
+        {
+            result = null;
+            return false;
+        }
+
         ReadOnlySpan<byte> currentKey = iterator.GetKeySpan();
         int compareResult = currentKey.SequenceCompareTo(key);
         if (compareResult == 0)
@@ -871,17 +906,25 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // This is only useful for state as storage have way too different different address range between different
         // contract. That said, there isn't any real good threshold. Threshold is for some reasonably high value
         // above the average distance.
-        ulong currentKeyInt = BinaryPrimitives.ReadUInt64BigEndian(currentKey);
-        ulong requestedKeyInt = BinaryPrimitives.ReadUInt64BigEndian(key);
-        ulong distance = requestedKeyInt - currentKeyInt;
-        if (distance > 1_000_000_000)
+        // Skipped for short keys (e.g. 3-byte StateTopNodes keys): the bounded probe below is enough there.
+        if (currentKey.Length >= sizeof(ulong) && key.Length >= sizeof(ulong))
         {
-            return false;
+            ulong currentKeyInt = BinaryPrimitives.ReadUInt64BigEndian(currentKey);
+            ulong requestedKeyInt = BinaryPrimitives.ReadUInt64BigEndian(key);
+            ulong distance = requestedKeyInt - currentKeyInt;
+            if (distance > 1_000_000_000)
+            {
+                return false;
+            }
         }
 
         for (int i = 0; i < 5 && compareResult < 0; i++)
         {
             iterator.Next();
+            if (!iterator.Valid())
+            {
+                return false;
+            }
             compareResult = iterator.GetKeySpan().SequenceCompareTo(key);
         }
 
@@ -1053,20 +1096,78 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, out nint handle, ReadFlags flags)
     {
-        ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
-        if (!_db.TryGetPinned(key, out PinnedSlice slice, cf, readOptions))
+        // Counted before the disposing check, so Dispose either waits for this slice or this read sees it disposing.
+        Interlocked.Increment(ref _pinnedSlices);
+        bool pinned = false;
+        try
         {
-            handle = default;
-            return null;
-        }
+            ObjectDisposedException.ThrowIf(_isDisposing, this);
 
-        ReadOnlySpan<byte> value = slice.Value;
-        handle = slice.DangerousDetach();
-        return value;
+            ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions;
+            PinnedSlice slice;
+            try
+            {
+                if (!_db.TryGetPinned(key, out slice, cf, readOptions))
+                {
+                    handle = default;
+                    return null;
+                }
+            }
+            catch (RocksDbException e)
+            {
+                HandleFatalDbError(e);
+                throw;
+            }
+
+            ReadOnlySpan<byte> value = slice.Value;
+            handle = slice.DangerousDetach();
+            pinned = true;
+            return value;
+        }
+        finally
+        {
+            if (!pinned) ReleasePinnedSlice();
+        }
     }
 
-    public void DangerousReleaseHandle(nint handle) =>
+    public void DangerousReleaseHandle(nint handle)
+    {
         PinnedSlice.DangerousDestroy(handle);
+        if (handle != 0) ReleasePinnedSlice();
+    }
+
+    /// <summary>How long <see cref="Dispose"/> waits for pinned slices before it leaves the native close to the last release.</summary>
+    internal TimeSpan PinnedSliceDrainTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
+    private void ReleasePinnedSlice()
+    {
+        if (Interlocked.Decrement(ref _pinnedSlices) == 0 && Volatile.Read(ref _nativeCloseDeferred)) CloseNative();
+    }
+
+    /// <summary>Waits for the slices <see cref="GetNativeSlice(ReadOnlySpan{byte}, IColumnFamilyHandle?, out nint, ReadFlags)"/> handed out to be released.</summary>
+    /// <returns><see langword="false"/> if slices are still pinned after <see cref="PinnedSliceDrainTimeout"/>.</returns>
+    /// <remarks>
+    /// A pinned slice must be released before its database closes, and a background reader, such as a code read ahead
+    /// of execution, can still hold one when shutdown disposes the database.
+    /// </remarks>
+    private bool WaitForPinnedSlices()
+    {
+        long start = Stopwatch.GetTimestamp();
+        SpinWait spin = default;
+        while (Volatile.Read(ref _pinnedSlices) != 0)
+        {
+            if (Stopwatch.GetElapsedTime(start) > PinnedSliceDrainTimeout) return false;
+            spin.SpinOnce();
+        }
+
+        return true;
+    }
+
+    /// <summary>Closes the native database once, from <see cref="Dispose"/> or from the last pinned slice release.</summary>
+    private void CloseNative()
+    {
+        if (Interlocked.Exchange(ref _nativeClosed, 1) == 0) ReleaseUnmanagedResources();
+    }
 
     public void Remove(ReadOnlySpan<byte> key)
     {
@@ -1303,6 +1404,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         try
         {
             readOptions.SetTailing(!ordered);
+            readOptions.SetTotalOrderSeek(true);
             iterator = CreateIterator(readOptions, ch);
 
             if (resumeKey is null)
@@ -1703,6 +1805,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (Interlocked.CompareExchange(ref _isDisposing, true, false)) return;
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
+        bool drained = WaitForPinnedSlices();
 
         foreach (IDisposable dbMetricsUpdater in _metricsUpdaters)
         {
@@ -1713,7 +1816,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (_perTableDbConfig.FlushOnExit != FlushOnExitMode.None)
             InnerFlush(onlyWal: _perTableDbConfig.FlushOnExit == FlushOnExitMode.WalOnly);
-        ReleaseUnmanagedResources();
+
+        if (drained)
+        {
+            CloseNative();
+        }
+        else
+        {
+            // A slice still pinned would read freed memory, so the last release closes the database.
+            if (_logger.IsWarn) _logger.Warn($"DB {Name} closes when its {Volatile.Read(ref _pinnedSlices)} pinned slices are released");
+            Interlocked.Exchange(ref _nativeCloseDeferred, true);
+            if (Volatile.Read(ref _pinnedSlices) == 0) CloseNative();
+        }
 
         _dbsByPath.Remove(_fullPath!, out _);
 
@@ -1975,6 +2089,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // This is about once every two second maybe at max throughput.
         private const int IteratorUsageLimit = 1000000;
 
+        /// <summary>Enables forward probes for short, sequential flat trie keys.</summary>
+        internal bool SequentialKeys { get; init; }
+
         public IteratorManager(RocksDb rocksDb, IColumnFamilyHandle? cf, ReadOptions readOptions)
         {
             _rocksDb = rocksDb;
@@ -2100,24 +2217,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    public byte[]? FirstKey
-    {
-        get
-        {
-            using Iterator iterator = _db.NewIterator();
-            iterator.SeekToFirst();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
-    }
+    public byte[]? FirstKey => GetEdgeKey(first: true);
 
-    public byte[]? LastKey
+    public byte[]? LastKey => GetEdgeKey(first: false);
+
+    /// <summary>Returns the smallest or largest key of the database or column family, or null when it is empty.</summary>
+    /// <remarks>Uses total order, since a prefix-extractor database (code) otherwise skips its unflushed memtable.</remarks>
+    internal byte[]? GetEdgeKey(bool first, IColumnFamilyHandle? cf = null)
     {
-        get
-        {
-            using Iterator iterator = _db.NewIterator();
-            iterator.SeekToLast();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
+        using ReadOptions readOptions = CreateReadOptions();
+        readOptions.SetTotalOrderSeek(true);
+        using Iterator iterator = CreateIterator(readOptions, cf);
+        if (first) iterator.SeekToFirst();
+        else iterator.SeekToLast();
+        return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
     }
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) => GetViewBetween(firstKey, lastKey, null, flags);

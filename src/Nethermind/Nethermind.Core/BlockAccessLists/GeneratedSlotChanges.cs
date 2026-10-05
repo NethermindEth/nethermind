@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json.Serialization;
 using System.Collections.Generic;
 using Nethermind.Int256;
 
@@ -15,7 +16,8 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 public class GeneratedSlotChanges(UInt256 key) : IComparable<GeneratedSlotChanges>
 {
-    public UInt256 Key { get; } = key;
+    [JsonInclude]
+    public readonly UInt256 Key = key;
 
     public List<StorageChange> Changes { get; } = [];
 

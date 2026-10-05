@@ -334,6 +334,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .WithSlotNumber(1)
             .TestObject;
         ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(block);
@@ -348,6 +349,7 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response.Result.Error, Does.StartWith("Block access list"));
         }
     }
 
@@ -368,6 +370,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .WithSlotNumber(1)
             .TestObject;
         ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(block);
@@ -542,10 +545,12 @@ public partial class EngineModuleTests
 
         ForkchoiceStateV1 fcuState = new(genesis.Hash!, genesis.Hash!, genesis.Hash!);
 
+        Task improvedBlockWait = chain.WaitForImprovedBlock(genesis.Hash!, minTransactions: 1);
+
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(fcuState, payloadAttributes);
         Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
 
-        await Task.Delay(1000);
+        await improvedBlockWait;
 
         ResultWrapper<GetPayloadV6Result?> getPayloadResult =
             await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
@@ -729,7 +734,7 @@ public partial class EngineModuleTests
             Assert.That(blobCells, Has.Length.EqualTo(requestedMask.Count));
             Assert.That(proofs, Has.Length.EqualTo(requestedMask.Count));
             Assert.That(blobCells[0], Is.EqualTo(availableCells[0]));
-            Assert.That(proofs[0]!.AsSpan(0, expectedProofs[0].Length).ToArray(), Is.EqualTo(expectedProofs[0]));
+            Assert.That(proofs[0]!.AsSpan(0, expectedProofs[0].Length), Is.SequenceEqualTo(expectedProofs[0]));
             Assert.That(blobCells[1], Is.Null);
             Assert.That(proofs[1], Is.Null);
         }
@@ -924,7 +929,7 @@ public partial class EngineModuleTests
         foreach (int _ in requestedMask.EnumerateSetBits())
         {
             Assert.That(actual.BlobCells![expectedIndex], Is.EqualTo(expectedCells[expectedCellsOffset + expectedIndex]));
-            Assert.That(actual.Proofs![expectedIndex]!.AsSpan(0, expectedProofs[expectedIndex].Length).ToArray(), Is.EqualTo(expectedProofs[expectedIndex]));
+            Assert.That(actual.Proofs![expectedIndex]!.AsSpan(0, expectedProofs[expectedIndex].Length), Is.SequenceEqualTo(expectedProofs[expectedIndex]));
             expectedIndex++;
         }
     }
@@ -1122,7 +1127,7 @@ public partial class EngineModuleTests
         Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(4));
     }
 
-    private async Task<ExecutionPayloadV4> AddNewBlockV6(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
+    protected async Task<ExecutionPayloadV4> AddNewBlockV6(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
     {
         Transaction[] txs = BuildTransactions(chain, chain.BlockTree.Head!.Hash!, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 0);
         chain.AddTransactions(txs);
@@ -1167,6 +1172,36 @@ public partial class EngineModuleTests
         await txPoolHeadWait;
 
         return payload.ExecutionPayload;
+    }
+
+    [Test]
+    public virtual async Task ForkchoiceUpdatedV4_with_non_increasing_slot_number_still_returns_payload_id()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        // EIP-7843 imposes no ordering on the slot number at the EL, so a payload
+        // that reuses the head slot (rebuilds, devnets, fixtures) must still build.
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = head.Timestamp + 1,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakE,
+            SlotNumber = head.SlotNumber,
+            TargetGasLimit = head.GasLimit
+        };
+        ForkchoiceStateV1 forkchoiceState = new(head.Hash!, head.Hash!, head.Hash!);
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result =
+            await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.PayloadId, Is.Not.Null);
+        }
     }
 
     /// <summary>

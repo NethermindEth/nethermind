@@ -3,22 +3,34 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Tracing;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Newtonsoft.Json.Linq;
+using NSubstitute;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -27,6 +39,169 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceBlock_SuppliedBody_DoesNotUseIndexedHeaderState()
+    {
+        IParallelBlockTracer parallel = Substitute.For<IParallelBlockTracer>();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton(parallel));
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block original = await chain.AddBlock(transactions);
+        GethTraceOptions options = new() { Tracer = "prestateTracer" };
+        string baseline = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", original.Hash, options);
+        Assert.That(parallel.ReceivedCalls(), Is.Not.Empty, "the RPC tracer must be wired to the indexed path for verified blocks");
+        parallel.ClearReceivedCalls();
+        Transaction[] changed = (Transaction[])original.Transactions.Clone();
+        changed[0] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce)
+            .WithValue(100).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block supplied = new(original.Header.Clone(), changed, original.Uncles, original.Withdrawals);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlock", Rlp.Encode(supplied).ToString(), options);
+        JToken expected = JToken.Parse(baseline);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["error"], Is.Null);
+            Assert.That(parallel.ReceivedCalls(), Is.Empty, "an unverified body must never open indexed prefixes");
+            Assert.That(supplied.Hash, Is.EqualTo(original.Hash));
+        }
+        string sender = TestItem.AddressB.ToString();
+        UInt256 before = Bytes.FromHexString(expected["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!).ToUInt256();
+        UInt256 after = Bytes.FromHexString(actual["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!).ToUInt256();
+        Assert.That(after, Is.EqualTo(before - 99), "the second transaction must see the modified first transfer, not the indexed prefix");
+    }
+
+    [TestCase("debug_traceBlockByHash")]
+    [TestCase("debug_traceBlockByNumber")]
+    public async Task Debug_traceBlock_preimage_results_preserve_transaction_hash(string method)
+    {
+        using Context context = await Context.Create();
+        ulong nonce = context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(context.Blockchain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce)
+            .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await context.Blockchain.AddBlock(transaction);
+        object selector = method == "debug_traceBlockByHash" ? block.Hash! : block.Number;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer = "keccak256PreimageTracer" });
+        JToken result = JToken.Parse(response);
+        Assert.That(result["error"], Is.Null, response);
+        Assert.That(result["result"]!.Count(), Is.EqualTo(block.Transactions.Length));
+        for (int i = 0; i < block.Transactions.Length; i++)
+            Assert.That(result["result"]![i]!["txHash"]!.Value<string>(), Is.EqualTo(block.Transactions[i].Hash!.ToString()));
+    }
+
+    // The supplied body keeps the stored header's hash, and the new header has no stored receipts: both must number
+    // logs from the body that runs, not from receipts looked up by hash.
+    [TestCase(false, false, false, TestName = "Debug_traceBlock_callTracer_log_index_follows_supplied_body_under_stored_hash")]
+    [TestCase(true, false, false, TestName = "Debug_traceBlock_callTracer_log_index_follows_supplied_body_under_unstored_hash")]
+    [TestCase(true, true, false, TestName = "Debug_traceBlock_callTracer_log_index_follows_supplied_body_after_reverted_tx")]
+    [TestCase(false, false, true, TestName = "Debug_traceBlock_callTracer_log_index_follows_supplied_body_filtered_to_one_tx")]
+    public async Task Debug_traceBlock_callTracer_log_index_follows_supplied_body(bool unstoredHeader, bool revertFirst, bool filterToSecond)
+    {
+        using Context context = await Context.Create();
+
+        ulong nonce = context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        static Transaction LoggingTransaction(ulong txNonce, int logs, bool revert = false)
+        {
+            Prepare code = Prepare.EvmCode;
+            for (int i = 0; i < logs; i++) code = code.Log(0, 0);
+            code = revert ? code.Revert(0, 0) : code.STOP();
+            return Build.A.Transaction.WithNonce(txNonce).WithCode(code.Done).WithGasLimit(100000)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        }
+
+        Block original = await context.Blockchain.AddBlock(LoggingTransaction(nonce, 1), LoggingTransaction(nonce + 1, 1));
+        BlockHeader header = original.Header.Clone();
+        if (unstoredHeader)
+        {
+            header.ExtraData = [0x01];
+            header.Hash = header.CalculateHash();
+        }
+        Block supplied = new(header, [LoggingTransaction(nonce, 2, revertFirst), original.Transactions[1]], original.Uncles, original.Withdrawals);
+
+        GethTraceOptions options = new()
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}"""),
+            TxHash = filterToSecond ? supplied.Transactions[1].Hash : null
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", Rlp.Encode(supplied).ToString(), options);
+        if (filterToSecond)
+        {
+            string single = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash",
+                Rlp.Encode(supplied).ToString(), supplied.Transactions[1].Hash, options with { TxHash = null });
+            Assert.That((string)JToken.Parse(single)["result"]!["logs"]![0]!["index"]!, Is.EqualTo("0x2"), single);
+        }
+
+        JToken result = JToken.Parse(response)["result"]!;
+        if (filterToSecond)
+        {
+            Assert.That((string)result.Single()["result"]!["logs"]![0]!["index"]!, Is.EqualTo("0x2"), response);
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result[0]!["result"]!["logs"]?.Select(static log => (string)log["index"]!), revertFirst ? Is.Null : Is.EqualTo(new[] { "0x0", "0x1" }), response);
+            Assert.That((string)result[1]!["result"]!["logs"]![0]!["index"]!, Is.EqualTo(revertFirst ? "0x0" : "0x2"), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_callTracer_filtered_supplied_body_stops_after_target()
+    {
+        using Context context = await Context.Create();
+
+        ulong nonce = context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Transaction target = Build.A.Transaction.WithNonce(nonce).WithCode(Prepare.EvmCode.Log(0, 0).STOP().Done).WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block original = await context.Blockchain.AddBlock(target);
+        Transaction belowIntrinsicGas = Build.A.Transaction.WithNonce(nonce + 1).WithTo(TestItem.AddressC).WithGasLimit(1000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block supplied = new(original.Header.Clone(), [target, belowIntrinsicGas], original.Uncles, original.Withdrawals);
+
+        GethTraceOptions options = new()
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}"""),
+            TxHash = target.Hash
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", Rlp.Encode(supplied).ToString(), options);
+
+        Assert.That((string)JToken.Parse(response)["result"]!.Single()["result"]!["logs"]![0]!["index"]!, Is.EqualTo("0x0"), response);
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_opcode_logger_limit_resets_per_transaction([Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        string unlimited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            "latest", new { streamMode });
+        string limited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            "latest", new { streamMode, limit = 1 });
+
+        JToken expected = JToken.Parse(unlimited);
+        JArray transactions = (JArray)expected["result"]!;
+        Assert.That(transactions, Has.Count.EqualTo(2));
+        foreach (JToken transaction in transactions)
+        {
+            JArray entries = (JArray)transaction["result"]!["structLogs"]!;
+            Assert.That(entries.Count, Is.GreaterThan(1));
+            while (entries.Count > 1)
+                entries.RemoveAt(entries.Count - 1);
+        }
+
+        Assert.That(JToken.DeepEquals(JToken.Parse(limited), expected), Is.True, limited);
+    }
+
     [Test]
     public async Task Debug_traceBlock_with_invalid_rlp()
     {
@@ -216,6 +391,28 @@ public partial class DebugRpcModuleTests
 
         yield return new TestCaseData(
             transactions,
+            new GethTraceOptions { Tracer = NativeNoopTracer.NoopTracer },
+            """
+            {
+                "jsonrpc": "2.0",
+                "result": [
+                    {
+                        "result": {},
+                        "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
+                    },
+                    {
+                        "result": {},
+                        "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
+                    }
+                ],
+                "id": 67
+            }
+            """
+        )
+        { TestName = "Contract with " + NativeNoopTracer.NoopTracer };
+
+        yield return new TestCaseData(
+            transactions,
             new GethTraceOptions { Tracer = NativeCallTracer.CallTracer },
             """
             {
@@ -387,6 +584,44 @@ public partial class DebugRpcModuleTests
 
         using GethLikeTxTraceStreamingResult result = new(traces);
 
+        string streamedJson = await StreamToStringAsync(result);
+
+        string stjJson = JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions);
+
+        Assert.That(JsonElement.DeepEquals(
+            JsonDocument.Parse(streamedJson).RootElement,
+            JsonDocument.Parse(stjJson).RootElement),
+            $"Streamed JSON differs from serializer output for {traceCount} traces");
+    }
+
+    [Test]
+    public async Task Streamed_call_trace_nested_to_max_call_depth_serializes([Values] bool blockResult)
+    {
+        using NativeCallTracerCallFrame root = new() { Type = Instruction.CALL, Error = "a<b" };
+        NativeCallTracerCallFrame current = root;
+        for (int depth = 1; depth < VirtualMachineStatics.MaxCallDepth; depth++)
+        {
+            NativeCallTracerCallFrame child = new() { Type = Instruction.CALL };
+            current.Calls.Add(child);
+            current = child;
+        }
+
+        GethLikeTxTrace trace = new() { TxHash = TestItem.KeccakA, CustomTracerResult = new GethLikeCustomTrace { Value = root } };
+        using IDisposable result = blockResult
+            ? new GethLikeTxTraceStreamingBlockResult(
+                (writer, _, _) => JsonSerializer.Serialize(writer, trace, EthereumJsonSerializer.JsonOptions),
+                new CancellationTokenSource(),
+                LimboLogs.Instance.GetClassLogger<DebugRpcModuleTests>())
+            : new GethLikeTxTraceStreamingResult([trace]);
+
+        string streamedJson = await StreamToStringAsync((IStreamableResult)result);
+
+        using JsonDocument document = JsonDocument.Parse(streamedJson, new JsonDocumentOptions { MaxDepth = EthereumJsonSerializer.DefaultMaxDepth });
+        Assert.That(streamedJson, Does.Contain("\"error\":\"a<b\""), "string values must use the serializer's encoder");
+    }
+
+    private static async Task<string> StreamToStringAsync(IStreamableResult result)
+    {
         // remove buffer limit hits from the equation by using an unbounded Pipe
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
         await result.WriteToAsync(pipe.Writer, CancellationToken.None);
@@ -395,13 +630,7 @@ public partial class DebugRpcModuleTests
         ReadResult readResult = await pipe.Reader.ReadAsync();
         string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
         pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
-        string stjJson = JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions);
-
-        Assert.That(JsonElement.DeepEquals(
-            JsonDocument.Parse(streamedJson).RootElement,
-            JsonDocument.Parse(stjJson).RootElement),
-            $"Streamed JSON differs from serializer output for {traceCount} traces");
+        return streamedJson;
     }
 
     [Test]

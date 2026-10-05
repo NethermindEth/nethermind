@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -26,22 +27,36 @@ public sealed class ShareableOverridableEnvSource<T>(
     private int _activeCount;
     private volatile bool _disposed;
 
-    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
+    public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, [NotNullWhen(true)] out Scope<T>? scope) =>
+        TryBuild((IOverridableEnv<T> env, out Scope<T>? innerScope) => env.TryBuildAndOverride(header, stateOverride, specOverride: null, blockOverride, out innerScope), out scope);
+
+    public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, [NotNullWhen(true)] out Scope<T>? scope) =>
+        TryBuild((IOverridableEnv<T> env, out Scope<T>? innerScope) => env.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride: null, out innerScope), out scope);
+
+    private delegate bool EnvBuilder(IOverridableEnv<T> env, out Scope<T>? innerScope);
+
+    private bool TryBuild(EnvBuilder build, [NotNullWhen(true)] out Scope<T>? scope)
     {
         IOverridableEnv<T> env = Rent();
-        Scope<T> innerScope;
+        Scope<T>? innerScope;
         try
         {
-            innerScope = env.BuildAndOverride(header, stateOverride, blockOverride: blockOverride);
+            if (!build(env, out innerScope))
+            {
+                Release(env);
+                scope = null;
+                return false;
+            }
         }
         catch
         {
-            // BuildAndOverride failed: env may have left _worldScopeCloser non-null. A future rent
+            // The build failed: env may have left _worldScopeCloser non-null. A future rent
             // of this slot would throw on the reentry guard, permanently shrinking the pool. Drop it.
             ReleasePoisoned(env);
             throw;
         }
-        return new Scope<T>(innerScope.Component, new ReturnOnDispose(env, innerScope, this));
+        scope = new Scope<T>(innerScope!.Component, new ReturnOnDispose(env, innerScope, this));
+        return true;
     }
 
     public void Dispose()

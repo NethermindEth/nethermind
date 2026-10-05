@@ -165,7 +165,7 @@ namespace Nethermind.Core.Test.Encoding
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(decoded.Data.ToArray(), Is.EqualTo(expectedData));
+                Assert.That(decoded.Data, Is.SequenceEqualTo(expectedData));
                 Assert.That(decoded.PreHash.Span.SequenceEqual(bytes), Is.True);
             }
         }
@@ -333,6 +333,39 @@ namespace Nethermind.Core.Test.Encoding
             }
 
             Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("Non-canonical integer"));
+        }
+
+        /// <summary>The signature's r and s decode as byte strings of at most 32 bytes: shorter ones pad, the rest fail.</summary>
+        [TestCase(new byte[] { 0x9f }, 31, true, true)]
+        [TestCase(new byte[] { 0xa1 }, 33, false, true)]
+        [TestCase(new byte[] { 0x81 }, 1, false, true)]
+        [TestCase(new byte[] { 0x9f }, 31, true, false)]
+        [TestCase(new byte[] { 0xa1 }, 33, false, false)]
+        [TestCase(new byte[] { 0x81 }, 1, false, false)]
+        public void Decodes_signature_components_as_byte_strings_of_at_most_32_bytes(byte[] prefix, int length, bool valid, bool isR)
+        {
+            byte[] tested = [.. prefix, .. Enumerable.Repeat((byte)0x05, length)];
+            byte[] full = [0xa0, .. Enumerable.Repeat((byte)0x06, 32)];
+            byte[] r = isR ? tested : full;
+            byte[] s = isR ? full : tested;
+            byte[] content = [0x80, 0x01, 0x82, 0x52, 0x08, 0x94, .. new byte[20], 0x80, 0x80, 0x1b, .. r, .. s];
+            byte[] encoded = [0xf8, (byte)content.Length, .. content];
+
+            Transaction Decode()
+            {
+                RlpReader ctx = new(encoded);
+                return _txDecoder.DecodeGuardNotNull(ref ctx);
+            }
+
+            if (valid)
+            {
+                Signature signature = Decode().Signature!;
+                Assert.That((isR ? signature.R : signature.S), Is.SequenceEqualTo((byte[])[0x00, .. Enumerable.Repeat((byte)0x05, length)]));
+            }
+            else
+            {
+                Assert.That(Decode, Throws.InstanceOf<RlpException>());
+            }
         }
 
         [Test]

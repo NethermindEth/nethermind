@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using Collections.Pooled;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -18,21 +18,28 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Facade.Filters
 {
+    /// <summary>
+    /// Serves <c>eth_getFilterChanges</c> for installed filters.
+    /// </summary>
+    /// <remarks>
+    /// Filters do not buffer results. Processed blocks with their receipts and reorg removals (for log filters),
+    /// block hashes (for block filters) and new pending transactions are each appended once to a log shared by all
+    /// filters of that kind, every filter holds only a cursor into it, and its results are matched when it is polled.
+    /// Memory is therefore independent of the number of filters and of how many results they match: a log keeps what
+    /// the least recently polled filter has not read yet, and a filter that stops polling is removed by the
+    /// <see cref="FilterStore"/> timeout. Only log filters keep receipts alive; the receipts cache already holds those of
+    /// recent blocks, so an idle log filter adds only the older blocks processed within that timeout.
+    /// Results are returned as pooled lists that the caller disposes.
+    /// </remarks>
     public sealed class FilterManager
     {
-        private readonly ConcurrentDictionary<int, ConcurrentQueue<FilterLog>> _logs =
-            new();
-
-        private readonly ConcurrentDictionary<int, ConcurrentQueue<Hash256>> _blockHashes =
-            new();
-
-        private readonly ConcurrentDictionary<int, ConcurrentQueue<Option<Hash256>>> _pendingTransactions =
-            new();
+        private readonly FilterEventLog<BlockEvent> _blocks;
+        private readonly FilterEventLog<Hash256> _blockHashes;
+        private readonly FilterEventLog<PendingTransaction> _pendingTransactions;
 
         private Hash256? _lastBlockHash;
         private readonly FilterStore _filterStore;
-        private readonly ILogger _logger;
-        private long _logIndex;
+        private readonly ITxPool _txPool;
 
         public FilterManager(
             FilterStore filterStore,
@@ -42,232 +49,192 @@ namespace Nethermind.Facade.Filters
             ILogManager logManager)
         {
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
-            txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             ArgumentNullException.ThrowIfNull(receiptMonitor);
-            _logger = logManager?.GetClassLogger<FilterManager>() ?? throw new ArgumentNullException(nameof(logManager));
+            ArgumentNullException.ThrowIfNull(logManager);
+            _blocks = new FilterEventLog<BlockEvent>(filterStore);
+            _blockHashes = new FilterEventLog<Hash256>(filterStore);
+            _pendingTransactions = new FilterEventLog<PendingTransaction>(filterStore);
             mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
-            mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
+            _filterStore.FilterSaved += OnFilterSaved;
             _filterStore.FilterRemoved += OnFilterRemoved;
             txPool.NewPending += OnNewPendingTransaction;
-            txPool.RemovedPending += OnRemovedPendingTransaction;
+
+            // After subscribing, so a filter saved meanwhile is tracked either way.
+            foreach (FilterBase filter in _filterStore.GetFilters<FilterBase>())
+            {
+                Track(filter);
+            }
+        }
+
+        private void OnFilterSaved(object? sender, FilterEventArgs e)
+        {
+            if (_filterStore.GetFilter<FilterBase>(e.FilterId) is { } filter)
+            {
+                Track(filter);
+            }
+        }
+
+        private void Track(FilterBase filter)
+        {
+            switch (filter)
+            {
+                case LogFilter:
+                    _blocks.Track(filter.Id);
+                    break;
+                case BlockFilter:
+                    _blockHashes.Track(filter.Id);
+                    break;
+                case PendingTransactionFilter:
+                    _pendingTransactions.Track(filter.Id);
+                    break;
+            }
         }
 
         private void OnFilterRemoved(object sender, FilterEventArgs e)
         {
-            int id = e.FilterId;
-            if (_blockHashes.TryRemove(id, out _)) return;
-            if (_logs.TryRemove(id, out _)) return;
-            _pendingTransactions.TryRemove(id, out _);
+            _blocks.Untrack(e.FilterId);
+            _blockHashes.Untrack(e.FilterId);
+            _pendingTransactions.Untrack(e.FilterId);
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
-            _lastBlockHash = e.Block.Hash;
-            _logIndex = 0;
-            AddBlock(e.Block);
+            Block block = e.Block;
+            Hash256 blockHash = block.Hash ?? throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
+            _lastBlockHash = blockHash;
+            _blockHashes.Append(blockHash);
+            if (_blocks.IsTracking)
+            {
+                _blocks.Append(new BlockEvent(block.Timestamp, block.Header.Bloom, e.TxReceipts, Removed: false));
+            }
         }
-
-        private void OnTransactionProcessed(object sender, TxProcessedEventArgs e) => AddReceipts(e.TxReceipt, e.BlockHeader.Timestamp);
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
-            if (!e.WasRemoved)
+            if (!e.WasRemoved || e.TxReceipts is null || e.TxReceipts.Length == 0 || !_blocks.IsTracking)
             {
                 return;
             }
 
-            TxReceipt[] receipts = e.TxReceipts;
-            if (receipts is null || receipts.Length == 0)
-            {
-                return;
-            }
+            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, e.TxReceipts, Removed: true));
+        }
 
-            IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
-            foreach (LogFilter filter in filters)
+        private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
+        {
+            if (e.Transaction.Hash is { } hash && _pendingTransactions.IsTracking)
             {
-                long logIndex = 0;
-                ConcurrentQueue<FilterLog>? logs = null;
-                for (int r = 0; r < receipts.Length; r++)
+                _pendingTransactions.Append(new PendingTransaction(hash, e.Transaction.Type));
+            }
+        }
+
+        public ArrayPoolList<FilterLog> GetLogs(int filterId) => GetLogs(filterId, advance: false);
+
+        public ArrayPoolList<Hash256> GetBlocksHashes(int filterId) =>
+            _blockHashes.Read(filterId, advance: false, out _) is { } blockHashes ? ToList(blockHashes) : ArrayPoolList<Hash256>.Empty();
+
+        [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
+        public ArrayPoolList<Hash256> PollBlockHashes(int filterId)
+        {
+            _filterStore.RefreshFilter(filterId);
+            if (_blockHashes.Read(filterId, advance: true, out bool noEventSinceTracked) is not { } blockHashes || noEventSinceTracked)
+            {
+                if (_lastBlockHash is not null)
                 {
-                    LogEntry[]? entries = receipts[r].Logs;
+                    ArrayPoolList<Hash256> hackedResult = new(1) { _lastBlockHash }; // truffle hack
+                    _lastBlockHash = null;
+                    return hackedResult;
+                }
+
+                return ArrayPoolList<Hash256>.Empty();
+            }
+
+            return ToList(blockHashes);
+        }
+
+        public ArrayPoolList<FilterLog> PollLogs(int filterId)
+        {
+            _filterStore.RefreshFilter(filterId);
+            return GetLogs(filterId, advance: true);
+        }
+
+        /// <remarks>
+        /// Reports only the transactions that are still in the pool, so ones included, replaced or evicted since they
+        /// arrived are skipped. A transaction removed and re-added since the last poll is reported once.
+        /// </remarks>
+        public ArrayPoolList<Hash256> PollPendingTransactionHashes(int filterId)
+        {
+            _filterStore.RefreshFilter(filterId);
+            if (_pendingTransactions.Read(filterId, advance: true, out _) is not { } transactions)
+                return ArrayPoolList<Hash256>.Empty();
+
+            ArrayPoolList<Hash256> result = new(transactions.Count);
+            using PooledSet<Hash256>? reported = transactions.Count > 1 ? new PooledSet<Hash256>(transactions.Count) : null;
+            foreach (PendingTransaction transaction in transactions)
+            {
+                if (_txPool.ContainsTx(transaction.Hash, transaction.Type) && (reported?.Add(transaction.Hash) ?? true))
+                {
+                    result.Add(transaction.Hash);
+                }
+            }
+
+            return result;
+        }
+
+        private static ArrayPoolList<Hash256> ToList(FilterEventLog<Hash256>.Events blockHashes)
+        {
+            ArrayPoolList<Hash256> result = new(blockHashes.Count);
+            foreach (Hash256 blockHash in blockHashes)
+            {
+                result.Add(blockHash);
+            }
+            return result;
+        }
+
+        private ArrayPoolList<FilterLog> GetLogs(int filterId, bool advance)
+        {
+            if (_filterStore.GetFilter<LogFilter>(filterId) is not { } filter
+                || _blocks.Read(filterId, advance, out _) is not { } events)
+            {
+                return ArrayPoolList<FilterLog>.Empty();
+            }
+
+            ArrayPoolList<FilterLog> result = new(0);
+            foreach (BlockEvent blockEvent in events)
+            {
+                if (blockEvent.Bloom is not null && !filter.Matches(blockEvent.Bloom))
+                {
+                    continue;
+                }
+
+                long logIndex = 0;
+                foreach (TxReceipt receipt in blockEvent.Receipts)
+                {
+                    LogEntry[]? entries = receipt.Logs;
                     if (entries is null)
                     {
                         continue;
                     }
 
+                    // A busy block's bloom matches most filters; a receipt's own bloom still rules most receipts out.
+                    if (!filter.Matches(receipt.Bloom))
+                    {
+                        logIndex += entries.Length;
+                        continue;
+                    }
+
                     for (int i = 0; i < entries.Length; i++)
                     {
-                        FilterLog? filterLog = CreateLog(filter, receipts[r], entries[i], logIndex++, e.BlockHeader.Timestamp, removed: true);
+                        FilterLog? filterLog = CreateLog(filter, receipt, entries[i], logIndex++, blockEvent.Timestamp, blockEvent.Removed);
                         if (filterLog is not null)
                         {
-                            logs ??= _logs.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<FilterLog>());
-                            logs.Enqueue(filterLog);
+                            result.Add(filterLog);
                         }
                     }
                 }
             }
-        }
-
-        private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
-        {
-            IEnumerable<PendingTransactionFilter> filters = _filterStore.GetFilters<PendingTransactionFilter>();
-            foreach (PendingTransactionFilter filter in filters)
-            {
-                int filterId = filter.Id;
-                ConcurrentQueue<Option<Hash256>> transactions = _pendingTransactions.GetOrAdd(filterId, static _ => new ConcurrentQueue<Option<Hash256>>());
-                transactions.Enqueue(new Option<Hash256>(e.Transaction.Hash));
-                if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId} contains {transactions.Count} transactions.");
-            }
-        }
-
-        private void OnRemovedPendingTransaction(object sender, TxPool.TxEventArgs e)
-        {
-            IEnumerable<PendingTransactionFilter> filters = _filterStore.GetFilters<PendingTransactionFilter>();
-
-            foreach (PendingTransactionFilter filter in filters)
-            {
-                int filterId = filter.Id;
-                if (!_pendingTransactions.TryGetValue(filterId, out ConcurrentQueue<Option<Hash256>>? transactions))
-                    continue;
-
-                // Scan the queue and mark the matching item as removed.
-                foreach (Option<Hash256> option in transactions)
-                {
-                    if (!option.IsRemoved && option.Value == e.Transaction.Hash)
-                    {
-                        option.MarkRemoved();
-                        if (_logger.IsTrace) _logger.Trace($"Filter with id: {filterId}: transaction {e.Transaction.Hash} marked as removed.");
-                    }
-                }
-            }
-        }
-
-        public FilterLog[] GetLogs(int filterId)
-        {
-            _filterStore.RefreshFilter(filterId);
-            return _logs.TryGetValue(filterId, out ConcurrentQueue<FilterLog> logs) ? logs.ToArray() : [];
-        }
-
-        public Hash256[] GetBlocksHashes(int filterId)
-        {
-            _filterStore.RefreshFilter(filterId);
-            return _blockHashes.TryGetValue(filterId, out ConcurrentQueue<Hash256> blockHashes) ? blockHashes.ToArray() : [];
-        }
-
-        [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
-        public Hash256[] PollBlockHashes(int filterId)
-        {
-            _filterStore.RefreshFilter(filterId);
-            if (!_blockHashes.TryGetValue(filterId, out ConcurrentQueue<Hash256> blockHashes))
-            {
-                if (_lastBlockHash is not null)
-                {
-                    Hash256[] hackedResult = { _lastBlockHash }; // truffle hack
-                    _lastBlockHash = null;
-                    return hackedResult;
-                }
-
-                return [];
-            }
-
-            using ArrayPoolListRef<Hash256> result = new(blockHashes.Count);
-            while (blockHashes.TryDequeue(out Hash256? hash))
-            {
-                result.Add(hash);
-            }
-            return result.ToArray();
-        }
-
-        public FilterLog[] PollLogs(int filterId)
-        {
-            _filterStore.RefreshFilter(filterId);
-            if (!_logs.TryGetValue(filterId, out ConcurrentQueue<FilterLog> logs))
-                return [];
-
-            using ArrayPoolListRef<FilterLog> result = new(logs.Count);
-            while (logs.TryDequeue(out FilterLog? log))
-            {
-                result.Add(log);
-            }
-            return result.ToArray();
-        }
-
-        public Hash256[] PollPendingTransactionHashes(int filterId)
-        {
-            _filterStore.RefreshFilter(filterId);
-            if (!_pendingTransactions.TryGetValue(filterId, out ConcurrentQueue<Option<Hash256>>? pendingTransactions))
-                return [];
-
-            using ArrayPoolListRef<Hash256> result = new(pendingTransactions.Count);
-            while (pendingTransactions.TryDequeue(out Option<Hash256>? option))
-            {
-                if (!option.IsRemoved)
-                {
-                    result.Add(option.Value);
-                }
-            }
-            return result.ToArray();
-        }
-
-        private void AddReceipts(TxReceipt txReceipt, ulong blockTimestamp)
-        {
-            ArgumentNullException.ThrowIfNull(txReceipt);
-
-            IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
-            foreach (LogFilter filter in filters)
-            {
-                StoreLogs(filter, txReceipt, _logIndex, blockTimestamp);
-            }
-
-            _logIndex += txReceipt.Logs?.Length ?? 0;
-        }
-
-        private void AddBlock(Block block)
-        {
-            ArgumentNullException.ThrowIfNull(block);
-
-            IEnumerable<BlockFilter> filters = _filterStore.GetFilters<BlockFilter>();
-
-            foreach (BlockFilter filter in filters)
-            {
-                StoreBlock(filter, block);
-            }
-        }
-
-        private void StoreBlock(BlockFilter filter, Block block)
-        {
-            if (block.Hash is null)
-            {
-                throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
-            }
-
-            ConcurrentQueue<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<Hash256>());
-            blocks.Enqueue(block.Hash);
-            if (_logger.IsTrace) _logger.Trace($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
-        }
-
-        private void StoreLogs(LogFilter filter, TxReceipt txReceipt, long logIndex, ulong blockTimestamp)
-        {
-            if (txReceipt.Logs is null || txReceipt.Logs.Length == 0)
-            {
-                return;
-            }
-
-            ConcurrentQueue<FilterLog>? logs = null;
-            for (int i = 0; i < txReceipt.Logs.Length; i++)
-            {
-                LogEntry? logEntry = txReceipt.Logs[i];
-                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, blockTimestamp);
-                if (filterLog is not null)
-                {
-                    logs ??= _logs.GetOrAdd(filter.Id, static _ => new ConcurrentQueue<FilterLog>());
-                    logs.Enqueue(filterLog);
-                }
-            }
-
-            if (_logger.IsTrace && logs is not null)
-                _logger.Trace($"Filter with id: {filter.Id} contains {logs.Count} logs.");
+            return result;
         }
 
         private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, ulong blockTimestamp, bool removed = false)
@@ -305,14 +272,167 @@ namespace Nethermind.Facade.Filters
             return new FilterLog(index, txReceipt, logEntry, blockTimestamp, removed);
         }
 
-        private sealed class Option<T>(T value)
+        private sealed record BlockEvent(ulong Timestamp, Bloom? Bloom, TxReceipt[] Receipts, bool Removed);
+
+        private readonly record struct PendingTransaction(Hash256 Hash, TxType Type);
+
+        /// <summary>
+        /// Events shared by the filters of one kind, each filter reading them through its own cursor.
+        /// </summary>
+        /// <remarks>
+        /// The events form an append-only linked list whose nodes never change once linked, so a read takes two
+        /// references under the lock and walks the list outside it without copying. A cursor points at the link after
+        /// the last event its filter read, so an event stays reachable only until every tracked filter has read it,
+        /// and the garbage collector releases the rest. Only reads that advance a cursor keep a filter alive in
+        /// <see cref="FilterStore"/>, so a filter that stops polling times out and stops holding events back.
+        /// </remarks>
+        private sealed class FilterEventLog<TEvent>(FilterStore filterStore)
         {
-            private bool _isRemoved;
+            private readonly Lock _lock = new();
+            private readonly Dictionary<int, Cursor> _cursors = [];
+            private Link _tail = new(0);
+            private bool _isTracking;
 
-            public T Value { get; } = value;
-            public bool IsRemoved => Volatile.Read(ref _isRemoved);
+            /// <summary>
+            /// Whether any filter is tracked, read without locking so callers can skip building an event nobody reads.
+            /// </summary>
+            /// <remarks>
+            /// A filter tracked concurrently may miss that event, as if it had been installed a moment later.
+            /// </remarks>
+            public bool IsTracking => Volatile.Read(ref _isTracking);
 
-            public void MarkRemoved() => Volatile.Write(ref _isRemoved, true);
+            public void Track(int filterId)
+            {
+                lock (_lock)
+                {
+                    if (!_cursors.TryAdd(filterId, new Cursor(_tail)))
+                    {
+                        return;
+                    }
+
+                    Volatile.Write(ref _isTracking, true);
+                }
+
+                // A removal that ran before tracking would otherwise leave a cursor holding every later event.
+                if (!filterStore.FilterExists(filterId))
+                {
+                    Untrack(filterId);
+                }
+            }
+
+            public void Untrack(int filterId)
+            {
+                lock (_lock)
+                {
+                    if (_cursors.Remove(filterId) && _cursors.Count == 0)
+                    {
+                        Volatile.Write(ref _isTracking, false);
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Appends an event for the tracked filters to read; does nothing while no filter is tracked.
+            /// </summary>
+            public void Append(TEvent item)
+            {
+                if (!IsTracking)
+                {
+                    return;
+                }
+
+                lock (_lock)
+                {
+                    if (_cursors.Count == 0)
+                    {
+                        return;
+                    }
+
+                    Node node = new(item, _tail.Sequence + 1);
+                    _tail.Next = node;
+                    _tail = node.After;
+                }
+            }
+
+            /// <summary>
+            /// Returns the events the filter has not read yet, or <c>null</c> when the filter is not tracked.
+            /// </summary>
+            /// <param name="filterId">The filter to read for.</param>
+            /// <param name="advance">Whether to mark the returned events as read.</param>
+            /// <param name="noEventSinceTracked">Whether no event was appended since the filter was tracked.</param>
+            public Events? Read(int filterId, bool advance, out bool noEventSinceTracked)
+            {
+                lock (_lock)
+                {
+                    if (!_cursors.TryGetValue(filterId, out Cursor? cursor))
+                    {
+                        noEventSinceTracked = false;
+                        return null;
+                    }
+
+                    Link end = _tail;
+                    noEventSinceTracked = end.Sequence == cursor.TrackedSequence;
+                    Link start = cursor.Position;
+                    if (advance)
+                    {
+                        cursor.Position = end;
+                    }
+
+                    return new Events(start, end);
+                }
+            }
+
+            /// <summary>
+            /// A range of events, enumerable without the lock because linked nodes never change.
+            /// </summary>
+            public readonly struct Events(Link start, Link end)
+            {
+                public int Count => (int)(end.Sequence - start.Sequence);
+
+                public Enumerator GetEnumerator() => new(start, end);
+
+                public struct Enumerator(Link start, Link end)
+                {
+                    private Link _position = start;
+                    private TEvent _current = default!;
+
+                    public readonly TEvent Current => _current;
+
+                    public bool MoveNext()
+                    {
+                        if (_position == end)
+                        {
+                            return false;
+                        }
+
+                        Node node = _position.Next!;
+                        _current = node.Value;
+                        _position = node.After;
+                        return true;
+                    }
+                }
+            }
+
+            /// <summary>
+            /// The point after an event, or the start of the log; <see cref="Sequence"/> counts the events before it.
+            /// </summary>
+            public sealed class Link(long sequence)
+            {
+                public long Sequence { get; } = sequence;
+                public Node? Next;
+            }
+
+            public sealed class Node(TEvent value, long sequence)
+            {
+                public TEvent Value { get; } = value;
+                public Link After { get; } = new(sequence);
+            }
+
+            private sealed class Cursor(Link position)
+            {
+                public Link Position = position;
+                public long TrackedSequence { get; } = position.Sequence;
+            }
         }
     }
 }

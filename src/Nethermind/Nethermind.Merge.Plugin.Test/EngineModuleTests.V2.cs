@@ -297,6 +297,7 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV1(getPayloadResult.ExecutionPayload);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await chain.WaitForCommitted(getPayloadResult.ExecutionPayload.BlockHash);
 
         BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.ExecutionPayload.BlockHash);
         UInt256 finalBalance = chain.StateReader.GetBalance(payloadBlock, feeRecipient);
@@ -348,14 +349,39 @@ public partial class EngineModuleTests
         await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
         ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, false, withdrawals);
 
-        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload2.BlockHash!,
-            executionPayload2.BlockHash!, executionPayload2.BlockHash!));
+        await chain.WaitForCommitted(executionPayload2.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(
+            new ForkchoiceStateV1(executionPayload2.BlockHash!, executionPayload2.BlockHash!, executionPayload2.BlockHash!));
+        Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
         IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = { new(txs, withdrawals) };
 
         Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
+    }
+
+    /// <summary>
+    /// <see cref="SendNewBlockV2"/> returns only once the block is committed, not on the VALID that comes before it.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task SendNewBlockV2_returns_once_the_block_is_committed()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Withdrawal[] withdrawals = [];
+        // The helper builds this same payload on the head, so its hash is known before it is sent.
+        ExecutionPayload block = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
+
+        using CommitGate commit = new(chain.BranchProcessor, block.BlockHash);
+        Task<ExecutionPayload> send = SendNewBlockV2(rpc, chain, withdrawals);
+        await commit.VerdictGiven.WaitAsync(GateTimeout);
+        Assert.That(chain.BlockTree.WasProcessed(block.BlockNumber, block.BlockHash), Is.False, "precondition: the block is answered but not committed yet");
+        Assert.That(await Task.WhenAny(send, Task.Delay(100)), Is.Not.SameAs(send), "the helper waits while the block is committing");
+
+        commit.Release();
+        await send.WaitAsync(GateTimeout);
+        Assert.That(chain.BlockTree.WasProcessed(block.BlockNumber, block.BlockHash), Is.True);
     }
 
     [Test]
@@ -673,7 +699,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.ReleaseSpec);
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(chain,
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain,
             CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD, input.Withdrawals);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
@@ -743,7 +769,7 @@ public partial class EngineModuleTests
 
         // Block without withdrawals, Timestamp = 2
         ExecutionPayload executionPayload =
-            CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+            await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
         Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
@@ -898,11 +924,13 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> SendNewBlockV2(IEngineRpcModule rpc, MergeTestBlockchain chain,
         Withdrawal[]? withdrawals)
     {
-        ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV2(executionPayload);
 
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
+        // VALID comes before the block's state is committed, and callers go on to read that state.
+        await chain.WaitForCommitted(executionPayload.BlockHash);
         return executionPayload;
     }
 

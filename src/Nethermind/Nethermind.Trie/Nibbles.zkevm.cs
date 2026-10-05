@@ -19,8 +19,8 @@ namespace Nethermind.Trie
         /// among the most expensive memory accesses in the zkVM cost model.
         /// Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes.
         /// Little-endian only: the lane order reaches memory as ascending nibbles solely because the
-        /// 64-bit store writes the low byte first. riscv64 is little-endian; the host keeps the plain
-        /// loop in <c>Nibbles.std.cs</c>, which is endian-neutral.
+        /// 64-bit store writes the low byte first. riscv64 is little-endian, and so is every host the
+        /// runner starts on.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void ExpandNibbles(ref byte bytes, ref byte nibbles, int count)
@@ -66,8 +66,7 @@ namespace Nethermind.Trie
         /// and that <paramref name="bytes"/> has room for <paramref name="count"/>. The range matters more
         /// here than in the scalar form: a wider source byte spills out of its lane and the gather step
         /// then ORs the spill into the neighbouring output byte, where the scalar form truncates locally.
-        /// Little-endian only, for the reason given at <see cref="ExpandNibbles"/>; the host keeps the
-        /// plain loop in <c>Nibbles.std.cs</c>.
+        /// Little-endian only, for the reason given at <see cref="ExpandNibbles"/>.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void PackNibbles(ref byte nibbles, ref byte bytes, int count)

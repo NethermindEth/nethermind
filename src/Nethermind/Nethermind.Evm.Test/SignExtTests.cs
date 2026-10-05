@@ -75,17 +75,22 @@ namespace Nethermind.Evm.Test
             AssertSignExtend(byteIndex, value, value);
         }
 
-        // Every index here reads as zero in its last byte, which would extend from byte 31.
-        private static IEnumerable<UInt256> IndicesAboveTheLastByte()
+        private static IEnumerable<UInt256> IndicesOutsideTheWord()
         {
+            // These read as zero in their last byte, which would extend from byte 31.
             yield return 256;
             yield return UInt256.One << 64;
             yield return UInt256.One << 128;
             yield return UInt256.One << 192;
+            // These set the sign bit of the least significant limb, which read as signed would pass a
+            // range check as a negative offset and address outside the value slot.
+            yield return UInt256.One << 63;
+            yield return ulong.MaxValue;
+            yield return UInt256.MaxValue;
         }
 
-        [TestCaseSource(nameof(IndicesAboveTheLastByte))]
-        public void Sign_ext_index_above_the_last_byte_changes_nothing(UInt256 byteIndex)
+        [TestCaseSource(nameof(IndicesOutsideTheWord))]
+        public void Sign_ext_index_outside_the_word_changes_nothing(UInt256 byteIndex)
         {
             // An index is in range only when the whole 256-bit word is below 32, not just its last byte.
             UInt256 value = 0xff;

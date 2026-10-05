@@ -520,10 +520,10 @@ public static partial class EvmInstructions
     /// <summary>
     /// Returns the chain identifier.
     /// </summary>
-    public struct OpChainId<TGasPolicy> : IOpEnv32Bytes<TGasPolicy>
+    public struct OpChainId<TGasPolicy> : IOpBlkUInt256<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm)
+        public static ref readonly UInt256 Operation(VirtualMachine<TGasPolicy> vm)
             => ref vm.ChainId;
     }
 
@@ -628,13 +628,20 @@ public static partial class EvmInstructions
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
-        // For dead accounts, the specification requires pushing zero.
-        if (state.IsDeadAccount(address))
-        {
-            return stack.PushZero<TTracingInst, OnFlag>();
-        }
+
+        // An account with code cannot be dead, so reading its hash first settles both questions at once.
+        // EIP-1052 needs the dead check only to tell an empty account (push zero) from a codeless live one
+        // (push the empty hash), and it costs another account lookup — one cached read on the production
+        // provider, three through the BAL wrappers, which read balance, nonce and the code hash separately.
         ValueHash256 hash = state.GetCodeHash(address);
-        return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
+        if (hash != ValueKeccak.OfAnEmptyString)
+        {
+            return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
+        }
+
+        return state.IsDeadAccount(address)
+            ? stack.PushZero<TTracingInst, OnFlag>()
+            : stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -757,21 +764,29 @@ public static partial class EvmInstructions
         // Pop the block number from the stack.
         if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
 
-        // Retrieve the block hash for the given block number.
+        // Current block, future block, or unrepresentable block number all resolve to no hash.
         BlockHeader header = vm.BlockExecutionContext.Header;
-        Hash256? blockHash = !a.IsUint64 || a.u0 >= header.Number
-            ? null // Current block, future block, or unrepresentable block number
-            : vm.BlockHashProvider.GetBlockhash(header, a.u0, vm.Spec);
+        bool outOfRange = !a.IsUint64 || a.u0 >= header.Number;
 
-        // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
-        EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
-
-        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingBlockHash && blockHash is not null)
+        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingBlockHash)
         {
-            vm.TxTracer.ReportBlockHash(blockHash);
+            Hash256? blockHash = outOfRange ? null : vm.BlockHashProvider.GetBlockhash(header, a.u0, vm.Spec);
+            EvmExceptionType tracedPush = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
+            if (blockHash is not null)
+            {
+                vm.TxTracer.ReportBlockHash(blockHash);
+            }
+
+            return tracedPush;
         }
 
-        return pushResult;
+        // Push the bytes the provider already holds: for storage-backed BLOCKHASH (EIP-7709) the hash comes
+        // from state, and materialising a Hash256 for it allocates once per call for a value the next
+        // instruction discards.
+        ReadOnlySpan<byte> blockHashBytes = default;
+        bool found = !outOfRange && vm.BlockHashProvider.TryGetBlockhash(header, a.u0, vm.Spec, out blockHashBytes);
+
+        return stack.PushBytes<TTracingInst>(found ? blockHashBytes : BytesZero32);
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

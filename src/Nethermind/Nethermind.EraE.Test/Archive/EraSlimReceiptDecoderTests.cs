@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.EraE.Archive;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -19,6 +20,18 @@ internal class EraSlimReceiptDecoderTests
     // go-ethereum 4-field format: outer_list { receipt_list { tx_type, status, gas, logs } }
     // Pre-Byzantium: the "status" field is a 32-byte PostTransactionState (state root), not a status code.
     // Post-Byzantium (EIP-658): the "status" field is 0x00 or 0x01 (1 byte).
+
+    // Arbitrary - no test reads it back, it only has to be a well-formed cumulative gas item.
+    private const ulong GasUsedTotal = 21000;
+
+    // Far more receipts than the bytes declaring them could hold.
+    private const int UnbackedReceiptCount = 1_000;
+
+    // The cheapest item a receipt count can be built from, and one no decoder accepts as a receipt.
+    private static readonly byte[] UnbackedReceipt = [0xc0];
+
+    // ["", "", "", []] - the smallest slim receipt: tx type, status, cumulative gas and no logs.
+    private static readonly byte[] MinimalReceipt = [0xc4, 0x80, 0x80, 0x80, 0xc0];
 
     [Test]
     public void Decode_GethFormat_PreByzantium_SetsPostTransactionStateNotStatusCode()
@@ -119,6 +132,100 @@ internal class EraSlimReceiptDecoderTests
         Action act = () => sut.Decode(encoded.AsMemory());
 
         Assert.That(act, Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Decode_GethFormat_LogCountTheArchiveCannotHold_Throws()
+    {
+        byte[] encoded = EncodeGethReceiptArchive(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount));
+
+        Action act = () => new EraSlimReceiptDecoder().Decode(encoded.AsMemory());
+
+        Assert.That(act, Throws.TypeOf<RlpLimitException>());
+    }
+
+    [Test]
+    public void Decode_GethFormat_LogListOfSmallestPossibleEntries_Decodes()
+    {
+        byte[] encoded = EncodeGethReceiptArchive(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
+
+        TxReceipt[] receipts = new EraSlimReceiptDecoder().Decode(encoded.AsMemory());
+
+        Assert.That(receipts[0].Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
+    }
+
+    [Test]
+    public void Decode_GethFormat_ReceiptCountTheArchiveCannotHold_Throws()
+    {
+        byte[] encoded = RepeatInSequence(UnbackedReceipt, UnbackedReceiptCount);
+
+        Action act = () => new EraSlimReceiptDecoder().Decode(encoded.AsMemory());
+
+        Assert.That(act, Throws.TypeOf<RlpLimitException>());
+    }
+
+    [Test]
+    public void Decode_GethFormat_ReceiptListOfSmallestPossibleEntries_Decodes()
+    {
+        byte[] encoded = RepeatInSequence(MinimalReceipt, UnbackedReceiptCount);
+
+        TxReceipt[] receipts = new EraSlimReceiptDecoder().Decode(encoded.AsMemory());
+
+        Assert.That(receipts, Has.Length.EqualTo(UnbackedReceiptCount));
+    }
+
+    /// <summary>Builds an archive of identical, already-encoded receipts.</summary>
+    private static byte[] RepeatInSequence(ReadOnlySpan<byte> receipt, int receiptCount)
+    {
+        int contentLength = receipt.Length * receiptCount;
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(contentLength);
+        for (int i = 0; i < receiptCount; i++)
+        {
+            receipt.CopyTo(bytes.AsSpan(writer.Position + i * receipt.Length));
+        }
+
+        return bytes;
+    }
+
+    /// <summary>
+    /// Builds a one-receipt archive whose log count can be declared without materialising the logs.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="WrapAsGethReceipt"/> cannot serve here - it only emits one-byte sequence prefixes,
+    /// so it caps a receipt at 55 bytes. The slim body also differs from the eth/63 and eth/69 receipts
+    /// <see cref="ReceiptRlpBuilder"/> encodes, hence the local writer.
+    /// </remarks>
+    private static byte[] EncodeGethReceiptArchive(ReadOnlySpan<LogEntry?> logs)
+    {
+        LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
+        int logsLength = 0;
+        foreach (LogEntry? log in logs)
+        {
+            logsLength += logEntryDecoder.GetLength(log);
+        }
+
+        int receiptLength = Rlp.LengthOf((byte)TxType.Legacy)
+                            + Rlp.LengthOf((byte)1)
+                            + Rlp.LengthOf(GasUsedTotal)
+                            + Rlp.LengthOfSequence(logsLength);
+        int outerLength = Rlp.LengthOfSequence(receiptLength);
+
+        byte[] bytes = new byte[Rlp.LengthOfSequence(outerLength)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(outerLength);
+        writer.StartSequence(receiptLength);
+        writer.Encode((byte)TxType.Legacy);
+        writer.Encode((byte)1);
+        writer.Encode(GasUsedTotal);
+        writer.StartSequence(logsLength);
+        foreach (LogEntry? log in logs)
+        {
+            logEntryDecoder.Encode(ref writer, log);
+        }
+
+        return bytes;
     }
 
     // go-ethereum receipt encoding: outer_list { receipt_list { content } }

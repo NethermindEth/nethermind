@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -17,6 +21,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -27,6 +32,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { NewLine = "\n" };
     private static readonly IReleaseSpec CancunSpec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.CancunActivation);
+    // ArrayPoolList only returns a rental when its capacity is non-zero.
+    private const int ProbeBufferCapacity = 32;
     internal const string? WithLog = """{"withLog":true}""";
     internal const string? OnlyTopCall = """{"onlyTopCall":true}""";
     internal const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
@@ -44,6 +51,94 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Tracer = NativeCallTracer.CallTracer,
         TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
     };
+
+    [Test]
+    public void Call_tracer_does_not_request_opcode_capture([Values] bool enableCapture)
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        GethTraceOptions options = GetGethTraceOptions(WithLog) with
+        {
+            DisableStack = !enableCapture,
+            DisableStorage = !enableCapture,
+            EnableMemory = enableCapture,
+            EnableReturnData = enableCapture
+        };
+        using NativeCallTracer tracer = new(tx, CancunSpec, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingInstructions, Is.False);
+            Assert.That(tracer.IsTracingStack, Is.False);
+            Assert.That(tracer.IsTracingOpLevelStorage, Is.False);
+            Assert.That(tracer.IsTracingMemory, Is.False);
+            Assert.That(tracer.IsTracingReturnData, Is.False);
+            Assert.That(tracer.IsTracingActions, Is.True);
+            Assert.That(tracer.IsTracingLogs, Is.True);
+        }
+    }
+
+    public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
+
+    [Test]
+    public void Action_gas_matches_instruction_gas([Values] GasCheckpointCase scenario)
+    {
+        byte[] childCode = scenario switch
+        {
+            GasCheckpointCase.InvalidOpcode => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+            GasCheckpointCase.StackUnderflow => Prepare.EvmCode.Op(Instruction.POP).Done,
+            GasCheckpointCase.OutOfGas => Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done,
+            GasCheckpointCase.Revert => Prepare.EvmCode.Revert(0, 0).Done,
+            GasCheckpointCase.InvalidDeposit => Prepare.EvmCode.ForInitOf([0xEF]).Done,
+            GasCheckpointCase.DepositOutOfGas => Prepare.EvmCode.ForInitOf(new byte[1024]).Done,
+            _ => []
+        };
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
+        byte[] code = scenario switch
+        {
+            GasCheckpointCase.InvalidDeposit or GasCheckpointCase.DepositOutOfGas => Prepare.EvmCode.Create(childCode, 0).STOP().Done,
+            GasCheckpointCase.PrecompileFailure => Prepare.EvmCode.Call(new Address("0x0000000000000000000000000000000000000009"), 50000).STOP().Done,
+            _ => Prepare.EvmCode.Call(TestItem.AddressC, 10000).STOP().Done
+        };
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer native = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        using CancellationTxTracer optimized = new(native);
+        _processor.CallAndRestore(tx, block.Header, optimized);
+        using GethLikeTxTrace actual = native.BuildResult();
+
+        using NativeCallTracer tracedNative = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        GasCheckpointTracer checkpoints = new();
+        using CompositeTxTracer traced = new(tracedNative, checkpoints);
+        _processor.CallAndRestore(tx, block.Header, traced);
+        using GethLikeTxTrace expected = tracedNative.BuildResult();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonSerializer.Serialize(actual.CustomTracerResult?.Value, SerializerOptions),
+                Is.EqualTo(JsonSerializer.Serialize(expected.CustomTracerResult?.Value, SerializerOptions)));
+            Assert.That(checkpoints.GasMatches, Is.True);
+            Assert.That(checkpoints.Errors, Is.EqualTo(scenario == GasCheckpointCase.Revert ? 0 : 1));
+        }
+    }
+
+    private sealed class GasCheckpointTracer : TxTracer
+    {
+        private ulong _instructionGas;
+        private ulong _actionGas;
+        public override bool IsTracingInstructions => true;
+        public override bool IsTracingActions => true;
+        public bool GasMatches { get; private set; } = true;
+        public int Errors { get; private set; }
+        public override void ReportOperationRemainingGas(ulong gas) => _instructionGas = gas;
+        public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) => _instructionGas = gasAvailable;
+        public override void ReportActionRemainingGas(ulong gas) => _actionGas = gas;
+
+        public override void ReportActionError(EvmExceptionType evmExceptionType)
+        {
+            GasMatches &= _instructionGas == _actionGas;
+            Errors++;
+        }
+    }
 
     [Test]
     public void Test_CallTrace_SingleCall()
@@ -155,6 +250,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x2",
       "position": "0x2"
     }
   ],
@@ -173,6 +269,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
           "data": "0x",
           "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
+          "index": "0x0",
           "position": "0x1"
         }
       ],
@@ -203,6 +300,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
           "data": "0x",
           "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
+          "index": "0x1",
           "position": "0x1"
         }
       ],
@@ -263,12 +361,30 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x2",
       "position": "0x0"
     }
   ]
 }
 """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    [Test]
+    public void Test_CallTrace_WithLog_LogIndexStart_OffsetsIndex()
+    {
+        byte[] code = CreateNestedCallsCode();
+        (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog) with { LogIndex = new BlockLogIndex(5) });
+        using GethLikeTxTrace trace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
+
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Calls[0].Logs!.AssertSingle().Index, Is.EqualTo(5UL));
+            Assert.That(topFrame.Calls[1].Logs!.AssertSingle().Index, Is.EqualTo(6UL));
+            Assert.That(topFrame.Logs!.AssertSingle().Index, Is.EqualTo(7UL));
+        }
     }
 
     [Test]
@@ -354,6 +470,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x0",
       "position": "0x2"
     }
   ],
@@ -442,6 +559,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             NativeCallTracerLogEntry catcherLog = catchFrame.Logs.AssertSingle();
             Assert.That(catcherLog.Address, Is.EqualTo(catchAddress));
             Assert.That(catcherLog.Position, Is.EqualTo(1UL));
+            Assert.That(catcherLog.Index, Is.EqualTo(0UL));
 
             Assert.That(revertFrame.To, Is.EqualTo(revertAddress));
             Assert.That(revertFrame.Error, Is.EqualTo("execution reverted"));
@@ -513,6 +631,51 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 }
 """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    public enum RejectedAction { CallBalance, CreateBalance, Create2Collision }
+
+    [Test]
+    public void Test_CallTrace_RejectedAction_RecordsFailedFrame([Values] RejectedAction scenario)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        byte[] salt = Bytes.FromHexString("0x01").PadLeft(32);
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        // The transaction runs at AddressB; an account with code already sits at its CREATE2 address.
+        Address collision = ContractAddress.From(TestItem.AddressB, salt, initCode);
+        TestState.CreateAccount(collision, 0);
+        TestState.InsertCode(collision, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        Prepare rejectedAction = scenario switch
+        {
+            RejectedAction.CallBalance => Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50000, 1000.Ether),
+            RejectedAction.CreateBalance => Prepare.EvmCode.Create(initCode, 1000.Ether),
+            _ => Prepare.EvmCode.Create2(initCode, salt, 0),
+        };
+        byte[] code = rejectedAction.Op(Instruction.POP).STOP().Done;
+
+        using JsonDocument trace = JsonDocument.Parse(ExecuteCallTrace(code));
+
+        JsonElement calls = trace.RootElement.GetProperty("calls");
+        JsonElement rejected = calls[0];
+        bool collided = scenario == RejectedAction.Create2Collision;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls.GetArrayLength(), Is.EqualTo(1), "calls");
+            Assert.That(rejected.GetProperty("type").GetString(), Is.EqualTo(scenario switch
+            {
+                RejectedAction.CallBalance => "CALL",
+                RejectedAction.CreateBalance => "CREATE",
+                _ => "CREATE2",
+            }), "type");
+            Assert.That(rejected.GetProperty("error").GetString(),
+                Is.EqualTo(collided ? "contract address collision" : "insufficient balance for transfer"), "error");
+            // A failed precheck returns all the gas; a collision consumes it.
+            Assert.That(rejected.GetProperty("gasUsed").GetString(),
+                Is.EqualTo(collided ? rejected.GetProperty("gas").GetString() : "0x0"), "gasUsed");
+            Assert.That(rejected.TryGetProperty("to", out _), Is.EqualTo(scenario == RejectedAction.CallBalance), "to");
+            Assert.That(rejected.TryGetProperty("calls", out _), Is.False, "nested calls");
+        }
     }
 
     [Test]
@@ -669,6 +832,88 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level call frame (EVM ran before deployment was rejected)");
         Assert.That(frame!.Logs, Is.Null, "logs must be cleared on a failed CREATE frame even when _error is null");
+    }
+
+    [Test]
+    public void Test_CallTrace_ReportLog_EmptyCallStack_DoesNotThrow()
+    {
+        // A frame transaction running entirely through default code emits an EIP-7708 transfer log
+        // without any ReportAction, so callTracer sees an empty call stack.
+        Transaction tx = Build.A.Transaction.TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+
+        Assert.That(
+            () => tracer.ReportLog(new LogEntry(TestItem.AddressA, [], [])),
+            Throws.Nothing);
+    }
+
+    [Test]
+    public void Test_CallTrace_EveryTopLevelFrame_IsReturnedToThePool()
+    {
+        // A plain transaction, deliberately: only a root BuildResult leaves behind can be skipped, and a
+        // frame transaction's roots are folded into the one synthetic root the trace takes ownership of.
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+
+        // Two top-level invocations, which is what a transaction running more than one frame produces:
+        // each frame enters at depth 0, so each leaves its own root on the call stack.
+        ReportTopLevelInvocation(tracer, TestItem.AddressB);
+        ReportTopLevelInvocation(tracer, TestItem.AddressC);
+
+        NativeCallTracerCallFrame[] roots = TopLevelFramesOf(tracer);
+        Assert.That(roots, Has.Length.EqualTo(2), "both top-level invocations should be on the call stack");
+
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000), [], []);
+        GethLikeTxTrace trace = tracer.BuildResult();
+
+        TrackingPool[] pools = new TrackingPool[roots.Length];
+        for (int i = 0; i < roots.Length; i++)
+        {
+            pools[i] = AttachRentalProbe(roots[i]);
+        }
+
+        tracer.Dispose();
+        trace.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < roots.Length; i++)
+            {
+                Assert.That(pools[i].Returned, Has.Count.EqualTo(1), $"top-level frame {i} never returned its pooled buffers");
+            }
+        }
+    }
+
+    private static void ReportTopLevelInvocation(NativeCallTracer tracer, Address to)
+    {
+        tracer.ReportAction(50000, 1, TestItem.AddressA, to, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportActionEnd(40000ul, ReadOnlyMemory<byte>.Empty);
+    }
+
+    private static NativeCallTracerCallFrame[] TopLevelFramesOf(NativeCallTracer tracer) =>
+        ((ArrayPoolList<NativeCallTracerCallFrame>)typeof(NativeCallTracer)
+            .GetField("_callStack", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(tracer)!).AsSpan().ToArray();
+
+    /// <summary>Gives a call frame a buffer rented from a pool of its own, so that whether the frame was
+    /// disposed can be read off that pool rather than inferred from the frame.</summary>
+    /// <returns>The pool, which receives the rental back when the frame is disposed.</returns>
+    /// <remarks>The frame's own buffers come from the shared pool and it exposes no seam to swap that, so the
+    /// probe is attached through <see cref="NativeCallTracerCallFrame.Output"/>. Disposing a frame disposes
+    /// every buffer it holds, so a returned rental here means the whole frame went back.</remarks>
+    private static TrackingPool AttachRentalProbe(NativeCallTracerCallFrame callFrame)
+    {
+        TrackingPool pool = new();
+        callFrame.Output?.Dispose();
+        callFrame.Output = new ArrayPoolList<byte>(pool, ProbeBufferCapacity);
+        return pool;
+    }
+
+    private sealed class TrackingPool : ArrayPool<byte>
+    {
+        public List<byte[]> Returned { get; } = [];
+        public override byte[] Rent(int minimumLength) => new byte[minimumLength];
+        public override void Return(byte[] array, bool clearArray = false) => Returned.Add(array);
     }
 
     private static GethLikeTxTrace TraceAmsterdamTopCall(bool withSubFrame)

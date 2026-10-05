@@ -99,7 +99,7 @@ public class PreimageStorageKeyTests
 
         foreach (UInt256 slot in Slots(slotCount))
         {
-            writeBatch.SetStorage(AsPreimageKey(address), AsPreimageKey(slot), SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x01")));
+            writeBatch.SetStorage(AsPreimageKey(address), AsPreimageKey(slot), BaseFlatPersistence.DecodeSlotValue(Bytes.FromHexString("0x01")));
         }
     }
 

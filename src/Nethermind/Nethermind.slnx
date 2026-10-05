@@ -106,6 +106,9 @@
     <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
     <Project Path="Nethermind.Xdc.Test/Nethermind.Xdc.Test.csproj" />
   </Folder>
+  <Folder Name="/Tools/">
+    <Project Path="../../tools/StatelessInputGen/StatelessInputGen.csproj" />
+  </Folder>
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="Nethermind.BalRecorder.Test/Nethermind.BalRecorder.Test.csproj" />
@@ -129,7 +132,6 @@
   <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
   <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
   <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
-  <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
   <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
   <Project Path="Nethermind.History/Nethermind.History.csproj" />
   <Project Path="Nethermind.Init.Snapshot/Nethermind.Init.Snapshot.csproj" />
@@ -159,6 +161,7 @@
   <Project Path="Nethermind.State.Flat/Nethermind.State.Flat.csproj" />
   <Project Path="Nethermind.State.Flat.History/Nethermind.State.Flat.History.csproj" />
   <Project Path="Nethermind.State/Nethermind.State.csproj" />
+  <Project Path="Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />
   <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
   <Project Path="Nethermind.Taiko/Nethermind.Taiko.csproj" />
   <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />

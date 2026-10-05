@@ -31,6 +31,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 #endif
         // All targets have these managed signatures; the table captures no VM or transaction state.
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> InitializeFrame =
+#if ZK_EVM
+            SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled ? &InitializeFrameSkippingNoOpCredit :
+#endif
             SpecFlags.Eip158(spec) ? &InitializeFrameCore<OnFlag> : &InitializeFrameCore<OffFlag>;
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> TransferLog =
             spec.IsEip7708Enabled ? &AddTransferLogCore<OnFlag> : &AddTransferLogCore<OffFlag>;
@@ -44,7 +47,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip158 : struct, IFlag
     {
         ExecutionEnvironment env = state.Env;
-        vm._worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, state.ExecutionType, in env.Value, vm.Spec);
+        vm._worldState.AddToBalanceAndCreateIfNotEmpty(env.ExecutingAccount, state.ExecutionType, in env.Value, vm.Spec);
         if (Eip158.IsActive && state.ExecutionType.IsAnyCreate())
             vm._worldState.IncrementNonce(env.ExecutingAccount);
     }

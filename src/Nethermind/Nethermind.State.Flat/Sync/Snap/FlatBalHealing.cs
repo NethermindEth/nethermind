@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -156,18 +155,8 @@ public class FlatBalHealing(
                 if (!acc.HasStateChanges) continue;
 
                 ref AccountDelta? delta = ref CollectionsMarshal.GetValueRefOrAddDefault(deltas, acc.Address, out _);
-                delta ??= new AccountDelta();
-
-                if (acc.BalanceChanges.Length > 0) delta.Balance = acc.BalanceChanges[^1].Value;
-                if (acc.NonceChanges.Length > 0) delta.Nonce = acc.NonceChanges[^1].Value;
-                if (acc.CodeChanges.Length > 0) delta.Code = acc.CodeChanges[^1];
-
-                if (acc.StorageChanges.Length > 0)
-                {
-                    Dictionary<UInt256, EvmWord> slots = delta.Slots ??= [];
-                    foreach (ReadOnlySlotChanges slot in acc.StorageChanges)
-                        if (slot.Changes.Length > 0) slots[slot.Key] = slot.Changes[^1].Value;
-                }
+                delta ??= new AccountDelta(reader.GetAccount(acc.Address) ?? Account.TotallyEmpty);
+                delta.Apply(acc);
             }
         }
 
@@ -178,23 +167,14 @@ public class FlatBalHealing(
 
             Address address = key.Value;
 
-            Account account = reader.GetAccount(address) ?? Account.TotallyEmpty;
-
-            if (delta.Balance is { } balance) account = account.WithChangedBalance(balance);
-            if (delta.Nonce is { } nonce) account = account.WithChangedNonce(nonce);
+            Account account = delta.PostImage;
             if (delta.Code is { } codeChange)
-            {
-                ValueHash256 codeHash = codeChange.CodeHash;
-                codeDb.Set(codeHash.Bytes, codeChange.Code);
-                account = account.WithChangedCodeHash(codeHash.ToCommitment());
-            }
+                codeDb.Set(codeChange.CodeHash.Bytes, codeChange.Code);
 
-            // EIP-158: a touched empty account is removed, whatever its storage. Wipe it before writing any
-            // slot - SelfDestruct only scans the pre-batch snapshot, so slots written into this batch would
-            // outlive it. A revive later in the chunk skips the wipe, which EIP-6780 makes safe.
+            // SelfDestruct scans the pre-batch snapshot; wipe before writing any revived account's slots.
+            if (delta.WipeStorage || account.IsEmpty) batch.SelfDestruct(address);
             if (account.IsEmpty)
             {
-                batch.SelfDestruct(address);
                 stateTree.Set(address, null);
                 batch.SetAccount(address, null);
                 continue;
@@ -207,12 +187,12 @@ public class FlatBalHealing(
                     account.StorageRoot,
                     logManager);
 
-                foreach ((UInt256 slot, EvmWord word) in slots)
+                foreach ((UInt256 slot, UInt256 word) in slots)
                 {
-                    word.CopyTo(slotValue);
+                    word.ToBigEndian(slotValue);
                     ReadOnlySpan<byte> trimmed = slotValue.WithoutLeadingZeros();
-                    storage.Set(slot, trimmed.ToArray());
-                    batch.SetStorage(address, slot, trimmed.IsZero() ? null : SlotValue.FromSpanWithoutLeadingZero(trimmed));
+                    storage.Set(slot, trimmed);
+                    batch.SetStorage(address, slot, word.IsZero ? null : word);
                 }
 
                 storage.Commit(false, WriteFlags.DisableWAL);
@@ -227,11 +207,52 @@ public class FlatBalHealing(
         return stateTree.RootHash;
     }
 
-    private sealed class AccountDelta
+    private sealed class AccountDelta(Account account)
     {
-        public UInt256? Balance;
-        public ulong? Nonce;
+        public Account PostImage = account;
+        public bool WipeStorage;
         public CodeChange? Code;
-        public Dictionary<UInt256, EvmWord>? Slots;
+        public Dictionary<UInt256, UInt256>? Slots;
+
+        public void Apply(ReadOnlyAccountChanges changes)
+        {
+            int balance = 0, nonce = 0, code = 0;
+            uint? lastWipe = null;
+            while (balance < changes.BalanceChanges.Length || nonce < changes.NonceChanges.Length || code < changes.CodeChanges.Length)
+            {
+                uint index = uint.MaxValue;
+                if (balance < changes.BalanceChanges.Length) index = Math.Min(index, changes.BalanceChanges[balance].Index);
+                if (nonce < changes.NonceChanges.Length) index = Math.Min(index, changes.NonceChanges[nonce].Index);
+                if (code < changes.CodeChanges.Length) index = Math.Min(index, changes.CodeChanges[code].Index);
+
+                if (balance < changes.BalanceChanges.Length && changes.BalanceChanges[balance].Index == index)
+                    PostImage = PostImage.WithChangedBalance(changes.BalanceChanges[balance++].Value);
+                if (nonce < changes.NonceChanges.Length && changes.NonceChanges[nonce].Index == index)
+                    PostImage = PostImage.WithChangedNonce(changes.NonceChanges[nonce++].Value);
+                if (code < changes.CodeChanges.Length && changes.CodeChanges[code].Index == index)
+                {
+                    Code = changes.CodeChanges[code++];
+                    PostImage = PostImage.WithChangedCodeHash(Code.Value.CodeHash.ToCommitment());
+                }
+
+                // EIP-161 cleanup runs after all changes at a transaction index, regardless of storage.
+                if (PostImage.IsEmpty)
+                {
+                    WipeStorage = true;
+                    lastWipe = index;
+                    PostImage = Account.TotallyEmpty;
+                    Code = null;
+                    Slots?.Clear();
+                }
+            }
+
+            foreach (ReadOnlySlotChanges slot in changes.StorageChanges)
+            {
+                if (slot.Changes.Length == 0) continue;
+                StorageChange change = slot.Changes[^1];
+                if (lastWipe is null || change.Index > lastWipe)
+                    (Slots ??= [])[slot.Key] = change.Value;
+            }
+        }
     }
 }

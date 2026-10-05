@@ -3,7 +3,10 @@
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -16,6 +19,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -24,22 +28,28 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
@@ -509,7 +519,7 @@ public partial class EngineModuleTests
         // header invariant (`Timestamp <= parent.Timestamp`) so suggested-block validation fails and
         // `RecordBadBlock` is invoked.
         ExecutionPayload headPayload = ExecutionPayload.Create(chain.BlockTree.Head!);
-        ExecutionPayload[] branch = CreateBlockRequestBranch(chain, headPayload, Address.Zero, 2);
+        ExecutionPayload[] branch = await CreateBlockRequestBranch(chain, headPayload, Address.Zero, 2);
         ExecutionPayload parentPayload = branch[0];
         ExecutionPayload childPayload = branch[1];
 
@@ -570,7 +580,7 @@ public partial class EngineModuleTests
         ((TestBranchProcessorInterceptor)chain.BranchProcessor).ExceptionToThrow =
             new Exception("unexpected exception");
 
-        ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
@@ -658,6 +668,98 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(blockForRpc.Hash));
         }
         AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, startingHead, startingHead);
+    }
+
+    [Test]
+    public async Task same_head_finalization_notifies_pos_switcher_and_blocks_terminal_replacement()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "1000001" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        PoSSwitcher poSSwitcher = chain.PoSSwitcher as PoSSwitcher
+            ?? throw new AssertionException("Expected the merge test chain to use PoSSwitcher.");
+        await chain.AddBlockThroughPoW();
+        Block terminalBlock = chain.BlockTree.Head!;
+        Block replacementTerminalBlock = Build.A.Block
+            .WithNumber(terminalBlock.Number)
+            .WithDifficulty(terminalBlock.Difficulty)
+            .WithTotalDifficulty(terminalBlock.TotalDifficulty)
+            .WithGasLimit(terminalBlock.GasLimit + 1)
+            .TestObject;
+        Hash256 terminalBlockHash = terminalBlock.Hash!;
+
+        Assert.That(poSSwitcher.TryUpdateTerminalBlock(terminalBlock.Header), Is.True);
+        Assert.That(replacementTerminalBlock.IsTerminalBlock(chain.SpecProvider), Is.True);
+
+        ExecutionPayload postMergeBlock = await SendNewBlockV1(rpc, chain);
+        ResultWrapper<ForkchoiceUpdatedV1Result> firstHeadUpdate = await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(postMergeBlock.BlockHash, Keccak.Zero, terminalBlockHash));
+        Assert.That(firstHeadUpdate.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(poSSwitcher.TransitionFinished, Is.False);
+
+        bool? transitionFinishedWhenBlockTreeFinalized = null;
+        chain.BlockTree.BlocksFinalized += (_, _) => transitionFinishedWhenBlockTreeFinalized = poSSwitcher.TransitionFinished;
+        ForkchoiceStateV1 sameHeadFinalization = new(postMergeBlock.BlockHash, terminalBlockHash, terminalBlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(sameHeadFinalization);
+        bool replacementUpdated = poSSwitcher.TryUpdateTerminalBlock(replacementTerminalBlock.Header);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(0));
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(terminalBlockHash));
+            Assert.That(transitionFinishedWhenBlockTreeFinalized, Is.True);
+            Assert.That(poSSwitcher.TransitionFinished, Is.True);
+            Assert.That(replacementUpdated, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task restart_with_provisional_terminal_metadata_keeps_observing_new_head_candidates()
+    {
+        using MemDb metadataDb = new();
+        const string terminalTotalDifficulty = "1000001";
+        Block terminalBlock;
+
+        using (MergeTestBlockchain initialChain = await CreateBlockchain(
+                   null,
+                   new MergeConfig { TerminalTotalDifficulty = terminalTotalDifficulty },
+                   configurer: builder => builder.AddKeyedSingleton<IDb>(DbNames.Metadata, metadataDb)))
+        {
+            PoSSwitcher poSSwitcher = initialChain.PoSSwitcher as PoSSwitcher
+                ?? throw new AssertionException("Expected the merge test chain to use PoSSwitcher.");
+            await initialChain.AddBlockThroughPoW();
+            terminalBlock = initialChain.BlockTree.Head!;
+            Assert.That(poSSwitcher.TryUpdateTerminalBlock(terminalBlock.Header), Is.True);
+        }
+
+        using MergeTestBlockchain restartedChain = await CreateBlockchain(
+            null,
+            new MergeConfig { TerminalTotalDifficulty = terminalTotalDifficulty },
+            configurer: builder => builder.AddKeyedSingleton<IDb>(DbNames.Metadata, metadataDb));
+        Block parent = restartedChain.BlockTree.Head!;
+        Block replacementTerminalBlock = Build.A.Block
+            .WithNumber(terminalBlock.Number)
+            .WithParent(parent)
+            .WithDifficulty(terminalBlock.Difficulty)
+            .WithTotalDifficulty(terminalBlock.TotalDifficulty)
+            .WithGasLimit(terminalBlock.GasLimit + 1)
+            .TestObject;
+
+        Assert.That(
+            restartedChain.BlockTree.SuggestBlock(replacementTerminalBlock, BlockTreeSuggestOptions.ForceDontSetAsMain),
+            Is.EqualTo(AddBlockResult.Added));
+        Assert.That(restartedChain.BlockTree.TryUpdateMainChain(
+            replacementTerminalBlock.Header,
+            wereProcessed: true,
+            preloadedBlocks: new[] { replacementTerminalBlock }), Is.True);
+
+        RlpReader persistedNumber = new(metadataDb.Get(MetadataDbKeys.TerminalPoWNumber));
+        RlpReader persistedHash = new(metadataDb.Get(MetadataDbKeys.TerminalPoWHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedNumber.DecodeULong(), Is.EqualTo(replacementTerminalBlock.Number));
+            Assert.That(persistedHash.DecodeKeccak(), Is.EqualTo(replacementTerminalBlock.Hash));
+        }
     }
 
     [Test]
@@ -835,6 +937,263 @@ public partial class EngineModuleTests
         AssertExecutionStatusNotChanged(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
 
+    /// <summary>
+    /// Parks the processing thread between one block's verdict and its commit: the engine handler has been told, the
+    /// block is not yet marked processed. Released by <see cref="Release"/> or on dispose, which also unsubscribes.
+    /// </summary>
+    private sealed class CommitGate : IDisposable
+    {
+        private readonly IBranchProcessor _branchProcessor;
+        private readonly Hash256 _hash;
+        private readonly TaskCompletionSource _verdictGiven = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _parked;
+
+        public CommitGate(IBranchProcessor branchProcessor, Hash256 hash)
+        {
+            _branchProcessor = branchProcessor;
+            _hash = hash;
+            _branchProcessor.BlockExecuted += OnBlockExecuted;
+        }
+
+        /// <summary>Waited for rather than sampled: the processor raises the event to its own subscriber, which
+        /// answers the request, before it reaches this one, so the answer can arrive first.</summary>
+        public Task VerdictGiven => _verdictGiven.Task;
+
+        public void Release() => _released.TrySetResult();
+
+        public void Dispose()
+        {
+            Release();
+            _branchProcessor.BlockExecuted -= OnBlockExecuted;
+        }
+
+        // Only the first copy of the hash parks, so a later copy that executes again goes straight through.
+        private void OnBlockExecuted(object? sender, BlockExecutedEventArgs e)
+        {
+            if (e.Block.Hash != _hash || Interlocked.Exchange(ref _parked, 1) != 0) return;
+            _verdictGiven.TrySetResult();
+            _released.Task.Wait(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    private static readonly TimeSpan GateTimeout = TimeSpan.FromSeconds(5);
+
+    private static Task EnqueueOffThread(MergeTestBlockchain chain, Block block, ProcessingOptions options) =>
+        Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(block, options)).WaitAsync(GateTimeout);
+
+    private static Block Sibling(Block head)
+    {
+        Block sibling = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!)
+            .WithExtraData([1]).TestObject;
+        sibling.Header.TotalDifficulty = head.TotalDifficulty;
+        return sibling;
+    }
+
+    /// <summary>
+    /// A payload sent right after its parent was answered VALID, while the parent is still committing, must be
+    /// processed once the parent lands - not inserted for beacon sync and answered SYNCING for a parent we have.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task newPayloadV1_waits_for_a_parent_still_committing_and_then_processes()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        Block parent = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+        Block child = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+
+        using CommitGate parentCommit = new(chain.BranchProcessor, parent.Hash!);
+
+        ResultWrapper<PayloadStatusV1> parentResult = await rpc.engine_newPayloadV1(ExecutionPayload.Create(parent));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parentResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.WasProcessed(parent.Number, parent.Hash!), Is.False, "precondition: the parent is answered but not committed yet");
+        }
+
+        Task<ResultWrapper<PayloadStatusV1>> childRequest = rpc.engine_newPayloadV1(ExecutionPayload.Create(child));
+
+        parentCommit.Release();
+        ResultWrapper<PayloadStatusV1> childResult = await childRequest;
+
+        Assert.That(childResult.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the child is processed once its parent lands");
+        await chain.WaitForCommitted(child.Hash!);
+        Assert.That(chain.BlockTree.WasProcessed(child.Number, child.Hash!), Is.True);
+    }
+
+    /// <summary>
+    /// The child's wait for its parent is for the parent's committing copy, not for every copy of its hash: a second
+    /// copy of the parent queued behind another block must not keep the child out of the queue, holding the engine
+    /// API's lock, until that block is done.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task newPayloadV1_waits_only_for_the_committing_copy_of_its_parent()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig
+        {
+            NewPayloadBlockProcessingTimeout = 30_000
+        });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        Block parent = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+        Block child = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+        Block sibling = Sibling(head);
+
+        using CommitGate parentCommit = new(chain.BranchProcessor, parent.Hash!);
+        using CommitGate siblingCommit = new(chain.BranchProcessor, sibling.Hash!);
+        TaskCompletionSource childQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.BlockProcessingQueue.BlockAdded += (_, e) => { if (e.Block.Hash == child.Hash) childQueued.TrySetResult(); };
+
+        ResultWrapper<PayloadStatusV1> parentResult = await rpc.engine_newPayloadV1(ExecutionPayload.Create(parent));
+        Assert.That(parentResult.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the verdict is answered before the commit");
+        await parentCommit.VerdictGiven.WaitAsync(GateTimeout);
+
+        // Each enqueue is awaited before the next, so the second copy of the parent is behind the sibling.
+        await EnqueueOffThread(chain, sibling, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead);
+        await EnqueueOffThread(chain, parent, ProcessingOptions.None);
+
+        Task<ResultWrapper<PayloadStatusV1>> childRequest = rpc.engine_newPayloadV1(ExecutionPayload.Create(child));
+        parentCommit.Release();
+        await siblingCommit.VerdictGiven.WaitAsync(GateTimeout);
+
+        Assert.That(await Task.WhenAny(childQueued.Task, Task.Delay(GateTimeout)), Is.SameAs(childQueued.Task), "the child is queued once its parent's committing copy is done");
+        Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False, "precondition: the second copy of the parent is still queued behind the sibling");
+
+        siblingCommit.Release();
+        Assert.That((await childRequest).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+    }
+
+    /// <summary>
+    /// The wait is only for a head that has its verdict and is committing. A head queued behind another block has
+    /// none yet, so the forkchoice answers SYNCING at once, as it did before the wait existed, rather than after the
+    /// block ahead of it and its own processing.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task forkChoiceUpdatedV1_does_not_wait_for_a_head_behind_a_backlog()
+    {
+        // Far above the throttle, so only the head having no verdict can produce a prompt SYNCING.
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig
+        {
+            NewPayloadBlockProcessingTimeout = 30_000
+        });
+
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+        chain.BlockTree.SuggestBlock(block, BlockTreeSuggestOptions.ForceDontSetAsMain);
+
+        chain.ThrottleBlockProcessor(1000);
+        using ManualResetEventSlim processingStarted = new(false);
+        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingStarted = processingStarted;
+
+        // Occupies the processor so the head the forkchoice names is queued behind it without a verdict.
+        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
+            Sibling(head), ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
+        Assert.That(processingStarted.Wait(GateTimeout), Is.True, "precondition: the occupying block holds the processor");
+
+        // BlockAdded is raised once the head is tracked in flight, which the queue count alone does not show.
+        using ManualResetEventSlim headTracked = new(false);
+        chain.BlockProcessingQueue.BlockAdded += (_, e) => { if (e.Block.Hash == block.Hash) headTracked.Set(); };
+        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(block, ProcessingOptions.None));
+        Assert.That(headTracked.Wait(GateTimeout), Is.True, "precondition: the head is tracked in flight behind the occupying block");
+
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice =
+            rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
+
+        Assert.That(await Task.WhenAny(forkchoice, Task.Delay(500)), Is.SameAs(forkchoice), "answered before the block ahead of the head is done");
+        Assert.That((await forkchoice).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+    }
+
+    /// <summary>
+    /// newPayload answers VALID once the block is executed, before it is committed and marked processed. The
+    /// forkchoiceUpdated that follows at once must wait for that commit rather than answer SYNCING - also for a commit
+    /// slower than a second, which before newPayload answered ahead of the commit was answered VALID - but no longer
+    /// than the budget, which is what stops a stuck commit from holding the engine API's lock, and never past half the
+    /// lock timeout, however large the budget is configured.
+    /// </summary>
+    [TestCase(0, 60_000, true)]
+    [TestCase(1500, 60_000, true)]
+    [TestCase(3000, 300, false)]
+    [TestCase(6000, 60_000, false)]
+    [NonParallelizable]
+    public async Task forkChoiceUpdatedV1_waits_for_the_commit_of_a_block_answered_valid_before_it(int commitHeldMs, int budgetMs, bool committedInBudget)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { NewPayloadBlockProcessingTimeout = budgetMs });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+
+        using CommitGate commit = new(chain.BranchProcessor, block.Hash!);
+
+        ResultWrapper<PayloadStatusV1> newPayload = await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
+        Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the verdict is answered before the commit");
+        await commit.VerdictGiven.WaitAsync(GateTimeout);
+        Assert.That(chain.BlockTree.WasProcessed(block.Number, block.Hash!), Is.False, "precondition: the block is answered but not committed yet");
+
+        // The call runs synchronously up to its wait for the commit - the engine API's lock is free - so by the
+        // time it returns the task it is parked there.
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
+        Assert.That(forkchoice.IsCompleted, Is.False, "precondition: the forkchoice waits for the commit");
+
+        bool answeredWhileHeld = await Task.WhenAny(forkchoice, Task.Delay(commitHeldMs)) == forkchoice;
+        commit.Release();
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(answeredWhileHeld, Is.EqualTo(!committedInBudget), "a commit slower than the budget must not hold the engine API lock past it");
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(committedInBudget ? PayloadStatus.Valid : PayloadStatus.Syncing));
+            if (committedInBudget) Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(block.Hash));
+        }
+    }
+
+    /// <summary>
+    /// The wait is for the copy of the head that is committing, not for every block queued behind it: neither an
+    /// unrelated block nor another copy of the head, which sync can queue, delays that commit. Waiting for the last
+    /// copy instead would hold the engine API's lock for as long as the blocks ahead of that copy take.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task forkChoiceUpdatedV1_waits_only_for_the_committing_copy_of_the_head()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig
+        {
+            NewPayloadBlockProcessingTimeout = 30_000
+        });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+        Block sibling = Sibling(head);
+
+        // The head parks between its verdict and its commit; the sibling queued behind it then parks in turn, which
+        // keeps the second copy of the head queued behind the sibling.
+        using CommitGate headCommit = new(chain.BranchProcessor, block.Hash!);
+        using CommitGate siblingCommit = new(chain.BranchProcessor, sibling.Hash!);
+
+        ResultWrapper<PayloadStatusV1> newPayload = await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
+        Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the verdict is answered before the commit");
+        await headCommit.VerdictGiven.WaitAsync(GateTimeout);
+
+        // Each enqueue is awaited before the next, so the second copy of the head is behind the sibling.
+        await EnqueueOffThread(chain, sibling, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead);
+        await EnqueueOffThread(chain, block, ProcessingOptions.None);
+
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
+        Assert.That(forkchoice.IsCompleted, Is.False, "precondition: the forkchoice waits for the commit");
+
+        headCommit.Release();
+        await siblingCommit.VerdictGiven.WaitAsync(GateTimeout);
+
+        Assert.That(await Task.WhenAny(forkchoice, Task.Delay(GateTimeout)), Is.SameAs(forkchoice), "answered once the committing copy is done, with the second copy still queued");
+        Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(block.Hash!).IsCompleted, Is.False, "precondition: the second copy of the head is still queued behind the sibling");
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(block.Hash));
+        }
+    }
+
     [Test, NonParallelizable]
     public async Task AlreadyKnown_not_cached_block_should_return_valid()
     {
@@ -963,7 +1322,7 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = $"{terminalTotalDifficulty}"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
         Assert.That(resultWrapper.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
@@ -1062,7 +1421,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!))), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(executionPayload))).Using(JToken.EqualityComparer));
@@ -1074,14 +1433,14 @@ public partial class EngineModuleTests
         IStateReader mockedStateReader = Substitute.For<IStateReader>();
 
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
-            .UpdateSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(innerBuilder => innerBuilder
+            .UpdateSingleton<NewPayloadHandler>(innerBuilder => innerBuilder
                 .AddSingleton<IStateReader>(mockedStateReader)));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload parent = CreateParentBlockRequestOnHead(chain.BlockTree);
         mockedStateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(false);
 
-        ExecutionPayload executionPayload = CreateBlockRequest(chain, parent, TestItem.AddressD);
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain, parent, TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
     }
@@ -1091,7 +1450,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(
+        ExecutionPayload executionPayload = await CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
@@ -1184,7 +1543,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
@@ -1208,7 +1567,7 @@ public partial class EngineModuleTests
         foreach (ExecutionPayload block in branch)
         {
             uint count = 10;
-            ExecutionPayload executePayloadRequest = CreateBlockRequest(chain, block, TestItem.AddressA);
+            ExecutionPayload executePayloadRequest = await CreateBlockRequest(chain, block, TestItem.AddressA);
             PrivateKey from = TestItem.PrivateKeyB;
             Address to = TestItem.AddressD;
             (_, UInt256 toBalanceAfter) = AddTransactions(chain, executePayloadRequest, from, to, count, 1, out BlockHeader? parentHeader);
@@ -1220,6 +1579,7 @@ public partial class EngineModuleTests
             executePayloadRequest.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(executePayloadRequest);
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            await chain.WaitForCommitted(executePayloadRequest.BlockHash);
 
             BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(executePayloadRequest.BlockHash);
             Assert.That(chain.StateReader.HasStateForBlock(payloadBlock), Is.True);
@@ -1244,7 +1604,7 @@ public partial class EngineModuleTests
         foreach (ExecutionPayload block in branch)
         {
             uint count = 10;
-            ExecutionPayload executionPayload = CreateBlockRequest(chain, block, TestItem.AddressA);
+            ExecutionPayload executionPayload = await CreateBlockRequest(chain, block, TestItem.AddressA);
             PrivateKey from = TestItem.PrivateKeyB;
             Address to = TestItem.AddressD;
             (_, UInt256 toBalanceAfter) = AddTransactions(chain, executionPayload, from, to, count, 1, out BlockHeader parentHeader);
@@ -1258,6 +1618,7 @@ public partial class EngineModuleTests
             TryCalculateHash(executionPayload, out Hash256 hash);
             executionPayload.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(executionPayload);
+            await chain.WaitForCommitted(executionPayload.BlockHash);
 
             using (Assert.EnterMultipleScope())
             {
@@ -1369,7 +1730,7 @@ public partial class EngineModuleTests
 
     private async Task<ExecutionPayload> SendNewBlockV1(IEngineRpcModule rpc, MergeTestBlockchain chain)
     {
-        ExecutionPayload executionPayload = CreateBlockRequest(
+        ExecutionPayload executionPayload = await CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> executePayloadResult =
@@ -1401,7 +1762,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // Correct new payload
-        ExecutionPayload executionPayloadV11 = CreateBlockRequest(
+        ExecutionPayload executionPayloadV11 = await CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(executionPayloadV11);
@@ -1428,7 +1789,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // Correct new payload
-        ExecutionPayload executionPayloadV11 = CreateBlockRequest(
+        ExecutionPayload executionPayloadV11 = await CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(executionPayloadV11);
@@ -1441,7 +1802,7 @@ public partial class EngineModuleTests
         Assert.That(forkchoiceUpdatedResult1.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
         // New payload unknown parent hash
-        ExecutionPayload executionPayloadV12A = CreateBlockRequest(chain, executionPayloadV11, TestItem.AddressA);
+        ExecutionPayload executionPayloadV12A = await CreateBlockRequest(chain, executionPayloadV11, TestItem.AddressA);
         executionPayloadV12A.ParentHash = TestItem.KeccakB;
         TryCalculateHash(executionPayloadV12A, out Hash256? hash);
         executionPayloadV12A.BlockHash = hash;
@@ -1456,7 +1817,7 @@ public partial class EngineModuleTests
         Assert.That(forkchoiceUpdatedResult2A.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
 
         // New payload with correct parent hash
-        ExecutionPayload executionPayloadV12B = CreateBlockRequest(chain, executionPayloadV11, TestItem.AddressA);
+        ExecutionPayload executionPayloadV12B = await CreateBlockRequest(chain, executionPayloadV11, TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult2B = await rpc.engine_newPayloadV1(executionPayloadV12B);
         Assert.That(newPayloadResult2B.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
@@ -1467,7 +1828,7 @@ public partial class EngineModuleTests
         Assert.That(forkchoiceUpdatedResult2B.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
         // New payload unknown parent hash
-        ExecutionPayload executionPayloadV13A = CreateBlockRequest(chain, executionPayloadV12A, TestItem.AddressA);
+        ExecutionPayload executionPayloadV13A = await CreateBlockRequest(chain, executionPayloadV12A, TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult3A = await rpc.engine_newPayloadV1(executionPayloadV13A);
         Assert.That(newPayloadResult3A.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
 
@@ -1478,7 +1839,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult3A = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState3A);
         Assert.That(forkchoiceUpdatedResult3A.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
 
-        ExecutionPayload executionPayloadV13B = CreateBlockRequest(chain, executionPayloadV12B, TestItem.AddressA);
+        ExecutionPayload executionPayloadV13B = await CreateBlockRequest(chain, executionPayloadV12B, TestItem.AddressA);
         ResultWrapper<PayloadStatusV1> newPayloadResult3B = await rpc.engine_newPayloadV1(executionPayloadV13B);
         Assert.That(newPayloadResult3B.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
@@ -1497,23 +1858,462 @@ public partial class EngineModuleTests
         chain.BlockTree.TryUpdateMainChain(targetBlock.Header, wereProcessed: false, preloadedBlocks: new[] { targetBlock });
     }
 
+    /// <summary>Hides the state of selected blocks, standing in for a state backend whose reorg window has moved past them.</summary>
+    private sealed class PrunedStateReader(IStateReader inner, ConcurrentDictionary<Hash256, byte> pruned) : IStateReader
+    {
+        public bool HasStateForBlock(BlockHeader? baseBlock) =>
+            (baseBlock?.Hash is null || !pruned.ContainsKey(baseBlock.Hash)) && inner.HasStateForBlock(baseBlock);
+
+        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) =>
+            inner.TryGetAccount(baseBlock, address, out account);
+
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) =>
+            inner.GetStorage(baseBlock, address, in index, out value);
+
+        public byte[]? GetCode(Hash256 codeHash) => inner.GetCode(codeHash);
+
+        public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
+
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
+            where TCtx : struct, INodeContext<TCtx> =>
+            inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+    }
+
+    /// <summary>Builds a node whose state for selected blocks can be hidden on demand.</summary>
+    /// <param name="pruned">Hashes whose state <see cref="IStateReader"/> should pretend not to have.</param>
+    private async Task<MergeTestBlockchain> CreateBlockchainWithPrunableState(
+        ConcurrentDictionary<Hash256, byte> pruned, Action<ContainerBuilder>? configure = null, IReleaseSpec? releaseSpec = null)
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder =>
+            {
+                builder.AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned));
+                configure?.Invoke(builder);
+            });
+        // Execution restores the state, so stop hiding it.
+        chain.BranchProcessor.BlockProcessed += (_, e) => pruned.TryRemove(e.Block.Hash!, out byte _);
+        return chain;
+    }
+
+    /// <summary>Produces a four-block canonical branch and moves the head to its tip.</summary>
+    /// <param name="finalizedIndex">Index of the block to report finalized, or -1 for none.</param>
+    private async Task<IReadOnlyList<ExecutionPayload>> ProduceCanonicalBranchV1(MergeTestBlockchain chain, int finalizedIndex = -1)
+    {
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(chain.EngineRpcModule, chain, 4,
+            CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        Hash256 finalized = finalizedIndex < 0 ? Keccak.Zero : blocks[finalizedIndex].BlockHash;
+        ForkchoiceStateV1 toTip = new(blocks[^1].BlockHash, finalized, finalized);
+        Assert.That((await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(toTip)).Data.PayloadStatus.Status,
+            Is.EqualTo(PayloadStatus.Valid));
+        return blocks;
+    }
+
+    /// <summary>A resubmitted block above the head whose state was pruned is re-executed, so its child is not answered SYNCING.</summary>
+    /// <remarks>The Hive <c>consume-enginex</c> shape: the head moves back to genesis and block 1 is sent again.</remarks>
+    [Test]
+    public async Task newPayloadV1_reexecutes_a_resubmitted_block_whose_state_was_pruned()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        Hash256 genesisHash = chain.BlockTree.HeadHash!;
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+
+        ExecutionPayload resubmitted = blocks[0];
+        // Built while the state is still readable; only its submission happens after pruning.
+        ExecutionPayload child = await CreateBlockRequest(chain, resubmitted, TestItem.AddressD);
+
+        ForkchoiceStateV1 toGenesis = new(genesisHash, Keccak.Zero, Keccak.Zero);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(toGenesis)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        pruned[resubmitted.BlockHash] = 0;
+
+        Assert.That((await rpc.engine_newPayloadV1(resubmitted)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        ForkchoiceStateV1 backToOldBlock = new(resubmitted.BlockHash, Keccak.Zero, Keccak.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await rpc.engine_forkchoiceUpdatedV1(backToOldBlock)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(resubmitted.BlockHash));
+        }
+
+        await WaitForCommit(chain, resubmitted.BlockHash);
+
+        Assert.That((await rpc.engine_newPayloadV1(child)).Data.Status, Is.EqualTo(PayloadStatus.Valid),
+            "the child of a block the node just accepted must be executed, not answered SYNCING");
+    }
+
+    /// <summary>Records when <see cref="NewPayloadHandler"/> starts waiting for a watched block's answered copy to leave the queue.</summary>
+    private sealed class CommitWaitProbe
+    {
+        private Hash256? _watched;
+
+        public TaskCompletionSource WaitEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Starts recording waits for <paramref name="blockHash"/>; earlier ones are not the ones under test.</summary>
+        public void Watch(Hash256 blockHash) => Volatile.Write(ref _watched, blockHash);
+
+        public void OnWait(Hash256 blockHash)
+        {
+            if (blockHash == Volatile.Read(ref _watched)) WaitEntered.TrySetResult();
+        }
+    }
+
+    /// <summary>Passes every call through, reporting the handler's commit waits to a <see cref="CommitWaitProbe"/>.</summary>
+    /// <remarks>The engine RPC module also waits on this commit after answering, so only a wait from inside the handler counts.</remarks>
+    private sealed class CommitWaitObservingQueue(IBlockProcessingQueue inner, CommitWaitProbe probe) : IBlockProcessingQueue
+    {
+        public ValueTask WaitUntilExecutedCopyRemovedAsync(Hash256 blockHash)
+        {
+            if (IsCalledFromNewPayloadHandler()) probe.OnWait(blockHash);
+            return inner.WaitUntilExecutedCopyRemovedAsync(blockHash);
+        }
+
+        /// <summary>Whether the frame that asked for this wait belongs to <see cref="NewPayloadHandler"/>.</summary>
+        /// <remarks>
+        /// Only the immediate caller counts, as a continuation can run inline under the handler's frames. Async
+        /// state machines are nested in their method's type, hence the declaring-type check.
+        /// </remarks>
+        private static bool IsCalledFromNewPayloadHandler()
+        {
+            static bool IsIn(Type type, Type owner) => type == owner || type.DeclaringType == owner;
+
+            foreach (StackFrame frame in new StackTrace().GetFrames())
+            {
+                Type? type = frame.GetMethod()?.DeclaringType;
+                if (type is null
+                    || IsIn(type, typeof(CommitWaitObservingQueue))
+                    || IsIn(type, typeof(BlockProcessingQueueExtensions))
+                    || type.Namespace?.StartsWith("System", StringComparison.Ordinal) == true)
+                {
+                    continue;
+                }
+
+                return IsIn(type, typeof(NewPayloadHandler));
+            }
+
+            return false;
+        }
+
+        public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false) => inner.WaitUntilRemovedAsync(blockHash, executedOnly);
+
+        public void Start() => inner.Start();
+
+        public Task StopAsync(bool processRemainingBlocks = false) => inner.StopAsync(processRemainingBlocks);
+
+        public bool IsProcessingBlocks(ulong? maxProcessingInterval) => inner.IsProcessingBlocks(maxProcessingInterval);
+
+        public ValueTask Enqueue(Block block, ProcessingOptions processingOptions) => inner.Enqueue(block, processingOptions);
+
+        public int Count => inner.Count;
+
+        public event EventHandler ProcessingQueueEmpty { add => inner.ProcessingQueueEmpty += value; remove => inner.ProcessingQueueEmpty -= value; }
+
+        public event EventHandler<BlockEventArgs> BlockAdded { add => inner.BlockAdded += value; remove => inner.BlockAdded -= value; }
+
+        public event EventHandler<BlockVerdictEventArgs> BlockExecuted { add => inner.BlockExecuted += value; remove => inner.BlockExecuted -= value; }
+
+        public event EventHandler<BlockRemovedEventArgs> BlockRemoved { add => inner.BlockRemoved += value; remove => inner.BlockRemoved -= value; }
+
+        public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs> InvalidBlock { add => inner.InvalidBlock += value; remove => inner.InvalidBlock -= value; }
+
+        public event EventHandler<BlockStatistics> NewProcessingStatistics { add => inner.NewProcessingStatistics += value; remove => inner.NewProcessingStatistics -= value; }
+    }
+
+    /// <summary>A head resent while its re-execution is still committing waits for that commit and is answered VALID.</summary>
+    [Test]
+    public async Task newPayloadV1_answers_valid_for_a_head_resent_while_its_re_execution_commits()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        CommitWaitProbe probe = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned, builder =>
+            builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        Hash256 genesisHash = chain.BlockTree.HeadHash!;
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+        ExecutionPayload resubmitted = blocks[0];
+        ForkchoiceStateV1 toGenesis = new(genesisHash, Keccak.Zero, Keccak.Zero);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(toGenesis)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        pruned[resubmitted.BlockHash] = 0;
+
+        // Holds the processing thread between the re-execution's verdict and its commit.
+        TaskCompletionSource commit = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.Container.Resolve<IBlockProcessingQueue>().BlockExecuted += (_, e) =>
+        {
+            if (e.BlockHash == resubmitted.BlockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
+        };
+
+        Assert.That((await rpc.engine_newPayloadV1(resubmitted)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        ForkchoiceStateV1 toResubmitted = new(resubmitted.BlockHash, Keccak.Zero, Keccak.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await rpc.engine_forkchoiceUpdatedV1(toResubmitted)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(resubmitted.BlockHash));
+        }
+
+        // Release the commit once the re-send waits on it or answers; the delay is a backstop.
+        probe.Watch(resubmitted.BlockHash);
+        Task<ResultWrapper<PayloadStatusV1>> resent = rpc.engine_newPayloadV1(resubmitted);
+        await Task.WhenAny(probe.WaitEntered.Task, resent, Task.Delay(TimeSpan.FromSeconds(20)));
+        bool waitedForCommit = probe.WaitEntered.Task.IsCompleted;
+        commit.SetResult();
+        ResultWrapper<PayloadStatusV1> result = await resent;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waitedForCommit, Is.True, "the re-send must wait for the head's committing re-execution");
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid),
+                "the head's own re-execution is committing, so its state is about to be readable");
+        }
+    }
+
+    /// <summary>Waits for a block's answered copy to leave the processing queue, and with it to commit its state.</summary>
+    /// <remarks><c>engine_newPayload</c> answers before the commit. Completes at once if no copy is in flight.</remarks>
+    private static Task WaitForCommit(MergeTestBlockchain chain, Hash256 blockHash) =>
+        chain.BlockProcessingQueue.WaitForExecutedCopyAsync(blockHash, TimeSpan.FromSeconds(10)).AsTask();
+
+    /// <summary>The canonical shortcut must not answer from the chain-level marker alone, which sync sets for unexecuted blocks.</summary>
+    [Test]
+    public async Task newPayloadV1_does_not_report_valid_for_an_unprocessed_canonical_block([Values] bool markedCanonical)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+
+        // A sibling of blocks[1] carrying a state root no execution of it could produce.
+        Block sibling = chain.BlockTree.FindBlock(blocks[1].BlockHash, BlockTreeLookupOptions.None)!;
+        Block tampered = sibling.WithReplacedHeader(sibling.Header.Clone());
+        tampered.Header.StateRoot = Keccak.OfAnEmptyString;
+        tampered.Header.Hash = tampered.Header.CalculateHash();
+
+        chain.BlockTree.SuggestBlock(tampered, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        if (markedCanonical)
+        {
+            // As forward sync does for a downloaded, unexecuted block.
+            chain.BlockTree.TryUpdateMainChain(tampered.Header, wereProcessed: false, preloadedBlocks: new[] { tampered });
+        }
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(ExecutionPayload.Create(tampered));
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid),
+            "an unexecuted block must not be reported valid just because its level marker points at it");
+    }
+
+    /// <summary>
+    /// A canonical block whose own and parent's state are gone cannot be re-executed; below finalized it can never
+    /// become head, so its earlier verdict stands.
+    /// </summary>
+    [Test]
+    public async Task newPayloadV1_answers_a_canonical_block_below_the_state_window([Values] bool finalizedAbove)
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain, finalizedAbove ? 2 : -1);
+
+        ExecutionPayload resubmitted = blocks[1];
+        pruned[blocks[0].BlockHash] = 0;
+        pruned[resubmitted.BlockHash] = 0;
+
+        ResultWrapper<PayloadStatusV1> result = await chain.EngineRpcModule.engine_newPayloadV1(resubmitted);
+        Assert.That(result.Data.Status, Is.EqualTo(finalizedAbove ? PayloadStatus.Valid : PayloadStatus.Syncing),
+            "a block below finalized can never become the head, so its verdict stays usable without state");
+    }
+
+    /// <summary>A processed block with a stale canonical marker can be re-executed when the head follows another branch.</summary>
+    [Test]
+    public async Task newPayloadV1_reexecutes_a_pruned_block_when_only_its_canonical_marker_is_stale()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        (ExecutionPayload block1, ExecutionPayload block2A, _, ExecutionPayload block3B) =
+            await BuildYShapedChainV1(chain, rpc);
+
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(new(block3B.BlockHash, block1.BlockHash, block1.BlockHash)))
+            .Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Block block2AInTree = chain.BlockTree.FindBlock(block2A.BlockHash, BlockTreeLookupOptions.None)!;
+        Block block3BInTree = chain.BlockTree.FindBlock(block3B.BlockHash, BlockTreeLookupOptions.None)!;
+        chain.BlockTree.ForceMainChainForTest(new[] { block2AInTree }, wereProcessed: true);
+        chain.BlockTree.ForceMainChainForTest(new[] { block3BInTree }, wereProcessed: true);
+        pruned[block2A.BlockHash] = 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.GetInfo(block2A.BlockNumber, block2A.BlockHash).Info!.WasProcessed, Is.True);
+            Assert.That(chain.BlockTree.IsMainChain(block2A.BlockHash), Is.True);
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block3B.BlockHash));
+        }
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(block2A);
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await WaitForCommit(chain, block2A.BlockHash);
+        Assert.That(pruned.ContainsKey(block2A.BlockHash), Is.False);
+    }
+
+    /// <summary>A canonical header-only block must not be staged as a beacon block, which would arm the pivot behind the head.</summary>
+    [Test]
+    public async Task newPayloadV1_does_not_arm_the_beacon_pivot_for_a_canonical_header_only_block()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+
+        // The shape the pre-pivot header backfill leaves behind: on the main chain, never executed, body absent.
+        Block known = chain.BlockTree.FindBlock(blocks[1].BlockHash, BlockTreeLookupOptions.None)!;
+        BlockHeader headerOnly = known.Header.Clone();
+        headerOnly.ExtraData = [1, 2, 3];
+        headerOnly.Hash = headerOnly.CalculateHash();
+        chain.BlockTree.Insert(headerOnly, BlockTreeInsertHeaderOptions.None);
+
+        // With the parent's state hidden the handler declines to process and reaches the insert path.
+        pruned[blocks[0].BlockHash] = 0;
+
+        ResultWrapper<PayloadStatusV1> result =
+            await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(new Block(headerOnly, known.Body)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(chain.BeaconPivot.BeaconPivotExists(), Is.False,
+                "a block already on the main chain must not become the beacon pivot");
+            Assert.That(chain.BlockTree.LowestInsertedBeaconHeader, Is.Null);
+        }
+    }
+
+    /// <summary>Rejects selected headers, standing in for a validation rule tightened after they were accepted.</summary>
+    private sealed class TightenedHeaderValidator(IHeaderValidator inner, ConcurrentDictionary<Hash256, byte> rejected) : IHeaderValidator
+    {
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
+            !IsRejected(header, out error) && inner.Validate(header, parent, isUncle, out error);
+
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error, bool validateHash) =>
+            !IsRejected(header, out error) && inner.Validate(header, parent, isUncle, out error, validateHash);
+
+        public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) => inner.ValidateOrphaned(header, out error);
+
+        private bool IsRejected(BlockHeader header, [NotNullWhen(true)] out string? error)
+        {
+            bool isRejected = header.Hash is not null && rejected.ContainsKey(header.Hash);
+            error = isRejected ? "rule tightened since acceptance" : null;
+            return isRejected;
+        }
+    }
+
+    /// <summary>Rejects the processed form of selected blocks, standing in for a processing check tightened after they were accepted.</summary>
+    private sealed class TightenedProcessingValidator(IBlockValidator inner, ConcurrentDictionary<Hash256, byte> rejected) : IBlockValidator
+    {
+        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
+        {
+            if (suggestedBlock.Hash is not null && rejected.ContainsKey(suggestedBlock.Hash))
+            {
+                error = "processing check tightened since acceptance";
+                return false;
+            }
+
+            return inner.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error);
+        }
+
+        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock) =>
+            ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
+
+        public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => inner.ValidateOrphanedBlock(block, out error);
+
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
+            inner.Validate(header, parent, isUncle, out error);
+
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error, bool validateHash) =>
+            inner.Validate(header, parent, isUncle, out error, validateHash);
+
+        public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) => inner.ValidateOrphaned(header, out error);
+
+        public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true) =>
+            inner.ValidateSuggestedBlock(block, parent, out error, validateHashes);
+
+        public bool ValidateWithdrawals(Block block, out string? error) => inner.ValidateWithdrawals(block, out error);
+
+        public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
+            inner.ValidateBodyAgainstHeader(header, toBeValidated, out error);
+    }
+
+    /// <summary>Which check, if any, rejects the resubmitted block although it passed when the block was accepted.</summary>
+    public enum TightenedCheck { None, Header, Processing }
+
+    /// <summary>
+    /// A pruned canonical block at or below the head is answered SYNCING, not re-run: a re-run failing a tightened
+    /// check would mark the head invalid and delete blocks up to it.
+    /// </summary>
+    /// <param name="parentHasState">Whether the block could be re-executed at all, or only answered.</param>
+    /// <param name="executed">Whether this node ran the block, or sync placed it on the chain without running it.</param>
+    [TestCase(false, true, TightenedCheck.Header)]
+    [TestCase(false, false, TightenedCheck.Header)]
+    [TestCase(true, true, TightenedCheck.None)]
+    [TestCase(true, true, TightenedCheck.Header)]
+    [TestCase(true, true, TightenedCheck.Processing)]
+    [TestCase(true, false, TightenedCheck.Processing)]
+    public async Task newPayloadV1_leaves_its_own_chain_intact_when_a_pruned_canonical_block_is_resubmitted(
+        bool parentHasState, bool executed, TightenedCheck tightened)
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        ConcurrentDictionary<Hash256, byte> headerRejected = new();
+        ConcurrentDictionary<Hash256, byte> processingRejected = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned, builder => builder
+            .AddDecorator<IHeaderValidator>((_, inner) => new TightenedHeaderValidator(inner, headerRejected))
+            .AddDecorator<IBlockValidator>((_, inner) => new TightenedProcessingValidator(inner, processingRejected)));
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+        Hash256 head = chain.BlockTree.HeadHash!;
+        ulong bestKnown = chain.BlockTree.BestKnownNumber;
+
+        ExecutionPayload resubmitted = blocks[1];
+        if (!parentHasState) pruned[blocks[0].BlockHash] = 0;
+        pruned[resubmitted.BlockHash] = 0;
+        // What the pre-pivot header backfill leaves behind: on the main chain, never run by this node.
+        if (!executed) chain.BlockTree.GetInfo(resubmitted.BlockNumber, resubmitted.BlockHash).Info!.WasProcessed = false;
+        if (tightened == TightenedCheck.Header) headerRejected[resubmitted.BlockHash] = 0;
+        if (tightened == TightenedCheck.Processing) processingRejected[resubmitted.BlockHash] = 0;
+
+        int processed = 0;
+        chain.BranchProcessor.BlockProcessing += (_, _) => Interlocked.Increment(ref processed);
+        ResultWrapper<PayloadStatusV1> result = await chain.EngineRpcModule.engine_newPayloadV1(resubmitted);
+        ResultWrapper<ForkchoiceUpdatedV1Result> toHead =
+            await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(head, Keccak.Zero, Keccak.Zero));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(processed, Is.Zero, "a block on the node's own chain must not be run again");
+            Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(head, out _), Is.False,
+                "the head descends from the resubmitted block and must not be marked invalid");
+            Assert.That(toHead.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.BestKnownNumber, Is.EqualTo(bestKnown));
+            foreach (ExecutionPayload block in blocks)
+            {
+                Assert.That(chain.BlockTree.FindHeader(block.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null, $"header {block.BlockNumber}");
+                Assert.That(chain.BlockTree.FindBlock(block.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null, $"body {block.BlockNumber}");
+                Assert.That(chain.BlockTree.FindLevel(block.BlockNumber), Is.Not.Null, $"level {block.BlockNumber}");
+            }
+        }
+    }
+
     // Y-shape: block1 -> {block2A (sibling), block2B -> block3B}, with head advanced to block1 via FCU.
     private static async Task<(ExecutionPayload Block1, ExecutionPayload Block2A, ExecutionPayload Block2B, ExecutionPayload Block3B)>
         BuildYShapedChainV1(MergeTestBlockchain chain, IEngineRpcModule rpc)
     {
-        ExecutionPayload block1 = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
+        ExecutionPayload block1 = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(block1)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         ForkchoiceStateV1 fcu1 = new(block1.BlockHash, block1.BlockHash, block1.BlockHash);
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(fcu1)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        ExecutionPayload block2A = CreateBlockRequest(chain, block1, TestItem.AddressB);
+        ExecutionPayload block2A = await CreateBlockRequest(chain, block1, TestItem.AddressB);
         Assert.That((await rpc.engine_newPayloadV1(block2A)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        ExecutionPayload block2B = CreateBlockRequest(chain, block1, TestItem.AddressA);
+        ExecutionPayload block2B = await CreateBlockRequest(chain, block1, TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(block2B)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        ExecutionPayload block3B = CreateBlockRequest(chain, block2B, TestItem.AddressA);
+        ExecutionPayload block3B = await CreateBlockRequest(chain, block2B, TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(block3B)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         return (block1, block2A, block2B, block3B);
@@ -1623,21 +2423,21 @@ public partial class EngineModuleTests
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        ExecutionPayload blockX = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
+        ExecutionPayload blockX = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(blockX)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(
             (await rpc.engine_forkchoiceUpdatedV1(new(blockX.BlockHash, blockX.BlockHash, blockX.BlockHash))).Data.PayloadStatus.Status,
             Is.EqualTo(PayloadStatus.Valid));
 
-        ExecutionPayload blockA = CreateBlockRequest(chain, blockX, TestItem.AddressA);
+        ExecutionPayload blockA = await CreateBlockRequest(chain, blockX, TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(blockA)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(
             (await rpc.engine_forkchoiceUpdatedV1(new(blockA.BlockHash, blockX.BlockHash, blockX.BlockHash))).Data.PayloadStatus.Status,
             Is.EqualTo(PayloadStatus.Valid));
 
-        ExecutionPayload blockB = CreateBlockRequest(chain, blockX, TestItem.AddressB);
+        ExecutionPayload blockB = await CreateBlockRequest(chain, blockX, TestItem.AddressB);
         Assert.That((await rpc.engine_newPayloadV1(blockB)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        ExecutionPayload blockC = CreateBlockRequest(chain, blockB, TestItem.AddressB);
+        ExecutionPayload blockC = await CreateBlockRequest(chain, blockB, TestItem.AddressB);
         Assert.That((await rpc.engine_newPayloadV1(blockC)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         ForkchoiceStateV1 reorgToC = new(headBlockHash: blockC.BlockHash, finalizedBlockHash: blockX.BlockHash, safeBlockHash: blockB.BlockHash);
@@ -1688,17 +2488,17 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Assert.That(spy!, Is.Not.Null);
 
-        ExecutionPayload a1 = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
+        ExecutionPayload a1 = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(a1)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        ExecutionPayload a2 = CreateBlockRequest(chain, a1, TestItem.AddressA);
+        ExecutionPayload a2 = await CreateBlockRequest(chain, a1, TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(a2)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        ExecutionPayload a3 = CreateBlockRequest(chain, a2, TestItem.AddressA);
+        ExecutionPayload a3 = await CreateBlockRequest(chain, a2, TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(a3)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         ForkchoiceStateV1 advance = new(headBlockHash: a3.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: a2.BlockHash);
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(advance)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        ExecutionPayload b3 = CreateBlockRequest(chain, a2, TestItem.AddressB);
+        ExecutionPayload b3 = await CreateBlockRequest(chain, a2, TestItem.AddressB);
         Assert.That((await rpc.engine_newPayloadV1(b3)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
         FlipCanonicalMarkerTo(chain, b3);
 
@@ -1736,12 +2536,12 @@ public partial class EngineModuleTests
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        ExecutionPayload a1 = CreateBlockRequest(
+        ExecutionPayload a1 = await CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(a1)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        ExecutionPayload a2 = CreateBlockRequest(chain, a1, TestItem.AddressA);
+        ExecutionPayload a2 = await CreateBlockRequest(chain, a1, TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(a2)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         ForkchoiceStateV1 initialFcu = new(headBlockHash: a2.BlockHash, finalizedBlockHash: Keccak.Zero, safeBlockHash: a1.BlockHash);
@@ -1759,7 +2559,7 @@ public partial class EngineModuleTests
             BaseFeePerGas = genesis.BaseFeePerGas,
         };
 
-        ExecutionPayload b1 = CreateBlockRequest(chain, genesisPayload, TestItem.AddressB);
+        ExecutionPayload b1 = await CreateBlockRequest(chain, genesisPayload, TestItem.AddressB);
         Assert.That((await rpc.engine_newPayloadV1(b1)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         FlipCanonicalMarkerTo(chain, b1);
@@ -1861,6 +2661,69 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task rewinding_the_head_lets_the_node_execute_a_new_branch_from_there([Values] bool byHash)
+    {
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" },
+                configurer: builder => builder.AddSingleton<ISyncModeSelector>(StaticSelector.Full));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[^1].BlockHash));
+
+        IDebugRpcModule debug = chain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Pause();
+        ResultWrapper<bool> rewind = byHash
+            ? debug.debug_resetHead(blocks[0].BlockHash!)
+            : debug.debug_setHead(new BlockParameter(blocks[0].BlockNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewind.Data, Is.True);
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[0].BlockHash));
+        }
+
+        TaskCompletionSource lockHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim releaseLock = new();
+        Task holder = Task.Run(() =>
+        {
+            using BlockTreeMutationLock.Scope scope = chain.Container.Resolve<BlockTreeMutationLock>().Enter();
+            lockHeld.SetResult();
+            if (!releaseLock.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("mutation lock was not released");
+        });
+        ResultWrapper<ForkchoiceUpdatedV1Result> pausedForkchoice;
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>>? forkchoiceTask = null;
+        try
+        {
+            await lockHeld.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            forkchoiceTask = Task.Run(() => rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(blocks[^1].BlockHash!, Keccak.Zero, Keccak.Zero)));
+            pausedForkchoice = await forkchoiceTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            releaseLock.Set();
+            await holder;
+            if (forkchoiceTask is not null) await forkchoiceTask;
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pausedForkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[0].BlockHash));
+        }
+
+        chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Resume();
+
+        // A different prevRandao makes this a genuinely new block rather than a replay of blocks[1].
+        IReadOnlyList<ExecutionPayload> replacement = await ProduceBranchV1(rpc, chain, 1, blocks[0], setHead: true, TestItem.KeccakE);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replacement[0].BlockHash, Is.Not.EqualTo(blocks[1].BlockHash));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(replacement[0].BlockHash));
+        }
+    }
+
+    [Test]
     public async Task forkchoiceUpdated_accepts_lower_finalized_than_previous_but_rejects_safe_before_finalized()
     {
         using MergeTestBlockchain chain =
@@ -1938,17 +2801,17 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // Common ancestor c1, then two branches diverge: c1 -> a1/b1 -> a2/b2
-        ExecutionPayload c1 = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
+        ExecutionPayload c1 = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(c1)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        ExecutionPayload a1 = CreateBlockRequest(chain, c1, TestItem.AddressA);
+        ExecutionPayload a1 = await CreateBlockRequest(chain, c1, TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(a1)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        ExecutionPayload a2 = CreateBlockRequest(chain, a1, TestItem.AddressA);
+        ExecutionPayload a2 = await CreateBlockRequest(chain, a1, TestItem.AddressA);
         Assert.That((await rpc.engine_newPayloadV1(a2)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        ExecutionPayload b1 = CreateBlockRequest(chain, c1, TestItem.AddressB);
+        ExecutionPayload b1 = await CreateBlockRequest(chain, c1, TestItem.AddressB);
         Assert.That((await rpc.engine_newPayloadV1(b1)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        ExecutionPayload b2 = CreateBlockRequest(chain, b1, TestItem.AddressB);
+        ExecutionPayload b2 = await CreateBlockRequest(chain, b1, TestItem.AddressB);
         Assert.That((await rpc.engine_newPayloadV1(b2)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         // FCU1 on branch A: cache either finalized=a1 or safe=a1 (a1 is NOT an ancestor of b2).
@@ -1963,6 +2826,41 @@ public partial class EngineModuleTests
             ? new(headBlockHash: b2.BlockHash, finalizedBlockHash: c1.BlockHash, safeBlockHash: a1.BlockHash)
             : new(headBlockHash: b2.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: b1.BlockHash);
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(fcu2)).ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidForkchoiceState));
+    }
+
+    /// <summary>
+    /// newPayload answers VALID before the block's state is committed, so a child built on the block right after
+    /// the answer must wait for that commit rather than read state that is not there yet.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task CreateBlockRequest_waits_for_a_parent_still_committing()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        ExecutionPayload parent = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
+
+        using ManualResetEventSlim commitReleased = new(false);
+        chain.BranchProcessor.BlockExecuted += (_, args) =>
+        {
+            if (args.Block.Hash == parent.BlockHash) commitReleased.Wait();
+        };
+
+        try
+        {
+            Assert.That((await rpc.engine_newPayloadV1(parent)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+
+            Task<ExecutionPayload> child = CreateBlockRequest(chain, parent, TestItem.AddressA);
+            Assert.That(child.IsCompleted, Is.False, "the parent's commit is still parked");
+
+            commitReleased.Set();
+            Assert.That((await rpc.engine_newPayloadV1(await child)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
+        finally
+        {
+            commitReleased.Set();
+            // The processing thread must leave the gate before it is disposed.
+            await chain.WaitForCommitted(parent.BlockHash);
+        }
     }
 
     [Test]
@@ -1991,7 +2889,7 @@ public partial class EngineModuleTests
         }
 
         // Add one block
-        ExecutionPayload executionPayloadV11 = CreateBlockRequest(
+        ExecutionPayload executionPayloadV11 = await CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressA);
         executionPayloadV11.PrevRandao = prevRandao1;
@@ -2016,7 +2914,7 @@ public partial class EngineModuleTests
 
 
         {
-            ExecutionPayload executionPayloadV12 = CreateBlockRequest(
+            ExecutionPayload executionPayloadV12 = await CreateBlockRequest(
                 chain, executionPayloadV11,
                 TestItem.AddressA);
 
@@ -2040,7 +2938,7 @@ public partial class EngineModuleTests
 
         // re-org
         {
-            ExecutionPayload executionPayloadV13 = CreateBlockRequest(chain, executionPayloadV11, TestItem.AddressA);
+            ExecutionPayload executionPayloadV13 = await CreateBlockRequest(chain, executionPayloadV11, TestItem.AddressA);
 
             executionPayloadV13.PrevRandao = prevRandao2;
 

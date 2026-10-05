@@ -39,7 +39,7 @@ public class Eth69ProtocolHandler(
     IForkInfo forkInfo,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
-    ISpecProvider specProvider,
+    IChainHeadSpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
         gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
@@ -69,6 +69,7 @@ public class Eth69ProtocolHandler(
                 Handle(statusMsg);
                 return true;
             case Eth69MessageCode.Receipts:
+                ThrowIfReceiptsUnexpected(message.Content);
                 ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
                 ReportIn(receiptsMessage, size);
                 base.Handle(receiptsMessage, size);

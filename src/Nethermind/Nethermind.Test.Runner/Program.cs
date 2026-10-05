@@ -77,14 +77,17 @@ internal class Program
         public static Option<string> Chunk { get; } =
             new("--chunk", "-c") { Description = "Run only the Nth of M interleaved chunks of the collected fixture files, e.g. '2of8'. Used to split a large fixture set across CI jobs." };
 
-        public static Option<bool> FlatDb { get; } =
-            new("--flatdb") { Description = "Run with the flat state layout (equivalent to setting TEST_USE_FLAT=1)." };
+        public static Option<bool> TrieDb { get; } =
+            new("--triedb") { Description = "Run with the patricia-trie state layout." };
 
         public static Option<bool?> ParallelExecution { get; } =
             new("--parallelExecution") { Description = "Force BAL parallel execution on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
 
         public static Option<bool?> BatchRead { get; } =
             new("--batchRead") { Description = "Force BAL batch-read prewarming on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
+
+        public static Option<string[]> ForkAlias { get; } =
+            new("--forkAlias") { Description = "Resolve a fixture's declared fork name as another fork, e.g. 'Bogota=Eip8141Prototype'. Repeatable; needed where separate fixture releases give one fork name incompatible meanings.", AllowMultipleArgumentsPerToken = true };
     }
 
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
@@ -111,9 +114,10 @@ internal class Program
             Options.JsonOutput,
             Options.Workers,
             Options.Chunk,
-            Options.FlatDb,
+            Options.TrieDb,
             Options.ParallelExecution,
             Options.BatchRead,
+            Options.ForkAlias,
         ];
         rootCommand.SetAction(Run);
 
@@ -122,6 +126,10 @@ internal class Program
 
     private static async Task<int> Run(ParseResult parseResult, CancellationToken cancellationToken)
     {
+        // stdout carries only the results document, so every other writer goes to stderr.
+        TextWriter resultsOut = Console.Out;
+        Console.SetOut(Console.Error);
+
         bool isStateTest = parseResult.GetValue(Options.StateTest);
         bool isBlockTest = parseResult.GetValue(Options.BlockTest);
         bool isEngineTest = parseResult.GetValue(Options.EngineTest);
@@ -154,11 +162,12 @@ internal class Program
         bool? parallelExecution = parseResult.GetValue(Options.ParallelExecution);
         bool? batchRead = parseResult.GetValue(Options.BatchRead);
 
-        if (parseResult.GetValue(Options.FlatDb))
+        // Set before any fixture is loaded: the parse workers only ever read the table.
+        ForkAliases.Set(parseResult.GetValue(Options.ForkAlias) ?? []);
+
+        if (parseResult.GetValue(Options.TrieDb))
         {
-            // The test fixture bases read TEST_USE_FLAT per test, so setting it here covers
-            // both blockchain/engine and state test runs without plumbing a flag through.
-            Environment.SetEnvironmentVariable("TEST_USE_FLAT", "1");
+            Environment.SetEnvironmentVariable("TEST_USE_TRIE", "1");
         }
 
         // Pre-warm the thread pool to avoid ramp-up delay (default adds 1 thread/500ms).
@@ -191,22 +200,22 @@ internal class Program
                     ParallelExecution: parallelExecution,
                     ParallelExecutionBatchRead: batchRead);
                 List<EthereumTestResult> results = await RunBlockTestFiles(files, runnerOptions, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isStateTest)
             {
                 List<EthereumTestResult> results = RunStateTestFiles(files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isTxTest)
             {
                 List<EthereumTestResult> results = RunTransactionTestFiles(files, filter, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isZkEvmTest)
             {
                 List<EthereumTestResult> results = RunZkEvmTestFiles(files, filter, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
 
             if (!parseResult.GetValue(Options.Stdin)) break;

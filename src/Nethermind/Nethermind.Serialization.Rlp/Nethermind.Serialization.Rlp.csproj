@@ -7,6 +7,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Core.Test" />
+    <InternalsVisibleTo Include="Nethermind.Trie" />
+    <InternalsVisibleTo Include="Nethermind.Merge.Plugin" />
+    <InternalsVisibleTo Include="Nethermind.Stateless.Executor" />
   </ItemGroup>
 
   <ItemGroup>

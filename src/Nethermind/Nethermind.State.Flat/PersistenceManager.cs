@@ -9,6 +9,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -16,7 +17,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]
@@ -28,7 +28,7 @@ namespace Nethermind.State.Flat;
 public class PersistenceManager(
     IFlatDbConfig configuration,
     ICompactionSchedule schedule,
-    IFinalizedStateProvider finalizedStateProvider,
+    IStateHeaderProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
     IStatePersistenceBarrier persistenceBarrier,
@@ -39,7 +39,7 @@ public class PersistenceManager(
     IFlatPersistenceCaptureHook? captureHook = null) : IPersistenceManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
-    // Linked to process exit so the conversion Parallel.ForEach below cancels at shutdown-start —
+    // Linked to process exit so the conversion loop below cancels at shutdown-start —
     // before DI disposal order matters — letting the owning FlatDbManager.RunPersistence task drain.
     private readonly CancellationTokenSource _cts = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
     private readonly ulong _minReorgDepth = configuration.MinReorgDepth;
@@ -54,10 +54,12 @@ public class PersistenceManager(
         configuration.EnableLongFinality ? configuration.LongFinalityMaxReorgDepth : configuration.MaxReorgDepth,
         configuration.MinReorgDepth + configuration.CompactSize);
     private readonly ulong _compactSize = configuration.CompactSize;
+    private readonly long _maxInMemorySnapshotBytes = (long)configuration.MaxInMemorySnapshotBytes;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
+    private StateId? _lastWarnedStall;
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -71,7 +73,7 @@ public class PersistenceManager(
         set => Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(value));
     }
 
-    public IPersistence.IPersistenceReader LeaseReader() => persistence.CreateReader();
+    public IPersistence.IPersistenceReader LeaseReader(ReaderFlags flags = ReaderFlags.None) => persistence.CreateReader(flags);
 
     public StateId GetCurrentPersistedStateId()
     {
@@ -95,18 +97,21 @@ public class PersistenceManager(
     /// finalized trigger ran but found nothing to persist:
     /// <list type="bullet">
     ///   <item>Finalized trigger: if <c>finalizedBlock &gt;= persistedBlock + CompactSize</c> AND
-    ///   <c>snapshotsDepth + CompactSize &gt; MinReorgDepth</c> → seed = canonical state at
+    ///   <c>head - nextBoundary &gt;= MinReorgDepth</c> (the depth remaining above the new base)
+    ///   → seed = canonical state at
     ///   the next boundary block (<c>persistedBlock + CompactSize</c>). Looked up via
-    ///   <see cref="IFinalizedStateProvider"/> — the boundary is always locally synced even
+    ///   <see cref="IStateHeaderProvider"/> — the boundary is always locally synced even
     ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
     ///   finality is enabled, otherwise <c>MaxReorgDepth</c>, raised to at least
-    ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head.</item>
+    ///   <c>MinReorgDepth + CompactSize</c>) -> seed = the committed head.</item>
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
-    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>.
+    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>. When it finds no conversion and a positive
+    /// <c>MaxInMemorySnapshotBytes</c> is exceeded, the next in-memory snapshot is force-persisted if that
+    /// leaves at least <c>MinReorgDepth</c> blocks above the new base.
     /// </remarks>
     internal (PersistedSnapshot? ToPersistPersistedSnapshot, Snapshot? ToPersist, ConversionCandidate? ToConvert) DetermineSnapshotAction(StateId latestSnapshot)
     {
@@ -131,10 +136,13 @@ public class PersistenceManager(
         // CL-reported finalized tip. The outer gate guarantees boundary <= finalizedBlockNumber, so
         // the provider's own range check passes; the boundary is below chain head by construction, so
         // the canonical header is in the block tree and FindHeader resolves.
+        // MinReorgDepth is a floor on what stays reachable, so the gate is on the depth left *above*
+        // the new base rather than the depth before the fold: folding is allowed only while the state
+        // above nextBoundary still covers MinReorgDepth.
         if (finalizedBlockNumber >= nextBoundary
-            && snapshotsDepth + _compactSize > _minReorgDepth)
+            && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) >= _minReorgDepth)
         {
-            Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedStateRootAt(nextBoundary);
+            Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedHeader(nextBoundary)?.StateRoot;
             if (canonicalRoot is not null)
             {
                 (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersist(
@@ -154,9 +162,8 @@ public class PersistenceManager(
         // longest chain, then the latest state, only when nothing was committed this session.
         if (snapshotsDepth > _backstopReorgDepth)
         {
-            StateId backstopSeed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
             (PersistedSnapshot? persisted, Snapshot? inMemory) =
-                snapshotRepository.FindSnapshotToPersist(backstopSeed, currentPersistedState, _compactSize);
+                snapshotRepository.FindSnapshotToPersist(ForcedPersistSeed(latestSnapshot), currentPersistedState, _compactSize);
             if (persisted is not null || inMemory is not null)
             {
                 if (_logger.IsWarn) _logger.Warn(
@@ -167,10 +174,54 @@ public class PersistenceManager(
         }
 
         // ---- Phase 2: conversion to the persisted-snapshot tier ----
-        if (!_enableLongFinality) return (null, null, null);
-        if (snapshotRepository.SnapshotCount <= _maxInMemoryBaseSnapshotCount) return (null, null, null);
+        ConversionCandidate? conversion = _enableLongFinality && snapshotRepository.SnapshotCount > _maxInMemoryBaseSnapshotCount
+            ? TryFindSnapshotToConvert(currentPersistedState) : null;
+        if (conversion is null && _maxInMemorySnapshotBytes > 0 && snapshotsDepth > _minReorgDepth
+            && snapshotRepository.InMemoryBytes > _maxInMemorySnapshotBytes
+            && TryFindByteBudgetPersist(latestSnapshot, currentPersistedState) is { } byteBudgetPersist)
+        {
+            if (_logger.IsDebug) _logger.Debug(
+                $"In-memory snapshot bytes {snapshotRepository.InMemoryBytes} exceeded the byte budget {_maxInMemorySnapshotBytes}; " +
+                $"forcing persistence to bound memory (depth {snapshotsDepth}, finalized block {finalizedBlockNumber}).");
+            return (null, byteBudgetPersist, null);
+        }
 
-        return (null, null, TryFindSnapshotToConvert(currentPersistedState));
+        if (conversion is null && snapshotsDepth > _backstopReorgDepth && _logger.IsWarn
+            && _lastWarnedStall != currentPersistedState)
+        {
+            _lastWarnedStall = currentPersistedState;
+            _logger.Warn($"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}, " +
+                $"but neither persistence nor conversion found a candidate (persisted {currentPersistedState}, " +
+                $"latest {latestSnapshot}, finalized block {finalizedBlockNumber}).");
+        }
+
+        return (null, null, conversion);
+    }
+
+    private StateId ForcedPersistSeed(in StateId latestSnapshot) =>
+        snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
+
+    /// <summary>
+    /// Byte-pressure fallback of <see cref="DetermineSnapshotAction"/>: the next in-memory snapshot to persist,
+    /// or <c>null</c> when the next candidate is in the persisted tier or would leave fewer than
+    /// <c>MinReorgDepth</c> blocks above the new base.
+    /// </summary>
+    /// <remarks>
+    /// A persisted-tier candidate holds none of the bytes the budget counts, so flushing it would drain the
+    /// long-finality window block after block without bringing the in-memory size down.
+    /// </remarks>
+    private Snapshot? TryFindByteBudgetPersist(StateId latestSnapshot, StateId currentPersistedState)
+    {
+        StateId? committedHead = snapshotRepository.GetLastCommittedStateId();
+        StateId seed = committedHead ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
+        (PersistedSnapshot? persisted, Snapshot? inMemory) =
+            snapshotRepository.FindSnapshotToPersist(seed, currentPersistedState, _compactSize);
+        persisted?.Dispose();
+        if (inMemory is not null && (committedHead ?? latestSnapshot).BlockNumber.SaturatingSub(inMemory.To.BlockNumber) >= _minReorgDepth)
+            return inMemory;
+
+        inMemory?.Dispose();
+        return null;
     }
 
     /// <summary>
@@ -246,6 +297,9 @@ public class PersistenceManager(
                 if (toPersist is not null)
                 {
                     using Snapshot _ = toPersist;
+                    // The span tells a per-block chunk from a multi-block one, which is what the history capture
+                    // walking on top of this can and cannot follow.
+                    if (_logger.IsDebug) _logger.Debug($"Persisting in-memory chunk {toPersist.From.BlockNumber}->{toPersist.To.BlockNumber}.");
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                     CaptureHistory(toPersist.To, _cts.Token);
                     PersistSnapshot(toPersist);
@@ -255,6 +309,7 @@ public class PersistenceManager(
                 else if (persistedToPersist is not null)
                 {
                     using PersistedSnapshot _ = persistedToPersist;
+                    if (_logger.IsDebug) _logger.Debug($"Persisting persisted-tier chunk {persistedToPersist.From.BlockNumber}->{persistedToPersist.To.BlockNumber}.");
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                     CaptureHistory(persistedToPersist.To, _cts.Token);
                     PersistPersistedSnapshot(persistedToPersist);
@@ -297,14 +352,14 @@ public class PersistenceManager(
 
     /// <summary>
     /// Branch A — boundary CompactSize compacted: convert every in-memory base in the range it
-    /// spans and queue them for batched compaction. The CompactSized snapshot is produced by the
+    /// spans whose parent is on disk or converted with it, and queue them for batched compaction. The CompactSized snapshot is produced by the
     /// batched compactor (a linked merge of the bases), not here, so the compacted in-memory
     /// snapshot is used only to delimit the block range. Disposes <paramref name="compacted"/>.
     /// </summary>
     private async Task ConvertCompactedRange(Snapshot compacted)
     {
         // Ownership of allStateIds transfers to the compactor on the EnqueueAsync handoff below; until then
-        // this method owns it and must dispose it on any early exit (e.g. Parallel.ForEach cancellation).
+        // this method owns it and must dispose it on any early exit (e.g. conversion cancellation).
         ArrayPoolList<StateId> allStateIds = new(64);
         bool handedOff = false;
         try
@@ -313,26 +368,39 @@ public class PersistenceManager(
             ulong start = compacted.From.BlockNumber + 1;
             ulong end = compacted.To.BlockNumber;
 
+            // A fork that branched below `start` after the range under it was converted still has an in-memory
+            // parent. A walk that crosses into the persisted tier cannot return to memory, so converting it would
+            // strand the fork's tip.
+            StateId currentPersistedState = GetCurrentPersistedStateId();
             for (ulong b = start; b <= end; b++)
             {
                 using ArrayPoolList<StateId> statesAtBlock = snapshotRepository.GetStatesAtBlockNumber(b);
                 foreach (StateId state in statesAtBlock)
-                    allStateIds.Add(state);
+                {
+                    if (!snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? baseSnap)) continue;
+                    using Snapshot _ = baseSnap;
+                    if (IsOnDisk(baseSnap.From, currentPersistedState) || allStateIds.Contains(baseSnap.From))
+                        allStateIds.Add(state);
+                }
             }
 
-            Parallel.ForEach(
-                allStateIds,
-                new ParallelOptions { CancellationToken = _cts.Token },
-                state =>
-                {
-                    if (snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? snap))
+            using (ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount))
+            {
+                ParallelUnbalancedWork.For(
+                    0, allStateIds.Count,
+                    new ParallelOptions { CancellationToken = _cts.Token },
+                    i =>
                     {
-                        long sw = Stopwatch.GetTimestamp();
-                        loader.ConvertAndRegister(snap);
-                        Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
-                        snap.Dispose();
-                    }
-                });
+                        StateId state = allStateIds[i];
+                        if (snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? snap))
+                        {
+                            using Snapshot _ = snap;
+                            long sw = Stopwatch.GetTimestamp();
+                            loader.ConvertAndRegister(snap);
+                            Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
+                        }
+                    });
+            }
 
             // Remove exactly the converted in-memory snapshots — not RemoveStatesUntil(end),
             // which would also drop snapshots added concurrently within the block range. Must
@@ -418,7 +486,7 @@ public class PersistenceManager(
             ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
             if (currentPersistedState == StateId.PreGenesis || finalizedBlockNumber > currentPersistedState.BlockNumber)
             {
-                Hash256? finalizedStateRoot = finalizedStateProvider.GetFinalizedStateRootAt(finalizedBlockNumber);
+                Hash256? finalizedStateRoot = finalizedStateProvider.GetFinalizedHeader(finalizedBlockNumber)?.StateRoot;
                 if (finalizedStateRoot is not null)
                     seed = new StateId(finalizedBlockNumber, finalizedStateRoot);
             }
@@ -462,6 +530,12 @@ public class PersistenceManager(
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         CurrentPersistedStateId = reader.CurrentState;
+    }
+
+    public void DropStateNotReachableFrom(in StateId head)
+    {
+        using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
+        snapshotRepository.RemoveUnreachableFrom(head, GetCurrentPersistedStateId());
     }
 
     public void Dispose()
@@ -509,7 +583,7 @@ public class PersistenceManager(
                 batch.SetAccount(kv.Key.Key, kv.Value);
             }
 
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
+            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
 
@@ -524,14 +598,8 @@ public class PersistenceManager(
                 TreePath path = kvp.Key.Key;
                 TrieNode node = kvp.Value;
 
-                if (node.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
+                // TODO: Need to double check this case. Does it need a rewrite or not?
+                if (node.IsHashOnlyPlaceholder()) continue;
 
                 stateNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
@@ -547,14 +615,8 @@ public class PersistenceManager(
                 (Hash256 address, TreePath path) = kvp.Key.Key;
                 TrieNode node = kvp.Value;
 
-                if (node.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
+                // TODO: Need to double check this case. Does it need a rewrite or not?
+                if (node.IsHashOnlyPlaceholder()) continue;
 
                 storageNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it

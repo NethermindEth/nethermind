@@ -20,12 +20,15 @@ internal class TestChainHeadInfoProvider : IChainHeadInfoProvider
     public IChainHeadSpecProvider SpecProvider { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyStateProvider { get; set; } = null!;
     public ulong HeadNumber { get; set; }
+    public ulong HeadTimestamp { get; set; }
     public ulong? BlockGasLimit { get; set; } = 30_000_000;
     public UInt256 CurrentBaseFee { get; set; }
     public UInt256 CurrentFeePerBlobGas { get; set; }
     public ProofVersion CurrentProofVersion { get; set; }
     public bool IsSyncing { get; set; }
     public bool IsProcessingBlock { get; set; }
+
+    public bool IsBuildingBlock { get; set; }
     public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
     public void RaiseHeadChanged(BlockReplacementEventArgs args) => HeadChanged?.Invoke(this, args);
