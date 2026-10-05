@@ -9,25 +9,17 @@ using Nethermind.Db;
 namespace Nethermind.BeaconChain.Test.Storage;
 
 // Sorted tables support disk-like seeking; otherwise range reads must walk keys.
-internal sealed class CountingStatesColumnsDb(bool sorted) : IColumnsDb<BeaconChainDbColumns>
+internal sealed class CountingStatesColumnsDb(bool sorted) : TestColumnsDb
 {
-    private readonly MemColumnsDb<BeaconChainDbColumns> _inner = new();
-
     public CountingStatesDb States { get; } = new();
     public CountingStatesDb Index { get; } = sorted ? new SeekableCountingStatesDb() : new CountingStatesDb();
-    public IDb GetColumnDb(BeaconChainDbColumns key) => key == BeaconChainDbColumns.States ? States : key == BeaconChainDbColumns.StateSlotIndex ? Index : _inner.GetColumnDb(key);
-    public IEnumerable<BeaconChainDbColumns> ColumnKeys => _inner.ColumnKeys;
-    public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-    public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
+    protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.States ? States : key == BeaconChainDbColumns.StateSlotIndex ? Index : base.CreateColumn(key);
 
-    public void Dispose()
+    public override void Dispose()
     {
         States.Dispose();
         Index.Dispose();
-        _inner.Dispose();
     }
-
-    public void Flush(bool onlyWal = false) { }
 
     internal class CountingStatesDb : MemDb, IDb
     {
