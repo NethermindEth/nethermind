@@ -105,11 +105,8 @@ public class DataColumnSidecarsReqRespTests
         new("Largest incompressible sidecar round trips whole", Count: 1, HeldCount: 1, Columns: [100], HeldColumns: [100], Expected: [(0, 100)], Largest: true),
     ];
 
-    private static IEnumerable<TestCaseData> RangeServingCases()
-    {
-        for (int i = 0; i < RangeServingScenarios.Length; i++)
-            yield return new TestCaseData(i).SetName(RangeServingScenarios[i].Name);
-    }
+    private static IEnumerable<TestCaseData> RangeServingCases() =>
+        RangeServingScenarios.Select(static (scenario, index) => new TestCaseData(index).SetName(scenario.Name));
 
     [TestCaseSource(nameof(RangeServingCases))]
     public async Task Range_serving_preserves_canonical_order_limits_and_availability(int index)

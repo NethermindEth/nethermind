@@ -529,11 +529,8 @@ public class ColumnGossipRouterFuluHeaderTests
         new("Nested retry message exports only its own outcome", CheckMetrics: true, NestedMessage: true),
     ];
 
-    private static IEnumerable<TestCaseData> QueuedColumnCases()
-    {
-        for (int i = 0; i < QueuedColumnScenarios.Length; i++)
-            yield return new TestCaseData(i).SetName(QueuedColumnScenarios[i].Name);
-    }
+    private static IEnumerable<TestCaseData> QueuedColumnCases() =>
+        QueuedColumnScenarios.Select(static (scenario, index) => new TestCaseData(index).SetName(scenario.Name));
 
     [TestCaseSource(nameof(QueuedColumnCases))]
     public void Queued_column_publication_preserves_validation_ownership_and_bounds(int index)
@@ -891,11 +888,8 @@ public class ColumnGossipRouterFuluHeaderTests
 
     private static readonly HeaderValidationCase[] HeaderValidationScenarios = [.. ImportedCases(), .. UnimportedCases(), .. ExpectedProposerCases()];
 
-    private static IEnumerable<TestCaseData> HeaderValidationCases()
-    {
-        for (int i = 0; i < HeaderValidationScenarios.Length; i++)
-            yield return new TestCaseData(i).SetName(HeaderValidationScenarios[i].Name);
-    }
+    private static IEnumerable<TestCaseData> HeaderValidationCases() =>
+        HeaderValidationScenarios.Select(static (scenario, index) => new TestCaseData(index).SetName(scenario.Name));
 
     [TestCaseSource(nameof(HeaderValidationCases))]
     public void Header_validation_preserves_import_signature_ancestry_and_proposer_order(int index)
