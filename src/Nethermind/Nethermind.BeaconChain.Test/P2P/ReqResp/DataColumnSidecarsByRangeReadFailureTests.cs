@@ -138,17 +138,11 @@ public class DataColumnSidecarsByRangeReadFailureTests
         Assert.That(chunks.ConvertAll(static c => c.Result), Is.EqualTo(new[] { ReqRespFraming.ResponseCode.ServerError }), "a column the store may hold is not skipped");
     }
 
-    private sealed class RecordCheckFailingColumnsDb : IColumnsDb<BeaconChainDbColumns>
+    private sealed class RecordCheckFailingColumnsDb : TestColumnsDb
     {
-        private readonly MemColumnsDb<BeaconChainDbColumns> _inner = new();
         private readonly IDb _sidecars = new KeyExistsFailingDb();
 
-        public IDb GetColumnDb(BeaconChainDbColumns key) => key == BeaconChainDbColumns.DataColumnSidecars ? _sidecars : _inner.GetColumnDb(key);
-        public IEnumerable<BeaconChainDbColumns> ColumnKeys => _inner.ColumnKeys;
-        public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-        public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
-        public void Dispose() { }
-        public void Flush(bool onlyWal = false) { }
+        protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.DataColumnSidecars ? _sidecars : base.CreateColumn(key);
     }
 
     private sealed class KeyExistsFailingDb : MemDb, IDb
