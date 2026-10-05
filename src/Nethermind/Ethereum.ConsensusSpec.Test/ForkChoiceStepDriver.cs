@@ -306,8 +306,6 @@ internal static class ForkChoiceStepDriver
         return false;
     }
 
-    private static bool HasKey(YamlMappingNode map, string key) => TryGetChild(map, key, out _);
-
     internal static bool TryGetScalar(YamlMappingNode map, string key, out string? value)
     {
         if (TryGetChild(map, key, out YamlNode? node) && node is YamlScalarNode scalar)
