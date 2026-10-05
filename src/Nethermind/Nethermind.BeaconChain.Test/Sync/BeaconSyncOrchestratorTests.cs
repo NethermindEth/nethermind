@@ -3,7 +3,6 @@
 
 using System.Diagnostics;
 using System.Net;
-using Google.Protobuf;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -20,13 +19,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using NSubstitute;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
+using FakeTopic = Nethermind.BeaconChain.Test.P2P.Gossip.GossipDigestWindowTests.RecordingTopic;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -665,7 +664,7 @@ public partial class BeaconSyncOrchestratorTests
         byte[] bpo2Digest = ForkDigest.Compute(Spec, Bpo2Epoch);
 
         Dictionary<string, FakeTopic> topics = [];
-        harness.Orchestrator.StartGossip(id => topics[id] = new FakeTopic());
+        harness.Orchestrator.StartGossip(id => topics[id] = new FakeTopic(recordMessages: false));
 
         await harness.Orchestrator.ProcessSlotAsync(preRotationSlot, CancellationToken.None);
         byte[] digestBeforeBoundary = harness.Orchestrator.CurrentGossipDigest;
@@ -1536,15 +1535,5 @@ public partial class BeaconSyncOrchestratorTests
                 _refreshedUpTo = Math.Max(_refreshedUpTo ?? 0, slot);
             }
         }
-    }
-
-    private sealed class FakeTopic : ITopic
-    {
-        public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }
-        public bool IsSubscribed { get; private set; }
-        public void Subscribe() => IsSubscribed = true;
-        public void Unsubscribe() => IsSubscribed = false;
-        public void Publish(byte[] value) { }
-        public void Publish(IMessage value) { }
     }
 }

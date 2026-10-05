@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using FakeTopic = Nethermind.BeaconChain.Test.P2P.Gossip.GossipDigestWindowTests.RecordingTopic;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -35,7 +36,7 @@ public partial class BeaconSyncOrchestratorTests
         Dictionary<string, FakeTopic> topics = [];
         List<string> requested = [];
 
-        harness.Orchestrator.StartGossip(id => { requested.Add(id); return topics[id] = new FakeTopic(); });
+        harness.Orchestrator.StartGossip(id => { requested.Add(id); return topics[id] = new FakeTopic(recordMessages: false); });
         for (ulong epoch = startEpoch; epoch <= MainnetBpo2Epoch + 3; epoch++)
         {
             if (epoch > startEpoch)
@@ -66,7 +67,7 @@ public partial class BeaconSyncOrchestratorTests
         bool gloas = boundary == spec.GloasForkEpoch;
         Dictionary<string, FakeTopic> topics = [];
 
-        orchestrator.StartGossip(id => topics[id] = new FakeTopic());
+        orchestrator.StartGossip(id => topics[id] = new FakeTopic(recordMessages: false));
 
         using (Assert.EnterMultipleScope())
         {
@@ -103,7 +104,7 @@ public partial class BeaconSyncOrchestratorTests
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         byte[] next = ForkDigest.Compute(Spec, bpo1Epoch);
         Dictionary<string, FakeTopic> topics = [];
-        orchestrator.StartGossip(id => topics[id] = new FakeTopic());
+        orchestrator.StartGossip(id => topics[id] = new FakeTopic(recordMessages: false));
         orchestrator.ReconcileGossipDigests(bpo1Epoch - 1);
 
         orchestrator.ReconcileGossipDigests(bpo1Epoch - 2);
@@ -122,7 +123,7 @@ public partial class BeaconSyncOrchestratorTests
         byte[][] digests = [ForkDigest.Compute(Spec, fuluEpoch), ForkDigest.Compute(Spec, bpo1Epoch), ForkDigest.Compute(Spec, MainnetBpo2Epoch)];
         Dictionary<string, FakeTopic> topics = [];
 
-        orchestrator.StartGossip(id => topics[id] = new FakeTopic());
+        orchestrator.StartGossip(id => topics[id] = new FakeTopic(recordMessages: false));
         foreach ((ulong epoch, bool[] live) in new (ulong, bool[])[]
         {
             (bpo1Epoch - 2, [true, false, false]),
@@ -152,7 +153,7 @@ public partial class BeaconSyncOrchestratorTests
         byte[][] live = retryAtBoundary ? [ForkDigest.Compute(Spec, MainnetBpo2Epoch - 1), ForkDigest.Compute(Spec, MainnetBpo2Epoch)] : [ForkDigest.Compute(Spec, MainnetBpo2Epoch)];
         Dictionary<string, FakeTopic> topics = [];
 
-        orchestrator.StartGossip(id => topics[id] = new FakeTopic());
+        orchestrator.StartGossip(id => topics[id] = new FakeTopic(recordMessages: false));
         Assert.That(live.Select(d => (IsSubscribed(topics, d, GossipTopics.BeaconBlock), SubscribedColumnSubnets(topics, d).Length)), Is.All.EqualTo((true, 0)),
             "without a custody only the beacon gossip starts");
 
