@@ -143,10 +143,10 @@ public static class Metrics
     internal static void IncrementCarryForwardAccountWipes() => Interlocked.Increment(ref _carryForwardAccountWipes.Value);
 
     [CounterMetric]
-    [Description("Times the carry-forward slot cache was cleared wholesale because its entry cap was reached")]
-    public static long CarryForwardSlotWipes => Volatile.Read(ref _carryForwardSlotWipes.Value);
-    private static CacheLinePaddedLong _carryForwardSlotWipes;
-    internal static void IncrementCarryForwardSlotWipes() => Interlocked.Increment(ref _carryForwardSlotWipes.Value);
+    [Description("Carry-forward slot cache entries replaced to make room in a full set")]
+    public static long CarryForwardSlotEvictions => Volatile.Read(ref _carryForwardSlotEvictions.Value);
+    private static CacheLinePaddedLong _carryForwardSlotEvictions;
+    internal static void IncrementCarryForwardSlotEvictions() => Interlocked.Increment(ref _carryForwardSlotEvictions.Value);
 
     [GaugeMetric]
     [Description("Accounts currently held by the carry-forward cache")]
@@ -196,6 +196,54 @@ public static class Metrics
         get => Volatile.Read(ref _persistedSnapshotBloomMemory);
         set => Volatile.Write(ref _persistedSnapshotBloomMemory, value);
     }
+
+    // --- Negative filter over the in-memory snapshots' slots (ReadOnlySnapshotBundle) ---
+
+    private static long _inMemorySlotFilterMemory;
+
+    [GaugeMetric]
+    [Description("Memory held by the negative filters over the in-memory snapshots' slots in bytes; one filter per read-only snapshot bundle that served a read-only execution slot read")]
+    public static long InMemorySlotFilterMemory
+    {
+        get => Volatile.Read(ref _inMemorySlotFilterMemory);
+        set => Volatile.Write(ref _inMemorySlotFilterMemory, value);
+    }
+
+    private static long _inMemorySlotFilterBuilds;
+
+    [CounterMetric]
+    [Description("Negative filters built over the in-memory snapshots' slots")]
+    public static long InMemorySlotFilterBuilds
+    {
+        get => Volatile.Read(ref _inMemorySlotFilterBuilds);
+        set => Volatile.Write(ref _inMemorySlotFilterBuilds, value);
+    }
+
+    private static long _inMemorySlotFilterBuildFailures;
+
+    [CounterMetric]
+    [Description("Negative filters over the in-memory snapshots' slots that failed to build; their bundles read slots without a filter")]
+    public static long InMemorySlotFilterBuildFailures
+    {
+        get => Volatile.Read(ref _inMemorySlotFilterBuildFailures);
+        set => Volatile.Write(ref _inMemorySlotFilterBuildFailures, value);
+    }
+
+    [DetailedMetric]
+    [Description("Time to build the negative filter over the in-memory snapshots' slots (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
+    public static IMetricObserver InMemorySlotFilterBuildTime { get; set; } = new NoopMetricObserver();
+
+    internal static void RecordInMemorySlotFilterBuilt(long bytes, long elapsedTicks)
+    {
+        Interlocked.Add(ref _inMemorySlotFilterMemory, bytes);
+        Interlocked.Increment(ref _inMemorySlotFilterBuilds);
+        InMemorySlotFilterBuildTime.Observe(elapsedTicks);
+    }
+
+    internal static void RecordInMemorySlotFilterBuildFailed() => Interlocked.Increment(ref _inMemorySlotFilterBuildFailures);
+
+    internal static void RecordInMemorySlotFilterReleased(long bytes) => Interlocked.Add(ref _inMemorySlotFilterMemory, -bytes);
 
     // Backed by a field so callers can update via Interlocked.Increment/Decrement(ref ...).
     internal static long _persistedSnapshotBloomCount;

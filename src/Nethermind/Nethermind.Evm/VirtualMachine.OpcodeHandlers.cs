@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm;
@@ -43,9 +44,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         static virtual int StackGrowth => 0;
         /// <summary>Whether a checked Execute does nothing but move the head by <see cref="StackGrowth"/>, so guest dispatch skips it.</summary>
         static virtual bool MovesHeadOnly => false;
-        static virtual int PushSize => -1;
         /// <summary>Whether Execute can move the program counter to a jump target.</summary>
         static virtual bool MayJump => false;
+        /// <summary>Whether untraced dispatch tries <see cref="TryExecuteFast"/> before it hands the opcode to the plain handler.</summary>
+        static virtual bool HasUntracedFastPath => false;
+
+        /// <summary>Runs the opcode's common case without an out-of-line call.</summary>
+        /// <returns>
+        /// <see langword="true"/> once the whole opcode has run; <see langword="false"/>, having changed nothing, when
+        /// the case is not a common one, including every case that faults.
+        /// </returns>
+        /// <remarks>
+        /// RyuJIT saves the callee-saved registers on every path of a method that calls anywhere, so the case this
+        /// covers stays frameless only while every other case leaves the handler through a tail call. It takes the
+        /// dispatch state rather than the virtual machine so it can read the machine again where holding it would take
+        /// a register the handler's arguments leave it short of.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static virtual bool TryExecuteFast(ref EvmStack stack, ref TGasPolicy gas, ref DispatchState state) => false;
 
         static abstract EvmExceptionType Execute(
             ref EvmStack stack,
@@ -64,13 +80,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         return (nint)lookup[(byte)opcode] != (nint)lookup[NeverAssigned];
     }
 
+    /// <summary>Where an untraced table's plain handlers begin, one per opcode, for its fast paths to fall back on.</summary>
+    /// <remarks>
+    /// The entries below it dispatch; the entry at this offset plus an opcode runs that opcode without its fast path
+    /// (<see cref="IOpcodeBody.HasUntracedFastPath"/>). Traced tables have no fast paths and end at this offset.
+    /// </remarks>
+    internal const int FallbackHandlersOffset = byte.MaxValue + 1;
+
+    /// <summary>
+    /// Whether the dispatch tables for <typeparamref name="TTracingInst"/> hold fast paths and so carry the fallback half:
+    /// untraced tables under <see cref="GasPolicy.EthereumGasPolicy"/>, where <see cref="IOpcodeBody.HasUntracedFastPath"/> can be true.
+    /// </summary>
+    private static bool TablesHaveFastPaths<TTracingInst>() where TTracingInst : struct, IFlag =>
+        !TTracingInst.IsActive && DispatchFlags.UntracedFastPaths && typeof(TGasPolicy) == typeof(GasPolicy.EthereumGasPolicy);
+
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]
         GenerateOpcodeHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
+        bool fastPaths = TablesHaveFastPaths<TTracingInst>();
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] lookup =
-            new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[byte.MaxValue + 1];
+            new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[fastPaths ? 2 * FallbackHandlersOffset : FallbackHandlersOffset];
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType> badInstruction =
             TerminatingOpcodeHandler<BadInstructionOpcode, TTracingInst, TCancelable>();
 
@@ -158,13 +189,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             // APPROVE ends the frame on every path, so it never continues the dispatch chain.
             lookup[(int)Instruction.APPROVE] = TerminatingOpcodeHandler<ApproveOpcode, TTracingInst, TCancelable>();
-            lookup[(int)Instruction.TXPARAM] = (spec.IsEip8250Enabled, spec.IsEip8272Enabled) switch
-            {
-                (true, true) => OpcodeHandler<TxParamOpcode<TTracingInst, OnFlag, OnFlag>, TTracingInst, TCancelable>(),
-                (true, false) => OpcodeHandler<TxParamOpcode<TTracingInst, OnFlag, OffFlag>, TTracingInst, TCancelable>(),
-                (false, true) => OpcodeHandler<TxParamOpcode<TTracingInst, OffFlag, OnFlag>, TTracingInst, TCancelable>(),
-                _ => OpcodeHandler<TxParamOpcode<TTracingInst, OffFlag, OffFlag>, TTracingInst, TCancelable>(),
-            };
+            lookup[(int)Instruction.TXPARAM] = spec.IsEip8250Enabled
+                ? OpcodeHandler<TxParamOpcode<TTracingInst, OnFlag>, TTracingInst, TCancelable>()
+                : OpcodeHandler<TxParamOpcode<TTracingInst, OffFlag>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.FRAMEDATALOAD] = OpcodeHandler<FrameDataLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.FRAMEDATACOPY] = OpcodeHandler<FrameDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.FRAMEPARAM] = OpcodeHandler<FrameParamOpcode<TTracingInst>, TTracingInst, TCancelable>();
@@ -185,8 +212,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.RECENTROOTREFLOAD] = OpcodeHandler<RecentRootRefLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.POP] = OpcodeHandler<PopOpcode, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.MLOAD] = OpcodeHandler<MLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.MSTORE] = OpcodeHandler<MStoreOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.MLOAD] = OpcodeHandler<MLoadOpcode<TTracingInst, OffFlag>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.MSTORE] = OpcodeHandler<MStoreOpcode<TTracingInst, OffFlag>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.MSTORE8] = OpcodeHandler<MStore8Opcode<TTracingInst>, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.JUMP] = OpcodeHandler<JumpOpcode<TTracingInst>, TTracingInst, TCancelable>();
@@ -303,6 +330,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         lookup[(int)Instruction.INVALID] = TerminatingOpcodeHandler<InvalidOpcode, TTracingInst, TCancelable>();
 
+        if (fastPaths)
+        {
+            // The plain table is copied into the fallback half before the fast paths replace its entries.
+            for (int i = 0; i < FallbackHandlersOffset; i++)
+                lookup[FallbackHandlersOffset + i] = lookup[i];
+
+            lookup[(int)Instruction.MLOAD] = OpcodeHandler<MLoadOpcode<TTracingInst, OnFlag>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.MSTORE] = OpcodeHandler<MStoreOpcode<TTracingInst, OnFlag>, TTracingInst, TCancelable>();
+        }
+
+        ConfigureBuildHandlers<TTracingInst, TCancelable>(lookup, spec);
+
         // Only NativeAOT has fat function pointers.
         if (!RuntimeFeature.IsDynamicCodeSupported)
         {
@@ -312,6 +351,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         return lookup;
     }
+
+    /// <summary>Replaces entries of a freshly built table with handlers that only this build carries.</summary>
+    static partial void ConfigureBuildHandlers<TTracingInst, TCancelable>(
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] lookup,
+        IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag;
 
     /// <summary>NativeAOT's tag on a fat function pointer (its <c>FatFunctionPointerConstants.Offset</c>).</summary>
     private const nint FatFunctionPointerTag = 2;
@@ -1108,13 +1154,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [SkipLocalsInit]
-    private readonly struct TxParamOpcode<TTracingInst, TEip8250, TEip8272> : IOpcodeBody
+    private readonly struct TxParamOpcode<TTracingInst, TEip8250> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where TEip8250 : struct, IFlag
-        where TEip8272 : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionTxParam<TGasPolicy, TTracingInst, TEip8250, TEip8272>(ref stack, ref gas, vm);
+            EvmInstructions.InstructionTxParam<TGasPolicy, TTracingInst, TEip8250>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
@@ -1198,16 +1243,94 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+    /// <summary>MLOAD; with <typeparamref name="TFast"/>, untraced dispatch first tries a word inside the active, initialized memory.</summary>
+    /// <remarks>
+    /// Every other case - short gas or stack, a word that grows memory or lies past the initialized memory, an offset
+    /// of 2^32 or more - runs the plain handler. Loads rarely grow memory, and charging an expansion here would keep
+    /// enough values live to take callee-saved registers on every load. The fast path charges
+    /// <see cref="GasPolicy.EthereumGasPolicy"/>'s constant directly, so no other policy gets it.
+    /// </remarks>
     [SkipLocalsInit]
-    private readonly struct MLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    private readonly struct MLoadOpcode<TTracingInst, TFast> : IOpcodeBody
+        where TTracingInst : struct, IFlag
+        where TFast : struct, IFlag
     {
+        public static bool HasUntracedFastPath
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => TFast.IsActive && !TTracingInst.IsActive && typeof(TGasPolicy) == typeof(GasPolicy.EthereumGasPolicy);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryExecuteFast(ref EvmStack stack, ref TGasPolicy gas, ref DispatchState state)
+        {
+            ref ulong gasLeft = ref Unsafe.As<TGasPolicy, GasPolicy.EthereumGasPolicy>(ref gas).Value;
+            if (stack.Head < 1 || gasLeft < GasPolicy.VeryLowGasCost.GasCost)
+                return false;
+
+            ref byte slot = ref stack.PeekBytesByRefUnchecked();
+            ref ulong offset = ref Unsafe.As<byte, ulong>(ref slot);
+            if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) != 0)
+                return false;
+
+            ref byte source = ref state.Vm.VmState.Memory.GetActiveInitializedWord(offset);
+            if (Unsafe.IsNullRef(ref source))
+                return false;
+
+            // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
+            Unsafe.WriteUnaligned(ref slot, Unsafe.ReadUnaligned<EvmWord>(ref source).ByteSwap());
+            gasLeft -= GasPolicy.VeryLowGasCost.GasCost;
+            return true;
+        }
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionMLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    /// <summary>MSTORE; with <typeparamref name="TFast"/>, untraced dispatch first tries a word that needs no clearing and no new backing.</summary>
+    /// <remarks>
+    /// Such a word starts inside the initialized memory, so this covers memory growing a word at a time as well. Every
+    /// other case - short gas or stack, a word that leaves a gap or outgrows the backing, an offset of 2^32 or more,
+    /// which runs out of gas - runs the plain handler. The fast path charges <see cref="GasPolicy.EthereumGasPolicy"/>'s
+    /// constant and memory expansion directly, so no other policy gets it.
+    /// </remarks>
     [SkipLocalsInit]
-    private readonly struct MStoreOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    private readonly struct MStoreOpcode<TTracingInst, TFast> : IOpcodeBody
+        where TTracingInst : struct, IFlag
+        where TFast : struct, IFlag
     {
+        public static bool HasUntracedFastPath
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => TFast.IsActive && !TTracingInst.IsActive && typeof(TGasPolicy) == typeof(GasPolicy.EthereumGasPolicy);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryExecuteFast(ref EvmStack stack, ref TGasPolicy gas, ref DispatchState state)
+        {
+            ref ulong gasLeft = ref Unsafe.As<TGasPolicy, GasPolicy.EthereumGasPolicy>(ref gas).Value;
+            if (stack.Head < 2 || gasLeft < GasPolicy.VeryLowGasCost.GasCost)
+                return false;
+
+            ref ulong offset = ref Unsafe.As<byte, ulong>(ref stack.PeekBytesByRefUnchecked());
+            if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) != 0)
+                return false;
+
+            ulong expansionCost = state.Vm.VmState.Memory.GetWordOverwriteCost(offset);
+            if (gasLeft - GasPolicy.VeryLowGasCost.GasCost < expansionCost)
+                return false;
+
+            gasLeft -= GasPolicy.VeryLowGasCost.GasCost + expansionCost;
+            // The slot and the memory are found again after the charge rather than held through it, where each would
+            // take a callee-saved register; the charge writes through a reference, so the JIT reloads them.
+            ref byte top = ref stack.PeekBytesByRefUnchecked();
+            ref byte destination = ref state.Vm.VmState.Memory.CommitWordOverwrite(Unsafe.As<byte, ulong>(ref top));
+            // The value sits below the offset in limb layout; memory holds it big-endian.
+            Unsafe.WriteUnaligned(ref destination, Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Subtract(ref top, EvmStack.WordSize)).ByteSwap());
+            stack.Head -= 2;
+            return true;
+        }
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionMStore<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
@@ -1355,7 +1478,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct Push0Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
-        public static int PushSize => 0;
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1395,7 +1517,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpCount : struct, EvmInstructions.IOpCount
         where TTracingInst : struct, IFlag
     {
-        public static int PushSize => TOpCount.Count;
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

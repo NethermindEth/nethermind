@@ -362,6 +362,7 @@ public static class FrameTxValidation
     /// approving frame would not have installed one rather than admitting a frame behind the real prefix.
     /// Deliberately not restricted to the leading VERIFY run <see cref="GetPrefixPaymaster"/> walks: an approving
     /// DEFAULT frame, or one behind a SENDER frame, must still bound this scan even though no payer resolves there.
+    /// Standalone callers need this bound; the public pool checks prefix-grammar admission separately.
     /// </remarks>
     public static bool HasVerifyFrameAfterPrefix(Transaction transaction)
     {
@@ -417,10 +418,10 @@ public static class FrameTxValidation
     /// <summary>The paymaster <paramref name="transaction"/> pays through, or <c>null</c> when it pays without one.</summary>
     /// <remarks>
     /// Walks the leading VERIFY run to the first frame approving payment, where the validation-prefix simulation
-    /// also stops, so a sponsor installed through a layout <see cref="RecognizedPrefixLength"/> does not admit is
-    /// still keyed. Derived from the frame layout alone, never from state. The target is resolved as the processor
-    /// resolves it, so omitting it is not a second, uncapped encoding of the same transaction, and a sender paying
-    /// for itself — the self-relay prefix included — uses no paymaster and is bounded by its own balance instead.
+    /// also stops. Sponsors remain keyed for layouts reaching this method without the pool's grammar filter
+    /// and for persisted records. Derived from the frame layout alone, never from state. The target is resolved
+    /// as the processor resolves it, so omitting it is not a second, uncapped encoding of the same transaction.
+    /// A sender paying for itself — the self-relay prefix included — uses no paymaster and is bounded by its balance.
     /// A frameless pool record instead answers from <see cref="Transaction.PersistedPaymaster"/>, which the record
     /// persists; one written before it carried that slot reads <c>null</c> though sponsored, under-counting the cap.
     /// </remarks>
@@ -456,6 +457,11 @@ public static class FrameTxValidation
         if (next < frames.Length && IsDeployFrame(frames[next])) next++;
         return next;
     }
+
+    /// <summary>Whether a frame transaction starts with a public-mempool validation prefix recognized by EIP-8141.</summary>
+    public static bool HasRecognizedValidationPrefix(Transaction transaction) =>
+        transaction.Frames is { Length: > 0 } frames
+        && RecognizedPrefixLength(frames, transaction.SenderAddress) is not null;
 
     /// <summary>
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
@@ -596,7 +602,7 @@ public static class FrameTxValidation
         return true;
     }
 
-    private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
+    private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
     {
         intrinsicGas = 0;
         floorGas = 0;
@@ -646,6 +652,17 @@ public static class FrameTxValidation
                 dataLength += (ulong)(signature.Signer is null ? 0 : Address.Size)
                               + (ulong)signature.Msg.Length
                               + (ulong)signature.Signature.Length;
+                if (estimateSignatureBytes && signature.Signature.IsEmpty)
+                {
+                    ulong length = signature.Scheme switch
+                    {
+                        TxFrameSignature.SchemeSecp256k1 => TxFrameSignature.Secp256k1SignatureLength,
+                        TxFrameSignature.SchemeP256 => TxFrameSignature.P256SignatureLength,
+                        _ => 0,
+                    };
+                    tokens += length * spec.GasCosts.TxDataNonZeroMultiplier;
+                    dataLength += length;
+                }
                 signatureVerificationCost += SignatureVerificationGas(signature.Scheme);
             }
         }
@@ -689,16 +706,35 @@ public static class FrameTxValidation
         return true;
     }
 
+    /// <inheritdoc cref="TryCalculateGasBudget(Transaction, IReleaseSpec, out ulong, out ulong, out ulong)"/>
+    /// <param name="estimateSignatureBytes">Prices each empty SECP256K1 or P256 signature at its full length, as the
+    /// signed transaction will carry it; for simulation, which accepts such placeholders. Such a budget is not memoized.</param>
+    public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes) =>
+        estimateSignatureBytes
+            ? CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas, estimateSignatureBytes: true)
+            : TryCalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas);
+
     /// <summary>Calculates the maximum execution and state gas a frame transaction can add to a block.</summary>
     public static bool TryCalculateBlockGasReservations(
         Transaction transaction,
         IReleaseSpec spec,
         out ulong executionReservation,
-        out ulong stateReservation)
+        out ulong stateReservation) =>
+        TryCalculateBlockGasReservations(transaction, spec, out executionReservation, out stateReservation, estimateSignatureBytes: false);
+
+    /// <inheritdoc cref="TryCalculateBlockGasReservations(Transaction, IReleaseSpec, out ulong, out ulong)"/>
+    /// <param name="estimateSignatureBytes">Prices each empty SECP256K1 or P256 signature at its full length, as in
+    /// <see cref="TryCalculateGasBudget(Transaction, IReleaseSpec, out ulong, out ulong, out ulong, bool)"/>.</param>
+    public static bool TryCalculateBlockGasReservations(
+        Transaction transaction,
+        IReleaseSpec spec,
+        out ulong executionReservation,
+        out ulong stateReservation,
+        bool estimateSignatureBytes)
     {
         executionReservation = 0;
         stateReservation = 0;
-        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _))
+        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _, estimateSignatureBytes))
         {
             return false;
         }

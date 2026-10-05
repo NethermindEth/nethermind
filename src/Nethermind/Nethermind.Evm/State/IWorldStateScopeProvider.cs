@@ -136,6 +136,16 @@ public interface IWorldStateScopeProvider
         /// <param name="sink">Optional sink that receives each account/slot value read during the pass.</param>
         /// <returns>A task that completes when the asynchronous warmup finishes.</returns>
         Task HintBal(ReadOnlyBlockAccessList bal, IAsyncBalReaderSink? sink = null);
+
+        /// <summary>
+        /// Writes the final balance, nonce, code and storage values of every account the Block Access List changed.
+        /// </summary>
+        /// <remarks>
+        /// Under EIP-158 an account left empty is removed along with its storage. The root hash is not updated;
+        /// call <see cref="UpdateRootHash"/> afterwards. See <see cref="ScopeBalApplier"/> for the generic implementation.
+        /// </remarks>
+        /// <param name="bal">The Block Access List whose last change per field is applied.</param>
+        void ApplyBal(ReadOnlyBlockAccessList bal);
     }
 
     /// <summary>
@@ -183,7 +193,9 @@ public interface IWorldStateScopeProvider
 
     public interface ICodeDb
     {
-        byte[]? GetCode(in ValueHash256 codeHash);
+        /// <summary>The code stored under <paramref name="codeHash"/>, or <c>default</c> when it is missing.</summary>
+        /// <remarks>Return empty code as <c>Array.Empty&lt;byte&gt;()</c>: <see cref="ReadOnlyMemory{T}.Empty"/> is <c>default</c>, which callers read as missing.</remarks>
+        ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash);
 
         ICodeSetter BeginCodeWrite();
 
@@ -214,6 +226,9 @@ public interface IWorldStateScopeProvider
         /// trie warm-up for the slot path.
         /// </summary>
         void HintSet(in UInt256 index);
+
+        /// <summary>Hint that a transaction committed <paramref name="value"/> to a slot.</summary>
+        void HintSet(in UInt256 index, in UInt256 value) => HintSet(in index);
     }
 
     /// <summary>

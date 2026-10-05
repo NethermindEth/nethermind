@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -28,6 +29,15 @@ namespace Nethermind.State.Flat.History.Test;
 
 public class ArchiveProofTests
 {
+    [Test]
+    public void Nested_proof_prefetch_preserves_proofs_with_shared_worker_budget([Range(1, 2)] int budget)
+    {
+        BuildCommitments();
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(budget);
+
+        AssertProofMatchesTheTrie(Contract, Blocks, ContractSlots);
+    }
+
     private const int AccountCount = 120;
     private const ulong Blocks = 140;
 
@@ -613,7 +623,7 @@ public class ArchiveProofTests
                 Assert.That(actual.StorageProofs![i].Proof,
                     Is.EqualTo(expected.StorageProofs![i].Proof),
                     "at the last block a window row describes, every storage node of a small trie materializes from its window row, so the slot rows are never read; a missing or wrong storage row would make the resolver fall back to the now-corrupt slot rows and refuse");
-                Assert.That(actual.StorageProofs[i].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs![i].Value!.Value.ToArray()));
+                Assert.That(actual.StorageProofs[i].Value!.Value, Is.SequenceEqualTo(expected.StorageProofs![i].Value!.Value));
             }
         }
     }
@@ -2080,7 +2090,7 @@ public class ArchiveProofTests
 
             for (int i = 0; i < storageKeys.Length; i++)
             {
-                Assert.That(actual.StorageProofs![i].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs![i].Value!.Value.ToArray()),
+                Assert.That(actual.StorageProofs![i].Value!.Value, Is.SequenceEqualTo(expected.StorageProofs![i].Value!.Value),
                     $"slot {storageKeys[i]} must hold its block-{block} value");
                 Assert.That(actual.StorageProofs[i].Proof,
                     Is.EqualTo(expected.StorageProofs![i].Proof),

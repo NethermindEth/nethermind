@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using Fody;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -157,6 +159,184 @@ public class OpcodeWeaverTests
         Assert.That(dispatch.Methods, Has.Some.Matches<MethodDefinition>(method => method.Name == "OpBadInstruction"));
     }
 
+    /// <remarks>A build may install its own dispatch handlers over named ones, but only exact code, never a template.</remarks>
+    [Test]
+    public void Opcode_weaver_accepts_build_handlers_that_are_exact_code([Values("Plain", "ValueTypeGeneric", "Generic", "Template")] string entry)
+    {
+        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
+        (_, MethodDefinition table) = SetUpOpcodeTable(module, ["BadInstructionOpcode"], nestedDispatch: true);
+        module.Types.Add(new TypeDefinition("Nethermind.Evm", "Instruction", TypeAttributes.Class, module.TypeSystem.Object));
+        TypeDefinition dispatch = module.GetType("Nethermind.Evm.VirtualMachine`1").NestedTypes[0];
+        MethodReference target = dispatch.Methods[0];
+        if (entry != "Template")
+        {
+            MethodDefinition handler = new("ExecuteBuildHandler", MethodAttributes.Static, module.TypeSystem.Void);
+            handler.Body.Instructions.Add(CilInstruction.Create(OpCodes.Ret));
+            dispatch.Methods.Add(handler);
+            target = handler;
+            if (entry != "Plain")
+            {
+                GenericParameter parameter = new("T", handler);
+                if (entry == "ValueTypeGeneric") parameter.Attributes = GenericParameterAttributes.NotNullableValueTypeConstraint;
+                handler.GenericParameters.Add(parameter);
+                GenericInstanceMethod instantiation = new(handler);
+                instantiation.GenericArguments.Add(module.TypeSystem.Int32);
+                target = instantiation;
+            }
+        }
+        table.Body.Instructions.Add(CilInstruction.Create(OpCodes.Ldftn, target));
+        table.Body.Instructions.Add(CilInstruction.Create(OpCodes.Pop));
+        ModuleWeaver weaver = new() { ModuleDefinition = module };
+
+        if (entry is "Plain" or "ValueTypeGeneric")
+            Assert.That(weaver.Execute, Throws.Nothing);
+        else
+            Assert.That(weaver.Execute, Throws.TypeOf<WeavingException>().With.Message.Contains("not a named opcode handler"));
+    }
+
+    [Test]
+    public void Guest_dispatch_marker_becomes_a_direct_tail_call([Values("Direct", "Branch", "Debug")] string epilogue)
+    {
+        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
+        (MethodDefinition marker, MethodDefinition caller, CilInstruction call) = SetUpGuestDispatch(module);
+        ILProcessor il = caller.Body.GetILProcessor();
+        if (epilogue == "Branch") il.InsertAfter(call, il.Create(OpCodes.Br_S, call.Next));
+        if (epilogue == "Debug")
+        {
+            VariableDefinition result = new(module.TypeSystem.Int32);
+            caller.Body.Variables.Add(result);
+            CilInstruction load = il.Create(OpCodes.Ldloc_0);
+            il.InsertBefore(call.Next, load);
+            il.InsertAfter(call, il.Create(OpCodes.Br, load));
+            il.InsertAfter(call, il.Create(OpCodes.Stloc_0));
+        }
+        CilInstruction branch = il.Create(OpCodes.Br, caller.Body.Instructions[0]);
+        il.InsertBefore(caller.Body.Instructions[0], branch);
+
+        GuestDispatchRewriter.Rewrite(marker.DeclaringType);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.OpCode, Is.EqualTo(OpCodes.Tail));
+            Assert.That(call.Next.OpCode, Is.EqualTo(OpCodes.Calli));
+            Assert.That(call.Next.Next.OpCode, Is.EqualTo(OpCodes.Ret));
+            CallSite signature = (CallSite)call.Next.Operand;
+            Assert.That(signature.CallingConvention, Is.EqualTo(MethodCallingConvention.Default));
+            Assert.That(signature.HasThis, Is.False);
+            Assert.That(signature.ReturnType.FullName, Is.EqualTo(caller.ReturnType.FullName));
+            Assert.That(signature.Parameters.Count, Is.EqualTo(caller.Parameters.Count));
+            for (int i = 0; i < caller.Parameters.Count; i++)
+                Assert.That(signature.Parameters[i].ParameterType.FullName, Is.EqualTo(caller.Parameters[i].ParameterType.FullName));
+            Assert.That(caller.DeclaringType.Methods, Does.Not.Contain(marker));
+        }
+    }
+
+    /// <remarks>
+    /// Each rewrite grows its call site by three bytes, so a short branch over three sites that reaches its target
+    /// with a few bytes to spare no longer does once they are rewritten, and must not be written with a wrapped offset.
+    /// </remarks>
+    [Test]
+    public void Guest_dispatch_keeps_short_branches_over_rewritten_calls_on_their_targets()
+    {
+        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
+        (MethodDefinition marker, MethodDefinition caller, _) = SetUpGuestDispatch(module);
+        ILProcessor il = caller.Body.GetILProcessor();
+        CilInstruction[] site = caller.Body.Instructions.ToArray();
+        const int sites = 4;
+        for (int copy = 1; copy < sites; copy++)
+        {
+            foreach (CilInstruction instruction in site)
+                il.Append(instruction.Operand is null ? il.Create(instruction.OpCode) : CloneWithOperand(il, instruction));
+        }
+        CilInstruction target = caller.Body.Instructions[(sites - 1) * site.Length];
+        il.InsertBefore(caller.Body.Instructions[0], il.Create(OpCodes.Br_S, target));
+        int targetIndex = caller.Body.Instructions.IndexOf(target);
+
+        GuestDispatchRewriter.Rewrite(marker.DeclaringType);
+        using ModuleDefinition roundTripped = WriteAndRead(module);
+        MethodDefinition written = roundTripped.GetType(caller.DeclaringType.FullName).Methods.Single(m => m.Name == caller.Name);
+
+        Assert.That(written.Body.Instructions[0].Operand, Is.SameAs(written.Body.Instructions[targetIndex + 2 * (sites - 1)]));
+    }
+
+    [Test]
+    public void Guest_dispatch_rejects_unsupported_marker_uses(
+        [Values("Signature", "Target", "Generic", "Instance", "Pointer", "Result", "WrongLocal", "Exception", "Outside", "Unused")] string invalid)
+    {
+        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
+        (MethodDefinition marker, MethodDefinition caller, CilInstruction call) = SetUpGuestDispatch(module);
+        TypeDefinition dispatch = marker.DeclaringType;
+        ILProcessor il = caller.Body.GetILProcessor();
+        switch (invalid)
+        {
+            case "Signature": marker.Parameters[0].ParameterType = module.TypeSystem.Int32; break;
+            case "Target": marker.Parameters[8].ParameterType = module.TypeSystem.Int64; break;
+            case "Generic": marker.GenericParameters.Add(new GenericParameter("T", marker)); break;
+            case "Instance": marker.HasThis = true; break;
+            case "Pointer": call.OpCode = OpCodes.Ldftn; break;
+            case "Result": il.InsertAfter(call, il.Create(OpCodes.Pop)); break;
+            case "WrongLocal":
+                caller.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Int32));
+                caller.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Int32));
+                il.InsertAfter(call, il.Create(OpCodes.Ldloc_1));
+                il.InsertAfter(call, il.Create(OpCodes.Stloc_0));
+                break;
+            case "Exception": caller.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Finally)); break;
+            case "Outside":
+                dispatch.Methods.Remove(caller);
+                TypeDefinition other = new("Test", "Other", TypeAttributes.Class, module.TypeSystem.Object);
+                module.Types.Add(other);
+                other.Methods.Add(caller);
+                break;
+            case "Unused": il.Remove(call); break;
+        }
+
+        Assert.That(() => GuestDispatchRewriter.Rewrite(dispatch), Throws.TypeOf<WeavingException>());
+    }
+
+    private static CilInstruction CloneWithOperand(ILProcessor il, CilInstruction instruction) => instruction.Operand switch
+    {
+        ParameterDefinition parameter => il.Create(instruction.OpCode, parameter),
+        MethodReference method => il.Create(instruction.OpCode, method),
+        _ => throw new ArgumentException($"Unexpected operand {instruction.Operand}"),
+    };
+
+    private static ModuleDefinition WriteAndRead(ModuleDefinition module)
+    {
+        MemoryStream stream = new();
+        module.Write(stream);
+        stream.Position = 0;
+        return ModuleDefinition.ReadModule(stream);
+    }
+
+    private static (MethodDefinition Marker, MethodDefinition Caller, CilInstruction Call) SetUpGuestDispatch(ModuleDefinition module)
+    {
+        MethodDefinition template = CreateWeaverMethod(module, "ExecuteOpcode");
+        template.ReturnType = module.TypeSystem.Int32;
+        TypeReference[] arguments = [
+            new ByReferenceType(module.TypeSystem.Object), module.TypeSystem.UInt64,
+            new ByReferenceType(module.TypeSystem.Object), module.TypeSystem.IntPtr, module.TypeSystem.IntPtr,
+            new PointerType(module.TypeSystem.IntPtr), new ByReferenceType(module.TypeSystem.Byte), module.TypeSystem.IntPtr];
+        MethodDefinition marker = new("TailDispatch", MethodAttributes.Private | MethodAttributes.Static, template.ReturnType);
+        MethodDefinition caller = new("ExecuteBuildHandler", MethodAttributes.Static, template.ReturnType);
+        template.DeclaringType.Methods.Add(marker);
+        template.DeclaringType.Methods.Add(caller);
+        foreach (TypeReference argument in arguments)
+        {
+            template.Parameters.Add(new ParameterDefinition(argument));
+            marker.Parameters.Add(new ParameterDefinition(argument));
+            ParameterDefinition parameter = new(argument);
+            caller.Parameters.Add(parameter);
+            caller.Body.Instructions.Add(CilInstruction.Create(OpCodes.Ldarg, parameter));
+        }
+        marker.Parameters.Add(new ParameterDefinition(module.TypeSystem.IntPtr));
+        caller.Body.Instructions.Add(CilInstruction.Create(OpCodes.Ldc_I4_0));
+        caller.Body.Instructions.Add(CilInstruction.Create(OpCodes.Conv_I));
+        CilInstruction call = CilInstruction.Create(OpCodes.Call, marker);
+        caller.Body.Instructions.Add(call);
+        caller.Body.Instructions.Add(CilInstruction.Create(OpCodes.Ret));
+        return (marker, caller, call);
+    }
     private static (MethodDefinition Factory, MethodDefinition Table) SetUpOpcodeTable(ModuleDefinition module, string[] opcodeNames, bool nestedDispatch = false)
     {
         MethodDefinition handler = CreateWeaverMethod(module, "ExecuteOpcode");

@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -24,7 +25,7 @@ public class PoppedAddressCacheTests
         Address second = cache.GetOrCreate(AddressA);
 
         Assert.That(second, Is.SameAs(first));
-        Assert.That(first.Bytes.ToArray(), Is.EqualTo(AddressA));
+        Assert.That(first.Bytes, Is.SequenceEqualTo(AddressA));
     }
 
     [Test]
@@ -36,8 +37,8 @@ public class PoppedAddressCacheTests
         Address second = cache.GetOrCreate(AddressB);
 
         Assert.That(second, Is.Not.SameAs(first));
-        Assert.That(first.Bytes.ToArray(), Is.EqualTo(AddressA));
-        Assert.That(second.Bytes.ToArray(), Is.EqualTo(AddressB));
+        Assert.That(first.Bytes, Is.SequenceEqualTo(AddressA));
+        Assert.That(second.Bytes, Is.SequenceEqualTo(AddressB));
     }
 
     [Test]
@@ -49,7 +50,7 @@ public class PoppedAddressCacheTests
         {
             byte[] expected = (i & 1) == 0 ? AddressA : AddressB;
             Address address = cache.GetOrCreate(expected);
-            Assert.That(address.Bytes.ToArray(), Is.EqualTo(expected));
+            Assert.That(address.Bytes, Is.SequenceEqualTo(expected));
         }
     }
 
@@ -116,9 +117,9 @@ public class PoppedAddressCacheTests
         Address other = cache.GetOrCreate(colliding);
         Address secondA = cache.GetOrCreate(AddressA);
 
-        Assert.That(other.Bytes.ToArray(), Is.EqualTo(colliding));
+        Assert.That(other.Bytes, Is.SequenceEqualTo(colliding));
         Assert.That(secondA, Is.Not.SameAs(firstA));
-        Assert.That(secondA.Bytes.ToArray(), Is.EqualTo(AddressA));
+        Assert.That(secondA.Bytes, Is.SequenceEqualTo(AddressA));
     }
 
     private static int SlotOf(byte[] bytes) => PoppedAddressCache.Slot(
@@ -157,7 +158,7 @@ public class PoppedAddressCacheTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.Not.SameAs(zero));
-            Assert.That(actual.Bytes.ToArray(), Is.EqualTo(expected));
+            Assert.That(actual.Bytes, Is.SequenceEqualTo(expected));
             Assert.That(cache.GetOrCreate(expected), Is.SameAs(actual));
         }
     }

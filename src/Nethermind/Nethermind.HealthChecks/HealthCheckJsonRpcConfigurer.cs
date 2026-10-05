@@ -3,7 +3,9 @@
 
 using System;
 using System.Net;
+using HealthChecks.UI.Core.HostedService;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -37,9 +39,10 @@ public class HealthCheckJsonRpcConfigurer(
                 return;
             }
 
+            string endpoint = BuildEndpointForUi();
             service.AddHealthChecksUI(setup =>
                 {
-                    setup.AddHealthCheckEndpoint("health", BuildEndpointForUi());
+                    setup.AddHealthCheckEndpoint(NodeHealthReportCollector.EndpointName, endpoint);
                     setup.SetEvaluationTimeInSeconds(healthChecksConfig.PollingInterval);
                     setup.SetHeaderText("Nethermind Node Health");
                     if (healthChecksConfig.WebhooksEnabled)
@@ -61,6 +64,19 @@ public class HealthCheckJsonRpcConfigurer(
                     }
                 })
                 .AddInMemoryStorage();
+
+            for (int i = 0; i < service.Count; i++)
+            {
+                ServiceDescriptor collector = service[i];
+                if (collector.ServiceType == typeof(IHealthCheckReportCollector))
+                {
+                    service.AddKeyedScoped(typeof(IHealthCheckReportCollector), NodeHealthReportCollector.HttpCollectorKey, collector.ImplementationType!);
+                    break;
+                }
+            }
+            service.Replace(ServiceDescriptor.Scoped<IHealthCheckReportCollector>(provider =>
+                ActivatorUtilities.CreateInstance<NodeHealthReportCollector>(provider, endpoint,
+                    (Func<IHealthCheckReportCollector>)(() => provider.GetRequiredKeyedService<IHealthCheckReportCollector>(NodeHealthReportCollector.HttpCollectorKey)))));
         }
     }
 

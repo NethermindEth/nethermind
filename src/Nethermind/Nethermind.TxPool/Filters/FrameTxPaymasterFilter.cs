@@ -38,7 +38,7 @@ internal sealed class FrameTxPaymasterFilter(
         // Both remaining tests are deferred until the count could bite: below the cap neither the target's
         // code nor a replacement it displaces can change the verdict, so neither is paid for.
         if (held > Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
-            && IsNonCanonicalPaymaster(paymaster)
+            && IsNonCanonicalPaymaster(paymaster, stateProvider)
             && !ReplacesPendingTxOfSamePaymaster(tx, paymaster))
         {
             paymasters.Decrement(paymaster);
@@ -53,7 +53,7 @@ internal sealed class FrameTxPaymasterFilter(
     }
 
     // EIP8141-GAP: no canonical paymaster runtime is pinned yet, so every code-carrying pay target is capped.
-    private bool IsNonCanonicalPaymaster(Address paymaster) =>
+    internal static bool IsNonCanonicalPaymaster(Address paymaster, IReadOnlyStateProvider stateProvider) =>
         stateProvider.TryGetAccount(paymaster, out AccountStruct account) && account.HasCode;
 
     /// <remarks>Matched on the paymaster too: displacing a tx sponsored elsewhere frees that sponsor's

@@ -40,9 +40,12 @@ public class FlatDbConfig : IFlatDbConfig
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
+    public bool DeferStorageTrieCommit { get; set; } = true;
+    public bool ApplyStorageWritesOnIdleThread { get; set; } = true;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
+    public ulong MaxInMemorySnapshotBytes { get; set; } = 0;
     public ulong MaxReorgDepth { get; set; } = 256;
     public ulong MinReorgDepth { get; set; } = 128;
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
@@ -62,6 +65,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong PersistedSnapshotMaxCompactSize { get; set; } = 1024 * 1024;
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
+    public double InMemorySnapshotBloomBitsPerKey { get; set; } = 14.0;
     public bool TrieNodeLogEnabled { get; set; } = false;
     public long TrieNodeLogStateBytes { get; set; } = 500.MiB;
     public long TrieNodeLogStorageBytes { get; set; } = 500.MiB;

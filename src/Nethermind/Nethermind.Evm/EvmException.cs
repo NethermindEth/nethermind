@@ -33,6 +33,11 @@ public enum EvmExceptionType
     /// result is built.
     /// </summary>
     Suspend,
+    /// <summary>
+    /// A CALL or CREATE at the maximum call depth, which fails its precheck and enters no frame.
+    /// Reported to action tracers only; the operation itself pushes 0 and execution continues.
+    /// </summary>
+    CallDepthExceeded,
 }
 
 public static class EvmExceptionTypeExtensions
@@ -63,6 +68,7 @@ public static class EvmExceptionTypeExtensions
         EvmExceptionType.Revert => nameof(EvmExceptionType.Revert),
         EvmExceptionType.InvalidCode => nameof(EvmExceptionType.InvalidCode),
         EvmExceptionType.Suspend => nameof(EvmExceptionType.Suspend),
+        EvmExceptionType.CallDepthExceeded => nameof(EvmExceptionType.CallDepthExceeded),
         _ => ((int)type).ToString(),
     };
 }
