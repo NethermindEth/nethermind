@@ -15,7 +15,6 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Evm.TransactionProcessing;
