@@ -53,17 +53,17 @@ public class ReceiptDecoderTests
     }
 
     [Test]
-    public void Optimism_receipt_message_decoding_rejects_null_bloom()
+    public void Optimism_receipt_message_decoding_maps_null_bloom_to_removed()
     {
         byte[] encoded = EncodeReceiptWithNullBloom();
         OptimismReceiptMessageDecoder decoder = new();
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        TxReceipt decoded = DecodeMessageReceipt(encoded)!;
 
-        void Decode()
+        using (Assert.EnterMultipleScope())
         {
-            RlpReader reader = new(encoded);
-            decoder.Decode(ref reader);
+            Assert.That(decoded.Bloom, Is.SameAs(Bloom.Removed));
+            Assert.That(decoder.Encode(decoded).Bytes, Is.EqualTo(encoded));
         }
     }
 
