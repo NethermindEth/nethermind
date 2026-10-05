@@ -130,8 +130,11 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
             (byte)Instruction.PUSH1, sub, (byte)Instruction.CALLSUB, (byte)Instruction.RETURNSUB,
             (byte)Instruction.JUMPDEST, (byte)Instruction.RETURNSUB,
         ];
-        Assert.That(code[sub], Is.EqualTo((byte)Instruction.CALLDEST));
-        Assert.That(code[done], Is.EqualTo((byte)Instruction.JUMPDEST));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(code[sub], Is.EqualTo((byte)Instruction.CALLDEST));
+            Assert.That(code[done], Is.EqualTo((byte)Instruction.JUMPDEST));
+        }
 
         const ulong gasLimit = 1_000_000;
         TestAllTracerWithOutput result = Run(code, gasLimit: gasLimit);

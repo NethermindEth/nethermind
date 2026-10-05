@@ -33,15 +33,15 @@ public enum EvmExceptionType
     /// result is built.
     /// </summary>
     Suspend,
-    /// <summary>EIP-7979: <c>CALLSUB</c> with a return stack already holding its limit of addresses.</summary>
-    ReturnStackOverflow,
-    /// <summary>EIP-7979: <c>RETURNSUB</c> with an empty return stack.</summary>
-    ReturnStackUnderflow,
     /// <summary>
     /// A CALL or CREATE at the maximum call depth, which fails its precheck and enters no frame.
     /// Reported to action tracers only; the operation itself pushes 0 and execution continues.
     /// </summary>
     CallDepthExceeded,
+    /// <summary>EIP-7979: <c>CALLSUB</c> with a return stack already holding its limit of addresses.</summary>
+    ReturnStackOverflow,
+    /// <summary>EIP-7979: <c>RETURNSUB</c> with an empty return stack.</summary>
+    ReturnStackUnderflow,
 }
 
 public static class EvmExceptionTypeExtensions
@@ -72,9 +72,9 @@ public static class EvmExceptionTypeExtensions
         EvmExceptionType.Revert => nameof(EvmExceptionType.Revert),
         EvmExceptionType.InvalidCode => nameof(EvmExceptionType.InvalidCode),
         EvmExceptionType.Suspend => nameof(EvmExceptionType.Suspend),
+        EvmExceptionType.CallDepthExceeded => nameof(EvmExceptionType.CallDepthExceeded),
         EvmExceptionType.ReturnStackOverflow => nameof(EvmExceptionType.ReturnStackOverflow),
         EvmExceptionType.ReturnStackUnderflow => nameof(EvmExceptionType.ReturnStackUnderflow),
-        EvmExceptionType.CallDepthExceeded => nameof(EvmExceptionType.CallDepthExceeded),
         _ => ((int)type).ToString(),
     };
 }
