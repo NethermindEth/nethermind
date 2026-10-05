@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
 
@@ -655,10 +656,16 @@ public class Eip8141ScenarioTests
             "warm cost must be stable across further frames");
     }
 
-    // EIP-8141 § Cross-frame interactions: a reverted frame's touches must not warm later frames.
+    // EIP-8141 § Cross-frame interactions: a reverted frame's touches must not warm later frames,
+    // unless EIP-8374 keeps them warm for the rest of the transaction.
     [Test]
-    public void WarmColdJournal_RevertedFrameTouchesAreReverted()
+    public void WarmColdJournal_RevertedFrameTouchesAreReverted([Values] bool eip8374)
     {
+        ((TestSpecProvider)_specProvider).GenesisSpec = new OverridableReleaseSpec(Bogota.Instance)
+        {
+            IsEip8141Enabled = true,
+            IsEip8374Enabled = eip8374,
+        };
         Address probed = TestItem.AddressF;
         Address toucherThatReverts = TestItem.AddressE;
         Address prober = TestItem.AddressD;
@@ -682,8 +689,10 @@ public class Eip8141ScenarioTests
             TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
             TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
         }));
-        Assert.That(receipt.FrameReceipts![2].GasUsed, Is.GreaterThan(receipt.FrameReceipts[3].GasUsed),
-            "the first probe must pay cold access — the reverted frame's touch was rolled back");
+        // The first probe also pays its own cold entry access, which the second probe finds warm.
+        Assert.That(receipt.FrameReceipts![2].GasUsed - receipt.FrameReceipts[3].GasUsed,
+            Is.EqualTo((eip8374 ? 1UL : 2UL) * (Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
+            "the first probe pays cold access only if the reverted frame's touch was rolled back");
     }
 
     // Cumulative gas must chain across the type boundary. The regular transfer targets a fresh account,

@@ -488,6 +488,12 @@ namespace Nethermind.Core.Specs
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
+        /// EIP-8374: Accessed addresses and storage keys are not rolled back when a call frame reverts or
+        /// exceptionally halts, so they stay warm for the rest of the transaction.
+        /// </summary>
+        public bool IsEip8374Enabled { get; }
+
+        /// <summary>
         /// EIP-7805: Inclusion lists
         /// </summary>
         bool IsEip7805Enabled { get; }

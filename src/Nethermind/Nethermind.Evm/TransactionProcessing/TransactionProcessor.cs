@@ -395,7 +395,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Top-level CREATE tx; the opcode-level CREATE/CREATE2 path bumps this counter from EvmInstructions.Create.
             if (tx.IsContractCreation) Metrics.IncrementCreates();
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
-            using StackAccessTracker accessTracker = new(_tracerFlags.IsTracingAccess);
+            using StackAccessTracker accessTracker = new(_tracerFlags.IsTracingAccess || spec.IsEip8374Enabled);
             long delegationRefunds = 0;
             TGasPolicy executionIntrinsicGasStandard = intrinsicGas.Standard;
             TransactionResult result;
@@ -652,7 +652,7 @@ namespace Nethermind.Evm.TransactionProcessing
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void ReportSimpleTransferAccess(Transaction tx, IReleaseSpec spec, ITxTracer tracer, Address recipient)
         {
-            using StackAccessTracker accessTracker = new(isTracingAccess: true);
+            using StackAccessTracker accessTracker = new(keepAccessSetsOnRestore: true);
             WarmUpTxAccesses(tx, spec, in accessTracker, recipient);
             tracer.ReportAccess(accessTracker.AccessedAddresses, accessTracker.AccessedStorageCells);
         }
