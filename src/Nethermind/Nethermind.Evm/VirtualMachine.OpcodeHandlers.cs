@@ -1556,6 +1556,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct Push2CallSubOpcode : IOpcodeBody
     {
+        public static bool ChargesFixedGas => true;
         public static bool UsesVm => true;
         public static bool MayJump => true;
 

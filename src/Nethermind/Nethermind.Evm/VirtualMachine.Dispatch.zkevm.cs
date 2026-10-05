@@ -71,6 +71,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType> handler) =>
         (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)handler;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void SetExecutionGas(ref TGasPolicy gas, ulong value) => TGasPolicy.SetRemainingGas(ref gas, value);
+
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
     /// <returns>
@@ -107,7 +110,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             byte opcode = Unsafe.Add(ref stack.Code, programCounter);
             EvmExceptionType exceptionType =
                 ((delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[opcode])(
-                    ref stack, TGasPolicy.GetRemainingGas(in gas), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, table, ref stack.Code, ref stack.Bottom);
+                    ref stack, GetExecutionGas(ref gas), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, table, ref stack.Code, ref stack.Bottom);
             stack.Head = state.Head;
             programCounter = state.FinalProgramCounter;
             return exceptionType;
@@ -160,12 +163,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             EvmExceptionType exceptionType;
             if (TOpcode.HasCheckedBody)
             {
-                // A policy holding only the remaining gas sees the same fixed charge, and a local one stays in registers.
-                Unsafe.SkipInit(out TGasPolicy fixedGas);
-                TGasPolicy.SetRemainingGas(ref fixedGas, gas);
+                LoadFixedGas(out TGasPolicy fixedGas, gas);
                 if (!TOpcode.TryConsumeGas(ref fixedGas))
-                    return ExitChain(ref state, TGasPolicy.GetRemainingGas(in fixedGas), pc, head, EvmExceptionType.OutOfGas);
-                gas = TGasPolicy.GetRemainingGas(in fixedGas);
+                    return ExitChain(ref state, GetExecutionGas(ref fixedGas), pc, head, EvmExceptionType.OutOfGas);
+                gas = GetExecutionGas(ref fixedGas);
 
                 if (TOpcode.StackInputs != 0 && TOpcode.StackGrowth > 0)
                 {
@@ -206,21 +207,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
             else if (TOpcode.ChargesFixedGas)
             {
-                // A policy holding only the remaining gas sees the same fixed charges, and a local one can stay in registers.
-                Unsafe.SkipInit(out TGasPolicy fixedGas);
-                TGasPolicy.SetRemainingGas(ref fixedGas, gas);
+                LoadFixedGas(out TGasPolicy fixedGas, gas);
                 stack.Head = head;
                 exceptionType = TOpcode.Execute(ref stack, ref fixedGas, TOpcode.UsesVm ? state.Vm : null!, ref pc);
                 head = stack.Head;
-                gas = TGasPolicy.GetRemainingGas(in fixedGas);
+                gas = GetExecutionGas(ref fixedGas);
             }
             else
             {
-                TGasPolicy.SetRemainingGas(ref state.Gas, gas);
+                SetExecutionGas(ref state.Gas, gas);
                 stack.Head = head;
                 exceptionType = TOpcode.Execute(ref stack, ref state.Gas, state.Vm, ref pc);
                 head = stack.Head;
-                gas = TGasPolicy.GetRemainingGas(in state.Gas);
+                gas = GetExecutionGas(ref state.Gas);
             }
 
             if ((!TOpcode.HasCheckedBody && !TOpcode.StaysInline) || TOpcode.CallsOutOfLine)
@@ -283,7 +282,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static EvmExceptionType ExitChain(ref DispatchState state, ulong gas, nint pc, nint head, EvmExceptionType exceptionType)
         {
-            TGasPolicy.SetRemainingGas(ref state.Gas, gas);
+            SetExecutionGas(ref state.Gas, gas);
             state.Head = head;
             state.FinalProgramCounter = pc;
             return exceptionType;
@@ -316,14 +315,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             pc++;
             nint fallthroughPc = pc;
             // Every JUMPI charge is fixed, as for a ChargesFixedGas body.
-            Unsafe.SkipInit(out TGasPolicy fixedGas);
-            TGasPolicy.SetRemainingGas(ref fixedGas, gas);
+            LoadFixedGas(out TGasPolicy fixedGas, gas);
             stack.Head = head;
             OpcodeResult result = TTracingInst.IsActive
                 ? EvmInstructions.InstructionJumpIf(ref stack, ref fixedGas, vm, pc)
                 : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref fixedGas, vm, pc);
             head = stack.Head;
-            gas = TGasPolicy.GetRemainingGas(in fixedGas);
+            gas = GetExecutionGas(ref fixedGas);
             pc = result.ProgramCounter;
             handlers = state.OpcodeHandlers;
             code = ref stack.Code;
