@@ -633,6 +633,8 @@ namespace Nethermind.TxPool
         /// it and would collect the whole expiring population — the sweep this index exists to avoid. Its
         /// predeployed code never changes, so the entry has no true positives, and the deadline it stands for
         /// is swept by <see cref="RemoveExpiredFrameTransactions"/> instead.
+        /// The prefix paymaster is indexed as well, so a head that changes its code reapplies the non-canonical
+        /// paymaster cap even when no payer was resolved.
         /// Two kinds of dependency sit outside the set (EIP8141-GAP): helper contracts an opaque prefix reaches
         /// through <c>CALL*</c>, so a code change at one does not trigger revalidation; and block context it
         /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe.
@@ -650,13 +652,16 @@ namespace Nethermind.TxPool
 
             Address? payer = tx.PayerAddress ?? resolvedPayer;
             bool hasDistinctPayer = payer is not null && payer != tx.SenderAddress;
+            Address? paymaster = PendingPaymasterCache.KeyFor(tx);
+            bool hasDistinctPaymaster = paymaster is not null && paymaster != tx.SenderAddress && paymaster != payer;
             // A delegated sender runs the delegate's code, so that account is a dependency too; the sender's
             // own code hash only pins the designation.
             Address? delegated = resolveDelegation ? DelegationTargetOf(tx.SenderAddress!) : null;
-            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (delegated is not null ? 1 : 0)];
+            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (hasDistinctPaymaster ? 1 : 0) + (delegated is not null ? 1 : 0)];
             int next = 0;
             accounts[next++] = tx.SenderAddress!;
             if (hasDistinctPayer) accounts[next++] = payer!;
+            if (hasDistinctPaymaster) accounts[next++] = paymaster!;
             if (delegated is not null) accounts[next] = delegated;
 
             if (onlyIfTracked) _frameDependencies.Update(tx.Hash!.ValueHash256, accounts);
@@ -1592,8 +1597,11 @@ namespace Nethermind.TxPool
             {
                 _hashCache.DeleteFromCurrentBlock(tx.Hash!);
             }
-            else if (accepted != AcceptTxResult.Invalid
-                && accepted != AcceptTxResult.InvalidBlobProofs)
+            // A yielded push stays known, so resends buy no validation, and waits for an announcement to refetch it.
+            else if (!(state.FrameSimulationYielded && _retryCache.TryAwaitAnnouncement(tx.Hash!))
+                && accepted != AcceptTxResult.Invalid
+                && accepted != AcceptTxResult.InvalidBlobProofs
+                && !(accepted == AcceptTxResult.AlreadyKnown && _retryCache.IsAwaitingAnnouncement(tx.Hash!)))
             {
                 _retryCache.Received(tx.Hash!);
             }
@@ -1608,10 +1616,26 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
-            (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(in hash) ?
-                AnnounceResult.Delayed :
-                _retryCache.Announced(in hash, retryHandler);
+        public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler)
+        {
+            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
+            {
+                return AnnounceResult.Delayed;
+            }
+
+            if (!_hashCache.Get(in hash))
+            {
+                return _retryCache.Announced(in hash, retryHandler);
+            }
+
+            if (!_retryCache.TryClaimUnrequested(in hash, retryHandler))
+            {
+                return AnnounceResult.Delayed;
+            }
+
+            _hashCache.DeleteFromCurrentBlock(in hash);
+            return AnnounceResult.RequestRequired;
+        }
 
         public AcceptTxResult ValidateTxForBlobSampling(Transaction tx)
         {
