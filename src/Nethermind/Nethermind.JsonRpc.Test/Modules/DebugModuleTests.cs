@@ -416,7 +416,7 @@ public class DebugModuleTests
     }
 
     [TestCaseSource(nameof(TraceBaseStateGuardErrorCases))]
-    public void DebugTraceTransactionByIndex_WhenTraceBaseStateGuardRejects_ReturnsResourceUnavailable(
+    public void DebugTraceTransaction_WhenTraceBaseStateGuardRejects_ReturnsResourceUnavailable(
         Func<DebugRpcModule, BlockHeader, ResultWrapper<GethLikeTxTrace>> invoke,
         Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge> setup,
         string expectedErrorSubstring)
@@ -429,9 +429,12 @@ public class DebugModuleTests
 
         ResultWrapper<GethLikeTxTrace> actual = invoke(CreateModule(), header);
 
-        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
-        Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+        }
     }
 
     [Test]
@@ -778,6 +781,11 @@ public class DebugModuleTests
             (
                 "ByTransactionHash",
                 static (module, _) => module.debug_traceTransaction(TestItem.KeccakA, new GethTraceOptions { Tracer = "noopTracer" }),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            ),
+            (
+                "ByTransactionHashStreaming",
+                static (module, _) => module.debug_traceTransaction(TestItem.KeccakA),
                 static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
             )
         ];
