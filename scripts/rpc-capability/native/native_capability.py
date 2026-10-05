@@ -192,6 +192,7 @@ class Capability:
                 directory.mkdir(parents=True, mode=0o700)
                 self.audit(phase, "cell", timeout=600, changes={
                     "RPC_PRIVATE_AUDIT_PHASE": phase, "OUT_DIR": str(directory), "JB_DURATION": seconds,
+                    "JB_EXACT_REQUEST_CAP": "6000" if phase == "warm" else "1000",
                     "JB_SEED": seed, "JB_CONTAINER_NAME": "jsonbench-nativecap-" + phase + "-" + self.environment["GITHUB_RUN_ID"],
                     "RESOURCE_SAMPLER_CONTAINER": self.environment["CONTAINER_NAME"] if phase == "main" else "",
                     "RESOURCE_SAMPLER_OUT": str(directory / "resources.json") if phase == "main" else ""})
@@ -311,7 +312,7 @@ def checked_environment(repository):
                ADDITIONAL_FLAGS="", NODE_ENV_VARS="", LAYOUT_FLAGS="--FlatDb.Enabled=true", CPU_SYSFS="/sys/devices/system/cpu",
                ARM_SCRATCH_DIR="", DATA_DIR_TARGET="/execution-data", NETWORK="mainnet",
                JSONRPC_MODULES="Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug",
-               JB_REPO="https://github.com/NethermindEth/json-bench.git", JB_CONCURRENCY="5", JB_TIMEOUT="30", JB_VUS="",
+               JB_REPO="https://github.com/NethermindEth/json-bench.git", JB_CONCURRENCY="5", JB_TIMEOUT="30", JB_VUS="100", RPC_JB_PATCH_PROTOCOL="RPC_EXACT_COUNT_V1",
                JB_COMPARE_CONFIG="config/compare/defaults.yaml", JB_FAIL_ON_DIFF="false", JB_VALIDATE_SCHEMA="false",
                REFERENCE_RPC_URL="", REFERENCE_LABEL="reference", REFERENCE_CLIENT_TYPE="reference")
     env["STATE_DIR"] = str(Path(env["STATE_ROOT"]) / "nativecap")

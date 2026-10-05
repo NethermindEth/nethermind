@@ -1,20 +1,24 @@
 {
   "schema": 1,
   "status": "READY_FOR_REVIEWED_PROSPECTIVE_CAPABILITY",
-  "harness_head": "ae8611b2f50393223c7d87a0738be552503e388e",
+  "harness_head": "e6618075e08f6464e3c0cf2cb465523e58b03bb1",
   "inventory_sha256": "ebbdf4a10ae1f1ca8fad358bda2e963d3909ccdd4aa97569eff7b242bc2ed73d",
   "files": {
     "guard.py": "4b54bdb3fcf3bb9d93e112ee56cf004c160d00427d29879c809281b79498ad95",
-    "launch.py": "0f233161a806fb85405e879439d47f10f15943edf6e159ca1b1a84fdb0b59d5f",
-    "freeze.py": "6bc57b584d19ef2a1249cd745c74f5009aaed58ad9250cf421d8787c41d11df8",
+    "launch.py": "088262dbea9ef540fef01118ab7c3f24a1d23b7367aeaec0cefcb7788cb55bec",
+    "freeze.py": "4612c415d8297f2a659139fb1955f25d2917257a309900a2220b1f224e618383",
     "test_guard.py": "67e61972663c4751d334c8f0820eeb49173ad8a1379b6992ba9b40182cade1d4",
-    "workflow.yml": "98c8f8175d8608d1bd8b44d0de84ad93431991c607d49fb980c5dccabcc272db",
+    "workflow.yml": "3acfcabacc8b89443438e86e2c6efcd28a7d57c68dfa3e087c0e851c09b1cbeb",
     "expected-pins.json": "bd70983c88abc902b99d6055438ce49b498f439b3447c401da4eec12913f9d95",
-    "native/native_capability.py": "15ee781d7733af6dfc76d348d26c6f23b6b2ef9bf763343e96db08729ae2b386",
+    "native/native_capability.py": "70fbd9618265785cffbc9227c861477a26ab15156d1e6d55fe6fbad19993d30a",
     "native/pidfd_compat.py": "8c0a1e3bb4405cb21ad2fffff71b8c5faf4516db6afc6376254de11ee042b2b8",
-    "native/source-pins.json": "7dbb0c97fa68a8ea1eddcac457a4f2fb46220a9fa20916b691be7b2ea56a06ef",
-    "native/harness-pin.json": "aa360de6e4bebb2cb394225cff5d803c3f15ca27166675fd11807a88d8f69cef",
+    "native/source-pins.json": "f48ad3adcf931c554d9f633713fb04810fc74a1a30eb95d0eb8125a99c6573e8",
+    "native/harness-pin.json": "2aa9adfe079a1e765c1de7f700aa86f7ba09f630441f0a1960c79bc7e6bc8539",
     "native/test_native_capability.py": "d272df667370abca400dd12ba772302d8bbdedbdfa54f4f4823f04aee3a04a8f",
-    "test_runner.py": "cb77918055a121666d6539e71b3f216d7652bb63936d9307f7e7348d630b170b"
-  }
+    "test_runner.py": "cb77918055a121666d6539e71b3f216d7652bb63936d9307f7e7348d630b170b",
+    "generator-protocol.json": "62777fc8af73d8371b667f1fe87f140781c55f4f72c4740002b20e2f79a44266"
+  },
+  "prospective_protocol": "RPC_EXACT_COUNT_V1",
+  "native_failed_run_corrected": 37309091869,
+  "strict_zero_drop_fail_preserved": true
 }

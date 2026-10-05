@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "protocol": "RPC_EXACT_COUNT_V1",
+  "status": "OFFLINE_REPAIR_PREPARED_NATIVE_NOT_RUN",
+  "base_commit": "de1bcfadea47258ccacae2f420141032a82a9ded",
+  "base_tree": "6377178504604eed92ee3b420b68bf94dc1f4b24",
+  "changed_file": "runner/generator/scripts/k6-script.js",
+  "base_blob": "f2ff86fa97ee756e5bfd5baf3a847a2c7905d19c",
+  "result_blob": "dcb6ad10eb2ba2c0783b1a017073525de40d0034",
+  "result_tree": "c817e4acf044a6ce317695578a7e045cb19ca528",
+  "base_file_sha256": "d832446b489a28d28b064f31bfbb6ebae2d7f84092cccfedc64c3782058e1da2",
+  "result_file_sha256": "33c3fc34aba1c78d3801abd8456e55be59f7e1244593ff954363f41f8603a205",
+  "patch_sha256": "eecd7d27ed1f6032b6cedc9ca161947cd4c10a80abb379e0d1639af991146284",
+  "fixed_vus": 100,
+  "rps": 100,
+  "cells": [
+    {
+      "phase": "warm",
+      "requests": 6000,
+      "duration": "60s",
+      "seed": 1001
+    },
+    {
+      "phase": "capability_main",
+      "requests": 1000,
+      "duration": "10s",
+      "seed": 1
+    },
+    {
+      "phase": "abba_main",
+      "requests": 20000,
+      "duration": "200s",
+      "seed": 1
+    }
+  ],
+  "strict_gates": {
+    "failed_requests": 0,
+    "dropped_iterations": 0,
+    "exact_delivered_http_count": true
+  },
+  "capacity_policy": "Fixed100 forcontrolandbothA/B; ifdropspersistFAIL/HOLD,no further tuning or repeat.",
+  "catch_up": false,
+  "allocation_collection": false,
+  "ci_or_git_mutations": false,
+  "corrected_failed_run": 37309091869,
+  "source_harness_head": "ae8611b2f50393223c7d87a0738be552503e388e",
+  "tracked_source_clean_in_new_mode": false,
+  "exact_pinned_patch_required": true,
+  "tracked_files": 327,
+  "build_copy_paths": [
+    "go.mod",
+    "go.sum",
+    "runner/"
+  ],
+  "allowed_generated_files": [
+    "rpc-calls/corpus/classes.json",
+    "rpc-calls/corpus/class_1.json",
+    "rpc-calls/corpus/class_2.json",
+    "rpc-calls/corpus/class_3.json"
+  ],
+  "reject_unpinned_dockerignore": true,
+  "tool_binary_paths": [
+    "/app/jsonrpc-bench-runner",
+    "/usr/bin/k6 or /usr/local/bin/k6"
+  ],
+  "actual_future_tool_image_and_binary_hashes": null,
+  "new_harness_head": null,
+  "public_result_claim": false
+}

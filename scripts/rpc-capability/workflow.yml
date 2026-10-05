@@ -22,7 +22,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: ae8611b2f50393223c7d87a0738be552503e388e
+          ref: e6618075e08f6464e3c0cf2cb465523e58b03bb1
           path: ${{ env.HARNESS }}
           persist-credentials: false
       - name: Verify portable and integration correctness before native mutation
@@ -32,6 +32,7 @@ jobs:
           python3 -B -m unittest discover -s "$HARNESS/scripts" -p 'test_rpc_*.py' -v
           python3 -B -m unittest discover -s "$HARNESS/scripts/rpc-bench" -p 'test_sample_resources.py' -v
           python3 -B -m unittest discover -s "$HARNESS/scripts/rpc-bench" -p 'test_rpc_startup.py' -v
+          PYTHONPATH="$HARNESS/scripts/rpc-bench" python3 -B -m unittest discover -s "$HARNESS/scripts/rpc-bench/exact-request-tests" -p 'test_runtime_provenance.py' -v
           python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability" -p 'test_guard.py' -v
           python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability" -p 'test_runner.py' -v
           python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability/native" -p 'test_native_capability.py' -v
