@@ -161,12 +161,31 @@ internal class FrameTxSignatureFilterTests
         Assert.That(state.FrameSignaturesVerified, Is.True);
     }
 
-    private static TxFrameSignature DigestSignature(PrivateKey key, byte fill)
+    [Test]
+    public void Accept_DuringBlockWork_RejectsAMalformedLaterEntry()
     {
-        byte[] digest = new byte[Hash256.Size];
-        digest[31] = fill;
-        byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, new ValueHash256(digest)));
-        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, raw);
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(true);
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
+        FrameTxSignatureFilter filter = new(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>(), headInfo);
+        Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
+        tx.FrameSignatures =
+        [
+            DigestSignature(TestItem.PrivateKeyB, 1),
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, default, new byte[64]),
+        ];
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+        long invalid = Metrics.PendingTransactionsFrameTxSignatureInvalid;
+
+        AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ToString(), Does.Contain(FrameTxSignatureValidator.InvalidSignatureLength));
+            Assert.That(state.FrameValidationYielded, Is.False);
+            Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid, Is.EqualTo(invalid + 1));
+        }
     }
 
     private static AcceptTxResult Accept(Transaction tx, out bool signaturesVerified)

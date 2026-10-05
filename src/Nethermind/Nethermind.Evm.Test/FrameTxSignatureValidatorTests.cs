@@ -413,9 +413,9 @@ public class FrameTxSignatureValidatorTests
         tx.FrameSignatures =
         [
             new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0xde, 0xad }),
-            DigestEntry(TestItem.PrivateKeyA, 1),
-            DigestEntry(TestItem.PrivateKeyB, 2),
-            DigestEntry(TestItem.PrivateKeyC, 3),
+            FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyA, 1),
+            FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 2),
+            FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 3),
         ];
         int polls = 0;
 
@@ -437,7 +437,7 @@ public class FrameTxSignatureValidatorTests
     public void Validate_SingleSignature_IsNeverPreempted()
     {
         Transaction tx = CreateFrameTx();
-        tx.FrameSignatures = [DigestEntry(TestItem.PrivateKeyA, 1)];
+        tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyA, 1)];
         int polls = 0;
 
         bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
@@ -455,7 +455,7 @@ public class FrameTxSignatureValidatorTests
     public void Validate_NotPreempted_PollsBeforeEachLaterVerifyingEntry()
     {
         Transaction tx = CreateFrameTx();
-        tx.FrameSignatures = [DigestEntry(TestItem.PrivateKeyA, 1), DigestEntry(TestItem.PrivateKeyB, 2), DigestEntry(TestItem.PrivateKeyC, 3)];
+        tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyA, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 2), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 3)];
         int polls = 0;
 
         bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
@@ -466,6 +466,29 @@ public class FrameTxSignatureValidatorTests
             Assert.That(valid, Is.True, error);
             Assert.That(preempted, Is.False);
             Assert.That(polls, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Validate_PreemptibleCallWithAMalformedLaterEntry_RejectsItWithoutVerifying()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures =
+        [
+            FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyA, 1),
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, new byte[64]),
+        ];
+        int polls = 0;
+
+        bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
+            () => ++polls > 0, out bool preempted, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(preempted, Is.False, "a malformed entry is a verdict, not a yield");
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignatureLength));
+            Assert.That(tx.FrameSignatures[0].Recovered, Is.Null, "the cheap checks run before any recovery");
         }
     }
 
@@ -480,15 +503,6 @@ public class FrameTxSignatureValidatorTests
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         Signature signature = _ecdsa.Sign(key, in sigHash);
         return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, ToVrs(signature));
-    }
-
-    private TxFrameSignature DigestEntry(PrivateKey key, byte fill)
-    {
-        // An explicit digest is signed as given, so entries can be built independently of each other.
-        byte[] digest = new byte[Hash256.Size];
-        digest[31] = fill;
-        Signature signature = _ecdsa.Sign(key, new ValueHash256(digest));
-        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, ToVrs(signature));
     }
 
     private static byte[] ToVrs(Signature signature)

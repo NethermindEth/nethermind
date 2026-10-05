@@ -71,6 +71,16 @@ public static class FrameTxTestFrames
         return entries;
     }
 
+    /// <summary>A SECP256K1 entry by <paramref name="key"/> over an explicit digest, so entries can be built
+    /// independently of each other and of the transaction's signature hash.</summary>
+    public static TxFrameSignature DigestSignature(PrivateKey key, byte fill)
+    {
+        byte[] digest = new byte[Hash256.Size];
+        digest[31] = fill;
+        byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, new ValueHash256(digest)));
+        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, raw);
+    }
+
     public static TxFrame SelfVerify(ulong gasLimit = 1_000) =>
         new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
 

@@ -4168,14 +4168,6 @@ namespace Nethermind.TxPool.Test
 
         public enum FrameSignatureDefect { None, HighS, LegacyRecoveryId, ForeignSigner }
 
-        private static TxFrameSignature DigestFrameSignature(PrivateKey key, byte fill)
-        {
-            byte[] digest = new byte[Hash256.Size];
-            digest[31] = fill;
-            byte[] raw = FrameTxTestFrames.Secp256k1SignatureBytes(new Ecdsa().Sign(key, new ValueHash256(digest)));
-            return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, raw);
-        }
-
         private static TxFrameSignature FrameSignature(Transaction tx, FrameSignatureDefect defect)
         {
             PrivateKey key = defect == FrameSignatureDefect.ForeignSigner ? TestItem.PrivateKeyB : TestItem.PrivateKeyA;
@@ -5081,7 +5073,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
             // Two signatures: the first verifying entry always runs, so only a later one can yield.
-            tx.FrameSignatures = [DigestFrameSignature(TestItem.PrivateKeyB, 1), DigestFrameSignature(TestItem.PrivateKeyC, 2)];
+            tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 2)];
             tx.Hash = tx.CalculateHash();
             IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
             if (announced) Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
