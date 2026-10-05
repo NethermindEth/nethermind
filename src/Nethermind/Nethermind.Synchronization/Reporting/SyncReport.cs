@@ -5,6 +5,7 @@ using System;
 using System.Text;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
@@ -22,6 +23,7 @@ namespace Nethermind.Synchronization.Reporting
         private readonly IPivot _pivot;
         private readonly IBlockFinder _blockFinder;
         private readonly ITimestamper _timestamper;
+        private readonly ulong _syncBehindThresholdSeconds;
         private readonly ILogger _logger;
         private SyncMode _currentMode = SyncMode.None;
 
@@ -33,13 +35,13 @@ namespace Nethermind.Synchronization.Reporting
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
         internal const int SyncBehindReportFrequency = 6; // every 6 ticks x 10s = ~60s
-        internal const ulong SyncBehindThresholdSeconds = 5 * 60;
+        internal const ulong SyncBehindThresholdSlots = 25; // 5 min with 12s slots
         private bool _isBehind;
         private bool _hasBeenAtTip;
-        private (DateTime Time, ulong Blocks)? _lastCatchUpSample;
+        private (DateTime Time, ulong HeadTimestamp)? _lastCatchUpSample;
         private readonly TimeSpan _defaultReportingIntervals;
 
-        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, IBlockFinder blockFinder, ITimestamper timestamper, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
+        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, IBlockFinder blockFinder, ITimestamper timestamper, IBlocksConfig blocksConfig, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
             _logger = logManager?.GetClassLogger<SyncReport>() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -47,6 +49,7 @@ namespace Nethermind.Synchronization.Reporting
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _syncBehindThresholdSeconds = SyncBehindThresholdSlots * (blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig))).SecondsPerSlot;
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
             _defaultReportingIntervals = TimeSpan.FromSeconds(_logger.IsDebug ? 1 : 10);
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
@@ -297,7 +300,7 @@ namespace Nethermind.Synchronization.Reporting
             if (head is null || head.IsGenesis) return;
 
             ulong secondsBehind = _timestamper.UnixTime.Seconds.SaturatingSub(head.Timestamp);
-            if (secondsBehind <= SyncBehindThresholdSeconds)
+            if (secondsBehind <= _syncBehindThresholdSeconds)
             {
                 _hasBeenAtTip = true;
                 _lastCatchUpSample = null;
@@ -311,7 +314,7 @@ namespace Nethermind.Synchronization.Reporting
             }
 
             _isBehind = true;
-            string message = $"Node is behind the head of the chain by {FormatSeconds(secondsBehind)}.{FormatCatchUpEta()}";
+            string message = $"Node is behind the head of the chain by {FormatSeconds(secondsBehind)}.{FormatCatchUpEta(head.Timestamp, secondsBehind)}";
 
             // Only a node that had already reached the tip is worth warning about; on a first sync
             // being behind is the expected state and would warn for the whole sync.
@@ -323,23 +326,22 @@ namespace Nethermind.Synchronization.Reporting
         }
 
         /// <remarks>
-        /// The rate is measured between consecutive sync-behind reports rather than taken from
-        /// <see cref="ProgressLogger.CurrentPerSecond"/>, whose window is reset by every <see cref="ProgressLogger.LogProgress"/>.
+        /// Estimated from how much chain time the head advanced since the previous sync-behind report:
+        /// the gap closes only by the part of that advance exceeding the wall-clock time that passed.
         /// </remarks>
-        private string FormatCatchUpEta()
+        private string FormatCatchUpEta(ulong headTimestamp, ulong secondsBehind)
         {
             DateTime now = _timestamper.UtcNow;
-            ulong blocksDownloaded = FullSyncBlocksDownloaded.CurrentValue;
-            (DateTime Time, ulong Blocks)? previous = _lastCatchUpSample;
-            _lastCatchUpSample = (now, blocksDownloaded);
+            (DateTime Time, ulong HeadTimestamp)? previous = _lastCatchUpSample;
+            _lastCatchUpSample = (now, headTimestamp);
 
-            if (previous is not { } sample || blocksDownloaded <= sample.Blocks || now <= sample.Time) return "";
+            if (previous is not { } sample || now <= sample.Time) return "";
 
-            ulong blocksRemaining = FullSyncBlocksDownloaded.TargetValue.SaturatingSub(blocksDownloaded);
-            if (blocksRemaining == 0) return "";
+            double secondsElapsed = (now - sample.Time).TotalSeconds;
+            double gapClosedPerSecond = headTimestamp.SaturatingSub(sample.HeadTimestamp) / secondsElapsed - 1;
+            if (gapClosedPerSecond <= 0) return " The gap is not closing.";
 
-            double blocksPerSecond = (blocksDownloaded - sample.Blocks) / (now - sample.Time).TotalSeconds;
-            return $" Estimated time to catch up: {FormatSeconds((ulong)(blocksRemaining / blocksPerSecond))}";
+            return $" Estimated time to catch up: {FormatSeconds((ulong)(secondsBehind / gapClosedPerSecond))}";
         }
 
         public void Dispose() => _timer.Dispose();
