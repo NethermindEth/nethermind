@@ -34,7 +34,7 @@ internal static class OperationVectorHandlers
         ["execution_payload"] = ("body.ssz_snappy", (ctx, ssz, batch) =>
         {
             BeaconBlockBody.Decode(ssz, out BeaconBlockBody value);
-            FixedNewPayloadNotifier notifier = new(ctx.ExecutionValid);
+            ForkChoiceStepDriver.FixedNewPayloadNotifier notifier = new(ctx.ExecutionValid ? ExecutionStatus.Valid : ExecutionStatus.Invalid);
             BlockProcessing.ProcessExecutionPayload(ctx.State, value, notifier, ctx.Spec.MaxBlobsPerBlockElectra);
         }
         ),
@@ -105,11 +105,6 @@ internal static class OperationVectorHandlers
     {
         SignedVoluntaryExit.Decode(ssz, out SignedVoluntaryExit value);
         GloasBlockProcessing.ProcessVoluntaryExit(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
-    }
-
-    private sealed class FixedNewPayloadNotifier(bool valid) : INewPayloadNotifier
-    {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => valid ? ExecutionStatus.Valid : ExecutionStatus.Invalid;
     }
 
     internal static readonly Dictionary<string, (string File, Action<OpContext<BeaconStateFulu>, byte[], BlockSignatureBatch?> Apply)> FuluOperations =
