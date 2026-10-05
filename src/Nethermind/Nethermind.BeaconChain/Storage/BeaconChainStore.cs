@@ -57,12 +57,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <summary>The first version whose children index is known to cover every stored block; an older database gets the index rebuilt.</summary>
     private const uint ChildrenIndexSchemaVersion = 2;
 
-    /// <summary>The first version stamped by a build that knows <see cref="BeaconChainDbColumns.ExecutionPayloadEnvelopes"/>, so a build that does not refuses the database.</summary>
-    private const uint ExecutionPayloadEnvelopesSchemaVersion = 3;
-
-    /// <summary>The first version stamped by a build that knows <see cref="BeaconChainDbColumns.DataColumnSidecars"/>, so a build that does not prune it refuses the database.</summary>
-    private const uint DataColumnSidecarsSchemaVersion = 4;
-
     /// <summary>The first version whose <see cref="BeaconChainDbColumns.StateSlotIndex"/> column holds a slot index entry for every state whose slot is readable, so a build that does not maintain it refuses the database.</summary>
     private const uint StateSlotIndexSchemaVersion = 5;
 
