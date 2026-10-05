@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 
 namespace Nethermind.Evm;
 
@@ -49,16 +50,25 @@ public partial struct EvmPooledMemory
         ulong size = Size;
         if (end > size)
         {
-            ulong newSize = (end + (WordSize - 1UL)) & ~(WordSize - 1UL);
-            ulong cost = ExpansionCost(size >> 5, newSize >> 5);
+            // ExpansionCost without a held multiplier or rounded size: the frameless MSTORE handler has no register left.
+            Debug.Assert(GasCostOf.Memory == 3, "The linear term adds the word counts once per unit of the memory charge.");
+            ulong newWords = (end + (WordSize - 1UL)) >> 5;
+            ulong words = size >> 5;
+            ulong cost = (newWords * newWords) >> 9;
+            cost += newWords;
+            cost += newWords;
+            cost += newWords;
+            cost -= words;
+            cost -= words;
+            cost -= words;
+            cost -= (words * words) >> 9;
             if (gas < cost) return ref Unsafe.NullRef<byte>();
 
             gas -= cost;
-            Size = newSize;
+            Size = newWords << 5;
         }
 
-        // The initialized size read again and the offset rederived rather than held through the expansion charge,
-        // where each would take a callee-saved register.
+        // Reread rather than held through the expansion charge, which would take callee-saved registers.
         if (end > _initializedSize) _initializedSize = end;
         return ref Unsafe.Add(ref GetBackingReference(), (nint)(end - WordSize));
     }
