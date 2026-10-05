@@ -3,105 +3,53 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
-using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading.Channels;
 using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
 /// <summary>
-/// DotNetty UDP bridge used by the native discv5 implementation.
+/// DotNetty UDP bridge that connects the shared discovery channel to <see cref="DiscoveryV5Transport"/>.
 /// </summary>
-public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel? channel = null) : NettyDiscoveryBaseHandler(loggerManager, channel)
+public sealed class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler
 {
-    private const int MaxMessagesBuffered = 1024;
+    private readonly ILogger _logger;
+    private readonly DiscoveryV5Transport _transport;
 
-    private readonly ILogger _logger = loggerManager.GetClassLogger<NettyDiscoveryV5Handler>();
-    private readonly Channel<DatagramPacket> _inboundQueue = System.Threading.Channels.Channel.CreateBounded<DatagramPacket>(MaxMessagesBuffered);
+    public NettyDiscoveryV5Handler(DiscoveryV5Transport transport, ILogManager loggerManager, IChannel? channel = null)
+        : base(loggerManager, channel)
+    {
+        _logger = loggerManager.GetClassLogger<NettyDiscoveryV5Handler>();
+        _transport = transport;
+        _transport.BindSender(SendToChannel);
+    }
 
-    private int _activeReaders;
-
-    protected override void CloseInbound() => Close();
+    protected override void CloseInbound() => _transport.Close();
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
-        msg.Retain();
-        DatagramPacket queuedPacket = msg;
+        PooledUdpReceiveResult result = CreateReceiveResult(msg);
+        int size = result.Buffer.Length;
 
-        if (_inboundQueue.Writer.TryWrite(queuedPacket))
+        if (_transport.TryEnqueue(result))
         {
-            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {msg.Sender}, bytes: {msg.Content.ReadableBytes}.");
+            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {msg.Sender}, bytes: {size}.");
             return;
         }
 
-        ReferenceCountUtil.Release(queuedPacket);
+        result.Dispose();
         if (_logger.IsWarn)
         {
             _logger.Warn("Skipping discovery v5 message as inbound buffer is full");
         }
     }
 
-    public async Task SendAsync(byte[] data, IPEndPoint destination, CancellationToken token)
-    {
-        token.ThrowIfCancellationRequested();
-
-        DatagramPacket packet = new(Unpooled.WrappedBuffer(data), destination);
-
-        try
-        {
-            if (_logger.IsTrace) _logger.Trace($"Sending discv5 UDP packet to {destination}, bytes: {data.Length}.");
-            await Channel.WriteAndFlushAsync(packet).WaitAsync(token);
-            Interlocked.Add(ref Metrics.DiscoveryBytesSent, data.Length);
-        }
-        catch (SocketException exception) when (exception.SocketErrorCode == SocketError.AddressNotAvailable)
-        {
-            if (_logger.IsTrace) TraceAddressNotAvailable(destination, exception);
-            throw;
-        }
-        catch (SocketException exception)
-        {
-            _logger.DebugError("Error sending data", exception);
-            throw;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceAddressNotAvailable(IPEndPoint failedDestination, SocketException exception) =>
-            _logger.TraceError($"Failed to send discv5 UDP packet to {failedDestination}", exception);
-    }
-
-    internal async IAsyncEnumerable<PooledUdpReceiveResult> ReadMessagesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)
-    {
-        Interlocked.Increment(ref _activeReaders);
-        try
-        {
-            await foreach (DatagramPacket packet in _inboundQueue.Reader.ReadAllAsync(token))
-            {
-                try
-                {
-                    yield return CreateReceiveResult(packet);
-                }
-                finally
-                {
-                    ReferenceCountUtil.Release(packet);
-                }
-            }
-        }
-        finally
-        {
-            if (Interlocked.Decrement(ref _activeReaders) == 0)
-            {
-                ReleaseQueuedPackets();
-            }
-        }
-    }
+    private Task SendToChannel(byte[] data, IPEndPoint destination)
+        => Channel.WriteAndFlushAsync(new DatagramPacket(Unpooled.WrappedBuffer(data), destination));
 
     private static PooledUdpReceiveResult CreateReceiveResult(DatagramPacket packet)
     {
@@ -131,23 +79,4 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
         static void ThrowMissingArraySegment()
             => throw new InvalidOperationException("Pooled UDP receive buffer must be array-backed.");
     }
-
-    public void Close()
-    {
-        _inboundQueue.Writer.TryComplete();
-        if (Volatile.Read(ref _activeReaders) == 0)
-        {
-            ReleaseQueuedPackets();
-        }
-    }
-
-    private void ReleaseQueuedPackets()
-    {
-        while (_inboundQueue.Reader.TryRead(out DatagramPacket? packet))
-        {
-            ReferenceCountUtil.Release(packet);
-        }
-    }
-
-    public static void Register(IServiceCollection services) => services.AddSingleton<NettyDiscoveryV5Handler>();
 }

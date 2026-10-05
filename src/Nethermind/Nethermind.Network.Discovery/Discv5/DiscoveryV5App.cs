@@ -34,6 +34,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     private readonly List<Node> _bootNodes;
     private readonly DiscoveryPersistenceManager _persistenceManager;
     private readonly IKademliaAdapter _discv5Adapter;
+    private readonly DiscoveryV5Transport _transport;
     private readonly Func<NettyDiscoveryV5Handler> _discoveryHandlerFactory;
     private readonly ILifetimeScope _discv5Services;
 
@@ -75,6 +76,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         DiscV5Services services = _discv5Services.Resolve<DiscV5Services>();
         _persistenceManager = services.PersistenceManager;
         _discv5Adapter = services.Discv5Adapter;
+        _transport = services.Transport;
         _discoveryHandlerFactory = services.NettyDiscoveryHandlerFactory;
         UseKademliaServices(services.NodeSource, services.Kademlia);
     }
@@ -87,6 +89,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         DiscoveryPersistenceManager PersistenceManager,
         IKademliaAdapter Discv5Adapter,
         IKademlia<PublicKey, Node> Kademlia,
+        DiscoveryV5Transport Transport,
         Func<NettyDiscoveryV5Handler> NettyDiscoveryHandlerFactory
     )
     {
@@ -335,7 +338,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     protected override async Task StopAsyncCore()
     {
         await _discv5Adapter.DisposeAsync();
-        _discoveryHandler?.Close();
+        _transport.Close();
     }
 
     protected override ValueTask DisposeAsyncCore() => _discv5Services.DisposeAsync();

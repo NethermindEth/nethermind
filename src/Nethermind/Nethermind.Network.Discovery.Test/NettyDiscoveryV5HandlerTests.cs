@@ -29,13 +29,15 @@ namespace Nethermind.Network.Discovery.Test
     public class NettyDiscoveryV5HandlerTests
     {
         private EmbeddedChannel _channel;
+        private DiscoveryV5Transport _transport;
         private NettyDiscoveryV5Handler _handler;
 
         [SetUp]
         public void Initialize()
         {
             _channel = new();
-            _handler = new(new TestLogManager());
+            _transport = new(new TestLogManager());
+            _handler = new(_transport, new TestLogManager());
             _handler.InitializeChannel(_channel);
         }
 
@@ -48,7 +50,7 @@ namespace Nethermind.Network.Discovery.Test
             byte[] data = [1, 2, 3];
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
-            await _handler.SendAsync(data, to, CancellationToken.None);
+            await _transport.SendAsync(data, to, CancellationToken.None);
 
             DatagramPacket packet = _channel.ReadOutbound<DatagramPacket>();
             try
@@ -72,7 +74,7 @@ namespace Nethermind.Network.Discovery.Test
             cancellationSource.Cancel();
 
             Assert.ThrowsAsync<OperationCanceledException>(
-                async () => await _handler.SendAsync(data, to, cancellationSource.Token));
+                async () => await _transport.SendAsync(data, to, cancellationSource.Token));
 
             DatagramPacket? packet = _channel.ReadOutbound<DatagramPacket>();
             try
@@ -92,11 +94,13 @@ namespace Nethermind.Network.Discovery.Test
             IChannel channel = Substitute.For<IChannel>();
             channel.WriteAndFlushAsync(Arg.Any<object>())
                 .Returns(Task.FromException(new SocketException((int)SocketError.AddressNotAvailable)));
-            NettyDiscoveryV5Handler handler = new(new OneLoggerLogManager(new ILogger(logger)), channel);
+            OneLoggerLogManager logManager = new(new ILogger(logger));
+            DiscoveryV5Transport transport = new(logManager);
+            _ = new NettyDiscoveryV5Handler(transport, logManager, channel);
             IPEndPoint destination = new(IPAddress.Parse("2001:db8::1"), 30303);
 
             Assert.ThrowsAsync<SocketException>(
-                async () => await handler.SendAsync([1, 2, 3], destination, CancellationToken.None));
+                async () => await transport.SendAsync([1, 2, 3], destination, CancellationToken.None));
 
             if (traceEnabled)
                 Assert.That(logger.LogList, Has.Some.EqualTo($"TRACE/ERROR: Failed to send discv5 UDP packet to {destination}"));
@@ -112,7 +116,7 @@ namespace Nethermind.Network.Discovery.Test
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
             using CancellationTokenSource cancellationSource = new(10_000);
-            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _handler
+            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _transport
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
             ValueTask<bool> readTask = enumerator.MoveNextAsync();
@@ -143,7 +147,7 @@ namespace Nethermind.Network.Discovery.Test
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
             long bytesSentBefore = Interlocked.Read(ref Metrics.DiscoveryBytesSent);
 
-            await _handler.SendAsync(sentData, to, CancellationToken.None);
+            await _transport.SendAsync(sentData, to, CancellationToken.None);
             DatagramPacket outboundPacket = _channel.ReadOutbound<DatagramPacket>();
             try
             {
@@ -166,7 +170,8 @@ namespace Nethermind.Network.Discovery.Test
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
             long bytesReceivedBefore = Interlocked.Read(ref Metrics.DiscoveryBytesReceived);
             EmbeddedChannel channel = new();
-            NettyDiscoveryV5Handler discv5Handler = new(new TestLogManager());
+            DiscoveryV5Transport discv5Transport = new(new TestLogManager());
+            NettyDiscoveryV5Handler discv5Handler = new(discv5Transport, new TestLogManager());
             discv5Handler.InitializeChannel(channel);
             channel.Pipeline.AddLast(new DiscoveryTrafficHandler());
             channel.Pipeline.AddLast(new NettyDiscoveryHandler(
@@ -180,7 +185,7 @@ namespace Nethermind.Network.Discovery.Test
             try
             {
                 using CancellationTokenSource cancellationSource = new(10_000);
-                await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = discv5Handler
+                await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = discv5Transport
                     .ReadMessagesAsync(cancellationSource.Token)
                     .GetAsyncEnumerator(cancellationSource.Token);
                 ValueTask<bool> readTask = enumerator.MoveNextAsync();
@@ -208,7 +213,7 @@ namespace Nethermind.Network.Discovery.Test
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
             using CancellationTokenSource cancellationSource = new(10_000);
-            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _handler
+            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _transport
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
             ValueTask<bool> readTask = enumerator.MoveNextAsync();
@@ -240,7 +245,7 @@ namespace Nethermind.Network.Discovery.Test
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
             using CancellationTokenSource cancellationSource = new(10_000);
-            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _handler
+            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _transport
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
             ValueTask<bool> readTask = enumerator.MoveNextAsync();
@@ -250,7 +255,7 @@ namespace Nethermind.Network.Discovery.Test
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])invalidData.Clone()), from, to));
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])invalidData.Clone()), from, to));
-            _handler.Close();
+            _transport.Close();
 
             Assert.That(await readTask, Is.True);
             PooledUdpReceiveResult forwardedPacket = enumerator.Current;
@@ -270,7 +275,7 @@ namespace Nethermind.Network.Discovery.Test
         public async Task ChannelInactiveStopsReader()
         {
             using CancellationTokenSource cancellationSource = new(10_000);
-            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _handler
+            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _transport
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
             ValueTask<bool> readTask = enumerator.MoveNextAsync();

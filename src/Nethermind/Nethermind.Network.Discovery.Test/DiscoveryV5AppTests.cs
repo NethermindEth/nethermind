@@ -3,6 +3,9 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using DotNetty.Common.Utilities;
+using DotNetty.Transport.Channels.Embedded;
+using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -16,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -633,5 +637,33 @@ public class DiscoveryV5AppTests
         bool result = DiscoveryV5App.ShouldUseDefaultDiscv5Bootnodes(IPAddress.Parse(externalIp), discoveryConfig);
 
         Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Initialized_channel_sends_packets_from_discv5_transport()
+    {
+        ILifetimeScope? discv5Scope = null;
+        await using DiscoveryV5App discoveryApp = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterBuildCallback(scope => discv5Scope = scope));
+        EmbeddedChannel channel = new();
+        byte[] data = [1, 2, 3];
+        IPEndPoint destination = IPEndPoint.Parse("127.0.0.1:30303");
+
+        discoveryApp.InitializeChannel(channel);
+        await discv5Scope!.Resolve<DiscoveryV5Transport>().SendAsync(data, destination, CancellationToken.None);
+
+        DatagramPacket packet = channel.ReadOutbound<DatagramPacket>();
+        try
+        {
+            Assert.That(packet, Is.Not.Null);
+            Assert.That(packet.Content.ReadAllBytesAsArray(), Is.EqualTo(data));
+            Assert.That(packet.Recipient, Is.EqualTo(destination));
+        }
+        finally
+        {
+            ReferenceCountUtil.Release(packet);
+            await channel.CloseAsync();
+        }
     }
 }
