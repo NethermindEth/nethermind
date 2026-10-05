@@ -1570,10 +1570,9 @@ public sealed class ForkChoiceRunner
     /// equivocated in the slot before the proposal; <paramref name="headRoot"/> itself otherwise.
     /// </summary>
     /// <remarks>
-    /// Weights are refreshed via <see cref="GetHead"/> first, because the spec's <c>get_attestation_score</c>
-    /// is a live computation over current votes, not a value cached from an earlier <see cref="GetHead"/> call.
-    /// There is no <c>is_shuffling_stable</c>: Fulu's proposer lookahead (EIP-7917) fixes the proposer before the
-    /// epoch boundary. The conditions short-circuit, which the spec allows.
+    /// Refreshes weights via <see cref="GetHead"/>: <c>get_attestation_score</c> must reflect current votes.
+    /// Fulu proposer lookahead (EIP-7917) fixes the proposer before the epoch boundary, removing
+    /// <c>is_shuffling_stable</c>. Conditions short-circuit as the spec permits.
     /// </remarks>
     /// <exception cref="ForkChoiceException">
     /// <paramref name="headRoot"/> or its parent is unknown to fork choice, the head still holds the proposer
@@ -1682,10 +1681,8 @@ public sealed class ForkChoiceRunner
     }
 
     /// <summary>
-    /// The spec's <c>is_finalization_ok</c>: whether finality is recent enough, as of <paramref name="slot"/>,
-    /// to permit a proposer reorg. <paramref name="finalizedEpoch"/> can never exceed <paramref name="slot"/>'s
-    /// epoch in a consistent store, but if it somehow did, the ulong underflow yields a huge gap and this
-    /// fails closed (no reorg) rather than wrapping into a false "ok".
+    /// The spec's <c>is_finalization_ok</c>: whether finality at <paramref name="slot"/> permits a proposer reorg.
+    /// If <paramref name="finalizedEpoch"/> exceeds the slot's epoch, ulong underflow fails closed.
     /// </summary>
     public static bool IsFinalizationOk(ulong slot, ulong finalizedEpoch, ulong reorgMaxEpochsSinceFinalization) =>
         BeaconStateAccessors.ComputeEpochAtSlot(slot) - finalizedEpoch <= reorgMaxEpochsSinceFinalization;
@@ -1731,10 +1728,9 @@ public sealed class ForkChoiceRunner
 
     /// <summary>The spec's <c>store_target_checkpoint_state</c>: the checkpoint's block state advanced to the checkpoint epoch start, cached.</summary>
     /// <remarks>
-    /// A checkpoint at or after <see cref="BeaconChainSpec.GloasForkEpoch"/> whose block is a Fulu block
-    /// (the epoch opened with skipped slots) is advanced to the fork boundary, upgraded, and then
-    /// advanced under the Gloas slot processing, exactly as <see cref="ForkedStateTransition"/> carries a
-    /// state across the fork. The block state itself is never mutated.
+    /// A checkpoint at or after <see cref="BeaconChainSpec.GloasForkEpoch"/> may name a Fulu block after skipped slots.
+    /// Its state advances to the fork boundary, upgrades, then uses Gloas slot processing, as in
+    /// <see cref="ForkedStateTransition"/>. The block state is never mutated.
     /// </remarks>
     /// <exception cref="ForkChoiceException">The checkpoint block's state cannot be resolved; see <see cref="GetBlockState"/>.</exception>
     internal ForkedBeaconState GetCheckpointState(CheckpointRef checkpoint, bool requireHeld = false)
@@ -2033,15 +2029,14 @@ public sealed class ForkChoiceRunner
     }
 
     /// <summary>
-    /// The <c>process_slot</c> roots of advancing <paramref name="blockRoot"/>'s post-state from <paramref name="blockSlot"/> towards
-    /// <paramref name="targetSlot"/> that are already known: the block's own <c>state_root</c>, and every later one when the post-state of the
-    /// block last registered went through that same advance.
+    /// Known <c>process_slot</c> roots from <paramref name="blockSlot"/> towards <paramref name="targetSlot"/>:
+    /// <paramref name="blockRoot"/>'s <c>state_root</c> and later roots from the last registered post-state's matching advance.
     /// </summary>
     /// <remarks>
-    /// The advance starts from <c>store.block_states[root]</c>, the post-state whose root the block's <c>state_root</c> commits to (specs/phase0/beacon-chain.md
-    /// <c>state_transition</c>; the anchor's is checked at construction). <c>process_slot</c> writes <c>state_roots[i]</c> and <c>block_roots[i]</c> for
-    /// each slot <c>i</c> it leaves, so a state whose <c>block_roots</c> name <paramref name="blockRoot"/> at every slot of the advance had no other block
-    /// there, and its <c>state_roots</c> are the roots of the very states this advance hashes.
+    /// specs/phase0/beacon-chain.md <c>state_transition</c> commits to <c>store.block_states[root]</c>;
+    /// the anchor commitment is checked at construction. <c>process_slot</c> writes state and block roots
+    /// for each departed slot. <c>block_roots</c> equal to <paramref name="blockRoot"/> throughout prove no intervening
+    /// block, so the recorded <c>state_roots</c> match the states this advance hashes.
     /// </remarks>
     private Hash256[] KnownAdvanceRoots(Hash256 blockRoot, Hash256 blockStateRoot, ulong blockSlot, ulong targetSlot)
     {

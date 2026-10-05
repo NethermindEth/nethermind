@@ -10,18 +10,10 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.BeaconChain.Types;
 
-// Gloas containers a non-attesting follower must decode: EIP-7732 (ePBS bid/envelope split),
-// EIP-7688 (progressive SSZ) and the builder registry (EIP-8282 requests). Field order and
-// [SszField] index are copied verbatim from specs/gloas/beacon-chain.md on the
-// ethereum/consensus-specs `master` branch, fetched 2026-09-19 (post v1.7.0-beta.0, pre v1.7.0-beta.1;
-// see the survey cited in the task for the exact churn window). Every [SszField]-indexed type below
-// is a spec `ProgressiveContainer`: the SszGenerator (SszType.cs `HasAnyFieldIndex`) treats any
-// container where every property carries [SszField(index)] as EIP-7495/7916 progressive, merkleizing
-// with Merkle.MerkleizeProgressive + MixInActiveFields instead of the plain pad-to-power-of-two tree.
-// None of these Gloas types declare a gap (ACTIVE_FIELDS has no unused position), so the index is
-// just the declaration order 0..N-1 and decode/encode is byte-identical to a plain container (per
-// ethereum/ssz-specs `container.py`: "Both encode identically: fixed-size fields inline, variable-size
-// fields behind offsets" - only merkleization differs between Container and ProgressiveContainer).
+// Gloas containers follow specs/gloas/beacon-chain.md (EIP-7732, EIP-7688 and EIP-8282).
+// Types with [SszField] on every property use progressive merkleization with active-field mixing.
+// Their contiguous field indices leave encoding identical to ordinary containers; only roots differ
+// (EIP-7495/7916, ethereum/ssz-specs container.py).
 
 /// <summary>Gloas <c>Builder</c> (specs/gloas/beacon-chain.md, "New containers").</summary>
 [SszContainer]

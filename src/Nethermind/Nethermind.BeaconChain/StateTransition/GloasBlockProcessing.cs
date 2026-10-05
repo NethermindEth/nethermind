@@ -16,22 +16,16 @@ using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
-/// <summary>
-/// Gloas <c>process_block</c> (EIP-7732's ePBS split) over <see cref="BeaconStateGloas"/>.
-/// </summary>
+/// <summary>Gloas block and payload processing (EIP-7732).</summary>
 /// <remarks>
 /// Follows ethereum/consensus-specs <c>v1.7.0-beta.2</c>, <c>specs/gloas/beacon-chain.md</c> and
 /// <c>specs/gloas/fork-choice.md</c> at the same tag.
 /// <para/>
-/// <b>Block-processing step order.</b> Withdrawals run after the parent payload and before the
-/// current bid, because bid processing affects validator balances. The pinned <c>process_block</c> order is
-/// <c>process_parent_execution_payload, process_block_header, process_withdrawals,
-/// process_execution_payload_bid, process_randao, process_eth1_data, process_operations,
-/// process_sync_aggregate</c>.
+/// Withdrawals run after the parent payload and before the current bid, because bid processing
+/// affects validator balances.
 /// <para/>
-/// <b>Envelope processing timing.</b> <see cref="VerifyExecutionPayloadEnvelope"/> verifies without mutating
-/// beacon state; fork choice records the envelope. The payload is applied to state one block later,
-/// through the child block's <c>process_parent_execution_payload</c> and <see cref="ApplyParentExecutionPayload"/>.
+/// <see cref="VerifyExecutionPayloadEnvelope"/> leaves beacon state unchanged; fork choice records
+/// the envelope. The child block applies it through <see cref="ApplyParentExecutionPayload"/>.
 /// </remarks>
 public static partial class GloasBlockProcessing
 {
@@ -332,17 +326,12 @@ public static partial class GloasBlockProcessing
     // ---- Execution payload envelope (EIP-7732) ----
 
     /// <summary>
-    /// Spec <c>verify_execution_payload_envelope</c>, the entry point for a received envelope
-    /// (fork-choice's <c>on_execution_payload_envelope</c>), bound to the frozen post-state of
-    /// <c>envelope.beacon_block_root</c> the way the spec's <c>store.block_states[...]</c> lookup
-    /// binds it. A pure verification against the state that already committed the envelope's bid -
-    /// it mutates nothing; see this type's remarks on why application happens one block later.
+    /// Verifies an envelope against its block's frozen post-state without mutating it
+    /// (spec <c>verify_execution_payload_envelope</c>, called by <c>on_execution_payload_envelope</c>).
     /// </summary>
     /// <remarks>
-    /// The state is resolved here, not accepted from the caller, because the per-field checks below
-    /// can only ever compare the envelope with the state they are handed: a self-consistent envelope
-    /// built against a state that is not any known block's post-state passes them all. The only
-    /// thing that catches it is refusing every root <paramref name="states"/> does not know.
+    /// Resolving through <paramref name="states"/> rejects unknown block roots. Accepting arbitrary
+    /// caller-supplied state would let a fabricated state/envelope pair pass every field check.
     /// </remarks>
     /// <param name="hasher">Computes the state root the envelope's block root is checked against; <c>null</c> merkleizes the whole state.</param>
     /// <exception cref="BeaconStateException">The envelope names an unknown block, or fails any spec check.</exception>
@@ -354,11 +343,7 @@ public static partial class GloasBlockProcessing
         VerifyExecutionPayloadEnvelopeAgainst(state, signedEnvelope, notifier, pubkeys, hasher);
     }
 
-    /// <summary>
-    /// The spec's <c>verify_execution_payload_envelope(state, ...)</c> body. Private on purpose: the
-    /// only way in is <see cref="VerifyExecutionPayloadEnvelope"/>, which chooses <paramref name="state"/>
-    /// by the envelope's own block root instead of trusting whatever a caller has to hand.
-    /// </summary>
+    /// <summary>Verifies against the frozen state resolved by <see cref="VerifyExecutionPayloadEnvelope"/>.</summary>
     private static void VerifyExecutionPayloadEnvelopeAgainst(BeaconStateGloas state, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys, IBeaconStateHasher? hasher)
     {
         ExecutionPayloadEnvelope envelope = signedEnvelope.Message!;
@@ -436,11 +421,8 @@ public static partial class GloasBlockProcessing
     }
 
     /// <summary>
-    /// Content equality standing in for <c>hash_tree_root(a) == hash_tree_root(b)</c>: both sides
-    /// merkleize the same way (a <c>ProgressiveList[Withdrawal]</c>, see
-    /// <see cref="ExecutionPayloadGloas.Withdrawals"/> and <see cref="BeaconStateGloas.PayloadExpectedWithdrawals"/>),
-    /// so equal contents in equal order imply equal roots without hand-rolling that merkleization
-    /// here too (see the honest-failure rule against a second source of truth for a derivable value).
+    /// Compares ordered contents instead of roots: both <see cref="ExecutionPayloadGloas.Withdrawals"/>
+    /// and <see cref="BeaconStateGloas.PayloadExpectedWithdrawals"/> use <c>ProgressiveList[Withdrawal]</c>.
     /// </summary>
     private static bool WithdrawalsEqual(Withdrawal[]? a, Withdrawal[]? b)
     {
