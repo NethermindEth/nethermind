@@ -43,66 +43,31 @@ public class EarlyRejectLoopbackTests
         EmptyColumnList,
     }
 
-    [TestCase(StatusV2, Request.DeclaredLengthAboveTheMaximum)]
-    [TestCase(StatusV2, Request.VarintLongerThanTenBytes)]
-    [TestCase(BlocksByRange, Request.DeclaredLengthAboveTheMaximum)]
-    [TestCase(BlocksByRange, Request.VarintLongerThanTenBytes)]
-    [TestCase(BlocksByRoot, Request.DeclaredLengthAboveTheMaximum)]
-    [TestCase(BlocksByRoot, Request.VarintLongerThanTenBytes)]
-    [TestCase(BlocksByRoot, Request.MoreRootsThanTheMaximum)]
-    [TestCase(EnvelopesByRange, Request.DeclaredLengthAboveTheMaximum)]
-    [TestCase(EnvelopesByRange, Request.VarintLongerThanTenBytes)]
-    [TestCase(EnvelopesByRoot, Request.DeclaredLengthAboveTheMaximum)]
-    [TestCase(EnvelopesByRoot, Request.VarintLongerThanTenBytes)]
-    [TestCase(EnvelopesByRoot, Request.MoreRootsThanTheMaximum)]
-    [TestCase(ColumnsByRange, Request.DeclaredLengthAboveTheMaximum)]
-    [TestCase(ColumnsByRange, Request.VarintLongerThanTenBytes)]
-    [TestCase(ColumnsByRoot, Request.DeclaredLengthAboveTheMaximum)]
-    [TestCase(ColumnsByRoot, Request.VarintLongerThanTenBytes)]
-    [TestCase(ColumnsByRoot, Request.MoreRootsThanTheMaximum)]
-    [TestCase(Ping, Request.DeclaredLengthAboveTheMaximum)]
-    [TestCase(Goodbye, Request.DeclaredLengthAboveTheMaximum)]
-    [TestCase(Ping, Request.VarintLongerThanTenBytes)]
-    [TestCase(Goodbye, Request.VarintLongerThanTenBytes)]
-    [TestCase(StatusV2, Request.ZeroLength)]
-    [TestCase(BlocksByRange, Request.ZeroLength)]
-    [TestCase(EnvelopesByRange, Request.ZeroLength)]
-    [TestCase(ColumnsByRange, Request.ZeroLength)]
-    [TestCase(Ping, Request.ZeroLength)]
-    [TestCase(Goodbye, Request.ZeroLength)]
-    [TestCase(StatusV2, Request.ZeroLengthStreamHeldOpen)]
-    [TestCase(BlocksByRange, Request.ZeroLengthStreamHeldOpen)]
-    [TestCase(EnvelopesByRange, Request.ZeroLengthStreamHeldOpen)]
-    [TestCase(ColumnsByRange, Request.ZeroLengthStreamHeldOpen)]
-    [TestCase(Ping, Request.ZeroLengthStreamHeldOpen)]
-    [TestCase(ColumnsByRange, Request.EmptyColumnList)]
-    [TestCase(ColumnsByRoot, Request.EmptyColumnList)]
-    [TestCase(StatusV2, Request.TruncatedAfterTheLengthPrefix)]
-    [TestCase(BlocksByRoot, Request.TruncatedAfterTheLengthPrefix)]
-    [TestCase(ColumnsByRoot, Request.TruncatedAfterTheLengthPrefix)]
-    [TestCase(Goodbye, Request.TruncatedAfterTheLengthPrefix)]
-    [CancelAfter(60_000)]
-    public async Task Early_rejected_requests_are_answered_with_an_error_chunk_at_once(string protocolId, Request request, CancellationToken token)
+    private static IEnumerable<TestCaseData> Requests()
     {
-        byte[] wire = await EncodeAsync(protocolId, request, token);
-        await using BeaconP2P server = PeerSessionNodes.Create().P2P;
-        await server.StartAsync(token);
-        (byte[] response, TimeSpan elapsed) = await RequestAsync(server, protocolId, wire, request != Request.ZeroLengthStreamHeldOpen, token);
-
-        using MemoryStream responseStream = new(response);
-        ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, token);
-        Assert.That(chunk, Is.Not.Null, "the peer sends an error chunk");
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.InvalidRequest), "an error chunk, not silence or a success");
-        Assert.That(chunk?.Payload, Is.Not.Empty, "the error chunk carries its message");
-        Assert.That(elapsed, Is.LessThan(Prompt), "answered at once, not by the listener's own timeout");
+        foreach (string protocol in new[] { StatusV2, BlocksByRange, BlocksByRoot, EnvelopesByRange, EnvelopesByRoot, ColumnsByRange, ColumnsByRoot, Ping, Goodbye })
+            foreach (Request request in Enum.GetValues<Request>())
+            {
+                bool byRoot = protocol is BlocksByRoot or EnvelopesByRoot or ColumnsByRoot;
+                bool supported = request switch
+                {
+                    Request.MoreRootsThanTheMaximum => byRoot,
+                    Request.ZeroLengthStreamHeldOpen => !byRoot && protocol != Goodbye,
+                    Request.TruncatedAfterTheLengthPrefix => protocol is StatusV2 or BlocksByRoot or ColumnsByRoot or Goodbye,
+                    Request.EmptyColumnList => protocol is ColumnsByRange or ColumnsByRoot,
+                    _ => true
+                };
+                if (!supported) continue;
+                bool empty = byRoot && request == Request.ZeroLength;
+                string name = empty ? "Empty_by_root_lists_close_the_stream_at_once_with_no_chunk"
+                    : "Early_rejected_requests_are_answered_with_an_error_chunk_at_once";
+                yield return new TestCaseData(protocol, request, empty).SetName($"{name}(\"{protocol}\",{request})");
+            }
     }
 
-    [TestCase(BlocksByRoot, Request.ZeroLength)]
-    [TestCase(EnvelopesByRoot, Request.ZeroLength)]
-    [TestCase(ColumnsByRoot, Request.ZeroLength)]
+    [TestCaseSource(nameof(Requests))]
     [CancelAfter(60_000)]
-    public async Task Empty_by_root_lists_close_the_stream_at_once_with_no_chunk(string protocolId, Request request, CancellationToken token)
+    public async Task Early_rejected_requests_are_answered_at_once(string protocolId, Request request, bool empty, CancellationToken token)
     {
         byte[] wire = await EncodeAsync(protocolId, request, token);
         await using BeaconP2P server = PeerSessionNodes.Create().P2P;
@@ -110,8 +75,19 @@ public class EarlyRejectLoopbackTests
         (byte[] response, TimeSpan elapsed) = await RequestAsync(server, protocolId, wire, request != Request.ZeroLengthStreamHeldOpen, token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(response, Is.Empty, "no chunk, error or success");
-        Assert.That(elapsed, Is.LessThan(Prompt), "closed at once, not by the listener's own timeout");
+        if (empty)
+        {
+            Assert.That(response, Is.Empty, "no chunk, error or success");
+        }
+        else
+        {
+            using MemoryStream responseStream = new(response);
+            ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(responseStream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, token);
+            Assert.That(chunk, Is.Not.Null, "the peer sends an error chunk");
+            Assert.That(chunk?.Result, Is.EqualTo(ReqRespFraming.ResponseCode.InvalidRequest), "an error chunk, not silence or a success");
+            Assert.That(chunk?.Payload, Is.Not.Empty, "the error chunk carries its message");
+        }
+        Assert.That(elapsed, Is.LessThan(Prompt), "answered or closed at once, not by the listener's own timeout");
     }
 
     private static async Task<(byte[] Response, TimeSpan Elapsed)> RequestAsync(BeaconP2P server, string protocolId, byte[] wire, bool halfClose, CancellationToken token)
