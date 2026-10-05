@@ -1675,16 +1675,12 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
     /// <summary>Brings the database to <see cref="CurrentSchemaVersion"/>, or refuses one last written by a newer build.</summary>
     /// <remarks>
-    /// A database with no version predates versioning and counts as version 0; version 1 added only
-    /// the stamp itself, so that upgrade rewrites nothing. Version 2 rebuilds the children index from
-    /// every stored block, so a database that held blocks before the index existed answers child
-    /// queries as complete. Version 3 rewrites nothing, since the envelope column keeps its layout; the
-    /// stamp makes a version-2 build, which never prunes that column, refuse the database.
-    /// Version 4 rewrites nothing either: the data column table starts empty, and the stamp makes an older build, which never prunes it, refuse the database.
-    /// Version 5 indexes every stored state by slot, so a state stored before the index existed is pruned by slot too, and a build that does not maintain the index refuses the database.
-    /// Version 6 indexes each retained block by its state commitment for Beacon API state identifiers.
-    /// A newer version may hold key shapes this build does not know, so it is
-    /// refused rather than reinterpreted, and left unstamped.
+    /// An absent version means version 0. Version 1 added the stamp without rewriting data.
+    /// Version 2 rebuilds children indexes for all stored blocks; versions 3 and 4 add envelope and
+    /// data-column compatibility stamps without rewriting their layouts. These stamps reject older
+    /// builds that cannot prune those columns. Version 5 indexes readable state slots for pruning
+    /// and rejects builds that cannot maintain the index. Version 6 indexes retained blocks by state
+    /// commitment for Beacon API identifiers. Newer versions are refused without changing their stamp.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The database was written by a newer schema version, or holds a block record too short to be a signed beacon block.</exception>
     public void EnsureSchemaVersion()
@@ -1718,12 +1714,10 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
     /// <summary>Replaces the whole children index with one derived from the stored blocks alone.</summary>
     /// <remarks>
-    /// Every stored block ends up complete with its parent recorded, every parent that is not stored
-    /// keeps a pending list of its stored children, and entries with no block behind them (tombstones,
-    /// lists of deleted blocks) are dropped. Only the prefix of each record up to its parent root is
-    /// decompressed, so blocks of every fork rebuild alike, and blocks are read and entries written
-    /// <see cref="ChildrenRebuildBatchSize"/> at a time, so memory does not grow with the database. The routine is
-    /// idempotent: it runs before the version stamp, and a crash in between only makes it run again.
+    /// Stored blocks get complete entries with parent roots; absent parents keep pending child lists.
+    /// Tombstones and deleted-block entries are dropped. Only the parent-root prefix is decompressed,
+    /// supporting every fork. Reads and writes use <see cref="ChildrenRebuildBatchSize"/> batches to bound
+    /// memory. Runs before the version stamp and is idempotent after a crash.
     /// </remarks>
     private void RebuildChildrenIndex()
     {
@@ -1890,11 +1884,9 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
     /// <summary>Records <paramref name="blockRoot"/> as the anchor and deletes every stored state at or below <paramref name="slot"/> but its own, in one write batch.</summary>
     /// <remarks>
-    /// The anchor is the finalized checkpoint (or the checkpoint-sync start), and only states above it can still be
-    /// read by a justification or a replay, so older snapshots, old anchors and evicted checkpoint candidates are reclaimed
-    /// here. The batch makes a crash leave either the previous anchor with its state or the new one, never an anchor without its state.
-    /// Idempotent: a repeat finds nothing left to delete. Canonical blocks below the anchor stay stored, so the lowest anchor
-    /// ever recorded is kept as <see cref="TryGetEarliestBlockSlot"/>.
+    /// Finalization or checkpoint sync sets the anchor; only newer states remain useful for justification
+    /// or replay. The atomic batch preserves either anchor with its state across crashes and is idempotent.
+    /// Canonical blocks below the anchor remain stored; <see cref="TryGetEarliestBlockSlot"/> retains the lowest anchor.
     /// </remarks>
     public void SetAnchor(Hash256 blockRoot, ulong slot)
     {

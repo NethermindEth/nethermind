@@ -24,19 +24,12 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.BeaconChain.Sync;
 
-/// <summary>
-/// Drives the embedded beacon chain to follow mainnet: kicks the execution layer toward the
-/// checkpoint anchor, replays stored canonical blocks, range-syncs to the wall clock, then follows
-/// gossip - funneling all consensus work through a single import worker.
-/// </summary>
+/// <summary>Initializes the execution-layer anchor, replays persisted blocks, range-syncs to the clock, then follows gossip.</summary>
 /// <remarks>
-/// Threading model: producers (gossip events on libp2p threads, the slot timer, the range-sync
-/// feed) only write to a bounded channel; one worker loop consumes it and is the only caller of the
-/// <see cref="IBlockImporter"/> (and through it the state transition and fork choice, neither of which is
-/// thread-safe). Each import runs to completion on <see cref="ImportThread"/> before the next starts, as its
-/// engine call blocks. A fork-choice head step - <c>engine_forkchoiceUpdated</c>,
-/// finality handling, status refresh - runs on the worker after every drained import batch (or
-/// every <see cref="HeadStepImportInterval"/> imports or <see cref="HeadStepInterval"/> while saturated) and on every slot tick.
+/// Gossip, timer and range-sync producers enqueue into bounded channels; only the worker owns the non-thread-safe importer,
+/// state transition and fork choice. Blocking imports run serially on <see cref="ImportThread"/>.
+/// Head steps update the engine, finality and status after drained batches and slot ticks, or every
+/// <see cref="HeadStepImportInterval"/> imports or <see cref="HeadStepInterval"/> while saturated.
 /// </remarks>
 public sealed class BeaconSyncOrchestrator(
     IBeaconChainConfig config,
@@ -463,12 +456,9 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Binds the importer and anchor-derived bookkeeping; the synchronous head of <see cref="RunAsync"/>.</summary>
-    /// <remarks>
-    /// A Gloas anchor's execution hash is its bid's <c>parent_block_hash</c> (specs/gloas/fork-choice.md
-    /// <c>notify_forkchoice_updated</c>), which <c>process_execution_payload_bid</c> asserts equals the
-    /// anchor state's <c>latest_block_hash</c>; the bid's own payload may never have been revealed.
-    /// </remarks>
+    /// <summary>Binds the importer and anchor bookkeeping before <see cref="RunAsync"/> yields.</summary>
+    /// <remarks>The Gloas anchor hash is its bid's parent_block_hash, equal to state.latest_block_hash
+    /// (gloas/fork-choice.md notify_forkchoice_updated); its own payload may be unrevealed.</remarks>
     internal void Initialize(IBlockImporter importer, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot)
     {
         _importer = importer;
@@ -543,18 +533,10 @@ public sealed class BeaconSyncOrchestrator(
         return blocksFrom <= blobWindowStart && blobWindowStart < fuluSlot ? fuluSlot : blocksFrom;
     }
 
-    /// <summary>
-    /// Re-imports the canonical blocks already persisted between the anchor and the wall clock, so
-    /// a restart does not refetch them from the network.
-    /// </summary>
-    /// <remarks>
-    /// Blocks are imported with signature verification off: they were fully verified before being
-    /// persisted. Parent linkage is still checked so a stale index tail (e.g. entries past an
-    /// unfinalized reorg point) stops the replay and leaves the rest to range sync. The anchor's and every stored Gloas block's
-    /// verified envelope is imported right after its block, so its full children need no fetch; without one,
-    /// a stored Gloas block that builds on its parent's full payload stands in for that parent's verified
-    /// envelope (see <see cref="IBlockImporter.Import"/>).
-    /// </remarks>
+    /// <summary>Replays persisted canonical blocks from the anchor to the clock without refetching them.</summary>
+    /// <remarks>Previously verified signatures are skipped; broken parent linkage stops a stale index tail for range sync.
+    /// Each verified Gloas envelope follows its block, including the anchor's. If absent, a stored child building on its FULL parent supplies
+    /// its parent's verified-payload evidence (see <see cref="IBlockImporter.Import"/>).</remarks>
     internal async Task ReplayStoredBlocksAsync(CancellationToken token)
     {
         IBlockImporter importer = _importer!;
@@ -637,10 +619,8 @@ public sealed class BeaconSyncOrchestrator(
     internal void RoutePeerAdmissions() => peerPool.PeerAdmitted += OnPeerAdmitted;
     private void OnPeerAdmitted(IBeaconSyncPeer peer) => _work.Writer.TryWrite(new PeerAdmittedItem(peer));
 
-    /// <summary>
-    /// Processes at most <see cref="VotesPerPass"/> queued gossip votes, then every queued work item, each slot tick after every vote
-    /// queued before it, then runs a head step if any imported; one pass of <see cref="RunWorkerAsync"/>.
-    /// </summary>
+    /// <summary>Processes at most <see cref="VotesPerPass"/> votes and all work, placing ticks after their earlier votes,
+    /// then runs a head step if a block or payload imported; one <see cref="RunWorkerAsync"/> pass.</summary>
     internal async Task ProcessQueuedAsync(CancellationToken token)
     {
         // Votes first, so one queued before a slot tick is not checked against the next slot, but none queued after a tick the worker has not reached (gloas/fork-choice.md on_payload_attestation_message).
@@ -1035,16 +1015,10 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>
-    /// Imports one block and, on success, drains any gossip blocks that were waiting for it. The
-    /// single choke point for all four callers of <see cref="IBlockImporter.Import"/> that can import, so this is
-    /// also where a <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/>,
-    /// <see cref="BlockImportResult.FutureSlot"/> or <see cref="BlockImportResult.EngineUnavailable"/> result is remembered for a later retry -
-    /// wiring it in at only one call site would leave the other three silently dropping it.
-    /// </summary>
-    /// <param name="retryingOnColumns">Whether this import was woken by the columns it waited for, so a repeat deferral waits for the slot tick instead of watching and fetching again.</param>
-    /// <param name="servedBy">The peer that served a block fetched by root; <c>null</c> otherwise.</param>
-    /// <param name="otherCopyPending">Whether another signed copy of the block's message still waits to import, so this copy's refusal leaves the held children to it.</param>
+    /// <summary>Imports a block, drains its waiting children on success, and records data, parent-payload, future-slot or engine deferrals for retry.</summary>
+    /// <param name="retryingOnColumns">A column-triggered retry; repeated deferral waits for a tick instead of watching and fetching again.</param>
+    /// <param name="servedBy">The peer serving a by-root block; null otherwise.</param>
+    /// <param name="otherCopyPending">Another signed copy still waits, so refusal must preserve its held children.</param>
     internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns = false, RangeBlockItem? rangeItem = null, bool fetchedByRoot = false, IBeaconSyncPeer? servedBy = null, bool otherCopyPending = false)
     {
         Hash256 root = block.ComputeMessageRoot();
@@ -1673,15 +1647,9 @@ public sealed class BeaconSyncOrchestrator(
         return added;
     }
 
-    /// <summary>
-    /// Fetches by root, at most once per block per slot, the sampled columns still missing for each imported Gloas block that
-    /// commits blobs, until every one is held, finality makes its payload unnecessary or it has waited past <see cref="MaxPendingRetryAgeEpochs"/>.
-    /// The first attempt is made when the block imports; the slot tick retries.
-    /// </summary>
-    /// <remarks>
-    /// Gossip candidates carry no source peer to bound, so a flood can take every candidate place of a column, or every
-    /// candidate can fail verification; the columns then arrive only by DataColumnSidecarsByRoot (gloas/p2p-interface.md).
-    /// </remarks>
+    /// <summary>Fetches missing sampled columns for imported Gloas blob blocks once per block per slot, starting at import.</summary>
+    /// <remarks>Ticks retry until all columns arrive, finality removes the need, or <see cref="MaxPendingRetryAgeEpochs"/> expires.
+    /// Gossip has no source-peer limit and may fill or fail every candidate; ByRoot remains necessary (gloas/p2p-interface.md).</remarks>
     private void RecoverGloasColumns(CancellationToken token)
     {
         if (_columnRecovery.Count == 0)
@@ -1736,19 +1704,12 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>
-    /// Imports an execution payload envelope and acts on the verdict. Once its payload is recorded it is pooled for
-    /// ExecutionPayloadEnvelopesByRange and ByRoot, its (block root, builder index) is marked seen for gossip, and every
-    /// pending block that waits on it as its full parent is re-driven at once: the next slot's block needs that payload within the slot.
-    /// </summary>
-    /// <remarks>
-    /// An envelope for a block not imported yet is held until that block imports, and one waiting on its data or the engine
-    /// is retried on the slot tick. An invalid envelope penalizes the req/resp peer that served it. A verdict this method does
-    /// not know is dropped, neither marked seen nor pooled, so a result added later fails closed.
-    /// </remarks>
-    /// <param name="source">The req/resp peer that served the envelope; <c>null</c> for gossip.</param>
-    /// <param name="retryingOnColumns">Whether this import was woken by the columns it waited for, so a repeat deferral waits for the slot tick.</param>
-    /// <returns>The verdict, or <c>null</c> when the envelope carries no message or block root, or its import failed on a local fault, and it was dropped.</returns>
+    /// <summary>Imports an envelope; recorded payloads are pooled for ByRange/ByRoot, marked seen by (block root, builder index), and wake children waiting on that payload immediately.</summary>
+    /// <remarks>Unknown blocks hold envelopes until import; data/engine deferrals retry on ticks. Invalid envelopes penalize their serving peer.
+    /// Unknown verdicts are dropped without pooling or marking seen, so new verdicts fail closed.</remarks>
+    /// <param name="source">The req/resp serving peer; null for gossip.</param>
+    /// <param name="retryingOnColumns">A column-triggered retry; repeated deferral waits for a tick.</param>
+    /// <returns>The verdict, or null for missing message/root or a dropped local import fault.</returns>
     internal async Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeAsync(SignedExecutionPayloadEnvelope envelope, CancellationToken token, IBeaconSyncPeer? source = null, bool retryingOnColumns = false)
     {
         if (envelope.Message is not { BeaconBlockRoot: not null } message)
@@ -1839,17 +1800,10 @@ public sealed class BeaconSyncOrchestrator(
         return false;
     }
 
-    /// <summary>
-    /// Recovers the envelope of <paramref name="parentRoot"/>, a block fork choice holds whose payload a parked full child needs:
-    /// from the envelopes held for it, else by ExecutionPayloadEnvelopesByRoot from up to <see cref="MaxBackfillPeersPerRequest"/>
-    /// peers, at most once per root per slot. Each envelope found is imported as a <see cref="FetchedEnvelopeItem"/>, which
-    /// re-drives the parked children.
-    /// </summary>
-    /// <remarks>
-    /// gloas/fork-choice.md <c>get_forkchoice_store</c> starts with <c>payloads = {}</c>, so the anchor's payload is recovered this
-    /// way too when its first child builds on it. An envelope for a root other than the one asked for penalizes its peer.
-    /// </remarks>
-    /// <returns>Whether an envelope recorded the payload or found it recorded already.</returns>
+    /// <summary>Recovers a held parent's payload needed by a parked child, checking held envelopes before ByRoot requests.</summary>
+    /// <remarks>Requests use at most <see cref="MaxBackfillPeersPerRequest"/> peers, once per root per slot; fetched envelopes wake children.
+    /// This includes anchors: gloas/fork-choice.md get_forkchoice_store starts with no payloads. Wrong-root replies penalize their peer.</remarks>
+    /// <returns>Whether the payload was recorded or already known.</returns>
     private async Task<bool> RecoverParentEnvelopeAsync(Hash256 parentRoot, CancellationToken token)
     {
         if (await ImportHeldEnvelopesAsync(parentRoot, token))
@@ -2010,14 +1964,9 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>
-    /// Full gossip validation, then import. Checks (in order): not already known, past the
-    /// finalized slot, no block with a valid signature seen for its (slot, proposer), expected proposer per the lookahead.
-    /// The proposer signature is verified by the state transition during the immediate import
-    /// (the import runs with <c>verifySignatures: true</c> right below), so no separate
-    /// pre-verification pass is needed.
-    /// </summary>
-    /// <param name="verdict">The block's pending gossip verdict, given once its import settles, or at once when it is dropped here.</param>
+    /// <summary>Checks unknown block, finalized-slot boundary, unseen signed proposal and expected proposer, in that order, then imports.</summary>
+    /// <remarks>The immediate state transition verifies the proposer signature; no separate verification pass is needed.</remarks>
+    /// <param name="verdict">Completed once at import settlement or immediate rejection.</param>
     internal async Task ProcessGossipBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, GossipVerdict? verdict = null)
     {
         try
@@ -2501,11 +2450,8 @@ public sealed class BeaconSyncOrchestrator(
         return null;
     }
 
-    /// <summary>
-    /// The fork-choice head step: recompute the head, send <c>forkchoiceUpdated</c>
-    /// (safe = justified, finalized = finalized), handle an INVALID verdict by invalidating and
-    /// retrying once, react to finality advances, and refresh the advertised status.
-    /// </summary>
+    /// <summary>Recomputes head and updates the engine (safe=justified, finalized=finalized), finality and status.</summary>
+    /// <remarks>An INVALID verdict invalidates the payload and retries once.</remarks>
     internal async Task RunHeadStepAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -2762,11 +2708,8 @@ public sealed class BeaconSyncOrchestrator(
 
     private void StartGossip() => StartGossip(p2p!.GetTopic);
 
-    /// <summary>
-    /// Subscribes the gossip topics of every digest <see cref="GossipTopics.DigestsAround"/> names for the wall-clock epoch, and the
-    /// column subnets this node samples, then routes the events into the work channel; gossip overflow is droppable.
-    /// </summary>
-    /// <remarks>Column subnets need the custody discovery advertises; until discovery has one, every slot tick retries them.</remarks>
+    /// <summary>Subscribes wall-epoch digests from <see cref="GossipTopics.DigestsAround"/> and sampled column subnets, routing droppable gossip into work.</summary>
+    /// <remarks>Until discovery advertises custody, every tick retries column subscriptions.</remarks>
     internal void StartGossip(Func<string, ITopic> getTopic)
     {
         GossipStarted = true;
@@ -2930,13 +2873,10 @@ public sealed class BeaconSyncOrchestrator(
         if (_logger.IsInfo) _logger.Info($"Beacon head at slot {head.HeadSlot} is stuck ({slot - Math.Min(slot, head.HeadSlot)} behind wall slot {slot}); resuming range sync from the head");
     }
 
-    /// <summary>Runs one range-sync round from the sync tip into the work channel, until done or <see cref="ResumeRangeSyncFromHead"/> ends it.</summary>
-    /// <remarks>
-    /// A Gloas block carries only a bid, so consecutive Gloas blocks are buffered and their envelopes fetched with one
-    /// ExecutionPayloadEnvelopesByRange request per run (gloas/p2p-interface.md); a run is written out at
-    /// <see cref="RangeSync.DefaultBatchSize"/> blocks, before it would span more than <c>MAX_REQUEST_PAYLOADS</c> slots,
-    /// at a pre-Gloas block, and at the end of the round.
-    /// </remarks>
+    /// <summary>Feeds one range-sync round from the tip until completion or <see cref="ResumeRangeSyncFromHead"/> cancellation.</summary>
+    /// <remarks>Gloas bid-only blocks share an ExecutionPayloadEnvelopesByRange request per buffered run (gloas/p2p-interface.md).
+    /// Flush at <see cref="RangeSync.DefaultBatchSize"/>, before exceeding MAX_REQUEST_PAYLOADS slots, at a pre-Gloas block,
+    /// or at round completion.</remarks>
     internal async Task FeedRangeSyncRoundAsync(CancellationToken token)
     {
         Interlocked.Increment(ref _activeRangeSyncRounds);
@@ -3246,12 +3186,9 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Runs blocking import work, one item at a time, on a thread that is not a thread-pool thread.</summary>
-    /// <remarks>
-    /// The importer's newPayload call blocks its thread until the execution layer answers, which can take minutes under load,
-    /// so it must not hold a pool thread. The thread starts on the first item and ends after <see cref="IdleTimeout"/> without one,
-    /// so an instance nobody uses holds no thread and needs no disposal.
-    /// </remarks>
+    /// <summary>Runs blocking imports serially on a dedicated thread.</summary>
+    /// <remarks>newPayload may block for minutes, so it cannot occupy a pool thread. The thread starts on first work
+    /// and exits after <see cref="IdleTimeout"/> idle; an unused instance owns no thread and needs no disposal.</remarks>
     internal sealed class ImportThread
     {
         // Two slots, so gossip blocks 12 s apart keep one thread and its thread-local caches.

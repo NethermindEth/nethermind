@@ -129,11 +129,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     // is actually enforced, not a second copy of it.
     private readonly SemaphoreSlim _outboundDialGate;
 
-    // Admission reservations by address: an entry is present from the moment any admission
-    // (a static reconnect, a discovery dial, or a session the remote opened) is allowed to proceed
-    // until its outcome is known, so a concurrent one cannot read a stale _peers.Count and admit past
-    // MaxPeerCount (see TryReserveAdmissionSlot). Guarded by _admissionLock rather than left as
-    // independent atomics, because the ceiling check and the reservation must happen as one step.
+    // Address reservations cover static, discovered and inbound admissions until their outcome is known.
+    // _admissionLock makes the ceiling check and reservation atomic, preventing concurrent overshoot.
     private readonly ConcurrentDictionary<string, Reservation> _dialing = new();
     private readonly object _admissionLock = new();
 
@@ -349,10 +346,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private void WakeAdmissionWaiters() =>
         Interlocked.Exchange(ref _custodyShortfall, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
 
-    /// <summary>
-    /// Connects missing static peers, re-exchanges status/ping with connected ones (pruning unhealthy
-    /// peers), then trims back to the peer band's high watermark if maintenance left it over.
-    /// </summary>
+    /// <summary>Reconnects static peers, checks status/ping, prunes unhealthy peers, and trims to the high watermark.</summary>
     public async Task RunMaintenanceRoundAsync(CancellationToken token)
     {
         string[] staticAddresses = StaticPeerAddresses();
@@ -594,11 +588,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return least;
     }
 
-    /// <summary>Orders peers that did not fail a request recently before those that did, then the least busy first, then by head slot, best first.</summary>
-    /// <remarks>
-    /// Each key is read once per peer before sorting: a failure or status that lands mid-sort would make a live comparator inconsistent, and the sort throws on that.
-    /// Requests started one after another then go to different peers, where each peer takes at most <see cref="ReqRespProtocolBase.MaxConcurrentRequests"/> of a protocol at once.
-    /// </remarks>
+    /// <summary>Orders peers without recent request failures first, then by least load and highest head slot.</summary>
+    /// <remarks>Snapshot sort keys to prevent concurrent updates from invalidating the comparator.
+    /// Successive requests spread across peers, each bounded by <see cref="ReqRespProtocolBase.MaxConcurrentRequests"/> per protocol.</remarks>
     internal static T[] OrderForSelection<T>(IReadOnlyList<T> peers, Func<T, bool> isCoolingDown, Func<T, int> requestsInFlight, Func<T, ulong> headSlot)
     {
         (bool Cooling, int InFlight, ulong HeadSlot, T Peer)[] keyed = new (bool, int, ulong, T)[peers.Count];
@@ -628,15 +620,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return ordered;
     }
 
-    /// <summary>
-    /// Records a protocol violation by the requester of an inbound stream against the connected peer with this id, also when selection leaves
-    /// that peer out (at the request-failure limit, or behind a head slot): it is still the one that broke the protocol.
-    /// </summary>
-    /// <returns><c>false</c> when no connected peer has this id and none was removed for a closed session within <see cref="ClosedPeerWindow"/>.</returns>
-    /// <remarks>
-    /// Not a failed request of ours, so the peer is not put behind others in <see cref="GetBestPeers"/>.
-    /// A peer removed for its closed session still takes the violation, which turns that close into a fault disconnect (see <see cref="RemoveClosedSession"/>).
-    /// </remarks>
+    /// <summary>Records an inbound requester's violation by peer id, even when that peer is excluded from selection.</summary>
+    /// <returns><c>false</c> unless the id is connected or was closed within <see cref="ClosedPeerWindow"/>.</returns>
+    /// <remarks>Does not apply our request-failure cooldown. A recently closed peer's violation converts its close
+    /// to a fault disconnect (see <see cref="RemoveClosedSession"/>).</remarks>
     internal bool TryReportInboundViolation(PeerId peerId, string detail)
     {
         ManagedPeer? connected;
@@ -766,15 +753,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return covering is not null;
     }
 
-    /// <summary>
-    /// Atomically checks the ceiling and reserves <paramref name="address"/> as one step, so
-    /// concurrent admissions cannot all observe the same stale count and all pass (the exact
-    /// overshoot this closes: up to MaxConcurrentOutboundDials could previously admit past
-    /// MaxPeerCount). Also refuses a peer id already connected or in flight under any address, so
-    /// one session can never be recorded twice; <paramref name="atCeiling"/> tells the two refusals
-    /// apart, because only the ceiling one may cost the remote its session.
-    /// </summary>
-    /// <param name="overCeiling">Allows one admission past the ceiling in total, for a dial that replaces a connected peer once admitted.</param>
+    /// <summary>Atomically reserves <paramref name="address"/> below the ceiling and rejects connected or in-flight peer ids at any address.</summary>
+    /// <remarks><paramref name="atCeiling"/> distinguishes capacity refusal from duplication; only capacity refusal may disconnect the remote.</remarks>
+    /// <param name="overCeiling">Allows one admission past the ceiling in total, replacing a connected peer after admission.</param>
     private bool TryReserveAdmissionSlot(string address, string peerId, PeerDirection direction, string? enr, out bool atCeiling, bool overCeiling = false)
     {
         lock (_admissionLock)
@@ -846,14 +827,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return false;
     }
 
-    /// <summary>A point-in-time snapshot of what this plugin can observe about one peer id, for diagnostics.</summary>
-    /// <remarks>
-    /// This is the "instrumentation of what cannot be defended" this plugin can offer in place of
-    /// gossipsub scoring: message counts, peer-reported failures (<see cref="IBeaconSyncPeer.ReportFailure"/>,
-    /// which covers both outright request failures and content validation failures such as a bad
-    /// parent root - this plugin has no finer-grained signal than that to report), and disconnect
-    /// history, keyed by peer id so it survives the peer disconnecting.
-    /// </remarks>
+    /// <summary>A diagnostic snapshot of one peer id.</summary>
+    /// <remarks>Message counts, request/content failures and disconnect history survive disconnection.
+    /// <see cref="IBeaconSyncPeer.ReportFailure"/> does not distinguish request failures from invalid content.</remarks>
     public readonly record struct PeerDiagnostics(
         string PeerId,
         bool Connected,
@@ -895,18 +871,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return snapshot;
     }
 
-    /// <summary>The Beacon API's <c>node/peers</c> surface. An admission in flight (reserved but not
-    /// yet resolved - see <see cref="TryReserveAdmissionSlot"/>) reports as
-    /// <see cref="PeerConnectionState.Connecting"/>; everything in <c>_peers</c> is already
-    /// status-exchanged and reports as <see cref="PeerConnectionState.Connected"/> with the direction
-    /// the libp2p layer recorded for its session (<see cref="BeaconP2P.SessionInfo"/>), so a peer that
-    /// connected to us is <see cref="PeerDirection.Inbound"/>. <see cref="PeerConnectionState.Disconnected"/>
-    /// and <see cref="PeerConnectionState.Disconnecting"/> are never produced: a dropped peer is simply
-    /// forgotten here (its history lives in <see cref="BanRecord"/>). <c>AgentVersion</c> is the identify
-    /// agent string the libp2p layer captured, <c>null</c> only when that probe went unanswered.
-    /// <c>Enr</c> is the discv5 ENR text supplied to <see cref="TryAddPeerAsync"/> for a peer this
-    /// manager discovered and dialed itself; <c>null</c> for a static peer or one that connected to us,
-    /// neither of which offers an ENR at admission time.</summary>
+    /// <summary>Returns the Beacon API's <c>node/peers</c> snapshot.</summary>
+    /// <remarks>Reservations report Connecting; admitted status-exchanged peers report Connected with the session's direction.
+    /// Dropped peers are absent; their history remains in <see cref="BanRecord"/>. Disconnecting/Disconnected are not returned.
+    /// AgentVersion is the captured identify string, or null when unanswered. Enr is supplied only by discovery dials,
+    /// not static reconnects or inbound sessions.</remarks>
     public IReadOnlyList<PeerRecord> Peers
     {
         get
@@ -1121,17 +1090,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
     }
 
-    /// <summary>
-    /// The one outbound admission path: the static-peer reconnect loop and discovery dials both come
-    /// through here, so the ban check and the ceiling reservation live here and not in one caller
-    /// (the static path used to skip the reservation and could take the pool past MaxPeerCount).
-    /// Refuses a banned id, a peer already connected or in flight, or one that would overshoot the
-    /// ceiling, all without attempting a dial.
-    /// </summary>
-    /// <param name="callerToken">The caller's own token; once it is cancelled nothing is admitted after the dial ends.</param>
-    /// <param name="token">Cancels the dial: <paramref name="callerToken"/> or a timeout linked to it.</param>
+    /// <summary>Admits static and discovered dials through the same ban, duplicate-id and atomic ceiling checks before dialing.</summary>
+    /// <param name="callerToken">Prevents admission after cancellation, even if the dial completes.</param>
+    /// <param name="token">Cancels the dial through caller cancellation or its linked timeout.</param>
     /// <param name="overCeiling">See <see cref="TryReserveAdmissionSlot"/>.</param>
-    /// <param name="backoff">Refuses an address whose earlier dials failed until its backoff ends; a configured static peer is dialed regardless.</param>
+    /// <param name="backoff">Rejects addresses in dial backoff; configured static peers bypass it.</param>
     private async Task<bool> ConnectAsync(string address, CancellationToken callerToken, CancellationToken token, string? enr = null, bool overCeiling = false, bool backoff = true)
     {
         string peerId = ExtractPeerId(address);
@@ -1507,12 +1470,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         _ = AdmitUnclaimedSessionAsync(session, address, peerId, info);
     }
 
-    /// <summary>
-    /// The inbound admission path: the same ban check and ceiling reservation as a dial, but with the
-    /// session already open, so a refusal has to actively send <c>goodbye</c> and disconnect rather
-    /// than just not dial. A duplicate (the dial path claimed the same peer id meanwhile) is left alone:
-    /// that is the very session the dial is about to record.
-    /// </summary>
+    /// <summary>Applies ban and ceiling checks to an open inbound session, sending goodbye and disconnecting on refusal.</summary>
+    /// <remarks>A duplicate claimed by an outbound admission is left open for that admission to record.</remarks>
     private async Task AdmitUnclaimedSessionAsync(ISession session, string address, string peerId, BeaconP2P.SessionInfo info)
     {
         try
@@ -1970,13 +1929,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private void RecordDisconnect(ManagedPeer peer, ulong reason, string detail, bool unresponsive) =>
         RecordDisconnect(peer.PeerId, peer.MessagesSent, peer.FailuresReported, reason, detail, unresponsive);
 
-    /// <summary>
-    /// The session-independent half of <see cref="DropAsync"/>'s bookkeeping. Internal so a test can
-    /// drive the ban/diagnostics state machine directly against real peer ids without standing up a
-    /// live libp2p session for every one of <see cref="IBeaconChainConfig.FaultDisconnectsBeforeBan"/>
-    /// fault disconnects.
-    /// </summary>
-    /// <param name="newDisconnect">Counts a disconnect; <c>false</c> when this one was recorded already and only its reason changes.</param>
+    /// <summary>Updates the durable peer-id history for <see cref="DropAsync"/> without requiring a live session.</summary>
+    /// <param name="newDisconnect">Counts a new disconnect; false only revises an already recorded reason.</param>
     internal void RecordDisconnect(string peerId, long messagesSent, long failuresReported, ulong reason, string detail, bool unresponsive = false, bool newDisconnect = true)
     {
         DateTimeOffset now = _timestamper.UtcNowOffset;
@@ -2018,11 +1972,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         if (_logger.IsWarn) _logger.Warn($"Banned beacon chain peer {peerId} after {consecutiveFaults} consecutive fault disconnects");
     }
 
-    /// <summary>
-    /// Notes a refusal in an existing record only. Creating one for a never-admitted id would let a
-    /// flood of distinct knockers at the ceiling evict the history of real peers, and a refusal is not
-    /// evidence about the peer's behaviour either way, so the consecutive-fault streak is left as is.
-    /// </summary>
+    /// <summary>Records a refusal only for known ids, without changing their fault-disconnect streak.</summary>
+    /// <remarks>Creating records for never-admitted ids would let admission floods evict real peer history.</remarks>
     private void RecordRefusal(string peerId, ulong reason, string detail)
     {
         if (!_peerRecords.TryGetValue(peerId, out BanRecord? record))
@@ -2069,10 +2020,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <paramref name="enr"/> lets a test also exercise the Beacon API's <c>enr</c> field without a live dial.</summary>
     internal void ReserveDialingForTest(string address, string? enr = null) => _dialing[address] = new Reservation(ExtractPeerId(address), PeerDirection.Outbound, enr);
 
-    /// <summary>The durable, peer-id-keyed half of a peer's history: outlives any one
-    /// <see cref="ManagedPeer"/> session so a ban and disconnect history survive reconnection attempts.
-    /// Named apart from the public, Beacon-API-shaped <see cref="PeerRecord"/> struct, which this is
-    /// not: that one is a live-connection snapshot, this is durable ban/diagnostics bookkeeping.</summary>
+    /// <summary>Peer-id ban and disconnect history retained across <see cref="ManagedPeer"/> sessions.</summary>
     private sealed class BanRecord(long sequence)
     {
         /// <summary>Creation order, for a deterministic oldest-first eviction in <see cref="EvictIfOverCapacity"/>.</summary>

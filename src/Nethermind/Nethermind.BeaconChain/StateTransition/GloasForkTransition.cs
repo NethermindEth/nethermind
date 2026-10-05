@@ -14,30 +14,18 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.BeaconChain.StateTransition;
 
 /// <summary>
-/// The one-time Fulu -&gt; Gloas state upgrade (spec <c>upgrade_to_gloas</c>,
-/// <c>specs/gloas/fork.md</c> "Upgrading the state", consensus-specs v1.7.0-beta.2) and the two
-/// post-construction steps the spec runs against the new state: <c>initialize_ptc_window</c> and
-/// <c>onboard_builders_from_pending_deposits</c>.
+/// Upgrades Fulu state to Gloas, initializes the PTC window and onboards pending builders
+/// (<c>specs/gloas/fork.md</c>, consensus-specs v1.7.0-beta.2).
 /// </summary>
 /// <remarks>
-/// Runs once, at the boundary slot, and does not need a Gloas-shaped
-/// <c>BeaconStateAccessors</c>/<c>CommitteeCache</c> stack: every accessor call below
-/// (<see cref="BeaconStateAccessors.GetSeed"/>, <see cref="CommitteeCache"/>) reads <paramref
-/// name="pre"/>, the Fulu state, rather than the Gloas state the spec pseudocode nominally calls
-/// them against. That substitution is exact, not approximate: validators, balances and randao_mixes
-/// are copied unchanged into the new state and the slot does not advance across the upgrade, so
-/// every accessor pre and post would read would agree. This is what "let a second fork exist
-/// without duplicating the whole state transition" means in practice for this one function - it
-/// borrows the existing, already-tested Fulu accessors instead of porting them to a second concrete
-/// type that would return identical answers.
+/// Committee sampling uses Fulu accessors: the upgrade preserves validators, balances,
+/// RANDAO mixes and the slot, so their inputs equal those of the Gloas state.
 /// </remarks>
 public static class GloasForkTransition
 {
     /// <summary>
-    /// Spec <c>upgrade_to_gloas</c>. Runs when <c>pre.Slot % SLOTS_PER_EPOCH == 0 &amp;&amp;
-    /// compute_epoch_at_slot(pre.Slot) == GLOAS_FORK_EPOCH</c> - the caller (see
-    /// <see cref="ForkedStateTransition"/>) is responsible for advancing <paramref name="pre"/> to
-    /// exactly that boundary slot before calling this.
+    /// Applies <c>upgrade_to_gloas</c>; the caller must advance <paramref name="pre"/> to the
+    /// first slot of <c>GLOAS_FORK_EPOCH</c> before calling.
     /// </summary>
     public static BeaconStateGloas UpgradeToGloas(BeaconStateFulu pre, BeaconChainSpec spec)
     {
