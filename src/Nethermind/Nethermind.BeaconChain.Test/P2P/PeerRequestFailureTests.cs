@@ -14,24 +14,20 @@ public class PeerRequestFailureTests
 {
     private const int Limit = 8;
 
-    public enum Failure
-    {
-        RequestsTimeOut,
-        SessionClosed,
-    }
-
-    [Test]
+    [TestCase(PeerFailureReason.RequestFailed, Limit, 2, false)]
+    [TestCase(PeerFailureReason.SessionClosed, 1, 2, false)]
+    [TestCase(PeerFailureReason.RequestFailed, Limit - 1, 1, true)]
     [CancelAfter(60_000)]
-    public async Task A_peer_failing_its_requests_stays_connected_but_out_of_selection_through_passing_health_checks([Values] Failure failure, CancellationToken token)
+    public async Task Passing_health_checks_preserve_request_failure_selection(PeerFailureReason failure, int count, int rounds, bool selectable, CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
-        fixture.Fail(failure == Failure.SessionClosed ? PeerFailureReason.SessionClosed : PeerFailureReason.RequestFailed, failure == Failure.SessionClosed ? 1 : Limit);
+        fixture.Fail(failure, count);
 
-        await fixture.Manager.RunMaintenanceRoundAsync(token);
-        await fixture.Manager.RunMaintenanceRoundAsync(token);
+        for (int i = 0; i < rounds; i++)
+            await fixture.Manager.RunMaintenanceRoundAsync(token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(fixture.IsSelectable, Is.False, "answering status and ping does not make a peer that fails its requests selectable again");
+        Assert.That(fixture.IsSelectable, Is.EqualTo(selectable), "answering status and ping does not clear request failures");
         Assert.That(fixture.Manager.PeerCount, Is.EqualTo(2), "request failures alone do not drop the peer");
     }
 
@@ -190,18 +186,6 @@ public class PeerRequestFailureTests
         await fixture.Manager.RunMaintenanceRoundAsync(token);
 
         Assert.That(PeerManager.IsUnresponsiveFailure(fixture.Peer, new TimeoutException()), Is.True);
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task A_peer_below_the_limit_stays_selectable_through_health_checks(CancellationToken token)
-    {
-        await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
-        fixture.Fail(PeerFailureReason.RequestFailed, Limit - 1);
-
-        await fixture.Manager.RunMaintenanceRoundAsync(token);
-
-        Assert.That(fixture.IsSelectable, Is.True);
     }
 
     [Test]
