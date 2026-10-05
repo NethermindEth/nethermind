@@ -174,6 +174,8 @@ public partial class BlockProcessor(
         CommitState(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        // EIP-8116: done once here because the receipts tracer, the parallel combiner and BAL validation each
+        // write the running total, which the tracer's Restore and the parallel/BAL totals rely on during execution.
         if (spec.IsEip8116Enabled)
         {
             receipts.SetEip8116GasUsed();
