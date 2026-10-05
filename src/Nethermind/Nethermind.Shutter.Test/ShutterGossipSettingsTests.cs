@@ -43,11 +43,14 @@ public class ShutterGossipSettingsTests
         api.StartP2P(Arg.Do<IEnumerable<Multiaddress>>(bootnodes => started = bootnodes), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         TestLogger logger = new();
 
-        new RunShutterP2P(config, api, Substitute.For<IProcessExitSource>(), new OneLoggerLogManager(new ILogger(logger))).Execute(CancellationToken.None);
+        RunShutterP2P step = new(config, api, Substitute.For<IProcessExitSource>(), new OneLoggerLogManager(new ILogger(logger)));
+        Assert.That(() => step.Execute(CancellationToken.None), dialable ? Throws.Nothing
+            : Throws.TypeOf<ShutterPlugin.ShutterLoadingException>().With.InnerException.Message.Contains("BootnodeP2PAddresses"));
+        api.Received(dialable ? 1 : 0).StartP2P(Arg.Any<IEnumerable<Multiaddress>>(), Arg.Any<CancellationToken>());
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(started?.Select(static address => address.ToString()), Is.EqualTo(dialable ? new[] { "/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", bootnode } : ["/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW"]));
+            Assert.That(started?.Select(static address => address.ToString()), Is.EqualTo(dialable ? config.BootnodeP2PAddresses : null));
             Assert.That(logger.LogList.Where(line => line.Contains(bootnode)), dialable ? Is.Empty : Has.Exactly(1).Contains("is skipped"));
         }
     }
