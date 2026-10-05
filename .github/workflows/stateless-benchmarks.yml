@@ -127,7 +127,7 @@ jobs:
         run: |
           set -euo pipefail
           jq -r '.[] | "\(.input) \(.hash)"' "$BENCH_DEFINITIONS/$GUEST_DIR/inputs.json" | while read -r input hash; do
-            curl --retry 3 -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260819/${input}" -o "bin/${input}"
+            curl --retry 3 -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260930/${input}" -o "bin/${input}"
             echo "${hash}  bin/${input}" | sha256sum --status -c - \
               || { echo "::error::Checksum failed for ${input}"; exit 1; }
           done

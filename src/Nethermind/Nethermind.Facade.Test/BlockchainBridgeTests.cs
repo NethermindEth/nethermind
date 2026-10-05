@@ -365,8 +365,14 @@ public class BlockchainBridgeTests
         Assert.That(_blockchainBridge.GetTxReceiptInfo(txHash), Is.EqualTo(result));
     }
 
+    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
+    [
+        .. CallSources(),
+        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
+    ];
+
     [Test]
-    public void Call_sets_maxFeePerBlobGas()
+    public void CreateAccessList_sets_maxFeePerBlobGas()
     {
         _timestamper.UtcNow = DateTime.MaxValue;
         BlockHeader header = Build.A.BlockHeader
@@ -378,20 +384,55 @@ public class BlockchainBridgeTests
             .TestObject;
         Transaction tx = new() { Type = TxType.Blob, MaxFeePerBlobGas = null, BlobVersionedHashes = [] };
 
-        _blockchainBridge.Call(header, tx);
-        _transactionProcessor.Received().SetBlockExecutionContext(
-            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB));
+        _blockchainBridge.CreateAccessList(header, tx, null, false);
         _transactionProcessor.Received().CallAndRestore(
             Arg.Is<Transaction>(static tx => tx.MaxFeePerBlobGas == 1),
             Arg.Any<ITxTracer>());
     }
 
-    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
+    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] CallSources() =>
     [
         (bridge, header, tx) => bridge.Call(header, tx),
         (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
-        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
     ];
+
+    private static IEnumerable<TestCaseData> ZeroBlobFeeCapCallCases()
+    {
+        Action<IBlockchainBridge, BlockHeader, Transaction>[] calls = CallSources();
+        foreach (bool capOmitted in new[] { true, false })
+        {
+            yield return new TestCaseData(TxType.Blob, calls[0], capOmitted).SetArgDisplayNames(nameof(TxType.Blob), "Call", capOmitted.ToString());
+            yield return new TestCaseData(TxType.Blob, calls[1], capOmitted).SetArgDisplayNames(nameof(TxType.Blob), "EstimateGas", capOmitted.ToString());
+            yield return new TestCaseData(TxType.FrameTx, calls[0], capOmitted).SetArgDisplayNames(nameof(TxType.FrameTx), "Call", capOmitted.ToString());
+        }
+    }
+
+    [TestCaseSource(nameof(ZeroBlobFeeCapCallCases))]
+    public void Blob_call_without_a_positive_blob_fee_cap_runs_at_a_zero_blob_base_fee(
+        TxType txType, Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, bool capOmitted)
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(10_000_000)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        Transaction tx = new()
+        {
+            Type = txType,
+            GasLimit = Transaction.BaseTxGasCost,
+            MaxFeePerBlobGas = capOmitted ? null : UInt256.Zero,
+            BlobVersionedHashes = [new byte[Eip4844Constants.BytesPerBlobVersionedHash]]
+        };
+
+        bridgeCall(_blockchainBridge, header, tx);
+
+        Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo(UInt256.Zero));
+        _transactionProcessor.Received().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.BlobBaseFee == UInt256.Zero.ToValueHash()));
+    }
 
     [Test, Combinatorial]
     public void BlobBaseFee_is_set_for_non_blob_transaction([ValueSource(nameof(BridgeCallSources))] Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, [Values(0ul, 100ul)] ulong excessBlobGas)
@@ -1008,6 +1049,24 @@ public class BlockchainBridgeTests
     }
 
     [Test]
+    public void Single_call_env_forgets_resolved_code_when_a_call_is_cancelled()
+    {
+        CancelFirstCall cancelFirstCall = new() { Pending = true };
+        using IContainer container = BuildCodeLookupContainer(out ICodeInfoRepository codeSource, cancelFirstCall);
+        IBlockchainBridge blockchainBridge = container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
+
+        // The first call resolves the code and is cancelled mid-execution; the second rents the same pooled env.
+        Assert.Throws<OperationCanceledException>(() => blockchainBridge.Call(Build.A.BlockHeader.TestObject, new Transaction(), blobBaseFeeOverride: UInt256.One));
+        blockchainBridge.Call(Build.A.BlockHeader.TestObject, new Transaction(), blobBaseFeeOverride: UInt256.One);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cancelFirstCall.Pending, Is.False);
+            AssertCodeSourceLookups(codeSource, 2);
+        }
+    }
+
+    [Test]
     public void Envs_from_the_overridable_env_factory_do_not_memoize_code()
     {
         using IContainer container = BuildCodeLookupContainer(out ICodeInfoRepository codeSource);
@@ -1047,7 +1106,7 @@ public class BlockchainBridgeTests
 
     private const int CodeLookupsPerCall = 3;
 
-    private static IContainer BuildCodeLookupContainer(out ICodeInfoRepository codeSource)
+    private static IContainer BuildCodeLookupContainer(out ICodeInfoRepository codeSource, CancelFirstCall? cancelFirstCall = null)
     {
         codeSource = Substitute.For<ICodeInfoRepository>();
         codeSource.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
@@ -1055,6 +1114,7 @@ public class BlockchainBridgeTests
         return new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .AddScoped(codeSource)
+            .AddSingleton(cancelFirstCall ?? new CancelFirstCall())
             .AddScoped<ITransactionProcessor, CodeLookupTransactionProcessor>()
             .Build();
     }
@@ -1062,12 +1122,24 @@ public class BlockchainBridgeTests
     private static void AssertCodeSourceLookups(ICodeInfoRepository codeSource, int expected) =>
         codeSource.Received(expected).GetCachedCodeInfo(TestItem.AddressC, Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>());
 
+    /// <summary>While <see cref="Pending"/> is set, the next transaction is cancelled after its code lookups, as a cancelled request's tracer would, and the flag clears.</summary>
+    private sealed class CancelFirstCall
+    {
+        public bool Pending { get; set; }
+    }
+
     // Stands in for the EVM: every call resolves the same contract's code a few times through the env's repository.
-    private sealed class CodeLookupTransactionProcessor(ICodeInfoRepository codeInfoRepository) : ITransactionProcessor
+    private sealed class CodeLookupTransactionProcessor(ICodeInfoRepository codeInfoRepository, CancelFirstCall cancelFirstCall) : ITransactionProcessor
     {
         public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
         {
             for (int i = 0; i < CodeLookupsPerCall; i++) codeInfoRepository.GetCachedCodeInfo(TestItem.AddressC, Prague.Instance);
+            if (cancelFirstCall.Pending)
+            {
+                cancelFirstCall.Pending = false;
+                throw new OperationCanceledException();
+            }
+
             return TransactionResult.Ok;
         }
 

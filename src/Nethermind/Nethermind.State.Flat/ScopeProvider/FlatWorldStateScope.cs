@@ -242,6 +242,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintGet(Address address, Account? account) => _snapshotBundle.PromoteAccount(address, account);
 
+    public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+
     // Not reentrant: cancels and replaces the previous hint task unguarded; call only from the block-processing thread.
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
@@ -322,8 +324,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 }
 
                 // The shared ThreadPool is saturated by the parallel EVM executor
-                // during newPayload, so Parallel.For here gets starved exactly when
-                // warmup matters. The dedicated reader pool is idle at that point.
+                // during newPayload. The dedicated reader pool avoids contending
+                // with execution workers when warmup matters.
                 if (_warmReadPool is not null)
                 {
                     WarmReadPool pool = _warmReadPool.Value;
@@ -332,7 +334,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 }
                 else
                 {
-                    Parallel.For(0, accountCount, parallelOptions, WarmAccount);
+                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+                    ParallelUnbalancedWork.For(0, accountCount, parallelOptions, WarmAccount);
                 }
 
                 if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);

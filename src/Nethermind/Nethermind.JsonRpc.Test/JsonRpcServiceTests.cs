@@ -437,6 +437,22 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Request_method_is_canonicalized_to_the_dispatched_name([Values(" eth_chainId", "eth_chainId\t", "\neth_chainId ", "eth_chainId")] string method)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_chainId().ReturnsForAnyArgs(ResultWrapper<ulong>.Success(1ul));
+        JsonRpcRequest request = RpcTest.BuildJsonRequest(method);
+
+        JsonRpcResponse response = SendRequestWithPool(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true), request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.InstanceOf<ResultWrapper<ulong>>());
+            Assert.That(request.Method, Is.EqualTo("eth_chainId"));
+        }
+    }
+
+    [Test]
     public void No_parameter_methods_reject_non_empty_array_params_before_invocation()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -821,6 +837,60 @@ public class JsonRpcServiceTests
         ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
 
         AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",{member}}}]"), ErrorCodes.InvalidParams);
+
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void Trace_filter_reads_numbers_and_tags_as_bounds_in_utf8_params(
+        [Values("fromBlock", "toBlock")] string bound,
+        [Values("\"0x1\"", "{\"blockNumber\":\"0x1\"}", "\"earliest\"", "\"latest\"", "\"safe\"", "\"finalized\"", "\"pending\"")] string value)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        RpcTest.AssertSuccess(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"{bound}\":{value}}}]"));
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(filter =>
+            (bound == "fromBlock" ? filter.FromBlock : filter.ToBlock)!.Type != BlockParameterType.BlockHash));
+    }
+
+    [Test]
+    public void Trace_filter_rejects_block_hash_bounds_in_utf8_params(
+        [Values("fromBlock", "toBlock")] string bound,
+        [Values("\"hash\"", "{\"blockHash\":\"hash\"}", "{\"blockHash\":\"hash\",\"requireCanonical\":true}")] string value)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter),
+            $"[{{\"{bound}\":{value.Replace("hash", TestItem.KeccakA.ToString())}}}]"), ErrorCodes.InvalidParams);
+
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void Trace_filter_reads_block_hash_with_null_bounds_in_utf8_params(
+        [Values("", ",\"fromBlock\":null", ",\"fromBlock\":null,\"toBlock\":null")] string nullBounds)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        RpcTest.AssertSuccess(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"blockHash\":\"{TestItem.KeccakA}\"{nullBounds}}}]"));
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(static filter =>
+            filter.BlockHash == TestItem.KeccakA && filter.FromBlock == null && filter.ToBlock == null));
+    }
+
+    [Test]
+    public void Trace_filter_rejects_block_hash_with_a_bound_or_malformed_in_utf8_params(
+        [Values("\"blockHash\":\"hash\",\"fromBlock\":\"0x1\"", "\"blockHash\":\"hash\",\"toBlock\":\"latest\"",
+            "\"toBlock\":{\"blockNumber\":\"0x1\"},\"blockHash\":\"hash\"", "\"blockHash\":\"\"", "\"blockHash\":\"0x1234\"", "\"blockHash\":\"latest\"",
+            "\"blockHash\":{\"blockHash\":\"hash\"}")] string members)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter),
+            $"[{{{members.Replace("hash\"", $"{TestItem.KeccakA}\"")}}}]"), ErrorCodes.InvalidParams);
 
         traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
     }

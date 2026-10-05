@@ -27,6 +27,7 @@ using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain;
 using Newtonsoft.Json.Linq;
+using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 using Nethermind.Abi;
 using Nethermind.Core.Messages;
@@ -40,6 +41,30 @@ public partial class EthRpcModuleTests
         + GasCostOf.TxValueCostEip2780
         + (ulong)GasCostOf.NewAccountState;
     private const string FreshRecipientAddress = "0xc278000000000000000000000000000000000000";
+
+    [Test]
+    public async Task EthCall_FrameTransactions_RequireActivation([Values] bool enabled)
+    {
+        IReleaseSpec spec = enabled ? Eip8141Prototype.Instance : Osaka.Instance;
+        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+
+        string response = await ctx.Test.TestEthRpc("eth_call", UnsignedFrameRequest());
+
+        JToken parsed = JToken.Parse(response);
+        if (enabled)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parsed["error"], Is.Null, response);
+                Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"), response);
+            }
+        }
+        else
+        {
+            Assert.That(parsed["error"], Is.Not.Null, response);
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(spec.Name)), response);
+        }
+    }
 
     [Test]
     public async Task Rpc_discards_unobserved_logs(
@@ -1013,7 +1038,7 @@ public partial class EthRpcModuleTests
             .TestObject;
         LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.To = null;
-        transaction.Data = data;
+        transaction.Input = data;
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(
@@ -1053,27 +1078,6 @@ public partial class EthRpcModuleTests
 
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"need at least 1 blob for a blob transaction\"},\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_call_maxFeePerBlobGas_is_zero()
-    {
-        using Context ctx = await Context.Create();
-        byte[] validHash = new byte[32];
-        validHash[0] = 0x01; // KZG version
-        Transaction tx = Build.A.Transaction
-            .WithGasLimit(100000)
-            .WithBlobVersionedHashes([validHash])
-            .To(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-        BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
-        transaction.MaxFeePerBlobGas = 0;
-        transaction.GasPrice = null;
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
-
-        Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerBlobGas, if specified, must be non-zero\"},\"id\":67}"));
     }
 
     [Test]
@@ -1411,6 +1415,34 @@ public partial class EthRpcModuleTests
         }
     }
 
+    // Shaped like trace-interop's field-data-input-equal and field-data-input-differ probes.
+    [Test]
+    public async Task Eth_call_accepts_data_or_input_when_they_agree([ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.MatchingCallData))] string calldata)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",{calldata}}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{new UInt256(42).ToBigEndian().ToHexString()}\",\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task Eth_call_rejects_differing_data_and_input([ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.DifferingCallData))] string calldata)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",{calldata}}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
+
+        JToken? error = JToken.Parse(serialized)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams), serialized);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer), serialized);
+        }
+    }
+
     // Shaped like trace-interop's field-null-blobVersionedHashes-unpriced and field-null-authorizationList-unpriced probes.
     [TestCase("blobVersionedHashes", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
     [TestCase("authorizationList", TxErrorMessages.NotAllowedCreateTransaction)]
@@ -1523,6 +1555,27 @@ public partial class EthRpcModuleTests
         "0x0000000000000000000000000000000000000000000000000000000000000002",
         null,
         TestName = "BLOBBASEFEE opcode returns overridden value")]
+    [TestCase(
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"]}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""",
+        "null",
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+        null,
+        TestName = "blob call without maxFeePerBlobGas sees a zero BLOBBASEFEE and pays no blob fee")]
+    [TestCase(
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000","maxFeePerBlobGas":"0x0","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"]}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""",
+        "null",
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+        null,
+        TestName = "blob call with a zero maxFeePerBlobGas sees a zero BLOBBASEFEE and pays no blob fee")]
+    [TestCase(
+        """{"to":"0xc200000000000000000000000000000000000000","gas":"0x100000","maxFeePerBlobGas":"0x0","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"]}""",
+        """{"0xc200000000000000000000000000000000000000":{"code":"0x4a60005260206000f3"}}""",
+        """{"blobBaseFee":"0x2"}""",
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+        null,
+        TestName = "blob call with a zero maxFeePerBlobGas sees a zero BLOBBASEFEE over a blobBaseFee override")]
 
     [TestCase(
         """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","type":"0x3","maxFeePerGas":"0x3B9ACA00","maxPriorityFeePerGas":"0x1","maxFeePerBlobGas":"0xa","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"],"gas":"0x5208"}""",

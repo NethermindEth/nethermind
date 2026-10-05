@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -17,6 +19,22 @@ namespace Nethermind.JsonRpc.Test.Data;
 public class TransactionForRpcDeserializationTests
 {
     private readonly EthereumJsonSerializer _serializer = new();
+
+    public static readonly string[] MatchingCallData =
+    [
+        "\"data\":\"0x602a60005260206000f3\"",
+        "\"input\":\"0x602a60005260206000f3\"",
+        "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x602a60005260206000f3\"",
+        "\"data\":null,\"input\":\"0x602a60005260206000f3\"",
+        "\"input\":null,\"data\":\"0x602a60005260206000f3\"",
+    ];
+
+    public static readonly string[] DifferingCallData =
+    [
+        "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x600160005260206000f3\"",
+        "\"input\":\"0x600160005260206000f3\",\"data\":\"0x602a60005260206000f3\"",
+        "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"",
+    ];
 
     [TestCaseSource(nameof(TxJsonTestCases))]
     public TxType Test_TxTypeIsDetected_ForDifferentFieldSet(string txJson)
@@ -157,11 +175,47 @@ public class TransactionForRpcDeserializationTests
     [TestCase("""{"data":null,"input":"0x602a"}""", ExpectedResult = "0x602a")]
     [TestCase("""{"input":null}""", ExpectedResult = "0x")]
     [TestCase("""{"data":null,"input":null}""", ExpectedResult = "0x")]
-    [TestCase("""{"data":"0x602a","input":"0x"}""", ExpectedResult = "0x")]
-    [TestCase("""{"data":"0x602a","input":""}""", ExpectedResult = "0x")]
-    [TestCase("""{"input":"","data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x602a","input":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":"0x602a","data":"0x602a","gasPrice":"0x1"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":"0x","input":""}""", ExpectedResult = "0x")]
     public string Test_InputDataAliasResolution(string txJson) =>
         _serializer.Deserialize<TransactionForRpc>(txJson)!.ToTransaction().Data!.Data.ToArray().ToHexString(true);
+
+    private static readonly string[] DifferingInputAndData =
+    [
+        """{"data":"0x602a","input":"0x6001"}""",
+        """{"input":"0x6001","data":"0x602a","gasPrice":"0x1"}""",
+        """{"data":"0x602a","input":"0x"}""",
+        """{"data":"0x602a","input":""}""",
+        """{"input":"","data":"0x602a"}""",
+        """{"type":"0x4","data":"0x602a","input":"0x6001","authorizationList":[]}""",
+    ];
+
+    [Test]
+    public void Test_DifferingInputAndData_Throws([ValueSource(nameof(DifferingInputAndData))] string txJson) =>
+        Assert.That(() => _serializer.Deserialize<TransactionForRpc>(txJson),
+            Throws.TypeOf<SafePublicMessageFormatException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+
+    [Test]
+    public void Data_assignment_updates_input_outside_deserialization([Values] bool deserialized)
+    {
+        LegacyTransactionForRpc rpc = deserialized
+            ? _serializer.Deserialize<LegacyTransactionForRpc>("""{"data":"0x6001"}""")!
+            : new LegacyTransactionForRpc { Input = [0x60, 0x01] };
+        byte[] data = [0x60, 0x2a];
+
+        rpc.Data = data;
+
+        using JsonDocument document = JsonDocument.Parse(_serializer.Serialize(rpc));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.Input, Is.EqualTo(data));
+            Assert.That(rpc.ToTransaction().Data!.Data, Is.SequenceEqualTo(data));
+            Assert.That(document.RootElement.GetProperty("input").GetString(), Is.EqualTo("0x602a"));
+            Assert.That(document.RootElement.TryGetProperty("data", out _), Is.False);
+        }
+    }
 
     [TestCaseSource(nameof(DefaultedTypeResolutionCases))]
     public TxType Test_DefaultedType_ResolvesCorrectly(IReleaseSpec spec, bool hasAccessList)
