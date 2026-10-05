@@ -40,6 +40,16 @@ public static class FrameTxSignatureValidator
         return Validate(tx, ref sigHash, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false, skipVerification: false);
     }
 
+    /// <summary>Validation that stops before the next verifying entry once <paramref name="preempt"/> returns
+    /// <see langword="true"/>, so a caller yielding to other work holds the CPU for at most one more verification.</summary>
+    /// <param name="preempted">Set when validation stopped early. No verdict was reached then, so the result is
+    /// <see langword="false"/> and <paramref name="error"/> is <see langword="null"/>.</param>
+    public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, Func<bool>? preempt, out bool preempted, out string? error)
+    {
+        ValueHash256? sigHash = null;
+        return Validate(tx, ref sigHash, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false, skipVerification: false, preempt, out preempted);
+    }
+
     /// <summary>Same validation, optionally accepting a SECP256K1 or P256 entry with empty signature bytes as a
     /// placeholder. Simulation can also skip signature verification while retaining structural checks.</summary>
     /// <param name="sigHash">The canonical signature hash when the caller has it; otherwise <see langword="null"/>,
@@ -47,9 +57,13 @@ public static class FrameTxSignatureValidator
     /// <remarks>With <paramref name="skipVerification"/> only the length and the SECP256K1 recovery id are checked:
     /// execution-apis#907 exempts signature checks from eth_simulateV1, so placeholder bytes need not be a
     /// canonical signature nor, for P256, carry the signer's public key.</remarks>
-    internal static bool Validate(Transaction tx, ref ValueHash256? sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification)
+    internal static bool Validate(Transaction tx, ref ValueHash256? sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification) =>
+        Validate(tx, ref sigHash, ecdsa, p256Precompile, spec, out error, allowEmptySignatures, skipVerification, preempt: null, out _);
+
+    private static bool Validate(Transaction tx, ref ValueHash256? sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification, Func<bool>? preempt, out bool preempted)
     {
         error = null;
+        preempted = false;
         TxFrameSignature[]? signatures = tx.FrameSignatures;
         if (signatures is null || signatures.Length == 0) return true;
 
@@ -77,6 +91,13 @@ public static class FrameTxSignatureValidator
                     continue;
                 }
                 return Fail(InvalidSignature, out error);
+            }
+
+            // Polled per entry rather than once, since the elliptic-curve work is what a caller yields.
+            if (preempt?.Invoke() == true)
+            {
+                preempted = true;
+                return false;
             }
 
             ValueHash256 message = signature.Msg.IsEmpty ? sigHash ??= FrameTxSigHash.ComputeValue(tx) : new ValueHash256(signature.Msg.Span);

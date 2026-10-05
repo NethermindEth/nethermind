@@ -5063,6 +5063,39 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // Asserts against the shared preemption counter.
+        [NonParallelizable]
+        [TestCase(true, 2)]
+        [TestCase(false, 1)]
+        public void Gossiped_frame_tx_whose_signature_verification_yielded_is_refetchable_once_per_request(bool announced, int expectedYields)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+            tx.Hash = tx.CalculateHash();
+            IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            if (announced) Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
+            long before = Metrics.FrameTxSignatureVerificationsPreempted;
+            _blockTree.IsProcessingBlock = true;
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+            Assert.That(_txPool.IsKnown(tx.Hash), Is.EqualTo(!announced));
+            for (int resend = 0; resend < 3; resend++)
+            {
+                _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.FrameTxSignatureVerificationsPreempted - before, Is.EqualTo(expectedYields));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.IsKnown(tx.Hash), Is.True);
+                // A yielded push waits for its first announcement to refetch it; an announced one spent its retry.
+                Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(announced ? AnnounceResult.Delayed : AnnounceResult.RequestRequired));
+            }
+        }
+
         [Test]
         public void Repushed_frame_tx_whose_simulation_yielded_is_not_simulated_again()
         {
