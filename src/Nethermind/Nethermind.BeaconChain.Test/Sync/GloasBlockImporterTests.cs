@@ -716,24 +716,28 @@ public class GloasBlockImporterTests
     }
 
     [Test]
-    public void Fulu_parent_of_a_first_gloas_block_that_skips_the_fork_slot_stays_a_regeneration_base()
+    public void Fulu_parent_of_a_first_gloas_block_that_skips_the_fork_slot_stays_a_regeneration_base([Values] bool onLineage)
     {
         TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)));
         List<BlockImportResult> fixture = [];
         void ImportFulu(SignedGloasChain.FuluBlock block) => fixture.Add(importer.Import(block.Forked, block.Root, verifySignatures: true));
 
-        ImportFulu(_chain.NextFulu(2, blockHashFill: 0xD0));
+        if (!onLineage) ImportFulu(_chain.NextFulu(2, blockHashFill: 0xD0));
         SignedGloasChain.FuluBlock? lastFulu = null;
-        for (ulong slot = 1; slot < ForkSlot; slot++)
+        for (ulong slot = 1; slot < ForkSlot - 1; slot++)
         {
             lastFulu = _chain.NextFulu(slot, lastFulu, (byte)slot);
             ImportFulu(lastFulu);
         }
 
         SignedGloasChain.Block first = _chain.NextOnFulu(lastFulu!, ForkSlot + 1, full: false, 0xE1);
-        SignedGloasChain.Block parent = _chain.Next(first, ForkSlot + 2, full: false, 0xE2);
-        Import(importer, first, parent);
+        SignedGloasChain.Block middle = _chain.Next(first, ForkSlot + 2, full: false, 0xE2);
+        SignedGloasChain.Block parent = _chain.Next(middle, ForkSlot + 3, full: false, 0xE4);
+        Import(importer, first, middle, parent);
+        Assert.That(importer.LineageRoot == lastFulu!.Root, Is.EqualTo(onLineage), "the trusted late import mutates the lineage only in its lineage case");
+        SignedGloasChain.FuluBlock lateFulu = _chain.NextFulu(ForkSlot - 1, lastFulu, 0xD1);
+        fixture.Add(importer.Import(lateFulu.Forked, lateFulu.Root, verifySignatures: false));
 
         for (ulong slot = 3; slot < 12; slot++)
         {
@@ -741,41 +745,19 @@ public class GloasBlockImporterTests
         }
 
         SignedGloasChain.Block tip = parent;
-        for (ulong slot = ForkSlot + 3; slot <= 3 * ForkSlot + 3; slot++)
+        for (ulong slot = ForkSlot + 4; slot <= 3 * ForkSlot + 4; slot++)
         {
             tip = _chain.Next(tip, slot, full: false, (byte)slot);
             Import(importer, tip);
         }
 
-        SignedGloasChain.Block sibling = _chain.Next(parent, ForkSlot + 3, full: false, 0xE3);
+        SignedGloasChain.Block sibling = _chain.Next(parent, ForkSlot + 4, full: false, 0xE3);
         BlockImportResult result = importer.ImportRequested(sibling.Forked, sibling.Root);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
         Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
         Assert.That(logger.LogList, Has.None.Contains("Cannot regenerate"));
-    }
-
-    [Test]
-    public void Fulu_checkpoint_parent_retained_from_the_lineage_is_a_copy()
-    {
-        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.FuluBlock lineage = _chain.NextFulu(ForkSlot - 2);
-        SignedGloasChain.FuluBlock late = _chain.NextFulu(ForkSlot - 1, lineage, 0xD1);
-        SignedGloasChain.Block first = _chain.NextOnFulu(lineage, ForkSlot + 1, full: false, 0xE1);
-        SignedGloasChain.Block sibling = _chain.NextOnFulu(lineage, ForkSlot + 2, full: false, 0xE2);
-
-        BlockImportResult[] fixture =
-        [
-            importer.Import(lineage.Forked, lineage.Root, verifySignatures: true),
-            importer.Import(first.Forked, first.Root, verifySignatures: true),
-            importer.Import(late.Forked, late.Root, verifySignatures: false),
-        ];
-        BlockImportResult result = importer.Import(sibling.Forked, sibling.Root, verifySignatures: true);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(fixture, Is.All.EqualTo(BlockImportResult.Imported), "fixture bug");
-        Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
     }
 
     [Test]

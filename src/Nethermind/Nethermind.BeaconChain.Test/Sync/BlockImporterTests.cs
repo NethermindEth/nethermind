@@ -673,7 +673,7 @@ public class BlockImporterTests
     }
 
     [Test]
-    public void Regeneration_uses_nearest_held_ancestor_without_mutating_it_and_retains_result([Values] bool persisted)
+    public void Regeneration_uses_nearest_held_ancestor_without_mutating_it_and_retains_result([Values] bool persisted, [Values] bool hasLineage)
     {
         UnsignedChain chain = UnsignedChain.Create();
         using MemColumnsDb<BeaconChainDbColumns> db = new();
@@ -683,8 +683,9 @@ public class BlockImporterTests
         UnsignedChain.ChainBlock third = chain.Extend(second.Root, slot: 3, payloadHashByte: 0x83);
         store.PutBlock(second.Root, second.Block);
         store.PutBlock(third.Root, third.Block);
-        PostStateCache states = new(store, chain.Spec, chain.AnchorRoot, chain.Anchor.AnchorState,
+        PostStateCache states = new(store, chain.Spec, hasLineage ? chain.AnchorRoot : null, hasLineage ? chain.Anchor.AnchorState : null,
             pubkeys: chain.Anchor.Pubkeys, ancestors: root => root == third.Root ? [third.Root, second.Root, first.Root, chain.AnchorRoot] : []);
+        List<Hash256> filler = [];
         if (persisted)
         {
             store.PutState(first.Root, BeaconStateFulu.Encode(first.PostState));
@@ -692,13 +693,31 @@ public class BlockImporterTests
         else
         {
             states.Retain(first.Root, first.PostState);
+            const int RetainedStateCount = 8;
+            for (int i = 1; i < RetainedStateCount; i++)
+            {
+                Hash256 root = Keccak.Compute([(byte)i]);
+                states.Retain(root, chain.Anchor.AnchorState);
+                filler.Add(root);
+            }
         }
 
+        BeaconStateFulu? coldCopy = states.CopyBlockState(third.Root);
+        Assert.That(coldCopy, Is.Not.Null, "a cold copy regenerates from the nearest held or persisted ancestor");
+        Assert.That(SszRoots.HashTreeRoot(coldCopy!), Is.EqualTo(third.Block.Message!.StateRoot));
+        Assert.That(states.GetHeldBlockState(third.Root), Is.Null, "the cold copy is the caller's alone");
         BeaconStateFulu? regenerated = states.GetBlockState(third.Root);
         Assert.That(regenerated, Is.Not.Null);
+        Assert.That(regenerated, Is.Not.SameAs(coldCopy), "an import regenerates its own state after a caller's cold copy");
         Assert.That(SszRoots.HashTreeRoot(regenerated!), Is.EqualTo(third.Block.Message!.StateRoot));
         Assert.That(SszRoots.HashTreeRoot(first.PostState), Is.EqualTo(first.Block.Message!.StateRoot));
         Assert.That(SszRoots.HashTreeRoot(chain.Anchor.AnchorState), Is.EqualTo(chain.Anchor.AnchorBlock.Message!.StateRoot));
+        if (!persisted)
+        {
+            Assert.That(states.GetHeldBlockState(first.Root), Is.SameAs(first.PostState), "regeneration leaves the retained parent held");
+            Assert.That(filler.Select(states.GetHeldBlockState), Has.All.SameAs(chain.Anchor.AnchorState), "regeneration cannot evict a live retained state");
+        }
+        Assert.That(states.GetHeldBlockState(third.Root), Is.SameAs(regenerated));
         store.DeleteBlock(second.Root);
         store.DeleteBlock(third.Root);
         Assert.That(states.GetBlockState(third.Root), Is.SameAs(regenerated));
@@ -706,58 +725,6 @@ public class BlockImporterTests
         Assert.That(copy, Is.Not.SameAs(regenerated));
         copy.Slot++;
         Assert.That(regenerated!.Slot, Is.EqualTo(third.PostState.Slot));
-    }
-
-    [Test]
-    public void Regenerated_state_does_not_evict_a_retained_state()
-    {
-        UnsignedChain chain = UnsignedChain.Create();
-        using MemColumnsDb<BeaconChainDbColumns> db = new();
-        BeaconChainStore store = new(db);
-        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x91);
-        UnsignedChain.ChainBlock second = chain.Extend(first.Root, slot: 2, payloadHashByte: 0x92);
-        store.PutBlock(second.Root, second.Block);
-        PostStateCache states = new(store, chain.Spec, lineageRoot: null, lineageState: null,
-            pubkeys: chain.Anchor.Pubkeys, ancestors: root => root == second.Root ? [second.Root, first.Root] : []);
-        states.Retain(first.Root, first.PostState);
-        const int RetainedStateCount = 8;
-        List<Hash256> filler = [];
-        for (int i = 1; i < RetainedStateCount; i++)
-        {
-            Hash256 root = Keccak.Compute([(byte)i]);
-            states.Retain(root, chain.Anchor.AnchorState);
-            filler.Add(root);
-        }
-
-        BeaconStateFulu? regenerated = states.GetBlockState(second.Root);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(regenerated, Is.Not.Null, "fixture bug: the state must be regenerated from the retained parent");
-        Assert.That(states.GetHeldBlockState(first.Root), Is.SameAs(first.PostState), "the least recently used retained state survives");
-        Assert.That(filler.Select(states.GetHeldBlockState), Has.All.SameAs(chain.Anchor.AnchorState));
-        Assert.That(states.GetHeldBlockState(second.Root), Is.SameAs(regenerated), "the regenerated state is still held for the next request");
-    }
-
-    [Test]
-    public void Copy_of_a_regenerated_state_is_not_held()
-    {
-        UnsignedChain chain = UnsignedChain.Create();
-        using MemColumnsDb<BeaconChainDbColumns> db = new();
-        BeaconChainStore store = new(db);
-        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xA1);
-        UnsignedChain.ChainBlock second = chain.Extend(first.Root, slot: 2, payloadHashByte: 0xA2);
-        store.PutBlock(second.Root, second.Block);
-        PostStateCache states = new(store, chain.Spec, lineageRoot: null, lineageState: null,
-            pubkeys: chain.Anchor.Pubkeys, ancestors: root => root == second.Root ? [second.Root, first.Root] : []);
-        states.Retain(first.Root, first.PostState);
-
-        BeaconStateFulu? copy = states.CopyBlockState(second.Root);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(copy, Is.Not.Null, "fixture bug: the state must be regenerated from the retained parent");
-        Assert.That(SszRoots.HashTreeRoot(copy!), Is.EqualTo(second.Block.Message!.StateRoot));
-        Assert.That(states.GetHeldBlockState(second.Root), Is.Null, "the copy is the caller's alone");
-        Assert.That(states.GetBlockState(second.Root), Is.Not.SameAs(copy), "a later import regenerates its own state");
     }
 
     [TestCase("unknown")]
