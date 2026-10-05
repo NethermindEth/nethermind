@@ -171,7 +171,10 @@ public static class TestFixtureDownloader
             ExtractSelective(gzStream, targetDir, shouldExtract);
         }
 
-        // GZipStream and TarReader can report clean EOF after a truncated download without validating the declared length.
+        // Tar EOF can precede gzip EOF when an archive has trailing padding.
+        gzStream.CopyTo(Stream.Null);
+
+        // GZipStream can report clean EOF after a truncated download without validating the declared length.
         if (expectedLength is { } expected && contentStream.TotalBytesRead != expected)
         {
             throw new IOException(
@@ -226,7 +229,7 @@ public static class TestFixtureDownloader
     {
         string targetRoot = Path.GetFullPath(targetDir) + Path.DirectorySeparatorChar;
 
-        using TarReader reader = new(gzStream);
+        using TarReader reader = new(gzStream, leaveOpen: true);
         while (reader.GetNextEntry() is { } entry)
         {
             if (entry.EntryType is TarEntryType.Directory or TarEntryType.GlobalExtendedAttributes)
