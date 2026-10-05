@@ -35,12 +35,12 @@ public class CustodyNetworkingTests
 
     private static void Run(CustodyCase testCase)
     {
-        YamlMappingNode meta = ReadMeta(Path.Combine(testCase.CasePath, "meta.yaml"));
+        YamlMappingNode meta = FuluDriverSupport.LoadMapping(Path.Combine(testCase.CasePath, "meta.yaml"));
         ulong[] expected = [.. ((YamlSequenceNode)meta.Children[new YamlScalarNode("result")]).Children.Select(static n => ulong.Parse(((YamlScalarNode)n).Value!))];
 
         ulong[] actual = testCase.Handler == "get_custody_groups"
-            ? CustodyGroups.GetCustodyGroups(RawNodeId(Scalar(meta, "node_id")), ulong.Parse(Scalar(meta, "custody_group_count")))
-            : CustodyGroups.ComputeColumnsForCustodyGroup(ulong.Parse(Scalar(meta, "custody_group")));
+            ? CustodyGroups.GetCustodyGroups(RawNodeId(FuluDriverSupport.Scalar(meta, "node_id")), ulong.Parse(FuluDriverSupport.Scalar(meta, "custody_group_count")))
+            : CustodyGroups.ComputeColumnsForCustodyGroup(ulong.Parse(FuluDriverSupport.Scalar(meta, "custody_group")));
 
         Assert.That(actual, Is.EqualTo(expected));
     }
@@ -51,16 +51,6 @@ public class CustodyNetworkingTests
         byte[] raw = new byte[32];
         bigEndian.CopyTo(raw, raw.Length - bigEndian.Length);
         return new Hash256(raw);
-    }
-
-    private static string Scalar(YamlMappingNode meta, string key) => ((YamlScalarNode)meta.Children[new YamlScalarNode(key)]).Value!;
-
-    private static YamlMappingNode ReadMeta(string path)
-    {
-        YamlStream yaml = [];
-        using StreamReader reader = new(path);
-        yaml.Load(reader);
-        return (YamlMappingNode)yaml.Documents[0].RootNode;
     }
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
