@@ -7,15 +7,8 @@ using Nethermind.BeaconChain.StateTransition;
 
 namespace Nethermind.BeaconChain.Types;
 
-/// <summary>
-/// Decodes a persisted or downloaded beacon state after establishing which fork wrote it.
-/// </summary>
-/// <remarks>
-/// Electra, Fulu and Gloas are three different SSZ layouts, and Gloas is a progressive container
-/// rather than an extension of Fulu. Decoding whatever arrives as <see cref="BeaconStateFulu"/>
-/// either throws somewhere unhelpful or silently yields wrong field values, so the fork is resolved
-/// first and anything this driver cannot represent is refused by name.
-/// </remarks>
+/// <summary>Decodes persisted or downloaded beacon states using their slot-selected SSZ layout.</summary>
+/// <remarks>Fulu and Gloas have distinct layouts; unsupported forks are refused by name.</remarks>
 public static class BeaconStateCodec
 {
     /// <summary>Byte offset of <c>slot</c>: <c>genesis_time</c> (8) plus <c>genesis_validators_root</c> (32).</summary>
@@ -26,11 +19,7 @@ public static class BeaconStateCodec
     private const int SlotOffset = 40;
 
     /// <summary>Decodes <paramref name="ssz"/> as the state layout of the fork its slot belongs to.</summary>
-    /// <remarks>
-    /// Only the slot selects the layout; a caller holding untrusted bytes must still check that the
-    /// decoded <c>fork.current_version</c> agrees. As in <see cref="SignedBeaconBlockCodec"/>, a malformed
-    /// body surfaces the SSZ decoder's <see cref="System.IO.InvalidDataException"/>.
-    /// </remarks>
+    /// <remarks>Callers must verify the decoded <c>fork.current_version</c>; the slot alone selects the layout.</remarks>
     /// <exception cref="BeaconStateException">The state is too short to carry a slot, or its slot predates Electra.</exception>
     /// <exception cref="NotSupportedException">The state is an Electra state, which this driver cannot process.</exception>
     /// <exception cref="System.IO.InvalidDataException">The body is malformed for the layout its slot selects.</exception>

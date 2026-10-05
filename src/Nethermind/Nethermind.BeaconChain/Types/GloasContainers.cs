@@ -64,14 +64,11 @@ public partial class BuilderExitRequest
     public BlsPublicKey Pubkey { get; set; }
 }
 
-/// <summary>
-/// Gloas <c>PayloadTimelinessCommittee</c> (specs/gloas/beacon-chain.md, "New <c>PayloadTimelinessCommittee</c>"):
-/// <c>Vector[ValidatorIndex, PTC_SIZE]</c>. Wrapped in a single-field container (not marked
-/// <c>isCollectionItself</c>: that flag only special-cases a sole List/ProgressiveList field) so it can
-/// be addressed as an element of <see cref="BeaconStateGloas.PtcWindow"/> - a container with exactly one
-/// fixed-size field serializes and merkleizes identically to the bare vector (merkleize of one chunk is
-/// that chunk), so this is wire- and root-identical to the spec type without any generator changes.
-/// </summary>
+/// <summary>Gloas payload timeliness committee: <c>Vector[ValidatorIndex, PTC_SIZE]</c>.</summary>
+/// <remarks>
+/// The single fixed-size field preserves the bare vector's SSZ encoding and root in <see cref="BeaconStateGloas.PtcWindow"/>.
+/// <c>isCollectionItself</c> applies only to List/ProgressiveList fields, not vectors.
+/// </remarks>
 [SszContainer]
 public partial class PayloadTimelinessCommittee
 {
@@ -127,11 +124,8 @@ public partial class IndexedPayloadAttestation
     public BlsSignature Signature { get; set; }
 }
 
-/// <summary>
-/// Gloas <c>ExecutionPayloadBid</c> (specs/gloas/beacon-chain.md, "New containers"): <c>ProgressiveContainer</c>,
-/// <c>ACTIVE_FIELDS</c> width 12. The bid a follower needs even without building blocks: it carries the
-/// KZG commitments used to validate <c>DataColumnSidecar</c>s before the matching envelope arrives.
-/// </summary>
+/// <summary>Gloas execution payload bid (specs/gloas/beacon-chain.md).</summary>
+/// <remarks>Progressive container with 12 active fields; its KZG commitments validate sidecars before the envelope arrives.</remarks>
 [SszContainer]
 public partial class ExecutionPayloadBid
 {
@@ -172,14 +166,11 @@ public partial class SignedExecutionPayloadBid
     public BlsSignature Signature { get; set; }
 }
 
-/// <summary>
-/// Gloas <c>Transaction</c> (specs/gloas/beacon-chain.md, "Modified <c>Transaction</c>"):
-/// <c>ProgressiveList[Byte]</c>, distinct from the pre-Gloas <see cref="Transaction"/>
-/// (a bounded <c>List[Byte, MAX_BYTES_PER_TRANSACTION]</c>) because the two merkleize differently even
-/// though both wire-encode as a raw byte blob. <c>isCollectionItself</c> strips the would-be offset so
-/// this serializes as the bare progressive byte list, matching how it sits inside
-/// <see cref="ExecutionPayloadGloas.Transactions"/> (itself a <c>ProgressiveList[TransactionGloas]</c>).
-/// </summary>
+/// <summary>Gloas transaction: <c>ProgressiveList[Byte]</c> (specs/gloas/beacon-chain.md).</summary>
+/// <remarks>
+/// Its raw-byte encoding matches pre-Gloas <see cref="Transaction"/>, but its progressive root differs.
+/// <c>isCollectionItself</c> omits the container offset within <see cref="ExecutionPayloadGloas.Transactions"/>.
+/// </remarks>
 [SszContainer(isCollectionItself: true)]
 public partial class TransactionGloas
 {
@@ -355,13 +346,11 @@ public partial class SignedAggregateAndProofGloas
     public BlsSignature Signature { get; set; }
 }
 
-/// <summary>
-/// Gloas <c>BeaconBlockBody</c> (specs/gloas/beacon-chain.md, "Modified containers"; EIP-7732/EIP-7688):
-/// <c>ProgressiveContainer</c>, <c>ACTIVE_FIELDS</c> width 13. <c>execution_payload</c>,
-/// <c>blob_kzg_commitments</c> and <c>execution_requests</c> are removed (they now live in
-/// <see cref="ExecutionPayloadEnvelope"/>); <c>signed_execution_payload_bid</c>, <c>payload_attestations</c>
-/// and <c>parent_execution_requests</c> are new.
-/// </summary>
+/// <summary>Gloas beacon block body (specs/gloas/beacon-chain.md, EIP-7732/EIP-7688).</summary>
+/// <remarks>
+/// Progressive container with 13 active fields. Payload and execution requests move to <see cref="ExecutionPayloadEnvelope"/>;
+/// KZG commitments move to <see cref="ExecutionPayloadBid"/>. Bids, payload attestations and parent execution requests replace them.
+/// </remarks>
 [SszContainer]
 public partial class BeaconBlockBodyGloas
 {

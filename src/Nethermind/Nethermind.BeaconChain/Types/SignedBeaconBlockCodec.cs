@@ -7,19 +7,11 @@ using Nethermind.BeaconChain.StateTransition;
 
 namespace Nethermind.BeaconChain.Types;
 
-/// <summary>
-/// Encodes and decodes a signed beacon block as the SSZ shape of the fork its slot belongs to.
-/// </summary>
+/// <summary>Encodes and decodes signed beacon blocks using their slot-selected SSZ shape.</summary>
 /// <remarks>
-/// Fulu's <see cref="SignedBeaconBlock"/> and Gloas's <see cref="SignedBeaconBlockGloas"/> carry
-/// unrelated bodies, and the bytes name no fork, so the slot is read before the body is decoded. In
-/// both shapes the fixed part of the outer container is the 4-byte <c>message</c> offset followed by
-/// the 96-byte <c>signature</c>, and <c>slot</c> is the first field of <c>message</c>. Electra blocks
-/// share Fulu's shape and decode to <see cref="ForkedSignedBeaconBlock.OfFulu"/>; only
-/// <see cref="BeaconChainSpec.GloasForkEpoch"/> is consulted, so a slot before Electra decodes as
-/// the pre-Gloas shape rather than being refused. As in <see cref="BeaconStateCodec"/>, a truncated or
-/// malformed body surfaces the SSZ decoder's <see cref="System.IO.InvalidDataException"/>, so a caller
-/// handling untrusted bytes must catch it as well as <see cref="BeaconStateException"/>.
+/// Bytes carry no fork tag: the 4-byte message offset precedes the 96-byte signature, and slot starts the message.
+/// Only <see cref="BeaconChainSpec.GloasForkEpoch"/> selects the shape; Electra and earlier slots decode as <see cref="ForkedSignedBeaconBlock.OfFulu"/>.
+/// Malformed bodies throw <see cref="System.IO.InvalidDataException"/>; invalid prefixes throw <see cref="BeaconStateException"/>.
 /// </remarks>
 public static class SignedBeaconBlockCodec
 {
