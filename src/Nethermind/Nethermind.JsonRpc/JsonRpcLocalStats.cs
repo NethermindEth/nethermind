@@ -19,7 +19,6 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
     private readonly TimeSpan _reportingInterval;
     private readonly bool _enablePerMethodMetrics;
     private ConcurrentDictionary<string, MethodStats> _currentStats = new();
-    private readonly ConcurrentDictionary<string, MethodStats> _allTimeStats = new();
     private DateTime _lastReport;
     private readonly ILogger _logger;
     private readonly Lock _reportRotationLock = new();
@@ -36,11 +35,6 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
     }
 
     public bool IsEnabled { get; }
-
-    public MethodStats GetMethodStats(string methodName) =>
-        _allTimeStats.TryGetValue(methodName, out MethodStats? methodStats)
-            ? methodStats.Snapshot()
-            : new MethodStats();
 
     public void ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
         ReportCall(new RpcReport(method, handlingTimeMicroseconds, success));
@@ -66,8 +60,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
 
         if (_enablePerMethodMetrics)
         {
-            JsonRpcMetricLabels label = new(report.Method, report.Success);
-            Metrics.JsonRpcCallDurationMicros.Observe(reportHandlingTimeMicroseconds, label);
+            Metrics.JsonRpcCallDurationMicros.Observe(reportHandlingTimeMicroseconds, JsonRpcMetricLabels.Get(report.Method, report.Success));
         }
 
         if (!_logger.IsInfo)
@@ -78,11 +71,9 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
         ConcurrentDictionary<string, MethodStats>? statsForReport = RotateStatsForReport();
 
         MethodStats methodStats = _currentStats.GetOrAdd(report.Method, static _ => new MethodStats());
-        MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, static _ => new MethodStats());
 
         long responseSize = size ?? 0;
         methodStats.Record(reportHandlingTimeMicroseconds, responseSize, report.Success);
-        allTimeMethodStats.Record(reportHandlingTimeMicroseconds, responseSize, report.Success);
 
         if (statsForReport is not null)
         {
