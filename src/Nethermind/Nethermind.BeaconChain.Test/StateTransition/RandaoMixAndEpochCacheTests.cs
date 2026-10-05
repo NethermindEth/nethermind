@@ -73,7 +73,7 @@ public class RandaoMixAndEpochCacheTests
     }
 
     [Test]
-    public void GetTotalActiveBalance_refuses_reuse_across_two_branches_that_diverge_before_the_decision_slot()
+    public void GetTotalActiveBalance_reuses_the_same_branch_memo_and_refuses_cross_branch_reuse()
     {
         const ulong epoch = 5;
         BeaconStateFulu branchA = CreateBranchState(epoch, decisionSlotRoot: FromFirstByte(0xAA), validatorCount: 10);
@@ -82,23 +82,11 @@ public class RandaoMixAndEpochCacheTests
         EpochCache cache = new();
         ulong balanceA = cache.GetTotalActiveBalance(branchA);
         Assert.That(balanceA, Is.EqualTo(10UL * 32 * Gwei));
+        Assert.That(new EpochCache().GetTotalActiveBalance(branchB), Is.EqualTo(20UL * 32 * Gwei));
+        Assert.That(cache.GetTotalActiveBalance(branchA), Is.EqualTo(balanceA), "repeated calls for the same branch and epoch must not be treated as a conflict");
 
         Assert.That(() => cache.GetTotalActiveBalance(branchB), Throws.TypeOf<BeaconStateException>(),
             "a second branch's state at the same epoch must be refused, not silently given branch A's balance");
-    }
-
-    [Test]
-    public void GetTotalActiveBalance_resolves_each_branch_correctly_when_given_its_own_cache()
-    {
-        const ulong epoch = 5;
-        BeaconStateFulu branchA = CreateBranchState(epoch, decisionSlotRoot: FromFirstByte(0xAA), validatorCount: 10);
-        BeaconStateFulu branchB = CreateBranchState(epoch, decisionSlotRoot: FromFirstByte(0xBB), validatorCount: 20);
-
-        ulong balanceA = new EpochCache().GetTotalActiveBalance(branchA);
-        ulong balanceB = new EpochCache().GetTotalActiveBalance(branchB);
-
-        Assert.That(balanceA, Is.EqualTo(10UL * 32 * Gwei));
-        Assert.That(balanceB, Is.EqualTo(20UL * 32 * Gwei));
     }
 
     [Test]
@@ -133,19 +121,6 @@ public class RandaoMixAndEpochCacheTests
         EpochCache cache = new();
         ulong balanceA = cache.GetTotalActiveBalance(siblingA);
         Assert.That(() => cache.GetTotalActiveBalance(siblingB), Is.EqualTo(balanceA), "same-epoch siblings legitimately share the total");
-    }
-
-    [Test]
-    public void GetTotalActiveBalance_reuses_the_memo_across_repeated_calls_on_the_same_branch()
-    {
-        const ulong epoch = 5;
-        BeaconStateFulu branch = CreateBranchState(epoch, decisionSlotRoot: FromFirstByte(0xAA), validatorCount: 10);
-        EpochCache cache = new();
-
-        ulong first = cache.GetTotalActiveBalance(branch);
-        ulong second = cache.GetTotalActiveBalance(branch);
-
-        Assert.That(second, Is.EqualTo(first), "repeated calls for the same branch and epoch must not be treated as a conflict");
     }
 
     internal static void AssertSeedMatchesReference(ulong currentEpoch, Hash256[] randaoMixes, Func<ulong, byte[], Hash256> getSeed)
