@@ -154,8 +154,10 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             }
         }
         if (!mergeEnabled) return "the standard Merge plugin is not enabled.";
-        if (api.MainProcessingContext?.BlockProcessor is not (StandardBlockProcessor or WitnessCapturingBlockProcessor or InlineCaptureBlockProcessor or FinalizedBlockAccessListProcessor)
-            || api.MainProcessingContext.TransactionProcessor is not EthereumTransactionProcessor)
+        IBlockProcessor? blockProcessor = api.MainProcessingContext?.BlockProcessor;
+        if (blockProcessor is FinalizedBlockAccessListProcessor finalizedCatchUp) blockProcessor = finalizedCatchUp.Inner;
+        if (blockProcessor is not (StandardBlockProcessor or WitnessCapturingBlockProcessor or InlineCaptureBlockProcessor)
+            || api.MainProcessingContext!.TransactionProcessor is not EthereumTransactionProcessor)
             return "the chain uses a custom processing pipeline.";
         return null;
     }

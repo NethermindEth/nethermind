@@ -28,6 +28,9 @@ public sealed class FinalizedBlockAccessListProcessor(
     private readonly ILogger _logger = logManager.GetClassLogger<FinalizedBlockAccessListProcessor>();
     private event Action? _transactionsExecuted;
 
+    /// <summary>The processor that executes blocks this decorator does not reconstruct.</summary>
+    public IBlockProcessor Inner => inner;
+
     /// <inheritdoc/>
     public event Action? TransactionsExecuted
     {
