@@ -19,7 +19,7 @@ namespace Nethermind.Evm;
 /// </remarks>
 public sealed class BalDataMeter
 {
-    private readonly HashSet<StorageCell> _meteredStorageValues = new(StorageCell.EqualityComparer);
+    private HashSet<StorageCell>? _meteredStorageValues;
     private ulong _staticFloor;
     private ulong _floorLimit;
 
@@ -42,7 +42,7 @@ public sealed class BalDataMeter
         _staticFloor = staticFloor;
         _floorLimit = Math.Min(gasLimit, Eip7825Constants.DefaultTxGasLimitCap);
         BalDataBytes = 0;
-        _meteredStorageValues.Clear();
+        _meteredStorageValues?.Clear();
         return this;
     }
 
@@ -74,11 +74,15 @@ public sealed class BalDataMeter
     {
         if (differsFromOriginal)
         {
-            if (_meteredStorageValues.Contains(cell)) return true;
-            if (!TryMeter(Eip8279Constants.StorageValueBytes)) return false;
-            _meteredStorageValues.Add(cell);
+            HashSet<StorageCell> metered = _meteredStorageValues ??= new(StorageCell.EqualityComparer);
+            if (!metered.Add(cell)) return true;
+            if (!TryMeter(Eip8279Constants.StorageValueBytes))
+            {
+                metered.Remove(cell);
+                return false;
+            }
         }
-        else if (_meteredStorageValues.Remove(cell))
+        else if (_meteredStorageValues?.Remove(cell) == true)
         {
             BalDataBytes -= Eip8279Constants.StorageValueBytes;
         }

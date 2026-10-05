@@ -159,7 +159,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         protected readonly ILogManager _logManager;
         private readonly bool _parallel;
-        private readonly BalDataMeter _balDataMeter = new();
+        private BalDataMeter? _balDataMeter;
         private ulong _blockCumulativeExecutionGas;
         private ulong _blockCumulativeStateGas;
         private TracerFlags _tracerFlags;
@@ -394,7 +394,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 MaterializeLogMemory = _tracerFlags.IsTracingInstructions || _tracerFlags.IsTracingMemory,
                 // EIP-8279: system calls have no floor to settle against, so they are not metered.
                 BalDataMeter = spec.IsEip8279Enabled && !tx.IsSystem()
-                    ? _balDataMeter.Reset(TGasPolicy.GetRemainingGas(intrinsicGas.FloorGas), tx.GasLimit)
+                    ? (_balDataMeter ??= new()).Reset(TGasPolicy.GetRemainingGas(intrinsicGas.FloorGas), tx.GasLimit)
                     : null,
             });
             // Top-level CREATE tx; the opcode-level CREATE/CREATE2 path bumps this counter from EvmInstructions.Create.
