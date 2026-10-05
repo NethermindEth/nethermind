@@ -21,15 +21,8 @@ public class SszRoundTripTests
     {
         SignedBeaconBlock original = CreateRepresentativeBlock();
 
-        byte[] encoded = SignedBeaconBlock.Encode(original);
-        SignedBeaconBlock.Decode(encoded, out SignedBeaconBlock decoded);
-        byte[] reEncoded = SignedBeaconBlock.Encode(decoded);
-        SignedBeaconBlock.Merkleize(original, out UInt256 originalRoot);
-        SignedBeaconBlock.Merkleize(decoded, out UInt256 decodedRoot);
-
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(reEncoded, Is.EqualTo(encoded));
-        Assert.That(decodedRoot, Is.EqualTo(originalRoot));
+        (SignedBeaconBlock decoded, UInt256 originalRoot) = GloasContainerTests.AssertRoundTrips(original);
         Assert.That(originalRoot, Is.Not.EqualTo(UInt256.Zero));
         Assert.That(decoded.Message!.Body!.ExecutionPayload!.Transactions, Has.Length.EqualTo(2));
         Assert.That(decoded.Message.Body.ExecutionPayload.Withdrawals, Has.Length.EqualTo(1));

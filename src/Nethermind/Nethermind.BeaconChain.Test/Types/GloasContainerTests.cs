@@ -277,7 +277,7 @@ public class GloasContainerTests
         Assert.That(root.ToString(), Is.EqualTo(expectedRootHex).IgnoreCase);
     }
 
-    private static void AssertRoundTrips<T>(T value) where T : class, ISszCodec<T>
+    internal static (T Decoded, UInt256 Root) AssertRoundTrips<T>(T value) where T : class, ISszCodec<T>
     {
         byte[] encoded = T.Encode(value);
         T.Decode(encoded, out T decoded);
@@ -288,6 +288,7 @@ public class GloasContainerTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(reEncoded, Is.EqualTo(encoded));
         Assert.That(decodedRoot, Is.EqualTo(originalRoot));
+        return (decoded, originalRoot);
     }
 
     private static byte[] Filled(int length, byte value) => Enumerable.Repeat(value, length).ToArray();
