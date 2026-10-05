@@ -53,13 +53,10 @@ public class CheckpointSync(
 
     /// <summary>Largest checkpoint body read, 1 GiB: about four times a mainnet state of hundreds of MB; an operational bound, not an SSZ limit.</summary>
     internal int MaxBodyBytes { get; init; } = 1024 * 1024 * 1024;
-
     /// <summary>Minimum average body rate after the grace period: 64 KiB/s. Prevents trickling within each stall timeout indefinitely; at this rate a 300 MB state takes about 80 minutes and the body limit takes about 4.6 hours.</summary>
     internal int MinThroughputBytesPerSecond { get; init; } = 64 * 1024;
-
     /// <summary>Time a response body may arrive below <see cref="MinThroughputBytesPerSecond"/> before the rate is enforced, for connection ramp-up.</summary>
     internal TimeSpan MinThroughputGrace { get; init; } = TimeSpan.FromSeconds(60);
-
     /// <summary>Total time allowed for a checkpoint response body, default five hours.</summary>
     internal TimeSpan BodyDownloadTimeout { get; init; } = TimeSpan.FromHours(5);
 
@@ -71,13 +68,10 @@ public class CheckpointSync(
 
     /// <summary>Attempts a checkpoint download gets before its last failure is thrown.</summary>
     internal int MaxDownloadAttempts { get; init; } = DefaultMaxDownloadAttempts;
-
     /// <summary>Delay after the first failed attempt; it doubles per attempt up to <see cref="MaxRetryDelay"/>.</summary>
     internal TimeSpan RetryBaseDelay { get; init; } = DefaultRetryBaseDelay;
-
     /// <summary>Pool the state bytes are read into; every array rented from it is returned, including those of a dropped attempt.</summary>
     internal ArrayPool<byte> BufferPool { get; init; } = ArrayPool<byte>.Shared;
-
     /// <summary>Bounds each response-body read. HttpClient.Timeout stops at headers with ResponseHeadersRead, so a mid-body stall needs this independent timeout.</summary>
     internal TimeSpan ReadStallTimeout { get; init; } = DefaultReadStallTimeout;
 

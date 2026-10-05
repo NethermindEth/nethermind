@@ -18,13 +18,10 @@ public sealed class LocalCustody
 {
     /// <summary>The discv5 node id every value here was derived from, exactly as it was supplied.</summary>
     public Hash256 NodeId { get; }
-
     /// <summary>The number of custody groups this node is responsible for.</summary>
     public ulong CustodyGroupCount { get; }
-
     /// <summary>The distinct, sorted custody groups this node is responsible for.</summary>
     public IReadOnlyList<ulong> CustodyGroups { get; }
-
     /// <summary>The distinct, sorted gossip subnets (<c>data_column_sidecar_{subnet_id}</c>) carrying this node's custodied columns.</summary>
     public IReadOnlyList<ulong> Subnets { get; }
 

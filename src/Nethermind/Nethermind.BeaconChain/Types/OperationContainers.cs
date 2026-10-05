@@ -12,11 +12,8 @@ namespace Nethermind.BeaconChain.Types;
 public partial class DepositData
 {
     public BlsPublicKey Pubkey { get; set; }
-
     public Hash256? WithdrawalCredentials { get; set; }
-
     public ulong Amount { get; set; }
-
     public BlsSignature Signature { get; set; }
 }
 
@@ -25,9 +22,7 @@ public partial class DepositData
 public partial class DepositMessage
 {
     public BlsPublicKey Pubkey { get; set; }
-
     public Hash256? WithdrawalCredentials { get; set; }
-
     public ulong Amount { get; set; }
 }
 
@@ -38,7 +33,6 @@ public partial class Deposit
     /// <remarks>Merkle path of length <c>DEPOSIT_CONTRACT_TREE_DEPTH + 1</c>.</remarks>
     [SszVector(33)]
     public Hash256[]? Proof { get; set; }
-
     public DepositData? Data { get; set; }
 }
 
@@ -47,7 +41,6 @@ public partial class Deposit
 public partial class VoluntaryExit
 {
     public ulong Epoch { get; set; }
-
     public ulong ValidatorIndex { get; set; }
 }
 
@@ -56,7 +49,6 @@ public partial class VoluntaryExit
 public partial class SignedVoluntaryExit
 {
     public VoluntaryExit? Message { get; set; }
-
     public BlsSignature Signature { get; set; }
 }
 
@@ -65,9 +57,7 @@ public partial class SignedVoluntaryExit
 public partial class BlsToExecutionChange
 {
     public ulong ValidatorIndex { get; set; }
-
     public BlsPublicKey FromBlsPubkey { get; set; }
-
     public Address? ToExecutionAddress { get; set; }
 }
 
@@ -76,6 +66,5 @@ public partial class BlsToExecutionChange
 public partial class SignedBlsToExecutionChange
 {
     public BlsToExecutionChange? Message { get; set; }
-
     public BlsSignature Signature { get; set; }
 }

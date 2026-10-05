@@ -54,7 +54,6 @@ public class EpochProcessingTests
 
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(EpochProcessingCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(EpochProcessingCase testCase) => Execute(testCase);
 

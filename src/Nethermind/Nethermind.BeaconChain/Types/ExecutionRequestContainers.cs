@@ -12,13 +12,9 @@ namespace Nethermind.BeaconChain.Types;
 public partial class DepositRequest
 {
     public BlsPublicKey Pubkey { get; set; }
-
     public Hash256? WithdrawalCredentials { get; set; }
-
     public ulong Amount { get; set; }
-
     public BlsSignature Signature { get; set; }
-
     public ulong Index { get; set; }
 }
 
@@ -27,9 +23,7 @@ public partial class DepositRequest
 public partial class WithdrawalRequest
 {
     public Address? SourceAddress { get; set; }
-
     public BlsPublicKey ValidatorPubkey { get; set; }
-
     public ulong Amount { get; set; }
 }
 
@@ -38,9 +32,7 @@ public partial class WithdrawalRequest
 public partial class ConsolidationRequest
 {
     public Address? SourceAddress { get; set; }
-
     public BlsPublicKey SourcePubkey { get; set; }
-
     public BlsPublicKey TargetPubkey { get; set; }
 }
 
@@ -50,10 +42,8 @@ public partial class ExecutionRequests
 {
     [SszList(8192)]
     public DepositRequest[]? Deposits { get; set; }
-
     [SszList(16)]
     public WithdrawalRequest[]? Withdrawals { get; set; }
-
     [SszList(2)]
     public ConsolidationRequest[]? Consolidations { get; set; }
 }
@@ -63,13 +53,9 @@ public partial class ExecutionRequests
 public partial class PendingDeposit
 {
     public BlsPublicKey Pubkey { get; set; }
-
     public Hash256? WithdrawalCredentials { get; set; }
-
     public ulong Amount { get; set; }
-
     public BlsSignature Signature { get; set; }
-
     public ulong Slot { get; set; }
 }
 
@@ -78,9 +64,7 @@ public partial class PendingDeposit
 public partial class PendingPartialWithdrawal
 {
     public ulong ValidatorIndex { get; set; }
-
     public ulong Amount { get; set; }
-
     public ulong WithdrawableEpoch { get; set; }
 }
 
@@ -89,6 +73,5 @@ public partial class PendingPartialWithdrawal
 public partial class PendingConsolidation
 {
     public ulong SourceIndex { get; set; }
-
     public ulong TargetIndex { get; set; }
 }

@@ -69,10 +69,8 @@ public sealed class ProtoArrayForkChoice
 
     /// <summary>The root receiving the proposer score boost in the next <see cref="GetHead"/> call; <see cref="Hash256.Zero"/> when no boost applies.</summary>
     public Hash256 ProposerBoostRoot { get; private set; } = Hash256.Zero;
-
     /// <summary>The number of nodes in the proto-array.</summary>
     public int Count => _protoArray.Nodes.Count;
-
     /// <summary>Every node in proto-array order (parents before children); a live view, valid only until the next mutation.</summary>
     public IReadOnlyList<ProtoNode> Nodes => _protoArray.Nodes;
 
@@ -151,7 +149,6 @@ public sealed class ProtoArrayForkChoice
 
     /// <summary>Boosts the block that arrived in time during the current slot; reset at the start of every slot.</summary>
     public void SetProposerBoostRoot(Hash256 proposerBoostRoot) => ProposerBoostRoot = proposerBoostRoot;
-
     public void ResetProposerBoostRoot() => ProposerBoostRoot = Hash256.Zero;
 
     /// <summary>Registers equivocating validators; their votes are deducted on the next <see cref="GetHead"/> and never counted again.</summary>
@@ -172,9 +169,7 @@ public sealed class ProtoArrayForkChoice
 
     /// <inheritdoc cref="ProtoArray.Prune"/>
     public void MaybePrune(Hash256 finalizedRoot) => _protoArray.Prune(finalizedRoot);
-
     public bool ContainsBlock(Hash256 blockRoot) => _protoArray.Indices.ContainsKey(blockRoot);
-
     /// <summary>The index of <paramref name="blockRoot"/> in <see cref="Nodes"/>, or <c>null</c> when the block is unknown.</summary>
     internal int? IndexOf(Hash256 blockRoot) => _protoArray.Indices.TryGetValue(blockRoot, out int index) ? index : null;
 
@@ -225,10 +220,8 @@ public sealed class ProtoArrayForkChoice
 
     /// <inheritdoc cref="ProtoArray.EnumerateAncestorNodes"/>
     public IEnumerable<ProtoNode> EnumerateAncestorNodes(Hash256 blockRoot) => _protoArray.EnumerateAncestorNodes(blockRoot);
-
     /// <inheritdoc cref="VoteTrackerList.LatestMessage"/>
     public (Hash256 BlockRoot, ulong TargetEpoch)? LatestMessage(ulong validatorIndex) => _votes.LatestMessage(validatorIndex);
-
     /// <inheritdoc cref="ProtoArray.IsDescendant"/>
     public bool IsDescendant(Hash256 ancestorRoot, Hash256 descendantRoot) => _protoArray.IsDescendant(ancestorRoot, descendantRoot);
 

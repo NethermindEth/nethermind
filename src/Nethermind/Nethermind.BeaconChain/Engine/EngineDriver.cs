@@ -37,17 +37,14 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
 
     /// <summary>Whether the most recent engine call returned a verdict.</summary>
     public bool IsAvailable => _isAvailable;
-
     /// <summary>How long a caller waits for a forkchoice update before it counts as unavailable.</summary>
     internal TimeSpan ForkchoiceTimeout { get; init; } = TimeSpan.FromSeconds(8);
-
     /// <summary>
     /// The block currently being run through the state transition; the orchestrator sets it before
     /// <see cref="StateTransition.StateTransition.Apply"/> so <see cref="NotifyNewPayload"/> can
     /// recover what the body alone does not carry — the EIP-4788 parent beacon block root.
     /// </summary>
     public SignedBeaconBlock? CurrentBlock { get; set; }
-
     /// <summary>
     /// Whether the execution layer has ever answered a <see cref="NewPayload(SignedBeaconBlock)"/>
     /// call, including one that failed in process.
@@ -57,7 +54,6 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// the execution layer returned a verdict.
     /// </remarks>
     public bool HasAnsweredNewPayload { get; private set; }
-
     /// <summary>The status returned by the most recent <see cref="ForkchoiceUpdated"/> call.</summary>
     public PayloadStatusV1? LastForkchoiceStatus { get; private set; }
 

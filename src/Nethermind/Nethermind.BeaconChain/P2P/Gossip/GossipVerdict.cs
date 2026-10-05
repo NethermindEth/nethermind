@@ -44,16 +44,12 @@ public sealed class GossipVerdict
 
     /// <summary>A verdict no router waits on that still runs <see cref="ReleaseOnThrottle"/>, for a message whose router verdict was given already.</summary>
     internal static GossipVerdict Local() => new(static _ => true, null, local: true);
-
     /// <summary>Whether the router's verdict for the message was given already, so a consumer runs no gossip rule for it.</summary>
     internal bool IsLocal => _local;
-
     /// <summary>Ends once the verdict is given or abandoned.</summary>
     internal Task Completion => _completion.Task;
-
     /// <summary>Whether the verdict was given or abandoned.</summary>
     public bool IsCompleted => Volatile.Read(ref _state) != Pending;
-
     /// <summary>Whether a consumer took the verdict over, so the code that handed it the message must not give one; once taken over it stays so.</summary>
     internal bool IsHandedOff => Volatile.Read(ref _handedOff) != 0;
 

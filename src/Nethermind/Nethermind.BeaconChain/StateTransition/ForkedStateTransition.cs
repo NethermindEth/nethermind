@@ -20,7 +20,6 @@ namespace Nethermind.BeaconChain.StateTransition;
 public abstract class ForkedBeaconState
 {
     private ForkedBeaconState() { }
-
     public abstract ulong Slot { get; }
     public abstract BeaconFork Fork { get; }
 
@@ -50,13 +49,9 @@ public abstract class ForkedBeaconState
 public abstract class ForkedSignedBeaconBlock
 {
     private ForkedSignedBeaconBlock() { }
-
     public abstract ulong Slot { get; }
-
     public abstract Hash256 ParentRoot { get; }
-
     public abstract ulong ProposerIndex { get; }
-
     /// <summary>Computes the block root: <c>hash_tree_root</c> of the unsigned <c>message</c>, never of the signed container.</summary>
     public abstract Hash256 ComputeMessageRoot();
 

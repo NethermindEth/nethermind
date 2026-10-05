@@ -15,7 +15,6 @@ public class OperationsTests
 {
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(OperationCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(OperationCase testCase) => Execute(testCase);
 

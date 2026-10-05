@@ -23,7 +23,6 @@ public class MerkleProofTests
 
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(MerkleProofCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(MerkleProofCase testCase) => Execute(testCase);
     [Test]

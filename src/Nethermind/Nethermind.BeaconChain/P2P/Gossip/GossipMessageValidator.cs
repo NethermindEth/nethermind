@@ -40,7 +40,6 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
     /// <summary>Whether a message on <paramref name="topic"/> is validated off the router's monitor: one on a topic this node handles under a digest in effect.</summary>
     /// <remarks>A message on any other topic is dropped by <see cref="Validate"/> without decoding, which may run under the monitor.</remarks>
     internal bool IsDeferred(string topic) => Route(topic, out _, out _, out _, out _) is null;
-
     /// <summary>Whether <paramref name="topic"/> is a <c>data_column_sidecar_{subnet_id}</c> topic.</summary>
     internal static bool IsColumn(string topic) => GossipTopics.TryParse(topic, out _, out string? name) && GossipTopics.TryParseDataColumnSidecarTopicName(name!, out _);
 

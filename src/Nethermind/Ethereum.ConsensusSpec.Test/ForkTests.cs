@@ -28,7 +28,6 @@ public class ForkTests
 
     [TestCaseSource(nameof(MinimalCases))]
     public void Fork(ForkCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Fork_mainnet(ForkCase testCase) => Execute(testCase);
     [Test]

@@ -1687,7 +1687,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     }
 
     public byte[]? GetMetadata(string key) => _metadata.Get(Encoding.UTF8.GetBytes(key));
-
     public void PutMetadata(string key, byte[] value) => _metadata.Set(Encoding.UTF8.GetBytes(key), value);
 
     /// <summary>Brings the database to <see cref="CurrentSchemaVersion"/>, or refuses one last written by a newer build.</summary>

@@ -14,7 +14,6 @@ public class GenesisTests
 
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(GenesisCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(GenesisCase testCase) => Execute(testCase);
     [Test]

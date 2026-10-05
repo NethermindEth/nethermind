@@ -254,7 +254,6 @@ public static class ReqRespFraming
 
         // phase0 p2p ssz_snappy: nothing past max_compressed_len(0) is read, so framing that fills the bound ends there.
         internal bool IsComplete => _sawDataFrame || _framedBytesRead >= MaxEmptyRequestFramingBytes;
-
         /// <summary>Whether the data frame ended the request short of the bound, so a further byte is invalid.</summary>
         internal bool ExpectsNoMoreBytes => _sawDataFrame && _framedBytesRead < MaxEmptyRequestFramingBytes;
 

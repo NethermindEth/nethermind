@@ -12,13 +12,9 @@ namespace Nethermind.BeaconChain.Types;
 public partial class AttestationData
 {
     public ulong Slot { get; set; }
-
     public ulong Index { get; set; }
-
     public Hash256? BeaconBlockRoot { get; set; }
-
     public Checkpoint? Source { get; set; }
-
     public Checkpoint? Target { get; set; }
 }
 
@@ -29,9 +25,7 @@ public partial class IndexedAttestation
     /// <remarks>Limit is <c>MAX_VALIDATORS_PER_COMMITTEE * MAX_COMMITTEES_PER_SLOT</c> (EIP-7549).</remarks>
     [SszList(131_072)]
     public ulong[]? AttestingIndices { get; set; }
-
     public AttestationData? Data { get; set; }
-
     public BlsSignature Signature { get; set; }
 }
 
@@ -41,11 +35,8 @@ public partial class Attestation
 {
     [SszList(131_072)]
     public BitArray? AggregationBits { get; set; }
-
     public AttestationData? Data { get; set; }
-
     public BlsSignature Signature { get; set; }
-
     [SszVector(64)]
     public BitArray? CommitteeBits { get; set; }
 }
@@ -55,7 +46,6 @@ public partial class Attestation
 public partial class AttesterSlashing
 {
     public IndexedAttestation? Attestation1 { get; set; }
-
     public IndexedAttestation? Attestation2 { get; set; }
 }
 
@@ -64,7 +54,6 @@ public partial class AttesterSlashing
 public partial class ProposerSlashing
 {
     public SignedBeaconBlockHeader? SignedHeader1 { get; set; }
-
     public SignedBeaconBlockHeader? SignedHeader2 { get; set; }
 }
 
@@ -73,9 +62,7 @@ public partial class ProposerSlashing
 public partial class AggregateAndProof
 {
     public ulong AggregatorIndex { get; set; }
-
     public Attestation? Aggregate { get; set; }
-
     public BlsSignature SelectionProof { get; set; }
 }
 
@@ -84,6 +71,5 @@ public partial class AggregateAndProof
 public partial class SignedAggregateAndProof
 {
     public AggregateAndProof? Message { get; set; }
-
     public BlsSignature Signature { get; set; }
 }

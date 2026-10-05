@@ -23,7 +23,6 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
     protected static readonly TimeSpan MaxBlocksResponseDuration = TimeSpan.FromSeconds(60);
 
     protected BeaconChainSpec Spec { get; } = spec;
-
     /// <summary>The context bytes of a block chunk: the fork digest of the block's slot epoch.</summary>
     protected byte[] ContextBytesFor(ForkedSignedBeaconBlock block) => ForkDigest.Compute(Spec, Spec.GetEpoch(block.Slot));
 

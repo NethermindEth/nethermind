@@ -37,13 +37,10 @@ public class PubkeyCache
     private readonly Lock _subgroupChecksSwap = new();
 
     public int Count { get; private set; }
-
     /// <summary>Called by <see cref="Extend"/> once the new keys are decoded, before it publishes them; lets a test place a warm-up there.</summary>
     internal Action? ExtensionDecoded { get; set; }
-
     /// <summary>Called by <see cref="Extend"/> inside the swap lock after copying the verdicts, before it publishes them; lets a test place a warm-up there.</summary>
     internal Action? ExtensionChecksCopied { get; set; }
-
     /// <summary>Called by <see cref="WarmSubgroupChecks"/> at the start of each pass over the verdicts it has read; lets a test extend the cache mid-pass.</summary>
     internal Action? WarmUpPassStarted { get; set; }
 

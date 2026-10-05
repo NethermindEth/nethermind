@@ -34,7 +34,6 @@ internal sealed class ReqRespTimeoutException(string message, Exception? cause =
 {
     /// <summary>The session never opened the request's channel, so the request never reached the peer.</summary>
     public bool ChannelNeverOpened { get; init; }
-
     /// <summary>No request of ours to any peer was answered while this one waited, so the silence is not held against the peer.</summary>
     public bool NotBlamed { get; set; }
 }
@@ -226,7 +225,6 @@ public abstract class ReqRespProtocolBase
 
     /// <summary>Receives the peer of an inbound request that broke the protocol after the listener began serving it, for the peer manager to score.</summary>
     internal Action<PeerId, string>? RequestViolationSink { get; init; }
-
     /// <summary>How long a served stream is held for the requester to end it, so a requester that never does cannot pin a listener for good.</summary>
     internal TimeSpan WatchLingerAfterServed { get; init; } = DefaultRespTimeout;
 
@@ -408,19 +406,15 @@ public abstract class ReqRespProtocolBase
 public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocolBase, ISessionProtocol<TRequest, TResponse>
 {
     public abstract string Id { get; }
-
     /// <summary>Maximum framed request size, or zero for a request without a payload.</summary>
     protected abstract int MaxRequestSize { get; }
     protected abstract int MaxResponseSize { get; }
     protected abstract byte[] EncodeRequest(TRequest request);
-
     /// <exception cref="Eth2ReqRespException">Malformed SSZ must use this exception type so ListenAsync normalizes failed exchanges.</exception>
     protected abstract TRequest DecodeRequest(byte[] ssz);
     protected abstract byte[] EncodeResponse(TResponse response);
-
     /// <exception cref="Eth2ReqRespException">Malformed SSZ must use this exception type so DialAsync normalizes failed exchanges.</exception>
     protected abstract TResponse DecodeResponse(byte[] ssz);
-
     /// <summary>Produces the listen-side response for a decoded request.</summary>
     protected abstract TResponse HandleRequest(TRequest request);
 

@@ -13,11 +13,8 @@ namespace Nethermind.BeaconChain.Types;
 public partial class Withdrawal
 {
     public ulong Index { get; set; }
-
     public ulong ValidatorIndex { get; set; }
-
     public Address? Address { get; set; }
-
     public ulong Amount { get; set; }
 }
 
@@ -34,39 +31,23 @@ public partial class Transaction
 public partial class ExecutionPayload
 {
     public Hash256? ParentHash { get; set; }
-
     public Address? FeeRecipient { get; set; }
-
     public Hash256? StateRoot { get; set; }
-
     public Hash256? ReceiptsRoot { get; set; }
-
     public Bloom? LogsBloom { get; set; }
-
     public Hash256? PrevRandao { get; set; }
-
     public ulong BlockNumber { get; set; }
-
     public ulong GasLimit { get; set; }
-
     public ulong GasUsed { get; set; }
-
     public ulong Timestamp { get; set; }
-
     [SszList(32)]
     public byte[]? ExtraData { get; set; }
-
     public UInt256 BaseFeePerGas { get; set; }
-
     public Hash256? BlockHash { get; set; }
-
     [SszList(1_048_576)]
     public Transaction[]? Transactions { get; set; }
-
     [SszList(16)]
     public Withdrawal[]? Withdrawals { get; set; }
-
     public ulong BlobGasUsed { get; set; }
-
     public ulong ExcessBlobGas { get; set; }
 }

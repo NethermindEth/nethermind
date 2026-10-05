@@ -91,7 +91,6 @@ internal sealed class PostStateCache(
     private BeaconStateGloas? _previousJustifiedState;
 
     public Hash256? LineageRoot { get; private set; } = lineageRoot;
-
     public BeaconStateFulu? LineageState { get; private set; } = lineageState;
 
     /// <summary>Replaces the lineage with a new (root, state) pair, e.g. after adopting a reorged head.</summary>

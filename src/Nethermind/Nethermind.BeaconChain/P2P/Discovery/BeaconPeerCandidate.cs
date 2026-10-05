@@ -15,10 +15,8 @@ public sealed record BeaconPeerCandidate(string Multiaddress, string PeerId, byt
 {
     /// <summary>The columns the record's node id and <c>cgc</c> entry custody (fulu/das-core.md <c>get_custody_groups</c>).</summary>
     public PeerColumnCustody Custody { get; init; } = PeerColumnCustody.None;
-
     /// <summary>Every TCP address the record advertises, IPv4 first; <see cref="Multiaddress"/> is the one selected to dial.</summary>
     internal IReadOnlyList<string> Addresses { get; init; } = [Multiaddress];
-
     /// <summary>How closely the record's fork schedule matches ours; higher is dialed first among equal custody and dial history.</summary>
     internal int ForkPreference { get; init; }
 }

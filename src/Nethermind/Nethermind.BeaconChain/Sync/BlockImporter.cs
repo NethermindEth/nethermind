@@ -204,9 +204,7 @@ public sealed class BlockImporter : IBlockImporter
 
     /// <summary>The block whose post-state a Fulu child imports onto without a state copy; for tests.</summary>
     internal Hash256? LineageRoot => _states.LineageRoot;
-
     private bool IsGloasBlock(Hash256 blockRoot) => _runner.GetBlockSlot(blockRoot) is ulong slot && SignedBeaconBlockCodec.IsGloasSlot(slot, _spec);
-
     private Hash256 GetJustifiedRoot() => _runner.JustifiedCheckpoint.Root;
 
     private IEnumerable<Hash256> AncestorRoots(Hash256 blockRoot)
@@ -1064,7 +1062,6 @@ public sealed class BlockImporter : IBlockImporter
     }
 
     private Hash256? CheckpointExecutionHash(Hash256 root) => GetParentBlockHash(root) ?? _runner.GetExecutionBlockHash(root);
-
     private Hash256? GetParentBlockHash(Hash256 root) => _runner.GetParentBlockHash(root) ?? (root == _gloasAnchorRoot ? _gloasAnchorParentBlockHash : null);
 
     /// <inheritdoc/>
@@ -1493,7 +1490,6 @@ public sealed class BlockImporter : IBlockImporter
 
         /// <summary>The verdict for this import, optimistic until the hook produces one.</summary>
         public ExecutionStatus Status { get; private set; } = ExecutionStatus.Optimistic;
-
         public Hash256? LatestValidHash { get; private set; }
 
         /// <summary>Obtains the verdict for <paramref name="body"/> ahead of the transition that will consume it.</summary>
