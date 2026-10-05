@@ -84,44 +84,6 @@ internal static partial class BeaconJsonWriter
 
     private static partial void WriteExecutionRequests(Utf8JsonWriter w, ExecutionRequests requests);
 
-    private static void WriteExecutionRequestLists(Utf8JsonWriter w, DepositRequest[] deposits, WithdrawalRequest[] withdrawals, ConsolidationRequest[] consolidations)
-    {
-        w.WriteStartArray("deposits");
-        foreach (DepositRequest deposit in deposits)
-        {
-            w.WriteStartObject();
-            WriteHex(w, "pubkey", deposit.Pubkey.Bytes);
-            WriteHex(w, "withdrawal_credentials", deposit.WithdrawalCredentials!.Bytes);
-            WriteUInt(w, "amount", deposit.Amount);
-            WriteHex(w, "signature", deposit.Signature.Bytes);
-            WriteUInt(w, "index", deposit.Index);
-            w.WriteEndObject();
-        }
-        w.WriteEndArray();
-
-        w.WriteStartArray("withdrawals");
-        foreach (WithdrawalRequest withdrawal in withdrawals)
-        {
-            w.WriteStartObject();
-            WriteHex(w, "source_address", withdrawal.SourceAddress!.Bytes);
-            WriteHex(w, "validator_pubkey", withdrawal.ValidatorPubkey.Bytes);
-            WriteUInt(w, "amount", withdrawal.Amount);
-            w.WriteEndObject();
-        }
-        w.WriteEndArray();
-
-        w.WriteStartArray("consolidations");
-        foreach (ConsolidationRequest consolidation in consolidations)
-        {
-            w.WriteStartObject();
-            WriteHex(w, "source_address", consolidation.SourceAddress!.Bytes);
-            WriteHex(w, "source_pubkey", consolidation.SourcePubkey.Bytes);
-            WriteHex(w, "target_pubkey", consolidation.TargetPubkey.Bytes);
-            w.WriteEndObject();
-        }
-        w.WriteEndArray();
-    }
-
     private static partial void WriteExecutionPayload(Utf8JsonWriter w, ExecutionPayload payload);
 
     /// <summary>Writes a Gloas signed execution payload envelope (consensus-specs v1.7.0-beta.2 gloas/beacon-chain.md <c>SignedExecutionPayloadEnvelope</c>).</summary>
