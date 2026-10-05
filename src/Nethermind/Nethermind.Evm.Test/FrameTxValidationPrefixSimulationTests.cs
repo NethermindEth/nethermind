@@ -359,7 +359,12 @@ public class FrameTxValidationPrefixSimulationTests
     // Matched on the reason, so an unrelated rule firing first cannot stand in for the target one.
     private void AssertPrefixCallTarget(Address target, bool violates, string reason = "disallowed target", Instruction call = Instruction.STATICCALL)
     {
-        Prepare prepare = call == Instruction.DELEGATECALL ? Prepare.EvmCode.DelegateCall(target, 50_000) : Prepare.EvmCode.StaticCall(target, 50_000);
+        Prepare prepare = call switch
+        {
+            Instruction.STATICCALL => Prepare.EvmCode.StaticCall(target, 50_000),
+            Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(target, 50_000),
+            _ => throw new ArgumentOutOfRangeException(nameof(call), call, null),
+        };
         byte[] code = prepare
             .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
