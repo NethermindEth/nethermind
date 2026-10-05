@@ -15,7 +15,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter
+public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
@@ -182,7 +182,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         txReceipt.EffectiveGasPrice = effectiveGasPrice;
         txReceipt.Sender = transaction.SenderAddress;
         txReceipt.ContractAddress = transaction.CreatesTopLevelContract ? recipient : null;
-        txReceipt.TxHash = transaction.Hash;
+        txReceipt.TxHash = ReceiptTxHash(transaction);
         txReceipt.PostTransactionState = stateRoot;
 
         // EIP-7778: execution-dimension block accounting introduces the
@@ -215,6 +215,9 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
         return txReceipt;
     }
+
+    /// <summary>The transaction hash a built receipt carries; <see langword="null"/> when the build does not populate it.</summary>
+    private static partial Hash256? ReceiptTxHash(Transaction transaction);
 
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
         _currentTxTracer.StartOperation(pc, opcode, gas, env);

@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -63,6 +64,9 @@ namespace Nethermind.Consensus.Processing
         {
             foreach (Transaction tx in txs)
             {
+                if (tx.SupportsFrames && !FrameTxSignatureValidator.Secp256k1SignersRecovered(tx))
+                    return false;
+
                 if (!tx.IsSigned)
                     continue;
 
@@ -217,6 +221,7 @@ namespace Nethermind.Consensus.Processing
             _ = tx.Hash;
             tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !releaseSpec.ValidateChainId);
             RecoverAuthorities(tx, releaseSpec);
+            if (tx.SupportsFrames) FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ecdsa);
             if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
         }
 
