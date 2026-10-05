@@ -116,6 +116,7 @@ public class CheckpointSyncTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(anchor.State, Is.TypeOf<ForkedBeaconState.OfGloas>());
+        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.GenesisValidatorsRoot), Is.Null);
         Assert.That(anchor.BlockRoot, Is.EqualTo(first.Root), "the root derived from the Gloas state's latest header");
         Assert.That(anchor.StateRoot, Is.EqualTo(SszRoots.HashTreeRoot(first.PostState)));
         Assert.That(anchor.Block, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
@@ -196,20 +197,6 @@ public class CheckpointSyncTests
         Assert.That(store.TryGetState(first.Root, out _), Is.False);
         Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
         Assert.That(store.GetMetadata(BeaconChainMetadataKeys.CheckpointSyncAnchor), Is.Null);
-    }
-
-    [Test]
-    public async Task A_gloas_checkpoint_writes_no_unread_genesis_validators_root_metadata()
-    {
-        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(ForkCrossingChain.Instance.First.PostState, new ForkedSignedBeaconBlock.OfGloas(ForkCrossingChain.Instance.First.Block));
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
-
-        using (CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance))
-        {
-            await sync.RunAsync(CancellationToken.None);
-        }
-
-        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.GenesisValidatorsRoot), Is.Null);
     }
 
     [Test]
