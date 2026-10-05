@@ -66,21 +66,14 @@ public class BatchSignatureVerifierTests
     {
         // Swapped same-message signatures cancel in an unrandomized batch: exponents (sk2-sk1)+(sk1-sk2)=0.
         byte[] message = Msg(0xAB);
-        Bls.SecretKey sk1 = DeriveKey(1);
-        Bls.SecretKey sk2 = DeriveKey(2);
-        byte[] pk1 = CompressedPubkey(sk1);
-        byte[] pk2 = CompressedPubkey(sk2);
-        byte[] sig1 = Sign(sk1, message);
-        byte[] sig2 = Sign(sk2, message);
-
-        Assert.That(BlsSignatureSet.TryCreate(pk2, message, sig1, out BlsSignatureSet? set1), Is.True);
-        Assert.That(BlsSignatureSet.TryCreate(pk1, message, sig2, out BlsSignatureSet? set2), Is.True);
-        List<BlsSignatureSet> sets = [set1!, set2!];
+        BlsSignatureSet set1 = MakeMismatchedSet(1, message, 2);
+        BlsSignatureSet set2 = MakeMismatchedSet(2, message, 1);
+        List<BlsSignatureSet> sets = [set1, set2];
 
 
         Bls.Pairing naive = new(hashOrEncode: true, BatchSignatureVerifier.Cryptosuite);
-        naive.Aggregate(set1!.PublicKey, set1.Signature, set1.Message);
-        naive.Aggregate(set2!.PublicKey, set2.Signature, set2.Message);
+        naive.Aggregate(set1.PublicKey, set1.Signature, set1.Message);
+        naive.Aggregate(set2.PublicKey, set2.Signature, set2.Message);
         naive.Commit();
         Assert.That(naive.FinalVerify(), Is.True, "the crafted pair must cancel exactly when unrandomized");
 
