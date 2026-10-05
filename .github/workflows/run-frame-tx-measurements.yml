@@ -33,11 +33,10 @@ on:
         type: string
         default: c2-standard-8
 
-# Deliberate: no github.ref in the group, so dispatches never overlap; don't "fix" to the repo default.
-# A third dispatch replaces the pending second one, so dispatch one at a time and wait for it to finish.
-# The runner pool is shared with other benchmarks: keep each suite short, and never re-dispatch after a cancel.
+# Measurement branch only: one group per ref and machine type, so a treatment and its control run at the
+# same time on separate VMs. A second dispatch of the same pair still waits.
 concurrency:
-  group: ${{ github.workflow }}
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ inputs.machine_type }}
   cancel-in-progress: false
 
 permissions:
