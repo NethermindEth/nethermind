@@ -469,12 +469,12 @@ public class SszGeneratorDiagnosticTest
             }
             namespace Nethermind.BeaconChain.Types
             {
-                public class Deposit { public Nethermind.Core.Crypto.Hash256[] Proof { get; set; } = [new()]; }
+                public class ArrayEntry { public Nethermind.Core.Crypto.Hash256[] Proof { get; set; } = [new()]; }
                 public class Item
                 {
                     public ulong First { get; set; }
                     public ulong Second { get; set; }
-                    public Deposit[] Deposits { get; set; } = [new()];
+                    public ArrayEntry[] Deposits { get; set; } = [new()];
                 }
             }
             namespace Nethermind.BeaconChain.Api.Common
@@ -483,7 +483,7 @@ public class SszGeneratorDiagnosticTest
                 {
                     public static void Before() { }
                     public static partial void WriteItem(Utf8JsonWriter w, Nethermind.BeaconChain.Types.Item item);
-                    private static partial void WriteDeposits(Utf8JsonWriter w, Nethermind.BeaconChain.Types.Deposit[] deposits);
+                    private static partial void WriteDeposits(Utf8JsonWriter w, Nethermind.BeaconChain.Types.ArrayEntry[] itemArrayEntry);
                     public static void After() { }
                     private static void WriteHexValue(Utf8JsonWriter w, byte[] value) => w.WriteStringValue(System.Convert.ToHexString(value));
                     private static void WriteUInt(Utf8JsonWriter w, string name, ulong value) => w.WriteString(name, value.ToString());
@@ -494,7 +494,7 @@ public class SszGeneratorDiagnosticTest
         CSharpCompilation input = CSharpCompilation.Create("JsonShapeContract", [CSharpSyntaxTree.ParseText(source)],
             BuildMetadataReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         GeneratorDriver driver = CSharpGeneratorDriver.Create([CreateSszGenerator("BeaconJsonShapeGenerator").AsSourceGenerator()],
-            additionalTexts: [new JsonSchema("Deposit Proof=proof\nItem " + fields + "\nmethod public WriteItem Item item - object\nmethod private WriteDeposits Deposit deposits deposits array")]);
+            additionalTexts: [new JsonSchema("ArrayEntry Proof=proof\nItem " + fields + "\nmethod public WriteItem Item item - object\nmethod private WriteDeposits ArrayEntry itemArrayEntry deposits array")]);
         driver = driver.RunGeneratorsAndUpdateCompilation(input, out Compilation output, out _);
         string generated = driver.GetRunResult().Results[0].GeneratedSources[0].SourceText.ToString();
         if (reversed)
