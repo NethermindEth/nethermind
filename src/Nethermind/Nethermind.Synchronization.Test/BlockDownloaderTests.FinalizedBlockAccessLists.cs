@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -34,24 +37,9 @@ public partial class BlockDownloaderTests
     [TestCase(true, false, true)]
     public async Task Finalized_catchup_downloads_retained_receipts_before_suggestion(bool missingBal, bool missingReceipts, bool truncated)
     {
-        IForwardHeaderProvider headers = Substitute.For<IForwardHeaderProvider>();
-        IBeaconSyncStrategy beacon = Substitute.For<IBeaconSyncStrategy>();
-        IHistoryPruner history = Substitute.For<IHistoryPruner>();
-        byte[] bal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
-        SyncConfig config = new() { ReconstructFinalizedStateFromBlockAccessLists = true };
-        await using IContainer node = CreateMergeNode(builder => builder
-            .AddSingleton<IForwardHeaderProvider>(headers)
-            .AddSingleton<IBeaconSyncStrategy>(beacon)
-            .AddSingleton<IHistoryPruner>(history)
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance)), config);
-        Context ctx = node.Resolve<Context>();
-        BlockHeader parent = ctx.BlockTree.Genesis!;
-        TxReceipt[] receipts = [new TxReceipt { StatusCode = 1, GasUsedTotal = 21000, Bloom = Bloom.Empty, Logs = [] }];
-        Hash256 receiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, Amsterdam.Instance, null);
-        Block block = Build.A.Block.WithParent(new Block(parent))
-            .WithDifficulty(0).WithStateRoot(TestItem.KeccakC).WithBlockAccessListHash(Keccak.Compute(bal))
-            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).WithReceiptsRoot(receiptsRoot).TestObject;
-        ctx.BlockTree.Insert(block.Header, BlockTreeInsertHeaderOptions.BeaconHeaderInsert);
+        await using CatchUp catchUp = CreateCatchUp(1);
+        (Context ctx, Block block, TxReceipt[] receipts, byte[] bal, BlockDownloader downloader, PeerInfo peer) =
+            (catchUp.Ctx, catchUp.Blocks[0], catchUp.Receipts, catchUp.Bal, catchUp.Downloader, catchUp.Peer);
         bool suggested = false;
         bool receiptsAtSuggestion = false;
         ctx.BlockTree.NewBestSuggestedBlock += (_, args) =>
@@ -60,13 +48,6 @@ public partial class BlockDownloaderTests
             suggested = true;
             receiptsAtSuggestion = ctx.ReceiptStorage.HasBlock(block.Number, block.Hash!);
         };
-        beacon.MergeTransitionFinished.Returns(true);
-        beacon.GetFinalizedHash().Returns(block.Hash);
-        headers.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(new ArrayPoolList<BlockHeader?>(2) { parent, block.Header }));
-        BlockDownloader downloader = (BlockDownloader)ctx.FullSyncFeedComponent.BlockDownloader;
-        PeerInfo peer = new(Substitute.For<ISyncPeer>());
-        peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
 
         BlocksRequest bodyRequest = (await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
         bodyRequest.OwnedBodies = new OwnedBlockBodies([block.Body]);
@@ -122,5 +103,102 @@ public partial class BlockDownloaderTests
             Assert.That(suggested, Is.True);
             Assert.That(receiptsAtSuggestion, Is.EqualTo(!missingBal && !missingReceipts));
         }
+    }
+
+    [Test]
+    public async Task Finalized_catchup_keeps_requesting_data_cut_short_by_peer_limits()
+    {
+        const int blockCount = 4;
+        await using CatchUp catchUp = CreateCatchUp(blockCount);
+        BlocksRequest request = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        request.OwnedBodies = new OwnedBlockBodies([.. catchUp.Blocks.Select(static b => b.Body)]);
+        catchUp.Downloader.HandleResponse(request, catchUp.Peer);
+
+        // Every reply serves only its first entry, so the last block is cut short more often than the retry limit.
+        List<ulong> servedAccessLists = [];
+        List<ulong> servedReceipts = [];
+        for (int round = 0; round < 4 * blockCount; round++)
+        {
+            BlocksRequest? next = await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+            if (next is null) break;
+            if (next.BlockAccessListsRequests.Count > 0)
+            {
+                servedAccessLists.Add(next.BlockAccessListsRequests[0].Number);
+                next.BlockAccessLists = BuildBlockAccessLists(catchUp.Bal);
+            }
+            if (next.ReceiptsRequests.Count > 0)
+            {
+                servedReceipts.Add(next.ReceiptsRequests[0].Number);
+                next.Receipts = new ArrayPoolList<TxReceipt[]?>(1) { catchUp.Receipts };
+            }
+            catchUp.Downloader.HandleResponse(next, catchUp.Peer);
+        }
+
+        ulong[] all = [.. catchUp.Blocks.Select(static b => b.Number)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(servedAccessLists, Is.EqualTo(all));
+            Assert.That(servedReceipts, Is.EqualTo(all));
+        }
+    }
+
+    /// <summary>Creates a node whose finalized beacon chain holds <paramref name="blockCount"/> blocks awaiting catch-up.</summary>
+    private CatchUp CreateCatchUp(int blockCount)
+    {
+        IForwardHeaderProvider headers = Substitute.For<IForwardHeaderProvider>();
+        IBeaconSyncStrategy beacon = Substitute.For<IBeaconSyncStrategy>();
+        byte[] bal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        IContainer node = CreateMergeNode(builder => builder
+            .AddSingleton<IForwardHeaderProvider>(headers)
+            .AddSingleton<IBeaconSyncStrategy>(beacon)
+            .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance)),
+            new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = true });
+        Context ctx = node.Resolve<Context>();
+        TxReceipt[] receipts = [new TxReceipt { StatusCode = 1, GasUsedTotal = 21000, Bloom = Bloom.Empty, Logs = [] }];
+        Hash256 receiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, Amsterdam.Instance, null);
+        Block[] blocks = new Block[blockCount];
+        Block parent = new(ctx.BlockTree.Genesis!);
+        for (int i = 0; i < blockCount; i++)
+        {
+            parent = blocks[i] = Build.A.Block.WithParent(parent)
+                .WithDifficulty(0).WithStateRoot(TestItem.KeccakC).WithBlockAccessListHash(Keccak.Compute(bal))
+                .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).WithReceiptsRoot(receiptsRoot).TestObject;
+            ctx.BlockTree.Insert(parent.Header, BlockTreeInsertHeaderOptions.BeaconHeaderInsert);
+        }
+
+        ulong suggestedUpTo = 0;
+        ctx.BlockTree.NewBestSuggestedBlock += (_, args) => suggestedUpTo = args.Block.Number;
+        beacon.MergeTransitionFinished.Returns(true);
+        beacon.GetFinalizedHash().Returns(blocks[^1].Hash);
+        headers.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(new ArrayPoolList<BlockHeader?>(blockCount + 1,
+                blocks.Select(static b => b.Header).Prepend(ctx.BlockTree.Genesis!)
+                    .SkipWhile(h => h.Number < suggestedUpTo))));
+        return new CatchUp(node, blocks, receipts, bal);
+    }
+
+    private sealed class CatchUp : IAsyncDisposable
+    {
+        private readonly IContainer _node;
+        public Context Ctx { get; }
+        public Block[] Blocks { get; }
+        public TxReceipt[] Receipts { get; }
+        public byte[] Bal { get; }
+        public BlockDownloader Downloader { get; }
+        public PeerInfo Peer { get; } = new(Substitute.For<ISyncPeer>());
+
+        public CatchUp(IContainer node, Block[] blocks, TxReceipt[] receipts, byte[] bal)
+        {
+            _node = node;
+            Ctx = node.Resolve<Context>();
+            Blocks = blocks;
+            Receipts = receipts;
+            Bal = bal;
+            Downloader = (BlockDownloader)Ctx.FullSyncFeedComponent.BlockDownloader;
+            Peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
+        }
+
+        public ValueTask DisposeAsync() => _node.DisposeAsync();
     }
 }

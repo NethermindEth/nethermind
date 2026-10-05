@@ -511,9 +511,11 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if ((response.Receipts?.Count ?? 0) <= i)
+                int receiptsServed = response.Receipts?.Count ?? 0;
+                if (receiptsServed <= i)
                 {
-                    entry.RecordMissingReceipt();
+                    // A non-empty reply cut short by the peer's size limit is not evidence the data is missing.
+                    if (receiptsServed == 0) entry.RecordMissingReceipt();
                     entry.RetryReceiptRequest();
                     continue;
                 }
@@ -599,14 +601,15 @@ namespace Nethermind.Synchronization.Blocks
             PeerInfo? peer,
             ref SyncResponseHandlingResult result)
         {
-            if ((blockAccessLists?.Count ?? 0) <= index)
+            int served = blockAccessLists?.Count ?? 0;
+            if (served <= index)
             {
                 if (unsupportedBlockAccessListsPeer)
                 {
                     result = SyncResponseHandlingResult.LesserQuality;
                 }
 
-                entry.RecordMissingAccessList();
+                if (served == 0) entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
                 return false;
             }
