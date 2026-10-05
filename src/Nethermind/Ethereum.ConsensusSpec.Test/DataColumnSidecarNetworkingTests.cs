@@ -269,22 +269,10 @@ public class DataColumnSidecarNetworkingTests
     }
 
     // get_domain(state, DOMAIN_BEACON_PROPOSER, epoch) reads the anchor state's fork and genesis_validators_root, not the config's.
-    private static BeaconChainSpec WithAnchorDomain(BeaconChainSpec spec, BeaconStateFulu anchor) => new()
+    private static BeaconChainSpec WithAnchorDomain(BeaconChainSpec spec, BeaconStateFulu anchor) => spec with
     {
-        ChainId = spec.ChainId,
-        CheckpointSyncUrl = spec.CheckpointSyncUrl,
-        SecondsPerSlot = spec.SecondsPerSlot,
-        SlotsPerEpoch = spec.SlotsPerEpoch,
-        GenesisTime = spec.GenesisTime,
         GenesisValidatorsRoot = anchor.GenesisValidatorsRoot!,
         Forks = [new(anchor.Fork!.PreviousVersion!, 0), new(anchor.Fork.CurrentVersion!, anchor.Fork.Epoch)],
-        BlobSchedule = spec.BlobSchedule,
-        ElectraForkEpoch = spec.ElectraForkEpoch,
-        FuluForkEpoch = spec.FuluForkEpoch,
-        MaxBlobsPerBlockElectra = spec.MaxBlobsPerBlockElectra,
-        GloasForkEpoch = spec.GloasForkEpoch,
-        GloasForkVersion = spec.GloasForkVersion,
-        Bootnodes = spec.Bootnodes,
     };
 
     private static bool IsSynchronousVerdict(string fork, string reason, ColumnVerdict verdict) =>
