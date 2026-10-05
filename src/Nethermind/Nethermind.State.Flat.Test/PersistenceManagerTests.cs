@@ -658,6 +658,142 @@ public class PersistenceManagerTests
         toPersist?.Dispose();
     }
 
+    [TestCase(0UL, 40UL, false, TestName = "DetermineSnapshotAction_ByteBudgetDisabled_FinalizedBelowFloor_ReturnsNull")]
+    [TestCase(1UL, 40UL, false, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedBelowFloor_ReturnsNull")]
+    [TestCase(1UL, 79UL, false, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedOneBelowFloor_ReturnsNull")]
+    [TestCase(1UL, 80UL, true, TestName = "DetermineSnapshotAction_OverByteBudget_FinalizedAtFloor_Persists")]
+    public void DetermineSnapshotAction_ByteBudget_FinalizedTriggerKeepsMinReorgDepth(ulong byteBudget, ulong latestBlock, bool expectPersist)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget, enableLongFinality: false);
+
+        StateId target = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(Block0, target, compacted: true);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.GreaterThan(0));
+
+        (_, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        AssertPersistKeepsMinReorgDepth(toPersist, latestBlock, expectPersist);
+    }
+
+    private static void AssertPersistKeepsMinReorgDepth(Snapshot? toPersist, ulong latestBlock, bool expectPersist)
+    {
+        Assert.That(toPersist is not null, Is.EqualTo(expectPersist));
+        if (toPersist is not null)
+        {
+            Assert.That(latestBlock - toPersist.To.BlockNumber, Is.GreaterThanOrEqualTo(ByteBudgetMinReorgDepth));
+            toPersist.Dispose();
+        }
+    }
+
+    private const ulong ByteBudgetMinReorgDepth = 64;
+
+    private PersistenceManager CreateByteBudgetManager(ulong byteBudget, bool enableLongFinality, int maxInMemoryBaseSnapshotCount = 160)
+    {
+        _config.MinReorgDepth = ByteBudgetMinReorgDepth;
+        _config.EnableLongFinality = enableLongFinality;
+        _config.MaxInMemoryBaseSnapshotCount = maxInMemoryBaseSnapshotCount;
+        _config.MaxInMemorySnapshotBytes = byteBudget;
+
+        _persistenceManager.Dispose();
+        _tier.Dispose();
+        _tier = new FlatTestContainer(_config, finalizedStateProvider: _finalizedStateProvider, configure: builder => builder
+            .AddSingleton(_persistence)
+            .AddSingleton(_persistedSnapshotCompactor));
+        _snapshotRepository = _tier.Repository;
+        _persistenceManager = (PersistenceManager)_tier.Resolve<IPersistenceManager>();
+        return _persistenceManager;
+    }
+
+    [TestCase(0, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_AboveInMemoryFloor_PrefersConversion")]
+    [TestCase(1, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_AtInMemoryFloor_KeepsWindowAndPersists")]
+    public void DetermineSnapshotAction_FinalityStalled_OverByteBudget_ConversionRespectsInMemoryFloor(int maxInMemoryBaseSnapshotCount, bool expectConversion)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 1, enableLongFinality: true, maxInMemoryBaseSnapshotCount);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+
+        (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(100));
+
+        Assert.That(toConvert is not null, Is.EqualTo(expectConversion));
+        AssertPersistKeepsMinReorgDepth(toPersist, 100, !expectConversion);
+        toConvert?.Compacted?.Dispose();
+        toConvert?.Base?.Dispose();
+    }
+
+    [TestCase(0UL, 100UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_NoByteBudget_ReturnsNull")]
+    [TestCase(1UL, 100UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_ForcesPersistAboveFloor")]
+    [TestCase(1UL, 50UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsBelowMinReorgDepth")]
+    [TestCase(1UL, 65UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsAfterFold")]
+    [TestCase(1UL, 79UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsOneBelowBoundary")]
+    [TestCase(1UL, 80UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_PersistsAtBoundary")]
+    [TestCase(1UL, 80UL, false, 79UL, TestName = "DetermineSnapshotAction_OverByteBudget_QueuedHeightAboveCommittedHead_KeepsFloor")]
+    [TestCase(1UL, 81UL, true, 80UL, TestName = "DetermineSnapshotAction_OverByteBudget_QueuedHeightAboveCommittedHead_PersistsAtFloor")]
+    public void DetermineSnapshotAction_ByteBudget_ForcesBackstopWhenFinalityStalled(ulong byteBudget, ulong latestBlock, bool expectPersist, ulong? committedBlock = null)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget, enableLongFinality: false);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+        if (committedBlock is { } headBlock)
+        {
+            StateId head = CreateStateId(headBlock);
+            CreateSnapshot(tierTip, head);
+            _snapshotRepository.SetLastCommittedStateId(head);
+        }
+        string leasesBefore = expected.ToString();
+
+        (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        Assert.That(toConvert, Is.Null);
+        AssertPersistKeepsMinReorgDepth(toPersist, committedBlock ?? latestBlock, expectPersist);
+        Assert.That(expected.ToString(), Is.EqualTo(leasesBefore), "a rejected or returned candidate must not keep a lease");
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_FinalityStalled_OverByteBudget_NeverPersistsPersistedTierCandidate()
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 1, enableLongFinality: true);
+
+        StateId persistedTierTip = CreateStateId(16);
+        PersistBase(Block0, persistedTierTip);
+        using Snapshot inMemory = CreateSnapshot(persistedTierTip, CreateStateId(32), compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+        Assert.That(_snapshotRepository.TryLeaseBasePersistedSnapshot(persistedTierTip, out PersistedSnapshot? persistedTierSnapshot), Is.True);
+        string leasesBefore = persistedTierSnapshot!.ToString();
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(100));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert, Is.Null);
+            Assert.That(persistedTierSnapshot.ToString(), Is.EqualTo(leasesBefore), "the rejected persisted-tier candidate must be released");
+        }
+
+        persistedToPersist?.Dispose();
+        toPersist?.Dispose();
+        persistedTierSnapshot.Dispose();
+    }
+
+    [Test]
+    public void SnapshotRepository_InMemoryBytes_ReturnsToZeroAfterRemove([Values] bool compacted)
+    {
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.EqualTo(0));
+
+        Snapshot snapshot = CreateSnapshot(Block0, CreateStateId(1), compacted);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.GreaterThan(0));
+
+        _snapshotRepository.RemoveAndReleaseInMemoryKnownState(snapshot.To, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.EqualTo(0));
+    }
+
     [Test]
     public void DetermineSnapshotAction_FinalizedGatePassesButSeedMissing_BackstopStillForcesPersist()
     {
