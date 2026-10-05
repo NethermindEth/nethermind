@@ -42,15 +42,18 @@ public class DataColumnSidecarsByRangeReadFailureTests
         Assert.That(InvalidMessageCount(protocol), Is.EqualTo(invalidBefore), "a failing store is not the requester's fault");
     }
 
-    [Test]
-    public async Task Columns_read_before_the_failing_one_are_still_sent_ahead_of_the_error(CancellationToken token)
+    [TestCase(2, 4UL, new ulong[] { Column }, new byte[] { ReqRespFraming.ResponseCode.Success, ReqRespFraming.ResponseCode.Success, ReqRespFraming.ResponseCode.ServerError }, null,
+        TestName = "Columns_read_before_the_failing_one_are_still_sent_ahead_of_the_error")]
+    [TestCase(1, 1UL, new ulong[] { Column, Column + 1 }, new byte[] { ReqRespFraming.ResponseCode.ServerError }, "the first column is held in memory, but the block is not sent in part",
+        TestName = "A_block_with_an_unreadable_column_sends_none_of_its_columns")]
+    public async Task Warm_columns_are_served_only_in_complete_blocks(int warmSlots, ulong count, ulong[] columns, byte[] expected, string? message, CancellationToken token)
     {
-        (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, _, _) = ServerWithStoredColumns(gloas: false, warmSlots: 2);
+        (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, _, _) = ServerWithStoredColumns(gloas: false, warmSlots: warmSlots, stored: columns);
         db.FailReads = true;
 
-        List<ResponseChunk> chunks = await RequestAsync(protocol, First, 4, token);
+        List<ResponseChunk> chunks = await RequestAsync(protocol, First, count, token, columns: columns);
 
-        Assert.That(chunks.ConvertAll(static c => c.Result), Is.EqualTo(new[] { ReqRespFraming.ResponseCode.Success, ReqRespFraming.ResponseCode.Success, ReqRespFraming.ResponseCode.ServerError }));
+        Assert.That(chunks.ConvertAll(static c => c.Result), Is.EqualTo(expected), message);
     }
 
     [Test]
@@ -63,28 +66,19 @@ public class DataColumnSidecarsByRangeReadFailureTests
         Assert.That(chunks, Is.Empty, "a column this node does not custody is not part of the reply");
     }
 
-    [Test]
-    public async Task A_column_that_cannot_be_read_below_the_floor_is_omitted_without_an_error(CancellationToken token)
+    [TestCase(Last + 1, new byte[0], "test setup: every requested slot is below the floor", "below the floor a shorter reply is allowed",
+        TestName = "A_column_that_cannot_be_read_below_the_floor_is_omitted_without_an_error")]
+    [TestCase(Last, new byte[] { ReqRespFraming.ResponseCode.ServerError }, "test setup: the last requested slot is the floor", "the floor slot is complete, so its column is not skipped",
+        TestName = "A_column_that_cannot_be_read_at_the_floor_slot_ends_the_reply_with_a_server_error")]
+    public async Task Unreadable_columns_are_skipped_only_below_the_floor(ulong floor, byte[] expected, string setupMessage, string message, CancellationToken token)
     {
-        (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, DataColumnSidecarPool pool, _) = ServerWithStoredColumns(gloas: false, floor: Last + 1);
-        Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(Last + 1), "test setup: every requested slot is below the floor");
+        (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, DataColumnSidecarPool pool, _) = ServerWithStoredColumns(gloas: false, floor: floor);
+        Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(floor), setupMessage);
         db.FailReads = true;
 
         List<ResponseChunk> chunks = await RequestAsync(protocol, First, 4, token);
 
-        Assert.That(chunks, Is.Empty, "below the floor a shorter reply is allowed");
-    }
-
-    [Test]
-    public async Task A_column_that_cannot_be_read_at_the_floor_slot_ends_the_reply_with_a_server_error(CancellationToken token)
-    {
-        (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, DataColumnSidecarPool pool, _) = ServerWithStoredColumns(gloas: false, floor: Last);
-        Assert.That(pool.EarliestCompletelyServableSlot, Is.EqualTo(Last), "test setup: the last requested slot is the floor");
-        db.FailReads = true;
-
-        List<ResponseChunk> chunks = await RequestAsync(protocol, First, 4, token);
-
-        Assert.That(chunks.ConvertAll(static c => c.Result), Is.EqualTo(new[] { ReqRespFraming.ResponseCode.ServerError }), "the floor slot is complete, so its column is not skipped");
+        Assert.That(chunks.ConvertAll(static c => c.Result), Is.EqualTo(expected), message);
     }
 
     [Test]
@@ -109,17 +103,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
         List<ResponseChunk> chunks = await RequestAsync(protocol, First, 1, token);
 
         Assert.That(chunks.ConvertAll(static c => c.Result), Is.EqualTo(new[] { ReqRespFraming.ResponseCode.Success }), "the column arrived while the reply was being built");
-    }
-
-    [Test]
-    public async Task A_block_with_an_unreadable_column_sends_none_of_its_columns(CancellationToken token)
-    {
-        (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, _, _) = ServerWithStoredColumns(gloas: false, warmSlots: 1, stored: [Column, Column + 1]);
-        db.FailReads = true;
-
-        List<ResponseChunk> chunks = await RequestAsync(protocol, First, 1, token, columns: [Column, Column + 1]);
-
-        Assert.That(chunks.ConvertAll(static c => c.Result), Is.EqualTo(new[] { ReqRespFraming.ResponseCode.ServerError }), "the first column is held in memory, but the block is not sent in part");
     }
 
     [Test]
