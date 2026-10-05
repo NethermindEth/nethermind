@@ -26,6 +26,16 @@ public record GethTraceOptions
 
     public bool DisableStack { get; init; }
 
+    /// <summary>
+    /// Byte budget for opcode logs. Buffered traces use a conservative estimate; streamed traces count emitted bytes.
+    /// Zero is unlimited; a negative value suppresses all logs.
+    /// The entry that exceeds the budget is included. Execution and named tracers are unaffected.
+    /// </summary>
+    /// <remarks>Buffered traces can stop earlier than Geth or streamed traces, especially for repeated storage accesses
+    /// and small stack values. Storage updates are counted without tracking distinct slots for the estimate.</remarks>
+    [JsonConverter(typeof(LimitConverter))]
+    public long Limit { get; init; }
+
     [JsonConverter(typeof(CustomTimeDurationConverter))]
     public TimeSpan? Timeout { get; init; }
 
@@ -59,4 +69,23 @@ public record GethTraceOptions
     public bool? StreamMode { get; init; }
 
     public static GethTraceOptions Default => new();
+
+    /// <summary>
+    /// Reads a signed JSON integer or null for the opcode logger byte limit.
+    /// </summary>
+    public sealed class LimitConverter : JsonConverter<long>
+    {
+        /// <inheritdoc/>
+        public override long Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            reader.TokenType switch
+            {
+                JsonTokenType.Null => 0,
+                JsonTokenType.Number when reader.TryGetInt64(out long limit) => limit,
+                _ => throw new JsonException("Trace limit must be a 64-bit integer.")
+            };
+
+        /// <inheritdoc/>
+        public override void Write(Utf8JsonWriter writer, long value, JsonSerializerOptions options) =>
+            writer.WriteNumberValue(value);
+    }
 }
