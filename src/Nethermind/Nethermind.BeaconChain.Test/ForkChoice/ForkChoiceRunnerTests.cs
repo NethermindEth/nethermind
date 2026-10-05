@@ -1176,14 +1176,7 @@ public class ForkChoiceRunnerTests
         {
             AggregationBits = new System.Collections.BitArray(Bound + 1, true),
             CommitteeBits = new System.Collections.BitArray(Presets.MaxCommitteesPerSlot, true),
-            Data = new AttestationData
-            {
-                Slot = 0,
-                Index = 0,
-                BeaconBlockRoot = chain.AnchorRoot,
-                Source = anchorState.CurrentJustifiedCheckpoint,
-                Target = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
-            },
+            Data = VoteData(chain, 0, chain.AnchorRoot, 0),
         };
 
         Assert.That(() => runner.OnAttestation(vote, isFromBlock: true, verifySignature: false),
@@ -1200,14 +1193,7 @@ public class ForkChoiceRunnerTests
         {
             AggregationBits = new System.Collections.BitArray(1, true),
             CommitteeBits = new System.Collections.BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
-            Data = new AttestationData
-            {
-                Slot = slot,
-                Index = 0,
-                BeaconBlockRoot = chain.AnchorRoot,
-                Source = chain.Anchor.AnchorState.CurrentJustifiedCheckpoint,
-                Target = new Checkpoint { Epoch = 1, Root = chain.AnchorRoot },
-            },
+            Data = VoteData(chain, slot, chain.AnchorRoot, 1),
         };
 
         Assert.That(() => runner.OnAttestation(vote, isFromBlock: true, verifySignature: false),
