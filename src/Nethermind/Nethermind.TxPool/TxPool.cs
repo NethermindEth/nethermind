@@ -1408,7 +1408,12 @@ namespace Nethermind.TxPool
                     }
                     payer = simulated.Payer;
                     // EIP-8298: the prefix may now rely on different mutable code, re-judged against the cap.
-                    if (!_codeDependencies.TryUpdate(tx.Hash!.ValueHash256, simulated.CodeDependencies, _txPoolConfig.FrameTxMaxPendingPerDelegatingCode)) return false;
+                    if (!_codeDependencies.TryUpdate(tx.Hash!.ValueHash256, simulated.CodeDependencies, _txPoolConfig.FrameTxMaxPendingPerDelegatingCode, out bool added)) return false;
+                    // An eviction that landed before the entry was added has already released, so release again.
+                    if (added && !_transactions.ContainsKey(tx.Hash!.ValueHash256) && !_blobTransactions.ContainsKey(tx.Hash!.ValueHash256))
+                    {
+                        _codeDependencies.Release(tx.Hash!.ValueHash256);
+                    }
                     break;
             }
 

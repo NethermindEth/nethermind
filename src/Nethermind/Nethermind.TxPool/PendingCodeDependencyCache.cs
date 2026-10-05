@@ -50,14 +50,17 @@ internal sealed class PendingCodeDependencyCache
         }
     }
 
-    /// <summary>Replaces the dependencies of a transaction still tracked, as revalidation re-simulated them.</summary>
+    /// <summary>Replaces the dependencies of a pooled transaction with those revalidation re-simulated.</summary>
+    /// <param name="added">Whether a transaction untracked until now gained an entry, which the caller must release
+    /// if an eviction racing revalidation has already left it unpooled.</param>
     /// <returns><see langword="false"/>, leaving the old entry for the eviction to release, when a new code hash is over <paramref name="cap"/>.</returns>
-    /// <remarks>An untracked transaction is left untracked: an eviction racing revalidation would otherwise leak the entry.</remarks>
-    public bool TryUpdate(in ValueHash256 txHash, IReadOnlyList<FrameTxCodeDependency> dependencies, int cap)
+    public bool TryUpdate(in ValueHash256 txHash, IReadOnlyList<FrameTxCodeDependency> dependencies, int cap, out bool added)
     {
+        added = false;
         lock (_lock)
         {
-            if (!_byTx.TryGetValue(txHash, out FrameTxCodeDependency[]? previous)) return true;
+            FrameTxCodeDependency[] previous = _byTx.GetValueOrDefault(txHash) ?? [];
+            if (previous.Length == 0 && dependencies.Count == 0) return true;
 
             foreach (FrameTxCodeDependency dependency in dependencies)
             {
@@ -67,6 +70,7 @@ internal sealed class PendingCodeDependencyCache
 
             RemoveLocked(txHash);
             if (dependencies.Count > 0) AddLocked(txHash, dependencies);
+            added = previous.Length == 0;
             return true;
         }
     }

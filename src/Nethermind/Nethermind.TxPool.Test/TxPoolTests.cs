@@ -4831,6 +4831,54 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the delegating code must be a tracked dependency");
         }
 
+        // A prefix that relied on no delegating code at admission can come to on a later head, e.g. by branching on
+        // sender storage; revalidation must then track it like admission would.
+        [Test]
+        public async Task Revalidation_tracks_a_delegating_code_dependency_admission_did_not_see()
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD, DelegatingCodeDependency));
+            Block first = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(first);
+
+            SimulatesAs(simulator, FrameTxSimulationResult.Reject("the implementation now holds SETCODEFROM"));
+            Block second = Build.A.Block.WithNumber(2).WithParent(first).TestObject;
+            second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressE };
+            await RaiseBlockAddedToMainAndWaitForNewHead(second);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the dependency revalidation found must be indexed");
+        }
+
+        [Test]
+        public async Task Revalidation_evicts_a_transaction_whose_new_delegating_code_dependency_is_over_the_cap()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxMaxPendingPerDelegatingCode = 1 },
+                new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            Transaction untracked = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            Assert.That(_txPool.SubmitTx(untracked, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD, DelegatingCodeDependency));
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "only the slot holder survives");
+                Assert.That(_txPool.TryGetPendingTransaction(untracked.Hash!, out _), Is.False, "the newly dependent transaction is over the cap");
+            }
+        }
+
         [Test]
         public async Task Revalidation_leaves_an_unresolved_payer_as_admitted()
         {
