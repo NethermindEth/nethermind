@@ -124,21 +124,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty);
     }
 
-    [Test]
-    public void Forgery_for_an_unknown_block_does_not_displace_another_candidate()
-    {
-        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create();
-        DataColumnSidecarGloas genuine = Sidecar(root: UnknownRoot);
-        DataColumnSidecarGloas forged = Sidecar(root: UnknownRoot, mutate: static s => s.KzgProofs = [s.KzgProofs![1], s.KzgProofs[0]]);
-
-        router.Handle(Column, gloasTopic: true, Encode(genuine));
-        router.Handle(Column, gloasTopic: true, Encode(forged));
-
-        Assert.That(pool.GetPendingGloas(UnknownRoot, Column).Select(static s => s.KzgProofs![0].AsSpan().ToArray()),
-            Is.EquivalentTo(new[] { genuine.KzgProofs![0].AsSpan().ToArray(), forged.KzgProofs![0].AsSpan().ToArray() }),
-            "both candidates are kept, so availability can still find the genuine one");
-    }
-
     /// <summary>gloas/p2p-interface.md: [REJECT] the block passes validation; a block that was never recorded as failed stays the IGNORE of an unseen one, which is parked.</summary>
     [TestCase(true, MessageValidity.Rejected, ColumnGossipDropReason.FailedBlockValidation, 0)]
     [TestCase(false, MessageValidity.Ignored, ColumnGossipDropReason.UnknownBlock, 1)]
@@ -406,6 +391,11 @@ public class ColumnGossipRouterGloasTests
         (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create();
         DataColumnSidecarGloas honest = Sidecar(root: UnknownRoot);
         router.Handle(Column, gloasTopic: true, Encode(honest));
+        DataColumnSidecarGloas forged = Sidecar(root: UnknownRoot, mutate: static s => s.KzgProofs = [s.KzgProofs![1], s.KzgProofs[0]]);
+        router.Handle(Column, gloasTopic: true, Encode(forged));
+        Assert.That(pool.GetPendingGloas(UnknownRoot, Column).Select(static s => s.KzgProofs![0].AsSpan().ToArray()),
+            Is.EquivalentTo(new[] { honest.KzgProofs![0].AsSpan().ToArray(), forged.KzgProofs![0].AsSpan().ToArray() }),
+            "both candidates are kept, so availability can still find the genuine one");
 
         for (int i = 0; i <= DataColumnSidecarPool.MaxPendingGloasSidecars; i++)
         {
