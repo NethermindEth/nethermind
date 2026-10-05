@@ -857,6 +857,8 @@ namespace Nethermind.TxPool
                     {
                         bool bucketsUpdated;
                         bool revalidationRequired;
+                        bool extendsPreviousHead = args.PreviousBlock is null && args.Block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == args.Block.Number;
+                        (BlockHeader Head, List<Hash256> Hashes)? unreferenceable = CollectUnreferenceableRecentRootTransactions(extendsPreviousHead);
                         _newHeadLock.EnterWriteLock();
                         try
                         {
@@ -880,14 +882,13 @@ namespace Nethermind.TxPool
                             CollectFrameTxsToRevalidate(changeListIsComplete ? accountChanges : null);
                             DisposeBlockAccountChanges(args.Block);
 
-                            bool extendsPreviousHead = args.PreviousBlock is null && args.Block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == args.Block.Number;
                             _lastBlockNumber = args.Block.Number;
                             _lastBlockHash = args.Block.Hash;
 
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             RemoveExpiredFrameTransactions(args.Block);
-                            RemoveUnreferenceableRecentRootTransactions(extendsPreviousHead);
+                            EvictUnreferenceableRecentRootTransactions(unreferenceable);
                             RevalidateFrameTransactions(args.Block);
 
                             if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
@@ -1169,24 +1170,24 @@ namespace Nethermind.TxPool
             }
         }
 
-        /// <summary>EIP-8272: evicts the pending transactions whose <c>recent_root_verify</c> tuples no longer verify at
-        /// the canonical head's <c>current_slot</c>, its <c>slotNumber + 1</c>.</summary>
-        /// <remarks>Head events are consumed after the chain has moved, and admission validates against the canonical
-        /// head, so the header and the state are taken as one snapshot of that head, not from the event's block: a
-        /// transaction admitted against a newer head is never judged at an older event's slot. Every pending
-        /// <c>recent_root_verify</c> transaction goes once the head is before activation or the code at
-        /// <c>RECENT_ROOT_ADDRESS</c> is not <c>RECENT_ROOT_CODE</c>. A head extending the previous one only ages tuples
-        /// out: its block writes the ring-buffer cells of its own slot, and a pending tuple naming that slot was admitted
-        /// against the same write, while any other tuple aliasing those cells is already out of the window. Any other
-        /// head rereads every recorded entry, which covers a rollback on the abandoned branch as well as a write on the
-        /// new one. Every failure, age included, can reverse with a reorg to an earlier slot, so the hash is released
-        /// for resubmission.</remarks>
-        private void RemoveUnreferenceableRecentRootTransactions(bool extendsPreviousHead)
+        /// <summary>EIP-8272: collects the pending transactions whose <c>recent_root_verify</c> tuples no longer verify
+        /// at the canonical head's <c>current_slot</c>, its <c>slotNumber + 1</c>.</summary>
+        /// <remarks>Runs before <c>_newHeadLock</c> is taken, so the storage reads of a full recheck do not hold up
+        /// submissions; a transaction admitted meanwhile was validated against the same canonical head. Head events are
+        /// consumed after the chain has moved, and admission validates against the canonical head, so the header and the
+        /// state are taken as one snapshot of that head, not from the event's block: a transaction admitted against a
+        /// newer head is never judged at an older event's slot. Every pending <c>recent_root_verify</c> transaction goes
+        /// once the head is before activation or the code at <c>RECENT_ROOT_ADDRESS</c> is not <c>RECENT_ROOT_CODE</c>. A
+        /// head extending the previous one only ages tuples out: its block writes the ring-buffer cells of its own slot,
+        /// and a pending tuple naming that slot was admitted against the same write, while any other tuple aliasing those
+        /// cells is already out of the window. Any other head rereads every recorded entry, which covers a rollback on the
+        /// abandoned branch as well as a write on the new one.</remarks>
+        private (BlockHeader Head, List<Hash256> Hashes)? CollectUnreferenceableRecentRootTransactions(bool extendsPreviousHead)
         {
             if (_recentRootDependencies.Count == 0
                 || !_headInfo.TryGetHeadState(out BlockHeader? head, out IReadOnlyStateProvider? state))
             {
-                return;
+                return null;
             }
 
             List<Hash256> unreferenceable = [];
@@ -1205,7 +1206,20 @@ namespace Nethermind.TxPool
                 _recentRootDependencies.CollectInvalid(state, headSlot + 1, unreferenceable);
             }
 
-            foreach (Hash256 hash in unreferenceable)
+            return (head, unreferenceable);
+        }
+
+        /// <summary>Evicts the transactions <see cref="CollectUnreferenceableRecentRootTransactions"/> collected.</summary>
+        /// <remarks>Every failure, age included, can reverse with a reorg to an earlier slot, so the hash is released
+        /// for resubmission. A hash the pool no longer holds only loses its dependency record.</remarks>
+        private void EvictUnreferenceableRecentRootTransactions((BlockHeader Head, List<Hash256> Hashes)? unreferenceable)
+        {
+            if (unreferenceable is not (BlockHeader head, List<Hash256> hashes))
+            {
+                return;
+            }
+
+            foreach (Hash256 hash in hashes)
             {
                 if (!RemoveTransaction(hash, out Transaction? pooled))
                 {
