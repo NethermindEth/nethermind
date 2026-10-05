@@ -223,7 +223,7 @@ public class BeaconChainStoreEnvelopeTests
         Assert.That(GC.GetAllocatedBytesForCurrentThread() - allocatedBefore, Is.LessThan(1 << 20), "a corrupt length header is not allocated");
     }
 
-    /// <remarks>The length cases are snappy length headers with no data after them.</remarks>
+    // Length cases contain snappy headers only, without payload bytes.
     internal static byte[] CorruptRecord(Corruption corruption, byte[] ssz) => corruption switch
     {
         Corruption.NotSnappy => [0xFF],
@@ -236,7 +236,6 @@ public class BeaconChainStoreEnvelopeTests
         _ => throw new ArgumentOutOfRangeException(nameof(corruption)),
     };
 
-    /// <summary>Prunes on a background thread, so a prune that never returns fails the test rather than stalling the run.</summary>
     private static void Prune(BeaconChainStore store, ulong currentEpoch, ulong finalizedSlot)
     {
         Exception? error = null;
@@ -259,7 +258,6 @@ public class BeaconChainStoreEnvelopeTests
 
     private static Hash256 RootOf(SignedExecutionPayloadEnvelope envelope) => envelope.Message!.BeaconBlockRoot!;
 
-    /// <param name="salt">Tells apart two envelopes at one slot.</param>
     internal static SignedExecutionPayloadEnvelope Envelope(ulong slot, int salt = 0) => new()
     {
         Message = new ExecutionPayloadEnvelope

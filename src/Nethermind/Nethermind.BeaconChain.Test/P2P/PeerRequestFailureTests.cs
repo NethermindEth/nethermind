@@ -15,13 +15,8 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// A peer can answer <c>status</c> and <c>ping</c> and still time out every sync request, so a passing health check must not
-/// clear the failures its requests earned; only a served request or the passing of time does.
-/// </summary>
 public class PeerRequestFailureTests
 {
-    // PeerManager's failure limit.
     private const int Limit = 8;
 
     public enum Failure
@@ -90,7 +85,6 @@ public class PeerRequestFailureTests
         Assert.That(PeerManager.ConsecutiveFailuresForTest(fixture.Peer), Is.EqualTo(3));
     }
 
-    // Kept below the peer floor rather than dropped, but not handed out while its health checks fail.
     [Test]
     [CancelAfter(120_000)]
     public async Task A_silent_peer_kept_at_the_peer_floor_is_out_of_selection(CancellationToken token)
@@ -146,7 +140,6 @@ public class PeerRequestFailureTests
             long startedAt = fixture.Time.UtcNow.Ticks;
             fixture.Time.Add(TimeSpan.FromSeconds(1));
             await fixture.Manager.RunMaintenanceRoundAsync(token);
-            // After the passing health check, which would clear them: sync failures must not count toward the timeout budget.
             fixture.Fail(PeerFailureReason.RequestFailed, Limit);
             for (int i = 0; i < Limit; i++)
             {
@@ -324,7 +317,6 @@ public class PeerRequestFailureTests
         Assert.That(fixture.Peer.EarliestAvailableSlot, Is.EqualTo(earliestAvailableSlot));
     }
 
-    /// <summary>Serves <paramref name="inner"/> until <see cref="Hang"/>, then blocks each status read until <see cref="Release"/>; <see cref="Break"/> makes each read throw.</summary>
     private sealed class HangableStatusSource(IBeaconChainStatusSource inner) : IBeaconChainStatusSource
     {
         private readonly ManualResetEventSlim _released = new(true);
@@ -373,15 +365,12 @@ public class PeerRequestFailureTests
 
         public BeaconChainConfig Config => _client.Config;
 
-        /// <summary>Makes the server's status answer block, so the client's requests to it time out.</summary>
         public void StopAnswering() => _hang!.Hang();
 
         public void ResumeAnswering() => _hang!.Release();
 
-        /// <summary>Makes the server's status answer fail with an error instead of a reply.</summary>
         public void Break() => _hang!.Break();
 
-        /// <param name="withUsablePeer">Connects a second peer that stays under the request-failure limit, so the limit takes <see cref="Peer"/> out of selection.</param>
         public static async Task<Fixture> CreateAsync(CancellationToken token, ulong? serverEarliestAvailableSlot = null, bool hangable = false, bool withUsablePeer = false)
         {
             // A silent peer costs two request timeouts per health check (status v2, then v1); what is counted does not depend on their length.
@@ -413,7 +402,6 @@ public class PeerRequestFailureTests
             return fixture;
         }
 
-        /// <summary>A lone silent peer is otherwise kept: below the peer floor, and with no other answer its silence could be this node's stall.</summary>
         public void CountTimeoutsAsDrops()
         {
             Config.MinPeerCount = 0;

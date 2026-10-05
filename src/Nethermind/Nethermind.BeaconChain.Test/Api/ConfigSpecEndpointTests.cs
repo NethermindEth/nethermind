@@ -14,12 +14,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// <c>/eth/v1/config/spec</c> serves every key of <c>configs/mainnet.yaml</c> and of the consensus-specs v1.7.0-beta.2
-/// mainnet presets of phase0 to gloas (pinned in <see cref="PinnedMainnetSpec"/>) and every constant of the
-/// specs' Constants tables (<see cref="PinnedSpecConstants"/>), with the network's values where the network differs, so
-/// tooling that keys on any of them does not find it missing or wrong.
-/// </summary>
 public class ConfigSpecEndpointTests
 {
     private static readonly Regex ScalarLine = new(@"^(?<key>[A-Z][A-Z0-9_]*):[ \t]*(?<value>[^#\r\n]*?)[ \t]*(#.*)?$", RegexOptions.Multiline);
@@ -67,7 +61,6 @@ public class ConfigSpecEndpointTests
 
     private const string ArrayConstant = "PARTICIPATION_FLAG_WEIGHTS";
 
-    /// <summary>Renders a served constant the way getSpec requires: a string, except the weights array whose elements are strings; any other JSON kind is reported by name.</summary>
     private static string Rendered(string name, JsonElement value) =>
         name == ArrayConstant
             ? value.ValueKind == JsonValueKind.Array && value.EnumerateArray().All(e => e.ValueKind == JsonValueKind.String) ? string.Join(',', value.EnumerateArray().Select(e => e.GetString())) : $"<{value.ValueKind}>"
@@ -114,7 +107,6 @@ public class ConfigSpecEndpointTests
         "PREREGISTRATION_EXPIRY_SLOTS", "COMMITMENT_REGISTRATION_DELAY", "MAX_RANDAO_COMMITMENT_REGISTRATIONS",
     ];
 
-    // A preset value is only served for a fork whose types this node builds, so it never claims a limit it does not enforce.
     [Test]
     public async Task Does_not_serve_the_preset_keys_of_forks_the_node_does_not_run()
     {

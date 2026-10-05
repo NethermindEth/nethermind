@@ -14,7 +14,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>A by-root ancestor fetch can wait out several peers' timeouts, so it runs off the worker, which keeps importing and ticking meanwhile.</summary>
 public partial class BeaconSyncOrchestratorTests
 {
 
@@ -71,7 +70,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(Faults), "each block is held for range sync");
     }
 
-    /// <summary>A node near the head with one peer whose by-root request for each root waits until the test completes it.</summary>
     private static (Harness Harness, IBeaconSyncPeer Peer, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> Fetches) CreateWaitingByRootHarness()
     {
         Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches = [];
@@ -89,7 +87,6 @@ public partial class BeaconSyncOrchestratorTests
         return (CreateHarness(anchorSlot: NearHeadAnchorSlot, peers: [peer]), peer, fetches);
     }
 
-    /// <summary>Processes queued work until the walk has asked for <paramref name="root"/>.</summary>
     private static async Task WaitForFetchAsync(Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches, Hash256 root, Harness harness, CancellationToken token)
     {
         for (int passes = 0; ; passes++)
@@ -112,7 +109,7 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    /// <summary>Ends every by-root request still waiting with no blocks, so a settle cannot wait on one a regression started.</summary>
+    /// <summary>Complete all pending requests so cleanup cannot wait on a fetch introduced by a regression.</summary>
     private static void CompleteOutstandingFetches(Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches)
     {
         lock (fetches)

@@ -19,23 +19,18 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Fuzz;
 
-/// <summary>Seeded, bounded mutation fuzzing: the same seed always yields the same inputs, so a failure reproduces from its seed alone.</summary>
 internal static class SszFuzzer
 {
     public static readonly int[] Seeds = [0x5EED01, 0x5EED02, 0x5EED03];
 
-    /// <summary>The most one input may take; a decoder that loops on hostile input fails here rather than stalling the network thread.</summary>
     public static readonly TimeSpan CaseBound = TimeSpan.FromSeconds(2);
 
     private static readonly TimeSpan TargetBound = TimeSpan.FromSeconds(60);
     private const int MaxReportedFailures = 5;
 
-    /// <summary>Runs <paramref name="target"/> over <paramref name="iterations"/> inputs mutated from <paramref name="valid"/>, failing on any exception <paramref name="isRefusal"/> does not accept.</summary>
     public static void Run(int seed, IReadOnlyList<byte[]> valid, int iterations, Action<byte[]> target, Func<Exception, bool> isRefusal) =>
         Check($"seed 0x{seed:x}", Mutations(seed, valid, iterations), iterations, target, isRefusal);
 
-    /// <summary>Runs <paramref name="target"/> over every prefix of each of <paramref name="valid"/> up to <paramref name="maxLength"/> bytes.</summary>
-    /// <remarks>Random truncation seldom lands inside a fixed-part read, so an off-by-one length guard is only caught by trying every length.</remarks>
     public static void RunPrefixes(IReadOnlyList<byte[]> valid, int maxLength, Action<byte[]> target, Func<Exception, bool> isRefusal)
     {
         List<byte[]> prefixes = [.. valid.SelectMany(bytes => Enumerable.Range(0, Math.Min(bytes.Length, maxLength) + 1).Select(length => bytes[..length]))];
@@ -92,7 +87,6 @@ internal static class SszFuzzer
         Assert.That(failures, Is.Empty, label);
     }
 
-    /// <summary>Decodes, re-encodes and merkleizes <paramref name="ssz"/>; an accepted encoding must be the canonical one.</summary>
     public static void RoundTrip<T>(byte[] ssz) where T : class, ISszCodec<T>
     {
         T.Decode(ssz, out T value);
@@ -104,7 +98,6 @@ internal static class SszFuzzer
         }
     }
 
-    /// <summary>Encodes <paramref name="count"/> random values of <typeparamref name="T"/>, each adjusted by <paramref name="adjust"/>.</summary>
     public static byte[][] ValidEncodings<T>(int seed, int count, Action<T>? adjust = null) where T : class, ISszCodec<T>
     {
         SszValueGenerator generator = new(new Random(seed));
@@ -255,7 +248,6 @@ internal static class SszFuzzer
     }
 }
 
-/// <summary>Builds random but well-formed values of an SSZ container by reading its SSZ attributes.</summary>
 internal sealed class SszValueGenerator(Random random)
 {
     private const int MaxListItems = 3;

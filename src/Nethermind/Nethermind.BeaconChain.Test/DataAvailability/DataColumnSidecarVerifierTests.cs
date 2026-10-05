@@ -34,8 +34,7 @@ public class DataColumnSidecarVerifierTests
         tampered[0] ^= 0xFF;
         sidecar.Column[0] = SszBlobCell.FromSpan(tampered);
 
-        // The tamper does not change any array length, so structure still looks fine; only the
-        // cryptographic check must catch it.
+        // Array lengths stay valid; only the cryptographic check can detect this tamper.
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.True);
         Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
@@ -57,18 +56,14 @@ public class DataColumnSidecarVerifierTests
     {
         DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
 
-        // Swap in a wholly different (but internally self-consistent) commitment set built from a
-        // fresh blob, without recomputing the inclusion proof: this is exactly the attack the
-        // inclusion-proof check exists for - cells that verify, but were never in the claimed block.
+        // New cells/commitments verify internally, but the stale inclusion proof must reject them.
         DataColumnKzgFixture.BlobFixture unrelatedBlob = DataColumnKzgFixture.BuildBlob(0xEE);
         sidecar.KzgCommitments = [DataColumnKzgFixture.CommitmentOf(unrelatedBlob), sidecar.KzgCommitments![1]];
         sidecar.Column![0] = DataColumnKzgFixture.CellAt(unrelatedBlob, ColumnIndex);
         sidecar.KzgProofs![0] = DataColumnKzgFixture.ProofAt(unrelatedBlob, ColumnIndex);
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        // Its own cells are still internally consistent with its own (now-swapped) commitments.
         Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.True);
-        // But the swapped commitments list's root no longer matches the stale inclusion proof.
         Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.False);
     }
 
@@ -108,8 +103,7 @@ public class DataColumnSidecarVerifierTests
     public void Mismatched_proof_lengths_are_refused_before_indexing_the_arrays(bool verifyKzg)
     {
         DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-        // A hostile peer can send mismatched lengths; the batch loop indexes all three arrays in
-        // lockstep off the commitment count, so this must be refused rather than indexed.
+        // Malformed lengths must be refused before the KZG batch indexes arrays.
         sidecar.KzgProofs = [sidecar.KzgProofs![0]];
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -131,11 +125,6 @@ public class DataColumnSidecarVerifierTests
         Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, BeaconChainSpec.Mainnet), Is.False);
     }
 
-    /// <summary>
-    /// max_blobs_per_block is not a constant: BPO forks raise it at a scheduled epoch without a fork
-    /// version bump. A sidecar with a commitment count that a stale, fixed bound would have accepted
-    /// must still be judged against the schedule live at its own claimed epoch.
-    /// </summary>
     [Test]
     public void VerifyBlobCount_enforces_the_schedule_live_at_the_claimed_epoch_not_a_fixed_maximum()
     {
@@ -185,11 +174,6 @@ public class DataColumnSidecarVerifierTests
         Bootnodes = [],
     };
 
-    /// <summary>
-    /// End-to-end through <see cref="DataColumnSidecarVerifier.Verify"/> with a cryptographically real
-    /// sidecar (not just a commitment-count fixture), crossing an actual BPO boundary: the same sidecar
-    /// is rejected before the bound rises and accepted at the epoch it does.
-    /// </summary>
     [Test]
     public void Verify_rejects_a_sidecar_over_the_bound_at_its_claimed_epoch_and_accepts_it_once_the_bound_rises()
     {
@@ -203,8 +187,6 @@ public class DataColumnSidecarVerifierTests
             "at the BPO's own activation epoch the cap rises to 2, admitting this sidecar");
     }
 
-    /// <summary>Moves a sidecar's block header to <paramref name="epoch"/>, which is the only
-    /// thing the bound reads: it is no longer a parameter a caller can choose freely.</summary>
     private static DataColumnSidecar AtEpoch(DataColumnSidecar sidecar, BeaconChainSpec spec, ulong epoch)
     {
         sidecar.SignedBlockHeader!.Message!.Slot = epoch * spec.SlotsPerEpoch;

@@ -8,11 +8,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
-/// <summary>
-/// The Fulu p2p serve range's lower edge, <c>max(current_epoch - MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS, FULU_FORK_EPOCH)</c>:
-/// a boundary that drifts by one epoch either way silently admits window-age blocks without their
-/// data or demands columns no peer is obliged to serve.
-/// </summary>
 public class DataAvailabilityBoundaryTests
 {
     private const ulong Window = Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests;
@@ -29,14 +24,13 @@ public class DataAvailabilityBoundaryTests
     public void Compute_is_the_window_start_floored_at_the_fulu_fork_epoch(ulong currentEpoch, ulong fuluForkEpoch, ulong expected) =>
         Assert.That(DataAvailabilityBoundary.Compute(currentEpoch, SpecWithFulu(fuluForkEpoch)), Is.EqualTo(expected));
 
-    /// <summary>A start slot past the last representable one saturates instead of wrapping to a low slot that would shrink the serve range.</summary>
     [TestCase(ulong.MaxValue / 32 - 1, ulong.MaxValue / 32 * 32 - 32, TestName = "the_last_whole_epoch_below_the_limit_is_not_saturated")]
     [TestCase(ulong.MaxValue / 32 + 1, ulong.MaxValue, TestName = "a_start_slot_past_the_limit_saturates")]
     [TestCase(Presets.FarFutureEpoch, ulong.MaxValue, TestName = "a_far_future_fulu_fork_saturates")]
     public void Compute_start_slot_saturates_instead_of_wrapping(ulong fuluForkEpoch, ulong expected) =>
         Assert.That(DataAvailabilityBoundary.ComputeStartSlot(0, SpecWithFulu(fuluForkEpoch)), Is.EqualTo(expected));
 
-    /// <summary>deneb/p2p-interface.md: on a chain younger than the window every epoch is inside it, so the lower edge must not underflow.</summary>
+    // A chain younger than the retention window has no expired epoch; subtracting the window must not underflow.
     [TestCase(5ul, 10ul, true, TestName = "a_chain_younger_than_the_blob_window_holds_every_epoch_inside_it")]
     [TestCase(0ul, BlobWindow - 1, true, TestName = "one_epoch_short_of_a_full_blob_window_holds_epoch_zero")]
     [TestCase(0ul, BlobWindow, true, TestName = "a_full_blob_window_starts_at_epoch_zero")]

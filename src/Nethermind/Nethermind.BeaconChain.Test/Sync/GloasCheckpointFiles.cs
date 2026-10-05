@@ -12,7 +12,6 @@ using Nethermind.Core.Test.IO;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>A checkpoint state file, and optionally its sibling block file, in a directory deleted on dispose.</summary>
 internal sealed class GloasCheckpointFiles : IDisposable
 {
     private readonly TempPath _directory = TempPath.GetTempDirectory();
@@ -33,19 +32,13 @@ internal sealed class GloasCheckpointFiles : IDisposable
         }
     }
 
-    /// <summary>
-    /// <see cref="ForkCrossingChain"/>'s spec with the Gloas version in its fork schedule, as a network with
-    /// Gloas scheduled carries it, so a checkpoint state's <c>fork.current_version</c> maps onto a fork.
-    /// </summary>
+    /// <summary>Include the Gloas version in the schedule so checkpoint decoding can resolve fork.current_version.</summary>
     public static BeaconChainSpec Spec { get; } = WithGloasScheduled(ForkCrossingChain.Instance.Spec, fuluInGloasEpoch: false);
 
-    /// <summary><see cref="Spec"/> with Fulu activating in the Gloas epoch, as on a network that starts at Gloas.</summary>
     public static BeaconChainSpec SharedActivationEpochSpec { get; } = WithGloasScheduled(ForkCrossingChain.Instance.Spec, fuluInGloasEpoch: true);
 
-    /// <summary>The path to configure as <see cref="IBeaconChainConfig.CheckpointStateFile"/>.</summary>
     public string StateFile { get; }
 
-    /// <summary>The sibling file an advanced <see cref="StateFile"/> takes its block's post-state from.</summary>
     public string PostStateFile => Path.ChangeExtension(StateFile, ".post-state.ssz");
 
     public static GloasCheckpointFiles Write(BeaconStateGloas state, ForkedSignedBeaconBlock? block) =>

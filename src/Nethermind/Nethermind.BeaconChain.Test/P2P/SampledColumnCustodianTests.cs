@@ -29,11 +29,6 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// fulu/das-core.md: a node must retrieve every column it samples, and fulu/p2p-interface.md peers serve only the columns
-/// they custody, so the peer set must hold a custodian of each sampled column: one is sought through discovery when
-/// missing, admitted past the target peer count, and never trimmed away as the last one.
-/// </summary>
 public class SampledColumnCustodianTests
 {
     private const string PartialCustodianKey = "1c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f29111";
@@ -79,7 +74,6 @@ public class SampledColumnCustodianTests
         Assert.That(discovery.WantedColumns, Is.Empty, "the supernode custodies every column");
     }
 
-    /// <summary>fulu/p2p-interface.md: the ENR's <c>cgc</c> tells a peer's custody before its metadata does, so it stands until metadata answers.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_dialed_peer_whose_metadata_never_answers_custodies_what_its_enr_advertises(CancellationToken token)
@@ -231,10 +225,6 @@ public class SampledColumnCustodianTests
         Assert.That(wokenByShortfall, Is.True, "the parked admission wait wakes once a sampled column loses its custodian");
     }
 
-    /// <summary>
-    /// A last custodian whose requests keep failing is kept connected, since it is still the only source of its columns
-    /// (fulu/das-core.md), but it is not picked for requests and its columns count as lacking a custodian, so a replacement is sought and admitted.
-    /// </summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_last_custodian_at_the_failure_limit_stays_connected_but_is_not_picked_and_a_replacement_is_admitted(CancellationToken token)
@@ -276,10 +266,6 @@ public class SampledColumnCustodianTests
         Assert.That(peerManager.GetBestPeers(0).Select(static p => p.Id), Does.Not.Contain(LoopbackAddress(failing.P2P)), "a passing health check does not make the peer selectable again");
     }
 
-    /// <summary>
-    /// A peer at the failure limit still counts as a custodian when the pool makes room, since it still serves its columns (fulu/das-core.md):
-    /// over the ceiling the trim keeps it while it is their last custodian, and at the ceiling a candidate custodying them takes its place.
-    /// </summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_peer_at_the_failure_limit_counts_as_a_custodian_when_the_pool_makes_room([Values] bool overTheCeiling, CancellationToken token)
@@ -327,11 +313,6 @@ public class SampledColumnCustodianTests
             : "the peer at the failure limit, no longer the last custodian once the candidate joins, makes room rather than the bystander");
     }
 
-    /// <summary>
-    /// At <see cref="IBeaconChainConfig.MaxPeerCount"/> nothing trims the pool, so a candidate custodying a sampled column no connected
-    /// peer custodies is dialed past the ceiling and, once admitted, takes the place of the worst peer; it is not dialed while that
-    /// peer would stay the last custodian of a sampled column, and a dial that fails costs no connected peer.
-    /// </summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task At_the_peer_ceiling_a_candidate_custodying_a_missing_column_replaces_the_worst_peer_unless_it_is_a_last_custodian(
@@ -343,7 +324,6 @@ public class SampledColumnCustodianTests
         ulong[] sampled = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns];
         using PrivateKey connectedKey = FindPartialCustodian(custody => custody.CountCustodied(sampled) > 0 == connectedIsLastCustodian);
         PeerColumnCustody connectedCustody = PeerColumnCustody.ForNode(connectedKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
-        // Custodies a sampled column the connected peer does not, and, when the connected peer custodies any, misses one of those.
         using PrivateKey candidateKey = FindPartialCustodian(custody =>
             sampled.Any(c => custody.Custodies(c) && !connectedCustody.Custodies(c))
             && sampled.Any(c => connectedCustody.Custodies(c) && !custody.Custodies(c)) == connectedIsLastCustodian);
@@ -360,7 +340,6 @@ public class SampledColumnCustodianTests
         string candidateEnr = Enr(candidateKey, candidate, Eip7594DasConstants.CustodyRequirement);
         if (ceilingCase == CeilingCase.CandidateUnreachable)
         {
-            // The candidate's identity at a port nothing listens on.
             candidateAddress = Regex.Replace(candidateAddress, "/tcp/[0-9]+/", "/tcp/1/");
         }
 
@@ -384,10 +363,6 @@ public class SampledColumnCustodianTests
             });
     }
 
-    /// <summary>
-    /// Only a dial admitted past the ceiling to replace a peer drops one on landing. A dial reserved below the ceiling that lands after
-    /// the pool reached the ceiling meanwhile, as when another admission took the last place, drops none and leaves the excess to the trim.
-    /// </summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_dial_reserved_below_the_ceiling_drops_no_peer_when_the_pool_reaches_the_ceiling_meanwhile(CancellationToken token)
@@ -406,7 +381,6 @@ public class SampledColumnCustodianTests
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(connected.P2P), token), Is.True);
 
-        // The late peer answers the admission's status request after the reservation, so the ceiling drops under the dial in flight.
         lateStatus.OnNextRead = () => client.Config.MaxPeerCount = 1;
         bool lateAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(late.P2P), token);
         int afterLanding = peerManager.PeerCount;
@@ -423,7 +397,6 @@ public class SampledColumnCustodianTests
 
     private static void ReportFailuresUpToTheLimit(IBeaconSyncPeer peer)
     {
-        // PeerManager's consecutive failure limit.
         for (int i = 0; i < 8; i++)
         {
             peer.ReportFailure(PeerFailureReason.RequestFailed);
@@ -432,7 +405,6 @@ public class SampledColumnCustodianTests
 
     private static string PeerIdOf(Node node) => $"{node.P2P.LocalPeerId}";
 
-    /// <summary>Records health-check-sized failures on <paramref name="peer"/> until one more failed health check drops it.</summary>
     private static void ReportFailuresShortOfADrop(IBeaconSyncPeer peer)
     {
         // One below PeerManager's consecutive failure limit of 8, so the test needs one maintenance round, not eight.
@@ -449,7 +421,6 @@ public class SampledColumnCustodianTests
         CandidateUnreachable,
     }
 
-    /// <summary>A <c>CUSTODY_REQUIREMENT</c> identity whose custody satisfies <paramref name="wanted"/>; deterministic, since the keys are.</summary>
     private static PrivateKey FindPartialCustodian(Func<PeerColumnCustody, bool> wanted)
     {
         for (int i = 0; i < 4096; i++)
@@ -493,8 +464,6 @@ public class SampledColumnCustodianTests
 
     private static int PortOf(string address) => int.Parse(address.Split('/')[4]);
 
-    /// <summary>This node's identity and sampled columns, resolved as discovery's start does without binding a socket.</summary>
-    /// <param name="identity">Pins the identity, and so the sampled columns; random when omitted.</param>
     private static BeaconDiscovery CreateDiscovery(PrivateKey? identity = null)
     {
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
@@ -509,12 +478,10 @@ public class SampledColumnCustodianTests
         return discovery;
     }
 
-    /// <summary>Answers <c>status</c> until <see cref="Refuse"/> is set, then fails every request.</summary>
     private sealed class SwitchableStatusSource : IBeaconChainStatusSource
     {
         public volatile bool Refuse;
 
-        /// <summary>Runs once, on the next read of <see cref="CurrentStatus"/>.</summary>
         public Action? OnNextRead;
 
         public StatusMessageV2 Status { get; set; } = null!;

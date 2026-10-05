@@ -31,17 +31,12 @@ namespace Nethermind.BeaconChain.Test.Sync;
 
 public partial class BeaconSyncOrchestratorTests
 {
-    // Epoch 412,500 on mainnet: past FuluForkEpoch 411,392.
     private const ulong FuluAnchorSlot = 13_200_000;
     private const ulong FuluHeadOffset = 64;
-    // A node that has followed the chain for a while: the wall clock is 4,196 epochs past the anchor, so the 4,096-epoch
-    // data_column_serve_range starts 100 epochs (3,200 slots) above it and the node holds every block of that range.
     private const ulong ServeRangeStart = FuluAnchorSlot + 100 * 32;
     private const ulong FuluWallSlot = FuluAnchorSlot + (4096 + 100) * 32 + 5;
-    // A node that started recently: the anchor is inside the serve range, so some blocks of it are not held.
     private const ulong YoungWallSlot = FuluAnchorSlot + 100;
 
-    /// <summary>fulu/p2p-interface.md Status v2: a node holding every block of the sidecar retention period advertises the earliest slot from which it can serve all sidecars.</summary>
     [TestCase(new long[] { -5 }, 0L, TestName = "Columns held from below the serve range advertise the anchor")]
     [TestCase(new long[] { 10 }, 3200L + 10L, TestName = "Columns held only from inside the serve range advertise their first slot")]
     [TestCase(new long[0], (long)(FuluWallSlot - FuluAnchorSlot + 1), TestName = "No columns held advertise the slot after the current one")]
@@ -60,7 +55,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo((ulong)((long)FuluAnchorSlot + expectedOffset)));
     }
 
-    /// <summary>fulu/p2p-interface.md Status v2: the sidecar exception needs every block of the retention period; a node whose anchor is inside it advertises the anchor.</summary>
     [Test]
     public async Task A_node_missing_blocks_of_the_serve_range_advertises_its_anchor()
     {
@@ -73,7 +67,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(FuluAnchorSlot));
     }
 
-    /// <summary>Completed history lowers Status v2 availability no further than the anchor (fulu/p2p-interface.md).</summary>
     [TestCase(-1000L, -1000L, TestName = "Blocks and columns backfilled below the anchor advertise the slot they are held from")]
     [TestCase(40L, 0L, TestName = "A backfill that has not reached the anchor advertises the anchor")]
     public async Task Status_advertises_the_slot_the_backfill_holds_blocks_from(long backfilledOffset, long expectedOffset)
@@ -87,7 +80,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo((ulong)((long)FuluAnchorSlot + expectedOffset)));
     }
 
-    /// <summary>Full retention coverage makes the column floor determine Status v2 availability (fulu/p2p-interface.md).</summary>
     [Test]
     public async Task Status_advertises_the_start_of_the_serve_range_once_the_backfill_reached_it()
     {
@@ -119,10 +111,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "the first slot of the range lost its column");
     }
 
-    /// <summary>
-    /// Before Fulu no peer asks for columns, so the anchor is still the earliest available block. From Fulu the serve range
-    /// starts at the fork, so an anchor below it holds every block of the range and the held columns bound the slot.
-    /// </summary>
     [Test]
     public async Task Status_earliest_slot_follows_the_column_pool_from_fulu([Values] bool pastFulu)
     {
@@ -137,7 +125,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(pastFulu ? fuluStart + 5 : anchorSlot));
     }
 
-    /// <summary>A Status sent between head steps must reflect columns evicted since the last one, or a peer is told a slot this node can no longer serve.</summary>
     [Test]
     public async Task Status_earliest_slot_is_computed_when_the_status_is_read()
     {
@@ -153,11 +140,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentHead.Status.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "status and head read together");
     }
 
-    /// <summary>
-    /// fulu/p2p-interface.md Status v2: the sidecar retention period is bounded by MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS as well as the
-    /// column window. This node keeps no blob sidecars, so while the blob window reaches before Fulu and the node holds every block of
-    /// the period it advertises the fork slot; a node missing blocks of the period advertises its earliest block.
-    /// </summary>
     [TestCase(3UL, 0L, true, TestName = "Blob window open just after Fulu, every block held")]
     [TestCase(4095UL, 0L, true, TestName = "Blob window open on its last epoch, every block held")]
     [TestCase(3UL, 1L, false, TestName = "Blob window open, first block of the period missing")]
@@ -176,7 +158,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(expectFuluSlot ? fuluStart : anchorSlot));
     }
 
-    /// <summary>A genesis anchor early in the chain: the blob window then starts at slot 0, so it still reaches before a Fulu fork that is not at genesis.</summary>
     [Test]
     public async Task Status_earliest_slot_is_the_fork_slot_for_a_genesis_anchor_before_the_blob_window_has_a_start()
     {
@@ -204,7 +185,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(2 * spec.SlotsPerEpoch));
     }
 
-    /// <summary>fulu/p2p-interface.md Status v2: a by-range request from the advertised slot must not be refused, whether sent at startup or after a head step.</summary>
     [TestCase(new long[0], FuluHeadOffset, TestName = "The advertised slot is served by range with no columns held")]
     [TestCase(new long[] { 10 }, 5UL, TestName = "The advertised slot is served by range with the head below the first held column")]
     public async Task Status_earliest_slot_is_served_by_range(long[] columnSlotOffsets, ulong headOffset)
@@ -224,10 +204,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.DoesNotThrowAsync(() => RequestOneSlotByRangeAsync(pool, slotClock, afterHeadStep), "after the head step");
     }
 
-    /// <summary>
-    /// get_block_root: a checkpoint root is the latest block at or before its epoch's start slot, so an anchor block past its epoch's
-    /// first slot is the checkpoint of the next epoch; the lower epoch get_forkchoice_store gives it makes a peer finalized there look conflicting.
-    /// </summary>
     [Test]
     public async Task Status_advertises_the_first_epoch_whose_checkpoint_is_the_anchor_block([Values(0UL, 1UL, 31UL)] ulong slotInEpoch)
     {
@@ -246,7 +222,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.FinalizedRoot, Is.EqualTo(storeFinalized.Root));
     }
 
-    /// <summary>gloas/p2p-interface.md ExecutionPayloadEnvelopesByRange: the head's envelope is served only while fork choice resolves the head FULL.</summary>
     [Test]
     public async Task Head_step_publishes_the_head_root_only_while_the_head_is_full([Values] bool full)
     {
@@ -309,7 +284,6 @@ public partial class BeaconSyncOrchestratorTests
         return (orchestrator, statusHolder, slotClock);
     }
 
-    // No execution hash, so the head step never reaches the engine.
     private static ScriptedImporter ImporterWithHead(ulong anchorSlot, ulong headOffset, bool headFull = false, CheckpointRef? finalized = null) => new()
     {
         Head = new HeadView(TestItem.KeccakA, anchorSlot + headOffset, null, null, null, new CheckpointRef(0, TestItem.KeccakC), finalized ?? new CheckpointRef(0, TestItem.KeccakD), headFull),
@@ -335,7 +309,6 @@ public partial class BeaconSyncOrchestratorTests
             KzgCommitmentsInclusionProof = [.. new Hash256[Eip7594DasConstants.KzgCommitmentsInclusionProofDepth].Select(static _ => Hash256.Zero)],
         });
 
-    // The listen side closes the stream once it has answered, as the libp2p host does.
     private static async Task RequestOneSlotByRangeAsync(DataColumnSidecarPool pool, SlotClock slotClock, ulong startSlot)
     {
         DataColumnSidecarsByRangeProtocol protocol = new(Spec, pool, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), slotClock);

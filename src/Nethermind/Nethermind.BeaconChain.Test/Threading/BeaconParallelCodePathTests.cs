@@ -16,11 +16,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Threading;
 
-/// <summary>
-/// Each code path's parallel loops must finish from the import thread while every thread-pool thread is busy: a loop whose helpers
-/// go to the pool waits for the pool to reach them, which under starvation took tens of seconds per loop.
-/// </summary>
-/// <remarks>Occupies the whole thread pool for a moment, so it runs alone.</remarks>
 [NonParallelizable]
 public class BeaconParallelCodePathTests
 {

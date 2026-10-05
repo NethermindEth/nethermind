@@ -14,29 +14,14 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// The Gloas <c>store.payloads</c> in <see cref="ForkChoiceRunner"/>: the <c>on_block</c> gate that holds back a
-/// block building on an unverified full parent, the pre-Gloas parent that needs no envelope, the
-/// <c>validate_on_attestation</c> payload-status rules, and the bid parent hashes kept per Gloas block.
-/// </summary>
-/// <remarks>
-/// The children built here are slot-advanced copies of their parent's post-state, never run through
-/// <c>process_block</c>: fork choice reads only the post-state's checkpoints and registry.
-/// </remarks>
+/// <summary>Children advance copied state without process_block: fork choice reads only checkpoints and registry.</summary>
 [HardTimeout(60_000)]
 public class ForkChoiceRunnerPayloadTests
 {
     private const ulong EffectiveBalance = 32 * Gwei;
 
-    /// <summary>With 2048 validators and 32 slots, each slot has one committee of 64.</summary>
     private const ulong CommitteeSize = 64;
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>on_block</c>: a block building on its parent's full payload is accepted only once
-    /// that payload is verified, or fork choice would weigh a chain whose execution the node never checked. A block
-    /// building on the payload before its parent's (an empty parent) needs nothing. A refused block moves no store state:
-    /// it takes no proposer boost and leaves no bid record behind.
-    /// </summary>
     [Test]
     public void Block_building_on_a_full_gloas_parent_waits_for_that_parent_payload([Values] bool buildsOnFull, [Values] bool parentPayloadVerified)
     {
@@ -63,10 +48,6 @@ public class ForkChoiceRunnerPayloadTests
         Assert.That(runner.GetParentBlockHash(childRoot), Is.EqualTo(accepted ? bidParentBlockHash : null));
     }
 
-    /// <summary>
-    /// The first Gloas block builds on its Fulu parent's payload, which came inside that block and has no envelope.
-    /// A literal <c>root in store.payloads</c> would refuse it and stall every node at the fork.
-    /// </summary>
     [Test]
     public void First_gloas_block_building_on_the_fulu_payload_needs_no_envelope()
     {
@@ -82,11 +63,6 @@ public class ForkChoiceRunnerPayloadTests
         Assert.That(runner.ContainsBlock(SszRoots.HashTreeRoot(block.Message!)), Is.True);
     }
 
-    /// <summary>
-    /// <c>store.payloads</c> holds only Gloas blocks fork choice knows (the spec asserts the envelope's block is in
-    /// <c>store.block_states</c>); a pre-Gloas block counts as verified without an entry, an unknown one never does,
-    /// and recording the same payload twice is harmless, since an envelope can arrive by gossip and by request.
-    /// </summary>
     [Test]
     public void Payload_verification_is_recorded_only_for_known_gloas_blocks()
     {
@@ -115,11 +91,6 @@ public class ForkChoiceRunnerPayloadTests
         Assert.That(runner.GetParentBlockHash(chain.AnchorRoot), Is.Null);
     }
 
-    /// <summary>
-    /// The bid parent hashes and PTC votes are pruned with the blocks they describe: a finalized chain long enough for the
-    /// proto-array to prune (<see cref="ProtoArrayForkChoice.DefaultPruneThreshold"/> nodes) must not keep
-    /// answering for blocks fork choice dropped, or the maps grow for the life of the node.
-    /// </summary>
     [Test]
     public void Prune_drops_the_bid_parent_hash_of_every_pruned_block()
     {
@@ -162,7 +133,6 @@ public class ForkChoiceRunnerPayloadTests
         Assert.That(runner.GetPtcVotes(parentRoot), Is.Not.Null, "the unpruned tip keeps its PTC votes");
     }
 
-    /// <summary>A vote's payload-status index and whether it is refused (the message fragment) or counted (<see langword="null"/>).</summary>
     public readonly record struct PayloadVote(ulong Index, bool SameSlot, bool PayloadVerified, string? Refusal)
     {
         public override string ToString() => $"index {Index}, {(SameSlot ? "same" : "later")} slot, payload {(PayloadVerified ? "verified" : "unverified")}";
@@ -178,12 +148,6 @@ public class ForkChoiceRunnerPayloadTests
         new(Index: 2, SameSlot: false, PayloadVerified: true, Refusal: "is not a payload status"),
     ];
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>validate_on_attestation</c>: <c>data.index</c> votes for the head block's payload
-    /// status, so it is 0 or 1, 0 in the block's own slot, and 1 only for a verified payload. Otherwise fork choice
-    /// counts votes for payloads it never verified. The rules hold for gossip and block-body votes alike, and for a
-    /// vote at a Gloas slot whichever container carried it.
-    /// </summary>
     [Test]
     public void Vote_payload_status_index_is_validated(
         [ValueSource(nameof(PayloadVotes))] PayloadVote vote, [Values] bool isFromBlock, [Values] bool fuluContainer)
@@ -213,11 +177,6 @@ public class ForkChoiceRunnerPayloadTests
         Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(vote.Refusal is null ? CommitteeSize * EffectiveBalance : 0));
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>validate_on_attestation</c>: an index-1 vote needs <c>is_payload_verified</c>, which is
-    /// <c>root in store.payloads</c>. A pre-Gloas block has no envelope and never enters it, so a Gloas-slot index-1 vote for the
-    /// last Fulu block is refused, from gossip and from a block, while its index-0 vote counts.
-    /// </summary>
     [Test]
     public void Index_one_vote_for_a_pre_gloas_block_is_refused([Values(0ul, 1ul)] ulong index, [Values] bool isFromBlock)
     {
@@ -239,10 +198,6 @@ public class ForkChoiceRunnerPayloadTests
             index == 1 ? Throws.TypeOf<ForkChoiceException>().With.Message.Contains("which is not verified") : Throws.Nothing);
     }
 
-    /// <summary>
-    /// specs/gloas/validator.md sets <c>data.index</c> to 1 only for a FULL head. The head of a store whose tip is the last Fulu
-    /// block is its EMPTY node, so the vote an attester derives from it is one <c>validate_on_attestation</c> counts.
-    /// </summary>
     [Test]
     public void A_vote_derived_from_a_pre_gloas_head_is_accepted()
     {
@@ -268,7 +223,6 @@ public class ForkChoiceRunnerPayloadTests
 
     private static ExecutionPayloadBid BidOf(SignedBeaconBlockGloas block) => block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
 
-    /// <summary>A self-built child of the block whose post-state is <paramref name="parentPostState"/>, at <paramref name="slot"/>, with its bid on <paramref name="bidParentBlockHash"/>.</summary>
     private static SignedBeaconBlockGloas ChildOf(BeaconStateGloas parentPostState, ulong slot, Hash256 bidParentBlockHash, out BeaconStateGloas postState)
     {
         postState = parentPostState.Clone();
@@ -276,7 +230,6 @@ public class ForkChoiceRunnerPayloadTests
         return MinimalBlock(postState, SelfBuildBid(postState, bidParentBlockHash, Hash(0xE1)));
     }
 
-    /// <summary><paramref name="template"/> moved to <paramref name="slot"/> on <paramref name="parentRoot"/>, sharing its body.</summary>
     private static SignedBeaconBlockGloas WithSlotAndParent(SignedBeaconBlockGloas template, ulong slot, Hash256 parentRoot)
     {
         BeaconBlockGloas message = template.Message!;
@@ -297,7 +250,6 @@ public class ForkChoiceRunnerPayloadTests
     private static void TickToSlot(ForkChoiceRunner runner, ulong slot) =>
         runner.OnTick(runner.GenesisTime + slot * Presets.SecondsPerSlot);
 
-    /// <summary>The weight of <paramref name="root"/> as a fresh <see cref="ForkChoiceRunner.GetHead"/> computes it.</summary>
     private static ulong Weight(ForkChoiceRunner runner, Hash256 root)
     {
         runner.GetHead();
@@ -371,11 +323,7 @@ public class ForkChoiceRunnerPayloadTests
         for (int i = 0; i < PayloadScenarios.Length; i++) yield return new TestCaseData(i).SetName(PayloadScenarios[i].Name);
     }
 
-    /// <summary>Checks execution verdicts against the payload and block branches they cover.</summary>
-    /// <remarks>
-    /// specs/gloas/fork-choice.md keeps an EMPTY branch viable when its FULL payload is invalid.
-    /// specs/bellatrix/optimistic-sync.md refuses contradictory verdicts; payload validity follows execution ancestry.
-    /// </remarks>
+    /// <summary>An invalid FULL payload leaves EMPTY viable; execution verdicts follow payload ancestry (optimistic-sync.md).</summary>
     [TestCaseSource(nameof(PayloadCases))]
     public void Execution_verdict_preserves_payload_branches_and_ancestor_validity(int index)
     {

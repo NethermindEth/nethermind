@@ -35,13 +35,7 @@ public class BeaconChainSpecTests
             "the offending chain id must be visible in the failure so an operator can diagnose it");
     }
 
-    /// <summary>
-    /// Guards the Hoodi constants against later accidental edits. The expected values were taken from
-    /// eth-clients/hoodi metadata (config.yaml and genesis_validators_root.txt); re-verify against
-    /// those files rather than against the spec object if this ever fails, since both live in-repo.
-    /// A wrong genesis validators root or fork version does not fail loudly, it silently partitions
-    /// the node from the network.
-    /// </summary>
+    // Independent sources: eth-clients/hoodi config.yaml and genesis_validators_root.txt; do not derive expectations from BeaconChainSpec.
     [Test]
     public void Hoodi_spec_matches_its_published_network_parameters() =>
         Assert.Multiple(() =>
@@ -59,15 +53,7 @@ public class BeaconChainSpecTests
             Assert.That(BeaconChainSpec.Hoodi.BlobSchedule, Has.Length.EqualTo(2));
         });
 
-    /// <summary>
-    /// Guards the Sepolia constants the same way <see cref="Hoodi_spec_matches_its_published_network_parameters"/>
-    /// guards Hoodi's. Sources (each value confirmed against two, independently): eth-clients/sepolia
-    /// metadata/config.yaml, a public Sepolia beacon node's /eth/v1/beacon/genesis and
-    /// /eth/v1/config/fork_schedule, sigp/lighthouse's built-in Sepolia config, and Prysm's
-    /// testnet_sepolia_config.go; GloasForkEpoch/GloasForkVersion additionally from the merged
-    /// ethereum/pm#2205 and ChainSafe/lodestar#10119. Re-verify against those, not against the spec
-    /// object, if this ever fails.
-    /// </summary>
+    // Independent sources: eth-clients/sepolia metadata, public beacon genesis/fork_schedule, Lighthouse/Prysm config; Gloas parameters: ethereum/pm#2205 and lodestar#10119.
     [Test]
     public void Sepolia_spec_matches_its_published_network_parameters() =>
         Assert.Multiple(() =>
@@ -87,11 +73,6 @@ public class BeaconChainSpecTests
             Assert.That(BeaconChainSpec.Sepolia.BlobSchedule, Has.Length.EqualTo(2));
         });
 
-    /// <summary>
-    /// A shipped network with no bootnodes cannot start discovery, and nothing else in the
-    /// driver reports it. `required` forces the field to be set; this checks it was set to
-    /// something usable rather than an empty array to satisfy the compiler.
-    /// </summary>
     [TestCaseSource(nameof(ShippedNetworks))]
     public void Every_shipped_spec_carries_bootnodes(string name, BeaconChainSpec spec) =>
         Assert.That(spec.Bootnodes, Is.Not.Empty, $"{name} has no bootnode records");

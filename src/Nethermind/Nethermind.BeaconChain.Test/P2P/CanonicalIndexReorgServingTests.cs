@@ -21,11 +21,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// The by-range servers read the canonical index the importer keeps. After a reorg to a chain that skips slots, a server
-/// that still named the orphans there would answer with blocks that do not link (the requester penalizes us for it) and
-/// with the orphans' columns.
-/// </summary>
 public class CanonicalIndexReorgServingTests
 {
     [Test]

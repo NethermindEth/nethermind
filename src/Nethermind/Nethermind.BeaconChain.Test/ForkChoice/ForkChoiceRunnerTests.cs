@@ -24,31 +24,17 @@ using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransiti
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// The pure predicates behind <see cref="ForkChoiceRunner.GetProposerHead"/> (silent-wrong
-/// risks: get_proposer_head returning the ordinary head instead of ever re-org'ing), and the way
-/// <see cref="ForkChoiceRunner.OnBlock"/> hands <c>is_data_available</c> to whichever
-/// <see cref="IDataAvailabilityRule"/> its caller chose: a column list means the supernode rule the
-/// spec vectors need, a rule means exactly that rule, and neither is ever inferred from the other.
-/// Also the body replay <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IDataAvailabilityRule)"/>
-/// leaves to its caller, on a hand-built chain (<see cref="UnsignedChain"/>): no mainnet vector
-/// carries a body attester slashing, so the vectors never show whether a replayed one is honored.
-/// </summary>
 [HardTimeout(60_000)]
 public class ForkChoiceRunnerTests
 {
     private const ulong EffectiveBalance = 32 * GloasTestFixtures.Gwei;
 
-    /// <summary>With 2048 validators and 32 slots, each slot has one committee of 64.</summary>
     private const ulong CommitteeSize = 64;
 
-    /// <summary>With 512 validators and 32 slots, each slot has one committee of 16, so a vote names more than one validator.</summary>
     private const int MultiMemberValidatorCount = 512;
 
-    /// <summary>The target states body votes of another shuffling may build at once in one epoch of including blocks.</summary>
     private const int MaxOtherShufflingBodyBuilds = 2;
 
-    /// <summary>The current justified epoch of the doctored post-state in <see cref="FinalizedOnFirstGloasBlock"/>.</summary>
     private const ulong DoctoredJustifiedEpoch = 2;
 
     [TestCase(0ul, 0ul, true, TestName = "same_epoch_is_ok")]
@@ -106,11 +92,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.True);
     }
 
-    /// <summary>
-    /// The snapshot is what the debug API serves from another thread, so it must be a complete copy
-    /// (checkpoints, boost root, every node with its parent resolved to a root) that later imports
-    /// leave untouched: a live view would race the import worker.
-    /// </summary>
     [Test]
     public void Snapshot_copies_the_store_and_later_blocks_do_not_change_an_earlier_copy()
     {
@@ -140,13 +121,6 @@ public class ForkChoiceRunnerTests
         Assert.That(withBlock.ProposerBoostRoot, Is.EqualTo(chain.BlockRoot), "a block imported at the start of its own slot holds the boost, and the copy says so");
     }
 
-    /// <summary>
-    /// Two validators vote block A onto the head over block B's one; a later block on A's branch
-    /// carries a slashing of those two for a double vote. Replayed the way the callers do (after
-    /// OnBlock, signatures unverified), the slashing must pull their votes out of the weight so B
-    /// wins - even though the slashing block itself extends A's branch. Without the replay, A's
-    /// branch keeps its two votes and nothing ever reports the loss.
-    /// </summary>
     [Test]
     public void Body_attester_slashing_replayed_after_OnBlock_discounts_the_equivocating_votes()
     {
@@ -160,10 +134,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.GetHead(), Is.EqualTo(b.Root), "the slashed validators' votes no longer count, so B's lone vote wins");
     }
 
-    /// <summary>
-    /// The replay flag is what admits a transition-verified slashing: the same body slashing with
-    /// verification on is refused, and a refused slashing leaves no equivocating index behind.
-    /// </summary>
     [Test]
     public void Body_attester_slashing_replay_with_verification_on_is_refused_whole()
     {
@@ -176,13 +146,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.GetHead(), Is.EqualTo(slashing.Root), "a refused slashing discounts nobody: the head stays on A's branch, at its new leaf");
     }
 
-    /// <summary>
-    /// Once the epoch-2 votes are pulled up, the justified checkpoint is the first Gloas block, and
-    /// weighing the head needs that root's state: only the Gloas provider holds it, and offering the root
-    /// to the Fulu provider is the crash this guards against. The body votes are replayed in either
-    /// container, because committees follow the target state's fork, not the container's; the weights
-    /// prove every replayed vote counted, including the Gloas block's own last-Fulu-epoch vote.
-    /// </summary>
     [Test]
     public void Justified_checkpoint_on_a_gloas_block_is_weighed_from_its_gloas_state([Values] bool replayInFuluContainer)
     {
@@ -213,12 +176,7 @@ public class ForkChoiceRunnerTests
             "the slot-31 votes the Gloas block carried are weighed on the anchor");
     }
 
-    /// <summary>
-    /// <c>store_target_checkpoint_state</c> past the fork must yield the state the state transition would
-    /// carry there - Fulu slots to the boundary, the upgrade, then Gloas slots - composed here by hand
-    /// from the fork's own pieces, never through the runner. A Fulu block's state run through Fulu slot
-    /// processing straight past the boundary would be the wrong type and the wrong root.
-    /// </summary>
+    /// <summary>Build the checkpoint oracle by composing Fulu slots, upgrade and Gloas slots independently of the runner.</summary>
     [TestCase(false, 1ul, TestName = "fulu_root_at_the_fork_epoch_is_upgraded")]
     [TestCase(false, 2ul, TestName = "fulu_root_past_the_fork_epoch_is_upgraded_then_advanced_as_gloas")]
     [TestCase(true, 2ul, TestName = "gloas_root_is_advanced_as_gloas")]
@@ -258,12 +216,6 @@ public class ForkChoiceRunnerTests
         Assert.That(BlockStateRoot(chain, gloasRoot), Is.EqualTo(blockStateRoot), "the block state the providers froze must not be advanced in place");
     }
 
-    /// <summary>
-    /// A vote names a checkpoint whose block lies <paramref name="distance"/> slots before the epoch start. At mainnet registry
-    /// size a full state merkleization takes seconds, so one per skipped slot held the import worker for minutes. The first
-    /// slot's root is the block's own <c>state_root</c>, so a late first block of an epoch costs no merkleization at all, and one
-    /// incremental hasher serves every later slot; the advance must still land on the spec's state.
-    /// </summary>
     [Test]
     public void Checkpoint_state_takes_the_first_slot_root_from_the_block_and_hashes_later_slots_through_one_incremental_hasher([Values(1, 2, 32)] int distance)
     {
@@ -297,11 +249,6 @@ public class ForkChoiceRunnerTests
         Assert.That(SszRoots.HashTreeRoot(blockState), Is.EqualTo(blockStateRoot), "the block state must not be advanced in place");
     }
 
-    /// <summary>
-    /// specs/phase0/beacon-chain.md process_slot records every root a checkpoint advance asks for in the state of each later block of
-    /// the same chain, so once such a block is registered an advance of any length costs no merkleization. A block inside the advance
-    /// makes those roots another history's; they must not be used, and the advance must land on the spec's state either way.
-    /// </summary>
     [Test]
     public void Checkpoint_advance_takes_its_slot_roots_from_a_later_block_of_the_same_chain([Values(2, 32)] int distance, [Values] bool blockInsideTheAdvance)
     {
@@ -322,12 +269,6 @@ public class ForkChoiceRunnerTests
         Assert.That(SszRoots.HashTreeRoot(((ForkedBeaconState.OfFulu)state).State), Is.EqualTo(SszRoots.HashTreeRoot(expected)));
     }
 
-    /// <summary>
-    /// A body vote for an older target (rooted before an empty epoch start, voted an epoch later) used to build that target's checkpoint state
-    /// on the import worker, several seconds at mainnet size. The target epoch's committees are fixed by the decision block the including block
-    /// shares (specs/phase0/beacon-chain.md get_seed, compute_activation_exit_epoch), so the vote must count with no state built or copied, and
-    /// name exactly the validators a full build of the checkpoint state names.
-    /// </summary>
     [Test]
     public void Body_votes_for_an_older_target_of_the_blocks_shuffling_count_as_a_full_build_counts_them_without_one()
     {
@@ -370,11 +311,6 @@ public class ForkChoiceRunnerTests
         }
     }
 
-    /// <summary>
-    /// The post-state <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IReadOnlyList{DataColumnSidecar})"/>
-    /// last received stands in only for that block at that block's slot: once a sibling at the same slot is registered, or the caller advanced the state in
-    /// place as the importer's lineage does, a body vote takes the spec's own build and still counts.
-    /// </summary>
     [Test]
     public void Body_vote_reads_the_last_block_state_only_while_it_is_that_blocks_own([Values] bool advancedInPlace)
     {
@@ -394,12 +330,6 @@ public class ForkChoiceRunnerTests
         Assert.That(Weight(runner, target.Root), Is.EqualTo(EffectiveBalance), "the vote counts");
     }
 
-    /// <summary>
-    /// Through a target of another shuffling than its block's, a body vote's bits name other validators than the transition checked, so it
-    /// is checked against the target's own state, signature included. Each such target costs a whole state and a proposer can name eight,
-    /// so blocks of one epoch spend two builds, a block arriving late from an earlier epoch does not renew them, and a vote past them waits
-    /// for the tick, which builds one state a slot.
-    /// </summary>
     [Test]
     public void Body_votes_for_targets_of_another_shuffling_verify_their_signature_and_build_two_states_an_epoch()
     {
@@ -451,7 +381,6 @@ public class ForkChoiceRunnerTests
         }
     }
 
-    /// <summary>A block per slot can put eight body votes past the build budget, so the votes waiting for a build are bounded at eight blocks' worth.</summary>
     [Test]
     public void Body_votes_waiting_for_a_build_are_bounded()
     {
@@ -485,11 +414,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.DeferredBodyVoteCount, Is.Zero);
     }
 
-    /// <summary>
-    /// Sibling decision blocks of one proposer carry the same RANDAO reveal, so targets on them have the same committees under distinct
-    /// decision roots, and signed votes for all of them count (specs/phase0/fork-choice.md on_attestation). A vote past the build budget
-    /// must wait for the tick and then count, not be lost.
-    /// </summary>
     [Test]
     public void Signed_body_vote_past_the_build_budget_counts_after_the_tick()
     {
@@ -604,12 +528,6 @@ public class ForkChoiceRunnerTests
         Assert.That(refusal.Message, Does.Contain(largeRegistry && targetEpoch != ulong.MaxValue ? "does not match its slot" : "out of range"), "committee range precedes the target-epoch check");
     }
 
-    /// <summary>
-    /// A gossip aggregate names its target, and the target state is needed before any signature can be checked. Each unsigned
-    /// aggregate naming another known block before the epoch start used to build and keep a whole checkpoint state on the import
-    /// worker. Targets that share a shuffling decision block share committees and domain, so only the first one may cost a build,
-    /// no refused aggregate may leave a checkpoint state cached, and a signed aggregate for yet another such target still counts.
-    /// </summary>
     [Test]
     public void Unsigned_aggregates_on_distinct_targets_of_one_shuffling_build_one_state_and_cache_none()
     {
@@ -650,11 +568,6 @@ public class ForkChoiceRunnerTests
         Assert.That(builds.Count, Is.EqualTo(2), "the refused aggregate's state was not cached as its target's checkpoint state");
     }
 
-    /// <summary>
-    /// p2p-interface.md authenticates an aggregate with the head state, so an unsigned one naming a target of another shuffling
-    /// (A at the decision slot 31 is its own decision block, B at slot 32 has their parent) is refused with only the head's own
-    /// target state built, never the one the peer named, and its vote does not count.
-    /// </summary>
     [Test]
     public void Unsigned_gossip_aggregate_for_another_shuffling_builds_only_the_head_target_state()
     {
@@ -676,11 +589,6 @@ public class ForkChoiceRunnerTests
         Assert.That(Weight(runner, other.Root), Is.EqualTo(weightBefore), "the vote does not count");
     }
 
-    /// <summary>
-    /// p2p-interface.md beacon_aggregate_and_proof checks the aggregator against <c>store.block_states[get_head(store).root]</c> even when a
-    /// state of the vote's target is held: a body vote leaves B's target state held, two votes then make A (another shuffling) the head,
-    /// and an aggregate B's committee signed for B is refused because its aggregator is not in A's committee at that slot.
-    /// </summary>
     [Test]
     public void Gossip_aggregate_for_a_held_target_of_another_shuffling_is_checked_against_the_head_state()
     {
@@ -722,11 +630,6 @@ public class ForkChoiceRunnerTests
         }
     }
 
-    /// <summary>
-    /// Two blocks a proposer equivocated at the decision slot carry the same RANDAO reveal, so their branches have different
-    /// decision blocks but the same committees. An aggregate the head's committee signed for the other branch is valid gossip
-    /// and valid for on_attestation with its own target state, so it must count, at the cost of building that state.
-    /// </summary>
     [TestCase(true, false)]
     [TestCase(false, false)]
     [TestCase(false, true)]
@@ -767,12 +670,6 @@ public class ForkChoiceRunnerTests
         if (sourceHeld) Assert.That(builds.Count, Is.EqualTo(2), "the head's target state and the sibling's own");
     }
 
-    /// <summary>
-    /// Every target of another shuffling than the head's costs a whole state even once its aggregate authenticated, so only
-    /// two are built per epoch, and one each per aggregator: four siblings at or before the decision slot, each its own decision
-    /// block and all with the same committees, give three off-head targets. Three aggregators get two builds and the third is
-    /// refused; one aggregator gets one build and its second aggregate is refused.
-    /// </summary>
     [Test]
     public void Gossip_targets_of_other_shufflings_cost_at_most_two_states_an_epoch_and_one_an_aggregator([Values] bool oneAggregator)
     {
@@ -814,11 +711,6 @@ public class ForkChoiceRunnerTests
         Assert.That(builds.Count, Is.EqualTo(1 + refusedAt), "the head's target state and one per aggregate before it");
     }
 
-    /// <summary>
-    /// An ancestor of the head before its decision block lacks the RANDAO reveals up to that block, so a vote for it is another
-    /// shuffling's: such an aggregate, even one the head's committee signed, is ignored before any state is built, and cannot
-    /// spend the epoch's builds on old canonical blocks.
-    /// </summary>
     [Test]
     public void Gossip_aggregate_for_an_ancestor_of_the_head_with_another_shuffling_is_ignored_without_a_build()
     {
@@ -834,10 +726,6 @@ public class ForkChoiceRunnerTests
         Assert.That(builds.Count, Is.Zero);
     }
 
-    /// <summary>
-    /// Every chain shares the slot-0 decision block of the first two epochs, so an epoch-1 aggregate for an ancestor of the head
-    /// (P at slot 30, while the head's epoch-1 target is Q at slot 32) has the head's committees and counts like any other.
-    /// </summary>
     [Test]
     public void Gossip_aggregate_for_an_ancestor_of_the_head_in_the_first_two_epochs_counts()
     {
@@ -853,10 +741,6 @@ public class ForkChoiceRunnerTests
         Assert.That(Weight(runner, line[0].Root) - Weight(runner, line[1].Root) - weightBefore, Is.EqualTo(EffectiveBalance));
     }
 
-    /// <summary>
-    /// p2p-interface.md lets an aggregator send one aggregate per target epoch, so a previous-epoch aggregate that cost a build
-    /// must not use up the same aggregator's current-epoch one: both of its off-head aggregates are built for and count.
-    /// </summary>
     [Test]
     public void Off_head_build_allowance_is_one_per_aggregator_and_target_epoch()
     {
@@ -885,11 +769,6 @@ public class ForkChoiceRunnerTests
             "the current-epoch vote replaces the previous-epoch one as the aggregator's latest message");
     }
 
-    /// <summary>
-    /// get_head picks the state gossip is checked with, and a slashing or an invalid payload can move it without a tick or a
-    /// block: once A's two voters are slashed, or A's payload is invalid, B is the head. An aggregate for B right after must be
-    /// checked against B as the head, building B's target state, not against the head cached before.
-    /// </summary>
     [Test]
     public void Gossip_aggregate_right_after_the_head_moves_without_a_tick_is_checked_against_the_new_head([Values] bool invalidPayload)
     {
@@ -963,11 +842,6 @@ public class ForkChoiceRunnerTests
         for (int i = 0; i < VoteStateScenarios.Length; i++) yield return new TestCaseData(i).SetName(VoteStateScenarios[i].Name);
     }
 
-    /// <summary>Checks verified-state retention, LRU eviction, epoch expiry and decision-block sharing.</summary>
-    /// <remarks>
-    /// Epoch 2 uses the last block at or before slot 31; targets after the tree root share its decision ancestor.
-    /// The eight-state LRU refreshes a hit, and the next tick drops states older than the previous epoch.
-    /// </remarks>
     [TestCaseSource(nameof(VoteStateCases))]
     public void Vote_states_follow_verified_votes_clock_and_decision_roots(int index)
     {
@@ -1057,7 +931,6 @@ public class ForkChoiceRunnerTests
         if (gloas is not null) Assert.That(committeeSize, Is.Positive, "fixture bug: slot 96 must have a committee");
         Assert.That(observed, Is.EqualTo(expected));
     }
-    /// <summary>ethereum/consensus-specs electra/p2p-interface.md checks aggregator membership before finalized ancestry.</summary>
     [Test]
     public void Gossip_aggregate_membership_reject_precedes_finalized_ancestry_ignore()
     {
@@ -1098,13 +971,6 @@ public class ForkChoiceRunnerTests
         Assert.That(refusal.RejectGossip, Is.True, "a provable membership failure precedes the later ancestry ignore");
     }
 
-    /// <summary>
-    /// <c>on_attester_slashing</c> reads the justified block's state; with a Gloas justified root that
-    /// state is only in the Gloas provider. Whichever container carried the slashing, only the validators
-    /// named by both attestations equivocated: the first and the last 40 of slot 32's committee share 16,
-    /// and exactly those 16 votes leave the first Gloas block's weight. A gossiped slashing is verified
-    /// against that Gloas state, so one whose second signature is forged discounts nobody.
-    /// </summary>
     [Test]
     public void Attester_slashing_is_checked_against_a_gloas_justified_state_and_discounts_the_equivocators([Values] bool fuluContainer, [Values] bool forged)
     {
@@ -1134,11 +1000,6 @@ public class ForkChoiceRunnerTests
         Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(forged ? weightBefore : weightBefore - SharedSigners * EffectiveBalance));
     }
 
-    /// <summary>
-    /// <c>on_attester_slashing</c> verifies against <c>store.block_states[justified.root]</c>, not the justified
-    /// checkpoint state. With the justified checkpoint at the fork epoch on the Fulu anchor, the block state still
-    /// signs epoch-1 votes under the Fulu fork version, while the checkpoint state has crossed into Gloas.
-    /// </summary>
     [Test]
     public void Attester_slashing_is_verified_under_the_justified_blocks_own_state([Values] bool signedUnderBlockStateFork)
     {
@@ -1167,11 +1028,6 @@ public class ForkChoiceRunnerTests
             Assert.That(() => runner.OnAttesterSlashing(slashing), Throws.TypeOf<ForkChoiceException>().With.Message.Contains("attestation 1 is invalid"));
     }
 
-    /// <summary>
-    /// A vote is verified against its target checkpoint state, here always a Gloas state, whichever container
-    /// carried it: a vote whose aggregate signature is over other data must move no weight, or anyone could
-    /// steer the head with votes attributed to a committee.
-    /// </summary>
     [Test]
     public void Vote_checked_against_a_gloas_target_state_counts_only_with_a_valid_signature(
         [Values] bool targetFirstGloasBlock, [Values] bool fuluContainer, [Values] bool forged)
@@ -1197,10 +1053,6 @@ public class ForkChoiceRunnerTests
         Assert.That(Weight(runner, target), Is.EqualTo(forged ? 0 : CommitteeSize * EffectiveBalance));
     }
 
-    /// <summary>
-    /// <c>on_attestation</c> counts a gossiped vote only from the slot after its own, and a gossiped vote from a
-    /// future slot is refused outright; only votes from block bodies skip these wall-clock checks.
-    /// </summary>
     [Test]
     public void Gossip_vote_counts_only_from_the_slot_after_its_own([Values] bool fuluContainer)
     {
@@ -1231,11 +1083,6 @@ public class ForkChoiceRunnerTests
         Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(CommitteeSize * EffectiveBalance));
     }
 
-    /// <summary>
-    /// <c>is_valid_indexed_attestation</c> still guards a slashing checked against a Gloas justified state:
-    /// indices that are unsorted, or name a validator the justified registry lacks, refuse the slashing
-    /// whole, whichever container carried it, and nobody is discounted.
-    /// </summary>
     [Test]
     public void Attester_slashing_with_indices_a_gloas_justified_state_rejects_is_refused([Values] bool fuluContainer, [Values] bool outOfRange)
     {
@@ -1264,13 +1111,6 @@ public class ForkChoiceRunnerTests
         Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(weightBefore), "a refused slashing discounts nobody");
     }
 
-    /// <summary>
-    /// The Gloas <c>is_valid_indexed_attestation</c> caps attesting indices at <c>MAX_VALIDATORS_PER_COMMITTEE *
-    /// MAX_COMMITTEES_PER_SLOT</c> (specs/gloas/beacon-chain.md, EIP-7688), since the progressive list has no SSZ
-    /// limit. A Gloas slashing is held to it against a Fulu justified state too, and before any signature is
-    /// aggregated, whichever attestation is oversized: the other carries a forged signature, and reaching
-    /// verification refuses attestation 1 as invalid, which an at-bound slashing does and a one-over one must not.
-    /// </summary>
     [Test]
     public void Gloas_attester_slashing_is_bounded_before_any_signature_is_verified(
         [Values] bool gloasJustified, [Values] bool overBound, [Values] bool oversizedFirst)
@@ -1299,7 +1139,6 @@ public class ForkChoiceRunnerTests
             Throws.TypeOf<ForkChoiceException>().With.Message.Contains(overBound ? $"{oversizedName} has {Bound + 1} attesting indices" : "attestation 1 is invalid"));
     }
 
-    /// <summary>The Gloas <c>is_valid_indexed_attestation</c> bound admits exactly <c>MAX_VALIDATORS_PER_COMMITTEE * MAX_COMMITTEES_PER_SLOT</c> indices.</summary>
     [TestCase(Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot, false)]
     [TestCase(Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot + 1, true)]
     public void Gloas_indexed_attestation_bound_refuses_one_index_over_it(int count, bool refused)
@@ -1309,11 +1148,7 @@ public class ForkChoiceRunnerTests
             refused ? Throws.TypeOf<ForkChoiceException>().With.Message.EqualTo($"Vote has {count} attesting indices, over the bound of 131072") : Throws.Nothing);
     }
 
-    /// <summary>
-    /// A Gloas attestation against a Fulu target state, whose <c>is_valid_indexed_attestation</c> has no length bound, is still
-    /// held to the Gloas one. A slot's committees exceed 131072 members only past 4194304 active validators, so the target
-    /// state carries 4194336: one slot's 64 committees then hold 131073.
-    /// </summary>
+    /// <summary>A Gloas vote keeps its index bound against a Fulu target; this registry gives one slot 131073 members.</summary>
     [Test]
     public void Gloas_attestation_over_the_indexed_attestation_bound_is_refused_against_a_fulu_target_state()
     {
@@ -1359,10 +1194,6 @@ public class ForkChoiceRunnerTests
             Throws.TypeOf<ForkChoiceException>().With.Message.EqualTo($"Attestation has {Bound + 1} attesting indices, over the bound of {Bound}"));
     }
 
-    /// <summary>
-    /// A checkpoint state is advanced on a copy of its block state. A provider that loses the state between the
-    /// lookup and the copy must make fork choice refuse the vote, not crash on a missing state.
-    /// </summary>
     [Test]
     public void Checkpoint_state_evicted_before_its_copy_refuses_the_vote()
     {
@@ -1387,11 +1218,6 @@ public class ForkChoiceRunnerTests
             Throws.TypeOf<ForkChoiceException>().With.Message.Contains($"No state for the block {chain.AnchorRoot}"));
     }
 
-    /// <summary>
-    /// <c>get_weight</c> counts the validators active at the justified state's own epoch, so one exiting
-    /// the epoch after still carries weight; measured here through the proposer boost, which is a
-    /// committee fraction of the justified balance: 16 validators x 32 ETH / 32 slots x 40% = 6.4 ETH.
-    /// </summary>
     [Test]
     public void Justified_balances_count_validators_exiting_the_epoch_after_the_checkpoint()
     {
@@ -1414,11 +1240,6 @@ public class ForkChoiceRunnerTests
         Assert.That(Weight(runner, chain.BlockRoot), Is.EqualTo(6_400_000_000ul));
     }
 
-    /// <summary>
-    /// Resolving a block state picks the fork by comparing the slot's epoch with the Gloas fork epoch
-    /// alone: the mainnet fork-choice vectors run mainnet's schedule from epoch 0, where no fork this
-    /// driver models is live yet, and must still get a head.
-    /// </summary>
     [Test]
     public void Head_resolves_under_a_schedule_whose_modelled_forks_all_postdate_the_anchor()
     {
@@ -1432,11 +1253,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.GetHead(), Is.EqualTo(chain.AnchorRoot));
     }
 
-    /// <summary>
-    /// A Gloas block carries only the bid; its payload arrives later in an envelope, so it enters fork
-    /// choice optimistic, keyed by the committed bid's block hash - the hash the invalidation walk maps a
-    /// latest valid hash through - and never by the parent's applied hash its post-state records.
-    /// </summary>
     [Test]
     public void Gloas_block_is_registered_optimistic_under_its_bids_block_hash()
     {
@@ -1455,11 +1271,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.GetExecutionBlockHash(chain.First.Root), Is.EqualTo(bidBlockHash));
     }
 
-    /// <summary>
-    /// Each <c>OnBlock</c> overload admits only its own fork's slots: a Fulu-shaped block in a Gloas epoch
-    /// would be registered with a Fulu post-state no checkpoint lookup there could use, and a Gloas-shaped
-    /// block before the fork has no committed bid for the proto-array to key it by.
-    /// </summary>
     [Test]
     public void Each_OnBlock_overload_refuses_a_slot_of_the_other_fork()
     {
@@ -1477,10 +1288,6 @@ public class ForkChoiceRunnerTests
             Throws.TypeOf<ForkChoiceException>().With.Message.Contains("before the Gloas fork"));
     }
 
-    /// <summary>
-    /// Without a Gloas state provider no Gloas checkpoint state could ever be resolved, so admitting the
-    /// block would only defer the failure to the first justification on it: it is refused up front.
-    /// </summary>
     [Test]
     public void Gloas_block_is_refused_by_a_runner_without_a_gloas_state_provider()
     {
@@ -1494,12 +1301,7 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.ContainsBlock(chain.First.Root), Is.False);
     }
 
-    /// <summary>
-    /// <c>update_checkpoints</c> takes the store's justified checkpoint from the Gloas post-state's
-    /// <c>current_justified_checkpoint</c> and the finalized one from its <c>finalized_checkpoint</c>, and the
-    /// block's node carries the same pair; the post-state is doctored so that its previous justified,
-    /// current justified and finalized checkpoints are three different ones.
-    /// </summary>
+    /// <summary>Keep previous/current justified and finalized roots distinct so checkpoint-source mixups are visible.</summary>
     [Test]
     public void Gloas_block_realizes_its_post_states_current_justified_and_finalized_checkpoints()
     {
@@ -1514,12 +1316,6 @@ public class ForkChoiceRunnerTests
         Assert.That(node.FinalizedEpoch, Is.EqualTo(ForkCrossingChain.ForkEpoch));
     }
 
-    /// <summary>
-    /// The Gloas <c>on_block</c> keeps the store assertions: no block from a future slot, none at or before
-    /// the finalized slot, and none off the finalized checkpoint's chain, since fork choice must never weigh
-    /// a branch that finality excluded. The store is at slot 66 with the first Gloas block (slot 32) finalized;
-    /// each block is otherwise importable, so without the assertions it would enter the tree.
-    /// </summary>
     [TestCase(67ul, false, "from the future", TestName = "Gloas_block_from_a_future_slot_is_refused")]
     [TestCase(32ul, true, "not after the finalized slot", TestName = "Gloas_block_at_the_finalized_slot_is_refused")]
     [TestCase(66ul, true, "does not descend from the finalized checkpoint", TestName = "Gloas_block_off_the_finalized_chain_is_refused")]
@@ -1548,12 +1344,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
     }
 
-    /// <summary>
-    /// specs/bellatrix/optimistic-sync.md: the parent of an imported block MUST NOT have an INVALIDATED payload.
-    /// The child is timely and its post-state is doctored to justify and finalize a later epoch, so a refusal
-    /// that came after the store updates would leave the proposer boost and the realized and unrealized
-    /// checkpoints behind; the unrealized ones only show once the next epoch pulls them up.
-    /// </summary>
     [Test]
     public void Timely_child_of_an_execution_invalid_parent_is_refused_before_any_store_update([Values] bool gloas)
     {
@@ -1581,10 +1371,6 @@ public class ForkChoiceRunnerTests
         }
     }
 
-    /// <summary>
-    /// The proto-array accepts an execution block hash exactly when execution is enabled. A block that breaks
-    /// this is refused before the store moves, or a timely one would keep the proposer boost it was refused with.
-    /// </summary>
     [Test]
     public void Timely_block_with_an_inconsistent_execution_status_is_refused_before_any_store_update()
     {
@@ -1601,17 +1387,10 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
     }
 
-    /// <summary><c>ulong.MaxValue / 32</c>, the last epoch whose start slot fits in 64 bits.</summary>
     private const ulong LastEpochWithAStartSlot = 576460752303423487;
 
-    /// <summary>Epochs that a block of epoch 2 can never name: the next epoch, the last one with a start slot, and the largest.</summary>
     private static ulong[] EpochsAfterTheBlockEpoch() => [3, LastEpochWithAStartSlot, ulong.MaxValue];
 
-    /// <summary>
-    /// A post-state never names a checkpoint epoch after its block's own epoch. A block that does is refused before the store
-    /// adopts it: a justified epoch near 2^64 would make <c>get_head</c> process slots without end, and a finalized one would
-    /// refuse every later block.
-    /// </summary>
     [Test]
     public void Timely_block_naming_a_checkpoint_epoch_after_its_own_is_refused_before_any_store_update(
         [Values] bool justified,
@@ -1636,10 +1415,6 @@ public class ForkChoiceRunnerTests
         Finalized,
     }
 
-    /// <summary>
-    /// The same refusal for a prior-epoch block whose own justification weighing (every validator voting for its epoch, possible
-    /// from epoch 2) names a sane pulled-up tip: the store must not adopt the state's epoch, nor realize the tip, before the refusal.
-    /// </summary>
     [Test]
     public void Prior_epoch_block_with_a_state_checkpoint_epoch_after_its_own_is_refused_before_any_store_update(
         [Values] StateCheckpoint field,
@@ -1673,10 +1448,7 @@ public class ForkChoiceRunnerTests
         AssertRefusedWithTheStoreUnchanged(runner, block, doctored);
     }
 
-    /// <summary>
-    /// A previous-justified epoch of <c>ulong.MaxValue</c> wraps into the first finalization rule of the block's own weighing, so
-    /// only the pulled-up tip names a huge finalized epoch while the post-state's checkpoints are sane.
-    /// </summary>
+    /// <summary>ulong.MaxValue previous justification wraps a finalization rule; validate the pulled-up tip too.</summary>
     [Test]
     public void Prior_epoch_block_whose_pulled_up_finalized_epoch_is_after_its_own_is_refused_before_any_store_update()
     {
@@ -1706,12 +1478,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
     }
 
-    /// <summary>
-    /// The spec's <c>store.blocks</c> is never pruned, so a proposal on a fork that finality left behind still makes a
-    /// later block of the same slot and proposer an equivocation until finality passes that slot. The fork block
-    /// (slot 289) and a rival of the finalized block (slot 288) are imported before it, so the proto-array's prune, which drops
-    /// everything before the finalized block, removes both: the record at slot 289 stays, the one at the finalized slot goes.
-    /// </summary>
     [Test]
     public void Proposer_of_a_pruned_fork_block_is_kept_until_finality_passes_its_slot()
     {
@@ -1755,12 +1521,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.IsProposerEquivocation(finalizing.Root), Is.False, "a unique proposal is no equivocation");
     }
 
-    /// <summary>
-    /// Votes are verified against the pubkey cache, so the runner must extend it from every registry it
-    /// validates against: a Gloas block's post-state, and a checkpoint state that epoch transitions produced.
-    /// The cache starts empty, as it lags a registry that deposits grew, and slot 32's committee signs for
-    /// real; the target is the first Gloas block itself (no advance), or the anchor advanced across the fork.
-    /// </summary>
     [Test]
     public void Signed_vote_verifies_with_keys_first_seen_in_the_registry_it_is_checked_against([Values] bool targetFirstGloasBlock)
     {
@@ -1775,11 +1535,6 @@ public class ForkChoiceRunnerTests
         Assert.That(Weight(runner, target), Is.EqualTo(CommitteeSize * EffectiveBalance));
     }
 
-    /// <summary>
-    /// <see cref="ForkCrossingChain"/>'s first two Gloas blocks imported at slot 66, then the slot-65 block with
-    /// its post-state doctored to name three different checkpoints: the anchor as previous justified, the
-    /// slot-64 block as current justified at <see cref="DoctoredJustifiedEpoch"/>, and the first Gloas block as finalized.
-    /// </summary>
     private static ForkChoiceRunner FinalizedOnFirstGloasBlock(ForkCrossingChain chain)
     {
         ForkChoiceRunner runner = chain.CreateRunner();
@@ -1795,7 +1550,6 @@ public class ForkChoiceRunnerTests
         return runner;
     }
 
-    /// <summary><see cref="ForkCrossingChain"/> fully imported with its body votes and ticked into epoch 3, where the justified checkpoint is the first Gloas block.</summary>
     private static ForkChoiceRunner JustifiedOnFirstGloasBlock(ForkCrossingChain chain)
     {
         ForkChoiceRunner runner = chain.CreateRunner();
@@ -1810,7 +1564,6 @@ public class ForkChoiceRunnerTests
         return runner;
     }
 
-    /// <summary>A runner at slot 2 holding an execution-invalidated slot-1 block, and the import of its slot-2 child with a post-state doctored to justify and finalize epoch 1.</summary>
     private static (ForkChoiceRunner Runner, Action ImportChild, ulong DoctoredEpoch) TimelyChildOfInvalidFuluParent()
     {
         const ulong DoctoredEpoch = 1;
@@ -1827,7 +1580,6 @@ public class ForkChoiceRunnerTests
         return (runner, () => runner.OnBlock(child.Block, doctored, ExecutionStatus.Optimistic, (IReadOnlyList<DataColumnSidecar>?)null), DoctoredEpoch);
     }
 
-    /// <summary>A runner at slot 64 holding the execution-invalidated first Gloas block, and the import of its slot-64 child with a post-state doctored to justify and finalize the fork epoch.</summary>
     private static (ForkChoiceRunner Runner, Action ImportChild, ulong DoctoredEpoch) TimelyChildOfInvalidGloasParent()
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
@@ -1844,7 +1596,6 @@ public class ForkChoiceRunnerTests
         return (runner, () => runner.OnBlock(child.Block, doctored), ForkCrossingChain.ForkEpoch);
     }
 
-    /// <summary>The Gloas caller-side contract: the block, then its body votes with signatures already trusted.</summary>
     private static void ImportGloas(ForkChoiceRunner runner, ForkCrossingChain.ChainBlock block, bool replayInFuluContainer)
     {
         runner.OnBlock(block.Block, block.PostState);
@@ -1857,10 +1608,6 @@ public class ForkChoiceRunnerTests
         }
     }
 
-    /// <summary>
-    /// A runner at slot 33 whose epoch-1 target is the first Gloas block, imported, or else the anchor, with
-    /// the Gloas state its committee signs under: that block's post-state, or the anchor upgraded by hand.
-    /// </summary>
     private static (ForkChoiceRunner Runner, Hash256 Target, BeaconStateGloas SigningState) RunnerForBoundaryVote(
         ForkCrossingChain chain, bool targetFirstGloasBlock, PubkeyCache? pubkeys)
     {
@@ -1873,7 +1620,6 @@ public class ForkChoiceRunnerTests
         return (runner, chain.First.Root, chain.First.PostState);
     }
 
-    /// <summary>A vote at <paramref name="slot"/> of epoch 1 for <paramref name="target"/> as both head and target, sourced from the anchor.</summary>
     private static AttestationData EpochOneVote(ForkCrossingChain chain, ulong slot, Hash256 target) => new()
     {
         Slot = slot,
@@ -1883,12 +1629,10 @@ public class ForkChoiceRunnerTests
         Target = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = target },
     };
 
-    /// <summary>The whole committee of <c>data.Slot</c> in <paramref name="signingState"/>, aggregate-signed with real keys.</summary>
     private static AttestationGloas SignedBoundaryVote(BeaconStateGloas signingState, AttestationData data) =>
         GloasTestFixtures.CommitteeAttestation(
             signingState, data, new EpochCache().GetCommitteeCache(signingState, ForkCrossingChain.ForkEpoch), 0, sign: true);
 
-    /// <summary>An indexed attestation by <paramref name="signers"/> over <paramref name="data"/>, aggregate-signed under <paramref name="domain"/>.</summary>
     private static IndexedAttestationGloas SignedUnder(Hash256 domain, AttestationData data, ulong[] signers) => new()
     {
         AttestingIndices = signers,
@@ -1905,24 +1649,19 @@ public class ForkChoiceRunnerTests
     private static void TickToSlot(ForkChoiceRunner runner, ulong slot) =>
         runner.OnTick(runner.GenesisTime + slot * Presets.SecondsPerSlot);
 
-    /// <summary>Every node's weight as a fresh <see cref="ForkChoiceRunner.GetHead"/> computes it, by root.</summary>
     private static Dictionary<Hash256, ulong> Weights(ForkChoiceRunner runner)
     {
         runner.GetHead();
         return runner.Snapshot().Nodes.ToDictionary(n => n.Root, n => n.Weight);
     }
 
-    /// <summary>The weight of <paramref name="root"/> as a fresh <see cref="ForkChoiceRunner.GetHead"/> computes it.</summary>
     private static ulong Weight(ForkChoiceRunner runner, Hash256 root)
     {
         runner.GetHead();
         return runner.Snapshot().Nodes.Single(n => n.Root == root).Weight;
     }
 
-    /// <summary>
-    /// <see cref="UnsignedChain.BuildEquivocation"/> with everything up to the slashing block imported
-    /// and replayed. The runner is ticked past every block so no proposer boost confounds the weights.
-    /// </summary>
+    /// <summary>Tick past all blocks so proposer boost cannot confound slashing weights.</summary>
     private static (ForkChoiceRunner Runner, UnsignedChain.ChainBlock Voted, UnsignedChain.ChainBlock B, UnsignedChain.ChainBlock Slashing) EquivocationScenario()
     {
         (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
@@ -1935,8 +1674,6 @@ public class ForkChoiceRunnerTests
         return (runner, scenario.Voted, scenario.B, scenario.Slashing);
     }
 
-    /// <summary>The caller-side contract of <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IDataAvailabilityRule)"/>: the block, then its body operations with signatures already trusted.</summary>
-    /// <param name="asBodyOfTheBlock">Whether votes go through <see cref="ForkChoiceRunner.OnBodyAttestation(Attestation, Hash256)"/>, as the importer feeds them, rather than the spec's own <c>on_attestation</c>.</param>
     private static void ImportWithBodyReplay(ForkChoiceRunner runner, UnsignedChain.ChainBlock block, bool asBodyOfTheBlock = false)
     {
         runner.OnBlock(block.Block, block.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
@@ -1970,8 +1707,6 @@ public class ForkChoiceRunnerTests
         return (chain, runner, builds);
     }
 
-    /// <summary>A runner rooted at the fixture's anchor, ticked to the block's slot, with the block's real post-state computed.</summary>
-    /// <param name="anchorBlockState">What the state provider serves for the anchor root, when not the anchor state itself.</param>
     private static (ForkChoiceRunner Runner, BeaconStateFulu PostState) RunnerAt(ImportableBlobBlock chain, BeaconStateFulu? anchorBlockState = null)
     {
         InMemoryStates states = new();
@@ -2036,7 +1771,7 @@ public class ForkChoiceRunnerTests
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
     }
 
-    /// <summary>Serves the chain's block states, but every copy finds the state already evicted.</summary>
+    /// <summary>Lookup succeeds but copy observes eviction, witnessing a state-provider race.</summary>
     private sealed class EvictedBeforeCopy(UnsignedChain chain) : IForkChoiceStateProvider
     {
         public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => chain.GetBlockState(blockRoot);
@@ -2044,7 +1779,6 @@ public class ForkChoiceRunnerTests
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => null;
     }
 
-    /// <summary>Imports a line of blocks at <paramref name="slots"/>, each on the previous one and the first on <paramref name="parent"/>.</summary>
     private static List<UnsignedChain.ChainBlock> ImportLine(UnsignedChain chain, ForkChoiceRunner runner, Hash256 parent, params ulong[] slots)
     {
         List<UnsignedChain.ChainBlock> blocks = [];
@@ -2059,7 +1793,6 @@ public class ForkChoiceRunnerTests
         return blocks;
     }
 
-    /// <summary>The first slot of <paramref name="epoch"/> past <paramref name="skip"/> others with a committee on <paramref name="tip"/>'s chain, its sole member, and the state that signs for it.</summary>
     private static (BeaconStateFulu SigningState, ulong Slot, int Member) FirstCommitteeMember(UnsignedChain.ChainBlock tip, ulong epoch, int skip = 0)
     {
         BeaconStateFulu atEpochStart = tip.PostState.Clone();
@@ -2075,7 +1808,6 @@ public class ForkChoiceRunnerTests
         return (atEpochStart, slot, committee[0]);
     }
 
-    /// <summary>The vote of <paramref name="target"/>'s first committee of <paramref name="epoch"/> for that block as head and target.</summary>
     private static Attestation BodyVote(UnsignedChain chain, UnsignedChain.ChainBlock target, ulong epoch, int skip = 0, bool sign = false)
     {
         (BeaconStateFulu signingState, ulong slot, int member) = FirstCommitteeMember(target, epoch, skip);
@@ -2091,7 +1823,6 @@ public class ForkChoiceRunnerTests
         };
     }
 
-    /// <summary>The unsigned vote of the whole committee of <paramref name="slot"/> in <paramref name="committees"/> for <paramref name="target"/> as head and target.</summary>
     private static Attestation WholeCommitteeVote(UnsignedChain chain, ulong slot, Hash256 target, ulong epoch, CommitteeCache committees) => new()
     {
         AggregationBits = new BitArray(committees.GetBeaconCommittee(slot, 0).Length, true),
@@ -2100,7 +1831,6 @@ public class ForkChoiceRunnerTests
         CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
     };
 
-    /// <summary>An aggregate by <paramref name="member"/> for <paramref name="head"/> as head and target, signed under <paramref name="signingState"/>, or unsigned without one.</summary>
     private static SignedAggregateAndProof GossipAggregate(UnsignedChain chain, ulong slot, Hash256 head, ulong epoch, int member, BeaconStateFulu? signingState)
     {
         BlsSignature unsigned = new(SignatureSets.G2PointAtInfinity);
@@ -2134,7 +1864,6 @@ public class ForkChoiceRunnerTests
         Target = new Checkpoint { Epoch = epoch, Root = head },
     };
 
-    /// <summary>Counts the checkpoint states the runner advances, one hasher each.</summary>
     private sealed class BuildCounter
     {
         public BuildCounter(ForkChoiceRunner runner) =>

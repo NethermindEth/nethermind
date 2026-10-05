@@ -12,11 +12,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// <c>/eth/v1/debug/fork_choice</c> served from the importer's published snapshot: the
-/// beacon-api shape field by field, and an honest 503 (never an empty tree) while nothing has been
-/// published, whether the host has no holder at all or an empty one.
-/// </summary>
 public class DebugForkChoiceTests
 {
     private const string Path = "/eth/v1/debug/fork_choice";

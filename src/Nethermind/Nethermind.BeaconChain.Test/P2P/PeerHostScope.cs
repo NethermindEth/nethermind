@@ -8,7 +8,6 @@ using Nethermind.BeaconChain.P2P;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>Owns loopback hosts in declaration order and starts them in the order supplied by the scenario.</summary>
 internal sealed class PeerHostScope(params BeaconP2P[] hosts) : IAsyncDisposable
 {
     public async Task StartAsync(CancellationToken token, params BeaconP2P[] startupOrder)

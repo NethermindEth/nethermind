@@ -11,11 +11,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Types;
 
-/// <summary>
-/// Fulu and Gloas blocks are unrelated SSZ shapes and the bytes name no fork, so the codec reads the
-/// slot first. Decoding a Gloas block as Fulu either throws or yields wrong field values, which drops
-/// every block of the new fork.
-/// </summary>
 public class SignedBeaconBlockCodecTests
 {
     private const int MessageOffset = 100;

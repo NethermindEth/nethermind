@@ -271,7 +271,6 @@ public class GloasColumnReqRespTests
         return read.Gloas;
     }
 
-    // A peer that answers any request with exactly these chunks, each under its own slot's digest.
     private static async Task ServeAsync(IChannel channel, DataColumnSidecarGloas[] served)
     {
         Stream stream = new ChannelStreamAdapter(channel);
@@ -284,7 +283,6 @@ public class GloasColumnReqRespTests
         await channel.WriteEofAsync();
     }
 
-    /// <summary>Exposes the protected chunked-response readers for direct testing.</summary>
     private sealed class TestProtocol(BeaconChainSpec spec) : DataColumnSidecarsProtocolBase(spec)
     {
         private const string ProtocolId = "/test/gloas-data-column-sidecars/1";

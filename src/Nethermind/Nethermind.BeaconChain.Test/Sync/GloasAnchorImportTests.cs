@@ -33,11 +33,6 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// A node started from a finalized Gloas checkpoint (specs/gloas/fork-choice.md <c>get_forkchoice_store</c>, with
-/// <c>payloads = {}</c>): the importer the factory builds on it, the anchor state it keeps, and the finalized Gloas
-/// state it persists for the next start.
-/// </summary>
 [HardTimeout(60_000)]
 public class GloasAnchorImportTests
 {
@@ -89,10 +84,6 @@ public class GloasAnchorImportTests
         Assert.That(engine.EnvelopeCalls, Is.EqualTo(1));
     }
 
-    /// <summary>
-    /// The anchor's payload is not known verified, so a child that builds on it full waits for the anchor's envelope,
-    /// which verifies against the anchor state; a child that builds on it empty imports at once.
-    /// </summary>
     [Test]
     public void Factory_importer_on_a_gloas_anchor_imports_an_empty_child_and_defers_a_full_child_until_the_anchor_envelope([Values] bool full)
     {
@@ -112,10 +103,6 @@ public class GloasAnchorImportTests
         Assert.That(childEnvelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the child's own envelope verifies against the child's post-state");
     }
 
-    /// <summary>
-    /// specs/bellatrix/optimistic-sync.md: a VALID newPayload verdict on an envelope verifies its payload, which the envelope endpoint then
-    /// reports as not optimistic; a SYNCING verdict records the payload without verifying it.
-    /// </summary>
     [Test]
     public void Envelope_newpayload_verdict_decides_whether_its_payload_is_valid([Values(ExecutionStatus.Valid, ExecutionStatus.Optimistic)] ExecutionStatus verdict)
     {
@@ -135,10 +122,6 @@ public class GloasAnchorImportTests
         Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == child.Root).PayloadValid, Is.EqualTo(verdict == ExecutionStatus.Valid));
     }
 
-    /// <summary>
-    /// specs/bellatrix/optimistic-sync.md: a VALID verdict on the payload of a block fork choice holds INVALID contradicts an earlier verdict.
-    /// The envelope is recorded either way, so its import still returns the verdict rather than failing after the record.
-    /// </summary>
     [Test]
     public void Valid_envelope_verdict_on_an_invalidated_block_is_recorded_without_failing_the_import()
     {
@@ -153,11 +136,6 @@ public class GloasAnchorImportTests
         Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>notify_forkchoice_updated</c>: the finalized hash of a Gloas checkpoint is its bid's
-    /// <c>parent_block_hash</c>. The anchor's own <c>block_hash</c> need not exist on the execution layer until its envelope
-    /// is verified, so the head moves to it only then.
-    /// </summary>
     [Test]
     public void Gloas_anchor_head_and_checkpoints_map_to_its_bid_parent_block_hash_until_its_envelope_verifies()
     {
@@ -178,12 +156,6 @@ public class GloasAnchorImportTests
         Assert.That(after.FinalizedExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
     }
 
-    /// <summary>
-    /// The anchor is the justified and finalized checkpoint, so fork choice resolves its state for as long as no later
-    /// checkpoint is finalized, including after more epoch boundaries than the boundary tier holds. No import retains
-    /// the anchor state; only the importer's pin holds it. Once a held block's state has aged out of every tier, a
-    /// persisted copy serves it; a persisted state of a block fork choice does not hold costs no store read.
-    /// </summary>
     [Test]
     public void Gloas_anchor_state_outlives_more_epoch_boundaries_than_the_boundary_tier_holds()
     {
@@ -192,7 +164,6 @@ public class GloasAnchorImportTests
         IBlockImporter importer = CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), store);
         SignedGloasChain.Block unheld = chain.Next(anchor, ForkSlot + 1, full: false, 0xB0);
 
-        // Two epochs of blocks push any retention out of the per-block tier, then nine epoch starts out of the boundary tier.
         ulong[] slots = [.. Enumerable.Range((int)ForkSlot + 1, 2 * (int)ForkSlot).Select(static s => (ulong)s), .. Enumerable.Range(4, 9).Select(static e => (ulong)e * ForkSlot)];
         SignedGloasChain.Block tip = anchor;
         SignedGloasChain.Block? held = null;
@@ -214,11 +185,6 @@ public class GloasAnchorImportTests
         Assert.That(importer.ImportEnvelope(unheld.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock));
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>on_attester_slashing</c> validates against <c>store.block_states[store.justified_checkpoint.root]</c>
-    /// for as long as that checkpoint is justified. A Gloas checkpoint justified without finality must stay resolvable
-    /// after more epoch boundaries than the boundary tier holds, or every attester slashing is refused.
-    /// </summary>
     [Test]
     public void Justified_gloas_checkpoint_state_outlives_more_epoch_boundaries_than_the_boundary_tier_holds()
     {
@@ -233,9 +199,6 @@ public class GloasAnchorImportTests
         SignedGloasChain.Block justified = chain.Next(anchor, justifiedEpoch * ForkSlot, full: false, 0xA2);
         Assert.That(importer.Import(justified.Forked, justified.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
 
-        // Epoch 3 opens with three blocks of eight one-committee votes (1536 of 2048 validators) for the epoch 2 target; nothing
-        // after them votes, so epoch 2 is justified at the next epoch transition and never finalized. Two epochs of blocks then
-        // push its state out of the per-block tier, and later epoch starts push it out of the boundary tier.
         ulong[] slots = [.. Enumerable.Range(3 * (int)ForkSlot, 2 * (int)ForkSlot).Select(static s => (ulong)s), .. Enumerable.Range(5, 8).Select(static e => (ulong)e * ForkSlot)];
         SignedGloasChain.Block tip = justified;
         foreach (ulong slot in slots)
@@ -262,11 +225,6 @@ public class GloasAnchorImportTests
         Assert.That(importer.ImportEnvelope(anchor.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "finalizing a later checkpoint releases the anchor state");
     }
 
-    /// <summary>
-    /// specs/phase0/fork-choice.md <c>on_block</c> adopts the pulled-up justification of a block from a past epoch at once, so a
-    /// branch arriving late can justify a checkpoint whose state already left both tiers and was never pinned while held. That
-    /// root is above the finalized checkpoint when the boundary tier evicts it, so its state was persisted and is read back.
-    /// </summary>
     [Test]
     public void Justified_gloas_root_first_adopted_after_leaving_both_tiers_is_read_back_from_the_store()
     {
@@ -280,7 +238,6 @@ public class GloasAnchorImportTests
 
         SignedGloasChain.Block justified = Import(importer, chain.Next(anchor, justifiedEpoch * ForkSlot, full: false, 0xA2));
 
-        // No votes: two epochs of blocks push the epoch 2 checkpoint out of the per-block tier, and nine later epoch starts out of the boundary tier.
         ulong[] slots = [.. Enumerable.Range(2 * (int)ForkSlot + 1, 2 * (int)ForkSlot).Select(static s => (ulong)s), .. Enumerable.Range(5, 9).Select(static e => (ulong)e * ForkSlot)];
         SignedGloasChain.Block tip = justified;
         SignedGloasChain.Block? forkParent = null;
@@ -293,7 +250,6 @@ public class GloasAnchorImportTests
             }
         }
 
-        // The late branch forks in epoch 3 from a block the per-block tier still holds; its votes (1536 of 2048 validators) justify epoch 2.
         SignedGloasChain.Block branch = forkParent!;
         for (int group = 0; group < 3; group++)
         {
@@ -309,11 +265,6 @@ public class GloasAnchorImportTests
         Assert.That(store.TryGetState(justified.Root, out _), Is.True);
     }
 
-    /// <summary>
-    /// The boundary tier persists a checkpoint candidate it evicts only while the root can still become justified; with
-    /// finality keeping up it is finalized by then, and nothing is written. Retaining a held root again evicts nothing.
-    /// The Fulu tier does the same, so a Fulu regeneration also starts at most one epoch below its target.
-    /// </summary>
     [Test]
     public void Evicted_checkpoint_candidate_is_persisted_only_while_above_the_finalized_checkpoint([Values] bool aboveFinalized, [Values] bool gloas)
     {
@@ -350,11 +301,6 @@ public class GloasAnchorImportTests
         }, Is.EqualTo(aboveFinalized ? gloas ? block.Signed.Message!.StateRoot : SszRoots.HashTreeRoot(chain.AnchorState) : null));
     }
 
-    /// <summary>
-    /// specs/phase0/beacon-chain.md <c>weigh_justification_and_finalization</c>: epochs 2 and 3, each justified by votes in its
-    /// own blocks, finalize epoch 2. The boundary tier then evicts both checkpoints, but only the one above the finalized start
-    /// slot can still become justified, so only its state is written.
-    /// </summary>
     [Test]
     public void Evicted_checkpoint_candidate_at_the_finalized_start_slot_is_not_persisted()
     {
@@ -368,7 +314,6 @@ public class GloasAnchorImportTests
         SignedGloasChain.Block justified = Import(importer, chain.Next(ImportVotingBlocks(importer, chain, finalized, 2, finalized.Root), 3 * ForkSlot, full: false, 0xA3));
         SignedGloasChain.Block tip = ImportVotingBlocks(importer, chain, justified, 3, justified.Root);
 
-        // Eight later epoch starts evict both checkpoints from the boundary tier.
         foreach (int epoch in Enumerable.Range(4, 8))
         {
             tip = Import(importer, chain.Next(tip, (ulong)epoch * ForkSlot, full: false, (byte)epoch));
@@ -382,16 +327,10 @@ public class GloasAnchorImportTests
         Assert.That(store.TryGetState(justified.Root, out _), Is.True);
     }
 
-    /// <summary>A Gloas record found by the Fulu getter is refused by its slot, never decoded: a malformed body a full decode would log answers unknown silently.</summary>
     [Test]
     public void Gloas_record_under_a_fulu_lookup_is_refused_by_its_slot_without_a_full_decode([Values(48, 49, 200)] int length) =>
         AssertPersistedStateAbsent(CorruptRecord(length, ForkSlot + 1), gloas: false, decodeExpected: false);
 
-    /// <summary>
-    /// A persisted state is served only by the getter of its own fork. The Fulu getter tells the fork by the slot that follows
-    /// <c>genesis_time</c> and <c>genesis_validators_root</c>, so a nonzero <c>genesis_validators_root</c>, as on every real
-    /// network, must not read as a Gloas slot and hide every Fulu snapshot.
-    /// </summary>
     [Test]
     public void Persisted_state_is_served_only_by_the_getter_of_its_fork()
     {
@@ -412,10 +351,6 @@ public class GloasAnchorImportTests
         Assert.That(logger.LogList.Where(static l => l.Contains("undecodable")), Is.Empty);
     }
 
-    /// <summary>
-    /// A checkpoint candidate can become justified only while fork choice holds it above the finalized epoch's start slot.
-    /// Once fork choice prunes it, its evicted state is useless, so it must not be persisted.
-    /// </summary>
     [Test]
     public void Checkpoint_candidate_can_become_justified_only_while_fork_choice_holds_it_above_the_finalized_start_slot()
     {
@@ -473,16 +408,11 @@ public class GloasAnchorImportTests
         Assert.That(BlockImporter.IsAboveFinalized(runner, parentRoot), Is.True, "the tip above the finalized start slot");
     }
 
-    /// <summary>
-    /// A node anchored on a Gloas checkpoint has no Fulu lineage, so a reorg between Gloas branches moves only the canonical
-    /// index: the head leaves a lone block for a branch its own body votes carry.
-    /// </summary>
     [Test]
     public void Gloas_anchor_importer_reorgs_between_gloas_branches()
     {
         (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         BeaconChainStore store = chain.CreateStore();
-        // Near the chain, so every leaf is viable for the head and no block is timely enough for the proposer boost.
         SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (ForkSlot + 4) * chain.Spec.SecondsPerSlot)));
         IBlockImporter importer = CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), store, clock);
         SignedGloasChain.Block lone = chain.Next(anchor, ForkSlot + 1, full: false, 0xB1);
@@ -503,10 +433,6 @@ public class GloasAnchorImportTests
         Assert.That(store.TryGetCanonicalRoot(ForkSlot + 2, out Hash256? atSecondSlot) ? atSecondSlot : null, Is.EqualTo(branchTip.Root));
     }
 
-    /// <summary>
-    /// The pinned finalized state is not an entry of the epoch-boundary tier: it stays resolvable after more checkpoint
-    /// retentions than that tier holds, while a checkpoint state retained as early ages out.
-    /// </summary>
     [Test]
     public void Pinned_gloas_state_outlives_more_checkpoint_retentions_than_the_boundary_tier_holds()
     {
@@ -515,7 +441,6 @@ public class GloasAnchorImportTests
         states.PinGloas(TestItem.KeccakA, block.PostState);
         states.RetainGloas(TestItem.KeccakB, block.PostState, checkpointCandidate: true);
 
-        // Past the per-block tier too, so only a boundary retention could still hold the early root.
         for (int i = 0; i < 2 * (int)ForkSlot + 9; i++)
         {
             states.RetainGloas(Keccak.Compute(BitConverter.GetBytes(i)), block.PostState, checkpointCandidate: true);
@@ -526,11 +451,6 @@ public class GloasAnchorImportTests
         Assert.That(states.GetGloasBlockState(TestItem.KeccakB), Is.Null, "fixture: the boundary tier evicted the early checkpoint");
     }
 
-    /// <summary>
-    /// A persisted Gloas state is not a Fulu state: the Fulu getter answers unknown rather than throwing from its decoder.
-    /// The Gloas getter reads it back, but only for a root fork choice holds at a Gloas slot, so a gossip block naming a
-    /// persisted root costs no store read.
-    /// </summary>
     [Test]
     public void Persisted_gloas_state_is_unknown_to_the_fulu_getter_and_read_back_by_the_gloas_getter_only_for_a_held_root([Values] bool held)
     {
@@ -549,11 +469,6 @@ public class GloasAnchorImportTests
         Assert.That(states.GetGloasBlockState(block.Root), Is.SameAs(gloas), "a state read back once is retained, not decoded again");
     }
 
-    /// <summary>
-    /// Finalizing a Gloas checkpoint persists its Gloas state and moves the anchor to it, or a restart would resume from
-    /// the last Fulu checkpoint. The restarted importer is built on that Gloas anchor and replays the stored blocks above
-    /// it, the first of which builds full on the anchor and so stands in for the anchor's envelope.
-    /// </summary>
     [Test]
     public async Task Gloas_finalization_persists_a_gloas_anchor_that_a_restart_resumes_from_and_replays_above()
     {
@@ -599,12 +514,6 @@ public class GloasAnchorImportTests
         Assert.That(restartedEngine.FcuCalls, Is.EqualTo(new[] { (tip.Bid.ParentBlockHash!, checkpoint.Bid.ParentBlockHash!, checkpoint.Bid.ParentBlockHash!) }));
     }
 
-    /// <summary>
-    /// The engine kick and every head step without a finalized hash point the execution layer at the anchor's execution
-    /// hash. For a Gloas anchor that is the bid's <c>parent_block_hash</c> (specs/gloas/fork-choice.md
-    /// <c>notify_forkchoice_updated</c>), equal to the anchor state's <c>latest_block_hash</c>; the bid's <c>block_hash</c>
-    /// names a payload the execution layer may never have received.
-    /// </summary>
     [Test]
     public async Task Gloas_anchor_execution_hash_is_its_bid_parent_block_hash()
     {
@@ -623,10 +532,6 @@ public class GloasAnchorImportTests
         Assert.That(engine.FcuCalls[0].Finalized, Is.EqualTo(anchor.Bid.ParentBlockHash));
     }
 
-    /// <summary>
-    /// A gossip block names any parent root it likes. A persisted state of a root fork choice does not hold must cost
-    /// no store read, or every such block costs a manifest read and a full state decode.
-    /// </summary>
     [Test]
     public void Gloas_block_on_a_persisted_parent_fork_choice_does_not_hold_costs_no_store_read()
     {
@@ -647,10 +552,6 @@ public class GloasAnchorImportTests
         Assert.That(states.ReadsCount - readsBefore, Is.Zero);
     }
 
-    /// <summary>
-    /// A root that becomes justified while it is the oldest entry of a full boundary tier, and already out of the
-    /// per-block tier, is pinned before the next checkpoint candidate evicts it.
-    /// </summary>
     [Test]
     public void Newly_justified_oldest_boundary_entry_is_pinned_before_the_next_candidate_evicts_it()
     {
@@ -669,11 +570,6 @@ public class GloasAnchorImportTests
         Assert.That(states.GetGloasBlockState(justified), Is.SameAs(state));
     }
 
-    /// <summary>
-    /// specs/phase0/beacon-chain.md <c>weigh_justification_and_finalization</c> may finalize the justified checkpoint in the
-    /// same import that justifies the next one, before <c>OnFinalized</c> reads the finalized state to persist it. The
-    /// outgoing justified state therefore stays pinned for one more justification or until finalization moves, and no longer.
-    /// </summary>
     [Test]
     public void Outgoing_justified_state_stays_pinned_for_one_more_justification()
     {
@@ -684,7 +580,6 @@ public class GloasAnchorImportTests
         PostStateCache states = new(chain.CreateStore(), chain.Spec, null, null, justifiedRoot: () => current);
         BeaconStateGloas?[] firstAfter = new BeaconStateGloas?[justified.Length];
 
-        // Each root is justified, pinned, and then aged out of both tiers before the next one is justified.
         for (int i = 0; i < justified.Length; i++)
         {
             states.RetainGloas(justified[i], state, checkpointCandidate: true);
@@ -705,10 +600,6 @@ public class GloasAnchorImportTests
         Assert.That(states.GetGloasBlockState(justified[2]), Is.SameAs(state), "finalization keeps the current justified state");
     }
 
-    /// <summary>
-    /// A newly justified root whose state is not held pins nothing: the states it would displace stay pinned, and its own state
-    /// is still found once it is retained rather than being shadowed by an empty pin.
-    /// </summary>
     [Test]
     public void Justifying_a_root_whose_state_is_not_held_keeps_the_existing_pins()
     {
@@ -736,7 +627,6 @@ public class GloasAnchorImportTests
         Assert.That(states.GetGloasBlockState(TestItem.KeccakC), Is.SameAs(state), "the root's state is found once retained");
     }
 
-    /// <summary>A persisted state read back from the store is retained in the per-block tier, so it never evicts a checkpoint candidate from the boundary tier.</summary>
     [Test]
     public void Persisted_gloas_state_read_back_does_not_evict_a_checkpoint_candidate()
     {
@@ -753,10 +643,6 @@ public class GloasAnchorImportTests
         Assert.That(states.GetGloasBlockState(candidate), Is.SameAs(block.PostState));
     }
 
-    /// <summary>
-    /// A corrupt persisted snapshot that still passes the store's length checks must not throw out of every import,
-    /// envelope, proposer check or fork choice lookup that names its root; it is logged and treated as absent.
-    /// </summary>
     [Test]
     public void Corrupt_persisted_state_is_absent([Values(10, 200)] int length, [Values] bool gloas) =>
         AssertPersistedStateAbsent(CorruptRecord(length, gloas ? ForkSlot + 1 : ForkSlot - 1), gloas, decodeExpected: true);
@@ -778,7 +664,6 @@ public class GloasAnchorImportTests
             decodeExpected ? Is.Not.Empty : Is.Empty, "a fork mismatch must not attempt a full decode");
     }
 
-    /// <summary>Random bytes that, when long enough to carry a slot, carry <paramref name="slot"/> at the state's slot offset.</summary>
     private static byte[] CorruptRecord(int length, ulong slot)
     {
         byte[] ssz = new byte[length];
@@ -821,8 +706,6 @@ public class GloasAnchorImportTests
         return block;
     }
 
-    /// <summary>Imports three blocks late in <paramref name="epoch"/> whose votes (1536 of 2048 validators) for its checkpoint justify it at the epoch's end.</summary>
-    /// <returns>The last of the three.</returns>
     private static SignedGloasChain.Block ImportVotingBlocks(IBlockImporter importer, SignedGloasChain chain, SignedGloasChain.Block parent, ulong epoch, Hash256 checkpointRoot)
     {
         for (int group = 0; group < 3; group++)
@@ -850,7 +733,6 @@ public class GloasAnchorImportTests
             forkChoiceSnapshots: forkChoiceSnapshots);
     }
 
-    /// <summary>Full one-committee votes for the <paramref name="targetEpoch"/> target <paramref name="targetRoot"/> from the eight slots of <paramref name="group"/>.</summary>
     private static AttestationGloas[] TargetVotes(BeaconStateGloas state, EpochCache cache, ulong targetEpoch, Hash256 targetRoot, int group)
     {
         CommitteeCache committees = cache.GetCommitteeCache(state, targetEpoch);
@@ -858,7 +740,6 @@ public class GloasAnchorImportTests
         return [.. Enumerable.Range(0, 8).Select(i => CommitteeAttestation(state, VoteFor(state, firstSlot + (ulong)i, targetEpoch, targetRoot), committees, 0, sign: false))];
     }
 
-    /// <summary>Two signed, conflicting votes by validators 0 and 1 for the same target epoch.</summary>
     private static AttesterSlashingGloas DoubleVote(BeaconStateGloas state, ulong targetEpoch) => new()
     {
         Attestation1 = SignedIndexedAttestation(state, Vote(targetEpoch * ForkSlot, targetEpoch - 1, targetEpoch, 0x51), [0, 1]),

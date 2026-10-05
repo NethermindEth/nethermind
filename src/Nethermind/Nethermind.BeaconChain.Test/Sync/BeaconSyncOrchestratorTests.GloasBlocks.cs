@@ -25,7 +25,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>Gloas blocks through the orchestrator: routed to the importer, parked on an unverified parent payload, and re-driven by its envelope.</summary>
 [HardTimeout(60_000)]
 public partial class BeaconSyncOrchestratorTests
 {
@@ -44,7 +43,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Router.IsProposalSeen(150, block.ProposerIndex), Is.True, "an imported Gloas block marks its (slot, proposer) seen");
     }
 
-    /// <summary>Range sync feeds the whole Gloas chain instead of stopping at its first block and fetching it again every round.</summary>
     [Test]
     public async Task Range_round_imports_past_the_fork()
     {
@@ -70,10 +68,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(WallSlot));
     }
 
-    /// <summary>
-    /// A block parked on its parent's unverified payload is retried on the slot tick like any retriable result, and at
-    /// once when that parent's envelope records the payload. An envelope that records nothing re-drives nothing.
-    /// </summary>
     [TestCase(ExecutionPayloadEnvelopeImportResult.Valid, true)]
     [TestCase(ExecutionPayloadEnvelopeImportResult.Optimistic, true)]
     [TestCase(ExecutionPayloadEnvelopeImportResult.Invalid, false)]
@@ -115,10 +109,6 @@ public partial class BeaconSyncOrchestratorTests
 
 
 
-    /// <summary>
-    /// A walk whose fetched ancestor begins to wait for its parent's payload by another route, in the retry set or held behind a
-    /// block that does, holds its blocks for that payload at once, not when the fetch ends (specs/gloas/p2p-interface.md <c>beacon_block</c>).
-    /// </summary>
     [Test]
     public async Task Walk_holds_its_blocks_once_its_fetched_ancestor_waits_for_a_payload_elsewhere([Values] bool ancestorHeld)
     {
@@ -148,10 +138,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
     }
 
-    /// <summary>
-    /// A walk for C waiting on X and a walk for B waiting on a second fetch of A both hold every block once X waits for a payload,
-    /// though the walk for B, resumed by A's hold, holds B first; the payload then imports the whole chain.
-    /// </summary>
     [Test]
     public async Task Overlapping_walks_resumed_by_a_payload_wait_hold_every_block()
     {
@@ -187,10 +173,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
     }
 
-    /// <summary>
-    /// A fetched copy of a held block that carries a held sibling's signature is not taken as held: the walk served it stops
-    /// there instead of holding its gossip block behind a copy that was never verified.
-    /// </summary>
     [Test]
     public async Task Fetched_copy_with_a_held_siblings_signature_is_not_taken_as_held()
     {
@@ -243,10 +225,6 @@ public partial class BeaconSyncOrchestratorTests
         ParentForgotten,
     }
 
-    /// <summary>
-    /// A fetched Gloas parent that waits for the next slot's regeneration budget is no parent waiting for its payload: every
-    /// gossip child naming it, a later genuine one after a first that may be forged, is held and imports with it.
-    /// </summary>
     [Test]
     public async Task Gossip_children_of_a_fetched_gloas_parent_waiting_for_regeneration_are_held_and_import_with_it()
     {
@@ -275,7 +253,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Known, Does.Contain(second.ComputeMessageRoot()));
     }
 
-    /// <summary>Only proposer-signed children may occupy the bounded retry or held-parent queue.</summary>
+    /// <summary>Only proposer-signed children may occupy bounded retry space.</summary>
     [Test]
     public async Task Forged_children_do_not_crowd_out_the_real_child([Values] bool parentParked)
     {
@@ -316,10 +294,6 @@ public partial class BeaconSyncOrchestratorTests
     private static int ByRootRequestsFor(IBeaconSyncPeer peer, Hash256 root) =>
         peer.ReceivedCalls().Count(c => c.GetMethodInfo().Name == nameof(IBeaconSyncPeer.RequestBlocksByRootAsync) && ((Hash256[])c.GetArguments()[0]!)[0] == root);
 
-    /// <summary>
-    /// A known full block whose payload is unverified, the unknown parent that builds on it, that parent's child and grandchild; a peer
-    /// serves the parent by root. The node's sync tip is the anchor, near the wall clock or, <paramref name="farBehind"/>, more than a backfill away.
-    /// </summary>
     private static ParkedParentScenario CreateParkedParentScenario(bool farBehind = false)
     {
         ulong anchorSlot = farBehind ? WallSlot - 40 : WallSlot - 5;
@@ -343,12 +317,6 @@ public partial class BeaconSyncOrchestratorTests
         ByRootBackfill,
     }
 
-    /// <summary>
-    /// Signed gossip blocks on evicted parents can spend a slot's regeneration budget at will, so a block this node fetched,
-    /// a competing branch from range sync or the parent a gossip child names, must not wait on that budget, or the node
-    /// could not switch to a branch whose fork point's state was evicted. A gossip block the spent budget refused is fetched
-    /// again by its child's by-root backfill and imports with it.
-    /// </summary>
     [Test]
     public async Task Fetched_block_on_an_evicted_parent_imports_after_gossip_spent_the_regeneration_budget([Values] Fetch fetch)
     {
@@ -371,7 +339,6 @@ public partial class BeaconSyncOrchestratorTests
             fixture.Add(await orchestrator.ImportBlockAsync(block.Forked, CancellationToken.None));
         }
 
-        // Two signed gossip blocks on evicted parents spend this slot's budget.
         foreach (int i in new[] { 1, 2 })
         {
             SignedGloasChain.Block spender = chain.Next(blocks[i], 3 * chain.Spec.SlotsPerEpoch + (ulong)i, full: false, (byte)(0xF0 + i));
@@ -403,10 +370,6 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    /// <summary>
-    /// A parent fetched by root that this slot's regeneration budget refuses is kept for a retry, with the gossip block that
-    /// named it held behind it: both import on the next slot instead of being dropped.
-    /// </summary>
     [Test]
     public async Task Fetched_parent_refused_by_the_regeneration_budget_imports_with_its_child_on_the_next_slot()
     {
@@ -429,7 +392,6 @@ public partial class BeaconSyncOrchestratorTests
             fixture.Add(await orchestrator.ImportBlockAsync(block.Forked, CancellationToken.None));
         }
 
-        // Three gossip children past the chain, each naming a fetched parent on another evicted block.
         (SignedGloasChain.Block Parent, SignedGloasChain.Block Child)[] pairs = [.. Enumerable.Range(1, 3).Select(i =>
         {
             SignedGloasChain.Block parent = chain.Next(blocks[i], wallSlot - 6 + (ulong)i, full: false, (byte)(0xE0 + i));
@@ -458,7 +420,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(importer.IsKnown(pairs[2].Child.Root), Is.True);
     }
 
-    /// <summary>A restart replays stored Gloas blocks; the Fulu-only store read would throw on the first of them and stop the node.</summary>
     [Test]
     public async Task Replay_reads_stored_gloas_blocks()
     {
@@ -477,7 +438,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[101, gloas.Slot]));
     }
 
-    /// <summary>An envelope that brings in no parked block still moves the execution head from the bid's parent hash to its block hash.</summary>
     [TestCase(ExecutionPayloadEnvelopeImportResult.Valid, 1)]
     [TestCase(ExecutionPayloadEnvelopeImportResult.Invalid, 0)]
     public async Task Envelope_that_re_drives_no_block_still_runs_a_head_step(ExecutionPayloadEnvelopeImportResult envelopeResult, int expectedFcus)
@@ -493,11 +453,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(expectedFcus));
     }
 
-    /// <summary>
-    /// A Fulu chain crossing into Gloas through the orchestrator and the real importer: a Fulu block past the anchor
-    /// imports, then the first Gloas block on it, its full child waits for that block's envelope, and the envelope's
-    /// import brings the child in.
-    /// </summary>
     [Test]
     public async Task Fulu_chain_crosses_into_gloas_and_a_full_child_imports_once_its_parents_envelope_does()
     {
@@ -525,10 +480,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(engine.FcuCalls[^1].Head, Is.EqualTo(child.Bid.ParentBlockHash), "the child's own payload has not arrived, so the fcU head is its bid's parent_block_hash");
     }
 
-    /// <summary>
-    /// A restart replays a stored Gloas block, then its verified envelope, so the replayed tip is head at once and a full child
-    /// gossiped after it imports; without the envelope the child waits for a payload the node already had, and no peer is connected to serve it.
-    /// </summary>
     [Test]
     public async Task Replay_imports_the_stored_envelope_after_its_block_so_a_full_child_imports_on_it()
     {
@@ -554,7 +505,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(importer.IsKnown(child.Root), Is.True, "the full child imports on the replayed payload");
     }
 
-    /// <summary>The store keeps envelopes from the finalized block on, and fork choice starts with no payloads, so a restart must import the anchor's stored envelope for its full child.</summary>
     [Test]
     public async Task Replay_imports_the_stored_envelope_of_a_gloas_anchor_so_its_full_child_imports()
     {
@@ -573,7 +523,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(importer.IsKnown(child.Root), Is.True, "the full child of the anchor imports on the replayed payload");
     }
 
-    /// <summary>A stored envelope that cannot be decoded must not stop the restart: its block still replays and the envelope is left to the network.</summary>
     [Test]
     public async Task Replay_skips_an_unreadable_stored_envelope()
     {
@@ -594,7 +543,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(engine.EnvelopeCalls, Is.Zero);
     }
 
-    /// <summary>A block the orchestrator drops after its retry age, and the children held for it, leave no deferral entry in the importer.</summary>
     [Test]
     public async Task Dropping_a_parked_block_releases_the_importers_deferral_entries()
     {
@@ -619,7 +567,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(GloasBlockImporterTests.DeferredCount(importer), Is.Zero);
     }
 
-    /// <summary>A block the orchestrator refuses because its retry set is full is dropped, so the importer must not keep the deferral it recorded for it.</summary>
     [Test]
     public async Task Refusing_a_block_at_a_full_retry_set_releases_the_importers_deferral()
     {
@@ -642,8 +589,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(GloasBlockImporterTests.DeferredCount(importer), Is.EqualTo(retryCapacity), "the refused block keeps no deferral entry");
     }
 
-    /// <summary>An orchestrator on the real importer over <paramref name="chain"/>, its wall clock inside slot 34.</summary>
-    /// <param name="importOnClock">Whether the importer reads the orchestrator's clock rather than the wall clock.</param>
     private static (BeaconSyncOrchestrator Orchestrator, BlockImporter Importer, SignedGloasChain.EnvelopeEngine Engine) CreateGloasOrchestrator(SignedGloasChain chain, BeaconChainStore? persisted = null, ManualTimestamper? clock = null, GossipRouter? router = null, SignedGloasChain.Block? gloasAnchor = null, IBeaconSyncPeer[]? peers = null, bool importOnClock = false, ExecutionPayloadEnvelopePool? envelopePool = null)
     {
         BeaconChainSpec spec = chain.Spec;

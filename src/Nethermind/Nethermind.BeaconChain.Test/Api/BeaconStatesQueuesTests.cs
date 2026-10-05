@@ -16,21 +16,14 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// beacon-APIs v5.0.0-alpha.2 <c>getPendingDeposits</c>, <c>getPendingPartialWithdrawals</c>,
-/// <c>getPendingConsolidations</c> and <c>getProposerLookahead</c>. Expected values are written from
-/// the fixture's construction, never read back from the response.
-/// </summary>
 public class BeaconStatesQueuesTests : BeaconApiFixture
 {
     private const string Json = "application/json";
     private const string Octet = "application/octet-stream";
 
-    // Past FuluForkEpoch (411,392) on BeaconChainSpec.Mainnet, so the state decodes and its fork is fulu.
     private const ulong StateEpoch = 412_500;
     private const ulong StateSlot = StateEpoch * 32;
 
-    // Mainnet Electra starts at epoch 364,032 and Fulu at 411,392.
     private const ulong PreElectraEpoch = 300_000;
     private const ulong ElectraEpoch = 400_000;
 
@@ -85,7 +78,6 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
         Assert.That(actual, Is.EqualTo(Enumerable.Range(0, 64).Select(i => LookaheadAt(i).ToString()).ToArray()));
     }
 
-    /// <summary>Finalized follows the captured finalized checkpoint (types/primitive.yaml Finalized), not a constant.</summary>
     [Test]
     public async Task Finalized_flag_follows_the_finalized_checkpoint(
         [Values("pending_deposits", "pending_partial_withdrawals", "pending_consolidations", "proposer_lookahead")] string endpoint)
@@ -120,7 +112,6 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
         Assert.That(body, Is.EqualTo(expected));
     }
 
-    /// <summary>apis/beacon/states/*.yaml: a malformed state_id is 400, an unretained state is 404 and an unsupported Accept is 406.</summary>
     [Test]
     public async Task Errors_follow_the_published_responses(
         [Values("pending_deposits", "pending_partial_withdrawals", "pending_consolidations", "proposer_lookahead")] string endpoint,
@@ -172,7 +163,6 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
 
         JsonElement root = JsonDocument.Parse(raw).RootElement;
         Assert.That(root.GetProperty("version").GetString(), Is.EqualTo("fulu"));
-        // No fork-choice snapshot verifies the block, so its payload stays optimistic.
         Assert.That(root.GetProperty("execution_optimistic").GetBoolean(), Is.True);
         Assert.That(root.GetProperty("finalized").GetBoolean(), Is.EqualTo(expectedFinalized));
         return root;

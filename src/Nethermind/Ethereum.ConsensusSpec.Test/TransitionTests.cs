@@ -15,12 +15,6 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>transition</c> suite: a pre-fork <c>pre</c> state and a block sequence that
-/// crosses meta.yaml's <c>fork_epoch</c>, every block applied through
-/// <see cref="ForkedStateTransition.Apply"/>, compared by the post-fork <c>post</c> state's
-/// <c>hash_tree_root</c>. Driven for <see cref="ConsensusSpecArchive.TransitionForks"/>.
-/// </summary>
 [TestFixture]
 public class TransitionTests
 {
@@ -34,16 +28,12 @@ public class TransitionTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Transition_mainnet(TransitionCase testCase) => Execute(testCase);
-
-    // A wrong suite path, a dropped extraction entry or an emptied case source enumerates zero vectors, and zero vectors run green.
     [Test]
     public void Every_transition_fork_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
         IEnumerable<string> forksWithVectors = TestedCases(preset).Select(static testCase => testCase.Fork).Distinct();
         Assert.That(forksWithVectors, Is.EquivalentTo(ConsensusSpecArchive.TransitionForks));
     }
-
-    // Not-implemented vectors are Inconclusive, so a driver that reports every mainnet vector that way still runs green.
     [Test]
     public void Every_transition_fork_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(TestedCases(ConsensusPreset.Mainnet), static testCase => testCase.Fork, Run);

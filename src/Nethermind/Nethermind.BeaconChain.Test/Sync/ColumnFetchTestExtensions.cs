@@ -9,10 +9,8 @@ using Nethermind.BeaconChain.Sync;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>Drives the orchestrator's queue by hand while a by-root column fetch runs off the worker, without a sleep or a wall-clock wait.</summary>
 internal static class ColumnFetchTestExtensions
 {
-    /// <summary>Processes the queued work, then waits for each running column fetch to end and processes what it queued, in the order the worker would.</summary>
     public static async Task SettleColumnFetchesAsync(this BeaconSyncOrchestrator orchestrator, CancellationToken token)
     {
         await orchestrator.ProcessQueuedAsync(token);
@@ -23,7 +21,6 @@ internal static class ColumnFetchTestExtensions
         }
     }
 
-    /// <summary>Like <see cref="SettleColumnFetchesAsync"/> but counts the worker passes and fails at <paramref name="maxPasses"/> instead of looping on work that feeds itself.</summary>
     public static async Task<int> SettleWithinAsync(this BeaconSyncOrchestrator orchestrator, int maxPasses, CancellationToken token)
     {
         int passes = 0;
@@ -45,13 +42,9 @@ internal static class ColumnFetchTestExtensions
         return passes;
     }
 
-    /// <summary>The longest a test waits for a fetch running off the worker to queue its result, so a fetch that never ends fails the test instead of hanging it.</summary>
+    /// <summary>Bound off-worker fetch waits so a missing completion fails rather than hangs the test.</summary>
     public static readonly TimeSpan FetchWaitTimeout = TimeSpan.FromSeconds(10);
 
-    /// <summary>
-    /// Processes the gossip <paramref name="block"/>, then the work its ancestor fetches queue until none runs, as the worker would;
-    /// fails after <paramref name="maxPasses"/> passes or <see cref="FetchWaitTimeout"/> without queued work.
-    /// </summary>
     public static async Task ProcessGossipBlockAndFetchAncestorsAsync(this BeaconSyncOrchestrator orchestrator, ForkedSignedBeaconBlock block, CancellationToken token, int maxPasses = 64)
     {
         await orchestrator.ProcessGossipBlockAsync(block, token);
@@ -74,7 +67,6 @@ internal static class ColumnFetchTestExtensions
         }
     }
 
-    /// <summary>Imports <paramref name="block"/>, lets the fetch its deferral starts and the retry the fetched columns wake run, and reports <see cref="BlockImportResult.Imported"/> once <paramref name="importer"/> knows the block.</summary>
     public static async Task<BlockImportResult> ImportAndSettleAsync(this BeaconSyncOrchestrator orchestrator, IBlockImporter importer, ForkedSignedBeaconBlock block, CancellationToken token)
     {
         BlockImportResult result = await orchestrator.ImportBlockAsync(block, token);

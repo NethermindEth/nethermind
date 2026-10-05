@@ -19,7 +19,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-// The pool's and the router's store and status are optional, so a registration that leaves them unfilled still resolves and checks nothing against the chain.
 public class ExecutionPayloadEnvelopePoolDiTests
 {
     [Test]

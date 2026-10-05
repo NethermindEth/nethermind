@@ -19,16 +19,10 @@ using Snappier;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// <c>headers?parent_root</c> reads each indexed child's slot from its stored bytes before deciding
-/// to decode it, and never answers 500 for a child the index names but the store cannot serve
-/// (beacon-APIs v5.0.0-alpha.2 <c>apis/beacon/blocks/headers.yaml</c>: a list of the matching headers).
-/// </summary>
 public class HeadersByParentSlotFilterTests
 {
     private const string Json = "application/json";
 
-    // Past FuluForkEpoch (411,392) on BeaconChainSpec.Mainnet, so every child decodes as Fulu.
     private const ulong Slot = 412_500 * 32 + 7;
 
     private static readonly Hash256 Parent = BeaconApiTestHost.TestRoot(0x70);
@@ -65,7 +59,6 @@ public class HeadersByParentSlotFilterTests
             "a decode attempt on the filtered-out child's bodyless record is the only thing that logs its root");
     }
 
-    // A missing record has nothing to log; the others are logged because the store holds a record it cannot read.
     [Test]
     public async Task An_indexed_child_the_store_cannot_serve_is_left_out_rather_than_failing_the_list(
         [Values] BrokenRecord record, [Values] bool filterToBrokenSlot)
@@ -80,7 +73,6 @@ public class HeadersByParentSlotFilterTests
         Assert.That(_log.LogList.Any(entry => entry.Contains(Broken.ToString())), Is.EqualTo(record != BrokenRecord.Missing));
     }
 
-    // A record whose slot prefix is valid but whose body is noise must fail as unreadable, whatever the noise.
     [Test]
     public async Task A_child_with_a_valid_slot_and_a_random_body_is_left_out([Range(0, 15)] int seed)
     {

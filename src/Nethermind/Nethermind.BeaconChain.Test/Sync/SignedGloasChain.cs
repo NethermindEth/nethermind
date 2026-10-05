@@ -27,13 +27,6 @@ using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransiti
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// Genuinely signed self-built Gloas blocks on the <see cref="ForkCrossingChain"/> Fulu anchor (fork at epoch 1),
-/// each with its own signed envelope, so the importer can run them with signature verification on. A block
-/// builds full on its parent (its bid's <c>parent_block_hash</c> is the parent bid's <c>block_hash</c>) or empty.
-/// </summary>
-/// <param name="hasher">Seals the blocks' state roots and hashes slots; one incremental hasher by default, as every state descends from the anchor
-/// and a full root of a mainnet-preset state costs ~15 ms per slot.</param>
 internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
 {
     // The importer hashes incrementally, so a test of its roots passes a full hasher to compare against.
@@ -41,14 +34,13 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
 
     public BeaconChainSpec Spec => ForkCrossingChain.Instance.Spec;
 
-    /// <summary>A copy of the shared anchor state, so an importer that mutated it would show here and not in other tests.</summary>
+    /// <summary>Copy the shared anchor so importer mutation cannot contaminate other cases.</summary>
     public BeaconStateFulu AnchorState { get; } = ForkCrossingChain.Instance.AnchorState.Clone();
 
     public SignedBeaconBlock AnchorBlock { get; } = new() { Message = ForkCrossingChain.Instance.AnchorBlock, Signature = default };
 
     public Hash256 AnchorRoot => ForkCrossingChain.Instance.AnchorRoot;
 
-    /// <summary>A Gloas block with the frozen post-state it seals and the envelope that reveals its payload.</summary>
     public sealed record Block(SignedBeaconBlockGloas Signed, Hash256 Root, BeaconStateGloas PostState, SignedExecutionPayloadEnvelope Envelope)
     {
         public ForkedSignedBeaconBlock Forked => new ForkedSignedBeaconBlock.OfGloas(Signed);
@@ -56,13 +48,11 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
         public ExecutionPayloadBid Bid => Signed.Message!.Body!.SignedExecutionPayloadBid!.Message!;
     }
 
-    /// <summary>A signed Fulu block with the frozen post-state it seals.</summary>
     public sealed record FuluBlock(SignedBeaconBlock Signed, Hash256 Root, BeaconStateFulu PostState)
     {
         public ForkedSignedBeaconBlock Forked => new ForkedSignedBeaconBlock.OfFulu(Signed);
     }
 
-    /// <summary>Builds the Fulu block at <paramref name="slot"/> (before the fork) on <paramref name="parent"/>, or on the anchor when it is <c>null</c>, with a payload that builds on the parent's.</summary>
     public FuluBlock NextFulu(ulong slot, FuluBlock? parent = null, byte blockHashFill = 0xE0)
     {
         BeaconStateFulu parentState = parent?.PostState ?? AnchorState;
@@ -89,15 +79,11 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
         return new FuluBlock(new SignedBeaconBlock { Message = message, Signature = Sign(proposerKey, Domains.ComputeSigningRoot(root, proposerDomain)) }, root, postState);
     }
 
-    /// <summary>Builds the block at <paramref name="slot"/> on <paramref name="parent"/>, or on the Fulu anchor across the fork when it is <c>null</c>.</summary>
-    /// <param name="attestations">The body's attestations, built from the pre-state advanced to <paramref name="slot"/>.</param>
-    /// <param name="payloadAttestations">The body's payload attestations, for the previous slot's block.</param>
     public Block Next(Block? parent, ulong slot, bool full, byte blockHashFill, SszKzgCommitment[]? blobCommitments = null, System.Func<BeaconStateGloas, EpochCache, AttestationGloas[]>? attestations = null, PayloadAttestation[]? payloadAttestations = null) =>
         parent is null
             ? Build(CrossFork(AnchorState), slot, full, blockHashFill, blobCommitments, attestations, payloadAttestations)
             : Build(parent.PostState.Clone(), slot, full, blockHashFill, blobCommitments, attestations, payloadAttestations);
 
-    /// <summary>Builds the first Gloas block at <paramref name="slot"/> on the Fulu block <paramref name="parent"/>, across the fork.</summary>
     public Block NextOnFulu(FuluBlock parent, ulong slot, bool full, byte blockHashFill) => Build(CrossFork(parent.PostState), slot, full, blockHashFill, null);
 
     private BeaconStateGloas CrossFork(BeaconStateFulu fuluParent)
@@ -146,7 +132,6 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
         return new Block(block, root, state, ValidEnvelope(state, bid.Message!, proposerKey, Presets.BuilderIndexSelfBuild, root));
     }
 
-    /// <summary>A real importer on the anchor whose store can hold Gloas blocks.</summary>
     public BlockImporter CreateImporter(IEngineDriver engine, System.Func<Hash256, ExecutionPayloadBid, bool>? isEnvelopeDataAvailable = null, ForkChoiceSnapshotHolder? snapshots = null, BeaconChainStore? store = null, ILogManager? logManager = null, SlotClock? clock = null, FailedBlockRoots? failedBlocks = null, Block? gloasAnchor = null, FuluBlock? fuluAnchor = null)
     {
         PubkeyCache pubkeys = new();
@@ -170,7 +155,6 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
 
     public BeaconChainStore CreateStore() => new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
 
-    /// <summary>Answers every block body VALID and every envelope with <see cref="EnvelopeVerdict"/>, counting the envelope calls.</summary>
     internal sealed class EnvelopeEngine : IEngineDriver
     {
         public ExecutionStatus EnvelopeVerdict { get; set; } = ExecutionStatus.Valid;

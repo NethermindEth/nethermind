@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>Lets the Fulu importer tests pass a Fulu block where <see cref="IBlockImporter.Import"/> takes the forked carrier.</summary>
 internal static class BlockImporterFuluExtensions
 {
     public static BlockImportResult Import(this IBlockImporter importer, SignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures) =>

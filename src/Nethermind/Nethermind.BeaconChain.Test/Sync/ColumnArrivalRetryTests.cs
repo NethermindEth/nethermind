@@ -18,11 +18,6 @@ using static Nethermind.BeaconChain.Test.Sync.DeferredBlockColumnFetchTests;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// fulu/fork-choice.md <c>is_data_available</c>: a head block deferred for its sampled columns must import as soon as they are held,
-/// gossiped or fetched by root, not on the next slot tick, or every blob-carrying head block lands a slot late. The fetch and the pool's
-/// completion signal reach the worker only as work items, since fork choice and the public-key cache are read on that loop alone.
-/// </summary>
 public class ColumnArrivalRetryTests
 {
     [Test]
@@ -56,7 +51,6 @@ public class ColumnArrivalRetryTests
         Assert.That(fixture.SidecarPool.WatchCount, Is.Zero, "the watch ends with the wait");
     }
 
-    /// <summary>A flood of cheap sidecars must not add work: only a root the worker waits on queues anything, and it queues once.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task Sidecars_of_a_root_nobody_waits_on_queue_nothing_and_repeats_of_an_awaited_column_queue_once(CancellationToken token)
@@ -106,7 +100,6 @@ public class ColumnArrivalRetryTests
         Assert.That(custodian.RootColumnRequests, Is.EqualTo(1), "a second deferral in the same slot asks the same custodian nothing");
     }
 
-    /// <summary>The deferral returns while the custodian's answer is pending, a second deferral does not start a second fetch, and the answer reaches the importer only through the worker.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_by_root_fetch_runs_off_the_worker_once_per_block_and_its_columns_import_the_block_through_the_queue(CancellationToken token)
@@ -119,7 +112,6 @@ public class ColumnArrivalRetryTests
 
         BlockImportResult first = await orchestrator.ImportBlockAsync(block, token);
         int inFlightWhileAsked = orchestrator.ColumnFetchesInFlight;
-        // Would be asked first by the rotation, were a second fetch allowed to start.
         StubPeer newcomer = fixture.SilentPeer("newcomer", fixture.Sampled);
         fixture.Peers.Add(newcomer);
         BlockImportResult second = await orchestrator.ImportBlockAsync(block, token);
@@ -156,7 +148,6 @@ public class ColumnArrivalRetryTests
         Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True);
     }
 
-    /// <summary>A fetch that fails, or faults before it asks anyone, must not leave the block waiting on it: the slot tick retries and fetches again.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_failed_by_root_fetch_leaves_the_tick_retry_working([Values] bool faults, CancellationToken token)
@@ -186,7 +177,6 @@ public class ColumnArrivalRetryTests
         Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the tick's retry fetched and imported");
     }
 
-    /// <summary>The live case: a head block still deferred at the next tick keeps its wake, so its last column imports it before the tick after.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_block_still_deferred_after_a_tick_imports_when_gossip_completes_its_columns(CancellationToken token)
@@ -213,7 +203,6 @@ public class ColumnArrivalRetryTests
         Assert.That(fixture.SidecarPool.WatchCount, Is.Zero);
     }
 
-    /// <summary>Every sampled column held but none verifying must not feed the worker: the retry a wake or a tick runs ends the wait instead of fetching again.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task Columns_that_are_held_but_do_not_verify_do_not_make_the_worker_retry_in_a_loop(CancellationToken token)
@@ -239,7 +228,6 @@ public class ColumnArrivalRetryTests
         Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.False);
     }
 
-    /// <summary>A custodian whose by-root answer is held until the test gives it, or that faults before it is asked.</summary>
     private sealed class AsyncRootPeer(string id, ulong[] custodied, ulong headSlot, bool faultsBeforeAsking = false) : TestPeer(id, headSlot)
     {
         private readonly TaskCompletionSource<IReadOnlyList<DataColumnSidecar>> _answer = new(TaskCreationOptions.RunContinuationsAsynchronously);

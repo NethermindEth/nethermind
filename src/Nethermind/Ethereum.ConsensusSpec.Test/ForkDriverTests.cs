@@ -17,16 +17,9 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Pins what the Electra carry-through rests on that no spec vector states directly: that the archive
-/// extracts exactly the forks production and the drivers model, that merkleizing the Fulu working state as
-/// its Electra base yields the Electra root, lookahead and all excluded, and that Electra's epoch
-/// processing and proposer sampling are Electra's rather than Fulu's.
-/// </summary>
 [TestFixture]
 public class ForkDriverTests
 {
-    /// <summary>The forks production has a beacon state container for, each <c>BeaconState{Fork}</c> class of the types namespace.</summary>
     private static readonly string[] ProductionStateForks =
     [
         .. typeof(BeaconStateElectra).Assembly.GetTypes()
@@ -104,10 +97,7 @@ public class ForkDriverTests
         }
     }
 
-    /// <summary>
-    /// Electra's <c>process_epoch</c> has no <c>process_proposer_lookahead</c>. Every validator exits at epoch 2, so
-    /// sampling epoch 2's proposers, as that Fulu-only step does at the end of epoch 0, throws on an empty active set.
-    /// </summary>
+    // All validators exit at epoch 2: Fulu's lookahead samples that empty epoch, which Electra must not read.
     [Test]
     public void Electra_epoch_processing_does_not_sample_proposers_two_epochs_ahead()
     {
@@ -118,11 +108,7 @@ public class ForkDriverTests
         Assert.That(state.ProposerLookahead![(int)Presets.SlotsPerEpoch..], Is.All.EqualTo(ForkDriver.NoProposer), "epoch 2 has no active validator");
     }
 
-    /// <summary>
-    /// Electra samples each slot's proposer against the effective balances of its own epoch. Half the validators drop to
-    /// 1 ETH effective at the epoch boundary, so the epoch-1 proposers sampled during epoch 0 are stale and the lookahead
-    /// must be refilled from the post-boundary state.
-    /// </summary>
+    // Balance changes invalidate advance sampling; Electra must refill epoch-1 proposers after the boundary.
     [Test]
     public void Electra_lookahead_is_resampled_after_effective_balances_change_at_the_epoch_boundary()
     {
@@ -158,7 +144,6 @@ public class ForkDriverTests
 
     private static ForkDriver<BeaconStateFulu> FuluPipeline(string fork) => (ForkDriver<BeaconStateFulu>)ForkDriver.ByName[fork];
 
-    /// <summary>A value for a field of <paramref name="type"/> that differs from the value of every other field index.</summary>
     private static object DistinctValue(Type type, int index) => type switch
     {
         _ when type == typeof(ulong) => (ulong)index + 1,
@@ -168,10 +153,7 @@ public class ForkDriverTests
         _ => Activator.CreateInstance(type)!,
     };
 
-    /// <summary>
-    /// An Electra working state in the last slot of epoch 0 with one validator per entry, active from genesis until
-    /// <paramref name="exitEpoch"/>, and the lookahead filled as the Electra driver's <c>DecodePre</c> fills it.
-    /// </summary>
+
     private static BeaconStateFulu WorkingStateAtEndOfEpochZero(ulong[] effectiveBalances, ulong[] balances, ulong exitEpoch)
     {
         int count = effectiveBalances.Length;
@@ -261,10 +243,7 @@ public class ForkDriverTests
         public Hash256 HashTreeRoot(BeaconStateFulu state) => _first ??= new FullBeaconStateHasher().HashTreeRoot(state);
     }
 
-    /// <summary>
-    /// No pinned sync or fork_choice vector answers INVALID_BLOCK_HASH or ACCEPTED, so only this pins how an on_payload_info
-    /// status reaches fork choice (Engine API: INVALID_BLOCK_HASH is an invalid payload, ACCEPTED an unverified one).
-    /// </summary>
+    // Vectors omit INVALID_BLOCK_HASH/ACCEPTED; Engine API treats them as invalid/unverified respectively.
     [TestCase("VALID", ExecutionStatus.Valid)]
     [TestCase("SYNCING", ExecutionStatus.Optimistic)]
     [TestCase("ACCEPTED", ExecutionStatus.Optimistic)]

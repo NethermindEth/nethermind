@@ -22,10 +22,8 @@ internal static class DataColumnSidecarGloasTestFixture
 
     public static Hash256 BlockRoot { get; } = new(Enumerable.Repeat((byte)0xA1, 32).ToArray());
 
-    /// <summary>A fresh copy of the two blobs' commitments, in blob order.</summary>
     public static SszKzgCommitment[] Commitments() => [.. Blobs.Value.Select(DataColumnKzgFixture.CommitmentOf)];
 
-    /// <summary>A fresh, valid sidecar for <paramref name="column"/>; callers may tamper with it freely.</summary>
     public static DataColumnSidecarGloas BuildSidecar(ulong column, ulong slot = 1, Hash256? blockRoot = null) => new()
     {
         Index = column,

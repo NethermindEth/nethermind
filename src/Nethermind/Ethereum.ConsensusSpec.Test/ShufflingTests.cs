@@ -12,16 +12,10 @@ using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>shuffling</c> suite (tests/formats/shuffling/README.md) against
-/// <see cref="SwapOrNotShuffle"/>: per index and as the whole-list shuffle committees use. The archive ships it for
-/// phase0 only, and <c>compute_shuffled_index</c> is unchanged since, so it covers every later fork. The presets differ
-/// only in <c>SHUFFLE_ROUND_COUNT</c>, which is passed in, so the minimal vectors run too.
-/// </summary>
+/// <remarks>Phase0 vectors cover unchanged later-fork shuffling; preset SHUFFLE_ROUND_COUNT is passed explicitly.</remarks>
 [TestFixture]
 public class ShufflingTests
 {
-    /// <summary>The spec's <c>SHUFFLE_ROUND_COUNT</c> of each preset.</summary>
     private static readonly IReadOnlyDictionary<ConsensusPreset, int> RoundsByPreset = new Dictionary<ConsensusPreset, int>
     {
         [ConsensusPreset.Minimal] = 10,
@@ -33,8 +27,6 @@ public class ShufflingTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(ShufflingCase testCase) => Execute(testCase);
-
-    // A wrong suite path or an emptied case source enumerates zero vectors, and zero vectors run green.
     [Test]
     public void Every_preset_has_vectors_in_the_archive([Values] ConsensusPreset preset) =>
         Assert.That(FuluDriverSupport.TestedCases<ShufflingCase>(preset, MinimalCases, MainnetCases), Is.Not.Empty);

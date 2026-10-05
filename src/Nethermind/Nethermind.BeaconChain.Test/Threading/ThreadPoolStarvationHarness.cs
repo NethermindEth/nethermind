@@ -18,16 +18,7 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Threading;
 
-/// <summary>
-/// Measures how block-import work on a dedicated thread and the thread pool behave under a synthetic load that has the shape of
-/// an execution layer snap sync next to the beacon networking. Run by hand; it loads the whole process for about a minute.
-/// </summary>
-/// <remarks>
-/// The load is a model, not the real execution layer: each "sync response" runs on a pool thread, queues helper work items to the
-/// global pool queue and waits until every one is dequeued, as a parallel loop without a worker scope does; "pinned" pool threads
-/// block on a queue for the whole run, as libp2p's yamux dial loop does per connection; "gossip" loops take one shared lock for CPU
-/// work, as libp2p's pubsub router does around message validation.
-/// </remarks>
+// Synthetic load only: queued sync helpers wait, pinned workers block, and gossip CPU work shares a lock; not the real EL/libp2p.
 [Explicit("Load harness; loads the whole process")]
 [NonParallelizable]
 public class ThreadPoolStarvationHarness
@@ -87,7 +78,6 @@ public class ThreadPoolStarvationHarness
 
             if (syncResponses)
             {
-                // Two sync feeds, each processing up to one response per processor at once.
                 for (int feed = 0; feed < 2; feed++)
                 {
                     load.Add(Task.Run(async () =>
@@ -187,7 +177,7 @@ public class ThreadPoolStarvationHarness
         }
     }
 
-    // The test host does not always print test output, so the lines also go to a file next to the test assembly.
+    // Persist output because the test host may not print it.
     private static void Report(string line)
     {
         TestContext.Out.WriteLine(line);

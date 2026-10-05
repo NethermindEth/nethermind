@@ -11,10 +11,8 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.ReqResp;
 
-/// <summary>A peer that breaks the protocol on a stream it opened is reported whatever selection thinks of it, since selection leaves out the peers most likely to misbehave.</summary>
 public class InboundViolationReportingTests
 {
-    // PeerManager's failure limit.
     private const int Limit = 8;
 
     [Test]
@@ -31,7 +29,6 @@ public class InboundViolationReportingTests
         manager = listener.CreatePeerManager();
         Assert.That(await manager.TryAddPeerAsync(PeerSessionNodes.LoopbackAddressText(remoteHost), token), Is.True);
         IBeaconSyncPeer peer = manager.GetBestPeers(0).Single();
-        // Invalid data keeps a peer at the limit out even when no other peer is offered.
         for (int i = 0; i < Limit / 2; i++)
         {
             peer.ReportFailure(PeerFailureReason.ProtocolViolation);
@@ -45,7 +42,6 @@ public class InboundViolationReportingTests
         Assert.That(PeerManager.FailuresReportedForTest(peer), Is.EqualTo(before + 1));
     }
 
-    // Attributing a violation to any connected peer would penalise an honest one for a stranger's stream.
     [Test]
     [CancelAfter(60_000)]
     public async Task A_violation_by_a_peer_that_is_not_connected_is_not_recorded_against_a_connected_one(CancellationToken token)

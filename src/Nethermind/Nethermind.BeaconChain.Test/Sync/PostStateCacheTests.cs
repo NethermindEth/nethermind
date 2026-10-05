@@ -12,11 +12,6 @@ namespace Nethermind.BeaconChain.Test.Sync;
 
 public class PostStateCacheTests
 {
-    /// <summary>
-    /// A trusted replay applies a block to the lineage state in place and keeps a copy of the parent's state, then fork choice replays
-    /// the block's body votes. A vote whose target is the parent (the epoch's checkpoint block) must be checked against the parent's
-    /// state (specs/phase0/fork-choice.md store_target_checkpoint_state), not the half-imported child's one the lineage already holds.
-    /// </summary>
     [Test]
     public void Retained_copy_of_the_lineage_root_wins_over_the_lineage_state_a_trusted_import_advances_in_place()
     {

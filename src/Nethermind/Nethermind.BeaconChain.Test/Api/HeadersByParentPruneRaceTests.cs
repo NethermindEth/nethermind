@@ -50,7 +50,6 @@ public class HeadersByParentPruneRaceTests
         Assert.That((await BeaconApiTestHost.ReadJsonAsync(response)).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
     }
 
-    /// <summary>Runs a hook just before or just after the next read of the block index, then behaves like the in-memory set.</summary>
     private sealed class HookedColumnsDb : IColumnsDb<BeaconChainDbColumns>
     {
         private readonly Dictionary<BeaconChainDbColumns, IDb> _columns = [];

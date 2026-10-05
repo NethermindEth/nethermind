@@ -14,21 +14,11 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>fork</c> suite: decode the pre-fork <c>pre</c> state, apply the fork's
-/// <c>upgrade_to_*</c>, and compare the result's <c>hash_tree_root</c> with the expected <c>post</c>
-/// state. Driven for <see cref="ConsensusSpecArchive.ForkUpgradeForks"/>.
-/// </summary>
 [TestFixture]
 public class ForkTests
 {
-    /// <summary>
-    /// Upgrades a pre-fork state file into the named fork's state, and decodes an expected post-fork
-    /// state file; each result carries its <c>hash_tree_root</c>.
-    /// </summary>
     internal readonly record struct ForkUpgrade(Func<string, (object State, Hash256 Root)> UpgradePre, Func<string, (object State, Hash256 Root)> DecodePost);
 
-    /// <summary>The upgrade per post-fork name; <see cref="ConsensusSpecArchive.ForkUpgradeForks"/> must extract exactly these keys.</summary>
     internal static readonly IReadOnlyDictionary<string, ForkUpgrade> UpgradesByFork = new Dictionary<string, ForkUpgrade>(StringComparer.Ordinal)
     {
         ["gloas"] = new(
@@ -45,16 +35,12 @@ public class ForkTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Fork_mainnet(ForkCase testCase) => Execute(testCase);
-
-    // A wrong suite path, a dropped extraction entry or an emptied case source enumerates zero vectors, and zero vectors run green.
     [Test]
     public void Every_fork_upgrade_fork_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
         IEnumerable<string> forksWithVectors = TestedCases(preset).Select(static testCase => testCase.Fork).Distinct();
         Assert.That(forksWithVectors, Is.EquivalentTo(ConsensusSpecArchive.ForkUpgradeForks));
     }
-
-    // Not-implemented vectors are Inconclusive, so a driver that reports every mainnet vector that way still runs green.
     [Test]
     public void Every_fork_upgrade_fork_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented()
     {
@@ -66,7 +52,6 @@ public class ForkTests
         }
     }
 
-    /// <summary>The cases the <see cref="Fork"/> or <see cref="Fork_mainnet"/> test consumes for <paramref name="preset"/>.</summary>
     private static List<ForkCase> TestedCases(ConsensusPreset preset) => FuluDriverSupport.TestedCases<ForkCase>(preset, MinimalCases, MainnetCases);
 
     private static void Execute(ForkCase testCase) =>

@@ -24,19 +24,10 @@ using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the mainnet-preset consensus-specs <c>networking/gossip_*</c> vectors (tests/formats/networking/gossip_validation.md)
-/// against the synchronous checks of <see cref="GossipRouter"/>, for <see cref="Suites"/>.
-/// </summary>
 /// <remarks>
-/// <see cref="GossipRouter"/> raises a message that passes its synchronous checks and returns Ignored; the signature and
-/// state rules run later in the import pipeline. The router reads blocks from a store seeded with the vector's <c>blocks</c>
-/// (see <see cref="SeedStore"/>) and the roots of those marked <c>failed</c> (see <see cref="SeedFailedBlocks"/>).
-/// Each message's <see cref="RouterVerdict"/> is observed from the router's events and drop counters, and every verdict
-/// other than raised must match a row of <see cref="SynchronousVerdicts"/>.
-/// An expected <c>valid</c> must be raised, an expected <c>ignore</c> must never be Rejected, and an expected <c>reject</c>
-/// must be Rejected. An expected reject the router raises or only drops makes the vector not-implemented, named by its reason.
-/// The minimal preset is not enumerated: the containers and limits here are mainnet-preset-shaped.
+/// Raised messages passed synchronous checks, not later import signature/state validation.
+/// Valid must be raised, ignore must not reject, and reject must reject; unsupported rejects are not-implemented.
+/// Verdict rows are checked both ways. Minimal containers are unsupported by mainnet SSZ bounds.
 /// </remarks>
 [TestFixture]
 public class GossipValidationTests
@@ -45,7 +36,6 @@ public class GossipValidationTests
 
     private const string NotImplementedSentinel = "";
 
-    /// <summary>The <c>networking</c> handlers driven, per fork: exactly the topics <see cref="GossipRouter"/> validates on a Fulu or Gloas digest.</summary>
     internal static readonly (string Fork, string[] Handlers)[] Suites =
     [
         ("fulu", ["gossip_attester_slashing", "gossip_beacon_aggregate_and_proof", "gossip_beacon_block"]),
@@ -58,22 +48,14 @@ public class GossipValidationTests
         "gossip_sync_committee_contribution_and_proof", "gossip_sync_committee_message", "gossip_voluntary_exit",
     ];
 
-    /// <summary>
-    /// The <c>networking</c> handlers whose vectors are enumerated but not driven, per fork: their topic is neither subscribed nor validated
-    /// by <see cref="GossipRouter"/>, so each vector is reported not-implemented. <c>gossip_data_column_sidecar</c> runs in <see cref="DataColumnSidecarNetworkingTests"/>.
-    /// </summary>
+    /// <summary>Enumerates unsubscribed topics as not-implemented; column vectors run in <see cref="DataColumnSidecarNetworkingTests"/>.</summary>
     internal static readonly (string Fork, string[] Handlers)[] UnroutedSuites =
     [
         ("fulu", [.. UnroutedHandlers]),
         ("gloas", [.. UnroutedHandlers, "gossip_execution_payload_bid", "gossip_proposer_preferences"]),
     ];
 
-    /// <summary>The verdicts other than raised that <see cref="GossipRouter"/> reaches on the vectors' messages, per topic and vector <c>reason</c>.</summary>
-    /// <remarks>
-    /// Taken from the router's behaviour on the vectors at <see cref="ConsensusSpecArchive.Version"/> and checked against it
-    /// both ways: a message the router rejects, drops or defers must match a row, and every row must be reached by a message.
-    /// A reason the router reaches through more than one check has a row for each.
-    /// </remarks>
+    /// <summary>Pins synchronous verdicts by topic/reason; every observed verdict needs a row and every row must be exercised.</summary>
     internal static readonly IReadOnlyDictionary<string, (string Reason, RouterVerdict Verdict)[]> SynchronousVerdicts =
         new Dictionary<string, (string, RouterVerdict)[]>(StringComparer.Ordinal)
         {
@@ -164,8 +146,6 @@ public class GossipValidationTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(GossipValidationCase testCase) => Execute(testCase);
-
-    // A wrong suite path, a dropped extraction entry or an emptied case source enumerates zero vectors, and zero vectors run green.
     [Test]
     public void Every_fork_and_handler_has_vectors_in_the_archive()
     {
@@ -173,9 +153,6 @@ public class GossipValidationTests
         IEnumerable<string> expected = Suites.SelectMany(static s => s.Handlers.Select(handler => $"{s.Fork}/{handler}"));
         Assert.That(enumerated, Is.EquivalentTo(expected));
     }
-
-    // Not-implemented vectors are Inconclusive, so a driver that reports every vector that way still runs green.
-    // Every handler has both kinds by design, so a not-implemented sentinel leads each handler and the check must look past it.
     [Test]
     public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented()
     {
@@ -188,8 +165,6 @@ public class GossipValidationTests
             Run(testCase);
         });
     }
-
-    // A row no message reaches is stale, and a vector that hides an unchecked reject behind a pass runs green.
     [Test]
     public void Every_verdict_row_is_reached_and_every_unchecked_reject_is_reported_not_implemented()
     {
@@ -226,8 +201,6 @@ public class GossipValidationTests
             Assert.That(reached, Is.EquivalentTo(rows));
         }
     }
-
-    // A handler that starts routing must move to Suites, or its vectors keep reporting not-implemented against a router that now validates them.
     [Test]
     public void Every_unrouted_handler_has_vectors_and_its_topic_is_not_routed()
     {
@@ -299,8 +272,6 @@ public class GossipValidationTests
     private static void Execute(GossipValidationCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord(Suite, testCase.Fork, testCase.Preset, testCase.VectorName, () => Run(testCase));
 
-    /// <param name="testCase">The vector to run.</param>
-    /// <param name="observations">Receives each decoded message's expected result, reason and observed verdict.</param>
     private static void Run(GossipValidationCase testCase, ICollection<Observation>? observations = null)
     {
         if (IsUnrouted(testCase))
@@ -420,11 +391,7 @@ public class GossipValidationTests
         }
     }
 
-    /// <summary>A spec-aware in-memory store holding the blocks meta.yaml lists under <c>blocks</c>, except those marked <c>failed</c>.</summary>
-    /// <remarks>A node stores only the blocks fork choice accepted, so a block that failed validation is never held.</remarks>
-    /// <param name="casePath">The vector directory holding meta.yaml and the block files.</param>
-    /// <param name="spec">The network the blocks are stored and read under.</param>
-    /// <param name="gloas">Whether the vector is a Gloas one, whose blocks are Gloas-shaped even at a slot its config puts before the fork.</param>
+    /// <param name="gloas">Uses Gloas block shapes even where vector config places slots before the fork.</param>
     internal static BeaconChainStore SeedStore(string casePath, BeaconChainSpec spec, bool gloas = false)
     {
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
@@ -444,9 +411,6 @@ public class GossipValidationTests
 
         return store;
     }
-
-    /// <summary>The blocks meta.yaml marks <c>failed</c>, as the importer records the ones it refuses.</summary>
-    /// <inheritdoc cref="SeedStore" path="/param"/>
     internal static FailedBlockRoots SeedFailedBlocks(string casePath, BeaconChainSpec spec, bool gloas = false)
     {
         FailedBlockRoots failedBlocks = new();
@@ -504,7 +468,6 @@ public class GossipValidationTests
         return new() { Current = new(finalized, finalized, Hash256.Zero, nodes) };
     }
 
-    /// <summary>The vector's own <c>config.yaml</c> when present, otherwise the mainnet config with the vector's fork live from genesis.</summary>
     /// <exception cref="NotImplementedInDriverException">The config's slot duration differs from the spec's, which <see cref="SlotClock"/> would misread.</exception>
     internal static BeaconChainSpec VectorSpec(string casePath, bool gloas)
     {
@@ -572,16 +535,12 @@ public class GossipValidationTests
         }
     }
 
-    /// <summary>A message's expected result and reason from meta.yaml, with the verdict the router reached.</summary>
     private sealed record Observation(string Topic, string Expected, string? Reason, RouterVerdict Verdict);
 
-    /// <summary>One message of meta.yaml's <c>messages</c>, received at <see cref="TimeMs"/> after genesis on <see cref="SubnetId"/> when the topic has subnets.</summary>
     internal sealed record VectorMessage(string Name, string Expected, string? Reason, long TimeMs, ulong? SubnetId);
 
-    /// <summary>One entry of meta.yaml's <c>blocks</c>; <see cref="Failed"/> marks a block that fails validation.</summary>
     internal sealed record VectorBlock(string Name, bool Failed, bool Pending = false, string? PayloadStatus = null, bool PayloadPresent = false);
 
-    /// <summary>The meta.yaml fields the synchronous checks read.</summary>
     internal sealed record VectorMeta(string Topic, ulong? FinalizedEpoch, List<VectorMessage> Messages, List<VectorBlock> Blocks)
     {
         public static VectorMeta Load(string casePath)
@@ -634,20 +593,16 @@ public readonly record struct GossipValidationCase(string Preset, string Fork, s
     public override string ToString() => VectorName;
 }
 
-/// <summary>What <see cref="GossipRouter"/> did with a message.</summary>
 internal enum RouterAction
 {
-    /// <summary>Its typed event was raised.</summary>
     Raised,
 
-    /// <summary>It was held and raised once the next slot started.</summary>
     Deferred,
 
     Ignored,
     Rejected,
 }
 
-/// <summary>A <see cref="RouterAction"/> with the drop reason the router counted, if any.</summary>
 internal readonly record struct RouterVerdict(RouterAction Action, GossipDropReason? Drop = null)
 {
     public static readonly RouterVerdict Raised = new(RouterAction.Raised);

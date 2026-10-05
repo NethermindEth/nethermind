@@ -17,22 +17,11 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// A real chain across the Gloas fork (<see cref="ForkEpoch"/> = 1): a genesis-like Fulu anchor at slot 0,
-/// the first Gloas block at the boundary slot 32, and three epoch-2 blocks whose bodies carry enough
-/// epoch-1 target votes (24 of the 32 one-committee slots, 1536 of 2048 validators) for the last one's
-/// post-state to pull the justified checkpoint up to that first Gloas block. Every block runs through the
-/// real Fulu or Gloas pipeline, signatures unverified; every state is frozen under the root it sealed.
-/// </summary>
-/// <remarks>
-/// Built once per test run: nothing in fork choice mutates a provider state, so the tests share it and
-/// each creates its own runner through <see cref="CreateRunner"/>.
-/// </remarks>
+/// <summary>States are frozen by sealed root; fork-choice cases share them but each owns its runner.</summary>
 internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockStateProvider
 {
     public const ulong ForkEpoch = 1;
 
-    /// <summary>The epoch-1 slots whose committees vote, in groups of eight per epoch-2 block (the Electra body limit).</summary>
     public const int VotingSlotCount = 24;
 
     private static readonly Lazy<ForkCrossingChain> Shared = new(static () => new ForkCrossingChain());
@@ -86,7 +75,6 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
         LastFuluVotesStanding = epoch0.GetBeaconCommittee(BoundarySlot - 1, 0).ToArray().Count(i => !gloasVoters.Contains(i));
     }
 
-    /// <summary>A block of this chain with its frozen post-state.</summary>
     public sealed record ChainBlock(SignedBeaconBlockGloas Block, Hash256 Root, BeaconStateGloas PostState);
 
     public static ForkCrossingChain Instance => Shared.Value;
@@ -99,20 +87,15 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
 
     public Hash256 AnchorRoot { get; }
 
-    /// <summary>The first Gloas block, at the boundary slot.</summary>
     public ChainBlock First { get; }
 
-    /// <summary>The epoch-2 blocks at slots 64, 65 and 66, each on the previous one (the first on <see cref="First"/>).</summary>
     public IReadOnlyList<ChainBlock> Voting { get; }
 
-    /// <summary>The sole committee of slot 32, ascending: validators whose epoch-1 vote is for <see cref="First"/>.</summary>
     public ulong[] Committee32 { get; }
 
-    /// <summary>How many of the slot-31 voters for the anchor cast no later epoch-1 vote, which would replace it as their latest message.</summary>
+    /// <summary>These slot-31 voters never cast a later vote that would replace their latest message.</summary>
     public int LastFuluVotesStanding { get; }
 
-    /// <summary>A runner rooted at the anchor, with this chain as both of its state providers unless <paramref name="withGloasStates"/> is false.</summary>
-    /// <param name="pubkeys">The runner's pubkey cache; the anchor registry's when omitted.</param>
     public ForkChoiceRunner CreateRunner(bool withGloasStates = true, PubkeyCache? pubkeys = null)
     {
         if (pubkeys is null)
@@ -130,7 +113,6 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
 
     public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot) => _gloasStates.GetValueOrDefault(blockRoot);
 
-    /// <summary>A fresh anchor copy advanced with Fulu slots to the fork boundary, then upgraded to Gloas.</summary>
     public BeaconStateGloas UpgradedAnchor()
     {
         BeaconStateFulu fulu = AnchorState.Clone();
@@ -138,10 +120,6 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
         return GloasForkTransition.UpgradeToGloas(fulu, Spec);
     }
 
-    /// <summary>
-    /// The Fulu state of <see cref="CreateFuluState"/> made a genesis: real validator keys, finality at
-    /// epoch 0, and a latest header that hashes to the returned anchor block once its state root is filled.
-    /// </summary>
     private static BeaconStateFulu CreateAnchorState(out BeaconBlock anchorBlock)
     {
         BeaconStateFulu state = CreateFuluState(ValidatorCount);
@@ -172,7 +150,7 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
         return state;
     }
 
-    /// <summary>Altair <c>eth_aggregate_pubkeys</c>, which a checkpoint anchor's sync committees must satisfy.</summary>
+    /// <summary>Anchor sync-committee aggregate keys must satisfy Altair eth_aggregate_pubkeys.</summary>
     private static BlsPublicKey AggregatePubkey(BlsPublicKey[] pubkeys)
     {
         BlsSigner.AggregatedPublicKey aggregate = new();
@@ -186,7 +164,6 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
         return new BlsPublicKey(aggregate.PublicKey.Compress());
     }
 
-    /// <summary>Applies a self-built block carrying <paramref name="attestations"/> to the live <paramref name="state"/> and freezes a copy of the result under the block's root.</summary>
     private ChainBlock Seal(BeaconStateGloas state, EpochCache cache, byte blockHashFill, AttestationGloas[] attestations)
     {
         SignedBeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, state.LatestBlockHash!, Hash(blockHashFill)));

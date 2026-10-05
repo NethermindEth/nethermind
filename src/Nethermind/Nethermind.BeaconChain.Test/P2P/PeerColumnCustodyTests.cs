@@ -70,7 +70,6 @@ public class PeerColumnCustodyTests
         Assert.That(PeerColumnCustody.CustodyGroupCountOf(null), Is.Null);
     }
 
-    /// <summary>A connected peer's custody follows the custody group count of its <c>MetaData</c>, and is re-read once its <c>seq_number</c> moves.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_connected_peer_s_custody_follows_its_metadata(CancellationToken token)

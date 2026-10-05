@@ -17,7 +17,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>Near the head, an unknown-parent gossip block is fetched by root before its signature can be checked, so the fetches it buys are bounded.</summary>
 public partial class BeaconSyncOrchestratorTests
 {
     private const ulong NearHeadAnchorSlot = WallSlot - 5;
@@ -42,7 +41,6 @@ public partial class BeaconSyncOrchestratorTests
             "unknown-parent blocks hold at most their own share of the queue shared with payload-held blocks");
     }
 
-    // A fetched parent waiting for its data is not fetched again; the children naming it wait with it.
     [Test]
     public async Task Blocks_naming_one_fetched_parent_buy_one_backfill()
     {
@@ -64,7 +62,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(4), "every child of the waiting parent is held, and so is the block whose parent no peer returned");
     }
 
-    // A parent no peer returned may be fetched again, but each fetch still spends the slot's budget.
     [Test]
     public async Task Parent_no_peer_returned_is_fetched_again_within_the_slot_budget()
     {
@@ -78,7 +75,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(ByRootRequests(peer), Is.EqualTo(BeaconSyncOrchestrator.MaxBackfillsPerSlot));
     }
 
-    // Forged blocks spend the slot's budget first; the real child waits, evicting the oldest held block, and imports once its parent arrives by gossip.
     [TestCase(0, TestName = "refused child held while the hold has room")]
     [TestCase(BeaconSyncOrchestrator.MaxHeldRefusedBackfills, TestName = "refused child held in place of the oldest held forged block")]
     public async Task Block_whose_backfill_is_refused_imports_when_its_parent_arrives(int forgedHeld)
@@ -161,7 +157,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(ByRootRequests(peer), Is.EqualTo(BeaconSyncOrchestrator.MaxBackfillsPerSlot + 1));
     }
 
-    // A parent held behind a deeper ancestor that waits for the regeneration budget is not fetched again for another child, in the slot or the next.
     [Test]
     public async Task Parent_held_behind_a_budget_deferred_ancestor_buys_no_second_backfill([Values] bool nextSlot)
     {
@@ -179,7 +174,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(walk.Harness.Importer.Known, Does.Contain(walk.Blocks[2].ComputeMessageRoot()).And.Contain(sibling.ComputeMessageRoot()), "both children import behind the deferred ancestor");
     }
 
-    // A parent whose retry expired is no longer held, so a later child fetches it, also when the slot's budget was renewed while it waited.
     [Test]
     public async Task Parent_whose_retry_expired_may_be_fetched_again()
     {
@@ -194,7 +188,6 @@ public partial class BeaconSyncOrchestratorTests
 
         ulong expirySlot = WallSlot + 2 * Spec.SlotsPerEpoch + 1;
         SetWallSlot(harness, expirySlot);
-        // Near the head again, so a block with an unknown parent is fetched by root rather than left to range sync.
         await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(expirySlot - 1, anchorRoot)), CancellationToken.None);
         await harness.Orchestrator.ProcessGossipBlockAndFetchAncestorsAsync(UnknownParentBlock(expirySlot, seed: 0), CancellationToken.None);
         await harness.Orchestrator.ProcessSlotAsync(expirySlot, CancellationToken.None);
@@ -207,13 +200,11 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(ByRootRequestsFor(peer, parentRoot), Is.EqualTo(1));
     }
 
-    // Once the cap of refused backfills evicts the held parent nothing holds it, so later children in the same slot may fetch it, each after the last fetch failed.
     [Test]
     public async Task Evicted_parent_of_a_budget_deferred_ancestor_may_be_fetched_again_in_the_slot()
     {
         DeferredAncestorWalk walk = await WalkToBudgetDeferredAncestorAsync();
         Hash256 heldParentRoot = walk.Blocks[1].ComputeMessageRoot();
-        // Children of a parent being fetched are held without spending the slot's budget, and evict the oldest held blocks.
         for (int i = 0; i <= BeaconSyncOrchestrator.MaxHeldRefusedBackfills; i++)
         {
             await walk.Harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot + (ulong)i, seed: 0), CancellationToken.None);
@@ -256,10 +247,6 @@ public partial class BeaconSyncOrchestratorTests
         rangePeer.Received(1).ReportFailure(PeerFailureReason.ProtocolViolation, Arg.Any<string>());
     }
 
-    /// <summary>
-    /// A held parent that leaves the hold without importing, because it is invalid or its deferred ancestor is, no longer holds
-    /// its backfill: a later child in the same slot fetches it again.
-    /// </summary>
     [Test]
     public async Task Held_parent_that_fails_behind_a_budget_deferred_ancestor_may_be_fetched_again_in_the_slot([Values] bool ancestorInvalid)
     {
@@ -281,11 +268,6 @@ public partial class BeaconSyncOrchestratorTests
 
     private sealed record DeferredAncestorWalk(Harness Harness, IBeaconSyncPeer Peer, ForkedSignedBeaconBlock[] Blocks, HashSet<Hash256> Withheld, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>> OtherParentFetch);
 
-    /// <summary>
-    /// Walks the gossip block <c>Blocks[2]</c> to its fetched ancestor <c>Blocks[0]</c>, which waits for the regeneration budget,
-    /// so <c>Blocks[1]</c> and <c>Blocks[2]</c> are held behind it. The peer serves the chain by root except the withheld roots,
-    /// and leaves any other root waiting on <c>OtherParentFetch</c>.
-    /// </summary>
     private static async Task<DeferredAncestorWalk> WalkToBudgetDeferredAncestorAsync()
     {
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, WallSlot - 4, WallSlot - 3, WallSlot - 2);
@@ -309,7 +291,6 @@ public partial class BeaconSyncOrchestratorTests
         return new DeferredAncestorWalk(harness, peer, blocks, withheld, otherParentFetch);
     }
 
-    /// <summary>A node near the head with one peer; it serves <paramref name="served"/> by root, or nothing.</summary>
     private static (Harness Harness, IBeaconSyncPeer Peer) CreateBackfillHarness(ForkedSignedBeaconBlock? served = null)
     {
         IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();

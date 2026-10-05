@@ -24,10 +24,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// The target peer band (watermarks, trimming, ban list) and the outbound dial cap: the only
-/// defence available with no gossipsub scoring in the consumed libp2p library.
-/// </summary>
 public class PeerBandTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
@@ -37,14 +33,12 @@ public class PeerBandTests
     public string Peer_id_is_extracted_from_the_p2p_multiaddr_component(string address) =>
         PeerManager.ExtractPeerIdForTest(address);
 
-    /// <summary>The libp2p layer dials only an address that names its peer id, so no other address is ever keyed.</summary>
     [TestCase("/ip4/1.2.3.4/tcp/9000")]
     [TestCase("")]
     public void An_address_without_a_peer_id_has_no_key(string address) =>
         Assert.That(() => PeerManager.ExtractPeerIdForTest(address), Throws.ArgumentException);
 
-    /// <summary>A static peer the maintenance round could never dial stops the node at startup instead of failing every round.</summary>
-    /// <remarks>The libp2p dial keeps a failed name resolution as the answer for that peer id, so a DNS name is refused too.</remarks>
+    /// <summary>Refuse static DNS peers: libp2p caches a failed name resolution for the peer ID.</summary>
     [TestCase("not a multiaddr")]
     [TestCase("/ip4/1.2.3.4/tcp/9000")]
     [TestCase("/dns4/example.org/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
@@ -65,7 +59,6 @@ public class PeerBandTests
         Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance), Throws.Nothing);
     }
 
-    /// <summary>An address whose peer id does not decode fails its own dial, not the maintenance round or caller around it.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_dial_address_that_does_not_decode_is_refused_without_throwing(CancellationToken token)
@@ -78,10 +71,7 @@ public class PeerBandTests
         Assert.That(await peerManager.TryAddPeerAsync("/ip4/127.0.0.1/tcp/1/p2p/not-a-peer-id", token), Is.False);
     }
 
-    /// <summary>
-    /// A peer dropped for timing out is routine, and log watchers treat an exception type name in an Info line as a
-    /// crash, so the drop line names the cause instead.
-    /// </summary>
+    /// <summary>Info drop logs name the cause, not an exception type that log watchers interpret as a crash.</summary>
     [TestCase(typeof(TaskCanceledException), ExpectedResult = "request timed out")]
     [TestCase(typeof(OperationCanceledException), ExpectedResult = "request timed out")]
     [TestCase(typeof(TimeoutException), ExpectedResult = "request timed out")]
@@ -109,7 +99,6 @@ public class PeerBandTests
         (int Pool, int Gauge, ulong Connected) admitted = (manager.PeerCount, Metrics.BeaconChainPeerCount, Metrics.BeaconChainPeersConnected);
 
         IBeaconSyncPeer peer = manager.GetBestPeers(0).Single();
-        // A content violation is never kept at the peer floor, so the last failure drops the peer.
         for (int i = 0; i < 8; i++) await manager.HandleHealthFailureAsync(peer, new Eth2ReqRespException("malformed reply"), 0, token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -118,7 +107,6 @@ public class PeerBandTests
         Assert.That(Metrics.BeaconChainPeersDropped, Is.EqualTo(droppedBefore + 1));
     }
 
-    /// <summary>Preserves ban streaks and deadlines across fault, silence and non-fault disconnects.</summary>
     [TestCaseSource(nameof(BanTransitions))]
     public void Disconnects_follow_the_ban_transition_policy(int threshold, Action<PeerManager, ManualTimestamper>[] stages)
     {
@@ -251,7 +239,6 @@ public class PeerBandTests
                     if (hasHistory)
                     {
                         await WaitUntilAsync(() => manager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId).LastDisconnectReason == "TooManyPeers", token, "the refusal was never recorded");
-                        // A capacity refusal must preserve the fault streak on either side of it.
                         manager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
                         Assert.That(manager.IsBannedForTest(knockingId), Is.True);
                     }
@@ -293,8 +280,6 @@ public class PeerBandTests
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(betterServer.P2P), token), Is.True);
         Assert.That(peerManager.PeerCount, Is.EqualTo(2));
 
-        // Lower the high watermark below the already-connected count, as a config-driven band
-        // change or a dial-race overshoot would: the next maintenance round must trim back down.
         client.Config.MaxPeerCount = 1;
         client.Config.TargetPeerCount = 1;
         await peerManager.RunMaintenanceRoundAsync(token);
@@ -398,8 +383,6 @@ public class PeerBandTests
             Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected), () => watch.Describe("the admitted peer does not match"));
             Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"), () => watch.Describe("the admitted peer does not match"));
             Assert.That(record.AgentVersion, Is.EqualTo("test-remote/inbound-1.2.3"), () => watch.Describe("the identify agent string the remote advertised, not null and not our own"));
-            // A session the remote opened was never discovered by us, so there is no ENR to
-            // attribute - fabricating one here would be worse than reporting the honest gap.
             Assert.That(record.Enr, Is.Null, () => watch.Describe("the admitted peer does not match"));
         }
 
@@ -411,9 +394,6 @@ public class PeerBandTests
     [CancelAfter(60_000)]
     public async Task Dialing_a_peer_that_already_connected_to_us_reuses_its_session_and_keeps_it_inbound(CancellationToken token)
     {
-        // BeaconP2P.DialPeerAsync hands back the existing session for an already-connected peer id, so
-        // a static/discovery dial of a peer that got in first must neither record it twice nor relabel
-        // it as Outbound.
         AdmissionWatch watch = new();
         Node remote = CreateNode();
         Node local = CreateNode(logManager: watch.LogManager);
@@ -511,7 +491,6 @@ public class PeerBandTests
         Assert.That(refusing.Requests, Is.GreaterThan(requests), "an expired backoff permits another dial");
     }
 
-    /// <summary>Polls a condition with a short cadence; the caller's token bounds the wait.</summary>
     private static Task WaitUntilAsync(Func<bool> condition, CancellationToken token, string failure) =>
         PeerSessionNodes.WaitUntilAsync(condition, failure, token, pollDelayMilliseconds: 50);
 
@@ -532,8 +511,6 @@ public class PeerBandTests
     [CancelAfter(60_000)]
     public async Task Admission_capacity_wait_blocks_once_the_pool_is_at_target(CancellationToken token)
     {
-        // BeaconSyncOrchestrator's discovery dial loop used to decide this for itself by comparing
-        // PeerCount to config directly; it now asks PeerManager, which must give the same backpressure.
         Node server = CreateNode();
         Node client = CreateNode();
         SetMatchingStatus(server, client);
@@ -563,7 +540,7 @@ public class PeerBandTests
 
         TimeSpan underPeered = peerManager.NextMaintenanceIntervalForTest;
 
-        node.Config.MinPeerCount = 0; // an empty pool (PeerCount 0) is no longer "under" this watermark
+        node.Config.MinPeerCount = 0;
         TimeSpan atWatermark = peerManager.NextMaintenanceIntervalForTest;
 
         Assert.That(underPeered, Is.LessThan(atWatermark), "MinPeerCount must actually change behaviour, not just be read into nothing");
@@ -607,8 +584,6 @@ public class PeerBandTests
         string address = LoopbackAddress(server.P2P);
         string expectedPeerId = PeerManager.ExtractPeerIdForTest(address);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-        // Passed the way the discovery dial loop passes it (see BeaconSyncOrchestrator.DialCandidateAsync),
-        // not the plain two-arg overload a static-peer reconnect uses.
         Assert.That(await peerManager.TryAddPeerAsync(address, token, discoveredEnr), Is.True);
 
         IPeerDirectory directory = peerManager;
@@ -622,8 +597,6 @@ public class PeerBandTests
             // or the pre-connect dial address (which uses 0.0.0.0, not 127.0.0.1, before rewrite).
             Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"));
             Assert.That(record.AgentVersion, Is.EqualTo("test-remote/outbound-4.5.6"), "the identify agent string the server advertised, not null and not our own");
-            // The Beacon API's node/peers endpoint reads this straight off the record; dropping it
-            // here silently regresses that endpoint back to reporting null for a discovered peer.
             Assert.That(record.Enr, Is.EqualTo(discoveredEnr));
         }
 
@@ -791,9 +764,6 @@ public class PeerBandTests
 
     internal record Node(BeaconP2P P2P, BeaconChainStatusHolder StatusHolder, BeaconChainConfig Config, BeaconChainStore Store, LocalMetadataSource Metadata);
 
-    /// <param name="statusSource">What the node serves over <c>status</c>; defaults to its own settable holder.</param>
-    /// <param name="logManager">Where the node's P2P host logs; silent by default.</param>
-    /// <param name="requestTimeout">The fixed request budget of the node's own requests; the production value by default.</param>
     internal static Node CreateNode(IBeaconChainStatusSource? statusSource = null, ILogManager? logManager = null, TimeSpan? requestTimeout = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
@@ -807,10 +777,6 @@ public class PeerBandTests
         return new Node(p2p, statusHolder, config, store, metadataSource);
     }
 
-    /// <summary>
-    /// Waits for the manager's admission event instead of polling its count, and keeps the Debug log of the manager and
-    /// the local host: an admission that never happens is logged there and the session silently dropped.
-    /// </summary>
     private sealed class AdmissionWatch
     {
         private static readonly TimeSpan HangBound = TimeSpan.FromSeconds(30);
@@ -832,7 +798,6 @@ public class PeerBandTests
             return manager;
         }
 
-        /// <summary>Returns once a peer was admitted; fails with the logged cause when none is within <see cref="HangBound"/>.</summary>
         public async Task AdmittedAsync(string failure, CancellationToken token)
         {
             try
@@ -845,7 +810,6 @@ public class PeerBandTests
             }
         }
 
-        /// <summary>The failure text with the nodes' session and identify-timeout counts and the captured log.</summary>
         public string Describe(string failure)
         {
             string state = string.Join("; ", _nodes.Select(static (n, i) => $"node {i}: sessions={n.P2P.SessionCountForTest} identifyTimeouts={n.P2P.IdentifyTimeoutsForTest}"));
@@ -867,8 +831,6 @@ public class PeerBandTests
         }
     }
 
-    /// <summary>Answers every <c>status</c> request with an error chunk, so a status exchange with this
-    /// node fails only after the session is already open and identified.</summary>
     private sealed class RefusingStatusSource : IBeaconChainStatusSource
     {
         private int _requests;

@@ -35,12 +35,9 @@ public class BeaconChainPluginTests
         using IContainer container = BeaconChainTestContainer.Builder().Build();
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        // Pulls the whole driver graph: orchestrator -> importer factory/engine driver and
-        // P2P (peer pool -> peer manager -> libp2p host -> status/metadata sources, discv5).
         Assert.That(container.Resolve<BeaconChainService>(), Is.Not.Null);
         Assert.That(container.Resolve<IColumnsDb<BeaconChainDbColumns>>(), Is.Not.Null);
         Assert.That(container.Resolve<BeaconSyncOrchestrator>(), Is.Not.Null);
-        // The spec is derived from the execution layer's chain id, not a separate config knob.
         Assert.That(container.Resolve<BeaconChainSpec>(), Is.SameAs(BeaconChainSpec.Mainnet));
         Assert.That(new BeaconChainPlugin(new BeaconChainConfig()).Enabled, Is.False);
         Assert.That(new BeaconChainPlugin(new BeaconChainConfig { Enabled = true }).Enabled, Is.True);
@@ -55,11 +52,9 @@ public class BeaconChainPluginTests
 
         await p2p.StartAsync(token);
 
-        // Without the validator the library accepts and forwards every message, including one on a topic the spec requires rejecting.
         Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = "/eth2/beacon_block" }), Is.EqualTo(MessageValidity.Rejected));
         Message unknown = new() { Topic = "/eth2/00000000/beacon_blocks/ssz_snappy" };
         Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, unknown), Is.EqualTo(MessageValidity.Rejected));
-        // A message on a handled topic is checked off the router's monitor, and forwarded only once its verdict is given.
         string blockTopic = GossipTopics.Topic(ForkDigest.Compute(BeaconChainSpec.Mainnet, container.Resolve<SlotClock>().CurrentEpoch), GossipTopics.BeaconBlock);
         using (Assert.EnterMultipleScope())
         {
@@ -74,8 +69,6 @@ public class BeaconChainPluginTests
         Assert.That(p2p.VerifyMessageForTest?.Invoke(p2p.LocalPeerId!, new Message { Topic = blockTopic }), Is.EqualTo(MessageValidity.Throttled));
     }
 
-    /// <summary>p2p-interface.md "Topics and messages": the router drops a message carrying from, seqno, signature or key before the validator runs.</summary>
-    /// <remarks>The validator does not check these fields itself, so the host must run the library's <c>StrictNoSign</c> policy.</remarks>
     [Test]
     public async Task Gossipsub_runs_the_StrictNoSign_policy()
     {
@@ -85,7 +78,6 @@ public class BeaconChainPluginTests
         Assert.That(p2p.PubsubSettingsForTest.DefaultSignaturePolicy, Is.EqualTo(PubsubSettings.SignaturePolicy.StrictNoSign));
     }
 
-    /// <summary>p2p-interface.md gossipsub parameters: seen_ttl is SLOT_DURATION_MS * SLOTS_PER_EPOCH * 2 // 1000 seconds.</summary>
     [Test]
     public async Task Gossipsub_seen_ttl_covers_two_epochs()
     {
@@ -95,8 +87,6 @@ public class BeaconChainPluginTests
         Assert.That(p2p.PubsubSettingsForTest.MessageCacheTtl, Is.EqualTo(768_000));
     }
 
-    /// <summary>Every topic of every scheduled fork digest, each column subnet included, scores only invalid deliveries before the router starts.</summary>
-    /// <remarks>A topic missing from the table gets the library's default delivery score, which prunes honest peers of a sparse topic.</remarks>
     [Test]
     public async Task Gossipsub_scores_only_invalid_deliveries_on_every_topic_of_any_scheduled_fork_digest()
     {
@@ -126,14 +116,11 @@ public class BeaconChainPluginTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(missing, Is.Empty);
         Assert.That((settings.BehaviorPenaltyWeight, settings.IPColocationFactorWeight, settings.AppSpecificWeight), Is.EqualTo((0d, 0d, 0d)));
-        // One invalid delivery prunes the peer and stops gossip and publication to it, a second graylists it.
         Assert.That(settings.PublishThreshold, Is.GreaterThan(GossipScoring.InvalidMessageDeliveriesWeight));
         Assert.That(settings.GraylistThreshold, Is.LessThanOrEqualTo(GossipScoring.InvalidMessageDeliveriesWeight).And.GreaterThan(4 * GossipScoring.InvalidMessageDeliveriesWeight));
-        // The count decays to a hundredth over two epochs: 768 decays of one second on mainnet.
         Assert.That(Math.Pow(decay, 768), Is.EqualTo(0.01).Within(1e-9));
     }
 
-    /// <summary>The pending validation bounds come from the config; the router's own bounds are the node's plus the vote queue, so it never drops a deferred message unseen.</summary>
     [Test]
     public async Task Gossipsub_pending_validation_bounds_follow_the_config()
     {
@@ -141,11 +128,9 @@ public class BeaconChainPluginTests
         await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
         PubsubSettings settings = p2p.PubsubSettingsForTest;
 
-        // The router dispatches every message the node reserved room for: its bounds are twice the node's own plus a full vote queue of the largest votes.
         Assert.That((settings.MaxPendingValidationMessages, settings.MaxPendingValidationBytes), Is.EqualTo((2 * (7 + 1024), 2 * (1000 + 1024 * 32 * 1024))));
     }
 
-    /// <summary>fulu/das-core.md "Reconstruction and cross-seeding": a reconstructed column goes to the topic mesh neighbors, not to every peer subscribed to the topic.</summary>
     [Test]
     public async Task Gossipsub_publishes_to_the_topic_mesh_only()
     {
@@ -155,8 +140,6 @@ public class BeaconChainPluginTests
         Assert.That(p2p.PubsubSettingsForTest.FloodPublish, Is.False);
     }
 
-    /// <summary>p2p-interface.md "Gossipsub size limits": an encoded RPC may reach max_message_size(), max_compressed_len(10 MiB) + 1024 bytes.</summary>
-    /// <remarks>The library's own 1 MiB RPC and 512 KiB IWANT bounds would drop a legal block, and its 10,000 seen ids would forget most honest ids before seen_ttl.</remarks>
     [Test]
     public async Task Gossipsub_bounds_admit_a_max_size_rpc_and_size_the_seen_cache_for_seen_ttl_traffic()
     {
@@ -171,7 +154,6 @@ public class BeaconChainPluginTests
         Assert.That(settings.MaxSeenMessageIds, Is.EqualTo(106_816));
     }
 
-    /// <summary>Without discovery the peer manager knows no sampled column, so every custodian search and keep rule would be inert.</summary>
     [Test]
     public async Task Plugin_wiring_gives_the_peer_manager_the_discovery_that_knows_this_nodes_sampled_columns()
     {
@@ -193,8 +175,6 @@ public class BeaconChainPluginTests
             .AddSingleton(Substitute.For<IProcessExitSource>()) // registered by the runner in production
             .Build();
 
-        // The host's own tests build it by hand, which cannot see a missing registration: the
-        // discovery container threw at startup once for exactly that reason behind a green suite.
         Assert.That(container.Resolve<BeaconApiHost>(), Is.Not.Null);
     }
 
@@ -205,7 +185,6 @@ public class BeaconChainPluginTests
         const ulong unmodelledChainId = 0xDEADBEEF;
         using IContainer container = BeaconChainTestContainer.Builder(unmodelledChainId).Build();
 
-        // Autofac wraps the factory's exception; the failure must still surface loudly with the chain id.
         DependencyResolutionException wrapped = Assert.Throws<DependencyResolutionException>(
             () => container.Resolve<BeaconChainSpec>())!;
         UnsupportedBeaconNetworkException ex = (UnsupportedBeaconNetworkException)wrapped.GetBaseException();

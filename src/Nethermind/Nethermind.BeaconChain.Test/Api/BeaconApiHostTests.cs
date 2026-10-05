@@ -32,10 +32,6 @@ using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// End-to-end tests against a real Kestrel instance on an ephemeral port: real HTTP requests over
-/// the wire, not an in-memory TestServer, so this also exercises the actual host lifecycle.
-/// </summary>
 public class BeaconApiHostTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
@@ -102,8 +98,6 @@ public class BeaconApiHostTests
         HttpResponseMessage caughtUp = await _client.GetAsync("/eth/v1/node/health");
         Assert.That(caughtUp.StatusCode, Is.EqualTo(HttpStatusCode.OK), "distance 0 is ready");
 
-        // Advance the wall clock far past the (unchanged) head slot instead of moving the head
-        // backwards, so this actually exercises "behind" rather than two clocks that both read 0.
         _timestamper.Add(TimeSpan.FromSeconds(Spec.SecondsPerSlot * 100));
         HttpResponseMessage behind = await _client.GetAsync("/eth/v1/node/health");
         Assert.That(behind.StatusCode, Is.EqualTo((HttpStatusCode)206), "far behind the wall clock is partial content");
@@ -219,8 +213,6 @@ public class BeaconApiHostTests
         HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/node/peers?{query}");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         JsonDocument body = await ReadJsonAsync(response);
-        // A filter that silently includes or excludes the wrong peers is worse than one that 400s:
-        // meta.count must track data's length, not the manager's unfiltered total.
         Assert.That(body.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(expectedCount));
         Assert.That(body.RootElement.GetProperty("meta").GetProperty("count").GetInt32(), Is.EqualTo(expectedCount));
     }
@@ -257,7 +249,6 @@ public class BeaconApiHostTests
         Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("non-attesting"));
     }
 
-    /// <summary>apis/debug/state.v2.yaml returns 404 for missing states; unset driver checkpoints remain unavailable.</summary>
     [Test]
     public async Task Debug_state_ssz_is_404_before_any_state_is_persisted_and_serves_exact_bytes_once_it_is(
         [Values("head", "finalized", "13200000", "root")] string stateId, [Values] bool fulu)
@@ -350,7 +341,6 @@ public class BeaconApiHostTests
         JsonDocument body = await ReadJsonAsync(found);
         Assert.That(body.RootElement.GetProperty("data").GetProperty("canonical").GetBoolean(), Is.True);
         Assert.That(body.RootElement.GetProperty("data").GetProperty("header").GetProperty("message").GetProperty("slot").GetString(), Is.EqualTo(slot.ToString()));
-        // Head/finalized are both still zero: this block (slot 13,200,000) is neither, so finalized must be false.
         Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.False);
     }
 
@@ -423,7 +413,6 @@ public class BeaconApiHostTests
 
     private const string ContentTypeOctet = "application/octet-stream";
 
-    /// <summary>apis/node/health.yaml requires syncing responses for optimism and validates the override.</summary>
     [TestCase("", 206)]
     [TestCase("?syncing_status=299", 299)]
     [TestCase("?syncing_status=599", 599)]
@@ -440,7 +429,6 @@ public class BeaconApiHostTests
         Assert.That((int)response.StatusCode, Is.EqualTo(expected));
     }
 
-    /// <summary>apis/node/peer.yaml requires 400 for unparseable peer identifiers.</summary>
     [Test]
     public async Task Malformed_peer_id_is_bad_request([Values("localhost", "0invalid", "16Uiu2HAmNoSuchPeer", "11", "11111111111111111111111111111111111111111111111111111111111111111")] string peerId)
     {
@@ -448,7 +436,6 @@ public class BeaconApiHostTests
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
-    /// <summary>apis/node/syncing.yaml el_offline follows failure and recovery of each engine call kind.</summary>
     [Test]
     public async Task Most_recent_engine_call_controls_offline([Values(0, 1, 2)] int kind)
     {

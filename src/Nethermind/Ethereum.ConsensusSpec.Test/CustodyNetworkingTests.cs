@@ -12,15 +12,7 @@ using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>networking/get_custody_groups</c> and <c>networking/compute_columns_for_custody_group</c>
-/// vectors against <see cref="CustodyGroups"/>, for both presets.
-/// </summary>
-/// <remarks>
-/// <c>node_id</c> is a decimal uint256; the raw discv5 node id is its 32-byte big-endian encoding.
-/// <c>NUMBER_OF_CUSTODY_GROUPS</c> and <c>NUMBER_OF_COLUMNS</c> are 128 under both presets, so the mainnet
-/// constants the code uses apply to the minimal vectors too.
-/// </remarks>
+/// <remarks>Decimal uint256 node_id becomes 32-byte big-endian; both presets use 128 custody groups/columns.</remarks>
 [TestFixture]
 public class CustodyNetworkingTests
 {
@@ -35,8 +27,6 @@ public class CustodyNetworkingTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(CustodyCase testCase) => Execute(testCase);
-
-    // A wrong suite path, a dropped extraction entry or an emptied case source enumerates zero vectors, and zero vectors run green.
     [Test]
     public void Every_handler_has_fulu_vectors_in_the_archive([Values] ConsensusPreset preset)
     {

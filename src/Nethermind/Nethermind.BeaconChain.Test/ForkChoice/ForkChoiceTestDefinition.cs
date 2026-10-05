@@ -11,11 +11,8 @@ using static Nethermind.BeaconChain.Test.ForkChoice.ProtoArrayTestBlocks;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>Deterministic test hashes, mirroring the helpers of Lighthouse's <c>fork_choice_test_definition</c>.</summary>
 public static class TestHashes
 {
-    /// <summary>A zero-filled hash whose first byte is <paramref name="marker"/>.</summary>
-    /// <param name="marker">The first byte.</param>
     public static Hash256 FromFirstByte(byte marker)
     {
         byte[] bytes = new byte[Hash256.Size];
@@ -23,11 +20,7 @@ public static class TestHashes
         return new Hash256(bytes);
     }
 
-    /// <summary>A hash with <paramref name="n"/> written big-endian into its last 8 bytes (Lighthouse's <c>Hash256::from_low_u64_be</c>).</summary>
-    /// <remarks>
-    /// Only internal consistency matters, but the big-endian layout also preserves numeric order
-    /// under the lexicographic root comparison used by the equal-weight tie-break.
-    /// </remarks>
+    /// <summary>Write big-endian into the last eight bytes so numeric and lexicographic root order agree.</summary>
     public static Hash256 FromLow(ulong n)
     {
         byte[] bytes = new byte[32];
@@ -35,16 +28,13 @@ public static class TestHashes
         return new Hash256(bytes);
     }
 
-    /// <summary>A root that is not the zero hash; Lighthouse's <c>get_root</c>. Also used for execution block hashes (<c>get_hash</c>).</summary>
     public static Hash256 GetRoot(ulong i) => FromLow(i + 1);
 
-    /// <summary>A checkpoint at epoch <paramref name="i"/> with root <see cref="GetRoot"/>(<paramref name="i"/>); Lighthouse's <c>get_checkpoint</c>.</summary>
     public static CheckpointRef GetCheckpoint(ulong i) => new(i, GetRoot(i));
 }
 
 internal static class ProtoArrayTestBlocks
 {
-    /// <summary>A proto-array test block with no state root and explicit realized, unrealized and payload-status fields.</summary>
     internal static ProtoBlock CreateProtoBlock(
         ulong slot, Hash256 root, Hash256? parent, CheckpointRef justified, CheckpointRef finalized,
         ExecutionStatus executionStatus, Hash256 executionBlockHash,
@@ -66,7 +56,6 @@ internal static class ProtoArrayTestBlocks
 
 public abstract record Operation;
 
-/// <summary>Runs <c>GetHead</c> and asserts the returned head; carries an optional proposer boost root (Lighthouse's <c>ProposerBoostFindHead</c>).</summary>
 public sealed record FindHead(
     CheckpointRef JustifiedCheckpoint,
     CheckpointRef FinalizedCheckpoint,
@@ -74,7 +63,6 @@ public sealed record FindHead(
     Hash256 ExpectedHead,
     Hash256? ProposerBoostRoot = null) : Operation;
 
-/// <summary>Runs <c>GetHead</c> and asserts that it fails.</summary>
 public sealed record InvalidFindHead(
     CheckpointRef JustifiedCheckpoint,
     CheckpointRef FinalizedCheckpoint,
@@ -95,13 +83,9 @@ public sealed record InvalidatePayload(Hash256 HeadBlockRoot, Hash256? LatestVal
 
 public sealed record AssertWeight(Hash256 BlockRoot, ulong Weight) : Operation;
 
-/// <summary>
-/// An interpreter for Lighthouse's <c>ForkChoiceTestDefinition</c> operation sequences, driving a
-/// <see cref="ProtoArrayForkChoice"/> and asserting after every step.
-/// </summary>
 public sealed class ForkChoiceTestDefinition
 {
-    /// <summary>Lighthouse runs these vectors with <c>proposer_score_boost = 50</c>.</summary>
+    /// <summary>Lighthouse vectors use proposer_score_boost = 50.</summary>
     private const ulong ProposerScoreBoostPercent = 50;
 
     public required ulong FinalizedBlockSlot { get; init; }
@@ -163,8 +147,6 @@ public sealed class ForkChoiceTestDefinition
                     break;
 
                 case ProcessBlock processBlock:
-                    // All blocks are imported optimistically with an execution hash equal to their
-                    // root (Lighthouse's ExecutionBlockHash::from_root).
                     ProtoBlock block = CreateProtoBlock(processBlock.Slot, processBlock.Root, processBlock.ParentRoot,
                         processBlock.JustifiedCheckpoint, processBlock.FinalizedCheckpoint, ExecutionStatus.Optimistic, processBlock.Root);
                     forkChoice.ProcessBlock(block, processBlock.Slot, JustifiedCheckpoint, FinalizedCheckpoint);

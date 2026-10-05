@@ -231,7 +231,6 @@ public class StateTransitionFoundationTests
         Target = new Checkpoint { Epoch = targetEpoch, Root = FromFirstByte(0x0B) },
     };
 
-    /// <summary>Creates a minimal Fulu state with active validators at epoch 0 and non-zero RANDAO mixes.</summary>
     private static BeaconStateFulu CreateState(int validatorCount, ulong effectiveBalance = 32 * Gwei, int inactiveEvery = 0) =>
         CreateMinimalFuluState(validatorCount, FromFirstByte(0x42), effectiveBalance, inactiveEvery);
 

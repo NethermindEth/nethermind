@@ -16,11 +16,6 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// A state whose fixed-length vector has the wrong in-memory length is not decodable, so the cached
-/// hasher must refuse it like the generated one instead of hashing a truncated or padded vector into a
-/// root that no other client can reproduce.
-/// </summary>
 [HardTimeout(60_000)]
 public class CachedHasherFixedVectorTests
 {
@@ -30,7 +25,6 @@ public class CachedHasherFixedVectorTests
 
     public static IEnumerable<TestCaseData> GloasCases() => Cases(GloasFields, true, "Gloas_cached_hasher_matches_generated_hasher_for_vector_length");
 
-    /// <summary>Checks vector refusal and cache recovery against the generated SSZ hasher for both forks.</summary>
     [TestCaseSource(nameof(FuluCases))]
     [TestCaseSource(nameof(GloasCases))]
     public void Cached_hasher_matches_generated_hasher_for_vector_length(bool gloas, string field, int? length, bool warm)

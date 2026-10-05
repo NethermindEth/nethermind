@@ -14,10 +14,6 @@ using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// Builds a fully valid <see cref="DataColumnSidecar"/> (real KZG cells/proofs and a genuinely
-/// folded inclusion proof) for the verifier and P2P-layer tests.
-/// </summary>
 internal static class DataColumnSidecarTestFixture
 {
     public static DataColumnSidecar BuildValidSidecar(ulong columnIndex, ulong slot = 1, ulong proposerIndex = 0, int blobCount = 2, byte seed = 0x10)
@@ -53,7 +49,6 @@ internal static class DataColumnSidecarTestFixture
         };
     }
 
-    /// <summary>Returns a fresh specification with the additional blob-schedule entry.</summary>
     public static BeaconChainSpec WithBlobEntry(BeaconChainSpec spec, BlobScheduleEntry entry) => new()
     {
         SecondsPerSlot = spec.SecondsPerSlot,
@@ -70,7 +65,6 @@ internal static class DataColumnSidecarTestFixture
         Bootnodes = spec.Bootnodes,
     };
 
-    /// <summary>Stores a block under the root of <paramref name="sidecar"/>'s header with its signature, as an imported block whose header the import verified.</summary>
     public static void StoreAsImported(BeaconChainStore store, DataColumnSidecar sidecar)
     {
         SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(sidecar.SignedBlockHeader!.Message!.Slot);

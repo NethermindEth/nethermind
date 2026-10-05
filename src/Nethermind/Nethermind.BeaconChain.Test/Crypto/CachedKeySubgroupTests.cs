@@ -16,11 +16,6 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
-/// <summary>
-/// A key outside G1 pairs like its subgroup part, so signatures its secret key made still satisfy the pairing check;
-/// <c>KeyValidate</c> is the only thing that refuses it. Every verification over a key read from <see cref="PubkeyCache"/>
-/// must therefore refuse such a key, while the same signature under the honest cache verifies.
-/// </summary>
 [TestFixture]
 [HardTimeout(60_000)]
 public class CachedKeySubgroupTests
@@ -28,7 +23,6 @@ public class CachedKeySubgroupTests
     private const int KeyCount = 4;
     private const int SignerIndex = 1;
 
-    /// <summary>A cache of <see cref="KeyCount"/> keys, with <see cref="SignerIndex"/> replaced by a key that verifies its secret key's signatures but lies outside G1 when <paramref name="offSubgroup"/>.</summary>
     private static PubkeyCache Cache(bool offSubgroup, bool negateTorsion = false, int torsionIndex = SignerIndex)
     {
         Validator[] validators = [.. Enumerable.Range(0, KeyCount).Select(static i => new Validator { Pubkey = new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress()) })];
@@ -39,7 +33,7 @@ public class CachedKeySubgroupTests
         return cache;
     }
 
-    /// <summary>Keys 0 and 1 carry opposite torsion, so their sum is in G1 although neither key is.</summary>
+    // Opposite torsion cancels in the sum; individual KeyValidate checks are still required.
     private static PubkeyCache CancellingTorsionCache()
     {
         Validator[] validators = [.. Enumerable.Range(0, KeyCount).Select(static i => new Validator { Pubkey = new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress()) })];
@@ -105,7 +99,6 @@ public class CachedKeySubgroupTests
         Assert.That(SignatureSets.VerifyVoluntaryExit(state, Exit(state.GenesisValidatorsRoot!, SignerIndex), Cache(offSubgroup)), Is.EqualTo(!offSubgroup));
     }
 
-    /// <summary>The refusal holds when the bad key is one of several summed, and when two bad keys have torsion that cancels in the sum.</summary>
     [TestCase(false, false, 1, ExpectedResult = true, TestName = "honest_keys_verify")]
     [TestCase(true, false, 1, ExpectedResult = false, TestName = "one_key_outside_the_subgroup_among_several")]
     [TestCase(true, false, 0, ExpectedResult = false, TestName = "first_key_outside_the_subgroup")]
@@ -218,7 +211,7 @@ public class CachedKeySubgroupTests
             Assert.That(verify, Throws.Nothing);
     }
 
-    /// <summary>Every cached slot holds validator 0's key, so any in-range alias of an index would verify and only the bound can refuse.</summary>
+    // Every cached slot aliases validator 0's key, so only the index bound can refuse an out-of-range alias.
     private static PubkeyCache SameKeyCache()
     {
         Validator[] validators = [.. Enumerable.Range(0, KeyCount).Select(static _ => new Validator { Pubkey = new BlsPublicKey(new Bls.P1(ValidatorKey(0)).Compress()) })];
@@ -263,7 +256,6 @@ public class CachedKeySubgroupTests
     public void Self_build_envelope_for_the_last_cached_proposer_index_is_accepted() =>
         Assert.That(() => VerifyEnvelopeAt(KeyCount - 1), Throws.Nothing);
 
-    /// <summary>The verdict for a key is fixed by its first check, so a later read of the same index never re-derives it.</summary>
     [Test]
     public void A_refused_key_stays_refused_on_every_later_read()
     {

@@ -14,19 +14,7 @@ using Snappier;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>fork_choice</c> suite by replaying each vector's <c>steps.yaml</c>
-/// script (<see cref="ForkChoiceStepDriver"/>) against this repo's
-/// <see cref="Nethermind.BeaconChain.ForkChoice.ForkChoiceRunner"/>. Fulu-only, mainnet-preset-only
-/// for the same reason as <see cref="SanityTests"/> and <see cref="OperationsTests"/>:
-/// <c>BeaconStateFulu</c>'s SSZ shape hard-codes mainnet-scaled vector bounds (sync committee size,
-/// historical roots, randao mixes, slashings), so it cannot decode a minimal-preset
-/// <c>anchor_state.ssz_snappy</c> at all - confirmed directly (decoding one throws
-/// <c>InvalidDataException: expected at least 2737225 bytes but found 19921</c>). The minimal-preset
-/// vectors (67 of them) are still enumerated and named, and reported not-implemented rather than
-/// silently skipped; only the mainnet-preset vectors (opt in with
-/// NETHERMIND_CONSENSUS_SPEC_MAINNET=1) actually drive the fork-choice pipeline.
-/// </summary>
+/// <remarks>Mainnet SSZ bounds prevent minimal-state decoding; minimal vectors are reported not-implemented. Mainnet requires NETHERMIND_CONSENSUS_SPEC_MAINNET=1.</remarks>
 [TestFixture]
 public class ForkChoiceTests
 {
@@ -36,14 +24,11 @@ public class ForkChoiceTests
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(ForkChoiceCase testCase) => Execute(testCase);
 
-    /// <summary>The fork_choice handlers each preset carries at <see cref="ConsensusSpecArchive.Version"/>.</summary>
     private static readonly IReadOnlyDictionary<ConsensusPreset, string[]> HandlersByPreset = new Dictionary<ConsensusPreset, string[]>
     {
         [ConsensusPreset.Minimal] = ["deposit_with_reorg", "ex_ante", "get_head", "get_proposer_head", "on_block", "reorg", "withholding"],
         [ConsensusPreset.Mainnet] = ["ex_ante", "get_head", "get_proposer_head", "on_block"],
     };
-
-    // A wrong suite path or an emptied case source enumerates zero vectors, and zero vectors run green.
     // The fork set is not asserted: Cases reads fulu only, and GloasForkChoiceTests reads gloas.
     [Test]
     public void Every_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
@@ -51,28 +36,19 @@ public class ForkChoiceTests
         List<ForkChoiceCase> cases = FuluDriverSupport.TestedCases<ForkChoiceCase>(preset, MinimalCases, MainnetCases);
         Assert.That(cases.Select(HandlerOf).Distinct(), Is.EquivalentTo(HandlersByPreset[preset]));
     }
-
-    // Not-implemented vectors are Inconclusive, so a step driver that reports every mainnet vector that way still runs green.
     [Test]
     public void Every_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
             FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases), HandlerOf, Run);
 
-    /// <summary>The mainnet vector whose anchor and blocks <see cref="Refused_block_step_replays_its_body_only_when_refused_optimistically"/> reuses.</summary>
     private const string FabricationSource = "get_proposer_head/pyspec_tests/basic_is_parent_root";
 
-    /// <summary>Slot 33, a child of the anchor whose body carries attestations that vote for the anchor.</summary>
     private const string AttestingBlock = "block_0x9efbe54f7970373161723e08fb309354c6cfab3cfa15b003c2f9af393f150c43";
 
-    /// <summary>The store time, in seconds after genesis, at which slot 33 is the current slot.</summary>
     private const ulong TickAtBlockSlot = 33 * 12;
 
-    /// <summary>
-    /// pyspec's <c>add_block(valid=False)</c> replays a refused block's body only on its optimistic path, where an
-    /// on_payload_info step made the execution layer answer INVALID (tests/core/pyspec/eth_consensus_specs/test/helpers/fork_choice.py).
-    /// The attesting block's votes are what show a replay. Either way the refused block stays out of the block tree and its
-    /// child is refused: an INVALIDATED block is removed from the block tree (specs/bellatrix/optimistic-sync.md).
-    /// </summary>
+    /// <summary>Pins optimistic-only body replay for an EL-INVALID refused block (pyspec helpers/fork_choice.py).</summary>
+    /// <remarks>Both paths exclude the invalidated block and refuse its child (specs/bellatrix/optimistic-sync.md).</remarks>
     [TestCaseSource(nameof(RefusedBlockCases))]
     public void Refused_block_step_replays_its_body_only_when_refused_optimistically(string refusal, bool executionValid, ulong tick, bool optimistic)
     {
@@ -117,7 +93,6 @@ public class ForkChoiceTests
     private static byte[] ReadFabricationBlock(string key) =>
         SszConsensusTestLoader.ReadSszSnappy(Path.Combine(FabricationSourcePath, key + ".ssz_snappy"));
 
-    /// <summary>Runs <paramref name="steps"/> from the anchor of <see cref="FabricationSource"/>, with <paramref name="blocks"/> as the case's block files.</summary>
     private static (ForkChoiceRunner Runner, Hash256 AnchorRoot, List<Exception?> BlockRejections) RunFabricatedCase(bool executionValid, string[] steps, params (string Key, byte[] Ssz)[] blocks)
     {
         DirectoryInfo casePath = Directory.CreateTempSubdirectory("fork-choice-case");
@@ -140,7 +115,6 @@ public class ForkChoiceTests
         }
     }
 
-    /// <summary>The handler directory, the segment after <c>{preset}/fulu/fork_choice/</c> in the vector name.</summary>
     private static string HandlerOf(ForkChoiceCase testCase) => testCase.VectorName.Split('/')[3];
 
     private static void Execute(ForkChoiceCase testCase) =>

@@ -16,20 +16,11 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// The Gloas block-body operations (<see cref="GloasBlockProcessing.ProcessOperations"/>), each
-/// exercised with real BLS signatures against the fixture chain, and - for every step the pinned
-/// spec left unchanged - differentially against the vector-tested Fulu pipeline. The Gloas
-/// operations vectors run in Ethereum.ConsensusSpec.Test; these hand-written cases pin the rules
-/// directly, and each one asserts a state change the operation must make, never just the absence
-/// of a throw.
-/// </summary>
 [HardTimeout(60_000)]
 public class GloasOperationsTests
 {
     private static readonly ulong SlotsPerEpoch = Presets.SlotsPerEpoch;
 
-    // ---- Proposer slashings ----
 
     [Test]
     public void ProcessProposerSlashing_slashes_the_proposer_and_clears_the_pending_builder_payment_for_its_proposal()
@@ -150,7 +141,6 @@ public class GloasOperationsTests
             GloasBlockProcessing.ProcessProposerSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true), expectedMessage, "a rejected slashing must leave the state untouched");
     }
 
-    // ---- Attester slashings ----
 
     [Test]
     public void ProcessAttesterSlashing_slashes_exactly_the_validators_in_both_conflicting_votes()
@@ -244,7 +234,6 @@ public class GloasOperationsTests
         Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound + 1), new PubkeyCache(), verifySignature: false), Is.False);
     }
 
-    // ---- Attestations ----
 
     [Test]
     public void ProcessAttestation_sets_the_same_flags_and_proposer_reward_as_the_fulu_pipeline_for_a_same_slot_vote()
@@ -453,12 +442,7 @@ public class GloasOperationsTests
         Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
     }
 
-    // ---- Payload attestations ----
 
-    /// <summary>
-    /// A state at slot 33 in the middle of processing a block there: the block-32 header has been
-    /// replaced by block 33's, whose parent root is what a PTC vote must name.
-    /// </summary>
     private static BeaconStateGloas StateProcessingBlock33(out PubkeyCache pubkeys, out Hash256 parentRoot)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
@@ -514,11 +498,7 @@ public class GloasOperationsTests
         Assert.That(ex.Message, Does.Contain(expectedMessage));
     }
 
-    /// <summary>
-    /// The pinned spec's <c>is_valid_indexed_payload_attestation</c> requires <c>list(indices) == sorted(indices)</c>:
-    /// sorted, but not unique, unlike <c>is_valid_indexed_attestation</c>'s <c>sorted(set(indices))</c>.
-    /// A PTC is sampled with replacement, so a member that holds two seats legitimately appears twice.
-    /// </summary>
+    // PTC sampling repeats validators: indexed payload attestations require sorted indices, not uniqueness.
     [TestCase(new ulong[] { 4, 5 }, true)]
     [TestCase(new ulong[] { 5, 5 }, true)]
     [TestCase(new ulong[] { 5, 4 }, false)]
@@ -542,10 +522,6 @@ public class GloasOperationsTests
         Assert.That(GloasBlockProcessing.IsValidIndexedPayloadAttestation(state, attestation, pubkeys, verifySignature: true), Is.EqualTo(expected));
     }
 
-    /// <summary>
-    /// Spec <c>is_valid_indexed_payload_attestation</c> refuses empty indices before any signature check, so the
-    /// rule must hold with signature verification off too; one index still passes, so the refusal is the rule's.
-    /// </summary>
     [TestCase(0, false)]
     [TestCase(1, true)]
     public void IsValidIndexedPayloadAttestation_refuses_empty_indices_without_relying_on_the_signature(int indexCount, bool expected)
@@ -561,11 +537,7 @@ public class GloasOperationsTests
         Assert.That(GloasBlockProcessing.IsValidIndexedPayloadAttestation(state, attestation, pubkeys, verifySignature: false), Is.EqualTo(expected));
     }
 
-    /// <summary>
-    /// Spec <c>get_ptc</c> asserts <c>epoch &gt;= GLOAS_FORK_EPOCH</c>. The first Gloas block can only carry
-    /// votes for the last Fulu slot, whose window entry is the placeholder committee (validator 0 in every
-    /// seat), so without the assert validator 0 alone could vote for it; a vote one slot later must still pass.
-    /// </summary>
+    // get_ptc must reject pre-fork epochs even though placeholder committees can name validator 0.
     [TestCase(true, TestName = "ProcessBlock_refuses_a_first_gloas_block_whose_payload_attestation_names_the_last_fulu_slot")]
     [TestCase(false, TestName = "ProcessBlock_accepts_a_payload_attestation_naming_the_first_gloas_slot")]
     public void ProcessBlock_accepts_payload_attestations_only_for_gloas_slots(bool namesLastFuluSlot)
@@ -610,7 +582,6 @@ public class GloasOperationsTests
             "a slot before GLOAS_FORK_EPOCH has no PTC even inside the window");
     }
 
-    // ---- The block-level wiring: every operation kind the body carries is applied ----
 
     [Test]
     public void ProcessBlock_applies_every_operation_kind_the_body_carries()
@@ -645,9 +616,7 @@ public class GloasOperationsTests
         Assert.That(state.Validators[credentialsChanger].WithdrawalCredentials!.Bytes[0], Is.EqualTo(Presets.EthWithdrawalPrefix));
     }
 
-    // ---- Voluntary exits ----
 
-    /// <summary>Well past SHARD_COMMITTEE_PERIOD, so a genesis-activated validator may exit; the block-root window still covers the epoch boundary.</summary>
     private static readonly ulong ExitEligibleSlot = (Presets.ShardCommitteePeriod + 1) * Presets.SlotsPerEpoch;
 
     [TestCase("bad signature", "Invalid voluntary exit signature")]
@@ -708,7 +677,6 @@ public class GloasOperationsTests
             GloasBlockProcessing.ProcessVoluntaryExit(state, exit, new EpochCache(), pubkeys, verifySignature: true), expectedMessage, "a rejected exit must leave the state untouched");
     }
 
-    // ---- BLS-to-execution changes ----
 
     [TestCase("bad signature", "Invalid BLS to execution change signature")]
     [TestCase("credentials of another key", "does not match the withdrawal credentials")]

@@ -26,14 +26,9 @@ using static Nethermind.BeaconChain.Test.P2P.RangeSyncTests;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// fulu/p2p-interface.md: a peer answers DataColumnSidecarsByRange and DataColumnSidecarsByRoot only with the columns it
-/// custodies, and typical peers custody <c>CUSTODY_REQUIREMENT</c> groups, fewer than this node samples. Each sampled
-/// column must therefore be asked of a peer custodying it, or the block never passes the availability gate.
-/// </summary>
 public class RangeSyncColumnCustodyTests
 {
-    /// <summary>Expected columns are pyspec <c>get_custody_groups</c> for the node id keccak(PrivateKeyA public key) at 8 groups, computed outside this code base.</summary>
+    /// <summary>Expected columns were computed independently with pyspec get_custody_groups for keccak(PrivateKeyA public key), eight groups.</summary>
     [Test]
     public async Task The_fixture_node_samples_the_columns_the_spec_assigns_to_its_fixed_identity()
     {
@@ -49,7 +44,6 @@ public class RangeSyncColumnCustodyTests
         await using Fixture fixture = Fixture.Create();
         ulong[] sampled = fixture.Sampled;
         ulong[] unsampled = [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c).Except(sampled)];
-        // The block peer comes first in the pool and custodies only half of the sample.
         StubPeer[] peers =
         [
             fixture.Peer("half", [.. sampled[..(sampled.Length / 2)], .. unsampled[..4]]),
@@ -107,10 +101,6 @@ public class RangeSyncColumnCustodyTests
         }), "column 1 goes to its advertised custodian; columns 4 and 5 would need a fifth peer");
     }
 
-    /// <summary>
-    /// A Fulu block deferred for missing columns is only re-checked on slot ticks, so without a by-root fetch a column no
-    /// range response carried stalls the node until finality passes the block.
-    /// </summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_block_deferred_for_missing_columns_recovers_by_root_from_a_custodying_peer_once_per_slot(CancellationToken token)
@@ -144,7 +134,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(bystander.RootColumnRequests, Is.Zero, "a peer custodying no sampled column is never asked");
     }
 
-    /// <summary>An empty custodian set is a custody shortfall, not an earliest_available_slot problem, so the log names the columns and zero custodians.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_fetch_with_no_custodian_logs_the_custody_shortfall_not_the_earliest_available_slot([Values] bool byRoot, CancellationToken token)
@@ -170,7 +159,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(bystander.ColumnRequests + bystander.RootColumnRequests, Is.Zero);
     }
 
-    /// <summary>A reply cut short keeps the reason it failed: a closed session must not read as a failed request, or the peer stays on a failure budget it can never work off.</summary>
     [TestCase(false, PeerFailureReason.RequestFailed)]
     [TestCase(true, PeerFailureReason.SessionClosed)]
     [CancelAfter(30_000)]
@@ -188,7 +176,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(cutShort.Reports, Is.EqualTo(new[] { expected }));
     }
 
-    /// <summary>The importer defers a block whose columns are missing and fetches them by root, so a failed column batch must not hold its blocks back.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_batch_whose_column_requests_all_fail_still_yields_its_blocks_for_the_by_root_fetch(CancellationToken token)
@@ -204,7 +191,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(fixture.Importer.Import(yielded[0], fixture.Chain.BlockRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.DataUnavailable));
     }
 
-    /// <summary>A failed column request is logged for the operator, who searches logs for exceptions: the line names the cause's text, never a type name.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_failed_column_request_is_logged_with_the_sidecars_kept_and_without_exception_type_names(CancellationToken token)
@@ -221,7 +207,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(log.Messages, Has.None.Contains("Exception"));
     }
 
-    /// <summary>A later round must ask only for the slots still lacking a column, not the whole batch window again.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_later_round_requests_only_from_the_first_slot_still_missing_a_column(CancellationToken token)
@@ -257,11 +242,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(requests, Is.EqualTo(new[] { (first.Slot, 2UL), (second.Slot, 1UL) }), "round 0 covers the batch, the next round only the slot still lacking the column");
     }
 
-    /// <summary>
-    /// A later round's first missing slot can lie past every peer's last status although the batch's blocks came from those peers (phase0/p2p-interface.md Status),
-    /// so when no custodian's status reaches that slot one reaching the batch start is asked, as the blocks were; otherwise the column is never asked for.
-    /// A custodian whose status reaches the slot is still asked first: one behind it may answer the range empty, which by-range allows, and waste the round.
-    /// </summary>
     [TestCase(false, TestName = "A later round asks a custodian whose status reaches the batch start when none reaches the slot missing a column")]
     [TestCase(true, TestName = "A later round asks a custodian whose status reaches the slot missing a column before one reaching only the batch start")]
     [CancelAfter(30_000)]
@@ -298,10 +278,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(fixture.SidecarPool.TryGet(secondRoot, lackingColumn, out _), Is.True);
     }
 
-    /// <summary>
-    /// The preference for custodians reaching the missing slot is per column: a column only a custodian reaching just the batch start holds is asked for in the same round
-    /// as the columns the others hold, not left to a later one, which <see cref="RangeSync"/> may not have.
-    /// </summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_later_round_asks_a_column_no_custodian_reaching_the_missing_slot_holds_in_the_same_round_from_one_reaching_the_batch_start(CancellationToken token)
@@ -343,7 +319,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(fixture.SidecarPool.TryGet(secondRoot, reachedColumn, out _) && fixture.SidecarPool.TryGet(secondRoot, behindColumn, out _), Is.True);
     }
 
-    /// <summary>A reply repeating one invalid (root, index) is verified and penalized once, not once per copy: each copy would cost a KZG verification.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task Repeated_invalid_copies_of_a_column_in_one_reply_penalize_the_peer_once([Values] bool malformedCopyFirst, CancellationToken token)
@@ -412,7 +387,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the malformed copies are penalized once");
     }
 
-    /// <summary>Columns must obey their epoch blob limit (v1.7.0-beta.2 fulu/p2p-interface.md, verify_data_column_sidecar).</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_range_column_over_the_blob_limit_of_its_epoch_is_not_pooled(CancellationToken token)
@@ -452,7 +426,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(peer.Reports, Is.EqualTo(Enumerable.Repeat(PeerFailureReason.ProtocolViolation, served.Length)), "each (root, index) is penalized once, not once per copy");
     }
 
-    /// <summary>An unrequested sidecar earns one penalty per key and cannot hide requested data (v1.7.0-beta.2 fulu/p2p-interface.md, DataColumnSidecarsByRange).</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_range_sidecar_for_an_unrequested_block_is_penalized_once_and_hides_nothing(CancellationToken token)
@@ -482,7 +455,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }), "the repeated unrequested sidecar is penalized once");
     }
 
-    /// <summary>One supernode must not take a whole batch while other custodians can serve columns: it is asked for at most the per-peer bound, the rest wait for the next round.</summary>
     [Test]
     public void A_peer_is_asked_for_at_most_the_per_peer_bound_of_columns()
     {
@@ -513,7 +485,6 @@ public class RangeSyncColumnCustodyTests
 
         public void AdvanceSlots(ulong slots) => fixture.AdvanceSlots(slots);
 
-        /// <summary>An honest peer: it serves the chain's block, and of the columns asked only those it custodies.</summary>
         public StubPeer Peer(string id, ulong[]? custodied = null, PeerColumnCustody? custody = null)
         {
             PeerColumnCustody peerCustody = custody ?? new PeerColumnCustody(custodied!, isAdvertised: true);
@@ -526,7 +497,6 @@ public class RangeSyncColumnCustodyTests
                 rootHandler: identifiers => ServeColumns([.. identifiers.Single().Columns!.Where(peerCustody.Custodies)]));
         }
 
-        /// <summary>A supernode that serves the chain's block and answers every by-range column request with <paramref name="onColumnRequest"/>, which normally throws.</summary>
         public StubPeer FailingColumnPeer(string id, Func<ulong[], DataColumnSidecar[]> onColumnRequest) =>
             new(
                 id,
@@ -559,7 +529,6 @@ public class RangeSyncColumnCustodyTests
                 new BeaconChainStatusHolder(Chain.Spec, Timestamper.Default),
                 LimboLogs.Instance)
             {
-                // Gossip needs a started libp2p host, which is not what these tests are about.
                 GossipStarted = true,
             };
             orchestrator.Initialize(Importer, new ForkedSignedBeaconBlock.OfFulu(Chain.AnchorBlock), Chain.AnchorRoot);

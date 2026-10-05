@@ -11,10 +11,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
-/// <summary>
-/// Gloas <c>compute_max_data_column_sidecar_size</c>: the bound must equal the serialized size of a
-/// sidecar carrying the schedule's largest blob count, as the spec defines it.
-/// </summary>
 public class DataColumnSidecarGloasSizeTests
 {
     private static IEnumerable<TestCaseData> ShippedSpecs()
@@ -24,10 +20,6 @@ public class DataColumnSidecarGloasSizeTests
         yield return new TestCaseData(BeaconChainSpec.Hoodi).SetArgDisplayNames("hoodi");
     }
 
-    /// <summary>
-    /// The expected value is <c>compute_max_data_column_sidecar_size</c> run as the spec writes it: the largest blob count in
-    /// the network's config, then the length of the container serialized with that many cells and proofs.
-    /// </summary>
     [TestCaseSource(nameof(ShippedSpecs))]
     public void Shipped_networks_bound_a_sidecar_at_its_serialized_size_with_the_schedule_maximum(BeaconChainSpec spec)
     {
@@ -40,11 +32,7 @@ public class DataColumnSidecarGloasSizeTests
         Assert.That(DataColumnSidecarGloasSize.ComputeMax(spec), Is.EqualTo((ulong)SerializedLength((int)maxBlobs)));
     }
 
-    /// <summary>
-    /// The largest entry wins wherever it sits in the schedule, and the Electra maximum counts even
-    /// with no schedule. 4096 blobs reproduces the fixed <c>MAX_DATA_COLUMN_SIDECAR_SIZE</c> (8585272)
-    /// that this function replaced, cross-checking the fixed part against an independent value.
-    /// </summary>
+    // 4096 blobs give independent fixed-size cross-check 8585272 bytes; max schedule entry and Electra fallback both count.
     [TestCase(9UL, new ulong[0], 9)]
     [TestCase(9UL, new ulong[] { 30, 12 }, 30)]
     [TestCase(9UL, new ulong[] { 12, 30, 15 }, 30)]

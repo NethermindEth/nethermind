@@ -13,10 +13,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Spec;
 
-/// <summary>
-/// An operator following a network whose Gloas parameters moved after this release must be able to
-/// say so in config, and a typo must stop the node rather than peer on the wrong fork digest.
-/// </summary>
 public class GloasForkOverrideTests
 {
     private const ulong OverrideEpoch = 500_000ul;

@@ -14,22 +14,9 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// <see cref="ForkChoiceRunner.GetProposerHead"/> against the phase0 and Fulu <c>get_proposer_head</c> helpers, on a
-/// hand-built chain (<see cref="UnsignedChain"/>). No fork_choice vector reaches the proposer-equivocation branch, the
-/// equivocation term of <c>is_head_weak</c>, the boost-free <c>get_attestation_score</c>, or a weak parent.
-/// </summary>
-/// <remarks>
-/// The anchor registry is 16 validators of 32 ETH, so a committee's share is 16 ETH: a head is weak below 3.2 ETH
-/// (no votes), a parent is strong above 25.6 ETH (one vote), and the boost is 6.4 ETH. Every block is proposed by
-/// validator 0 unless a case overrides it, and only odd slots have a (one-member) committee.
-/// </remarks>
+/// <summary>The 16-validator fixture has only odd-slot committees; boost is 6.4 ETH, weak-head threshold 3.2 ETH, strong-parent threshold 25.6 ETH.</summary>
 public class ForkChoiceRunnerReorgTests
 {
-    /// <summary>
-    /// A timely, weak head at slot 1 is re-orged for a slot-2 proposal only when another block of the same slot and
-    /// proposer is in the store. The head is timely, so only the equivocation branch can return the parent.
-    /// </summary>
     [TestCase(1ul, 0ul, 2ul, true, TestName = "same_slot_and_proposer_reorgs_the_head")]
     [TestCase(null, 0ul, 2ul, false, TestName = "single_block_is_kept")]
     [TestCase(2ul, 0ul, 2ul, false, TestName = "same_proposer_in_another_slot_is_not_an_equivocation")]
@@ -49,12 +36,6 @@ public class ForkChoiceRunnerReorgTests
         Assert.That(runner.GetProposerHead(head.Root, proposalSlot), Is.EqualTo(expectReorg ? chain.AnchorRoot : head.Root));
     }
 
-    /// <summary>
-    /// <c>is_head_weak</c> adds the justified balance of each equivocating validator in the head slot's committees, so
-    /// that more attestations can only make the head stronger. Slashing the slot-1 committee member makes the
-    /// equivocating head strong enough to keep; slashing the slot-3 member does not, because it is not in the head
-    /// slot's committee.
-    /// </summary>
     [TestCase(1ul, false, TestName = "equivocator_in_the_head_slot_committee_counts_for_the_head")]
     [TestCase(3ul, true, TestName = "equivocator_in_another_slot_committee_does_not_count")]
     public void Equivocating_committee_members_count_towards_the_head_weight(ulong slashedCommitteeSlot, bool expectReorg)
@@ -67,11 +48,6 @@ public class ForkChoiceRunnerReorgTests
         Assert.That(runner.GetProposerHead(a.Root, proposalSlot: 2), Is.EqualTo(expectReorg ? chain.AnchorRoot : a.Root));
     }
 
-    /// <summary>
-    /// <c>is_head_weak</c> reads <c>get_attestation_score</c>, which has no proposer boost. A timely slot-2 child of the
-    /// head holds the boost, and the proto-array adds it to every ancestor's weight; with it counted, the vote-less
-    /// head would look strong enough (6.4 ETH over 3.2 ETH) to keep.
-    /// </summary>
     [Test]
     public void Proposer_boost_on_a_descendant_does_not_strengthen_the_head()
     {
@@ -83,10 +59,6 @@ public class ForkChoiceRunnerReorgTests
         Assert.That(runner.GetProposerHead(a.Root, proposalSlot: 2), Is.EqualTo(chain.AnchorRoot));
     }
 
-    /// <summary>
-    /// The proto-array never boosts an execution-invalid block, so <c>get_attestation_score</c> must not subtract a
-    /// boost from the head when the boosted descendant is invalidated after import.
-    /// </summary>
     [Test]
     public void Invalidated_boost_root_is_not_subtracted_from_the_head()
     {
@@ -99,11 +71,6 @@ public class ForkChoiceRunnerReorgTests
         Assert.That(runner.GetProposerHead(a.Root, proposalSlot: 2), Is.EqualTo(chain.AnchorRoot));
     }
 
-    /// <summary>
-    /// A block that <c>on_block</c> refuses is not in <c>store.blocks</c>, so it cannot make a second proposal of its
-    /// slot: the timely head then has no equivocation and is kept. The refused block either carries an execution
-    /// block hash with an irrelevant status, or builds on a parent whose payload was invalidated.
-    /// </summary>
     [Test]
     public void Refused_block_is_not_a_second_proposal([Values] bool onInvalidParent)
     {
@@ -124,10 +91,6 @@ public class ForkChoiceRunnerReorgTests
         Assert.That(runner.GetProposerHead(head.Root, proposalSlot: 3), Is.EqualTo(head.Root));
     }
 
-    /// <summary>
-    /// A block that <c>on_block</c> refuses leaves no node or second proposal and cannot take the proposer boost.
-    /// A failed invalidation leaves D optimistic under invalid B, so valid E on D is refused as its validity propagates to B.
-    /// </summary>
     [TestCase(true, TestName = "Block_refused_by_on_block_leaves_no_node_and_is_not_a_second_proposal")]
     [TestCase(false, TestName = "Timely_block_refused_by_on_block_does_not_take_the_proposer_boost")]
     public void Refused_block_preserves_the_slot_proposal_and_boost(bool withAcceptedHead)
@@ -189,12 +152,6 @@ public class ForkChoiceRunnerReorgTests
         for (int i = 0; i < LateHeadScenarios.Length; i++) yield return new TestCaseData(i).SetName(LateHeadScenarios[i].Name);
     }
 
-    /// <summary>Checks late-head reorg cutoffs with real votes and justified balances.</summary>
-    /// <remarks>
-    /// Arrival at 3 s is timely and 4 s is late; proposing at 2 s is allowed and 3 s is past the cutoff.
-    /// specs/fulu/fork-choice.md (EIP-7917) permits reorg across an epoch boundary; slot 30 uses slot 31's committee because its own is empty.
-    /// A parent's score must exceed its threshold strictly.
-    /// </remarks>
     [TestCaseSource(nameof(LateHeadCases))]
     public void Late_head_reorg_preserves_arrival_proposal_epoch_and_parent_strength_boundaries(int index)
     {
@@ -227,7 +184,6 @@ public class ForkChoiceRunnerReorgTests
         Assert.That(runner.GetHead(), Is.EqualTo(head.Root), "fixture bug: the block must be the head");
         Assert.That(runner.GetProposerHead(head.Root, proposalSlot: parentSlot + 2), Is.EqualTo(test.Reorg ? parent.Root : head.Root));
     }
-    /// <summary>Two timely slot-1 blocks A and B by the same proposer, with the clock at the start of slot 2 so neither holds the boost.</summary>
     private static (UnsignedChain Chain, ForkChoiceRunner Runner, UnsignedChain.ChainBlock A, UnsignedChain.ChainBlock B) EquivocatingHeadAtSlotTwo()
     {
         UnsignedChain chain = UnsignedChain.Create();
@@ -241,7 +197,6 @@ public class ForkChoiceRunnerReorgTests
         return (chain, runner, a, b);
     }
 
-    /// <summary>Two forks that diverged before the lookahead can have different proposers for one slot; on_block does not check the proposer.</summary>
     private static UnsignedChain.ChainBlock WithProposer(UnsignedChain.ChainBlock block, ulong proposerIndex)
     {
         block.Block.Message!.ProposerIndex = proposerIndex;
@@ -257,10 +212,7 @@ public class ForkChoiceRunnerReorgTests
     private static void Import(ForkChoiceRunner runner, UnsignedChain.ChainBlock block, ExecutionStatus status = ExecutionStatus.Valid) =>
         runner.OnBlock(block.Block, block.PostState, status, (IReadOnlyList<DataColumnSidecar>?)null);
 
-    /// <summary>
-    /// The chain's states, except that the anchor (the justified state) gives one validator outside the slot-1 committee
-    /// <paramref name="ballastBalance"/>. Effective balances do not move committees, so the chain's votes stay valid.
-    /// </summary>
+    /// <summary>Changing an outside member's effective balance changes thresholds without changing committees or invalidating signatures.</summary>
     private sealed class AnchorWithBallast(UnsignedChain chain, ulong ballastBalance) : IForkChoiceStateProvider
     {
         private readonly BeaconStateFulu _anchor = WithBallast(chain, ballastBalance);

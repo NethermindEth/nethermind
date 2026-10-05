@@ -10,11 +10,7 @@ using NUnit.Framework.Internal.Commands;
 
 namespace Nethermind.BeaconChain.Test;
 
-/// <summary>
-/// Fails a test that runs longer than the limit. Unlike <see cref="CancelAfterAttribute"/>, which only signals a token,
-/// it also stops waiting on synchronous code that never observes one, such as a selection loop that never fills.
-/// </summary>
-/// <remarks>The abandoned test keeps running on its own thread until the process exits.</remarks>
+/// <summary>Signals alone cannot stop synchronous code; the abandoned test thread runs until process exit.</summary>
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false)]
 public sealed class HardTimeoutAttribute(int milliseconds) : NUnitAttribute, IWrapTestMethod
 {

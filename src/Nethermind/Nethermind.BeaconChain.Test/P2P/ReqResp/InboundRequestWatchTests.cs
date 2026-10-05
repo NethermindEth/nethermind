@@ -24,7 +24,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.ReqResp;
 
-/// <summary>A request is served without waiting for the requester's EOF, so the stream is watched beside serving: what it sees is reported, never allowed to disturb the response.</summary>
 public class InboundRequestWatchTests
 {
     private const string ProbeId = "/test/inbound-request-watch/1";
@@ -32,7 +31,6 @@ public class InboundRequestWatchTests
 
     private static readonly PeerId Requester = new Identity(privateKey: null, KeyType.Secp256K1).PeerId;
 
-    // A requester can send what it must not once the response is out, and the channel is torn down as soon as the listener returns.
     [Test]
     [CancelAfter(30_000)]
     public async Task The_listener_returns_only_once_the_requester_ended_its_stream_reporting_nothing(CancellationToken token)
@@ -72,7 +70,6 @@ public class InboundRequestWatchTests
         await listenerReturn.WaitAsync(token);
     }
 
-    // A requester that never ends its stream must not hold a listener for good.
     [Test]
     [CancelAfter(30_000)]
     public async Task The_listener_returns_after_the_linger_when_the_requester_never_ends_its_stream(CancellationToken token)
@@ -120,7 +117,6 @@ public class InboundRequestWatchTests
         Assert.That(reported, Has.Count.EqualTo(unattributed ? 0 : 1), "late bytes are still watched after capacity is released");
     }
 
-    // Bound listeners awaiting requester closure (consensus-specs networking, Req/Resp interaction).
     [Test]
     [CancelAfter(30_000)]
     public async Task Completed_responses_awaiting_requester_closure_are_bounded_while_further_requests_are_served([Values] bool unattributed, CancellationToken token)
@@ -158,7 +154,6 @@ public class InboundRequestWatchTests
         }
     }
 
-    // The linger ends a watch only if a pending channel read honours its token.
     [Test]
     public void A_pending_read_on_a_libp2p_channel_ends_when_its_token_is_cancelled()
     {
@@ -191,7 +186,6 @@ public class InboundRequestWatchTests
         Assert.That(InvalidMessageCount(), Is.EqualTo(before + 1), "the failure metric counts the violation");
     }
 
-    // A sink that fails (a pool resolved after shutdown, say) must not surface as an unobserved task exception.
     [Test]
     [CancelAfter(30_000)]
     public async Task A_sink_that_throws_leaves_no_unobserved_task_exception(CancellationToken token)
@@ -233,7 +227,6 @@ public class InboundRequestWatchTests
         Assert.That(unobserved, Is.False);
     }
 
-    // Bytes that arrive once the response has begun are reported and the requester still gets every chunk.
     [Test]
     [CancelAfter(60_000)]
     public async Task Bytes_sent_between_response_chunks_are_reported_and_every_chunk_still_arrives(CancellationToken token)
@@ -461,7 +454,6 @@ public class InboundRequestWatchTests
         }
     }
 
-    /// <summary>Exposes the protected slot of <see cref="ReqRespProtocolBase"/> to the tests.</summary>
     private sealed class ProbeProtocol : ReqRespProtocolBase, IAsyncDisposable
     {
         public ProbeProtocol(Action<PeerId, string> sink) => RequestViolationSink = sink;
@@ -490,7 +482,6 @@ public class InboundRequestWatchTests
         public ValueTask DisposeAsync() => _request!.DisposeAsync();
     }
 
-    /// <summary>Serves the request, then answers the first read as "nothing buffered", then blocks on the next until cancelled, torn down, or handed one late byte.</summary>
     private sealed class LateByteStream : Stream
     {
         private readonly byte[] _request;
@@ -513,7 +504,6 @@ public class InboundRequestWatchTests
 
         public Task WatchEnded => _watchEnded.Task;
 
-        /// <summary>Ends the stream the way a torn-down channel does: the pending read returns no bytes.</summary>
         public void Teardown() => _next.TrySetResult(null);
 
         public void SendLate(byte late) => _next.TrySetResult(late);

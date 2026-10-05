@@ -95,8 +95,6 @@ public partial class BeaconSyncOrchestratorTests
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102, 103);
         harness.Importer.Known.Add(anchorRoot);
 
-        // The gossip block arrives first with an unknown parent; far behind the wall clock it is
-        // queued instead of backfilled, and drains once range sync delivers its parent.
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[2])));
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[0])));
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[1])));
@@ -110,11 +108,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(harness.Importer.Head.HeadRoot), "status holder refreshed by the head step");
     }
 
-    /// <summary>
-    /// The engine API asks for forkchoiceUpdated after each head change. Range sync behind the wall clock keeps the work queue
-    /// full, so slot ticks are always stale when the worker reaches them; with a head step only per drained batch or 64 imports,
-    /// the execution layer's head froze for many minutes and then jumped 64 blocks. Imports of 0.6 s each must move it every second.
-    /// </summary>
     [Test]
     public async Task Range_sync_imports_behind_the_wall_clock_move_the_execution_head_every_second()
     {
@@ -144,7 +137,6 @@ public partial class BeaconSyncOrchestratorTests
         static Hash256 ExecutionHashOf(ulong slot) => Keccak.Compute(BitConverter.GetBytes(slot));
     }
 
-    /// <summary>A round on an old fork ends when imported gossip advances the tip, without penalizing a canonical reply.</summary>
     [TestCase(true, false)]
     [TestCase(false, false)]
     [TestCase(false, true)]
@@ -243,7 +235,6 @@ public partial class BeaconSyncOrchestratorTests
         HeldChildOnRetry,
     }
 
-    /// <summary>fork-choice.md on_block: an invalid block ends its round, also when it fails on a retry of its held chain, and no other peer is blamed.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task RangeSync_restarts_from_the_imported_tip_and_blames_only_the_invalid_blocks_supplier([Values] bool gloas, [Values] bool activeRound, [Values] RangeRejection rejection, CancellationToken token)
@@ -334,10 +325,6 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    /// <summary>
-    /// Slot ticks pile up while an import holds the worker; answering each would send the execution layer a burst of
-    /// identical forkchoiceUpdated calls, so the backlog collapses into the newest tick.
-    /// </summary>
     [Test]
     public async Task Slot_ticks_queued_behind_a_newer_tick_collapse_into_one_head_step()
     {
@@ -356,7 +343,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(fcusBefore + 1), "one forkchoiceUpdated for the whole backlog");
     }
 
-    /// <summary>An operator must see sync move without a line per block: at most one a second, only when the slot moved, saying how far.</summary>
     [Test]
     public void Sync_progress_is_logged_at_most_once_a_second_and_only_when_the_slot_moves()
     {
@@ -511,7 +497,6 @@ public partial class BeaconSyncOrchestratorTests
         if (headFailure) Assert.That(harness.StatusHolder.ExecutionInSync, Is.False, "the fresh SYNCING answer is used, not the cached VALID");
     }
 
-    /// <summary>Stopping before or during the anchor kick skips the public-key cache build that follows it.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_run_cancelled_before_or_during_the_engine_kick_builds_no_cache([Values] bool duringKick, CancellationToken testToken)
@@ -617,7 +602,6 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Slot_tick_advances_fork_choice_runs_fcu_and_rotates_gossip_digest_at_bpo_boundary()
     {
-        // Wall clock in the epoch right before the mainnet BPO2 boundary.
         const ulong Bpo2Epoch = 419_072;
         ulong preRotationSlot = (Bpo2Epoch - 1) * Spec.SlotsPerEpoch + 2;
         Harness harness = CreateHarness(anchorSlot: preRotationSlot - 10, wallSlot: preRotationSlot);
@@ -647,7 +631,6 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.Add(anchorRoot);
         BeaconSyncOrchestrator orchestrator = harness.Orchestrator;
 
-        // Establish finality at epoch 4 (start slot 128) for the finalized-slot check.
         harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 4);
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
@@ -667,18 +650,11 @@ public partial class BeaconSyncOrchestratorTests
             "only the proposer check needs import to resolve earlier parent and timing checks");
         harness.Importer.Imports.Clear();
 
-        // Importing the parent through range sync drains only the valid queued child.
         await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None);
 
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[150, 151]), "parent imported, then the queued child - nothing else");
     }
 
-    /// <summary>
-    /// A gossip block whose columns trail it is retried while ahead of finality, and pruned once finality passes it. Retries run directly
-    /// through <see cref="BeaconSyncOrchestrator.ImportBlockAsync"/> on a later slot tick, not through
-    /// <see cref="BeaconSyncOrchestrator.ProcessGossipBlockAsync"/> (whose seen-proposal gate would
-    /// otherwise drop the retry as a repeat).
-    /// </summary>
     [Test]
     public async Task Gossip_block_with_unavailable_data_retries_only_while_ahead_of_finality([Values] bool finalityPassesBlock)
     {
@@ -700,7 +676,6 @@ public partial class BeaconSyncOrchestratorTests
 
         if (finalityPassesBlock)
         {
-            // Epoch 6 starts at slot 192, beyond the waiting block's slot 150.
             harness.Importer.Head = harness.Importer.Head with { Finalized = new CheckpointRef(6, TestItem.KeccakB) };
         }
         harness.Importer.Unavailable.Remove(blockRoot);
@@ -828,10 +803,6 @@ public partial class BeaconSyncOrchestratorTests
         GenuineFromGossipThenFetched,
     }
 
-    /// <summary>
-    /// The spec IGNOREs a block only once a block with a valid signature was seen for its (slot, proposer): a forged
-    /// block that fails its signature must not suppress the real one, while an equivocation after it is ignored.
-    /// </summary>
     [Test]
     public async Task Forged_gossip_block_does_not_suppress_the_real_block_for_its_slot_and_proposer()
     {
@@ -870,10 +841,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Router.IsProposalSeen(150, chain[0].Message!.ProposerIndex), "the engine is called only after the proposer signature verified");
     }
 
-    /// <summary>
-    /// fork-choice.md on_block: an early block from gossip or range sync waits for its slot tick and then imports.
-    /// Its verified proposer signature reserves the proposal while the retry waits.
-    /// </summary>
     [Test]
     public async Task Block_before_its_slot_imports_at_its_slot_tick_and_marks_its_proposer([Values] bool fromRange)
     {
@@ -925,10 +892,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.GossipOperations.Select(static o => o.GetType()), Is.EqualTo(new[] { typeof(SignedAggregateAndProofGloas), typeof(AttesterSlashingGloas) }));
     }
 
-    /// <summary>
-    /// A vote that holds the worker for minutes left no line at all, so the stall could not be told from a dead node.
-    /// One that crosses the threshold names its slot and target checkpoint; a quick one stays silent.
-    /// </summary>
     [Test]
     public async Task Gossip_aggregate_that_holds_the_worker_past_the_threshold_is_logged_with_its_target([Values] bool pastThreshold)
     {
@@ -950,7 +913,6 @@ public partial class BeaconSyncOrchestratorTests
             Assert.That(lines[0], Does.EndWith($" ms on a gossip aggregate for slot {WallSlot} with target epoch {target.Epoch} root {target.Root}"));
     }
 
-    /// <summary>The head step after a worker pass reads the justified balances and can hold the worker as long as an import, so it is timed the same way.</summary>
     [Test]
     public async Task Head_step_that_holds_the_worker_past_the_threshold_is_logged([Values] bool pastThreshold)
     {
@@ -990,7 +952,6 @@ public partial class BeaconSyncOrchestratorTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102, 103, 104, 105);
         TestChain.Persist(store, anchor, anchorRoot, chain);
-        // A stale canonical entry that does not link to slot 105 must stop the replay.
         SignedBeaconBlock stale = TestChain.CreateBlock(106, TestItem.KeccakA);
         store.PutBlock(SszRoots.HashTreeRoot(stale.Message!), stale);
         store.SetCanonicalRoot(106, SszRoots.HashTreeRoot(stale.Message!));
@@ -1012,7 +973,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "a head step follows the replay");
     }
 
-    /// <summary>Gossip topics exist only once the libp2p host has started; a replayed head near the wall clock that finds none must wait for it to start gossip.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_replayed_head_near_the_wall_clock_starts_gossip_once_the_libp2p_host_has_started(CancellationToken token)
@@ -1038,10 +998,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Orchestrator.GossipStarted, Is.True, "the first head step after the host starts starts gossip");
     }
 
-    /// <summary>
-    /// A restart replays the stored blocks one by one, which took ten minutes at mainnet size. The libp2p host and discovery start
-    /// before it, so peers connect and the discovery table fills while it runs instead of after it.
-    /// </summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task Networking_starts_before_the_stored_block_replay(CancellationToken testToken)
@@ -1049,7 +1005,6 @@ public partial class BeaconSyncOrchestratorTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1);
         TestChain.Persist(store, anchorBlock, anchorRoot, chain);
-        // Not built ahead as CreateDiscovery does, so it has a custody only once started.
         await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
         PeerBandTests.Node node = PeerBandTests.CreateNode();
         await using BeaconP2P p2p = node.P2P;
@@ -1068,11 +1023,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(duringReplay, Is.EqualTo((true, true)), "the stored block was replayed with the host listening and discovery running");
     }
 
-    /// <summary>
-    /// Following gossip, a head more than two epochs behind the wall clock that has not advanced for an epoch restarts range sync
-    /// from the head, moving the sync tip off a block the head is not on. A head within that distance, which still counts as
-    /// following gossip, a head still advancing, as in a catch-up, and a node not yet following gossip leave the tip alone.
-    /// </summary>
     [TestCase(65UL, 32UL, false, true, ExpectedResult = true)]
     [TestCase(65UL, 31UL, false, true, ExpectedResult = false)]
     [TestCase(65UL, 32UL, true, true, ExpectedResult = false)]
@@ -1100,7 +1050,6 @@ public partial class BeaconSyncOrchestratorTests
         return restarted;
     }
 
-    /// <summary>Each restart ends the round in flight, so a head that stays behind restarts range sync once an epoch, not on every slot tick.</summary>
     [Test]
     public async Task A_head_left_behind_restarts_range_sync_at_most_once_an_epoch()
     {
@@ -1110,10 +1059,8 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.GossipStarted = true;
         harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot, finalizedEpoch: Spec.GetEpoch(AnchorSlot));
         List<ulong> tipsAfterTicks = [];
-        // The first tick only observes the head; it has been stuck for an epoch from the second on.
         foreach ((SignedBeaconBlock block, ulong tick) in new[] { (chain[0], WallSlot), (chain[1], WallSlot + Spec.SlotsPerEpoch), (chain[2], WallSlot + 2 * Spec.SlotsPerEpoch - 1), (chain[3], WallSlot + 2 * Spec.SlotsPerEpoch) })
         {
-            // A block imported off the head moves the tip, which only a restart moves back.
             await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(block), CancellationToken.None);
             await harness.Orchestrator.ProcessSlotAsync(tick, CancellationToken.None);
             tipsAfterTicks.Add(harness.Orchestrator.SyncTip.Slot);
@@ -1122,10 +1069,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(tipsAfterTicks, Is.EqualTo(new[] { 150UL, AnchorSlot, 152UL, AnchorSlot }));
     }
 
-    /// <summary>
-    /// A retry that expires restarts range sync only when the head waits on it, as its child; any other, such as a side-fork block,
-    /// leaves the round in flight running.
-    /// </summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task An_expiring_retry_restarts_range_sync_only_when_it_is_a_child_of_the_head([Values] bool childOfHead, CancellationToken token)
@@ -1138,7 +1081,6 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Head = CreateHead(childOfHead ? anchorRoot : TestItem.KeccakA, AnchorSlot, finalizedEpoch: Spec.GetEpoch(AnchorSlot));
         Assert.That(await harness.Orchestrator.ImportBlockAsync(block, token), Is.EqualTo(BlockImportResult.DataUnavailable));
 
-        // No peer is ahead of the tip, so the round waits for one until it is ended.
         using CancellationTokenSource stopRound = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task round = harness.Orchestrator.FeedRangeSyncRoundAsync(stopRound.Token);
         ulong expirySlot = WallSlot + 2 * Spec.SlotsPerEpoch + 1;
@@ -1151,10 +1093,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(await EndsAsync(round, token), Is.True);
     }
 
-    /// <summary>
-    /// A block deferred for its data is routine at the head and is not worth a warning each attempt; one whose data never
-    /// arrived within the retry window is, since the node gives up on it.
-    /// </summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task Only_a_block_whose_data_never_arrived_is_warned_about(CancellationToken token)
@@ -1178,16 +1116,13 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(logger.Messages.Count(l => l.StartsWith($"Dropping block {block.ComputeMessageRoot()}")), Is.EqualTo(1));
     }
 
-    /// <summary>A restart also ends the wait between rounds, so the round from the head starts at once, not a slot later.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_range_sync_restart_starts_the_next_round_without_waiting_out_the_slot(CancellationToken token)
     {
         RangeSyncTests.StubPeer server = new("server", WallSlot, static (_, _) => []);
-        // The tip is at the wall clock, so the first round ends at once and the feed waits a slot before the next.
         Harness harness = CreateHarness(wallSlot: AnchorSlot, peers: [server]);
         harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot, finalizedEpoch: Spec.GetEpoch(AnchorSlot));
-        // Observes the head, which then has not advanced for the epochs until the restart's tick.
         await harness.Orchestrator.ProcessSlotAsync(AnchorSlot, token);
         using CancellationTokenSource stopFeed = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task feed = harness.Orchestrator.RunRangeSyncFeedAsync(stopFeed.Token);
@@ -1214,8 +1149,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(untilNextRound, Is.LessThan(bound));
     }
 
-    /// <summary>Whether <paramref name="task"/> ends, by completing or by cancellation, within a few seconds of a stop request.</summary>
-    /// <remarks>A range-sync loop checks its token between awaits, so a stop can end it either way.</remarks>
+    /// <summary>A stop may complete or cancel the range loop; both satisfy shutdown.</summary>
     internal static async Task<bool> EndsAsync(Task task, CancellationToken token)
     {
         await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5), token));
@@ -1315,16 +1249,12 @@ public partial class BeaconSyncOrchestratorTests
     {
         public HashSet<Hash256> Known { get; } = [];
 
-        /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.DataUnavailable"/> instead of importing.</summary>
         public HashSet<Hash256> Unavailable { get; } = [];
 
-        /// <summary>Block roots whose known parent's state the regeneration budget refuses, so <see cref="Import"/> answers <see cref="BlockImportResult.UnknownParent"/>.</summary>
         public HashSet<Hash256> RegenerationRefused { get; } = [];
 
-        /// <summary>Block roots whose known parent's state cannot be had for good, so <see cref="Import"/> answers <see cref="BlockImportResult.UnknownParent"/> with no refusal cause.</summary>
         public HashSet<Hash256> RegenerationImpossible { get; } = [];
 
-        /// <summary>Block roots this node's own fork-choice admission refuses, so <see cref="Import"/> answers <see cref="BlockImportResult.Invalid"/> for <see cref="ImportRefusal.LocalAdmission"/>.</summary>
         public HashSet<Hash256> AdmissionRefused { get; } = [];
 
         public ImportRefusal LastRefusal { get; private set; }
@@ -1333,44 +1263,32 @@ public partial class BeaconSyncOrchestratorTests
 
         private bool RejectGossip { get; set; }
 
-        /// <summary>Fulu block signatures that fail, so a copy of a block under another signature answers <see cref="BlockImportResult.Invalid"/>.</summary>
         public HashSet<BlsSignature> ForgedSignatures { get; } = [];
 
-        /// <summary>Block roots whose proposer signature fails, so <see cref="Import"/> answers <see cref="BlockImportResult.Invalid"/>.</summary>
         public HashSet<Hash256> Forged { get; } = [];
 
-        /// <summary>Block roots whose state transition fails, so <see cref="Import"/> answers <see cref="BlockImportResult.Invalid"/> only once their parent's payload is verified.</summary>
         public HashSet<Hash256> InvalidTransition { get; } = [];
 
-        /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.EngineUnavailable"/>.</summary>
         public HashSet<Hash256> EngineDown { get; } = [];
 
-        /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.FutureSlot"/> until a slot tick reaches their slot.</summary>
         public HashSet<Hash256> Early { get; } = [];
 
-        /// <summary>Parent roots whose payload is unverified, so a child <see cref="Import"/> answers <see cref="BlockImportResult.ParentPayloadUnverified"/> until <see cref="ImportEnvelope"/> records it.</summary>
         public HashSet<Hash256> UnverifiedPayloads { get; } = [];
 
-        /// <summary>The verdict <see cref="ImportEnvelope"/> answers; a recording verdict removes the root from <see cref="UnverifiedPayloads"/>.</summary>
         public ExecutionPayloadEnvelopeImportResult EnvelopeResult { get; set; } = ExecutionPayloadEnvelopeImportResult.Valid;
 
-        /// <summary>When set, answers <see cref="ImportEnvelope"/> in place of <see cref="EnvelopeResult"/>.</summary>
         public Func<SignedExecutionPayloadEnvelope, ExecutionPayloadEnvelopeImportResult>? EnvelopeVerdict { get; set; }
 
         public List<Hash256> Envelopes { get; } = [];
 
-        /// <summary>Every block and envelope import in call order, each by the block root it names.</summary>
         public List<(bool Envelope, Hash256 Root)> ImportOrder { get; } = [];
 
-        /// <summary>Whether each block and envelope import ran on a thread-pool thread, in call order.</summary>
         public List<bool> ImportedOnPoolThread { get; } = [];
 
         public List<object> GossipOperations { get; } = [];
 
-        /// <summary>The count of <see cref="Ticks"/> when each of <see cref="GossipOperations"/> arrived.</summary>
         public List<int> TicksAtGossipOperations { get; } = [];
 
-        /// <summary>Runs as each slot tick arrives, after it is recorded.</summary>
         public Action<ulong>? OnTick { get; set; }
 
         private readonly HashSet<Hash256> _deferred = [];
@@ -1387,10 +1305,8 @@ public partial class BeaconSyncOrchestratorTests
         public bool IsKnown(Hash256 blockRoot) => Known.Contains(blockRoot);
 
 
-        /// <summary>The roots imported as blocks this node requested, once per attempt.</summary>
         public List<Hash256> RequestedImports { get; } = [];
 
-        /// <summary>The roots of <see cref="RequestedImports"/> fetched by root, once per attempt.</summary>
         public List<Hash256> ByRootImports { get; } = [];
 
         public BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool fetchedByRoot = false)
@@ -1419,7 +1335,6 @@ public partial class BeaconSyncOrchestratorTests
             if (RegenerationImpossible.Contains(blockRoot)) return BlockImportResult.UnknownParent;
             if (RegenerationRefused.Contains(blockRoot))
             {
-                // As the real importer: the proposer signature is checked before the budget is charged.
                 if (block is ForkedSignedBeaconBlock.OfFulu { Block.Signature: var forged } && ForgedSignatures.Contains(forged)) return BlockImportResult.Invalid;
 
                 LastRefusal = ImportRefusal.RegenerationBudget;
@@ -1442,10 +1357,8 @@ public partial class BeaconSyncOrchestratorTests
             return BlockImportResult.Imported;
         }
 
-        /// <summary>Runs on the import thread as each block imports, after it is known.</summary>
         public Action<ForkedSignedBeaconBlock, Hash256>? OnImported { get; set; }
 
-        /// <summary>As the real importer: a signed block is deferred, and a child of a deferred block is deferred too.</summary>
         private BlockImportResult Defer(Hash256 blockRoot)
         {
             if (Forged.Contains(blockRoot))
@@ -1463,7 +1376,6 @@ public partial class BeaconSyncOrchestratorTests
             return BlockImportResult.ParentPayloadUnverified;
         }
 
-        /// <summary>The answer of <see cref="VerifyEnvelopeSignature"/>: <c>null</c> when the named block's state is not held.</summary>
         public bool? EnvelopeSignature { get; set; } = true;
 
         public bool? VerifyEnvelopeSignature(SignedExecutionPayloadEnvelope envelope) => EnvelopeSignature;
@@ -1511,7 +1423,6 @@ public partial class BeaconSyncOrchestratorTests
 
         public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => Consume(aggregate);
 
-        /// <summary>Whether fork choice accepts each gossip slashing and payload attestation, as a verified signature would.</summary>
         public bool? AcceptsGossipOperations { get; set; } = true;
 
         public bool? OnGossipAttesterSlashing(AttesterSlashing slashing) => Consume(slashing);
@@ -1520,7 +1431,6 @@ public partial class BeaconSyncOrchestratorTests
 
         public bool? OnGossipPayloadAttestation(PayloadAttestationMessage message) => Consume(message);
 
-        /// <summary>The committee of a slot as the head state answers it; <c>null</c> is a head state that cannot tell.</summary>
         public Func<ulong, ulong[]?> Ptc { get; set; } = static _ => EveryValidator;
 
         private bool? Consume(object operation)
@@ -1575,7 +1485,6 @@ public partial class BeaconSyncOrchestratorTests
 
         public int GetBestPeersCalls { get; private set; }
 
-        /// <summary>Offered first for any slot up to the latest status refresh, as <see cref="PeerManager"/> offers peers once a refresh shows them ahead or fails.</summary>
         public IBeaconSyncPeer[] OfferedAfterRefresh { get; set; } = [];
 
         public ulong[] StatusRefreshSlots

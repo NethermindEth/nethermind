@@ -17,10 +17,6 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// Range sync picks peers by the head each last reported over <c>status</c>, and a maintenance round is what refreshes it,
-/// so peers that never answer must not hold the round up for one request timeout each.
-/// </summary>
 public class PeerHealthCheckRoundTests
 {
     private const int MaxConcurrentChecks = 8;
@@ -83,7 +79,6 @@ public class PeerHealthCheckRoundTests
         }, static (_, _) => { }, stop.Token);
 
         await held.Task.WaitAsync(token);
-        // Gives a worker past the bound time to start before the assertions read the counters.
         await Task.Delay(200, token);
         Assert.That(Volatile.Read(ref started), Is.EqualTo(2));
         if (cancel)
@@ -161,7 +156,6 @@ public class PeerHealthCheckRoundTests
         using ManualResetEventSlim allAsked = new();
         int asked = 0;
         int missedRendezvous = 0;
-        // Each round status is held until every peer has been asked, which only a round checking them together reaches.
         StatusMessageV2 HeldUntilAllAsked(StatusMessageV2 answer)
         {
             if (roundStarted.IsSet)
@@ -247,7 +241,6 @@ public class PeerHealthCheckRoundTests
             roundStarted.Set();
             Task round = peerManager.RunMaintenanceRoundAsync(roundCancellation.Token);
             Assert.That(await Task.WhenAny(maxHeld.Task, round), Is.SameAs(maxHeld.Task), "the round ended before it asked enough peers at once");
-            // Long enough for a check past the bound to have been started; the held ones cannot finish meanwhile.
             await Task.Delay(TimeSpan.FromSeconds(1), token);
             int observedMax = Volatile.Read(ref held);
             Stopwatch stopped = Stopwatch.StartNew();
@@ -306,7 +299,6 @@ public class PeerHealthCheckRoundTests
         }
     }
 
-    /// <summary>Counts the peer manager's debug lines that report a failed health check; safe to call from concurrent checks.</summary>
     private sealed class FailedCheckCounter
     {
         private int _count;
@@ -342,10 +334,7 @@ public class PeerHealthCheckRoundTests
     };
 }
 
-/// <summary>
-/// Held status answers and libp2p sessions block pool threads; under load the pool stayed at its minimum for tens of seconds,
-/// past the request timeout. The floor stays raised for the rest of the test process.
-/// </summary>
+// Held status answers and libp2p sessions block pool threads; keep the floor raised for the rest of the test process.
 [SetUpFixture]
 public class ThreadPoolFloor
 {

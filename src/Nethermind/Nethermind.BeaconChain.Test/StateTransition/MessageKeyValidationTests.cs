@@ -16,10 +16,6 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// <c>bls.Verify</c> runs <c>KeyValidate</c> on its key, so a builder key or a <c>from_bls_pubkey</c> at infinity
-/// (which pairs with the infinity signature) or outside G1 (which pairs like its subgroup part) must never verify.
-/// </summary>
 [HardTimeout(60_000)]
 public class MessageKeyValidationTests
 {
@@ -144,7 +140,6 @@ public class MessageKeyValidationTests
     private static BlsSignature SignatureFor(KeyKind kind, BlsSignature bySecret) =>
         kind == KeyKind.InfinityWithInfinitySignature ? new BlsSignature(G2PointAtInfinity()) : bySecret;
 
-    /// <summary>The pairing alone accepts every case, so only key validation can refuse the invalid ones.</summary>
     private static void AssertPairingHolds(KeyKind kind, BlsPublicKey key, BlsSignature signature, Hash256 signingRoot)
     {
         Bls.P1Affine decoded = new(new long[Bls.P1Affine.Sz]);

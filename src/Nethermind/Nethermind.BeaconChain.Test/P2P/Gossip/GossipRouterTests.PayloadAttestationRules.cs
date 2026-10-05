@@ -23,7 +23,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
-/// <summary>The gloas/p2p-interface.md <c>payload_attestation_message</c> rules that need no beacon state.</summary>
 public partial class GossipRouterTests
 {
     private static readonly ulong PtcSlot = FirstGloasSlot + 1;
@@ -137,7 +136,6 @@ public partial class GossipRouterTests
         AssertVerdict(router, validity, received, consumed ? null : slotOffset < 0 ? GossipDropReason.StaleSlot : GossipDropReason.FutureSlot, rejected: false);
     }
 
-    // A slot from the wire near ulong.MaxValue must not wrap the slot-end time into the past.
     [Test]
     public void Payload_attestation_for_the_last_representable_slot_is_from_the_future()
     {
@@ -148,7 +146,6 @@ public partial class GossipRouterTests
         AssertVerdict(router, validity, 0, GossipDropReason.FutureSlot, rejected: false);
     }
 
-    /// <summary>A vote for the slot of a held block costs a store decode on the network thread, so the reads are bounded per slot.</summary>
     [Test]
     public void Voted_block_slot_reads_past_their_budget_skip_the_payload_attestation_slot_rule()
     {
@@ -169,7 +166,6 @@ public partial class GossipRouterTests
         Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored));
     }
 
-    /// <summary>Each raised vote costs fork choice a BLS verify, so a pair is raised at most the attempt limit of times while none has verified.</summary>
     [Test]
     public void Payload_attestation_repeats_with_other_signatures_are_raised_up_to_the_attempt_limit()
     {
@@ -209,7 +205,6 @@ public partial class GossipRouterTests
         Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1), "a vote after the verified one is dropped");
     }
 
-    /// <summary>A vote the vote queue refused must give back its attempt and its message id, or a later copy is dropped unverified.</summary>
     [Test]
     public void Released_payload_attestation_gives_back_its_attempt_and_message_id()
     {
@@ -233,7 +228,6 @@ public partial class GossipRouterTests
         Assert.That(received, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts + 1), "the identical copy is raised again");
     }
 
-    /// <summary>Copies of one message racing must spend one attempt: the losers of the message-id race hand theirs back.</summary>
     [Test]
     public void Identical_payload_attestations_raced_by_concurrent_handlers_spend_one_attempt([Range(0, 4)] int round)
     {
@@ -257,7 +251,6 @@ public partial class GossipRouterTests
         Assert.That((afterCopies, received), Is.EqualTo((1, GossipRouter.PayloadAttestationVerifyAttempts)), "the losing copies left their attempts for other votes");
     }
 
-    /// <summary>Handlers racing on one (slot, validator) pair with different signatures must raise at most the attempt limit: the count is atomic.</summary>
     [Test]
     public void Payload_attestation_pair_raced_by_concurrent_handlers_is_raised_up_to_the_attempt_limit([Range(0, 4)] int round)
     {
@@ -277,7 +270,6 @@ public partial class GossipRouterTests
         Assert.That(received, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts));
     }
 
-    /// <summary>Many fresh pairs raced at once: a check-then-act claim or a pair created twice lets a pair pass more than the attempt limit.</summary>
     [Test]
     [Repeat(3)]
     public void Payload_attestation_pairs_raced_across_many_validators_are_each_raised_up_to_the_attempt_limit()
@@ -304,7 +296,6 @@ public partial class GossipRouterTests
         Assert.That(raised, Is.All.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts));
     }
 
-    /// <summary>The verified mark and the attempt count share one lock: a mark racing claims on a fresh pair must still close it.</summary>
     [Test]
     [Repeat(8)]
     public void Payload_attestation_verified_mark_racing_claims_closes_the_pair()
@@ -340,10 +331,6 @@ public partial class GossipRouterTests
         Assert.That(reopened, Is.Zero, "every pair was marked verified");
     }
 
-    /// <summary>
-    /// Votes under distinct validator indices are cheap to send: a flood of them must not reopen a verified pair for more verifies,
-    /// nor stop a validator's first vote from reaching fork choice (gloas/p2p-interface.md <c>payload_attestation_message</c>).
-    /// </summary>
     [Test]
     public void Payload_attestation_flood_of_distinct_validators_neither_reopens_a_verified_pair_nor_blocks_a_new_one()
     {
@@ -375,10 +362,6 @@ public partial class GossipRouterTests
         Assert.That(router.IsPayloadAttestationVerified(genuine), Is.True);
     }
 
-    /// <summary>
-    /// A pair that spent its verify attempts reopens only after <see cref="GossipRouter.PayloadAttestationPairsPerSlot"/> newer pairs push it out,
-    /// which bounds the pairs a slot holds and makes each reopening cost a flood of that size.
-    /// </summary>
     [TestCase(-1, 0)]
     [TestCase(0, 1)]
     public void Payload_attestation_pair_with_spent_attempts_reopens_only_after_a_full_cache_of_newer_pairs(int newerPairsPastCapacity, int expectedRaised)
@@ -438,7 +421,6 @@ public partial class GossipRouterTests
         Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(duplicatesBefore + 1));
     }
 
-    /// <summary>A member's repeats are raised up to the attempt limit and ignored after a vote verified, as for any pair.</summary>
     [Test]
     public void Payload_attestation_member_repeats_are_ignored_after_the_attempts_and_after_a_verified_vote()
     {
@@ -484,7 +466,6 @@ public partial class GossipRouterTests
         Assert.That(raised, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts), "the pair kept its full attempts");
     }
 
-    /// <summary>A head that can no longer tell the committee (null) is unknown, not empty: an honest member is IGNOREd, not REJECTed, and nothing is tracked.</summary>
     [Test]
     public void Payload_attestation_after_the_ptc_becomes_unknown_is_ignored_not_rejected()
     {
@@ -503,7 +484,6 @@ public partial class GossipRouterTests
         Assert.That((whileUnknown, raisedWhileUnknown, raised), Is.EqualTo((MessageValidity.Ignored, 0, 1)));
     }
 
-    /// <summary>A head that changes its committee is followed: a validator that left the PTC is rejected, one that joined is raised.</summary>
     [Test]
     public void Payload_attestation_membership_follows_the_latest_ptc_of_the_slot()
     {
@@ -520,7 +500,6 @@ public partial class GossipRouterTests
         Assert.That((leaver, joiner, raised), Is.EqualTo((MessageValidity.Rejected, MessageValidity.Ignored, 1)));
     }
 
-    /// <summary>Pairs of a slot too old to receive votes are dropped, so the tracked pairs stay bounded as slots advance.</summary>
     [Test]
     public void Payload_attestation_pairs_of_slots_that_can_no_longer_be_voted_are_dropped()
     {
@@ -536,7 +515,6 @@ public partial class GossipRouterTests
         Assert.That(router.IsPayloadAttestationVerified(old), Is.False, "the slot is past the current-slot window and its pairs are gone");
     }
 
-    /// <summary>A vote for a block not held yet spends none of the pair's verify attempts: the same member's vote is raised once the block is stored.</summary>
     [Test]
     public void Payload_attestation_for_an_unheld_block_does_not_claim_the_pair()
     {
@@ -552,7 +530,6 @@ public partial class GossipRouterTests
         Assert.That((beforeBlock, received), Is.EqualTo((0, 1)));
     }
 
-    /// <summary>Distinct votes are cheap to send, so a flood of them must not evict the message ids of other topics and let their replays through.</summary>
     [Test]
     public void Payload_attestation_flood_keeps_the_message_ids_of_other_topics()
     {

@@ -30,8 +30,7 @@ public class GossipLoopbackTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
-    /// <summary>A block this host publishes passes the other host's <c>StrictNoSign</c> check and validator and reaches its gossip router.</summary>
-    /// <remarks>p2p-interface.md "Topics and messages": a published message omits from, seqno, signature and key, which the receiver enforces.</remarks>
+    // p2p-interface.md StrictNoSign: published messages omit from, seqno, signature and key.
     [Test]
     [CancelAfter(120_000)]
     public async Task Block_published_on_one_host_reaches_the_gossip_router_on_the_other(CancellationToken token)
@@ -67,8 +66,7 @@ public class GossipLoopbackTests
         Assert.That(receivedBlock.Slot, Is.EqualTo(slotClock.CurrentSlot).Within(1), "the published block round-trips the mesh");
     }
 
-    /// <summary>A column this host reconstructs reaches a mesh neighbor on that column's subnet, which enforces <c>StrictNoSign</c>.</summary>
-    /// <remarks>fulu/das-core.md "Reconstruction and cross-seeding": a reconstructed column of a subscribed subnet MUST be sent to the topic mesh neighbors.</remarks>
+    // fulu/das-core.md: reconstructed columns of subscribed subnets MUST be sent to their mesh neighbors.
     [Test]
     [CancelAfter(120_000)]
     public async Task Reconstructed_column_reaches_the_mesh_neighbor_on_its_subnet(CancellationToken token)
@@ -78,7 +76,6 @@ public class GossipLoopbackTests
         SlotClock slotClock = new(Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + slot * Spec.SecondsPerSlot + 6)));
         byte[] digest = ForkDigest.Compute(Spec, Spec.GetEpoch(slot));
         string topicId = GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(reconstructed));
-        // An imported block's header, so its sidecars pass every check and its reconstructed columns may be published.
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
         DataColumnSidecarTestFixture.StoreAsImported(store, DataColumnSidecarTestFixture.BuildValidSidecar(0, slot));
         ColumnGossipRouter columns = new(Spec, slotClock, LimboLogs.Instance, new DataColumnSidecarPool(), store);
@@ -113,11 +110,7 @@ public class GossipLoopbackTests
         }
     }
 
-    /// <summary>
-    /// A message the relay defers reaches its other mesh neighbor only once its verdict is <see cref="MessageValidity.Accepted"/>; a
-    /// <see cref="MessageValidity.Rejected"/> one never does, and its delivering peer, not the neighbor, is pruned from the relay's mesh.
-    /// </summary>
-    /// <remarks>phase0 p2p-interface.md "Topics and messages": ACCEPT once every validation passed; a REJECTed message is not forwarded and MAY descore its sender.</remarks>
+    // phase0 p2p-interface.md: REJECTed messages are not forwarded and MAY descore their sender.
     [TestCase(MessageValidity.Accepted)]
     [TestCase(MessageValidity.Rejected)]
     [TestCase(MessageValidity.Ignored)]
@@ -172,8 +165,7 @@ public class GossipLoopbackTests
         Assert.That(IsMeshNeighbor(relay, blockTopic, neighbor.LocalPeerId!), Is.True, "the neighbor that sent nothing keeps its place");
     }
 
-    /// <summary>A data column sidecar that passes every check on the relay, under an imported block's header, reaches the relay's other mesh neighbor.</summary>
-    /// <remarks>fulu/p2p-interface.md data_column_sidecar_{subnet_id}: a sidecar that passes every check is accepted, so the router forwards it.</remarks>
+    // fulu/p2p-interface.md: a sidecar passing every check is accepted and forwarded.
     [Test]
     [CancelAfter(120_000)]
     public async Task Relay_forwards_a_column_that_passes_every_check(CancellationToken token)
@@ -211,11 +203,7 @@ public class GossipLoopbackTests
         Assert.That(await forwarded.Task, Is.EqualTo(message));
     }
 
-    /// <summary>
-    /// A digest rotation leaves the retired topics on the wire: a connected peer learns the node left them, and a peer that connects
-    /// afterwards is told only of the topics the node still subscribes.
-    /// </summary>
-    /// <remarks>altair/p2p-interface.md "Transitioning the gossip": two epochs after the fork, pre-fork topics SHOULD be unsubscribed from.</remarks>
+    // altair/p2p-interface.md: pre-fork topics SHOULD be unsubscribed two epochs after the fork.
     [Test]
     [CancelAfter(120_000)]
     public async Task Retired_topics_are_left_on_the_wire_and_not_announced_to_a_later_peer(CancellationToken token)
@@ -256,7 +244,6 @@ public class GossipLoopbackTests
         Assert.That(Subscribes(later, retired, node.LocalPeerId!), Is.False, "a peer connecting after the rotation is not told of the retired topic");
     }
 
-    /// <summary>Whether <paramref name="observer"/> knows <paramref name="peer"/> as a gossipsub subscriber of <paramref name="topicId"/>.</summary>
     private static bool Subscribes(BeaconP2P observer, string topicId, PeerId peer)
     {
         IRoutingStateContainer router = observer.RoutingStateForTest!;
@@ -266,10 +253,6 @@ public class GossipLoopbackTests
         }
     }
 
-    /// <summary>
-    /// Two nodes whose session the peer manager admits exchange gossip with no pubsub discovery, whichever side dialed: the router opens its
-    /// own channel only when told of a peer, which the identify probe this node runs never does, or in answer to the remote's channel.
-    /// </summary>
     [Test]
     [CancelAfter(120_000)]
     public async Task Nodes_admitted_by_the_peer_manager_exchange_gossip_without_discovery([Values] bool admittedInbound, CancellationToken token)
@@ -284,7 +267,6 @@ public class GossipLoopbackTests
         ITopic topic = publisher.GetTopic(topicId);
         if (admittedInbound)
         {
-            // Only the subscriber runs a peer manager, which admits the session the publisher opens.
             PeerManager manager = CreatePeerManager(subscriber);
             await publisher.DialPeerAsync(PeerSessionNodes.LoopbackAddress(subscriber), token);
             await PeerSessionNodes.WaitUntilAsync(() => manager.PeerCount == 1, "the subscriber never admitted the session", token);
@@ -299,7 +281,6 @@ public class GossipLoopbackTests
         bounded.CancelAfter(TimeSpan.FromSeconds(30));
         while (!received.Task.IsCompleted && !bounded.IsCancellationRequested)
         {
-            // The publisher sends only once the subscriber is in its mesh, so it repeats until the message arrives.
             topic.Publish(message);
             await Task.WhenAny(received.Task, Task.Delay(500, CancellationToken.None));
         }
@@ -308,10 +289,6 @@ public class GossipLoopbackTests
         Assert.That(await received.Task, Is.EqualTo(message));
     }
 
-    /// <summary>
-    /// A gossip channel that ends while its session lives, here closed by the remote, is opened again by the peer manager, so gossip resumes
-    /// on the same session; before, the peer stayed admitted with no gossip for the rest of the session.
-    /// </summary>
     [Test]
     [CancelAfter(120_000)]
     public async Task Gossip_resumes_when_the_channel_ends_while_the_session_lives(CancellationToken token)
@@ -325,7 +302,6 @@ public class GossipLoopbackTests
         node.GetTopic(topicId).OnMessage += (_, data) => { if (data is [byte id] && received.TryGetValue(id, out TaskCompletionSource? arrived)) arrived.TrySetResult(); };
         ITopic topic = remote.GetTopic(topicId);
 
-        // The remote opens the first channel itself, under a token the test holds, and the node's router answers with its own.
         ISession session = await remote.DialPeerAsync(PeerSessionNodes.LoopbackAddress(node), token);
         using CancellationTokenSource remoteChannel = CancellationTokenSource.CreateLinkedTokenSource(token);
         _ = session.DialAsync<GossipsubProtocolV13>(remoteChannel.Token);
@@ -343,10 +319,6 @@ public class GossipLoopbackTests
         Assert.That(node.SessionCountForTest, Is.EqualTo(1), "the same session carries the new channel");
     }
 
-    /// <summary>
-    /// A session the remote opens while the pool still holds the record of its dropped session is admitted and gets a gossip channel: the
-    /// libp2p layer holds one session per peer id, so that record is one whose close callback has not run yet, not a live duplicate.
-    /// </summary>
     [Test]
     [CancelAfter(120_000)]
     public async Task A_session_that_replaces_a_dropped_one_still_in_the_pool_is_admitted_with_gossip(CancellationToken token)
@@ -373,14 +345,12 @@ public class GossipLoopbackTests
         await PeerSessionNodes.WaitUntilAsync(() => node.HasGossipChannel(remote.LocalPeerId!) && remote.HasGossipChannel(node.LocalPeerId!), "the new session got no gossip channel", token);
     }
 
-    /// <summary>Each gossip channel that does not last doubles the wait before the next is opened, up to a minute, so a peer that keeps closing it costs few dials.</summary>
     [TestCase(1, 2)]
     [TestCase(40, 60)]
     [TestCase(60, 60)]
     public void Wait_before_reopening_a_gossip_channel_doubles_up_to_its_bound(int seconds, int expectedSeconds) =>
         Assert.That(PeerManager.NextGossipRedialDelay(TimeSpan.FromSeconds(seconds)), Is.EqualTo(TimeSpan.FromSeconds(expectedSeconds)));
 
-    /// <summary>Publishes <paramref name="id"/> until <paramref name="received"/> ends or 30 s pass; the publisher sends only to peers whose subscription it has learnt.</summary>
     private static async Task<bool> DeliversAsync(ITopic topic, byte id, Task received, CancellationToken token)
     {
         using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -394,9 +364,7 @@ public class GossipLoopbackTests
         return received.IsCompleted;
     }
 
-    /// <summary>A gossip message of any legal size crosses a real session whole, so its sender is not disconnected for a truncated RPC.</summary>
-    /// <remarks>p2p-interface.md "Gossipsub size limits" allow a compressed payload up to max_compressed_len(10 MiB); a message over one yamux window
-    /// spans several frames, so this exercises segmented channel reads across yamux windows.</remarks>
+    // p2p-interface.md permits compressed payloads up to max_compressed_len(10 MiB), spanning several yamux windows.
     [TestCase(64)]
     [TestCase(300 * 1024)]
     [TestCase(1200 * 1024)]
@@ -418,7 +386,6 @@ public class GossipLoopbackTests
         Random.Shared.NextBytes(message);
         while (!received.Task.IsCompleted)
         {
-            // The publisher sends only once it has learnt the subscription, so it repeats until the subscriber has the message.
             token.ThrowIfCancellationRequested();
             topic.Publish(message);
             await Task.WhenAny(received.Task, Task.Delay(500, token));
@@ -427,7 +394,6 @@ public class GossipLoopbackTests
         Assert.That(await received.Task, Is.EqualTo(message));
     }
 
-    /// <summary>Connects <paramref name="from"/> to <paramref name="to"/> through its peer manager's admission, as the node does, with no pubsub discovery.</summary>
     private static async Task<PeerManager> ConnectAsync(BeaconP2P from, BeaconP2P to, CancellationToken token)
     {
         PeerManager manager = CreatePeerManager(from);

@@ -16,14 +16,7 @@ using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
-/// <summary>
-/// Wall-clock comparison of serial against batched verification of one mainnet slot's block signatures.
-/// </summary>
-/// <remarks>
-/// Each set carries one public key: an aggregate verifies at the same cost as a single key once its
-/// keys are summed, and that summing is the same work on both paths, so it is left out. The proposer
-/// signature, which is verified before the batch, is not in either mix.
-/// </remarks>
+// Key summation costs both paths equally and is outside timing; proposer verification is excluded from both mixes.
 [TestFixture]
 [Explicit("Timing comparison; run on demand with --output Detailed")]
 public class BlockSignatureBatchThroughputTests

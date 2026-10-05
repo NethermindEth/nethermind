@@ -8,15 +8,9 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>finality</c> and <c>random</c> suites, whose vectors are block sequences in the
-/// <c>sanity/blocks</c> format (tests/formats/finality/README.md, tests/formats/random/README.md), through the
-/// same runner as <see cref="SanityTests"/>, for every fork in <see cref="ConsensusSpecArchive.StateTransitionForks"/>.
-/// </summary>
 [TestFixture]
 public class BlockSequenceTests
 {
-    /// <summary>Each suite with its only handler at <see cref="ConsensusSpecArchive.Version"/>.</summary>
     internal static readonly IReadOnlyDictionary<string, string> HandlerBySuite = new Dictionary<string, string>
     {
         ["finality"] = "finality",
@@ -28,8 +22,6 @@ public class BlockSequenceTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(SanityCase testCase) => Execute(testCase);
-
-    // A wrong suite path or an emptied case source enumerates zero vectors; a handler this driver does not enumerate never runs; both stay green.
     [Test]
     public void Every_fork_and_suite_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
@@ -48,8 +40,6 @@ public class BlockSequenceTests
             }
         }
     }
-
-    // Not-implemented vectors are Inconclusive, so a driver that reports every mainnet vector that way still runs green.
     [Test]
     public void Every_fork_and_suite_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
@@ -57,7 +47,6 @@ public class BlockSequenceTests
             static testCase => $"{testCase.Fork}/{SuiteOf(testCase)}",
             SanityTests.RunBlocks);
 
-    /// <summary>The suite directory, the segment after <c>{preset}/{fork}/</c> in the vector name.</summary>
     private static string SuiteOf(SanityCase testCase) => testCase.VectorName.Split('/')[2];
 
     private static void Execute(SanityCase testCase) =>
