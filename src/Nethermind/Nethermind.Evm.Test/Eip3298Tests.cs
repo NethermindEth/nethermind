@@ -65,7 +65,7 @@ public class Eip3298Tests(bool eip3298Enabled) : VirtualMachineTestsBase
         MethodInfo method = typeof(TransactionProcessorBase<EthereumGasPolicy>).GetMethod("SettleFrameTx", BindingFlags.Instance | BindingFlags.NonPublic)!
             .MakeGenericMethod(typeof(OffFlag));
         Transaction tx = Build.A.Transaction.WithGasLimit(GasLimit).WithSenderAddress(Sender).TestObject;
-        FrameTxContext context = new(Sender, 0, [], [], default, default, default, default, default, default) { Payer = Sender };
+        FrameTxContext context = new(Sender, 0, [], [], default, default, default, default, default, default, default) { Payer = Sender };
         using StackAccessTracker tracker = new();
         TestState.CreateAccount(Sender, 10);
         TestState.Commit(Spec);
