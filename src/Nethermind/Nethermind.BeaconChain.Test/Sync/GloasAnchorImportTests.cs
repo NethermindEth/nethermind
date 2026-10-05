@@ -436,10 +436,7 @@ public class GloasAnchorImportTests
         states.PinGloas(TestItem.KeccakA, block.PostState);
         states.RetainGloas(TestItem.KeccakB, block.PostState, checkpointCandidate: true);
 
-        for (int i = 0; i < 2 * (int)ForkSlot + 9; i++)
-        {
-            states.RetainGloas(Keccak.Compute(BitConverter.GetBytes(i)), block.PostState, checkpointCandidate: true);
-        }
+        RetainDistinct(states, block.PostState, 2 * (int)ForkSlot + 9, checkpointCandidate: true, seed: 0);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(states.GetGloasBlockState(TestItem.KeccakA), Is.SameAs(block.PostState));

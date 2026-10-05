@@ -31,13 +31,9 @@ public class RequestFailureCauseTests
 
     public enum ChannelRequestEnd { Budget, Disconnect, Reset, AlreadyDropped, CallerCancellation }
 
-    [TestCase(ChannelRequestEnd.Budget)]
-    [TestCase(ChannelRequestEnd.Disconnect)]
-    [TestCase(ChannelRequestEnd.Reset)]
-    [TestCase(ChannelRequestEnd.AlreadyDropped)]
-    [TestCase(ChannelRequestEnd.CallerCancellation)]
+    [Test]
     [CancelAfter(30_000)]
-    public async Task Channel_requests_preserve_budget_disconnect_and_caller_cancellation_causes(ChannelRequestEnd end, CancellationToken token)
+    public async Task Channel_requests_preserve_budget_disconnect_and_caller_cancellation_causes([Values] ChannelRequestEnd end, CancellationToken token)
     {
         await using BeaconP2P node = CreateHost(end == ChannelRequestEnd.Budget ? TimeSpan.FromMilliseconds(300) : TimeSpan.FromSeconds(20));
         await node.StartAsync(token);
@@ -121,11 +117,9 @@ public class RequestFailureCauseTests
     public enum SlotCancellation { Queued, BeforeChannelOpen, WhileChannelOpen }
 
     // Consensus-specs v1.7.0-beta.2 req/resp requesting side: the requester MUST NOT make more than MAX_CONCURRENT_REQUESTS concurrent requests with the same protocol ID.
-    [TestCase(SlotCancellation.Queued)]
-    [TestCase(SlotCancellation.BeforeChannelOpen)]
-    [TestCase(SlotCancellation.WhileChannelOpen)]
+    [Test]
     [CancelAfter(30_000)]
-    public async Task Request_slots_preserve_protocol_bounds_and_cancelled_channel_ownership(SlotCancellation cancellation, CancellationToken token)
+    public async Task Request_slots_preserve_protocol_bounds_and_cancelled_channel_ownership([Values] SlotCancellation cancellation, CancellationToken token)
     {
         TestLogRecorder logs = new();
         HeldSession held = new(opensChannels: cancellation == SlotCancellation.WhileChannelOpen);
