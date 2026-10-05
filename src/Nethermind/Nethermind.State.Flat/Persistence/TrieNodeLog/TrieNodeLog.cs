@@ -5,9 +5,11 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
+using System.Text;
 using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -101,6 +103,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
         _shards = shards.ToArray();
         _secondLevelShards = secondLevelShards.ToArray();
+        WriteShardManifest(db, _shards.Concat(_secondLevelShards).Select(static shard => shard.Name));
     }
 
     internal IReadOnlyList<TrieNodeLogShard> Shards => _shards;
@@ -134,14 +137,37 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         return onDisk.Count == 0;
     }
 
+    // Metadata key of the shard names the database may hold confirmed-but-unmerged generations for, so a database
+    // restored without the log directory is refused even when no directory is left to enumerate.
+    private static readonly byte[] ShardManifestKey = Keccak.Compute("TrieNodeLogShards").BytesToArray();
+
+    /// <summary>Durably records the shard names before any of them commits.</summary>
+    private static void WriteShardManifest(IColumnsDb<FlatDbColumns> db, IEnumerable<string> names)
+    {
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        metadata.PutSpan(ShardManifestKey, Encoding.UTF8.GetBytes(string.Join('\n', names)));
+        metadata.FlushOrThrow();
+    }
+
     /// <summary>
     /// Merges every shard directory found under <paramref name="basePath"/> into RocksDB and removes it, whatever
     /// shard layout wrote it, so the log can be reconfigured or disabled between runs without losing nodes.
     /// Run before the log is constructed; the configured shards then start empty.
     /// </summary>
-    /// <remarks>Second-level shards go first: they hold what their first-level shards merged before.</remarks>
+    /// <remarks>
+    /// Refuses a database that confirms generations of a recorded shard whose files are gone. Second-level shards
+    /// go first: they hold what their first-level shards merged before.
+    /// </remarks>
     public static void MergeAllOnDisk(string basePath, IColumnsDb<FlatDbColumns> db, ILogManager logManager)
     {
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        byte[]? manifest = metadata.Get(ShardManifestKey);
+        if (manifest is not null)
+        {
+            foreach (string name in Encoding.UTF8.GetString(manifest).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                TrieNodeLogShard.ThrowIfConfirmedGenerationsMissing(metadata, name, Path.Combine(basePath, name));
+        }
+
         if (!Directory.Exists(basePath)) return;
         ILogger logger = logManager.GetClassLogger<TrieNodeLog>();
         using SemaphoreSlim mergeLimiter = new(1, 1);
@@ -173,6 +199,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             }
             Directory.Delete(directory, recursive: true);
         }
+        metadata.Remove(ShardManifestKey);
     }
 
     internal static bool Covers(FlatDbColumns column) => column is FlatDbColumns.StateTopNodes or FlatDbColumns.StateNodes or FlatDbColumns.StorageNodes;

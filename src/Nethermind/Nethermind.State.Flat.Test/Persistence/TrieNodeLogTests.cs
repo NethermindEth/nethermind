@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -41,9 +42,8 @@ public class TrieNodeLogTests
     {
         _directory = TempPath.GetTempDirectory();
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        // Two shards per partition, so every shard gets a 4 KiB generation.
-        // The second level is off unless a test enables it, so merges reach RocksDB directly.
-        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192, TrieNodeLogSecondLevelMergeLag = -1 };
+        // Two shards per partition, so every shard gets a 4 KiB generation; otherwise the shipped defaults.
+        _config = new FlatDbConfig { TrieNodeLogEnabled = true, TrieNodeLogStateBytes = 8192, TrieNodeLogStorageBytes = 8192 };
         Open();
     }
 
@@ -289,7 +289,9 @@ public class TrieNodeLogTests
     [Test]
     public void Merge_lag_skips_keys_rewritten_in_newer_generations()
     {
+        // First level only, so the merges under test reach RocksDB directly.
         _config.TrieNodeLogMergeLag = 1;
+        _config.TrieNodeLogSecondLevelMergeLag = -1;
         Reopen().GetAwaiter().GetResult();
 
         // 3000-byte values: two per 4 KiB generation, so every second batch seals one.
@@ -559,7 +561,11 @@ public class TrieNodeLogTests
     [TestCase(false, false, true)]
     public async Task The_on_disk_second_level_matches_the_config_only_when_enabled(bool writtenWithSecondLevel, bool secondLevelEnabled, bool matches)
     {
-        if (writtenWithSecondLevel) await ReopenWithSecondLevel(secondLevelMergeLag: 0);
+        // Start from the layout under test rather than the fixture's, whose second-level directories would linger.
+        await _log.DisposeAsync();
+        foreach (string shardDirectory in Directory.GetDirectories(_directory.Path)) Directory.Delete(shardDirectory, recursive: true);
+        _config.TrieNodeLogSecondLevelMergeLag = writtenWithSecondLevel ? 0 : -1;
+        Open();
         WriteTop(0, 1, Rlp1);
         await _log.DisposeAsync();
         _config.TrieNodeLogSecondLevelMergeLag = secondLevelEnabled ? 0 : -1;
@@ -715,13 +721,101 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public async Task A_database_restored_without_its_log_directory_is_refused()
+    public async Task A_database_restored_without_its_log_directory_is_refused([Values] bool logDisabledAtRestart)
     {
         WriteTop(0, 1, Rlp1);
         await _log.DisposeAsync();
-        foreach (string file in LogFiles()) File.Delete(file);
+        foreach (string shardDirectory in Directory.GetDirectories(_directory.Path)) Directory.Delete(shardDirectory, recursive: true);
 
-        Assert.That(Open, Throws.TypeOf<InvalidDataException>().With.Message.Contains("missing"));
+        // A disabled log merges whatever is on disk at startup instead of recovering it.
+        Action restart = logDisabledAtRestart ? () => TrieNodeLog.MergeAllOnDisk(_directory.Path, _db, LimboLogs.Instance) : Open;
+        Assert.That(restart, Throws.TypeOf<InvalidDataException>().With.Message.Contains("missing"));
+    }
+
+    [Test]
+    public async Task A_database_restored_without_its_second_level_directory_is_refused()
+    {
+        await ReopenWithSecondLevel(secondLevelMergeLag: 0);
+        WriteTop(0, 1, Value(1, 3000));
+        WriteTop(1, 2, Value(2, 3000)); // seals first-level generation 1, copied into the second level
+        Assert.That(() => ShardFiles("state-0"), Is.Empty.After(5000, 20));
+        await _log.DisposeAsync();
+        foreach (string file in ShardFiles("state-0-l2")) File.Delete(file);
+
+        Assert.That(Open, Throws.TypeOf<InvalidDataException>().With.Message.Contains("state-0-l2"));
+    }
+
+    [Test]
+    public void Clear_marks_the_wipe_before_dropping_the_log()
+    {
+        WriteTop(0, 1, Rlp1);
+        IDb metadata = new UnflushableDb(_db.GetColumnDb(FlatDbColumns.Metadata));
+        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call => call.Arg<FlatDbColumns>() == FlatDbColumns.Metadata ? metadata : _db.GetColumnDb(call.Arg<FlatDbColumns>()));
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, _log);
+
+        Assert.That(persistence.Clear, Throws.TypeOf<IOException>(), "the wipe marker could not be made durable");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LogFiles(), Is.Not.Empty, "nothing is dropped before the marker is durable");
+            Assert.That(ReadTop(), Is.EqualTo(Rlp1));
+        }
+    }
+
+    [Test]
+    [Platform(Exclude = "Win")]
+    public void A_merged_file_whose_deletion_failed_is_deleted_on_a_later_merge()
+    {
+        Assume.That(Environment.UserName, Is.Not.EqualTo("root"), "root can delete from a read-only directory");
+        WriteTop(0, 1, Rlp1);
+        string shardDirectory = Path.Combine(_directory.Path, "state-0");
+        long undeletedBefore = Metrics.TrieNodeLogUndeletedFiles;
+        IPersistence.IPersistenceReader reader = _persistence.CreateReader(); // holds the generation past its merge
+        _log.Drain();
+
+        SetUnixFileMode(shardDirectory, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            reader.Dispose();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ShardFiles("state-0"), Is.Not.Empty);
+                Assert.That(Metrics.TrieNodeLogUndeletedFiles, Is.EqualTo(undeletedBefore + 1));
+            }
+        }
+        finally
+        {
+            SetUnixFileMode(shardDirectory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        WriteTop(1, 2, Rlp2);
+        _log.Drain();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ShardFiles("state-0"), Is.Empty);
+            Assert.That(Metrics.TrieNodeLogUndeletedFiles, Is.EqualTo(undeletedBefore));
+        }
+    }
+
+    private static void SetUnixFileMode(string path, UnixFileMode mode)
+    {
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, mode);
+    }
+
+    /// <summary>A store whose durable flush always fails.</summary>
+    private sealed class UnflushableDb(IDb inner) : IDb
+    {
+        public string Name => inner.Name;
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);
+        public IWriteBatch StartWriteBatch() => inner.StartWriteBatch();
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void FlushOrThrow() => throw new IOException("durable flush failed");
+        public void Dispose() => inner.Dispose();
     }
 
     /// <summary>The test database with its snapshots supplied by <paramref name="snapshot"/>.</summary>

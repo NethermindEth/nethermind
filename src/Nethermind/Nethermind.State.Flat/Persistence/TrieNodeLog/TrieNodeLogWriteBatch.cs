@@ -234,14 +234,17 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
     }
 
     /// <summary>Puts this batch's version into the metadata column batch, so RocksDB confirms it atomically with the state pointer.</summary>
+    /// <summary>Number of the newest generation this batch appended to; null when it appended nothing.</summary>
+    public ulong? WrittenGeneration => _current?.Number;
+
     public void WriteVersion(IWriteOnlyKeyValueStore metadataBatch)
     {
         Span<byte> versionBytes = stackalloc byte[8];
         BinaryPrimitives.WriteUInt64BigEndian(versionBytes, version);
         metadataBatch.PutSpan(shard.VersionKey, versionBytes);
-        if (_current is not null)
+        if (WrittenGeneration is { } generation)
         {
-            BinaryPrimitives.WriteUInt64BigEndian(versionBytes, _current.Number);
+            BinaryPrimitives.WriteUInt64BigEndian(versionBytes, generation);
             metadataBatch.PutSpan(shard.GenerationKey, versionBytes);
         }
         Metrics.TrieNodeLogVersion[shard.Label] = (long)version;

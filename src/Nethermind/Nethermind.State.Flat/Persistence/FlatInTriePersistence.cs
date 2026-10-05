@@ -26,6 +26,8 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
 
     public void Clear()
     {
+        // The wipe is on record before the log drops generations the database still counts on.
+        BasePersistence.MarkWipeStarted(db);
         trieNodeLog.Clear();
         BasePersistence.ClearAllColumns(db);
     }

@@ -524,6 +524,14 @@ public static class Metrics
 
     public static void AddTrieNodeLogBytes(long delta) => Interlocked.Add(ref _trieNodeLogBytes, delta);
 
+    private static long _trieNodeLogUndeletedFiles;
+
+    [GaugeMetric]
+    [Description("Merged trie node log files whose deletion failed; deletion is retried on later merges and at startup")]
+    public static long TrieNodeLogUndeletedFiles => Volatile.Read(ref _trieNodeLogUndeletedFiles);
+
+    public static void AddTrieNodeLogUndeletedFiles(long delta) => Interlocked.Add(ref _trieNodeLogUndeletedFiles, delta);
+
     [GaugeMetric]
     [Description("Native memory held by trie node log generation indexes, including merged generations still pinned by readers")]
     public static long TrieNodeLogIndexBytes { get; set; }

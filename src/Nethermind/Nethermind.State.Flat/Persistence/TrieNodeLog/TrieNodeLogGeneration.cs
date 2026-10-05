@@ -35,6 +35,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     private readonly ulong* _slots;
     private readonly int _mask;
     private int _preserve;
+    private readonly Action<string, Exception> _onDeleteFailed;
 
     public ulong Number { get; }
     public string Path { get; }
@@ -54,10 +55,12 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
 
     public bool IsFlushed { get; set; }
 
-    public TrieNodeLogGeneration(ulong number, string path, int capacity)
+    /// <param name="onDeleteFailed">Called with the file path when the last release fails to delete the file.</param>
+    public TrieNodeLogGeneration(ulong number, string path, int capacity, Action<string, Exception> onDeleteFailed)
     {
         Number = number;
         Path = path;
+        _onDeleteFailed = onDeleteFailed;
         Capacity = Math.Max(MinCapacity, (int)BitOperations.RoundUpToPowerOf2((uint)capacity));
         _mask = Capacity - 1;
         Handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
@@ -213,7 +216,14 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
         Interlocked.Add(ref _aliveIndexBytes, -IndexBytes);
         if (Volatile.Read(ref _preserve) == 0)
         {
-            try { File.Delete(Path); } catch { /* best-effort */ }
+            try
+            {
+                File.Delete(Path);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                _onDeleteFailed(Path, e);
+            }
         }
     }
 }

@@ -22,6 +22,8 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
 
     public void Clear()
     {
+        // The wipe is on record before the log drops generations the database still counts on.
+        BasePersistence.MarkWipeStarted(db);
         trieNodeLog.Clear();
         BasePersistence.ClearAllColumns(db);
     }
