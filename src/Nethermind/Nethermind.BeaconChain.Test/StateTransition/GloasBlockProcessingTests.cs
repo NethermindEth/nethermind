@@ -301,10 +301,9 @@ public class GloasBlockProcessingTests
 
         int validatorIndex = 2;
         const ulong startingBalance = 40 * Gwei;
-        Validator validator = state.Validators![validatorIndex].Clone();
+        Validator validator = state.Validators![validatorIndex];
         validator.WithdrawalCredentials = EthWithdrawalCredentials(0xAB);
         validator.WithdrawableEpoch = 0;
-        state.Validators[validatorIndex] = validator;
         state.Balances![validatorIndex] = startingBalance;
 
         GloasBlockProcessing.ProcessWithdrawals(state);
