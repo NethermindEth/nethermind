@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
@@ -170,9 +174,34 @@ namespace Nethermind.Trie
             }
         }
 
+        private void ResolveUnknownNodeWithContext(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
+            ICappedArrayPool? bufferPool)
+        {
+            try
+            {
+                ResolveUnknownNode(tree, path, readFlags, bufferPool);
+            }
+            catch (RlpException rlpException)
+            {
+                ThrowDecodingError(rlpException, path);
+            }
+
+            [DoesNotReturn, StackTraceHidden]
+            void ThrowDecodingError(RlpException rlpException, in TreePath path) => throw new TrieNodeException($"Error when decoding node {Keccak}", path,
+                    Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
+        }
+
+        /// <summary>Returns a dirty node to modify in place of this sealed one.</summary>
+        /// <remarks>A clone: a sealed node may be shared through the trie store's cache with other tries and later blocks.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal TrieNode Unseal() => Clone();
+
         /// <summary>Whether a resolved, persisted child is dropped back to its hash once traversed.</summary>
         /// <remarks>Worth it for a long-lived process, whose node cache would otherwise retain every deep
         /// persisted path it has ever walked. See <c>TrieNode.zkevm.cs</c> for why the guest declines.</remarks>
         private const bool PruneTraversedChildren = true;
+
+        /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: left to the JIT.</summary>
+        private const MethodImplOptions GetChildWithChildPathInlining = default;
     }
 }
