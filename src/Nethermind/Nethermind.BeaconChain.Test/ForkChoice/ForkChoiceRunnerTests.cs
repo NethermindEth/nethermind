@@ -1024,10 +1024,11 @@ public class ForkChoiceRunnerTests
 
     [Test]
     public void Vote_checked_against_a_gloas_target_state_counts_only_with_a_valid_signature(
-        [Values] bool targetFirstGloasBlock, [Values] bool fuluContainer, [Values] bool forged)
+        [Values] bool targetFirstGloasBlock, [Values] bool fuluContainer, [Values] bool forged, [Values] bool coldKeys)
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
-        (ForkChoiceRunner runner, Hash256 target, BeaconStateGloas signingState) = RunnerForBoundaryVote(chain, targetFirstGloasBlock, pubkeys: null);
+        PubkeyCache? pubkeys = coldKeys ? new PubkeyCache() : null;
+        (ForkChoiceRunner runner, Hash256 target, BeaconStateGloas signingState) = RunnerForBoundaryVote(chain, targetFirstGloasBlock, pubkeys);
         AttestationGloas attestation = SignedBoundaryVote(signingState, EpochOneVote(chain, GloasTestFixtures.BoundarySlot, target));
         if (forged)
         {
@@ -1044,7 +1045,9 @@ public class ForkChoiceRunnerTests
             Assert.That(vote, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("signature"));
         else
             Assert.That(vote, Throws.Nothing);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(Weight(runner, target), Is.EqualTo(forged ? 0 : CommitteeSize * EffectiveBalance));
+        if (coldKeys && !forged) Assert.That(pubkeys!.Count, Is.EqualTo(GloasTestFixtures.ValidatorCount));
     }
 
     [Test]
@@ -1292,21 +1295,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.ContainsBlock(chain.First.Root), Is.False);
     }
 
-    /// <summary>Keep previous/current justified and finalized roots distinct so checkpoint-source mixups are visible.</summary>
-    [Test]
-    public void Gloas_block_realizes_its_post_states_current_justified_and_finalized_checkpoints()
-    {
-        ForkCrossingChain chain = ForkCrossingChain.Instance;
-        ForkChoiceRunner runner = FinalizedOnFirstGloasBlock(chain);
-        ForkChoiceSnapshotNode node = runner.Snapshot().Nodes.Single(n => n.Root == chain.Voting[1].Root);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(DoctoredJustifiedEpoch, chain.Voting[0].Root)));
-        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)));
-        Assert.That(node.JustifiedEpoch, Is.EqualTo(DoctoredJustifiedEpoch));
-        Assert.That(node.FinalizedEpoch, Is.EqualTo(ForkCrossingChain.ForkEpoch));
-    }
-
     [TestCase(67ul, false, "from the future", TestName = "Gloas_block_from_a_future_slot_is_refused")]
     [TestCase(32ul, true, "not after the finalized slot", TestName = "Gloas_block_at_the_finalized_slot_is_refused")]
     [TestCase(66ul, true, "does not descend from the finalized checkpoint", TestName = "Gloas_block_off_the_finalized_chain_is_refused")]
@@ -1314,6 +1302,15 @@ public class ForkChoiceRunnerTests
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         ForkChoiceRunner runner = FinalizedOnFirstGloasBlock(chain);
+        ForkChoiceSnapshotNode node = runner.Snapshot().Nodes.Single(n => n.Root == chain.Voting[1].Root);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(DoctoredJustifiedEpoch, chain.Voting[0].Root)));
+            Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.First.Root)));
+            Assert.That(node.JustifiedEpoch, Is.EqualTo(DoctoredJustifiedEpoch));
+            Assert.That(node.FinalizedEpoch, Is.EqualTo(ForkCrossingChain.ForkEpoch));
+        }
+
         BeaconBlockGloas template = chain.Voting[1].Block.Message!;
         SignedBeaconBlockGloas block = new()
         {
@@ -1380,60 +1377,35 @@ public class ForkChoiceRunnerTests
 
     private const ulong LastEpochWithAStartSlot = 576460752303423487;
 
-    private static ulong[] EpochsAfterTheBlockEpoch() => [3, LastEpochWithAStartSlot, ulong.MaxValue];
-
     [Test]
-    public void Timely_block_naming_a_checkpoint_epoch_after_its_own_is_refused_before_any_store_update(
-        [Values] bool justified,
-        [Values(1ul, LastEpochWithAStartSlot, ulong.MaxValue)] ulong epoch)
+    public void Block_with_a_state_checkpoint_epoch_after_its_own_is_refused_before_any_store_update(
+        [Values] bool priorEpoch, [Values] bool justified, [Values(0, 1, 2)] int epochCase)
     {
+        ulong epoch = epochCase switch { 0 => priorEpoch ? 3UL : 1UL, 1 => LastEpochWithAStartSlot, _ => ulong.MaxValue };
         (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
-        TickToSlot(runner, 1);
-        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xc1);
+        TickToSlot(runner, priorEpoch ? 3 * Presets.SlotsPerEpoch + 1 : 1);
+        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: priorEpoch ? 2 * Presets.SlotsPerEpoch + 1 : 1, payloadHashByte: 0xc1);
         BeaconStateFulu doctored = block.PostState.Clone();
         Checkpoint beyond = new() { Epoch = epoch, Root = chain.AnchorRoot };
         if (justified)
             doctored.CurrentJustifiedCheckpoint = beyond;
         else
             doctored.FinalizedCheckpoint = beyond;
-
-        AssertRefusedWithTheStoreUnchanged(runner, block, doctored);
-    }
-
-    public enum StateCheckpoint
-    {
-        Justified,
-        Finalized,
-    }
-
-    [Test]
-    public void Prior_epoch_block_with_a_state_checkpoint_epoch_after_its_own_is_refused_before_any_store_update(
-        [Values] StateCheckpoint field,
-        [ValueSource(nameof(EpochsAfterTheBlockEpoch))] ulong epoch)
-    {
-        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
-        TickToSlot(runner, 3 * Presets.SlotsPerEpoch + 1);
-        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: 2 * Presets.SlotsPerEpoch + 1, payloadHashByte: 0xc1);
-        BeaconStateFulu doctored = block.PostState.Clone();
-        Array.Fill(doctored.CurrentEpochParticipation!, (byte)(1 << Presets.TimelyTargetFlagIndex));
-        Checkpoint beyond = new() { Epoch = epoch, Root = chain.AnchorRoot };
-        if (field == StateCheckpoint.Justified)
+        if (priorEpoch)
         {
-            doctored.CurrentJustifiedCheckpoint = beyond;
-        }
-        else
-        {
-            // Justifying epoch 2 over a justified epoch 1 finalizes epoch 1, so the pulled-up finalized checkpoint no longer carries the state's.
-            doctored.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 1, Root = chain.AnchorRoot };
-            doctored.JustificationBits = new BitArray([true, false, false, false]);
-            doctored.FinalizedCheckpoint = beyond;
-        }
-
-        JustificationAndFinalizationState pulledUp = EpochProcessing.ComputeJustificationAndFinalization(doctored, new EpochCache());
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pulledUp.CurrentJustifiedCheckpoint.Epoch, Is.EqualTo(2ul), "fixture bug: the pulled-up tip must be sane");
-            Assert.That(pulledUp.FinalizedCheckpoint.Epoch, Is.LessThanOrEqualTo(2ul), "fixture bug: the pulled-up tip must be sane");
+            Array.Fill(doctored.CurrentEpochParticipation!, (byte)(1 << Presets.TimelyTargetFlagIndex));
+            if (!justified)
+            {
+                // Justifying epoch 2 over a justified epoch 1 finalizes epoch 1, so the pulled-up finalized checkpoint no longer carries the state's.
+                doctored.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 1, Root = chain.AnchorRoot };
+                doctored.JustificationBits = new BitArray([true, false, false, false]);
+            }
+            JustificationAndFinalizationState pulledUp = EpochProcessing.ComputeJustificationAndFinalization(doctored, new EpochCache());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pulledUp.CurrentJustifiedCheckpoint.Epoch, Is.EqualTo(2ul), "fixture bug: the pulled-up tip must be sane");
+                Assert.That(pulledUp.FinalizedCheckpoint.Epoch, Is.LessThanOrEqualTo(2ul), "fixture bug: the pulled-up tip must be sane");
+            }
         }
 
         AssertRefusedWithTheStoreUnchanged(runner, block, doctored);
@@ -1510,20 +1482,6 @@ public class ForkChoiceRunnerTests
         Assert.That(runner.IsProposerEquivocation(sameProposal.Root), Is.True, "slot 289 is after the finalized slot");
         Assert.That(runner.IsProposerEquivocation(finalized.Root), Is.False, "the rival at the finalized slot 288 is dropped");
         Assert.That(runner.IsProposerEquivocation(finalizing.Root), Is.False, "a unique proposal is no equivocation");
-    }
-
-    [Test]
-    public void Signed_vote_verifies_with_keys_first_seen_in_the_registry_it_is_checked_against([Values] bool targetFirstGloasBlock)
-    {
-        ForkCrossingChain chain = ForkCrossingChain.Instance;
-        PubkeyCache pubkeys = new();
-        (ForkChoiceRunner runner, Hash256 target, BeaconStateGloas signingState) = RunnerForBoundaryVote(chain, targetFirstGloasBlock, pubkeys);
-
-        runner.OnAttestation(SignedBoundaryVote(signingState, EpochOneVote(chain, GloasTestFixtures.BoundarySlot, target)));
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(pubkeys.Count, Is.EqualTo(GloasTestFixtures.ValidatorCount));
-        Assert.That(Weight(runner, target), Is.EqualTo(CommitteeSize * EffectiveBalance));
     }
 
     private static ForkChoiceRunner FinalizedOnFirstGloasBlock(ForkCrossingChain chain)
