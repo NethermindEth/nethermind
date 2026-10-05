@@ -405,7 +405,10 @@ public class GethStyleTracer(
         IBlockTracer<GethLikeTxTrace> CreateTracer(GethTraceOptions traceOptions) => writer is null
             ? CreateOptionsTracer(block.Header, traceOptions, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex, isTraceCall: useBlockAsBase)
             : new GethLikeBlockStreamingMemoryTracer(traceOptions, writer, pipeWriter, cancellationToken, destroyRefund);
-        using GethLikeBlockCallDeadlineTracer? deadline = useBlockAsBase || isTraceTransaction ? new(filtered, cancellationToken, CreateTracer) : null;
+        using GethLikeBlockCallDeadlineTracer? deadline = useBlockAsBase || isTraceTransaction
+            ? new(options with { TxHash = txHash }, cancellationToken,
+                traceOptions => CreateTracer(traceOptions with { TxHash = filtered.TxHash }))
+            : null;
         IBlockTracer<GethLikeTxTrace> tracer = deadline ?? CreateTracer(filtered);
         CancellationToken executionToken = deadline?.Token ?? cancellationToken;
         if (useBlockAsBase && callRequestState?.BlockhashLookup is { } lookup) lookup.Token = executionToken;

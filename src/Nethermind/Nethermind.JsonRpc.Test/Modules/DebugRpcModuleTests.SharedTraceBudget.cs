@@ -286,7 +286,8 @@ public partial class DebugRpcModuleTests
 
     // Without usable receipts both paths number the logs from the body they replay, as the receipts would.
     [Test]
-    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce([Values] ReceiptAvailability availability)
+    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce(
+        [Values] ReceiptAvailability availability, [Values] bool expiredTransaction)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -314,7 +315,8 @@ public partial class DebugRpcModuleTests
         GethTraceOptions options = new() { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}""") };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, options);
         int blockTraceGets = receipts.BlockGets - before;
-        string single = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactions[^1].Hash, options);
+        string single = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactions[^1].Hash,
+            options with { Timeout = expiredTransaction ? TimeSpan.FromSeconds(-1) : null });
 
         JArray result = (JArray)JToken.Parse(response)["result"]!;
         using (Assert.EnterMultipleScope())
@@ -322,7 +324,15 @@ public partial class DebugRpcModuleTests
             Assert.That(result, Has.Count.EqualTo(transactions.Length), response);
             for (int i = 0; i < result.Count; i++)
                 Assert.That((string)result[i]!["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{i:x}"), response);
-            Assert.That((string)JToken.Parse(single)["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{transactions.Length - 1:x}"), single);
+            JToken singleResult = JToken.Parse(single);
+            if (expiredTransaction)
+            {
+                Assert.That(singleResult["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000), single);
+                Assert.That(singleResult["error"]?["message"]?.Value<string>(), Is.EqualTo("execution timeout"), single);
+                Assert.That(singleResult["result"], Is.Null, single);
+            }
+            else
+                Assert.That((string)singleResult["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{transactions.Length - 1:x}"), single);
             // Read once on the calling thread: the parallel workers share it, and the replay it falls back to reads none.
             Assert.That(blockTraceGets, Is.EqualTo(1));
         }
