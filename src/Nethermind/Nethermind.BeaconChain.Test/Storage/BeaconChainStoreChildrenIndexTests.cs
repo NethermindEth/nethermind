@@ -34,6 +34,7 @@ public class BeaconChainStoreChildrenIndexTests
         Store,
         Legacy,
         Delete,
+        CorruptOwnEntry,
         Children,
         Block,
         SetCanonical,
@@ -53,6 +54,7 @@ public class BeaconChainStoreChildrenIndexTests
         new("A_parent_never_stored_through_the_index_is_tracked_but_reported_incomplete", [Put(1, legacy: true), Put(2, 1), Block(1, true), Children(1, [2], false)]),
         new("Re_storing_a_stored_block_whose_entry_is_pending_completes_it_with_its_children", [Put(1, legacy: true), Put(2, 1), Put(1), Children(1, [2], true)]),
         new("Unknown_roots_have_no_entry", [Children(9, [], false, false)]),
+        new("Deleting_a_block_whose_own_entry_is_unreadable_still_unlinks_it_from_its_parent", [Put(1), Put(2, 1), Put(3, 1), new(IndexAction.CorruptOwnEntry, 2), Delete(2), Children(1, [3], true)]),
         new("Deleting_a_block_unlinks_it_from_its_parent_and_drops_its_own_entry", [Put(1), Put(2, 1), Put(3, 1), Delete(2), Block(2, false), Children(2, exists: false), Children(1, [3], true)]),
         new("Deleting_a_block_whose_parent_root_is_zero_unlinks_it_like_any_other_child", [Put(2), Put(3), Delete(2), Children(0, [3])]),
         new("A_block_stored_after_its_own_child_still_unlinks_from_its_parent_on_delete", [Put(1), Put(3, 2), Put(2, 1), Delete(2), Children(1, [])]),
@@ -86,6 +88,9 @@ public class BeaconChainStoreChildrenIndexTests
                     break;
                 case IndexAction.Delete:
                     _store.DeleteBlock(root);
+                    break;
+                case IndexAction.CorruptOwnEntry:
+                    _db.GetColumnDb(BeaconChainDbColumns.BlockIndex).Set([0x01, .. root.Bytes.ToArray()], [0x01, 0x02, 0x03]);
                     break;
                 case IndexAction.Block:
                     Assert.That(_store.TryGetForkedBlock(root, out _), Is.EqualTo(step.Exists));
@@ -247,25 +252,6 @@ public class BeaconChainStoreChildrenIndexTests
             Assert.That(reopened.EnsureSchemaVersion, Throws.InstanceOf<InvalidOperationException>().With.Message.Contains(root.ToString()),
                 "a parent root read past the record would link the block under a made-up parent");
         }
-    }
-
-    [Test]
-    public void Deleting_a_block_whose_own_entry_is_unreadable_still_unlinks_it_from_its_parent()
-    {
-        Hash256 parent = FromLow(1);
-        Hash256 child = FromLow(2);
-        Hash256 sibling = FromLow(3);
-        _store.PutBlock(parent, CreateBlock(100, parent: FromLow(0)));
-        _store.PutBlock(child, CreateBlock(101, parent));
-        _store.PutBlock(sibling, CreateBlock(102, parent));
-        byte[] ownKey = [0x01, .. child.Bytes.ToArray()];
-        _db.GetColumnDb(BeaconChainDbColumns.BlockIndex).Set(ownKey, [0x01, 0x02, 0x03]);
-
-        _store.DeleteBlock(child);
-
-        Assert.That(_store.TryGetChildren(parent, out Hash256[] children, out bool complete), Is.True);
-        Assert.That(children, Is.EqualTo(new[] { sibling }), "a deleted block must not stay named in a list the API serves as complete");
-        Assert.That(complete, Is.True);
     }
 
     // Legacy record: compressed SSZ under bare block root, without index entries.
