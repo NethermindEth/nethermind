@@ -472,8 +472,11 @@ public partial class BeaconSyncOrchestratorTests
         s.Blame(failure == HoldCheckFailure.Invalid ? 1 : 0);
     }
 
-    [Test]
-    public async Task Genuine_ancestor_fetched_while_a_forgery_of_it_waits_imports_with_the_walk([Values] bool genuineAlreadyWaiting)
+    [TestCase(false, false, TestName = "Genuine_ancestor_fetched_while_a_forgery_of_it_waits_imports_with_the_walk(False)")]
+    [TestCase(false, true, TestName = "Genuine_ancestor_fetched_while_a_forgery_of_it_waits_imports_with_the_walk(True)")]
+    [TestCase(true, false, TestName = "Ancestor_queued_from_gossip_and_fetched_while_waiting_retries_as_fetched(False)")]
+    [TestCase(true, true, TestName = "Ancestor_queued_from_gossip_and_fetched_while_waiting_retries_as_fetched(True)")]
+    public async Task Fetched_ancestor_retries_with_its_genuine_copy(bool genuineFromGossip, bool otherCopyAlreadyWaiting)
     {
         (BlockContext s, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches) = WaitingBlocks(NearHeadAnchorSlot, WallSlot - 1, WallSlot);
         s.Copy(0, 2, 0x11, forged: true);
@@ -481,48 +484,29 @@ public partial class BeaconSyncOrchestratorTests
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
         s.Token = cts.Token;
         await s.Gossip(1);
-        await s.Import(2);
-        if (genuineAlreadyWaiting)
-        {
-            await s.Import(0, fetched: true);
-        }
+        if (!genuineFromGossip || otherCopyAlreadyWaiting)
+            await s.Import(2);
+        if (genuineFromGossip || otherCopyAlreadyWaiting)
+            await s.Import(0, fetched: !genuineFromGossip);
 
         fetches[s.Root(0)].SetResult([s[0]]);
         await s.Sync.SettleWithinAsync(maxPasses: 10, cts.Token);
         int waiting = s.Sync.PendingRetryBlockCount;
         s.Importer.Unavailable.Remove(s.Root(0));
+        if (genuineFromGossip)
+            s.Importer.RegenerationRefused.Add(s.Root(0));
         await s.Tick(WallSlot);
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(waiting, Is.EqualTo(2), "the fetched copy waits beside the forgery");
-        s.Known(0, 1);
-        s.Imports(0, count: 2, byRoot: true);
-    }
-
-    [Test]
-    public async Task Ancestor_queued_from_gossip_and_fetched_while_waiting_retries_as_fetched([Values] bool behindForgery)
-    {
-        (BlockContext s, Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<ForkedSignedBeaconBlock>>> fetches) = WaitingBlocks(NearHeadAnchorSlot, WallSlot - 1, WallSlot);
-        s.Importer.Unavailable.Add(s.Root(0));
-        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
-        s.Token = cts.Token;
-        s.Copy(0, 2, 0x11, forged: true);
-        await s.Gossip(1);
-        if (behindForgery)
+        if (genuineFromGossip)
         {
-            await s.Import(2);
+            s.Importer.RegenerationRefused.Remove(s.Root(0));
+            await s.Tick(WallSlot + 1);
         }
 
-        await s.Import(0);
-        fetches[s.Root(0)].SetResult([s[0]]);
-        await s.Sync.SettleWithinAsync(maxPasses: 10, cts.Token);
-        s.Importer.Unavailable.Remove(s.Root(0));
-        s.Importer.RegenerationRefused.Add(s.Root(0));
-        await s.Tick(WallSlot);
-        s.Importer.RegenerationRefused.Remove(s.Root(0));
-        await s.Tick(WallSlot + 1);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
+        if (!genuineFromGossip)
+            Assert.That(waiting, Is.EqualTo(2), "the fetched copy waits beside the forgery");
         s.Known(0, 1);
-        s.Imports(0, byRoot: true);
+        s.Imports(0, count: genuineFromGossip ? null : 2, byRoot: true);
     }
 
     [Test]
