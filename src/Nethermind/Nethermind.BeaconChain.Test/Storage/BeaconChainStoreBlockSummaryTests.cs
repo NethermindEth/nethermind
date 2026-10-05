@@ -152,15 +152,11 @@ public class BeaconChainStoreBlockSummaryTests
         return block;
     }
 
-    private sealed class GatedSummaryDb(MemColumnsDb<BeaconChainDbColumns> inner, ManualResetEventSlim entered, ManualResetEventSlim release) : IColumnsDb<BeaconChainDbColumns>
+    private sealed class GatedSummaryDb(MemColumnsDb<BeaconChainDbColumns> inner, ManualResetEventSlim entered, ManualResetEventSlim release) : TestColumnsDb
     {
         public GatedSummaryIndex Index { get; } = new(entered, release);
-        public IDb GetColumnDb(BeaconChainDbColumns key) => key == BeaconChainDbColumns.BlockIndex ? Index : inner.GetColumnDb(key);
-        public IEnumerable<BeaconChainDbColumns> ColumnKeys => inner.ColumnKeys;
-        public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-        public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
-        public void Flush(bool onlyWal = false) { }
-        public void Dispose() => Index.Dispose();
+        protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.BlockIndex ? Index : inner.GetColumnDb(key);
+        public override void Dispose() => Index.Dispose();
     }
 
     private sealed class GatedSummaryIndex(ManualResetEventSlim entered, ManualResetEventSlim release) : MemDb

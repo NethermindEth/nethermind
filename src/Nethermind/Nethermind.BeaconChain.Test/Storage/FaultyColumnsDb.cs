@@ -7,9 +7,8 @@ using Nethermind.Db;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
-internal sealed class FaultyColumnsDb : IColumnsDb<BeaconChainDbColumns>
+internal sealed class FaultyColumnsDb : TestColumnsDb
 {
-    private readonly MemColumnsDb<BeaconChainDbColumns> _inner = new();
     private readonly FaultyMemDb _sidecars = new();
     private readonly SlotReadHookMemDb _canonicalIndex = new();
 
@@ -23,18 +22,12 @@ internal sealed class FaultyColumnsDb : IColumnsDb<BeaconChainDbColumns>
     // Callback blocks canonical-slot readers before their underlying read.
     public Action? BeforeCanonicalSlotRead { set => _canonicalIndex.BeforeSlotRead = value; }
 
-    public IDb GetColumnDb(BeaconChainDbColumns key) => key switch
+    protected override IDb CreateColumn(BeaconChainDbColumns key) => key switch
     {
         BeaconChainDbColumns.DataColumnSidecars => _sidecars,
         BeaconChainDbColumns.BlockIndex => _canonicalIndex,
-        _ => _inner.GetColumnDb(key),
+        _ => base.CreateColumn(key),
     };
-
-    public IEnumerable<BeaconChainDbColumns> ColumnKeys => _inner.ColumnKeys;
-    public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-    public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
-    public void Dispose() { }
-    public void Flush(bool onlyWal = false) { }
 
     private sealed class SlotReadHookMemDb : MemDb
     {

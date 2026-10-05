@@ -46,29 +46,12 @@ public class HeadersByParentPruneRaceTests
         Assert.That((await BeaconApiTestHost.ReadJsonAsync(response)).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
     }
 
-    private sealed class HookedColumnsDb : IColumnsDb<BeaconChainDbColumns>
+    private sealed class HookedColumnsDb : TestColumnsDb
     {
-        private readonly Dictionary<BeaconChainDbColumns, IDb> _columns = [];
-
         public Action? BeforeNextIndexRead { get; set; }
         public Action? AfterNextIndexRead { get; set; }
 
-        public IDb GetColumnDb(BeaconChainDbColumns key)
-        {
-            if (!_columns.TryGetValue(key, out IDb? db))
-            {
-                _columns[key] = db = key == BeaconChainDbColumns.BlockIndex ? new HookedMemDb(this) : new MemDb();
-            }
-
-            return db;
-        }
-
-        public IEnumerable<BeaconChainDbColumns> ColumnKeys => Enum.GetValues<BeaconChainDbColumns>();
-        public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-        public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
-        public IDbMeta.DbMetric GatherMetric() => new();
-        public void Flush(bool onlyWal = false) { }
-        public void Dispose() { }
+        protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.BlockIndex ? new HookedMemDb(this) : base.CreateColumn(key);
 
         private sealed class HookedMemDb(HookedColumnsDb owner) : MemDb
         {

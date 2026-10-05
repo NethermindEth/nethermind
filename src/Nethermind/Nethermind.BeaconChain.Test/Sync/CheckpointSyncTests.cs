@@ -324,7 +324,7 @@ public class CheckpointSyncTests
     {
         EngineDriver engine = Engine.TestEngineDriver.Create(CreateDetector(logManager), logManager: logManager);
         SlotClock slotClock = new(BeaconChainSpec.Mainnet, Timestamper.Default);
-        NoPeers pool = new();
+        RangeSyncTests.StubPool pool = new();
         return new BeaconSyncOrchestrator(
             config,
             BeaconChainSpec.Mainnet,
@@ -337,10 +337,5 @@ public class CheckpointSyncTests
             new GossipRouter(BeaconChainSpec.Mainnet, slotClock, logManager),
             new BeaconChainStatusHolder(BeaconChainSpec.Mainnet, Timestamper.Default),
             logManager);
-    }
-
-    private sealed class NoPeers : IBeaconSyncPeerPool
-    {
-        public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => [];
     }
 }

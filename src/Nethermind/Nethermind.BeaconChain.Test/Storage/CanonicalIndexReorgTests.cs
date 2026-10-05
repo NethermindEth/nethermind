@@ -267,7 +267,7 @@ internal sealed class CanonicalReorgFixture
             new ValidEngine(),
             new BeaconChainConfig(),
             LimboLogs.Instance,
-            new CustodySamplingAvailability(new NoCustody(), new DataColumnPoolSource(new DataColumnSidecarPool()), anchor.ClockAtEpoch(0)),
+            new CustodySamplingAvailability(new Engine.TestEngineDriver.FixedCustodySource(null), new DataColumnPoolSource(new DataColumnSidecarPool()), anchor.ClockAtEpoch(0)),
             static (_, _) => false,
             new SlotClock(chain.Spec, time),
             // A copy: the importer advances its anchor state in place, and the chain still builds on the original.
@@ -315,11 +315,6 @@ internal sealed class CanonicalReorgFixture
 
     public Hash256?[] CanonicalRoots(ulong through) =>
         [.. Enumerable.Range(0, (int)through + 1).Select(slot => Store.TryGetCanonicalRoot((ulong)slot, out Hash256? root) ? root : null)];
-
-    private sealed class NoCustody : INodeColumnCustodySource
-    {
-        public NodeColumnCustody? Current => null;
-    }
 
     private sealed class ValidEngine : IEngineDriver
     {

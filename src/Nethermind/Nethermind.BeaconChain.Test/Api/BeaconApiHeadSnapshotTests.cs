@@ -200,28 +200,11 @@ public class BeaconApiHeadSnapshotTests
         return await BeaconApiTestHost.ReadJsonAsync(response);
     }
 
-    private sealed class HookedMemDbColumns : IColumnsDb<BeaconChainDbColumns>
+    private sealed class HookedMemDbColumns : TestColumnsDb
     {
-        private readonly Dictionary<BeaconChainDbColumns, IDb> _columns = [];
-
         public Action? BeforeNextRead { get; set; }
 
-        public IDb GetColumnDb(BeaconChainDbColumns key)
-        {
-            if (!_columns.TryGetValue(key, out IDb? db))
-            {
-                _columns[key] = db = new HookedMemDb(this);
-            }
-
-            return db;
-        }
-
-        public IEnumerable<BeaconChainDbColumns> ColumnKeys => Enum.GetValues<BeaconChainDbColumns>();
-        public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-        public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
-        public IDbMeta.DbMetric GatherMetric() => new();
-        public void Flush(bool onlyWal = false) { }
-        public void Dispose() { }
+        protected override IDb CreateColumn(BeaconChainDbColumns key) => new HookedMemDb(this);
 
         private sealed class HookedMemDb(HookedMemDbColumns owner) : MemDb
         {

@@ -30,7 +30,6 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
-using Nethermind.Network;
 using NSubstitute;
 using NUnit.Framework.Constraints;
 using Snappier;
@@ -268,7 +267,7 @@ public class BlockImporterTests
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, chain.Spec, store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, chain.Spec, store, new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         NodeColumnCustody custody = new DiscoveryNodeCustodySource(discovery).Current!;
         DataColumnSidecarPool pool = new();
@@ -1954,7 +1953,7 @@ public class BlockImporterTests
             engine ?? new ValidPayloadEngine(),
             new BeaconChainConfig(),
             warnings is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(warnings)),
-            availability ?? new CustodySamplingAvailability(new FixedCustodySource(custody), new DataColumnPoolSource(pool), clock ?? chain.ClockAtEpoch(0)),
+            availability ?? new CustodySamplingAvailability(new Engine.TestEngineDriver.FixedCustodySource(custody), new DataColumnPoolSource(pool), clock ?? chain.ClockAtEpoch(0)),
             static (_, _) => false,
             importClock ?? new SlotClock(chain.Spec, Timestamper.Default),
             new ForkedBeaconState.OfFulu(anchor?.PostState ?? chain.AnchorState),
@@ -1968,17 +1967,6 @@ public class BlockImporterTests
     {
         public int Calls { get; private set; }
         public bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, BeaconChainSpec spec) => ++Calls == 1;
-    }
-
-    private sealed class FixedCustodySource(NodeColumnCustody? custody) : INodeColumnCustodySource
-    {
-        public NodeColumnCustody? Current => custody;
-    }
-
-    private sealed class FixedIPResolver(IPAddress ip) : IIPResolver
-    {
-        public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
-            new(new IIPResolver.NethermindIp(ip, ip));
     }
 
     private sealed class ValidPayloadEngine(Action? onPayload = null) : IEngineDriver

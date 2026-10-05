@@ -800,17 +800,9 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    private sealed class ColumnsDbWith(BeaconChainDbColumns column, IDb replacement) : IColumnsDb<BeaconChainDbColumns>
+    private sealed class ColumnsDbWith(BeaconChainDbColumns column, IDb replacement) : TestColumnsDb
     {
-        private readonly Dictionary<BeaconChainDbColumns, IDb> _columns =
-            Enum.GetValues<BeaconChainDbColumns>().ToDictionary(static c => c, c => c == column ? replacement : new MemDb());
-
-        public IEnumerable<BeaconChainDbColumns> ColumnKeys => _columns.Keys;
-        public IDb GetColumnDb(BeaconChainDbColumns key) => _columns[key];
-        public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-        public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
-        public void Flush(bool onlyWal = false) { }
-        public void Dispose() { }
+        protected override IDb CreateColumn(BeaconChainDbColumns key) => key == column ? replacement : base.CreateColumn(key);
     }
 
     private sealed class KickEngine(PubkeyCache pubkeyCache) : IEngineDriver
