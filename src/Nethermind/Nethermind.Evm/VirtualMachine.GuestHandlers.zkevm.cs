@@ -723,8 +723,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>ADDMOD or MULMOD, as <typeparamref name="TOperation"/> computes it, with its operands and result in their stack slots.</summary>
         /// <remarks>
         /// The shared handler copies the three operands out and the result back. A zero modulus leaves the zero its
-        /// slot holds. A short stack or gas runs the shared
-        /// handler instead, which faults on it.
+        /// slot holds. A short stack or gas runs the shared handler instead, which faults on it.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1796,9 +1795,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
-        /// <summary>MUL of two factors below 2^64.</summary>
+        /// <summary>MUL of the top two stack words.</summary>
         /// <remarks>
-        /// Wider factors go to <see cref="ExecuteMulOfHalfWidthFactors"/> or <see cref="ExecuteMulOfWideFactors"/>, so
+        /// Factors below 2^64 multiply here. Wider factors go to <see cref="ExecuteMulOfHalfWidthFactors"/> or <see cref="ExecuteMulOfWideFactors"/>, so
         /// this handler needs no frame. A short stack or gas runs the shared MUL handler instead.
         /// </remarks>
         [SkipLocalsInit]

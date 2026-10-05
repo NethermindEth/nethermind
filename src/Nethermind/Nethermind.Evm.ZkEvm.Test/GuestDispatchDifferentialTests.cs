@@ -221,6 +221,11 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    /// <remarks>EIP-8038 SLOAD gas equals EIP-2929's, so only the table itself shows that the guest handler stays out.</remarks>
+    [Test]
+    public void Guest_storage_load_handler_is_installed_until_eip8038([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.LoadsStorageThroughGuestHandlerForTests(spec), Is.EqualTo(!spec.IsEip8038Enabled));
+
     /// <remarks>
     /// Every amount of gas up to the program's need puts the end of the gas inside each charge. In a static frame the
     /// TSTORE faults instead.
