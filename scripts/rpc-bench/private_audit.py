@@ -680,7 +680,7 @@ def main():
             p.add_argument("--mount", type=Path, required=True)
     commands.add_parser("tool-begin").add_argument("--image", required=True)
     args = parser.parse_args()
-    child_umask = os.umask(0o077)
+    os.umask(0o077)
     try:
         if args.command == "cpu-apply-attempt":
             print(cpu_apply_attempt())
@@ -725,7 +725,7 @@ def main():
         if args.command == "cleanup-sources":
             return 0 if cleanup_sources(args.audit_outcome, args.upload_outcome, args.teardown_outcome, args.cpu_outcome) else 1
         if args.command == "cell":
-            ok = cell(child_umask)
+            ok = cell()
         elif args.command == "node":
             ok = node(args.label, args.source_dir)
         else:
