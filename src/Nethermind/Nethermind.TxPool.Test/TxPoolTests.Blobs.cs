@@ -632,10 +632,24 @@ namespace Nethermind.TxPool.Test
         public async Task reloaded_frame_blobs_seed_every_ledger_when_head_state_is_unavailable([Values] bool senderHasCode)
         {
             bool stateAvailable = false;
+            Transaction[] restored = [RestorableFrameBlobTx(nonce: 0, payer: TestItem.AddressC), RestorableFrameBlobTx(nonce: 1, payer: TestItem.AddressD)];
             IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
-            storage.GetAll().Returns([
-                new LightTransaction(RestorableFrameBlobTx(nonce: 0, payer: TestItem.AddressC)),
-                new LightTransaction(RestorableFrameBlobTx(nonce: 1, payer: TestItem.AddressD))]);
+            storage.GetAll().Returns([new LightTransaction(restored[0]), new LightTransaction(restored[1])]);
+            // The constructor's spec revalidation runs in the background and evicts a record whose body storage cannot return.
+            storage.TryGetMany(default, default, default).ReturnsForAnyArgs(callInfo =>
+            {
+                TxLookupKey[] keys = callInfo.ArgAt<TxLookupKey[]>(0);
+                int count = callInfo.ArgAt<int>(1);
+                Transaction[] results = callInfo.ArgAt<Transaction[]>(2);
+                int found = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    results[i] = Array.Find(restored, tx => tx.Hash!.ValueHash256 == keys[i].Hash);
+                    if (results[i] is not null) found++;
+                }
+
+                return found;
+            });
             IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
             state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(callInfo =>
             {
