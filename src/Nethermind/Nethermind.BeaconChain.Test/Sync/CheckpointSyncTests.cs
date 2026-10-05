@@ -37,6 +37,7 @@ public class CheckpointSyncTests
     {
         TestLogManager logManager = new(LogLevel.Info);
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        store.EnsureSchemaVersion();
         BeaconChainConfig config = new() { CheckpointSyncUrl = "https://beaconstate.ethstaker.cc" };
 
         Stopwatch stopwatch = Stopwatch.StartNew();
