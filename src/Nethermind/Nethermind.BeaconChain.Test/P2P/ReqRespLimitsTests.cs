@@ -388,7 +388,7 @@ public class ReqRespLimitsTests
     public void Read_response_chunk_abandons_a_stream_that_stalls_past_the_caller_deadline()
     {
         using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(20));
-        using NeverEndingStream stream = new();
+        using DrippingStream stream = new([[]], Timeout.InfiniteTimeSpan);
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         // A caller-supplied token that is never honored would hang this call forever instead of
@@ -554,7 +554,7 @@ public class ReqRespLimitsTests
     [Test]
     public void Every_response_reader_names_its_overall_bound([Values] ResponseKind kind)
     {
-        using NeverEndingStream response = new();
+        using DrippingStream response = new([[]], Timeout.InfiniteTimeSpan);
         TimeSpan bound = TimeSpan.FromMilliseconds(80);
         ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => kind switch
         {
@@ -586,14 +586,6 @@ public class ReqRespLimitsTests
     {
         byte[] contextBytes = ForkDigest.Compute(Spec, Spec.GetEpoch(block.Message!.Slot));
         return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, contextBytes, SignedBeaconBlock.Encode(block), default);
-    }
-
-    private static IEnumerable<ulong> SlotRange(ulong start, int count)
-    {
-        for (int i = 0; i < count; i++)
-        {
-            yield return start + (ulong)i;
-        }
     }
 
     private static async Task<byte[]> EncodeRangeResponseAsync(int count)
@@ -703,7 +695,7 @@ public class ReqRespLimitsTests
 
     private static async Task<List<byte[]>> EncodeBlockChunksAsync(int count)
     {
-        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, [.. SlotRange(2_001, count)]);
+        (_, _, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, [.. Enumerable.Range(2_001, count).Select(static slot => (ulong)slot)]);
         List<byte[]> chunks = [];
         foreach (SignedBeaconBlock block in chain)
         {
@@ -712,30 +704,6 @@ public class ReqRespLimitsTests
             chunks.Add(buffer.ToArray());
         }
         return chunks;
-    }
-
-    private sealed class NeverEndingStream : Stream
-    {
-        public override bool CanRead => true;
-        public override bool CanSeek => false;
-        public override bool CanWrite => false;
-        public override long Length => throw new NotSupportedException();
-        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
-
-        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-        {
-            await Task.Delay(Timeout.Infinite, cancellationToken);
-            return 0;
-        }
-
-        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
-            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
-
-        public override void Flush() { }
-        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
-        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private sealed class DrippingStream(IReadOnlyList<byte[]> chunks, TimeSpan delayBeforeEachChunk) : Stream
