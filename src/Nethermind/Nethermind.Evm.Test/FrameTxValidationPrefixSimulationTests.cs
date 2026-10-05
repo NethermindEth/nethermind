@@ -357,10 +357,10 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     // Matched on the reason, so an unrelated rule firing first cannot stand in for the target one.
-    private void AssertPrefixCallTarget(Address target, bool violates, string reason = "disallowed target")
+    private void AssertPrefixCallTarget(Address target, bool violates, string reason = "disallowed target", Instruction call = Instruction.STATICCALL)
     {
-        byte[] code = Prepare.EvmCode
-            .StaticCall(target, 50_000)
+        Prepare prepare = call == Instruction.DELEGATECALL ? Prepare.EvmCode.DelegateCall(target, 50_000) : Prepare.EvmCode.StaticCall(target, 50_000);
+        byte[] code = prepare
             .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
 
@@ -460,33 +460,33 @@ public class FrameTxValidationPrefixSimulationTests
 
     // Under EIP-8298 a helper's code can change if it holds SETCODEFROM, DELEGATECALL or CALLCODE as an
     // instruction; the same bytes as PUSH data or EIP-8024 immediates cannot run. With it off, as on master.
-    private static IEnumerable<TestCaseData> MutableCodeTargets()
+    public sealed record MutableCodeTarget(string Name, byte[] Code, bool Mutable)
     {
-        (byte[] Code, bool Mutable, string Name)[] targets =
-        [
-            ([(byte)Instruction.STOP], false, "plain code"),
-            ([(byte)Instruction.SETCODEFROM, (byte)Instruction.STOP], true, "SETCODEFROM"),
-            ([(byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], true, "DELEGATECALL"),
-            ([(byte)Instruction.CALLCODE, (byte)Instruction.STOP], true, "CALLCODE"),
-            ([(byte)Instruction.PUSH2, (byte)Instruction.SETCODEFROM, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, "PUSH data"),
-            ([(byte)Instruction.DUPN, (byte)Instruction.SETCODEFROM, (byte)Instruction.EXCHANGE, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, "EIP-8024 immediates"),
-        ];
-        foreach ((byte[] code, bool mutable, string name) in targets)
-        {
-            foreach (bool eip8298 in new[] { true, false })
-            {
-                yield return new TestCaseData(code, eip8298, mutable && eip8298).SetName($"{name}, EIP-8298 {(eip8298 ? "on" : "off")}");
-            }
-        }
+        public override string ToString() => Name;
     }
 
-    [TestCaseSource(nameof(MutableCodeTargets))]
-    public void Simulate_PrefixCallsTargetWithMutableCode_RecordsViolation(byte[] targetCode, bool eip8298, bool violates)
+    private static readonly MutableCodeTarget[] MutableCodeTargets =
+    [
+        new("plain code", [(byte)Instruction.STOP], false),
+        new("SETCODEFROM", [(byte)Instruction.SETCODEFROM, (byte)Instruction.STOP], true),
+        new("DELEGATECALL", [(byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], true),
+        new("CALLCODE", [(byte)Instruction.CALLCODE, (byte)Instruction.STOP], true),
+        new("PUSH data", [(byte)Instruction.PUSH2, (byte)Instruction.SETCODEFROM, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false),
+        new("EIP-8024 immediates", [(byte)Instruction.DUPN, (byte)Instruction.SETCODEFROM, (byte)Instruction.EXCHANGE, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false),
+    ];
+
+    // The DELEGATECALL row pins the proxy case: an implementation holding DELEGATECALL is refused even when
+    // tx.sender delegates into it, as anyone can call it directly and have it rewrite itself.
+    [Test]
+    public void Simulate_PrefixCallsTargetWithMutableCode_RecordsViolation(
+        [ValueSource(nameof(MutableCodeTargets))] MutableCodeTarget target,
+        [Values] bool eip8298,
+        [Values(Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction call)
     {
         UseBogotaWithFrames(eip8298);
-        DeployContract(TestItem.AddressC, targetCode);
+        DeployContract(TestItem.AddressC, target.Code);
 
-        AssertPrefixCallTarget(TestItem.AddressC, violates, "has mutable code");
+        AssertPrefixCallTarget(TestItem.AddressC, target.Mutable && eip8298, "has mutable code", call);
     }
 
     [Test]

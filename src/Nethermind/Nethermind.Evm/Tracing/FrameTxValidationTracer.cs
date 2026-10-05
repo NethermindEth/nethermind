@@ -288,7 +288,9 @@ public sealed class FrameTxValidationTracer(
     /// <remarks>
     /// Code changes only through SETCODEFROM run in the account's own context, directly or via code it
     /// DELEGATECALLs or CALLCODEs, and EIP-6780 rules out redeployment, so the scan has no false negatives.
-    /// The verdict is cached per code hash.
+    /// This deliberately refuses proxy implementations that hold DELEGATECALL, even when tx.sender delegates
+    /// into them: anyone can call the implementation directly and have it rewrite itself. The verdict is
+    /// cached per code hash.
     /// </remarks>
     private bool HasMutableCode(Address target)
     {
