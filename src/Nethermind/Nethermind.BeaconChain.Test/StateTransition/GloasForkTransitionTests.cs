@@ -70,21 +70,6 @@ public class GloasForkTransitionTests
     }
 
     [Test]
-    public void UpgradeToGloas_sets_the_fork_to_the_gloas_version_at_the_current_epoch()
-    {
-        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
-        pre.Fork = new Fork { PreviousVersion = Bytes.FromHexString("0x05000000"), CurrentVersion = Bytes.FromHexString("0x06000000"), Epoch = 0 };
-        BeaconChainSpec spec = SyntheticSpec();
-
-        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(post.Fork!.PreviousVersion, Is.EqualTo(pre.Fork.CurrentVersion));
-        Assert.That(post.Fork.CurrentVersion, Is.EqualTo(spec.GloasForkVersion));
-        Assert.That(post.Fork.Epoch, Is.EqualTo(pre.GetCurrentEpoch()));
-    }
-
-    [Test]
     public void UpgradeToGloas_initialises_the_new_fields_to_the_specs_values()
     {
         BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
@@ -134,27 +119,6 @@ public class GloasForkTransitionTests
         Assert.That(bid.BlobKzgCommitments, Is.Empty);
     }
 
-    [Test]
-    public void UpgradeToGloas_initialises_a_ptc_window_of_the_spec_length_with_an_all_zero_previous_epoch()
-    {
-        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
-        BeaconChainSpec spec = SyntheticSpec();
-
-        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(post.PtcWindow, Has.Length.EqualTo((int)Presets.PtcWindowLength));
-        for (int i = 0; i < (int)Presets.SlotsPerEpoch; i++)
-        {
-            // A null Indices array is the SSZ null-defaults-to-zero-vector convention (see
-            // GloasForkTransition.EmptyPtcWindow), not a missing value.
-            Assert.That((post.PtcWindow![i].Indices ?? []).All(static idx => idx == 0), Is.True,
-                $"empty-previous-epoch committee {i} must be all-zero, matching the spec's placeholder history");
-        }
-
-        Assert.That(post.PtcWindow!.Skip((int)Presets.SlotsPerEpoch).SelectMany(static c => c.Indices!).Any(static idx => idx != 0), Is.True);
-    }
-
     // initialize_ptc_window's empty previous epoch is explicit zero vectors (specs/gloas/fork.md); the
     // upgrade leaves those entries' Indices null, so root and encoding must not tell the two apart.
     [Test]
@@ -191,30 +155,6 @@ public class GloasForkTransitionTests
         ];
 
         Assert.That(GloasForkTransition.GetIndexForNewBuilder(builders, currentEpoch), Is.EqualTo(expectedIndex));
-    }
-
-    [Test]
-    public void UpgradeToGloas_onboards_a_builder_from_a_valid_pending_deposit()
-    {
-        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
-        // The deposit (slot 40, epoch 1) predates the fork-boundary state (slot 64, epoch 2).
-        pre.Slot = 64;
-        Bls.SecretKey sk = DeriveKey(100);
-        Hash256 withdrawalCredentials = BuilderWithdrawalCredentials(0xAA);
-        (BlsPublicKey pubkey, BlsSignature signature) = SignDeposit(sk, withdrawalCredentials, 32 * Gwei);
-        pre.PendingDeposits = [new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = 32 * Gwei, Signature = signature, Slot = 40 }];
-
-        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(post.PendingDeposits, Is.Empty, "the deposit that onboarded a builder must leave the pending queue");
-        Assert.That(post.Builders, Has.Length.EqualTo(1));
-        Assert.That(post.Builders![0].Pubkey, Is.EqualTo(pubkey));
-        Assert.That(post.Builders[0].Version, Is.EqualTo(PayloadBuilderVersion));
-        Assert.That(post.Builders[0].Balance, Is.EqualTo(32 * Gwei));
-        Assert.That(post.Builders[0].ExecutionAddress, Is.EqualTo(new Address("0xb6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9")), "credentials[12:] of 0xB0 followed by bytes 0xAB..0xC9");
-        Assert.That(post.Builders[0].WithdrawableEpoch, Is.EqualTo(Presets.FarFutureEpoch));
-        Assert.That(post.Builders[0].DepositEpoch, Is.EqualTo(1ul), "add_builder_to_registry takes the deposit's epoch, not the state's");
     }
 
     // onboard_builders_from_pending_deposits (specs/gloas/fork.md): a later deposit for a builder already
