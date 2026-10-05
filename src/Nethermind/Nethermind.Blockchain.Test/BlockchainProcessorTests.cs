@@ -785,9 +785,6 @@ public class BlockchainProcessorTests
     public async Task Wait_until_executed_copy_removed_is_not_released_by_another_copy_failing_recovery()
     {
         Block secondCopy = UnrecoveredCopy(_block1D2);
-        // Genesis leaves the queue count only after it becomes head. Queued before that, the first copy goes through
-        // the recovery loop, whose write runs the processing loop inline: the copy would be held on the recovery
-        // thread, which then never takes the second copy.
         ProcessingTestContext context = When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .CountIs(0)
