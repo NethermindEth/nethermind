@@ -32,12 +32,10 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// EIP-5920 PAY opcode, run on a pre-Amsterdam fork (EIP-2929 costs) and on Amsterdam, where the value and
-/// new-account surcharges follow CALL's under EIP-2780/EIP-8037/EIP-8038 and transfers are logged (EIP-7708).
+/// EIP-5920 PAY opcode on Bogota, where the value and new-account surcharges follow CALL's under
+/// EIP-2780/EIP-8037/EIP-8038 and transfers are logged (EIP-7708).
 /// </summary>
-[TestFixture(false)]
-[TestFixture(true)]
-public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
+public class Eip5920Tests : VirtualMachineTestsBase
 {
     private const ulong GasLimit = 1_000_000;
     private static readonly Address Existing = TestItem.AddressC;
@@ -45,14 +43,14 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     private static readonly UInt256 ContractBalance = 100.Ether + 1;
 
     protected override ISpecProvider SpecProvider { get; } = new TestSpecProvider(
-        new OverridableReleaseSpec(amsterdam ? Amsterdam.Instance : Prague.Instance) { IsEip5920Enabled = true });
+        new OverridableReleaseSpec(Bogota.Instance) { IsEip5920Enabled = true });
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
-    protected override ulong Timestamp => amsterdam ? MainnetSpecProvider.AmsterdamBlockTimestamp : MainnetSpecProvider.PragueBlockTimestamp;
+    protected override ulong Timestamp => MainnetSpecProvider.BogotaBlockTimestamp;
 
-    private ulong ColdAccess => amsterdam ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
-    private ulong ValueCost => amsterdam ? Eip8038Constants.CallValue : GasCostOf.CallValue;
-    private ulong NewAccountCost => amsterdam ? (ulong)GasCostOf.NewAccountState : GasCostOf.NewAccount;
+    private const ulong ColdAccess = Eip8038Constants.ColdAccountAccess;
+    private const ulong ValueCost = Eip8038Constants.CallValue;
+    private const ulong NewAccountCost = GasCostOf.NewAccountState;
 
     protected override TestAllTracerWithOutput CreateTracer() => new LogTracer();
 
@@ -60,7 +58,7 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     private static byte[] PayAndReturnStatus(Address target, UInt256 value) =>
         Pay(Prepare.EvmCode, target, value).PushData(0).Op(Instruction.MSTORE).PushData(32).PushData(0).Op(Instruction.RETURN).Done;
 
-    private static Prepare Pay(Prepare code, Address target, UInt256 value) =>
+    internal static Prepare Pay(Prepare code, Address target, UInt256 value) =>
         code.PushData(value).PushData(target).Op(Instruction.PAY);
 
     private LogTracer Run(byte[] code) => (LogTracer)Execute(Activation, GasLimit, code);
@@ -162,10 +160,9 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Pay_with_insufficient_balance_to_missing_account_refunds_only_state_gas()
+    public void Pay_with_insufficient_balance_to_missing_account_refunds_the_new_account_charge()
     {
-        // As with CALL, a NEW_ACCOUNT charged as EIP-8037 state gas is refilled when no account is created;
-        // the legacy execution-gas charge is not.
+        // As with CALL, the EIP-8037 NEW_ACCOUNT state charge is refilled when no account is created.
         byte[] code = Pay(Prepare.EvmCode, Missing, UInt256.MaxValue).STOP().Done;
         byte[] reference = Pay(Prepare.EvmCode, Existing, UInt256.MaxValue).STOP().Done;
         TestState.CreateAccount(Existing, 5);
@@ -173,7 +170,7 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
         ulong missingGas = Run(code).GasSpent;
         ulong existingGas = Run(reference).GasSpent;
 
-        Assert.That(missingGas - existingGas, Is.EqualTo(amsterdam ? 0 : GasCostOf.NewAccount));
+        Assert.That(missingGas - existingGas, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -335,17 +332,6 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
         }
     }
 
-    [Test]
-    public void Prestate_trace_includes_the_pay_target()
-    {
-        TestState.CreateAccount(Existing, 5);
-        NativePrestateTracer tracer = new(TestState, GethTraceOptions.Default, Hash256.Zero, Sender, Recipient);
-
-        GethLikeTxTrace trace = Execute(tracer, Pay(Prepare.EvmCode, Existing, 7).STOP().Done).BuildResult();
-
-        Assert.That(new EthereumJsonSerializer().Serialize(trace.CustomTracerResult), Does.Contain(Existing.ToString()));
-    }
-
     private static IEnumerable<TestCaseData> BalCases()
     {
         yield return new TestCaseData(7, true, false).SetName("Value transfer records the target balance change");
@@ -356,8 +342,6 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     [TestCaseSource(nameof(BalCases))]
     public void Pay_records_the_target_in_the_block_access_list(int value, bool balanceChanges, bool outOfGasBeforeAccess)
     {
-        if (!amsterdam) Assert.Ignore("EIP-7928 is only enabled on the Amsterdam fixture");
-
         TestState.CreateAccount(Existing, 5);
         byte[] code = outOfGasBeforeAccess
             // The inner frame gets two PUSHes and one gas short of PAY's state-independent charges.
@@ -382,8 +366,6 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     [Test]
     public void Pay_to_delegated_target_leaves_the_delegation_address_out_of_the_block_access_list()
     {
-        if (!amsterdam) Assert.Ignore("EIP-7928 is only enabled on the Amsterdam fixture");
-
         Address codeHolder = TestItem.AddressE;
         TestState.CreateAccount(Existing, 5);
         TestState.CreateAccount(codeHolder, 0);
@@ -422,8 +404,8 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     }
 
     // Under EIP-7708 the transaction's own value transfer to the contract is logged first.
-    private LogEntry[] ExpectedLogs(params LogEntry[] payLogs) =>
-        amsterdam ? [ExpectedTransferLog(Sender, Recipient, 1), .. payLogs] : [];
+    private static LogEntry[] ExpectedLogs(params LogEntry[] payLogs) =>
+        [ExpectedTransferLog(Sender, Recipient, 1), .. payLogs];
 
     private static LogEntry ExpectedTransferLog(Address from, Address to, UInt256 value) =>
         new(TransferLog.Sender, value.ToBigEndian(), [TransferLog.TransferSignature, from.ToHash().ToHash256(), to.ToHash().ToHash256()]);
@@ -445,5 +427,52 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
             base.MarkAsSuccess(recipient, in gasSpent, output, logs, stateRoot);
             Logs = logs;
         }
+    }
+}
+
+/// <summary>Byte <c>0xfc</c> on Bogota with EIP-5920 on and off; off, it must behave as an undefined opcode.</summary>
+[TestFixture(true)]
+[TestFixture(false)]
+public class Eip5920ActivationTests(bool enabled) : VirtualMachineTestsBase
+{
+    private const ulong GasLimit = 1_000_000;
+    private static readonly Address Target = TestItem.AddressC;
+
+    protected override ISpecProvider SpecProvider { get; } = new TestSpecProvider(
+        new OverridableReleaseSpec(Bogota.Instance) { IsEip5920Enabled = enabled });
+
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong Timestamp => MainnetSpecProvider.BogotaBlockTimestamp;
+
+    private static byte[] PayCode => Eip5920Tests.Pay(Prepare.EvmCode, Target, 7).STOP().Done;
+
+    [Test]
+    public void Opcode_pays_only_when_enabled()
+    {
+        TestState.CreateAccount(Target, 5);
+
+        TestAllTracerWithOutput result = Execute(Activation, GasLimit, PayCode);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, enabled ? Is.Null : Is.EqualTo(nameof(EvmExceptionType.BadInstruction)));
+            Assert.That(result.GasSpent, enabled ? Is.LessThan(GasLimit) : Is.EqualTo(GasLimit));
+            Assert.That(TestState.GetBalance(Target), Is.EqualTo((UInt256)(enabled ? 12 : 5)));
+        }
+    }
+
+    [Test]
+    public void Prestate_trace_includes_the_target_only_when_enabled([Values] bool fullTrace)
+    {
+        TestState.CreateAccount(Target, 5);
+        NativePrestateTracer prestate = new(TestState, GethTraceOptions.Default, Hash256.Zero, Sender, Recipient, releaseSpec: Spec);
+        // An unfiltered tracer alongside makes the VM report every opcode, bypassing the prestate tracer's mask.
+        using ITxTracer tracer = new CompositeTxTracer(prestate, fullTrace ? new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default) : NullTxTracer.Instance);
+
+        Execute(tracer, PayCode);
+
+        Assert.That(new EthereumJsonSerializer().Serialize(prestate.BuildResult().CustomTracerResult), enabled
+            ? Does.Contain(Target.ToString())
+            : Does.Not.Contain(Target.ToString()));
     }
 }

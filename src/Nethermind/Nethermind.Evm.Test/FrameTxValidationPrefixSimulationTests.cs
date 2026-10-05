@@ -20,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -44,9 +45,11 @@ public class FrameTxValidationPrefixSimulationTests
     private static readonly byte[] Salt = new byte[32];
 
     [SetUp]
-    public void Setup()
+    public void Setup() => Setup(Eip8141Prototype.Instance);
+
+    private void Setup(IReleaseSpec spec)
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        _specProvider = new TestSpecProvider(spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
@@ -383,10 +386,7 @@ public class FrameTxValidationPrefixSimulationTests
             yield return new TestCaseData((byte)op, 1).SetName($"banned {op}");
         }
 
-        foreach (Instruction op in new[] { Instruction.SSTORE, Instruction.PAY })
-        {
-            yield return new TestCaseData((byte)op, 2).SetName($"banned {op}");
-        }
+        yield return new TestCaseData((byte)Instruction.SSTORE, 2).SetName("banned SSTORE");
 
         yield return new TestCaseData((byte)Instruction.CREATE, 3).SetName("banned CREATE");
         yield return new TestCaseData((byte)Instruction.CREATE2, 4).SetName("banned CREATE2");
@@ -404,6 +404,21 @@ public class FrameTxValidationPrefixSimulationTests
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
         Assert.That(tracer.Violated, Is.True);
+    }
+
+    // Without EIP-5920, 0xfc is an undefined opcode: the frame halts and the prefix fails as before the EIP.
+    [Test]
+    public void Simulate_PrefixUsesPay_RecordsViolationOnlyWhenEip5920Enabled([Values] bool enabled)
+    {
+        TearDown();
+        Setup(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip5920Enabled = enabled });
+        byte[] deployed = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.PAY)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.ViolationReason, enabled ? Is.EqualTo("banned opcode PAY in validation prefix") : Is.Null);
     }
 
     [TestCase(true, TestName = "GAS immediately before a call is permitted")]

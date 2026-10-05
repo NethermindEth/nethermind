@@ -7,6 +7,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -20,7 +21,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 {
     public const string PrestateTracer = "prestateTracer";
 
-    public UInt256 InstructionMask => CaptureMask;
+    public UInt256 InstructionMask => _isEip5920Enabled ? CaptureMask | (UInt256.One << (int)Instruction.PAY) : CaptureMask;
 
     private static readonly UInt256 CaptureMask = CreateCaptureMask();
 
@@ -35,6 +36,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly HashSet<AddressAsKey> _createdAccounts;
     private readonly HashSet<AddressAsKey> _deletedAccounts;
     private readonly bool _diffMode;
+    // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
+    private readonly bool _isEip5920Enabled;
 
     public NativePrestateTracer(
         IWorldState worldState,
@@ -43,9 +46,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         Address? from,
         Address? to = null,
         Address? beneficiary = null,
-        Transaction? transaction = null)
+        Transaction? transaction = null,
+        IReleaseSpec? releaseSpec = null)
         : base(options)
     {
+        _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
@@ -116,7 +121,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
     private static bool RequiresStack(Instruction opcode) => opcode is Instruction.SLOAD or Instruction.SSTORE
         or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.EXTCODESIZE
-        or Instruction.BALANCE or Instruction.SELFDESTRUCT or Instruction.PAY
+        or Instruction.BALANCE or Instruction.SELFDESTRUCT
         or Instruction.DELEGATECALL or Instruction.CALL or Instruction.STATICCALL or Instruction.CALLCODE
         or Instruction.CREATE or Instruction.CREATE2;
 
@@ -167,7 +172,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _executingAccount = env.ExecutingAccount;
 
         IsTracingMemory = _op == Instruction.CREATE2;
-        IsTracingStack = RequiresStack(_op);
+        IsTracingStack = RequiresStack(_op) || (_op == Instruction.PAY && _isEip5920Enabled);
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -201,7 +206,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             case Instruction.EXTCODESIZE:
             case Instruction.BALANCE:
             case Instruction.SELFDESTRUCT:
-            case Instruction.PAY:
+            case Instruction.PAY when _isEip5920Enabled:
                 if (stackLen >= 1)
                 {
                     address = stack.PeekAddress(0);
