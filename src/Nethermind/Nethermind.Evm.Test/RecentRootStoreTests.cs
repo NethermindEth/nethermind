@@ -4,10 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.State;
-using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -113,94 +110,13 @@ public class RecentRootStoreTests
     }
 
     [Test]
-    public void Reference_validity_window_boundaries()
+    public void ReferenceCell_folds_a_slot_a_full_ring_later_onto_the_cell_it_aliases()
     {
-        IWorldState state = CreateState(out IDisposable scope);
-        using (scope)
-        {
-            const ulong writeSlot = 100_000;
-            Write(state, Source, Salt, Root, writeSlot);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+        const ulong slot = 5;
+        ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + 1), Is.True);
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot), Is.False);
-            Assert.That(
-                RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + Eip8272Constants.RecentRootUsableWindow),
-                Is.True);
-            Assert.That(
-                RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + Eip8272Constants.RecentRootUsableWindow + 1),
-                Is.False);
-        }
-    }
-
-    [Test]
-    public void Write_then_validate_round_trips()
-    {
-        IWorldState state = CreateState(out IDisposable scope);
-        using (scope)
-        {
-            const ulong writeSlot = 1000;
-            const ulong currentSlot = 1001;
-            Write(state, Source, Salt, Root, writeSlot);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, currentSlot), Is.True);
-        }
-    }
-
-    [Test]
-    public void Reference_with_mismatched_root_slot_or_source_does_not_validate()
-    {
-        IWorldState state = CreateState(out IDisposable scope);
-        using (scope)
-        {
-            const ulong writeSlot = 1000;
-            const ulong currentSlot = 1001;
-            Write(state, Source, Salt, Root, writeSlot);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-            ValueHash256 wrongSource = RecentRootStore.SourceId(TestItem.AddressB, Salt);
-
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, OtherRoot, currentSlot), Is.False);
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot - 1, Root, currentSlot), Is.False);
-            Assert.That(RecentRootStore.IsReferenceValid(state, wrongSource, writeSlot, Root, currentSlot), Is.False);
-        }
-    }
-
-    [Test]
-    public void Aliased_slot_does_not_validate_against_stale_reference()
-    {
-        IWorldState state = CreateState(out IDisposable scope);
-        using (scope)
-        {
-            const ulong writtenSlot = 5;
-            ulong aliasedSlot = writtenSlot + Eip8272Constants.RecentRootLength;
-            Write(state, Source, Salt, Root, writtenSlot);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-
-            // Through ReferenceCell, which is what applies the modulo: folding the slots here first would
-            // hand StorageKey the same ring index twice and assert nothing about the ring.
-            Assert.That(
-                RecentRootStore.ReferenceCell(sourceId, aliasedSlot),
-                Is.EqualTo(RecentRootStore.ReferenceCell(sourceId, writtenSlot)),
-                "a slot a full ring later must land on the cell it aliases");
-
-            // The stored entry commits to writtenSlot, so a reference to the aliased slot cannot match.
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, aliasedSlot, Root, aliasedSlot + 1), Is.False);
-        }
-    }
-
-    private static void Write(IWorldState state, Address source, in ValueHash256 salt, in ValueHash256 root, ulong slot)
-    {
-        ValueHash256 sourceId = RecentRootStore.SourceId(source, salt);
-        StorageCell cell = RecentRootStore.ReferenceCell(sourceId, slot);
-        state.Set(cell, RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
-    }
-
-    private static IWorldState CreateState(out IDisposable scope)
-    {
-        IWorldState state = TestWorldStateFactory.CreateForTest();
-        scope = state.BeginScope(IWorldState.PreGenesis);
-        state.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero);
-        return state;
+        Assert.That(
+            RecentRootStore.ReferenceCell(sourceId, slot + Eip8272Constants.RecentRootLength),
+            Is.EqualTo(RecentRootStore.ReferenceCell(sourceId, slot)));
     }
 }

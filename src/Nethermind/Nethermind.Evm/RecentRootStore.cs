@@ -6,14 +6,11 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Evm.State;
-using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-/// <summary>Key/commitment derivations and the pre-state reference check for <see href="https://eips.ethereum.org/EIPS/eip-8272">EIP-8272</see> recent roots.</summary>
-/// <remarks>Recent-root storage is written by the <c>RECENT_ROOT_ADDRESS</c> predeploy bytecode during ordinary execution, not by the client, so this type only derives keys and validates references against already-written state.</remarks>
+/// <summary>Key/commitment derivations for <see href="https://eips.ethereum.org/EIPS/eip-8272">EIP-8272</see> recent roots.</summary>
+/// <remarks>Recent-root storage is written by the <c>RECENT_ROOT_ADDRESS</c> predeploy bytecode during ordinary execution, not by the client, so this type only derives keys and commitments.</remarks>
 public static class RecentRootStore
 {
     private const int HashLength = 32;
@@ -50,22 +47,6 @@ public static class RecentRootStore
         sourceId.Bytes.CopyTo(input.Slice(HashLength));
         BinaryPrimitives.WriteUInt64BigEndian(input.Slice(HashLength + HashLength, SlotLength), ringIndex);
         return ValueKeccak.Compute(input);
-    }
-
-    public static bool IsReferenceValid(IReadOnlyStateProvider state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot) =>
-        IsReferenceValid(state, ReferenceCell(sourceId, slot), sourceId, slot, root, currentSlot);
-
-    /// <summary>Checks a reference against the commitment in <paramref name="cell"/>, which the caller has already derived.</summary>
-    public static bool IsReferenceValid(IReadOnlyStateProvider state, in StorageCell cell, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
-    {
-        ulong age = currentSlot - slot; // unsigned: a future or same slot underflows and is rejected below
-        if (age is 0 || age > Eip8272Constants.RecentRootUsableWindow)
-        {
-            return false;
-        }
-
-        state.Get(cell, out UInt256 stored);
-        return stored.ToValueHash() == EntryHash(sourceId, slot, root);
     }
 
     /// <summary>Reads the <c>source_id(32) || slot(8, big-endian) || root(32)</c> tuple at the start of <paramref name="tuple"/>.</summary>
