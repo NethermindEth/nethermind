@@ -10,6 +10,7 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(60_000)]
 public class PeerRequestFailureTests
 {
     private const int Limit = 8;
@@ -17,7 +18,6 @@ public class PeerRequestFailureTests
     [TestCase(PeerFailureReason.RequestFailed, Limit, 2, false)]
     [TestCase(PeerFailureReason.SessionClosed, 1, 2, false)]
     [TestCase(PeerFailureReason.RequestFailed, Limit - 1, 1, true)]
-    [CancelAfter(60_000)]
     public async Task Passing_health_checks_preserve_request_failure_selection(PeerFailureReason failure, int count, int rounds, bool selectable, CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
@@ -35,7 +35,6 @@ public class PeerRequestFailureTests
     [TestCase(typeof(TaskCanceledException), PeerFailureReason.RequestFailed, ExpectedResult = true)]
     [TestCase(typeof(TimeoutException), PeerFailureReason.ProtocolViolation, ExpectedResult = false)]
     [TestCase(typeof(InvalidOperationException), PeerFailureReason.RequestFailed, ExpectedResult = false)]
-    [CancelAfter(60_000)]
     public async Task<bool> A_drop_is_for_silence_only_when_the_last_failure_is_a_timeout_and_no_reply_violated_the_protocol(Type exceptionType, PeerFailureReason earlier, CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
@@ -102,7 +101,6 @@ public class PeerRequestFailureTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Uncorrelated_timeouts_deprioritise_a_peer_without_dropping_it_even_above_the_floor(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
@@ -117,7 +115,6 @@ public class PeerRequestFailureTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Independently_confirmed_timeouts_keep_the_floor_and_do_not_share_the_request_failure_budget([Values] bool keepFloor, CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
@@ -144,7 +141,6 @@ public class PeerRequestFailureTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_lost_session_is_silence_not_a_protocol_violation(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
@@ -173,7 +169,6 @@ public class PeerRequestFailureTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_passing_health_check_forgives_an_earlier_protocol_violation_in_the_run(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
@@ -185,7 +180,6 @@ public class PeerRequestFailureTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_served_request_takes_one_failure_off_so_one_more_failure_returns_the_peer_to_the_limit(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
@@ -202,7 +196,6 @@ public class PeerRequestFailureTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Request_failures_decay_one_per_interval(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
@@ -221,7 +214,6 @@ public class PeerRequestFailureTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_stays_out_for_a_full_interval_after_its_latest_failure_however_slowly_the_failures_came(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
@@ -239,7 +231,6 @@ public class PeerRequestFailureTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_whose_requests_really_fail_leaves_selection_because_a_failed_request_earns_no_credit(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token, withUsablePeer: true);
@@ -268,7 +259,6 @@ public class PeerRequestFailureTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_protocol_violation_is_not_cancelled_by_the_served_request_that_carried_it(CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
@@ -283,7 +273,6 @@ public class PeerRequestFailureTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_reports_the_earliest_available_slot_of_its_status(CancellationToken token)
     {
         const ulong earliestAvailableSlot = 12_345;

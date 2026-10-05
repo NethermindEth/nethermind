@@ -15,6 +15,7 @@ using Nethermind.Libp2p.Core.Dto;
 
 namespace Nethermind.BeaconChain.Test.P2P.ReqResp;
 
+[CancelAfter(30_000)]
 public class DataColumnSidecarsByRangeReadFailureTests
 {
     private const ulong First = 13_410_304;
@@ -27,7 +28,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
     private static Hash256 RootAt(ulong slot) => Keccak.Compute($"canonical {slot}");
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_column_that_cannot_be_read_at_or_above_the_floor_ends_the_reply_with_a_server_error([Values] bool gloas, CancellationToken token)
     {
         (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, _, _) = ServerWithStoredColumns(gloas);
@@ -43,7 +43,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task Columns_read_before_the_failing_one_are_still_sent_ahead_of_the_error(CancellationToken token)
     {
         (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, _, _) = ServerWithStoredColumns(gloas: false, warmSlots: 2);
@@ -55,7 +54,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_column_the_store_does_not_hold_is_omitted_without_an_error([Values] bool gloas, CancellationToken token)
     {
         (_, DataColumnSidecarsByRangeProtocol protocol, _, _) = ServerWithStoredColumns(gloas);
@@ -66,7 +64,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_column_that_cannot_be_read_below_the_floor_is_omitted_without_an_error(CancellationToken token)
     {
         (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, DataColumnSidecarPool pool, _) = ServerWithStoredColumns(gloas: false, floor: Last + 1);
@@ -79,7 +76,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_column_that_cannot_be_read_at_the_floor_slot_ends_the_reply_with_a_server_error(CancellationToken token)
     {
         (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, DataColumnSidecarPool pool, _) = ServerWithStoredColumns(gloas: false, floor: Last);
@@ -92,7 +88,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_stored_column_that_reads_fine_is_served_at_or_above_the_floor([Values] bool gloas, CancellationToken token)
     {
         (_, DataColumnSidecarsByRangeProtocol protocol, DataColumnSidecarPool pool, _) = ServerWithStoredColumns(gloas);
@@ -104,7 +99,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_column_stored_after_the_pool_missed_it_is_served_not_failed([Values] bool gloas, CancellationToken token)
     {
         (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, _, BeaconChainStore store) = ServerWithStoredColumns(gloas, stored: [Column + 1]);
@@ -118,7 +112,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_block_with_an_unreadable_column_sends_none_of_its_columns(CancellationToken token)
     {
         (FaultyColumnsDb db, DataColumnSidecarsByRangeProtocol protocol, _, _) = ServerWithStoredColumns(gloas: false, warmSlots: 1, stored: [Column, Column + 1]);
@@ -130,7 +123,6 @@ public class DataColumnSidecarsByRangeReadFailureTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_store_that_cannot_say_whether_it_holds_a_column_ends_the_reply_with_a_server_error(CancellationToken token)
     {
         RecordCheckFailingColumnsDb db = new();
