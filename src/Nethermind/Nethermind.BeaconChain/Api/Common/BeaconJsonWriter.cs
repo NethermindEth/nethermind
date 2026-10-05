@@ -97,52 +97,10 @@ internal static partial class BeaconJsonWriter
 
     private static partial void WriteExecutionPayloadHeader(Utf8JsonWriter w, ExecutionPayloadHeader header);
 
-    public static void WriteAttestations(Utf8JsonWriter w, Attestation[] attestations)
-    {
-        w.WriteStartArray();
-        foreach (Attestation attestation in attestations)
-        {
-            WriteAttestation(w, attestation.AggregationBits!, attestation.Data!, attestation.Signature, attestation.CommitteeBits!);
-        }
-        w.WriteEndArray();
-    }
-
-    public static void WriteAttestations(Utf8JsonWriter w, AttestationGloas[] attestations)
-    {
-        w.WriteStartArray();
-        foreach (AttestationGloas attestation in attestations)
-        {
-            WriteAttestation(w, attestation.AggregationBits!, attestation.Data!, attestation.Signature, attestation.CommitteeBits!);
-        }
-        w.WriteEndArray();
-    }
+    public static partial void WriteAttestations(Utf8JsonWriter w, Attestation[] attestations);
 
     /// <remarks>A Gloas <c>ProgressiveBitList</c> serializes like a bitlist, with the same length sentinel.</remarks>
-    private static void WriteAttestation(Utf8JsonWriter w, BitArray aggregationBits, AttestationData data, BlsSignature signature, BitArray committeeBits)
-    {
-        w.WriteStartObject();
-        WriteBitList(w, "aggregation_bits", aggregationBits);
-        w.WritePropertyName("data");
-        WriteAttestationData(w, data);
-        WriteHex(w, "signature", signature.Bytes);
-        WriteBitVector(w, "committee_bits", committeeBits);
-        w.WriteEndObject();
-    }
-
-    private static void WriteIndexedAttestation(Utf8JsonWriter w, IndexedAttestation attestation) =>
-        WriteIndexedAttestation(w, attestation.AttestingIndices!, attestation.Data!, attestation.Signature);
-
-    private static void WriteIndexedAttestation(Utf8JsonWriter w, ulong[] attestingIndices, AttestationData data, BlsSignature signature)
-    {
-        w.WriteStartObject();
-        w.WriteStartArray("attesting_indices");
-        foreach (ulong index in attestingIndices) WriteUIntValue(w, index);
-        w.WriteEndArray();
-        w.WritePropertyName("data");
-        WriteAttestationData(w, data);
-        WriteHex(w, "signature", signature.Bytes);
-        w.WriteEndObject();
-    }
+    public static partial void WriteAttestations(Utf8JsonWriter w, AttestationGloas[] attestations);
 
     private static partial void WriteAttestationData(Utf8JsonWriter w, AttestationData data);
 

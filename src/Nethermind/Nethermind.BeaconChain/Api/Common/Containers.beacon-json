@@ -79,6 +79,5 @@ method public WriteBeaconStateAsync BeaconStateElectra state - object
 method private WritePendingDeposit PendingDeposit deposit - object
 method private WritePendingPartialWithdrawal PendingPartialWithdrawal withdrawal - object
 method private WritePendingConsolidation PendingConsolidation consolidation - object
-method retained WriteAttestations Attestation attestations - array
-method retained WriteAttestations AttestationGloas attestations - array
-method retained WriteIndexedAttestation IndexedAttestation attestation - object
+method public WriteAttestations Attestation attestations - array
+method public WriteAttestations AttestationGloas attestations - array
