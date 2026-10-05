@@ -48,9 +48,7 @@ public class CheckpointSync(
 {
     private const string OctetStreamMediaType = "application/octet-stream";
     private const string ConsensusVersionHeader = "Eth-Consensus-Version";
-    /// <summary>Fallback initial buffer size when the state response has no Content-Length.</summary>
     private const int DefaultStateBufferSize = 64 * 1024 * 1024;
-    /// <summary>Fallback initial buffer size when the anchor block response has no Content-Length.</summary>
     private const int DefaultBlockBufferSize = 1024 * 1024;
     private const int DefaultMaxDownloadAttempts = 5;
     private static readonly TimeSpan DefaultRetryBaseDelay = TimeSpan.FromSeconds(2);
@@ -61,11 +59,7 @@ public class CheckpointSync(
     /// <summary>Largest checkpoint body read, 1 GiB: about four times a mainnet state of hundreds of MB; an operational bound, not an SSZ limit.</summary>
     internal int MaxBodyBytes { get; init; } = 1024 * 1024 * 1024;
 
-    /// <summary>Lowest average rate, in bytes per second, a response body may arrive at once <see cref="MinThroughputGrace"/> has passed: 64 KiB/s, the slowest link the download supports.</summary>
-    /// <remarks>
-    /// A provider that sends a byte just inside every <see cref="ReadStallTimeout"/> would otherwise hold startup without limit. At this rate a
-    /// 300 MB state takes about 80 minutes, and an attempt lasts at most <see cref="MaxBodyBytes"/> / rate plus the grace, about 4.6 hours.
-    /// </remarks>
+    /// <summary>Minimum average body rate after the grace period: 64 KiB/s. Prevents trickling within each stall timeout indefinitely; at this rate a 300 MB state takes about 80 minutes and the body limit takes about 4.6 hours.</summary>
     internal int MinThroughputBytesPerSecond { get; init; } = 64 * 1024;
 
     /// <summary>Time a response body may arrive below <see cref="MinThroughputBytesPerSecond"/> before the rate is enforced, for connection ramp-up.</summary>
@@ -89,18 +83,10 @@ public class CheckpointSync(
     /// <summary>Pool the state bytes are read into; every array rented from it is returned, including those of a dropped attempt.</summary>
     internal ArrayPool<byte> BufferPool { get; init; } = ArrayPool<byte>.Shared;
 
-    /// <summary>Longest wait for the next bytes of a response body before the download counts as dropped and is retried.</summary>
-    /// <remarks>
-    /// <see cref="HttpClient.Timeout"/> stops at the response headers under <see cref="HttpCompletionOption.ResponseHeadersRead"/>,
-    /// so a provider that vanishes mid-body without its FIN or RST reaching this host would otherwise leave the read waiting forever.
-    /// </remarks>
+    /// <summary>Bounds each response-body read. HttpClient.Timeout stops at headers with ResponseHeadersRead, so a mid-body stall needs this independent timeout.</summary>
     internal TimeSpan ReadStallTimeout { get; init; } = DefaultReadStallTimeout;
 
-    /// <summary>Longest wait for a request to connect and receive its response headers before the attempt counts as dropped and is retried.</summary>
-    /// <remarks>
-    /// It is <see cref="HttpClient.Timeout"/>, which under <see cref="HttpCompletionOption.ResponseHeadersRead"/> covers the connect and the
-    /// headers only; the body, however large, is bounded per read by <see cref="ReadStallTimeout"/> instead.
-    /// </remarks>
+    /// <summary>Bounds connection and response headers through HttpClient.Timeout. ResponseHeadersRead leaves the body to ReadStallTimeout.</summary>
     internal TimeSpan ResponseHeadersTimeout
     {
         get => _httpClient.Timeout;
@@ -210,7 +196,6 @@ public class CheckpointSync(
         return await ReadToPooledBufferAsync(content, (int)content.Length, Timeout.InfiniteTimeSpan, cancellationToken);
     }
 
-    /// <summary>Reads the post-state of the anchor block from the sibling file of an advanced <paramref name="stateFile"/>, so a file-configured anchor never reaches the network.</summary>
     private async Task<(byte[] Buffer, int Length)> ReadPostStateFileAsync(string stateFile, ulong stateSlot, ulong blockSlot, CancellationToken cancellationToken)
     {
         string postStateFile = Path.ChangeExtension(stateFile, ".post-state.ssz");
@@ -247,7 +232,6 @@ public class CheckpointSync(
         }
     }
 
-    /// <param name="minBytesPerSecond">Average rate the body must keep once <see cref="MinThroughputGrace"/> has passed; 0 for none.</param>
     private async Task<(byte[] Buffer, int Length)> ReadToPooledBufferAsync(Stream content, int initialLength, TimeSpan stallTimeout, CancellationToken cancellationToken, int minBytesPerSecond = 0)
     {
         using CancellationTokenSource stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -463,9 +447,6 @@ public class CheckpointSync(
         }
     }
 
-    /// <summary>
-    /// Derives the anchor block root, filling only an unset header state root (consensus-specs beacon-chain.md process_slot).
-    /// </summary>
     private static Hash256 ComputeAnchorBlockRoot(BeaconBlockHeader latestBlockHeader, Hash256 stateRoot)
     {
         BeaconBlockHeader.Merkleize(new BeaconBlockHeader
@@ -549,7 +530,6 @@ public class CheckpointSync(
         return response;
     }
 
-    /// <param name="checkpointStateSlot">Slot of the checkpoint state as received, which an advanced state holds past <paramref name="anchor"/>'s.</param>
     private void Persist(CheckpointAnchor anchor, ReadOnlySpan<byte> stateSsz, Checkpoint? weakSubjectivityCheckpoint, ulong checkpointStateSlot)
     {
         store.PutState(anchor.BlockRoot, stateSsz);
@@ -635,7 +615,6 @@ public class CheckpointSync(
     internal bool ProvesCheckpoint(ForkedBeaconState state, Hash256 anchorRoot, Checkpoint checkpoint) =>
         WhyUnproven(anchorRoot, LatestBlockHeader(state).Slot, state.Slot, checkpoint) is null;
 
-    /// <returns><c>null</c> when block <paramref name="anchorRoot"/> at <paramref name="blockSlot"/>, the latest block of a state at <paramref name="stateSlot"/>, is <paramref name="checkpoint"/>'s block at the start of its epoch; otherwise the condition it fails.</returns>
     private string? WhyUnproven(Hash256 anchorRoot, ulong blockSlot, ulong stateSlot, Checkpoint checkpoint)
     {
         if (anchorRoot != checkpoint.Root)

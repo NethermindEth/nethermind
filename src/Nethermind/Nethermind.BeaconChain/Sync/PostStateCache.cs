@@ -92,10 +92,8 @@ internal sealed class PostStateCache(
     private Hash256? _previousJustifiedRoot;
     private BeaconStateGloas? _previousJustifiedState;
 
-    /// <summary>The root of the block whose post-state is <see cref="LineageState"/>; <c>null</c> without a Fulu lineage.</summary>
     public Hash256? LineageRoot { get; private set; } = lineageRoot;
 
-    /// <summary>The live state of the followed lineage, advanced in place as canonical blocks import; <c>null</c> without a Fulu lineage.</summary>
     public BeaconStateFulu? LineageState { get; private set; } = lineageState;
 
     /// <summary>Replaces the lineage with a new (root, state) pair, e.g. after adopting a reorged head.</summary>
@@ -242,7 +240,6 @@ internal sealed class PostStateCache(
         return state;
     }
 
-    /// <summary>The held post-state of <paramref name="blockRoot"/> in the shape of its fork, without regenerating it.</summary>
     private ForkedBeaconState? GetHeldForkedState(Hash256 blockRoot) =>
         isGloasBlock?.Invoke(blockRoot) == true
             ? GetGloasBlockState(blockRoot) is { } gloas ? new ForkedBeaconState.OfGloas(gloas) : null
@@ -281,12 +278,7 @@ internal sealed class PostStateCache(
         _previousJustifiedState = null;
     }
 
-    /// <summary>specs/gloas/fork-choice.md <c>on_attester_slashing</c> reads <c>store.block_states[store.justified_checkpoint.root]</c> at any time before finality.</summary>
-    /// <remarks>
-    /// The outgoing justified state stays pinned one justification longer: specs/phase0/beacon-chain.md
-    /// <c>weigh_justification_and_finalization</c> finalizes the previous or the current justified checkpoint, possibly in
-    /// the same import that moves the justified checkpoint past it and before <c>OnFinalized</c> reads its state.
-    /// </remarks>
+    /// <summary>Pins justified state and retains the outgoing justification for one more change. Epoch weighing can finalize it during the same import that justifies its successor, before OnFinalized reads it.</summary>
     private void PinJustified()
     {
         if (justifiedRoot?.Invoke() is not { } root || root == _pinnedJustifiedRoot)

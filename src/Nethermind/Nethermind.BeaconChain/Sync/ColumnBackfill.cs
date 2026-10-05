@@ -311,7 +311,6 @@ public sealed class ColumnBackfill(
         return (Math.Min(floor, missingSlot + 1), IsFollowingHead() ? WindowOutcome.Incomplete : WindowOutcome.HeadBehind);
     }
 
-    /// <summary>Reports a slot whose sampled columns no custodian served: at Debug while the retries are routine, as a warning each time it has stayed blocked for another <see cref="BlockedAttemptsBeforeWarning"/> attempts.</summary>
     private void LogBlocked(Hash256 root, ulong slot, RangeSync.ColumnFetchRotation rotation, NodeColumnCustody custody)
     {
         _blockedAttempts = slot == _blockedSlot ? _blockedAttempts + 1 : 1;

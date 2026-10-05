@@ -40,35 +40,18 @@ public static class BeaconChainMetadataKeys
     public const string EarliestBlockSlot = "earliestBlockSlot";
 }
 
-/// <summary>Persistence for beacon blocks, states, execution payload envelopes, the canonical slot index, the root-to-children index, and driver metadata.</summary>
+/// <summary>Persists beacon blocks, states, envelopes, canonical and children indexes, and metadata.</summary>
 /// <remarks>
-/// <para>
-/// Blocks and states are stored as snappy-compressed SSZ. States are large (hundreds of MB), so
-/// they are split into <see cref="StateChunkSize"/> uncompressed slices compressed independently,
-/// keyed by <c>blockRoot ++ big-endian chunk index</c>, with a manifest (chunk count and
-/// uncompressed length) under the bare block root.
-/// </para>
-/// <para>
-/// The <see cref="BeaconChainDbColumns.BlockIndex"/> column carries three key shapes that cannot
-/// collide: 8-byte big-endian slot keys for the canonical index, <see cref="BlockSummaryKeyPrefix"/>
-/// <c>++ blockRoot</c> for the block summary index (see <see cref="TryGetBlockSummary"/>), and <see cref="ChildrenKeyPrefix"/>
-/// <c>++ blockRoot</c> (33 bytes) for the children index, whose value is
-/// <c>state (1) ++ parent root (32) ++ child roots (32 each)</c>. A stored block's child list is
-/// always complete: a database from before the index is rebuilt from its stored blocks when first
-/// opened at schema version <see cref="ChildrenIndexSchemaVersion"/>, and every store and delete after
-/// that goes through the index. A list kept for a block that is not stored is pending, and a first
-/// store of that block completes it.
-/// Beacon API params/index.yaml StateId uses prefix 4 for state-to-block roots and prefix 3 for
-/// block-to-state roots; both are updated with the block, so requests need no database scan.
-/// </para>
-/// <para>
-/// Blocks are read and written in the shape of the fork their slot belongs to, as
-/// <see cref="SignedBeaconBlockCodec"/> decides. Without a spec no Gloas fork is known: every block
-/// is stored and read as <see cref="SignedBeaconBlock"/> and a Gloas block is refused.
-/// </para>
+/// States use independently snappy-compressed StateChunkSize slices keyed by blockRoot ++ big-endian chunk index,
+/// with chunk count and uncompressed length under the bare root. Blocks use snappy-compressed SSZ.
+/// BlockIndex keys are disjoint: 8-byte slots, BlockSummaryKeyPrefix ++ root, and ChildrenKeyPrefix ++ root.
+/// Children values contain state (1 byte), parent root (32), then child roots (32 each). Stored blocks have complete
+/// child lists; absent parents have pending lists. Older databases rebuild the index at ChildrenIndexSchemaVersion.
+/// StateId indexes use prefix 4 for state-to-block roots and 3 for block-to-state roots, updated with blocks.
+/// SignedBeaconBlockCodec selects the slot's fork shape; without a spec only Fulu blocks are supported.
 /// </remarks>
 /// <param name="db">The beacon chain columns.</param>
-/// <param name="spec">The network whose fork schedule decides each block's shape; <c>null</c> reads and writes the Fulu shape only.</param>
+/// <param name="spec">The fork schedule; null supports only Fulu shapes.</param>
 public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSpec? spec = null)
 {
     /// <summary>Layout version of every column; bump it whenever a change needs an existing database migrated or refused.</summary>
@@ -113,13 +96,11 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <summary>The block is stored and the list is the full set of stored children.</summary>
     private const byte ChildrenComplete = 1;
 
-    /// <summary>The most blocks one children index rebuild step reads and writes, which bounds its memory.</summary>
     internal const int ChildrenRebuildBatchSize = 1024;
 
     /// <summary><c>compute_min_epochs_for_block_requests()</c> (phase0/p2p-interface.md), the epochs ExecutionPayloadEnvelopesByRange/ByRoot must serve (gloas/p2p-interface.md).</summary>
     internal const ulong MinEpochsForBlockRequests = Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2;
 
-    /// <summary>The most slots one envelope prune batch covers, so a prune after a long outage never builds one unbounded batch.</summary>
     internal const ulong EnvelopePruneBatchSlots = 1024;
 
     /// <summary>Envelope column key of the lowest and highest slot (8 bytes big-endian each) that may still have envelopes; its 1-byte length never collides with slot (8) or root (32) keys.</summary>
@@ -141,10 +122,9 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     private readonly IDb _dataColumns = db.GetColumnDb(BeaconChainDbColumns.DataColumnSidecars);
     private readonly Lock _columnIndexLock = new();
 
-    /// <summary>The most slots one data column prune batch covers, so a prune after a long outage never builds one unbounded batch.</summary>
     internal const ulong ColumnPruneBatchSlots = 1024;
 
-    /// <summary>The most batches of each kind one prune call runs, so the caller is never held for a whole backlog; the next call resumes where this one stopped.</summary>
+    /// <summary>Bounds prune work per call; later calls resume the backlog.</summary>
     internal const int MaxColumnPruneBatchesPerCall = 8;
 
     /// <summary>Column table keys never collide by length: 40 bytes is <c>root ++ index</c>, 8 is a slot index entry, 1 is one of the records below.</summary>
@@ -173,14 +153,10 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         PutForkedBlock(root, new ForkedSignedBeaconBlock.OfFulu(block));
     }
 
-    /// <summary>Stores a block and links it into the children index of its parent.</summary>
-    /// <remarks>
-    /// Callers are the single import worker and the checkpoint-sync anchor write, never concurrent,
-    /// so the read-modify-write of the children entries below needs no lock. The whole update is one
-    /// write batch so a crash cannot leave a stored block missing from its parent's child list.
-    /// </remarks>
-    /// <exception cref="BeaconStateException">The block's shape is not the one of the fork its slot belongs to.</exception>
-    /// <exception cref="InvalidOperationException">The block is a Gloas block and this store has no spec.</exception>
+    /// <summary>Stores a block and updates its parent's children index atomically.</summary>
+    /// <remarks>The single import worker and checkpoint-sync writes do not overlap, so children read-modify-write needs no lock.</remarks>
+    /// <exception cref="BeaconStateException">The block shape disagrees with its slot's fork.</exception>
+    /// <exception cref="InvalidOperationException">The block is Gloas and this store has no spec.</exception>
     public void PutForkedBlock(Hash256 root, ForkedSignedBeaconBlock block)
     {
         using Lock.Scope summaryScope = _blockSummaryLock.EnterScope();
@@ -948,14 +924,12 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         }
     }
 
-    /// <summary>The slot of <paramref name="envelope"/>'s payload, once it is known to name <paramref name="blockRoot"/>.</summary>
-    /// <exception cref="ArgumentException">The envelope has no payload, or names a beacon block other than <paramref name="blockRoot"/>.</exception>
+    /// <exception cref="ArgumentException">The envelope has no payload or names a different block root.</exception>
     internal static ulong GetExecutionPayloadEnvelopeSlot(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope) =>
         envelope.Message is { Payload: { } payload, BeaconBlockRoot: { } namedRoot } && namedRoot == blockRoot
             ? payload.SlotNumber
             : throw new ArgumentException($"The envelope for {blockRoot} has no payload or names beacon block {envelope.Message?.BeaconBlockRoot?.ToString() ?? "none"}", nameof(envelope));
 
-    /// <summary>Records an EL VALID verdict for a retained envelope.</summary>
     internal void SetExecutionPayloadValid(Hash256 blockRoot)
     {
         lock (_envelopeIndexLock)
@@ -965,7 +939,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         }
     }
 
-    /// <summary>Whether the retained envelope has its own persisted EL VALID verdict.</summary>
     internal bool IsExecutionPayloadValid(Hash256 blockRoot) =>
         _envelopes.Get(ExecutionPayloadVerdictKey(blockRoot.Bytes)) is [1];
 

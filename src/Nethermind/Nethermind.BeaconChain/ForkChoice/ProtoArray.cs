@@ -238,13 +238,11 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         }
     }
 
-    /// <inheritdoc cref="ProtoNode.ParentPayloadStatus"/>
     private ForkChoicePayloadStatus GetParentPayloadStatus(ProtoBlock block, int? parentIndex) =>
         parentIndex is int index && Nodes[index].IsGloas && block.ParentBlockHash != Nodes[index].ExecutionBlockHash
             ? ForkChoicePayloadStatus.Empty
             : ForkChoicePayloadStatus.Full;
 
-    /// <summary>Throws what <see cref="PropagateExecutionValidation(int)"/> would, without changing any node.</summary>
     private void ThrowIfInvalidOptimisticAncestor(int nodeIndex)
     {
         int? index = nodeIndex;
@@ -602,7 +600,6 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         }
     }
 
-    /// <summary>Indicates if the node's best descendant, or the node itself when it has none, is a viable leaf.</summary>
     private bool NodeLeadsToViableHead(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint) =>
         IsViableLeaf(node.BestDescendant is int bestDescendantIndex ? Nodes[bestDescendantIndex] : node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
 
