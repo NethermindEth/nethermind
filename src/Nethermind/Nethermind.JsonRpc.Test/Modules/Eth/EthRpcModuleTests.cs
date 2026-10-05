@@ -2747,7 +2747,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_createAccessList_omits_entries_that_only_raise_the_eip8131_content_floor()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(
-            new OverridableReleaseSpec(Amsterdam.Instance) { IsEip7981Enabled = false, IsEip8131Enabled = true }));
+            new OverridableReleaseSpec(Bogota.Instance) { IsEip7981Enabled = false, IsEip8131Enabled = true }));
         const string contractAddr = "0xc200000000000000000000000000000000000000";
         const int calldataBytes = 1000;
         // PUSH20 0xdeadbeef; BALANCE; POP; STOP: one cold account access, under a calldata-bound content floor.

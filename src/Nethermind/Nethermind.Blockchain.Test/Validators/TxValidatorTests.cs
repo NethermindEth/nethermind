@@ -983,7 +983,7 @@ public class TxValidatorTests
     [TestCase(TxType.Blob, 0, 0, 6, 33_288UL, TestName = "IsWellFormed_Eip8131ContentFloor(blob hashes)")]
     public void IsWellFormed_Eip8131ContentFloor(TxType type, int dataLength, int storageKeys, int blobHashes, ulong floor)
     {
-        IReleaseSpec spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8131Enabled = true };
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true };
         AccessList.Builder accessList = new();
         accessList.AddAddress(TestItem.AddressC);
         for (int i = 0; i < storageKeys; i++) accessList.AddStorage((UInt256)i);

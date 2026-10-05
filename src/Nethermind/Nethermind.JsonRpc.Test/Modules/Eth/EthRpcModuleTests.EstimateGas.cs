@@ -1414,7 +1414,7 @@ public partial class EthRpcModuleTests
 
     private static readonly OverridableReleaseSpec Eip7976Spec = new(Prague.Instance) { IsEip7976Enabled = true };
     private static readonly OverridableReleaseSpec Eip7981Spec = new(Amsterdam.Instance) { IsEip7976Enabled = true, IsEip7981Enabled = true };
-    private static readonly OverridableReleaseSpec Eip8131Spec = new(Amsterdam.Instance) { IsEip8131Enabled = true };
+    private static readonly OverridableReleaseSpec Eip8131Spec = new(Bogota.Instance) { IsEip8131Enabled = true };
 
     private static IEnumerable<TestCaseData> EstimateGasFloorCostCases()
     {
