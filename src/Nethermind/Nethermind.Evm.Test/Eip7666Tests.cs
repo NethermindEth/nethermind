@@ -4,7 +4,6 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
