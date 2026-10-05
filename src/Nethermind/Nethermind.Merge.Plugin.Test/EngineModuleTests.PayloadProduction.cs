@@ -563,9 +563,12 @@ public partial class EngineModuleTests
             .Result.Data.PayloadId!;
         await improvedBlockWait;
 
-        improvedBlockWait = chain.WaitForImprovedBlock();
+        // An improvement starts building before it is stored for its payload, so a fast build can finish while
+        // the previous context is still the stored one. getPayload returns the stored context: wait for it.
+        ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        Task storedImprovementTask = payloadPreparation.WaitForStoredBlockAsync(payloadId, static block => block.Transactions.Length == 2, chain.CancellationToken);
         chain.AddTransactions(tx2);
-        await improvedBlockWait;
+        await storedImprovementTask;
 
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
