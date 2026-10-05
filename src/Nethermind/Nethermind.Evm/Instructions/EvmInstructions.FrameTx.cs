@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-/// <summary>EIP-8141 frame introspection and approval opcodes, plus the EIP-8272 reference reader.
+/// <summary>EIP-8141 frame introspection and approval opcodes.
 /// Each exceptional-halts outside a frame transaction, where <see cref="FrameTxContext"/> is absent.</summary>
 public static unsafe partial class EvmInstructions
 {
