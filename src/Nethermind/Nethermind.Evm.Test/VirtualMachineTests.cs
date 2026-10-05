@@ -50,6 +50,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("6000600657005b00", 21016UL, 4).SetName("JumpI_not_taken"),
         new TestCaseData("6003565b00", 21012UL, 4).SetName("Jump_to_next_instruction"),
         new TestCaseData("600456fe5b5b00", 21013UL, 5).SetName("Jump_to_consecutive_markers"),
+        new TestCaseData("6003565b600856005b00", 21024UL, 7).SetName("Jump_repeated_landed_destinations"),
         new TestCaseData("6003565b", 21012UL, 3).SetName("Jump_to_final_byte"),
         new TestCaseData("610004565b", 21012UL, 3).SetName("Push2_jump_to_final_byte"),
         new TestCaseData("60016005575b", 21017UL, 4).SetName("JumpI_taken_to_final_byte"),
@@ -86,14 +87,16 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
     private static readonly TestCaseData[] JumpFailureCases =
     [
-        new TestCaseData("56", 100000UL, 1).SetName("Jump_stack_underflow"),
-        new TestCaseData("600056", 100000UL, 2).SetName("Jump_invalid_destination"),
-        new TestCaseData("6003565b", 21010UL, 2).SetName("Jump_charge_out_of_gas"),
-        new TestCaseData("6003565b", 21011UL, 3).SetName("JumpDest_charge_out_of_gas_after_Jump"),
-        new TestCaseData("60016005575b", 21015UL, 3).SetName("JumpI_charge_out_of_gas"),
-        new TestCaseData("60016005575b", 21016UL, 4).SetName("JumpDest_charge_out_of_gas_after_JumpI"),
-        new TestCaseData("600161000057", 100000UL, 3).SetName("Push2_JumpI_taken_to_invalid_destination"),
-        new TestCaseData("61000556605b00", 100000UL, 2).SetName("Push2_Jump_into_push_data"),
+        new TestCaseData("56", 100000UL, 1, nameof(EvmExceptionType.StackUnderflow)).SetName("Jump_stack_underflow"),
+        new TestCaseData("600056", 100000UL, 2, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("Jump_invalid_destination"),
+        new TestCaseData("6003565b", 21010UL, 2, nameof(EvmExceptionType.OutOfGas)).SetName("Jump_charge_out_of_gas"),
+        new TestCaseData("6003565b", 21011UL, 3, nameof(EvmExceptionType.OutOfGas)).SetName("JumpDest_charge_out_of_gas_after_Jump"),
+        new TestCaseData("60016005575b", 21015UL, 3, nameof(EvmExceptionType.OutOfGas)).SetName("JumpI_charge_out_of_gas"),
+        new TestCaseData("60016005575b", 21016UL, 4, nameof(EvmExceptionType.OutOfGas)).SetName("JumpDest_charge_out_of_gas_after_JumpI"),
+        new TestCaseData("600161000057", 100000UL, 3, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("Push2_JumpI_taken_to_invalid_destination"),
+        new TestCaseData("61000556605b00", 100000UL, 2, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("Push2_Jump_into_push_data"),
+        // The low byte is a real JUMPDEST, but the nonzero high byte must still invalidate the destination.
+        new TestCaseData("7f01" + new string('0', 60) + "22565b", 100000UL, 2, nameof(EvmExceptionType.InvalidJumpDestination)).SetName("Push32_high_byte_jump_destination"),
     ];
 
     private sealed class NoInstructionTracer : TestAllTracerWithOutput
@@ -824,13 +827,14 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(JumpFailureCases))]
-    public void Untraced_jump_completion_preserves_failure_ordering(string bytecode, ulong gasLimit, int expectedOpCodeCount)
+    public void Untraced_jump_completion_preserves_failure_ordering(string bytecode, ulong gasLimit, int expectedOpCodeCount, string expectedError)
     {
         TestAllTracerWithOutput receipt = ExecuteUntraced(gasLimit, Bytes.FromHexString(bytecode));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure), "status");
+            Assert.That(receipt.Error, Is.EqualTo(expectedError), "error");
             Assert.That(receipt.GasSpent, Is.EqualTo(gasLimit), "gas");
             Assert.That(Machine.OpCodeCount, Is.EqualTo(expectedOpCodeCount), "opcode count");
         }

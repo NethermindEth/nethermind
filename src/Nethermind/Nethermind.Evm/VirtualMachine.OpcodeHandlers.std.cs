@@ -12,18 +12,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        &RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>;
+        AsTableEntry(&RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>);
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
         TerminatingOpcodeHandler<TOpcode, TTracingInst, TCancelable>()
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        &RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OffFlag>;
+        AsTableEntry(&RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OffFlag>);
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
         JumpIfOpcodeHandler<TTracingInst, TCancelable>()
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        &RawCalliHelper.ExecuteJumpIfOpcode<TTracingInst, TCancelable>;
+        AsTableEntry(&RawCalliHelper.ExecuteJumpIfOpcode<TTracingInst, TCancelable>);
 }
