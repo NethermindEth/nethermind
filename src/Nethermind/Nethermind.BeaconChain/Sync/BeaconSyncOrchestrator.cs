@@ -241,6 +241,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>How often an unchanged <c>forkchoiceUpdated</c> is still sent; well inside the EL's default 300 s CL liveness window.</summary>
     internal static readonly TimeSpan ForkchoiceResendInterval = TimeSpan.FromSeconds(60);
     private bool _importedSinceHeadStep;
+    private bool _gossipHeadMayAdvanceTip;
     private int _importsSinceHeadStep;
 
     private long _headStepMs;
@@ -307,6 +308,13 @@ public sealed class BeaconSyncOrchestrator(
     private sealed record HeldFetchedBlock(ForkedSignedBeaconBlock Block, IBeaconSyncPeer? ServedBy);
 
     private readonly record struct RangeHeldBlock(ForkedSignedBeaconBlock Block, IBeaconSyncPeer? Source);
+
+    private enum TipUpdate : byte
+    {
+        Advance,
+        SupersedeRange,
+        FollowHead,
+    }
 
     /// <summary>How a block reached this node, which decides the regeneration budget its import is charged to.</summary>
     private enum ImportOrigin
@@ -1088,7 +1096,8 @@ public sealed class BeaconSyncOrchestrator(
                 RecoverColumns(root, recovery, slotClock.CurrentSlot, token);
             }
 
-            await OnImportedAsync(root, block.Slot, token, supersedesRange: origin == ImportOrigin.Gossip);
+            await OnImportedAsync(root, block.Slot, token, origin != ImportOrigin.Gossip ? TipUpdate.Advance
+                : block.ParentRoot == _syncTip.Root ? TipUpdate.SupersedeRange : TipUpdate.FollowHead);
             // After the held children imported or deferred in turn, so a child that waits takes the chain over first.
             ReleaseRangeHeld(root);
         }
@@ -1931,14 +1940,21 @@ public sealed class BeaconSyncOrchestrator(
         return await ImportEnvelopeAsync(item.Envelope, token, item.Source);
     }
 
-    private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token, bool supersedesRange = false)
+    private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token, TipUpdate tipUpdate)
     {
         if (slot > _syncTip.Slot)
         {
-            _syncTip = new Tip(root, slot);
-            if (supersedesRange && Volatile.Read(ref _activeRangeSyncRounds) > 0)
+            if (tipUpdate != TipUpdate.FollowHead)
             {
-                EndRangeSyncRound();
+                _syncTip = new Tip(root, slot);
+                if (tipUpdate == TipUpdate.SupersedeRange && Volatile.Read(ref _activeRangeSyncRounds) > 0)
+                {
+                    EndRangeSyncRound();
+                }
+            }
+            else
+            {
+                _gossipHeadMayAdvanceTip = true;
             }
         }
 
@@ -2537,6 +2553,16 @@ public sealed class BeaconSyncOrchestrator(
         {
             if (_logger.IsInfo) _logger.Info($"FINALIZED epoch={head.Finalized.Epoch} root={head.Finalized.Root}");
             importer.OnFinalized(head.Finalized);
+        }
+
+        if (_gossipHeadMayAdvanceTip)
+        {
+            _gossipHeadMayAdvanceTip = false;
+            if (head.HeadSlot > _syncTip.Slot)
+            {
+                _syncTip = new Tip(head.HeadRoot, head.HeadSlot);
+                if (Volatile.Read(ref _activeRangeSyncRounds) > 0) EndRangeSyncRound();
+            }
         }
 
         _lastHead = head;

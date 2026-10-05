@@ -221,6 +221,68 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [CancelAfter(10_000)]
+    public async Task Higher_gossip_only_retires_the_range_for_tip_continuity_or_the_selected_head(bool selectedHead, bool linked, CancellationToken token)
+    {
+        (_, Hash256 anchorRoot, _) = TestChain.BuildLinkedChain(AnchorSlot);
+        ForkedSignedBeaconBlock tip = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(101, anchorRoot));
+        ForkedSignedBeaconBlock gossip = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(103, linked ? tip.ComputeMessageRoot() : anchorRoot));
+        ForkedSignedBeaconBlock canonical = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(102, tip.ComputeMessageRoot()));
+        TaskCompletionSource requested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken requestToken = default;
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.HeadSlot.Returns(104UL);
+        peer.RequestBlocksByRangeAsync(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            requestToken = call.ArgAt<CancellationToken>(2);
+            requested.TrySetResult();
+            await reply.Task.WaitAsync(requestToken);
+            return (IReadOnlyList<ForkedSignedBeaconBlock>)[];
+        });
+        Harness harness = CreateHarness(wallSlot: 104, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.OnImported = (block, root) =>
+        {
+            if (root != gossip.ComputeMessageRoot() || selectedHead || linked)
+                harness.Importer.Head = CreateHead(root, block.Slot, Spec.GetEpoch(AnchorSlot));
+        };
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(tip));
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task round = harness.Orchestrator.FeedRangeSyncRoundAsync(stop.Token);
+        try
+        {
+            await requested.Task.WaitAsync(token);
+            int headSteps = harness.Importer.ComputeHeadCalls;
+            harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(gossip));
+            await harness.Orchestrator.ProcessQueuedAsync(token);
+            bool superseded = selectedHead || linked;
+            if (superseded) Assert.That(await EndsAsync(round, token), Is.True);
+            Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo((superseded ? gossip : tip).ComputeMessageRoot()));
+            Assert.That(requestToken.IsCancellationRequested, Is.EqualTo(superseded));
+            Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(headSteps + 1), "the scheduled head step remains the only fork-choice computation");
+            if (!superseded)
+            {
+                harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(canonical, peer, requestToken));
+                await harness.Orchestrator.ProcessQueuedAsync(token);
+                Assert.That(harness.Importer.Known, Does.Contain(canonical.ComputeMessageRoot()), "the active canonical round's queued blocks remain importable");
+                Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(canonical.ComputeMessageRoot()));
+                Assert.That(requestToken.IsCancellationRequested, Is.False);
+            }
+        }
+        finally
+        {
+            stop.Cancel();
+            reply.TrySetResult();
+            try { await round; }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+        }
+    }
+
     public enum RangeRejection
     {
         AtImport,
@@ -1055,7 +1117,8 @@ public partial class BeaconSyncOrchestratorTests
         List<ulong> tipsAfterTicks = [];
         foreach ((SignedBeaconBlock block, ulong tick) in new[] { (chain[0], WallSlot), (chain[1], WallSlot + Spec.SlotsPerEpoch), (chain[2], WallSlot + 2 * Spec.SlotsPerEpoch - 1), (chain[3], WallSlot + 2 * Spec.SlotsPerEpoch) })
         {
-            await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(block), CancellationToken.None);
+            ForkedSignedBeaconBlock forked = new ForkedSignedBeaconBlock.OfFulu(block);
+            await harness.Orchestrator.ImportBlockAsync(forked, CancellationToken.None, rangeItem: new BeaconSyncOrchestrator.RangeBlockItem(forked));
             await harness.Orchestrator.ProcessSlotAsync(tick, CancellationToken.None);
             tipsAfterTicks.Add(harness.Orchestrator.SyncTip.Slot);
         }

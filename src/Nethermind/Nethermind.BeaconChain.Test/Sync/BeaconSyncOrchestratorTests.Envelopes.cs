@@ -199,6 +199,7 @@ public partial class BeaconSyncOrchestratorTests
         Harness harness = CreateHarness(peers: [peer]);
         harness.Importer.Known.UnionWith([anchorRoot, parentRoot]);
         harness.Importer.UnverifiedPayloads.Add(parentRoot);
+        harness.Importer.OnImported = (block, root) => harness.Importer.Head = CreateHead(root, block.Slot, Spec.GetEpoch(AnchorSlot));
 
         await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
