@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -357,7 +358,7 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     // Matched on the reason, so an unrelated rule firing first cannot stand in for the target one.
-    private void AssertPrefixCallTarget(Address target, bool violates, string reason = "disallowed target", Instruction call = Instruction.STATICCALL)
+    private FrameTxValidationTracer AssertPrefixCallTarget(Address target, bool violates, string reason = "disallowed target", Instruction call = Instruction.STATICCALL)
     {
         Prepare prepare = call switch
         {
@@ -372,6 +373,7 @@ public class FrameTxValidationPrefixSimulationTests
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
         Assert.That(tracer.ViolationReason, violates ? Does.Contain(reason) : Is.Null);
+        return tracer;
     }
 
     // The banned list is the security surface of admission, so it is swept whole: any of these in the
@@ -463,27 +465,27 @@ public class FrameTxValidationPrefixSimulationTests
     private void UseBogotaWithFrames(bool eip8298) =>
         UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip8298Enabled = eip8298 });
 
-    // Under EIP-8298 a helper's code can change if it holds SETCODEFROM, DELEGATECALL or CALLCODE as an
-    // instruction; the same bytes as PUSH data or EIP-8024 immediates cannot run. With it off, as on master.
-    public sealed record MutableCodeTarget(string Name, byte[] Code, bool Mutable)
+    // Under EIP-8298 a helper holding SETCODEFROM as an instruction is refused, and one that can only reach it by
+    // delegating (DELEGATECALL, CALLCODE) is admitted but recorded as a code dependency. The same bytes as PUSH
+    // data or EIP-8024 immediates cannot run. With it off, as on master.
+    public sealed record MutableCodeTarget(string Name, byte[] Code, bool Refused, bool Tracked)
     {
         public override string ToString() => Name;
     }
 
     private static readonly MutableCodeTarget[] MutableCodeTargets =
     [
-        new("plain code", [(byte)Instruction.STOP], false),
-        new("SETCODEFROM", [(byte)Instruction.SETCODEFROM, (byte)Instruction.STOP], true),
-        new("DELEGATECALL", [(byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], true),
-        new("CALLCODE", [(byte)Instruction.CALLCODE, (byte)Instruction.STOP], true),
-        new("PUSH data", [(byte)Instruction.PUSH2, (byte)Instruction.SETCODEFROM, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false),
-        new("EIP-8024 immediates", [(byte)Instruction.DUPN, (byte)Instruction.SETCODEFROM, (byte)Instruction.EXCHANGE, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false),
+        new("plain code", [(byte)Instruction.STOP], false, false),
+        new("SETCODEFROM", [(byte)Instruction.SETCODEFROM, (byte)Instruction.STOP], true, false),
+        new("DELEGATECALL", [(byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, true),
+        new("CALLCODE", [(byte)Instruction.CALLCODE, (byte)Instruction.STOP], false, true),
+        new("DELEGATECALL and SETCODEFROM", [(byte)Instruction.DELEGATECALL, (byte)Instruction.SETCODEFROM, (byte)Instruction.STOP], true, false),
+        new("PUSH data", [(byte)Instruction.PUSH2, (byte)Instruction.SETCODEFROM, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, false),
+        new("EIP-8024 immediates", [(byte)Instruction.DUPN, (byte)Instruction.SETCODEFROM, (byte)Instruction.EXCHANGE, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, false),
     ];
 
-    // The DELEGATECALL row pins the proxy case: an implementation holding DELEGATECALL is refused even when
-    // tx.sender delegates into it, as anyone can call it directly and have it rewrite itself.
     [Test]
-    public void Simulate_PrefixCallsTargetWithMutableCode_RecordsViolation(
+    public void Simulate_PrefixCallsTargetWithMutableCode_IsClassifiedByItsCode(
         [ValueSource(nameof(MutableCodeTargets))] MutableCodeTarget target,
         [Values] bool eip8298,
         [Values(Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction call)
@@ -491,20 +493,51 @@ public class FrameTxValidationPrefixSimulationTests
         UseBogotaWithFrames(eip8298);
         DeployContract(TestItem.AddressC, target.Code);
 
-        AssertPrefixCallTarget(TestItem.AddressC, target.Mutable && eip8298, "has mutable code", call);
+        FrameTxValidationTracer tracer = AssertPrefixCallTarget(TestItem.AddressC, target.Refused && eip8298, "has mutable code", call);
+
+        Assert.That(tracer.CodeDependencies, target.Tracked && eip8298
+            ? Is.EqualTo(new[] { new FrameTxCodeDependency(TestItem.AddressC, ValueKeccak.Compute(target.Code)) })
+            : Is.Empty);
+    }
+
+    // A proxy account delegating into an implementation that holds DELEGATECALL is admitted, with the
+    // implementation recorded so the pool revalidates and caps on its code.
+    [Test]
+    public void Simulate_ProxyAccountDelegatingIntoADelegatingImplementation_Admitted()
+    {
+        UseBogotaWithFrames(eip8298: true);
+        byte[] implementation = Prepare.EvmCode.PushData(1).Op(Instruction.POP).STOP().Op(Instruction.DELEGATECALL).Done;
+        DeployContract(TestItem.AddressC, implementation);
+        DeployContract(Sender, [.. Prepare.EvmCode.DelegateCall(TestItem.AddressC, 50_000).Op(Instruction.POP).Done, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[] { new FrameTxCodeDependency(TestItem.AddressC, ValueKeccak.Compute(implementation)) }));
+        }
     }
 
     [Test]
-    public void Simulate_DeployFrameTargetWithMutableCode_RecordsViolation([Values] bool eip8298)
+    public void Simulate_DeployFrameTargetWithMutableCode_IsClassifiedByItsCode(
+        [Values] bool eip8298,
+        [Values(Instruction.SETCODEFROM, Instruction.DELEGATECALL)] Instruction held)
     {
         UseBogotaWithFrames(eip8298);
         byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
-        Address deployed = InstallFactory(initCode, epilogue: [(byte)Instruction.STOP, (byte)Instruction.DELEGATECALL]);
+        Address deployed = InstallFactory(initCode, epilogue: [(byte)Instruction.STOP, (byte)held]);
         FundAccount(deployed, 1.Ether);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(DeployTx(deployed));
 
-        Assert.That(tracer.ViolationReason, eip8298 ? Is.EqualTo($"deploy frame target {Factory} has mutable code") : Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, eip8298 && held == Instruction.SETCODEFROM ? Is.EqualTo($"deploy frame target {Factory} has mutable code") : Is.Null);
+            Assert.That(tracer.CodeDependencies.Select(d => d.Account), eip8298 && held == Instruction.DELEGATECALL ? Is.EqualTo(new[] { Factory }) : Is.Empty);
+        }
     }
 
     [Test]
@@ -517,13 +550,13 @@ public class FrameTxValidationPrefixSimulationTests
         (ValueHash256, bool) key = (ValueKeccak.Compute(targetCode), Spec.IsEip8024Enabled);
 
         AssertPrefixCallTarget(TestItem.AddressC, violates: false, "has mutable code");
-        bool scanned = FrameTxValidationTracer.MutableCodeCache.TryGet(key, out bool cached);
+        bool scanned = FrameTxValidationTracer.MutableCodeCache.TryGet(key, out FrameTxValidationTracer.CodeMutability cached);
         Assert.That(scanned, Is.EqualTo(eip8298), "verdict cached");
         if (!eip8298) return;
-        Assert.That(cached, Is.False, "cached verdict");
+        Assert.That(cached, Is.EqualTo(FrameTxValidationTracer.CodeMutability.None), "cached verdict");
 
         // A seeded verdict is used as is, so the code is not scanned again.
-        FrameTxValidationTracer.MutableCodeCache.Set(key, true);
+        FrameTxValidationTracer.MutableCodeCache.Set(key, FrameTxValidationTracer.CodeMutability.Direct);
         AssertPrefixCallTarget(TestItem.AddressC, violates: true, "has mutable code");
     }
 

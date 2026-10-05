@@ -85,6 +85,11 @@ public sealed class FrameTxValidationTracer(
 
     public Address? Payer { get; private set; }
 
+    /// <summary>EIP-8298 targets the prefix relied on whose code could change through DELEGATECALL or CALLCODE.</summary>
+    public IReadOnlyList<FrameTxCodeDependency> CodeDependencies => _codeDependencies ?? (IReadOnlyList<FrameTxCodeDependency>)[];
+
+    private List<FrameTxCodeDependency>? _codeDependencies;
+
     void IFrameTxPrefixTracer.StartPrefixFrame(bool isDeployFrame, Address target)
     {
         SettleCreate();
@@ -284,44 +289,70 @@ public sealed class FrameTxValidationTracer(
         return state.IsDelegatedCode(target);
     }
 
-    /// <summary>Under EIP-8298, whether a contract other than tx.sender can change its own code.</summary>
+    /// <summary>Under EIP-8298, whether a contract other than tx.sender can rewrite its own code by running SETCODEFROM.</summary>
     /// <remarks>
     /// Code changes only through SETCODEFROM run in the account's own context, directly or via code it
     /// DELEGATECALLs or CALLCODEs, and EIP-6780 rules out redeployment, so the scan has no false negatives.
-    /// This deliberately refuses proxy implementations that hold DELEGATECALL, even when tx.sender delegates
-    /// into them: anyone can call the implementation directly and have it rewrite itself. The verdict is
-    /// cached per code hash.
+    /// Direct SETCODEFROM is refused. A target that can only reach it by delegating, such as a proxy
+    /// implementation, is admitted but recorded in <see cref="CodeDependencies"/>, so the pool revalidates
+    /// when its code changes and caps how many pending transactions rely on that code.
     /// </remarks>
     private bool HasMutableCode(Address target)
     {
         if (!spec.IsEip8298Enabled || target == sender || spec.IsPrecompile(target)) return false;
 
-        (ValueHash256, bool) key = (state.GetCodeHash(target), spec.IsEip8024Enabled);
-        if (MutableCodeCache.TryGet(key, out bool mutable)) return mutable;
+        ValueHash256 codeHash = state.GetCodeHash(target);
+        (ValueHash256, bool) key = (codeHash, spec.IsEip8024Enabled);
+        if (!MutableCodeCache.TryGet(key, out CodeMutability mutability))
+        {
+            mutability = ScanCodeMutability(state.GetCode(in codeHash).Span, key.Item2);
+            MutableCodeCache.Set(key, mutability);
+        }
 
-        mutable = ContainsCodeChangingInstruction(state.GetCode(in key.Item1).Span, key.Item2);
-        MutableCodeCache.Set(key, mutable);
-        return mutable;
+        if (mutability == CodeMutability.ViaDelegation) AddCodeDependency(target, codeHash);
+        return mutability == CodeMutability.Direct;
     }
 
-    /// <summary>EIP-8298 mutable-code verdicts, keyed by code hash and whether EIP-8024 immediates are skipped.</summary>
-    internal static readonly ClockCache<(ValueHash256, bool), bool> MutableCodeCache =
+    private void AddCodeDependency(Address target, in ValueHash256 codeHash)
+    {
+        List<FrameTxCodeDependency> dependencies = _codeDependencies ??= [];
+        foreach (FrameTxCodeDependency dependency in dependencies)
+        {
+            if (dependency.Account == target) return;
+        }
+
+        dependencies.Add(new FrameTxCodeDependency(target, codeHash));
+    }
+
+    internal enum CodeMutability : byte
+    {
+        None,
+        ViaDelegation,
+        Direct,
+    }
+
+    /// <summary>EIP-8298 code mutability verdicts, keyed by code hash and whether EIP-8024 immediates are skipped.</summary>
+    internal static readonly ClockCache<(ValueHash256, bool), CodeMutability> MutableCodeCache =
         new(4_096, comparer: EqualityComparer<(ValueHash256, bool)>.Default);
 
-    /// <summary>Whether <paramref name="code"/> holds SETCODEFROM, DELEGATECALL or CALLCODE as an instruction.</summary>
+    /// <summary>Classifies <paramref name="code"/> by whether it holds SETCODEFROM, or else DELEGATECALL or CALLCODE, as an instruction.</summary>
     /// <remarks>
     /// Skips PUSH data, and, under EIP-8024, valid DUPN/SWAPN/EXCHANGE immediates. Those are never PUSH or
     /// JUMPDEST bytes, so every jump destination stays an instruction boundary of this scan.
     /// </remarks>
-    private static bool ContainsCodeChangingInstruction(ReadOnlySpan<byte> code, bool eip8024)
+    private static CodeMutability ScanCodeMutability(ReadOnlySpan<byte> code, bool eip8024)
     {
+        CodeMutability mutability = CodeMutability.None;
         for (int i = 0; i < code.Length; i++)
         {
             Instruction opcode = (Instruction)code[i];
             switch (opcode)
             {
-                case Instruction.SETCODEFROM or Instruction.DELEGATECALL or Instruction.CALLCODE:
-                    return true;
+                case Instruction.SETCODEFROM:
+                    return CodeMutability.Direct;
+                case Instruction.DELEGATECALL or Instruction.CALLCODE:
+                    mutability = CodeMutability.ViaDelegation;
+                    break;
                 case >= Instruction.PUSH1 and <= Instruction.PUSH32:
                     i += opcode - Instruction.PUSH0;
                     break;
@@ -332,7 +363,7 @@ public sealed class FrameTxValidationTracer(
             }
         }
 
-        return false;
+        return mutability;
     }
 
     private static bool IsCall(Instruction opcode) => opcode is

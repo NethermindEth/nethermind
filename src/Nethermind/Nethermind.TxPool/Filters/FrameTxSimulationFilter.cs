@@ -18,8 +18,14 @@ namespace Nethermind.TxPool.Filters;
 /// The simulation re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.
 /// Admitting an opaque transaction with no verdict leaves no payer, so <see cref="FrameTxPayerExposureFilter"/>
 /// reserves nothing against it: the exposure bound lapses while this node's own simulator is faulting.
-/// A gossiped transaction's simulation yields to block processing and to this node's block building, and is deferred.</remarks>
-internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator, ILogger logger, IChainHeadInfoProvider? headInfo = null) : IIncomingTxFilter
+/// A gossiped transaction's simulation yields to block processing and to this node's block building, and is deferred.
+/// An accepted prefix's EIP-8298 code dependencies are reserved against <paramref name="maxPendingPerCode"/>.</remarks>
+internal sealed class FrameTxSimulationFilter(
+    IFrameTxPrefixSimulator? simulator,
+    ILogger logger,
+    IChainHeadInfoProvider? headInfo = null,
+    PendingCodeDependencyCache? codeDependencies = null,
+    int maxPendingPerCode = 0) : IIncomingTxFilter
 {
     private readonly Func<bool>? _blockWorkInProgress = headInfo is null ? null : () => headInfo.IsProcessingBlock || headInfo.IsBuildingBlock;
 
@@ -68,6 +74,18 @@ internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator
                 return AcceptTxResult.Accepted;
 
             case FrameTxSimulationOutcome.Accepted:
+                if (result.CodeDependencies.Count > 0 && codeDependencies is not null)
+                {
+                    if (!codeDependencies.TryReserve(tx.Hash!.ValueHash256, result.CodeDependencies, maxPendingPerCode, out bool recorded))
+                    {
+                        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxCodeDependencyLimitReached);
+                        if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, its validation prefix relies on mutable code at the pending limit.");
+                        return AcceptTxResult.FrameTxCodeDependencyLimitReached;
+                    }
+
+                    state.CodeDependenciesReserved = recorded;
+                }
+
                 tx.PayerAddress = result.Payer;
                 if (logger.IsTrace) logger.Trace($"Simulated frame transaction {tx.Hash} validation prefix; resolved payer {result.Payer}.");
                 return AcceptTxResult.Accepted;
