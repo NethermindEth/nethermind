@@ -14,20 +14,12 @@ namespace Ethereum.ConsensusSpec.Test;
 [TestFixture]
 public class SanityTests
 {
-    private sealed class FixedNewPayloadNotifier(bool valid) : INewPayloadNotifier
-    {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => valid ? ExecutionStatus.Valid : ExecutionStatus.Invalid;
-    }
-
     [TestCaseSource(nameof(MinimalBlockCases))]
     public void Blocks(SanityCase testCase) => ExecuteBlocks(testCase);
-
     [TestCaseSource(nameof(MainnetBlockCases))]
     public void Blocks_mainnet(SanityCase testCase) => ExecuteBlocks(testCase);
-
     [TestCaseSource(nameof(MinimalSlotCases))]
     public void Slots(SanityCase testCase) => ExecuteSlots(testCase);
-
     [TestCaseSource(nameof(MainnetSlotCases))]
     public void Slots_mainnet(SanityCase testCase) => ExecuteSlots(testCase);
     [Test]
@@ -91,7 +83,7 @@ public class SanityTests
             for (int i = 0; i < blocksCount; i++)
             {
                 byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, $"blocks_{i}.ssz_snappy"));
-                FixedNewPayloadNotifier notifier = new(valid: true);
+                ForkChoiceStepDriver.FixedNewPayloadNotifier notifier = new(ExecutionStatus.Valid);
                 driver.ApplyBlock(state, ssz, spec, cache, pubkeys, notifier, verifySignatures);
             }
         }, "the block sequence", $"expected all {blocksCount} block(s) to apply, but it threw");

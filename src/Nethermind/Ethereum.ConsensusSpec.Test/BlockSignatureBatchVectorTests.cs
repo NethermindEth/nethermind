@@ -4,7 +4,6 @@
 using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
-using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
@@ -77,7 +76,7 @@ public class BlockSignatureBatchVectorTests
             // The Electra driver advances slots with its own lookahead refill, so only Fulu can run the production transition.
             if (batched && fulu.Fork == "fulu")
             {
-                FuluStateTransition.Apply(state, signedBlock, cache, pubkeys, new AcceptingNotifier(), spec, validateResult: false, verify);
+                FuluStateTransition.Apply(state, signedBlock, cache, pubkeys, new GloasForkChoiceStepDriver.ValidPayloadNotifier(), spec, validateResult: false, verify);
                 return block.StateRoot!;
             }
 
@@ -89,9 +88,9 @@ public class BlockSignatureBatchVectorTests
                 ? spec.MaxBlobsPerBlockElectra
                 : spec.GetBlobParameters(state.GetCurrentEpoch())?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra;
             if (batched)
-                BlockProcessing.ProcessBlock(state, block, cache, pubkeys, new AcceptingNotifier(), maxBlobs, verify);
+                BlockProcessing.ProcessBlock(state, block, cache, pubkeys, new GloasForkChoiceStepDriver.ValidPayloadNotifier(), maxBlobs, verify);
             else
-                BlockProcessing.ProcessBlock(state, block, cache, pubkeys, new AcceptingNotifier(), maxBlobs, verify, batch: null);
+                BlockProcessing.ProcessBlock(state, block, cache, pubkeys, new GloasForkChoiceStepDriver.ValidPayloadNotifier(), maxBlobs, verify, batch: null);
             return block.StateRoot!;
         }),
         ForkDriver<BeaconStateGloas> gloas => RunBlocks(testCase, gloas, batched, (state, ssz, spec, cache, pubkeys, verify) =>
@@ -102,9 +101,9 @@ public class BlockSignatureBatchVectorTests
             if (verify && !GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, pubkeys))
                 throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
             if (batched)
-                GloasBlockProcessing.ProcessBlock(state, block, cache, pubkeys, new AcceptingNotifier(), spec, verify);
+                GloasBlockProcessing.ProcessBlock(state, block, cache, pubkeys, new GloasForkChoiceStepDriver.ValidPayloadNotifier(), spec, verify);
             else
-                GloasBlockProcessing.ProcessBlock(state, block, cache, pubkeys, new AcceptingNotifier(), spec, verify, batch: null);
+                GloasBlockProcessing.ProcessBlock(state, block, cache, pubkeys, new GloasForkChoiceStepDriver.ValidPayloadNotifier(), spec, verify, batch: null);
             return block.StateRoot!;
         }),
         ForkDriver other => throw new InvalidOperationException($"fork '{other.Fork}' has no state type this differential knows"),
@@ -208,11 +207,5 @@ public class BlockSignatureBatchVectorTests
                 }
             }
         }
-    }
-
-    private sealed class AcceptingNotifier : INewPayloadNotifier
-    {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
-        public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) => ExecutionStatus.Valid;
     }
 }
