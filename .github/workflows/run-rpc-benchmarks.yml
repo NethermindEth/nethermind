@@ -1,5 +1,5 @@
-name: RPC prospective native capability
-run-name: RPC native lifecycle ${{ github.run_id }}
+name: RPC owned failure evidence
+run-name: RPC read-only recovery evidence ${{ github.run_id }}
 on:
   workflow_dispatch:
 permissions:
@@ -8,59 +8,22 @@ concurrency:
   group: codex-rpc-native-capability
   cancel-in-progress: false
 jobs:
-  capability:
+  evidence:
     runs-on: [self-hosted, reproducible-benchmarks]
-    timeout-minutes: 30
-    env:
-      OPERATOR: rpc-capability-operator-${{ github.run_id }}-${{ github.run_attempt }}
-      HARNESS: rpc-capability-harness-${{ github.run_id }}-${{ github.run_attempt }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          path: ${{ env.OPERATOR }}
+          path: rpc-recovery-${{ github.run_id }}-${{ github.run_attempt }}
           persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          ref: ae8611b2f50393223c7d87a0738be552503e388e
-          path: ${{ env.HARNESS }}
-          persist-credentials: false
-      - name: Verify portable and integration correctness before native mutation
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -B -m unittest discover -s "$HARNESS/scripts" -p 'test_rpc_*.py' -v
-          python3 -B -m unittest discover -s "$HARNESS/scripts/rpc-bench" -p 'test_sample_resources.py' -v
-          python3 -B -m unittest discover -s "$HARNESS/scripts/rpc-bench" -p 'test_rpc_startup.py' -v
-          python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability" -p 'test_guard.py' -v
-          python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability" -p 'test_runner.py' -v
-          python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability/native" -p 'test_native_capability.py' -v
-      - name: Run one prospective lifecycle capability
-        id: native
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          python3 -B "$OPERATOR/scripts/rpc-capability/launch.py" --operator "$OPERATOR" --harness "$HARNESS"
-      - name: Verify owned closure and prepare content-free public result
-        id: publication
-        if: success() && steps.native.outcome == 'success'
-        shell: bash
-        run: python3 -B "$OPERATOR/scripts/rpc-capability/guard.py" publish
+      - name: Retain encrypted read-only evidence of failed owned attempt
+        id: evidence
+        run: python3 -B rpc-recovery-${{ github.run_id }}-${{ github.run_attempt }}/scripts/rpc-recovery/capture.py
       - uses: actions/upload-artifact@v4
-        id: upload
-        if: success() && steps.publication.outputs.ready == 'true'
+        if: success()
         with:
-          name: rpc-native-capability-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ steps.publication.outputs.public }}/
+          name: rpc-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.evidence.outputs.public }}/
           if-no-files-found: error
           retention-days: 30
-      - name: Record upload and release only this completed reservation
-        if: success() && steps.upload.outcome == 'success'
-        env:
-          UPLOADED_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
-          UPLOADED_ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
-        shell: bash
-        run: python3 -B "$OPERATOR/scripts/rpc-capability/guard.py" release

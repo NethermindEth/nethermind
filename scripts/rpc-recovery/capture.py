@@ -8,7 +8,7 @@ import stat
 import subprocess
 import sys
 
-OLD_RUN = '37293502679'
+OLD_RUN = '37309091869'
 SHARED = Path('/mnt/sda/expb-data/rpc-bench-scratch')
 STORAGE = SHARED / ('rpc-private-' + OLD_RUN + '-1')
 LOCK = SHARED / 'rpc-native-capability.lock'
@@ -21,6 +21,7 @@ def write(path, value):
 
 def main():
     os.umask(0o077)
+    assert os.environ.get('RUNNER_NAME') == 'reproducible-benchmarks'
     repository = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(repository / 'scripts/rpc-bench/private_audit'))
     import archive_private as archive
@@ -67,10 +68,22 @@ def main():
         copied[str(relative)] = {'identity':before,'sha256':archive.digest_file(output)}
     for path in STORAGE.iterdir():
         if path.is_file(): copy(path)
-    for directory in (STORAGE / ('spin-diagnostic-' + OLD_RUN + '-1'), STORAGE / 'state', STORAGE / 'scratch/cpu-state'):
+    for directory in (STORAGE / ('spin-diagnostic-' + OLD_RUN + '-1'), STORAGE / 'state', STORAGE / 'scratch/cpu-state',
+                      STORAGE / 'scratch/warmup-cell/default/nativecap'):
         if directory.exists():
             for path in directory.rglob('*'):
                 if path.is_file(): copy(path)
+    optional = {}
+    for relative in ('scratch/jsonbench/jsonbench-tool.log', 'scratch/jsonbench/io/out/summary.json',
+                     'scratch/jsonbench/io/benchmark.yaml', 'scratch/jsonbench/io/clients.yaml'):
+        path = STORAGE / relative
+        optional[relative] = 'NOT_PRESENT'
+        if path.exists():
+            copy(path)
+            optional[relative] = 'STABLE_PRIVATE_COPY'
+    optional['scratch/warmup-cell/default/nativecap'] = (
+        'DIRECTORY_PRESENT' if (STORAGE / 'scratch/warmup-cell/default/nativecap').exists() else 'NOT_PRESENT')
+    write(source / 'optional-source-presence.json', optional)
     assert len(copied) <= 5000
     write(source / 'copied.json', copied)
     docker = subprocess.check_output(['docker','ps','-a','--no-trunc','--format','{{json .}}'], timeout=30)
@@ -80,15 +93,24 @@ def main():
     for cid in labelled.decode().splitlines():
         assert re.fullmatch('[0-9a-f]{64}', cid)
         (source / ('container-'+cid+'.json')).write_bytes(subprocess.check_output(['docker','inspect',cid],timeout=30))
+    OLD_CID = (STORAGE / ('spin-diagnostic-' + OLD_RUN + '-1') / 'capability-node-cid.log').read_text().strip()
+    assert re.fullmatch('[0-9a-f]{64}', OLD_CID)
     matches, inaccessible = [], []
-    tokens = [str(STORAGE).encode(), ('rpc-capability-operator-'+OLD_RUN+'-1').encode(), ('rpc-capability-harness-'+OLD_RUN+'-1').encode()]
+    tokens = [str(STORAGE).encode(), ('rpc-capability-operator-'+OLD_RUN+'-1').encode(), ('rpc-capability-harness-'+OLD_RUN+'-1').encode(), OLD_CID.encode()]
     for process in Path('/proc').iterdir():
         if not process.name.isdecimal() or int(process.name) == os.getpid(): continue
         try:
             cmd = (process/'cmdline').read_bytes()
             environment = (process/'environ').read_bytes()
-            if any(token in cmd or token in environment for token in tokens):
-                matches.append({'pid':int(process.name),'stat':(process/'stat').read_text(),'cmdline':cmd.decode(errors='replace')})
+            references=[cmd,environment,(process/'cgroup').read_bytes()]
+            if cmd:
+                references.append(os.readlink(process/'cwd').encode())
+                for descriptor in (process/'fd').iterdir():
+                    try:references.append(os.readlink(descriptor).encode())
+                    except FileNotFoundError:pass
+            if any(token in item for token in tokens for item in references):
+                matches.append({'pid':int(process.name),'stat':(process/'stat').read_text(),'cmdline':cmd.decode(errors='replace'),
+                                'cgroup':(process/'cgroup').read_text()})
         except (FileNotFoundError, ProcessLookupError):
             continue
         except PermissionError:
