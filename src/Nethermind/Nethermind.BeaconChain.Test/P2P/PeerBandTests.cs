@@ -558,27 +558,18 @@ public class PeerBandTests
         Assert.That(after - before, Is.EqualTo(1), "the closed-cardinality reason, not the free-text detail, is the metric label");
     }
 
-    [Test]
-    public void TryGetPeer_refuses_an_unknown_peer_id_rather_than_matching_anything()
+    [TestCase("no-such-peer", TestName = "TryGetPeer_refuses_an_unknown_peer_id_rather_than_matching_anything")]
+    [TestCase("", TestName = "TryGetPeer_refuses_an_empty_id_even_when_an_unresolved_dialing_address_would_otherwise_match_it")]
+    public void TryGetPeer_refuses_unmatched_ids(string peerId)
     {
         Node node = CreateNode();
         PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+        // A real dial clears this unresolved reservation before the test could observe it.
+        if (peerId.Length == 0) peerManager.ReserveDialingForTest("/ip4/1.2.3.4/tcp/9000/p2p/");
         IPeerDirectory directory = peerManager;
 
-        Assert.That(directory.TryGetPeer("no-such-peer", out _), Is.False);
-    }
-
-    [Test]
-    public void TryGetPeer_refuses_an_empty_id_even_when_an_unresolved_dialing_address_would_otherwise_match_it()
-    {
-        // An address ending in /p2p/ is the only way a tracked entry's derived peer id is "", reached here directly
-        // since a real dial to it fails and clears its reservation before a test could observe it.
-        Node node = CreateNode();
-        PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
-        peerManager.ReserveDialingForTest("/ip4/1.2.3.4/tcp/9000/p2p/");
-        IPeerDirectory directory = peerManager;
-
-        Assert.That(directory.TryGetPeer("", out _), Is.False, "an empty id must never be treated as a wildcard, even when a raw '' address is technically tracked");
+        Assert.That(directory.TryGetPeer(peerId, out _), Is.False, peerId.Length == 0
+            ? "an empty id must never be treated as a wildcard, even when a raw '' address is technically tracked" : null);
     }
 
     public enum BanTableScenario { AllBanned, ActiveBan, ExpiredBan, NoBans }
