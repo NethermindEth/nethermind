@@ -26,18 +26,20 @@ public class CustodySamplingAvailabilityTests
 
     private static NodeColumnCustody BaseCustody() => new(NodeId, Eip7594DasConstants.CustodyRequirement);
 
-    [Test]
-    public void A_block_without_blob_commitments_is_available_without_identity_or_columns()
+    [TestCase(false, TestName = "A_block_without_blob_commitments_is_available_without_identity_or_columns")]
+    [TestCase(true, TestName = "Below_the_availability_window_a_blob_block_is_available_without_identity_or_columns")]
+    public void Columns_are_not_requested_when_the_block_requires_no_available_data(bool belowWindow)
     {
-        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        ImportableBlobBlock chain = belowWindow ? ImportableBlobBlock.Create() : ImportableBlobBlock.CreateWithoutBlobs();
         RecordingColumnSource columns = new(chain, []);
-        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(null), columns, chain.ClockAtEpoch(0));
+        ulong epoch = belowWindow ? Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 1 : 0;
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(null), columns, chain.ClockAtEpoch(epoch));
 
         bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(available, Is.True);
-        Assert.That(columns.Requested, Is.Empty, "nothing to retrieve for a block that committed to no blobs");
+        Assert.That(available, Is.True, belowWindow ? "the network no longer guarantees to serve this epoch's columns, so none can be demanded" : null);
+        Assert.That(columns.Requested, Is.Empty, belowWindow ? "the window is decided before any column is looked up" : "nothing to retrieve for a block that committed to no blobs");
     }
 
     [Test]
@@ -106,20 +108,6 @@ public class CustodySamplingAvailabilityTests
         CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False);
-    }
-
-    [Test]
-    public void Below_the_availability_window_a_blob_block_is_available_without_identity_or_columns()
-    {
-        ImportableBlobBlock chain = ImportableBlobBlock.Create();
-        RecordingColumnSource columns = new(chain, []);
-        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(null), columns, chain.ClockAtEpoch(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 1));
-
-        bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(available, Is.True, "the network no longer guarantees to serve this epoch's columns, so none can be demanded");
-        Assert.That(columns.Requested, Is.Empty, "the window is decided before any column is looked up");
     }
 
     [Test]

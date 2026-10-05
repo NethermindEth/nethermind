@@ -17,6 +17,13 @@ public class DataColumnSidecarVerifierTests
     private static IEnumerable<TestCaseData> CryptographicChecks()
     {
         yield return Case("A_correctly_formed_sidecar_passes_every_check", null, true, true, true);
+        yield return Case("VerifyStructure_rejects_an_out_of_range_index", sidecar => sidecar.Index = (ulong)Eip7594DasConstants.NumberOfColumns, false, null, null);
+        yield return Case("VerifyStructure_rejects_zero_commitments", sidecar =>
+        {
+            sidecar.KzgCommitments = [];
+            sidecar.Column = [];
+            sidecar.KzgProofs = [];
+        }, false, null, null);
         yield return Case("A_sidecar_with_a_tampered_cell_fails_kzg_verification", sidecar =>
         {
             byte[] tampered = sidecar.Column![0].AsSpan().ToArray();
@@ -61,26 +68,6 @@ public class DataColumnSidecarVerifierTests
             Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.EqualTo(expectedKzg));
         if (inclusion is bool expectedInclusion)
             Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.EqualTo(expectedInclusion));
-    }
-
-    [Test]
-    public void VerifyStructure_rejects_an_out_of_range_index()
-    {
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-        sidecar.Index = (ulong)Eip7594DasConstants.NumberOfColumns;
-
-        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
-    }
-
-    [Test]
-    public void VerifyStructure_rejects_zero_commitments()
-    {
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex);
-        sidecar.KzgCommitments = [];
-        sidecar.Column = [];
-        sidecar.KzgProofs = [];
-
-        Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
     }
 
     [TestCase(false, TestName = "VerifyStructure_rejects_a_column_proofs_length_mismatch")]
