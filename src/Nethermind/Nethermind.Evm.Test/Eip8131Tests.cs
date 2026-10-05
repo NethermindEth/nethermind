@@ -31,16 +31,10 @@ namespace Nethermind.Evm.Test;
 public class Eip8131Tests
 {
     // Without EIP-2780 the floor is anchored on TX_BASE = 21000.
-    private static readonly IReleaseSpec PragueSpec = new OverridableReleaseSpec(Prague.Instance)
-    {
-        IsEip7976Enabled = true,
-        IsEip7981Enabled = true,
-        IsEip8131Enabled = true,
-    };
+    private static readonly IReleaseSpec WithoutEip2780Spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip2780Enabled = false, IsEip8131Enabled = true };
 
     // With EIP-2780 the floor is anchored on the decomposed intrinsic base, which is 21000 for a value transfer to another account.
-    private static readonly IReleaseSpec AmsterdamSpec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8131Enabled = true };
-
+    private static readonly IReleaseSpec WithEip2780Spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true };
 
     private static TransactionBuilder<Transaction> ValueTransfer(TxType type) => Build.A.Transaction
         .WithType(type)
@@ -52,7 +46,7 @@ public class Eip8131Tests
 
     private static IEnumerable<TestCaseData> EipTestCases()
     {
-        foreach ((string label, IReleaseSpec spec) in (ValueTuple<string, IReleaseSpec>[])[("without EIP-2780", PragueSpec), ("with EIP-2780", AmsterdamSpec)])
+        foreach ((string label, IReleaseSpec spec) in (ValueTuple<string, IReleaseSpec>[])[("without EIP-2780", WithoutEip2780Spec), ("with EIP-2780", WithEip2780Spec)])
         {
             foreach (TestCaseData vector in EipVectors())
             {
@@ -117,10 +111,12 @@ public class Eip8131Tests
     public void Content_floor_bounds_gas_limit_and_gas_used(ulong gasLimit, bool executed)
     {
         const ulong floor = 33_288;
-        TestSpecProvider specProvider = new(PragueSpec);
+        TestSpecProvider specProvider = new(WithoutEip2780Spec);
         IWorldState state = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
         state.CreateAccount(TestItem.AddressA, 1.Ether);
+        // An existing recipient keeps EIP-8037 new-account state gas out of the 1-wei transfer.
+        state.CreateAccount(TestItem.AddressB, 1);
         state.Commit(specProvider.GenesisSpec);
         state.CommitTree(0);
 
@@ -138,13 +134,14 @@ public class Eip8131Tests
         Block block = Build.A.Block.WithNumber(1).WithGasLimit(1_000_000).WithBaseFeePerGas(1).WithExcessBlobGas(0).WithTransactions(tx).TestObject;
 
         CallOutputTracer tracer = new();
-        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, PragueSpec), tracer);
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, WithoutEip2780Spec), tracer);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.EqualTo(executed));
             Assert.That(result.Error, Is.EqualTo(executed ? TransactionResult.ErrorType.None : TransactionResult.ErrorType.GasLimitBelowFloorGas));
             Assert.That(tracer.GasSpent, Is.EqualTo(executed ? floor : 0UL));
+            Assert.That(tracer.StatusCode, Is.EqualTo(executed ? StatusCode.Success : StatusCode.Failure));
         }
     }
 }
