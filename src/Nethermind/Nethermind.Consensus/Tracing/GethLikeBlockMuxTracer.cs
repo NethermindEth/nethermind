@@ -21,7 +21,11 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
 {
     internal const string TracerName = "muxTracer";
 
-    private static readonly JsonSerializerOptions ResultOptions = new() { MaxDepth = EthereumJsonSerializer.DefaultMaxDepth };
+    private static readonly JsonSerializerOptions ResultOptions = new()
+    {
+        MaxDepth = EthereumJsonSerializer.DefaultMaxDepth,
+        TypeInfoResolver = TracingJsonContext.Default
+    };
 
     private readonly Hash256? _txHash;
     private readonly CompositeBlockTracer _composite = new();
@@ -66,7 +70,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
             };
             throw new InvalidDataException($"json: cannot unmarshal {type} into Go value of type map[string]jsontext.Value");
         }
-        return config.Value.Deserialize<Dictionary<string, JsonElement>>()!;
+        return TypeInfoJsonSerializer.Deserialize<Dictionary<string, JsonElement>>(config.Value, ResultOptions)!;
     }
 
     /// <inheritdoc/>
@@ -141,12 +145,14 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
             {
                 int index = 0;
                 foreach (GethLikeTxTrace trace in child.BuildResult())
-                    values[index++].Add(name, JsonSerializer.SerializeToElement(trace, EthereumJsonSerializer.JsonOptions));
+                    values[index++].Add(name, JsonSerializer.SerializeToElement(trace,
+                        TypeInfoJsonSerializer.GetTypeInfo<GethLikeTxTrace>(EthereumJsonSerializer.JsonOptions)));
                 if (index != results.Length)
                     throw new InvalidOperationException("Mux child returned a different number of transaction traces.");
             }
             for (int i = 0; i < results.Length; i++)
-                results[i].CustomTracerResult!.Value = JsonSerializer.SerializeToElement(values[i], ResultOptions);
+                results[i].CustomTracerResult!.Value = JsonSerializer.SerializeToElement(values[i],
+                    TypeInfoJsonSerializer.GetTypeInfo<Dictionary<string, JsonElement>>(ResultOptions));
             return _results = results;
         }
         finally

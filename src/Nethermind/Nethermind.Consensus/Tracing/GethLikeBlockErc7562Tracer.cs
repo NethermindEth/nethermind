@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -42,7 +43,8 @@ internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>
         _worldState = worldState;
         _specProvider = specProvider;
         _txHash = options.TxHash;
-        JsonElement config = JsonSerializer.SerializeToElement(new { withLog });
+        JsonElement config = JsonSerializer.SerializeToElement(new NativeCallTracerConfig { WithLog = withLog },
+            TracingJsonContext.Default.NativeCallTracerConfig);
         _inner = new GethLikeBlockCallTracer(options.TxHash, (block, tx) =>
             new NativeCallTracer(tx, specProvider.GetSpec(block.Header), options with { Tracer = NativeCallTracer.CallTracer, TracerConfig = config }));
     }

@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
@@ -18,20 +19,20 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
     public GethTraceOptionsConverter() { }
 
     public override GethTraceOptions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        JsonSerializer.Deserialize<WireOptions>(ref reader, WireSerializerOptions(options))!;
+        TypeInfoJsonSerializer.Deserialize<WireOptions>(ref reader, WireSerializerOptions(options))!;
 
     public override void Write(Utf8JsonWriter writer, GethTraceOptions value, JsonSerializerOptions options) =>
-        JsonSerializer.Serialize(writer, value as WireOptions ?? new WireOptions(value), WireSerializerOptions(options));
+        TypeInfoJsonSerializer.Serialize(writer, value as WireOptions ?? new WireOptions(value), WireSerializerOptions(options));
 
     private static JsonSerializerOptions WireSerializerOptions(JsonSerializerOptions options) =>
         options.TryGetTypeInfo(typeof(WireOptions), out _) ? options : WireFallbacks.GetValue(options, static original => new(original)
         {
-            TypeInfoResolver = JsonTypeInfoResolver.Combine(original.TypeInfoResolver, new DefaultJsonTypeInfoResolver())
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(original.TypeInfoResolver, TracingJsonContext.Default)
         });
 
     // A separate wire contract retains the raw string without exposing another option or making
     // source-generated metadata access private JsonInclude members. Parsing follows tracer construction.
-    private sealed record WireOptions : GethTraceOptions
+    internal sealed record WireOptions : GethTraceOptions
     {
         public WireOptions() { }
         public WireOptions(GethTraceOptions options) : base(options) { }

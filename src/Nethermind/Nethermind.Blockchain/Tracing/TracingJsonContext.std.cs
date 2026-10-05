@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.Tracing;
 /// and for the traces and receipts the trace store and trace dumps write.
 /// </summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(GethTraceOptionsConverter.WireOptions))]
 [JsonSerializable(typeof(GethLikeCustomTrace))]
 [JsonSerializable(typeof(GethLikeCustomTrace.EmptyValue))]
 [JsonSerializable(typeof(GethLikeTxTraceCollection))]
@@ -44,12 +45,14 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSerializable(typeof(List<ParityLikeTxTrace>))]
 [JsonSerializable(typeof(IReadOnlyCollection<ParityLikeTxTrace>))]
 [JsonSerializable(typeof(IReadOnlyCollection<GethLikeTxTrace>))]
+[JsonSerializable(typeof(GethLikeTxTrace[][]))]
 [JsonSerializable(typeof(TxReceipt[]))]
 [JsonSerializable(typeof(UInt256?))]
 [JsonSerializable(typeof(byte[][]))]
 [JsonSerializable(typeof(Memory<NativeCallTracerLogEntry>))]
 [JsonSerializable(typeof(Dictionary<Hash256, byte[]>))]
 [JsonSerializable(typeof(Dictionary<string, int>))]
+[JsonSerializable(typeof(Dictionary<string, System.Text.Json.JsonElement>))]
 [JsonSerializable(typeof(Dictionary<UInt256, UInt256>))]
 internal partial class TracingJsonContext : JsonSerializerContext
 {
