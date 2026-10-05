@@ -454,12 +454,18 @@ namespace Nethermind.Trie
         {
             Metrics.IncrementTreeNodeRlpDecodings();
 
-            LiteRlpReader reader = new(data);
-
             int position = 0;
-            reader.ReadSequenceLength(ref position, out _);
-
-            int numberOfItems = itemsCount = CountUpToThreeItems(reader, position, data.Length);
+            int numberOfItems;
+            if (StartsWithThreeHashes(data))
+            {
+                numberOfItems = itemsCount = 3;
+            }
+            else
+            {
+                LiteRlpReader reader = new(data);
+                reader.ReadSequenceLength(ref position, out _);
+                numberOfItems = itemsCount = CountUpToThreeItems(reader, position, data.Length);
+            }
 
             if (numberOfItems < 2)
             {
@@ -476,6 +482,17 @@ namespace Nethermind.Trie
 
             return true;
         }
+
+        /// <summary>Whether <paramref name="data"/> is a long list whose first three items are 32-byte strings.</summary>
+        /// <remarks>
+        /// The shape of most branches a trie walk resolves, told from five byte loads instead of reading the list header
+        /// and three item lengths. Gives the item count the full read does, as three 33-byte items from offset 3 are three
+        /// items whatever follows, but does not validate the list header.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool StartsWithThreeHashes(ReadOnlySpan<byte> data) =>
+            data.Length >= 3 + 3 * (Hash256.Size + 1)
+            && data[0] == 0xf9 && data[3] == 0xa0 && data[3 + Hash256.Size + 1] == 0xa0 && data[3 + 2 * (Hash256.Size + 1)] == 0xa0;
 
         /// <summary>Counts the items from <paramref name="position"/> to <paramref name="end"/>, stopping at three.</summary>
         /// <remarks>
