@@ -16,7 +16,10 @@ public class CLChainSpecEngineParametersTests
         CLChainSpecEngineParameters parameters = new EthereumJsonSerializer().Deserialize<CLChainSpecEngineParameters>("""{"l1ChainId":1}""")!;
 
         // Derivation builds the L1 info deposit from these, so losing them breaks every derived block.
-        Assert.That(parameters.SystemTransactionSender, Is.EqualTo(new Address("0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001")));
-        Assert.That(parameters.SystemTransactionTo, Is.EqualTo(new Address("0x4200000000000000000000000000000000000015")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parameters.SystemTransactionSender, Is.EqualTo(new Address("0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001")));
+            Assert.That(parameters.SystemTransactionTo, Is.EqualTo(new Address("0x4200000000000000000000000000000000000015")));
+        }
     }
 }

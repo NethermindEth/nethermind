@@ -196,7 +196,13 @@ internal static class Program
             }
         }
 
-        JsonRoot[] roots = [.. propertyNameByDisplayName.Select(static p => new JsonRoot(p.Key, p.Value))];
+        JsonRoot[] roots = new JsonRoot[propertyNameByDisplayName.Count];
+        int index = 0;
+        foreach (KeyValuePair<string, string?> root in propertyNameByDisplayName)
+        {
+            roots[index++] = new JsonRoot(root.Key, root.Value);
+        }
+
         Array.Sort(roots, static (left, right) => StringComparer.Ordinal.Compare(left.DisplayName, right.DisplayName));
         return roots;
     }

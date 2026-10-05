@@ -992,8 +992,11 @@ public class SszMiddlewareTests
         ClientVersionV1 arg = (ClientVersionV1)_engineModule.ReceivedCalls()
             .Single(c => c.GetMethodInfo().Name == nameof(IEngineRpcModule.engine_getClientVersionV1))
             .GetArguments()[0]!;
-        Assert.That(arg.Name, Is.EqualTo("Lighthouse"));
-        Assert.That(arg.Code, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(arg.Name, Is.EqualTo("Lighthouse"));
+            Assert.That(arg.Code, Is.Null);
+        }
     }
 
     [Test]

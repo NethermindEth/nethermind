@@ -24,51 +24,67 @@ namespace Nethermind.Serialization.Json;
 /// </remarks>
 public static class TypeInfoJsonSerializer
 {
+    /// <inheritdoc cref="JsonSerializer.Serialize{TValue}(Utf8JsonWriter, TValue, JsonSerializerOptions)"/>
     public static void Serialize<TValue>(Utf8JsonWriter writer, TValue value, JsonSerializerOptions options) =>
         JsonSerializer.Serialize(writer, value, GetTypeInfo<TValue>(options));
 
+    /// <inheritdoc cref="JsonSerializer.Serialize(Utf8JsonWriter, object, Type, JsonSerializerOptions)"/>
     public static void Serialize(Utf8JsonWriter writer, object? value, Type inputType, JsonSerializerOptions options) =>
         JsonSerializer.Serialize(writer, value, GetTypeInfo(options, inputType));
 
+    /// <inheritdoc cref="JsonSerializer.Serialize{TValue}(Stream, TValue, JsonSerializerOptions)"/>
     public static void Serialize<TValue>(Stream utf8Json, TValue value, JsonSerializerOptions options) =>
         JsonSerializer.Serialize(utf8Json, value, GetTypeInfo<TValue>(options));
 
+    /// <inheritdoc cref="JsonSerializer.Serialize{TValue}(TValue, JsonSerializerOptions)"/>
     public static string Serialize<TValue>(TValue value, JsonSerializerOptions options) =>
         JsonSerializer.Serialize(value, GetTypeInfo<TValue>(options));
 
+    /// <inheritdoc cref="JsonSerializer.SerializeToUtf8Bytes{TValue}(TValue, JsonSerializerOptions)"/>
     public static byte[] SerializeToUtf8Bytes<TValue>(TValue value, JsonSerializerOptions options) =>
         JsonSerializer.SerializeToUtf8Bytes(value, GetTypeInfo<TValue>(options));
 
+    /// <inheritdoc cref="JsonSerializer.SerializeToUtf8Bytes(object, Type, JsonSerializerOptions)"/>
     public static byte[] SerializeToUtf8Bytes(object? value, Type inputType, JsonSerializerOptions options) =>
         JsonSerializer.SerializeToUtf8Bytes(value, GetTypeInfo(options, inputType));
 
+    /// <inheritdoc cref="JsonSerializer.SerializeAsync{TValue}(Stream, TValue, JsonSerializerOptions, CancellationToken)"/>
     public static Task SerializeAsync<TValue>(Stream utf8Json, TValue value, JsonSerializerOptions options, CancellationToken cancellationToken = default) =>
         JsonSerializer.SerializeAsync(utf8Json, value, GetTypeInfo<TValue>(options), cancellationToken);
 
+    /// <inheritdoc cref="JsonSerializer.SerializeAsync{TValue}(PipeWriter, TValue, JsonSerializerOptions, CancellationToken)"/>
     public static Task SerializeAsync<TValue>(PipeWriter utf8Json, TValue value, JsonSerializerOptions options, CancellationToken cancellationToken = default) =>
         JsonSerializer.SerializeAsync(utf8Json, value, GetTypeInfo<TValue>(options), cancellationToken);
 
+    /// <inheritdoc cref="JsonSerializer.Deserialize{TValue}(ref Utf8JsonReader, JsonSerializerOptions)"/>
     public static TValue? Deserialize<TValue>(ref Utf8JsonReader reader, JsonSerializerOptions options) =>
         JsonSerializer.Deserialize(ref reader, GetTypeInfo<TValue>(options));
 
+    /// <inheritdoc cref="JsonSerializer.Deserialize(ref Utf8JsonReader, Type, JsonSerializerOptions)"/>
     public static object? Deserialize(ref Utf8JsonReader reader, Type returnType, JsonSerializerOptions options) =>
         JsonSerializer.Deserialize(ref reader, GetTypeInfo(options, returnType));
 
+    /// <inheritdoc cref="JsonSerializer.Deserialize{TValue}(string, JsonSerializerOptions)"/>
     public static TValue? Deserialize<TValue>(string json, JsonSerializerOptions options) =>
         JsonSerializer.Deserialize(json, GetTypeInfo<TValue>(options));
 
+    /// <inheritdoc cref="JsonSerializer.Deserialize(string, Type, JsonSerializerOptions)"/>
     public static object? Deserialize(string json, Type returnType, JsonSerializerOptions options) =>
         JsonSerializer.Deserialize(json, GetTypeInfo(options, returnType));
 
+    /// <inheritdoc cref="JsonSerializer.Deserialize{TValue}(ReadOnlySpan{byte}, JsonSerializerOptions)"/>
     public static TValue? Deserialize<TValue>(ReadOnlySpan<byte> utf8Json, JsonSerializerOptions options) =>
         JsonSerializer.Deserialize(utf8Json, GetTypeInfo<TValue>(options));
 
+    /// <inheritdoc cref="JsonSerializer.Deserialize(ReadOnlySpan{byte}, Type, JsonSerializerOptions)"/>
     public static object? Deserialize(ReadOnlySpan<byte> utf8Json, Type returnType, JsonSerializerOptions options) =>
         JsonSerializer.Deserialize(utf8Json, GetTypeInfo(options, returnType));
 
+    /// <inheritdoc cref="JsonSerializer.Deserialize{TValue}(Stream, JsonSerializerOptions)"/>
     public static TValue? Deserialize<TValue>(Stream utf8Json, JsonSerializerOptions options) =>
         JsonSerializer.Deserialize(utf8Json, GetTypeInfo<TValue>(options));
 
+    /// <inheritdoc cref="JsonSerializer.Deserialize{TValue}(JsonElement, JsonSerializerOptions)"/>
     public static TValue? Deserialize<TValue>(JsonElement element, JsonSerializerOptions options) =>
         element.Deserialize(GetTypeInfo<TValue>(options));
 
@@ -76,9 +92,11 @@ public static class TypeInfoJsonSerializer
     public static TValue? Deserialize<TValue>(JsonElement? element, JsonSerializerOptions options) where TValue : class =>
         element is { } value ? Deserialize<TValue>(value, options) : null;
 
+    /// <inheritdoc cref="JsonSerializer.Deserialize(JsonElement, Type, JsonSerializerOptions)"/>
     public static object? Deserialize(JsonElement element, Type returnType, JsonSerializerOptions options) =>
         element.Deserialize(GetTypeInfo(options, returnType));
 
+    /// <inheritdoc cref="JsonSerializer.DeserializeAsync{TValue}(Stream, JsonSerializerOptions, CancellationToken)"/>
     public static ValueTask<TValue?> DeserializeAsync<TValue>(Stream utf8Json, JsonSerializerOptions options, CancellationToken cancellationToken = default) =>
         JsonSerializer.DeserializeAsync(utf8Json, GetTypeInfo<TValue>(options), cancellationToken);
 
@@ -100,33 +118,46 @@ public static class TypeInfoJsonSerializer
     /// Converters call into the serializer once per nested value, so a lookup in the options' metadata cache on every call is
     /// measurable. Two remembered entries per type serve the request and response options together without evicting each
     /// other; misses replace them in turn, so an entry for options that are no longer used is gone after the next miss.
+    /// Hits read the immutable entries without locking; misses replace them under a lock.
     /// </remarks>
     private static class TypeInfoCache<T>
     {
+        private static readonly Lock _replaceLock = new();
         private static Entry? _first;
         private static Entry? _second;
         private static bool _replaceSecond;
 
-        public static JsonTypeInfo<T> Get(JsonSerializerOptions options)
+        public static JsonTypeInfo<T> Get(JsonSerializerOptions options) =>
+            TryGet(options) ?? Add(options);
+
+        private static JsonTypeInfo<T>? TryGet(JsonSerializerOptions options)
         {
-            Entry? entry = _first;
+            Entry? entry = Volatile.Read(ref _first);
             if (entry is not null && ReferenceEquals(entry.Options, options))
             {
                 return entry.TypeInfo;
             }
 
-            entry = _second;
-            if (entry is not null && ReferenceEquals(entry.Options, options))
-            {
-                return entry.TypeInfo;
-            }
+            entry = Volatile.Read(ref _second);
+            return entry is not null && ReferenceEquals(entry.Options, options) ? entry.TypeInfo : null;
+        }
 
-            JsonTypeInfo<T> typeInfo = (JsonTypeInfo<T>)GetTypeInfo(options, typeof(T));
-            Entry created = new(options, typeInfo);
-            if (_replaceSecond) _second = created;
-            else _first = created;
-            _replaceSecond = !_replaceSecond;
-            return typeInfo;
+        private static JsonTypeInfo<T> Add(JsonSerializerOptions options)
+        {
+            lock (_replaceLock)
+            {
+                if (TryGet(options) is { } cached)
+                {
+                    return cached;
+                }
+
+                JsonTypeInfo<T> typeInfo = (JsonTypeInfo<T>)GetTypeInfo(options, typeof(T));
+                Entry created = new(options, typeInfo);
+                if (_replaceSecond) Volatile.Write(ref _second, created);
+                else Volatile.Write(ref _first, created);
+                _replaceSecond = !_replaceSecond;
+                return typeInfo;
+            }
         }
 
         private sealed class Entry(JsonSerializerOptions options, JsonTypeInfo<T> typeInfo)

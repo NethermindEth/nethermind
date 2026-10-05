@@ -11,14 +11,8 @@ namespace Nethermind.HealthChecks.Test;
 public class NodeHealthReportCollectorTests
 {
     // The setting decides whether the library collector, with its notify-once policy, runs instead of the in-process one.
-    [TestCase(null)]
-    [TestCase("true")]
-    [TestCase("True")]
-    [TestCase("false")]
-    [TestCase(" FALSE ")]
-    [TestCase("")]
-    [TestCase("yes")]
-    public void Notify_once_setting_reads_as_the_configuration_binder_does(string value)
+    [Test]
+    public void Notify_once_setting_reads_as_the_configuration_binder_does([Values(null, "true", "True", "false", " FALSE ", "", "yes")] string value)
     {
         IConfiguration configuration = Configuration(value);
         bool? expected = Read(() => configuration.GetSection("HealthChecksUI").GetValue<bool>("NotifyUnHealthyOneTimeUntilChange"));
