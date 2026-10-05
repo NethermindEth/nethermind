@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -340,23 +341,6 @@ namespace Nethermind.Trie
             ResolveUnknownNodeWithContext(tree, path, readFlags, bufferPool);
         }
 
-        private void ResolveUnknownNodeWithContext(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
-            ICappedArrayPool? bufferPool)
-        {
-            try
-            {
-                ResolveUnknownNode(tree, path, readFlags, bufferPool);
-            }
-            catch (RlpException rlpException)
-            {
-                ThrowDecodingError(rlpException, path);
-            }
-
-            [DoesNotReturn, StackTraceHidden]
-            void ThrowDecodingError(RlpException rlpException, in TreePath path) => throw new TrieNodeException($"Error when decoding node {Keccak}", path,
-                    Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
-        }
-
         /// <summary>
         /// Highly optimized
         /// </summary>
@@ -475,8 +459,7 @@ namespace Nethermind.Trie
             int position = 0;
             reader.ReadSequenceLength(ref position, out _);
 
-            // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-            int numberOfItems = itemsCount = reader.CountItems(position, data.Length, 3);
+            int numberOfItems = itemsCount = CountUpToThreeItems(reader, position, data.Length);
 
             if (numberOfItems < 2)
             {
@@ -492,6 +475,24 @@ namespace Nethermind.Trie
             }
 
             return true;
+        }
+
+        /// <summary>Counts the items from <paramref name="position"/> to <paramref name="end"/>, stopping at three.</summary>
+        /// <remarks>
+        /// Unrolled: telling a branch from a two-item node needs no more than three items, and a loop's
+        /// counter and limit test cost about as much per item as reading the item's length.
+        /// The third item's length is still read, so a malformed one throws as it did in the loop.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int CountUpToThreeItems(LiteRlpReader reader, int position, int end)
+        {
+            if (position >= end) return 0;
+            position += reader.PeekNextRlpLength(position);
+            if (position >= end) return 1;
+            position += reader.PeekNextRlpLength(position);
+            if (position >= end) return 2;
+            reader.PeekNextRlpLength(position);
+            return 3;
         }
 
         /// <summary>Decodes the key, and a leaf's value, of a two-item node whose items start at <paramref name="position"/>.</summary>
@@ -716,6 +717,51 @@ namespace Nethermind.Trie
                     "An attempt was made to ask about whether a child is null on a non-branch node.");
         }
 
+        /// <summary>The index of this branch's only non-null child, as <see cref="IsChildNull"/> tells them apart.</summary>
+        /// <returns>The index; <c>-1</c> when the branch has no child; <see cref="SeveralChildren"/> when it has more than one.</returns>
+        /// <remarks>One walk over the RLP, where asking <see cref="IsChildNull"/> per child seeks each from the start.</remarks>
+        internal int FindOnlyChild()
+        {
+            if (!IsBranch)
+            {
+                ThrowNotABranch();
+            }
+
+            CappedArray<byte> rlp = ReadRlp();
+            LiteRlpReader nodeRlp = new(rlp);
+            int position = rlp.IsNotNull ? SeekChildPosition(nodeRlp, 0) : 0;
+            int onlyChild = -1;
+            for (int i = 0; i < BranchesCount; i++)
+            {
+                object? data = DataItem(i);
+                bool isNull;
+                if (data is null && rlp.IsNotNull)
+                {
+                    int length = nodeRlp.PeekNextRlpLength(position);
+                    position += length;
+                    isNull = length == 1;
+                }
+                else
+                {
+                    if (rlp.IsNotNull) position += nodeRlp.PeekNextRlpLength(position);
+                    isNull = data is null || ReferenceEquals(data, _nullNode);
+                }
+
+                if (isNull) continue;
+                if (onlyChild != -1) return SeveralChildren;
+                onlyChild = i;
+            }
+
+            return onlyChild;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowNotABranch() => throw new TrieException(
+                    "An attempt was made to ask for the only child of a non-branch node.");
+        }
+
+        /// <summary>What <see cref="FindOnlyChild"/> returns for a branch with more than one child.</summary>
+        internal const int SeveralChildren = -2;
+
         public bool TryGetDirtyChild(int i, [NotNullWhen(true)] out TrieNode? dirtyChild)
         {
             if (IsExtension)
@@ -782,6 +828,7 @@ namespace Nethermind.Trie
             return childNode;
         }
 
+        [MethodImpl(GetChildWithChildPathInlining)]
         public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex, bool keepChildRef = false)
         {
             // No index shift for an extension: both ExtensionData slots hold the child, and SeekChildPosition skips the key.
@@ -1268,7 +1315,7 @@ namespace Nethermind.Trie
                     case 160:
                         {
                             // Not interned: both interned hashes are of payloads short enough to be embedded rather than hashed.
-                            Hash256 keccak = new(new ValueHash256(nodeRlp.Data.Slice(position + 1, Hash256.Size)));
+                            Hash256 keccak = new(in MemoryMarshal.AsRef<ValueHash256>(nodeRlp.Data.Slice(position + 1, Hash256.Size)));
 
                             TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
                             childOrRef = child;
