@@ -71,35 +71,19 @@ public class PeerDialPolicyTests
     [TestCase(LocalEpoch - 10, 3, 5, 3, ExpectedResult = false, TestName = "An older checkpoint over empty slots matches our latest earlier block")]
     [TestCase(LocalEpoch - 10, 3, 5, 4, ExpectedResult = true, TestName = "An older checkpoint over empty slots conflicts with our latest earlier block")]
     [TestCase(LocalEpoch - 10, 3, -1, 0, ExpectedResult = false, TestName = "An older checkpoint our canonical index does not reach is unprovable")]
-    public bool A_finalized_checkpoint_conflicts_only_when_proven_absent_from_our_chain(ulong remoteEpoch, int remoteRoot, int indexedSlotsBeforeStart, int indexedRoot)
-        => Conflicts(remoteEpoch, remoteRoot, indexedSlotsBeforeStart, indexedRoot, localRoot: 1);
-
-    [Test]
-    public void No_checkpoint_conflicts_before_our_own_finalized_root_is_known() =>
-        Assert.That(Conflicts(LocalEpoch, 2, 0, 3, localRoot: 0), Is.False);
-
-    private static bool Conflicts(ulong remoteEpoch, int remoteRoot, int indexedSlotsBeforeStart, int indexedRoot, int localRoot)
+    [TestCase(LocalEpoch, 2, 0, 3, 0, ExpectedResult = false, TestName = "No_checkpoint_conflicts_before_our_own_finalized_root_is_known")]
+    [TestCase(LocalEpoch - 1, 2, 1, 3, 1, 1, ExpectedResult = false, TestName = "An_index_that_ends_before_the_checkpoint_cannot_prove_a_conflict")]
+    public bool A_finalized_checkpoint_conflicts_only_when_proven_absent_from_our_chain(ulong remoteEpoch, int remoteRoot, int indexedSlotsBeforeStart, int indexedRoot, int localRoot = 1, int indexedEndSlotsBeforeStart = 0)
     {
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         if (indexedSlotsBeforeStart >= 0)
         {
-            store.ApplyCanonicalIndexChanges([(remoteEpoch * SlotsPerEpoch - (ulong)indexedSlotsBeforeStart, Root(indexedRoot))], remoteEpoch * SlotsPerEpoch);
+            store.ApplyCanonicalIndexChanges([(remoteEpoch * SlotsPerEpoch - (ulong)indexedSlotsBeforeStart, Root(indexedRoot))], remoteEpoch * SlotsPerEpoch - (ulong)indexedEndSlotsBeforeStart);
         }
 
         StatusMessageV2 local = new() { FinalizedEpoch = LocalEpoch, FinalizedRoot = Root(localRoot) };
         StatusMessageV2 remote = new() { FinalizedEpoch = remoteEpoch, FinalizedRoot = Root(remoteRoot) };
         return PeerManager.ConflictsWithFinalized(remote, local, store, SlotsPerEpoch);
-    }
-
-    [Test]
-    public void An_index_that_ends_before_the_checkpoint_cannot_prove_a_conflict()
-    {
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        ulong start = (LocalEpoch - 1) * SlotsPerEpoch;
-        store.ApplyCanonicalIndexChanges([(start - 1, Root(3))], start - 1);
-        StatusMessageV2 local = new() { FinalizedEpoch = LocalEpoch, FinalizedRoot = Root(1) };
-        StatusMessageV2 remote = new() { FinalizedEpoch = LocalEpoch - 1, FinalizedRoot = Root(2) };
-        Assert.That(PeerManager.ConflictsWithFinalized(remote, local, store, SlotsPerEpoch), Is.False);
     }
 
     [Test]
