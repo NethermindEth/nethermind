@@ -22,17 +22,11 @@ public class GloasForkScheduleTests
         Bootnodes = [],
     };
 
-    [Test]
-    public void ForkAtEpoch_selects_fulu_immediately_before_the_gloas_epoch() =>
-        Assert.That(SyntheticGloasSpec().ForkAtEpoch(GloasEpoch - 1), Is.EqualTo(BeaconFork.Fulu));
-
-    [Test]
-    public void ForkAtEpoch_selects_gloas_at_the_gloas_epoch() =>
-        Assert.That(SyntheticGloasSpec().ForkAtEpoch(GloasEpoch), Is.EqualTo(BeaconFork.Gloas));
-
-    [Test]
-    public void ForkAtEpoch_selects_gloas_after_the_gloas_epoch() =>
-        Assert.That(SyntheticGloasSpec().ForkAtEpoch(GloasEpoch + 1_000), Is.EqualTo(BeaconFork.Gloas));
+    [TestCase(GloasEpoch - 1, BeaconFork.Fulu)]
+    [TestCase(GloasEpoch, BeaconFork.Gloas)]
+    [TestCase(GloasEpoch + 1_000, BeaconFork.Gloas)]
+    public void ForkAtEpoch_selects_the_expected_fork_around_the_gloas_epoch(ulong epoch, BeaconFork expected) =>
+        Assert.That(SyntheticGloasSpec().ForkAtEpoch(epoch), Is.EqualTo(expected));
 
     [Test]
     public void ForkAtEpoch_agrees_at_the_exact_boundary_slot()
@@ -118,11 +112,6 @@ public class GloasForkScheduleTests
             {
                 Assert.That(spec.Forks.Any(f => f.Epoch == spec.GloasForkEpoch), Is.True,
                     $"{name}: no Forks entry at GloasForkEpoch {spec.GloasForkEpoch}");
-            }
-
-            if (spec.GloasForkEpoch != Presets.FarFutureEpoch)
-            {
-
                 Assert.That(spec.GloasForkVersion,
                     Is.EqualTo(spec.Forks.Single(f => f.Epoch == spec.GloasForkEpoch).Version),
                     $"{name}: GloasForkVersion disagrees with the Forks entry at GloasForkEpoch");

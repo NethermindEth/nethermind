@@ -21,17 +21,9 @@ public class BeaconChainSpecTests
         Assert.That(copy.ToString(), Is.EqualTo(typeof(BeaconChainSpec).FullName));
     }
 
-    [Test]
-    public void ForChainId_returns_mainnet_for_the_mainnet_chain_id() =>
-        Assert.That(BeaconChainSpec.ForChainId(BlockchainIds.Mainnet), Is.SameAs(BeaconChainSpec.Mainnet));
-
-    [Test]
-    public void ForChainId_returns_hoodi_for_the_hoodi_chain_id() =>
-        Assert.That(BeaconChainSpec.ForChainId(BlockchainIds.Hoodi), Is.SameAs(BeaconChainSpec.Hoodi));
-
-    [Test]
-    public void ForChainId_returns_sepolia_for_the_sepolia_chain_id() =>
-        Assert.That(BeaconChainSpec.ForChainId(BlockchainIds.Sepolia), Is.SameAs(BeaconChainSpec.Sepolia));
+    [TestCaseSource(nameof(ShippedNetworks))]
+    public void ForChainId_returns_the_shipped_spec(string name, ulong chainId, BeaconChainSpec spec) =>
+        Assert.That(BeaconChainSpec.ForChainId(chainId), Is.SameAs(spec), name);
 
     [TestCase(BlockchainIds.Holesky)]
     [TestCase(0ul)]
@@ -85,13 +77,13 @@ public class BeaconChainSpecTests
         });
 
     [TestCaseSource(nameof(ShippedNetworks))]
-    public void Every_shipped_spec_carries_bootnodes(string name, BeaconChainSpec spec) =>
-        Assert.That(spec.Bootnodes, Is.Not.Empty, $"{name} has no bootnode records");
+    public void Every_shipped_spec_carries_bootnodes(string name, ulong chainId, BeaconChainSpec spec) =>
+        Assert.That(spec.Bootnodes, Is.Not.Empty, $"{name} ({chainId}) has no bootnode records");
 
     private static IEnumerable<object[]> ShippedNetworks() =>
     [
-        ["Mainnet", BeaconChainSpec.Mainnet],
-        ["Hoodi", BeaconChainSpec.Hoodi],
-        ["Sepolia", BeaconChainSpec.Sepolia],
+        ["Mainnet", BlockchainIds.Mainnet, BeaconChainSpec.Mainnet],
+        ["Hoodi", BlockchainIds.Hoodi, BeaconChainSpec.Hoodi],
+        ["Sepolia", BlockchainIds.Sepolia, BeaconChainSpec.Sepolia],
     ];
 }
