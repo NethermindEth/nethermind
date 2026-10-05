@@ -11,7 +11,7 @@ using Nethermind.State;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// Stateless world state used inside the zkVM guest.
+/// Stateless world state the host uses to execute a block against its witness.
 /// </summary>
 public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorator(state)
 {
