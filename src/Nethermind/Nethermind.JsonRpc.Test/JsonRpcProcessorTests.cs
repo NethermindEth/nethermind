@@ -933,6 +933,8 @@ public class JsonRpcProcessorTests
             ("Two requests", first + "\r\n" + second),
             ("Adjacent requests", first + second),
             ("Request and batch", first + CreateBatchRequest(second, CreateRequest("3", "net_version"))),
+            ("Adjacent batches", CreateBatchRequest(first, second) + CreateBatchRequest(second)),
+            ("Nested array batch item", CreateBatchRequest(first, CreateBatchRequest(second), second) + first),
             ("Surrounding whitespace", " \r\n\t" + first + " \n " + second + " \r\n\t"),
             ("Whitespace only", " \r\n\t"),
             ("Second request truncated", first + second[..^1]),

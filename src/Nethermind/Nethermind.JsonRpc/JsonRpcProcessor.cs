@@ -475,7 +475,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     JsonRpcRequest? request;
                     try
                     {
-                        JsonRpcRequestDecoder.TryReadObjectRequest(document, out request);
+                        JsonRpcRequestDecoder.TryReadSingleObjectRequest(document, out request);
                     }
                     catch (Exception ex) when (JsonRpcRequestDecoder.IsRequestDecodingException(ex))
                     {
@@ -488,7 +488,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     await ProcessSingleRequestToSink(request!, context, sink, cancellationToken);
                     break;
                 case JsonTokenType.StartArray:
-                    await RunBatchAsync(new MemoryBatchItemSource(document), context, sink, cancellationToken);
+                    JsonRpcRequestDecoder.TryGetBatchBody(document, out ReadOnlyMemory<byte> batchBody, out int batchCount);
+                    await RunBatchAsync(new MemoryBatchItemSource(batchBody, batchCount), context, sink, cancellationToken);
                     break;
                 default:
                     await WriteInvalidRequestAsync(sink, startTime, cancellationToken);
