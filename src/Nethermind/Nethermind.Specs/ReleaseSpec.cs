@@ -190,8 +190,9 @@ public class ReleaseSpec : IReleaseSpec
             PrecompiledAddresses.ECRecover,
             PrecompiledAddresses.Sha256,
             PrecompiledAddresses.Ripemd160,
-            PrecompiledAddresses.Identity,
         ];
+
+        if (!IsEip7666Enabled) cache.Add(PrecompiledAddresses.Identity);
 
         if (IsEip198Enabled) cache.Add(PrecompiledAddresses.ModExp);
         if (IsEip196Enabled && IsEip197Enabled)
@@ -228,6 +229,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7954Enabled { get; set; }
     public bool IsEip8246Enabled { get; set; }
     public bool IsEip2780Enabled { get; set; }
+    public bool IsEip7666Enabled { get; set; }
 
     public bool IsEip7805Enabled { get; set; }
 

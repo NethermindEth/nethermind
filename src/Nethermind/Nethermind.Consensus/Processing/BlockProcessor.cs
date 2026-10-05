@@ -165,6 +165,12 @@ public partial class BlockProcessor(
 
         _balManager.Setup(block);
 
+        // EIP-7666: the fork-block code install precedes every pre-execution system call.
+        if (spec.IsEip7666Enabled)
+        {
+            _balManager.ApplyIdentityPrecompileTransition(header, spec);
+        }
+
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))

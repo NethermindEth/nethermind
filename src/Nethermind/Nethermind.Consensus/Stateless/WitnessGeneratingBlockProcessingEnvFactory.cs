@@ -99,7 +99,8 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     ctx.Resolve<ILogManager>(),
                     ctx.Resolve<IBlocksConfig>(),
                     ctx.Resolve<IWithdrawalProcessorFactory>(),
-                    ctx.Resolve<BalTxProcessorFactory>()));
+                    ctx.Resolve<BalTxProcessorFactory>(),
+                    identityPrecompileTransition: ctx.Resolve<IdentityPrecompileTransition>()));
             if (recordsTransactionDiffs)
             {
                 // At scope level so the tx processor and the code repository share one slice.

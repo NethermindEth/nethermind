@@ -985,6 +985,25 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    [TestCase(99ul, false)]
+    [TestCase(100ul, true)]
+    public void Eip7666_activates_at_its_transition_timestamp_and_retires_the_identity_precompile(ulong timestamp, bool expected)
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip7666TransitionTimestamp = 100 },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        IReleaseSpec spec = new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(timestamp));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip7666Enabled, Is.EqualTo(expected));
+            Assert.That(spec.IsPrecompile(Eip7666Constants.IdentityAddress), Is.EqualTo(!expected));
+            Assert.That(spec.Precompiles.Contains(Eip7666Constants.IdentityAddress), Is.EqualTo(!expected));
+        }
+    }
+
     [Test]
     public void Eip2200_is_set_correctly_directly()
     {
