@@ -27,14 +27,12 @@ public class RewardsTests
     public void Every_fork_and_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
         List<RewardsCase> cases = FuluDriverSupport.TestedCases<RewardsCase>(preset, MinimalCases, MainnetCases);
-        using (Assert.EnterMultipleScope())
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks));
+        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
         {
-            Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks));
-            foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-            {
-                Assert.That(ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, fork, "rewards")).Select(Path.GetFileName),
-                    Is.EquivalentTo(Handlers), $"{fork} rewards handlers in the archive");
-            }
+            Assert.That(ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, fork, "rewards")).Select(Path.GetFileName),
+                Is.EquivalentTo(Handlers), $"{fork} rewards handlers in the archive");
         }
     }
     [Test]

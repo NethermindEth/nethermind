@@ -121,11 +121,9 @@ public class DataColumnSidecarNetworkingTests
         }
 
         IEnumerable<(string, string, ColumnVerdict)> rows = SynchronousVerdicts.SelectMany(static entry => entry.Value.Select(row => (entry.Key, row.Reason, row.Verdict)));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(misreported, Is.Empty);
-            Assert.That(reached, Is.EquivalentTo(rows));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(misreported, Is.Empty);
+        Assert.That(reached, Is.EquivalentTo(rows));
     }
 
     private static List<GossipValidationCase> TestedCases() =>

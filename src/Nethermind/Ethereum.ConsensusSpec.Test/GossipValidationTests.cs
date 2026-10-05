@@ -191,11 +191,9 @@ public class GossipValidationTests
         }
 
         IEnumerable<(string, string, RouterVerdict)> rows = SynchronousVerdicts.SelectMany(static entry => entry.Value.Select(row => (entry.Key, row.Reason, row.Verdict)));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(misreported, Is.Empty);
-            Assert.That(reached, Is.EquivalentTo(rows));
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(misreported, Is.Empty);
+        Assert.That(reached, Is.EquivalentTo(rows));
     }
     [Test]
     public void Every_unrouted_handler_has_vectors_and_its_topic_is_not_routed()
@@ -214,13 +212,11 @@ public class GossipValidationTests
         List<GossipValidationCase> unrouted = [.. AllCases().Where(IsUnrouted)];
         IEnumerable<string> expected = UnroutedSuites.SelectMany(static s => s.Handlers.Select(handler => $"{s.Fork}/{handler}"));
         GossipRouter probe = new(BeaconChainSpec.Mainnet, new SlotClock(BeaconChainSpec.Mainnet, new ManualTimestamper(DateTime.UnixEpoch)), LimboLogs.Instance);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(unrouted.Select(KeyOf).Distinct(), Is.EquivalentTo(expected));
-            // The router's own dispatch is the probe: a subnet topic name carries a numeric suffix, so both forms are tried.
-            Assert.That(UnroutedSuites.SelectMany(static s => s.Handlers).Select(TopicOf).Distinct().SelectMany(static topic => new[] { topic, $"{topic}_0" }).Where(name => Routes(probe, name)), Is.Empty);
-            Assert.That(Suites.SelectMany(static s => s.Handlers).Select(TopicOf).Distinct().Where(name => !Routes(probe, name)), Is.Empty, "driven handlers must reach a router arm");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(unrouted.Select(KeyOf).Distinct(), Is.EquivalentTo(expected));
+        // The router's own dispatch is the probe: a subnet topic name carries a numeric suffix, so both forms are tried.
+        Assert.That(UnroutedSuites.SelectMany(static s => s.Handlers).Select(TopicOf).Distinct().SelectMany(static topic => new[] { topic, $"{topic}_0" }).Where(name => Routes(probe, name)), Is.Empty);
+        Assert.That(Suites.SelectMany(static s => s.Handlers).Select(TopicOf).Distinct().Where(name => !Routes(probe, name)), Is.Empty, "driven handlers must reach a router arm");
     }
 
     // gossip_validation.md: offset_ms counts from the vector's current_time_ms; a message's own current_time_ms, which the vectors also use, is absolute.

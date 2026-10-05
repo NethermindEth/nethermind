@@ -65,12 +65,10 @@ public class ForkChoiceTests
 
         (ForkChoiceRunner runner, Hash256 anchorRoot, List<Exception?> rejections) = RunFabricatedCase(executionValid, [.. steps], ("block_refused", block), ("block_child", SignedBeaconBlock.Encode(child)));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rejections[^1], Is.TypeOf<ForkChoiceException>().With.Message.Contains("unknown to fork choice"), $"{refusal}: on_block's own parent check refuses the child");
-            Assert.That(runner.GetHead(), Is.EqualTo(anchorRoot), $"{refusal}: a refused block must not enter the store");
-            Assert.That(runner.Snapshot().Nodes.Single(n => n.Root == anchorRoot).Weight, optimistic ? Is.Positive : Is.Zero, $"{refusal}: body attestations replayed");
-        }
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(rejections[^1], Is.TypeOf<ForkChoiceException>().With.Message.Contains("unknown to fork choice"), $"{refusal}: on_block's own parent check refuses the child");
+        Assert.That(runner.GetHead(), Is.EqualTo(anchorRoot), $"{refusal}: a refused block must not enter the store");
+        Assert.That(runner.Snapshot().Nodes.Single(n => n.Root == anchorRoot).Weight, optimistic ? Is.Positive : Is.Zero, $"{refusal}: body attestations replayed");
     }
 
     private static IEnumerable<TestCaseData> RefusedBlockCases()
