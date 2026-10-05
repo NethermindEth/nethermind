@@ -30,27 +30,35 @@ public class DeferredBlockColumnFetchTests
 {
     private const int CustodiansPerImport = 3;
 
-    [Test]
+    [TestCase(false, TestName = "A_deferred_block_imports_in_the_same_slot_once_a_custodian_of_its_missing_columns_connects")]
+    [TestCase(true, TestName = "A_peer_whose_custody_grows_to_a_missing_column_is_asked_in_the_same_slot")]
     [CancelAfter(30_000)]
-    public async Task A_deferred_block_imports_in_the_same_slot_once_a_custodian_of_its_missing_columns_connects(CancellationToken token)
+    public async Task A_new_missing_column_custodian_is_asked_in_the_same_slot(bool custodyGrows, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
-        StubPeer bystander = fixture.Peer("bystander", fixture.Unsampled);
-        StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
+        ulong held = fixture.Sampled[0];
+        if (custodyGrows)
+            fixture.GiveColumn(held);
+        StubPeer initial = fixture.Peer(custodyGrows ? "peer" : "bystander", custodyGrows ? [held] : fixture.Unsampled);
+        StubPeer custodian = fixture.Peer(custodyGrows ? "peer" : "custodian", fixture.Sampled);
         BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
-        fixture.Peers.Add(bystander);
+        fixture.Peers.Add(initial);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
 
         BlockImportResult withoutCustodian = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
-        BlockImportResult sameCustodians = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
-        fixture.Peers.Add(custodian);
-        BlockImportResult custodianConnected = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
+        if (!custodyGrows)
+            Assert.That(await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token), Is.EqualTo(BlockImportResult.DataUnavailable));
+        if (custodyGrows)
+            fixture.Peers[0] = custodian;
+        else
+            fixture.Peers.Add(custodian);
+        BlockImportResult afterChange = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That((withoutCustodian, sameCustodians), Is.EqualTo((BlockImportResult.DataUnavailable, BlockImportResult.DataUnavailable)));
-        Assert.That(custodianConnected, Is.EqualTo(BlockImportResult.Imported), "the newly connected custodian is asked without waiting for the next slot");
+        Assert.That(withoutCustodian, Is.EqualTo(BlockImportResult.DataUnavailable));
+        Assert.That(afterChange, Is.EqualTo(BlockImportResult.Imported), "the newly available custodian is asked without waiting for the next slot");
         Assert.That(custodian.RootColumnRequests, Is.EqualTo(1));
-        Assert.That(bystander.RootColumnRequests, Is.Zero, "a peer custodying no sampled column is never asked");
+        Assert.That(initial.RootColumnRequests, Is.Zero, "a peer custodying no missing sampled column is never asked");
     }
 
     [Test]
@@ -71,29 +79,6 @@ public class DeferredBlockColumnFetchTests
         Assert.That(blockSlot, Is.GreaterThan(behind.HeadSlot));
         Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
         Assert.That(behind.RootColumnRequests, Is.EqualTo(1));
-    }
-
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_peer_whose_custody_grows_to_a_missing_column_is_asked_in_the_same_slot(CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        ulong held = fixture.Sampled[0];
-        fixture.SidecarPool.Add(fixture.Chain.BlockRoot, fixture.Chain.Block.Message!.Slot, fixture.Chain.Columns[held]);
-        StubPeer holdingOnly = fixture.Peer("peer", [held]);
-        StubPeer grown = fixture.Peer("peer", fixture.Sampled);
-        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
-        fixture.Peers.Add(holdingOnly);
-        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
-
-        BlockImportResult custodyingOnlyHeld = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
-        fixture.Peers[0] = grown;
-        BlockImportResult custodyGrown = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(custodyingOnlyHeld, Is.EqualTo(BlockImportResult.DataUnavailable));
-        Assert.That(custodyGrown, Is.EqualTo(BlockImportResult.Imported), "a peer that custodied only held columns was never asked, so it is asked once it custodies a missing one");
-        Assert.That(grown.RootColumnRequests, Is.EqualTo(1));
     }
 
     [Test]
