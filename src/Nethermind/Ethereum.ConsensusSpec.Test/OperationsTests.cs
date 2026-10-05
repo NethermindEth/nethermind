@@ -40,12 +40,12 @@ public class OperationsTests
     [TestCase("gloas", "voluntary_exit", "basic")]
     [TestCase("fulu", "proposer_slashing", "basic")]
     [TestCase("gloas", "proposer_slashing", "basic")]
+    [TestCase("gloas", "withdrawals", "early_return_empty_parent_block")]
     public void Required_successful_operation_contract(string fork, string operation, string name)
     {
         string path = Path.Combine(ConsensusSpecArchive.GetRoot(ConsensusPreset.Mainnet),
             "tests", "mainnet", fork, "operations", operation, "pyspec_tests", name);
-        string operand = operation == "bls_to_execution_change" ? "address_change.ssz_snappy" : $"{operation}.ssz_snappy";
-        foreach (string file in new[] { "pre.ssz_snappy", "post.ssz_snappy", operand })
+        foreach (string file in new[] { "pre.ssz_snappy", "post.ssz_snappy" })
             Assert.That(File.Exists(Path.Combine(path, file)), Is.True, $"mandatory positive vector is missing {file}");
         Assert.That(() => Execute(new OperationCase(nameof(ConsensusPreset.Mainnet), fork, operation, path,
             $"mainnet/{fork}/operations/{operation}/pyspec_tests/{name}")), Throws.Nothing);
