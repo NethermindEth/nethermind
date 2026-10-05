@@ -284,12 +284,12 @@ public class GossipValidationTests
                 HeadRoot = Hash256.Zero,
             },
         };
-        BeaconChainStore store = SeedStore(testCase.CasePath, spec, gloas);
+        SeededBlocks seeded = SeedBlocks(testCase.CasePath, meta, spec, gloas);
         SlotClock clock = new(spec, timestamper);
-        ColumnGossipRouter headers = new(spec, clock, LimboLogs.Instance, store: store, status: status,
-            forkChoice: SeedForkChoice(testCase.CasePath, meta, spec, gloas, status.CurrentStatus.FinalizedEpoch));
-        GossipRouter router = new(spec, clock, LimboLogs.Instance, store, status,
-            SeedFailedBlocks(testCase.CasePath, spec, gloas), headers);
+        ColumnGossipRouter headers = new(spec, clock, LimboLogs.Instance, store: seeded.Store, status: status,
+            forkChoice: SeedForkChoice(testCase.CasePath, seeded, status.CurrentStatus.FinalizedEpoch));
+        GossipRouter router = new(spec, clock, LimboLogs.Instance, seeded.Store, status,
+            seeded.FailedBlocks, headers);
         int raised = 0;
         Action? markVerified = null;
         router.BeaconBlockReceived += (_, _) => raised++;
@@ -382,62 +382,43 @@ public class GossipValidationTests
         }
     }
 
-    /// <param name="gloas">Uses Gloas block shapes even where vector config places slots before the fork.</param>
-    internal static BeaconChainStore SeedStore(string casePath, BeaconChainSpec spec, bool gloas = false)
-    {
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
-        foreach (VectorBlock block in VectorMeta.Load(casePath).Blocks)
-        {
-            if (block.Failed)
-                continue;
+    internal sealed record SeededBlocks(BeaconChainStore Store, FailedBlockRoots FailedBlocks, List<(VectorBlock Entry, ForkedSignedBeaconBlock Block)> Blocks);
 
-            byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, block.Name + ".ssz_snappy"));
+    internal static SeededBlocks SeedBlocks(string casePath, VectorMeta meta, BeaconChainSpec spec, bool gloas = false)
+    {
+        SeededBlocks seeded = new(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>(), spec), new FailedBlockRoots(), []);
+        foreach (VectorBlock entry in meta.Blocks)
+        {
+            byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, entry.Name + ".ssz_snappy"));
             // A node never holds a block whose shape is not its slot's fork.
             if (gloas && SignedBeaconBlockCodec.TryReadSlot(ssz, out ulong slot) && !SignedBeaconBlockCodec.IsGloasSlot(slot, spec))
                 continue;
 
-            ForkedSignedBeaconBlock forked = SignedBeaconBlockCodec.Decode(ssz, spec);
-            store.PutForkedBlock(forked.ComputeMessageRoot(), forked);
+            ForkedSignedBeaconBlock block = SignedBeaconBlockCodec.Decode(ssz, spec);
+            Hash256 root = block.ComputeMessageRoot();
+            if (entry.Failed)
+                seeded.FailedBlocks.Add(root, block.Slot);
+            else
+            {
+                seeded.Store.PutForkedBlock(root, block);
+                seeded.Blocks.Add((entry, block));
+            }
         }
 
-        return store;
-    }
-    internal static FailedBlockRoots SeedFailedBlocks(string casePath, BeaconChainSpec spec, bool gloas = false)
-    {
-        FailedBlockRoots failedBlocks = new();
-        foreach (VectorBlock block in VectorMeta.Load(casePath).Blocks)
-        {
-            if (!block.Failed)
-                continue;
-
-            byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, block.Name + ".ssz_snappy"));
-            // A block whose shape is not its slot's fork never reaches the importer.
-            if (gloas && SignedBeaconBlockCodec.TryReadSlot(ssz, out ulong slot) && !SignedBeaconBlockCodec.IsGloasSlot(slot, spec))
-                continue;
-
-            ForkedSignedBeaconBlock decoded = SignedBeaconBlockCodec.Decode(ssz, spec);
-            failedBlocks.Add(decoded.ComputeMessageRoot(), decoded.Slot);
-        }
-
-        return failedBlocks;
+        return seeded;
     }
 
     private static bool IsSynchronousVerdict(string topic, string reason, RouterVerdict verdict) =>
         SynchronousVerdicts.TryGetValue(topic, out (string Reason, RouterVerdict Verdict)[]? rows) && rows.Contains((reason, verdict));
 
-    private static ForkChoiceSnapshotHolder SeedForkChoice(string casePath, VectorMeta meta, BeaconChainSpec spec, bool gloas, ulong finalizedEpoch)
+    private static ForkChoiceSnapshotHolder SeedForkChoice(string casePath, SeededBlocks seeded, ulong finalizedEpoch)
     {
         List<ForkChoiceSnapshotNode> nodes = [];
-        foreach (VectorBlock entry in meta.Blocks)
+        foreach ((VectorBlock entry, ForkedSignedBeaconBlock block) in seeded.Blocks)
         {
-            if (entry.Failed || entry.Pending)
+            if (entry.Pending)
                 continue;
 
-            byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, entry.Name + ".ssz_snappy"));
-            if (gloas && SignedBeaconBlockCodec.TryReadSlot(ssz, out ulong slot) && !SignedBeaconBlockCodec.IsGloasSlot(slot, spec))
-                continue;
-
-            ForkedSignedBeaconBlock block = SignedBeaconBlockCodec.Decode(ssz, spec);
             ExecutionStatus execution = entry.PayloadStatus switch
             {
                 "INVALIDATED" => ExecutionStatus.Invalid,
