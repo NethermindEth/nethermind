@@ -8,7 +8,7 @@ import subprocess
 import sys
 import guard
 
-HARNESS = '420c992e6d8c8e2b1abae899cece932da7e9e47b'
+HARNESS = 'feeba5b89d51fad85931c77b8d3c7fba4ff373ed'
 HERE = Path(__file__).resolve().parent
 SNAPSHOT = Path('/mnt/sda/nethermind-flat-25490000')
 CORPUS = Path('/mnt/sda/expb-data/rpc-bench/eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz')

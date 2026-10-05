@@ -22,7 +22,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 420c992e6d8c8e2b1abae899cece932da7e9e47b
+          ref: feeba5b89d51fad85931c77b8d3c7fba4ff373ed
           path: ${{ env.HARNESS }}
           persist-credentials: false
       - name: Verify portable and integration correctness before native mutation
@@ -31,6 +31,7 @@ jobs:
           set -euo pipefail
           python3 -B -m unittest discover -s "$HARNESS/scripts" -p 'test_rpc_*.py' -v
           python3 -B -m unittest discover -s "$HARNESS/scripts/rpc-bench" -p 'test_sample_resources.py' -v
+          python3 -B -m unittest discover -s "$HARNESS/scripts/rpc-bench" -p 'test_rpc_startup.py' -v
           python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability" -p 'test_guard.py' -v
           python3 -B -m unittest discover -s "$OPERATOR/scripts/rpc-capability/native" -p 'test_native_capability.py' -v
       - name: Run one prospective lifecycle capability

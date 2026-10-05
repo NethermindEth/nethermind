@@ -4,7 +4,7 @@
   "scripts/rpc-bench/corpus_results.py": "ac729534f186be91c3e9b2d353f3a097ab12a2976997ff7e7f26f081b2fbdd57",
   "scripts/rpc-bench/cpu-stabilize.sh": "e12e6fcc1ad5dba15f922cb12a882c467aa29389236a430f9bb5559ce4c0eaaf",
   "scripts/rpc-bench/deep-check-compare.py": "bf1e2d981c09b5212029ab6a084fb2e9ed4e6bf42beb73fb840919dec698a185",
-  "scripts/rpc-bench/lib.sh": "9342749b0d82d4c7123e3b3e646777656c0bce786d81cd93d3006900b12f8d0c",
+  "scripts/rpc-bench/lib.sh": "f93801d60377d929bc18cbc2c69cd85f06ec8bff0d9036ce1d1d5df1cb6709fb",
   "scripts/rpc-bench/percat-matrix.py": "da70335b4069a94abc2298e1084b8b5d06170f7b884a3127899058b0864a34ce",
   "scripts/rpc-bench/prepare-eth-call-corpus.py": "4bd2d450912dbf714cf2905430359a84e34448aa6ef322b5983c14d6fe12bdd0",
   "scripts/rpc-bench/private_audit.py": "329283776181092d310a787fa0fcea9182a7b452d9d0485156ea52512275ac7c",
@@ -25,5 +25,6 @@
   "scripts/rpc-bench/test_prepare_eth_call_corpus.py": "ebec371b455c2ddd332f05fc9d478605195c86ff085284ade569c13f5206e4ea",
   "scripts/rpc-bench/test_rpc_sweep.py": "b3e56ab3edb7c9850e66909713d1a8e934fbd47906b942f97fec7b960ce332fb",
   "scripts/rpc-bench/test_sample_resources.py": "468433418be578e090279be780e50a54bfc91fabf871a52ef10408b8d6a2e9c2",
-  "scripts/rpc-bench/test_workflow_contracts.py": "fa1c76d11525e063014e63e99ef766d626b4af49dd4575e9e3bfa5b0fee544d7"
+  "scripts/rpc-bench/test_workflow_contracts.py": "fa1c76d11525e063014e63e99ef766d626b4af49dd4575e9e3bfa5b0fee544d7",
+  "scripts/rpc-bench/test_rpc_startup.py": "dbbd1f1b8d6006f850db029d4e876a92cbf737ce31d1961bffc9cd81dccb512e"
 }
