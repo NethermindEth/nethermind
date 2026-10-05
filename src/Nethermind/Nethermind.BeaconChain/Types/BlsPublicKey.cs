@@ -53,23 +53,13 @@ public static class BlsPublicKeySszVectorTypeConverter
 
     public static BlsPublicKey FromSpan(ReadOnlySpan<byte> span) => new(span);
 
-    public static void FromSpan(ReadOnlySpan<byte> span, Span<BlsPublicKey> values)
-    {
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = FromSpan(span.Slice(i * Length, Length));
-        }
-    }
+    public static void FromSpan(ReadOnlySpan<byte> span, Span<BlsPublicKey> values) =>
+        span.Slice(0, values.Length * Length).CopyTo(MemoryMarshal.AsBytes(values));
 
     public static void ToSpan(Span<byte> span, BlsPublicKey value) => value.Bytes.CopyTo(span);
 
-    public static void ToSpan(Span<byte> span, ReadOnlySpan<BlsPublicKey> values)
-    {
-        for (int i = 0; i < values.Length; i++)
-        {
-            ToSpan(span.Slice(i * Length, Length), values[i]);
-        }
-    }
+    public static void ToSpan(Span<byte> span, ReadOnlySpan<BlsPublicKey> values) =>
+        MemoryMarshal.AsBytes(values).CopyTo(span.Slice(0, values.Length * Length));
 
     public static void Feed(ref Merkleizer merkleizer, BlsPublicKey value)
     {
