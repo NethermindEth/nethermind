@@ -50,34 +50,23 @@ public class ChannelOpenRetryTests
         Assert.That(timing.ChannelOpened, Is.True);
     }
 
-    [Test]
+    [TestCase(false, TestName = "A_request_whose_second_channel_is_dropped_too_fails_as_a_channel_that_never_opened")]
+    [TestCase(true, TestName = "A_first_channel_that_reaches_its_protocol_after_it_was_abandoned_does_not_mark_the_second_opened")]
     [CancelAfter(30_000)]
-    public async Task A_request_whose_second_channel_is_dropped_too_fails_as_a_channel_that_never_opened(CancellationToken token)
+    public async Task A_second_dropped_channel_never_opens(bool openWhenAbandoned, CancellationToken token)
     {
-        DroppingOpener opener = new(drops: 2);
+        DroppingOpener opener = new(drops: 2, openWhenAbandoned: openWhenAbandoned);
         await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(1));
 
         ReqRespTimeoutException? failure = Assert.ThrowsAsync<ReqRespTimeoutException>(() => node.RequestBlocksByRootAsync(opener.Session, [Hash256.Zero], token, new RequestTiming()));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(failure!.ChannelNeverOpened, Is.True);
+        if (openWhenAbandoned)
+            Assert.That(opener.LateOpens, Is.EqualTo(1), "fixture: the abandoned channel reached its protocol late");
+        Assert.That(failure!.ChannelNeverOpened, Is.True, "the second channel never opened, whatever the first did");
         Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed), "counted against the peer as an unanswered request was before");
         Assert.That(opener.Attempts, Is.EqualTo(2), "one second channel at most, so an unresponsive peer gets no more than twice the opens");
         Assert.That(opener.EarlierCancelledWhenOpened, Is.EqualTo(new[] { true }));
-    }
-
-    [Test]
-    [CancelAfter(30_000)]
-    public async Task A_first_channel_that_reaches_its_protocol_after_it_was_abandoned_does_not_mark_the_second_opened(CancellationToken token)
-    {
-        DroppingOpener opener = new(drops: 2, openWhenAbandoned: true);
-        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(1));
-
-        ReqRespTimeoutException? failure = Assert.ThrowsAsync<ReqRespTimeoutException>(() => node.RequestBlocksByRootAsync(opener.Session, [Hash256.Zero], token, new RequestTiming()));
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(opener.LateOpens, Is.EqualTo(1), "fixture: the abandoned channel reached its protocol late");
-        Assert.That(failure!.ChannelNeverOpened, Is.True, "the second channel never opened, whatever the first did");
     }
 
     [Test]
