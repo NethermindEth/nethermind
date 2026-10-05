@@ -27,10 +27,10 @@ public class GuestLeafEncodingTests
     }
 
     [Test]
-    public void Key_change_drops_the_previous_key([Values(1, 2, 31, 64)] int keyLength, [Values] bool inPlace)
+    public void Key_change_drops_the_previous_key([Values(1, 2, 31, 64)] int keyLength, [Values] bool inPlace, [Values] bool sameLength)
     {
         byte[] value = Bytes(40, 0x11);
-        byte[] newKey = Nibbles(keyLength - 1);
+        byte[] newKey = sameLength ? Nibbles(keyLength, firstNibble: 0xF) : Nibbles(keyLength - 1);
         TrieNode leaf = DecodedLeaf(Nibbles(keyLength), value);
         if (inPlace)
         {
@@ -59,10 +59,10 @@ public class GuestLeafEncodingTests
         return node.RlpEncode(NullTrieNodeResolver.Instance, ref path).AsSpan().ToArray();
     }
 
-    private static byte[] Nibbles(int length)
+    private static byte[] Nibbles(int length, byte firstNibble = 3)
     {
         byte[] nibbles = new byte[length];
-        for (int i = 0; i < length; i++) nibbles[i] = (byte)((i * 7 + 3) & 0xF);
+        for (int i = 0; i < length; i++) nibbles[i] = (byte)((i * 7 + firstNibble) & 0xF);
         return nibbles;
     }
 
