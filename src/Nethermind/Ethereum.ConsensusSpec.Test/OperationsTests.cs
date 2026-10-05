@@ -35,6 +35,44 @@ public class OperationsTests
             $"mainnet/{fork}/operations/{operation}/pyspec_tests/{name}")), Throws.Nothing);
     }
 
+    [TestCase("proposer_slashing", "invalid_headers_are_same_sigs_are_same", "identical")]
+    [TestCase("proposer_slashing", "invalid_slots_same_epoch_different_slot", "header slots do not match")]
+    [TestCase("proposer_slashing", "invalid_different_proposer_indices", "proposer indices do not match")]
+    [TestCase("proposer_slashing", "invalid_incorrect_proposer_index", "is out of range")]
+    [TestCase("proposer_slashing", "invalid_incorrect_sig_2", "Invalid proposer slashing signature")]
+    [TestCase("proposer_slashing", "invalid_proposer_is_slashed", "not slashable")]
+    [TestCase("voluntary_exit", "invalid_incorrect_signature", "Invalid voluntary exit signature")]
+    [TestCase("voluntary_exit", "invalid_validator_has_pending_withdrawal", "pending partial withdrawals")]
+    [TestCase("voluntary_exit", "invalid_validator_already_exited", "already initiated an exit")]
+    [TestCase("voluntary_exit", "invalid_validator_not_active", "is not active")]
+    [TestCase("voluntary_exit", "invalid_validator_incorrect_validator_index", "is out of range")]
+    [TestCase("voluntary_exit", "invalid_validator_not_active_long_enough", "not been active long enough", 32ul)]
+    [TestCase("voluntary_exit", "invalid_validator_exit_in_future", "not valid before epoch")]
+    [TestCase("bls_to_execution_change", "invalid_bad_signature", "Invalid BLS to execution change signature")]
+    [TestCase("bls_to_execution_change", "invalid_incorrect_from_bls_pubkey", "does not match the withdrawal credentials")]
+    [TestCase("bls_to_execution_change", "invalid_already_0x01", "does not have BLS withdrawal credentials")]
+    [TestCase("bls_to_execution_change", "invalid_val_index_out_of_range", "is out of range")]
+    public void Required_invalid_gloas_operation_preserves_the_state(string operation, string name, string expectedMessage, ulong? slot = null)
+    {
+        string path = Path.Combine(ConsensusSpecArchive.GetRoot(ConsensusPreset.Mainnet),
+            "tests", "mainnet", "gloas", "operations", operation, "pyspec_tests", name);
+        (string? file, Action<OpContext<BeaconStateGloas>, byte[], BlockSignatureBatch?> apply) = GloasHandlers[operation];
+        foreach (string required in new[] { "pre.ssz_snappy", file! })
+            Assert.That(File.Exists(Path.Combine(path, required)), Is.True, $"mandatory negative vector is missing {required}");
+        Assert.That(File.Exists(Path.Combine(path, "post.ssz_snappy")), Is.False, "the required vector must describe a rejection");
+        BeaconStateGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(path, "pre.ssz_snappy")), out BeaconStateGloas state);
+        if (slot is { } targetSlot) state.Slot = targetSlot;
+        OpContext<BeaconStateGloas> context = new(state, new EpochCache(), FuluDriverSupport.BuildPubkeyCache(state.Validators!),
+            true, true, FuluDriverSupport.CaseSpec(path), path);
+        byte[] operand = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(path, file!));
+        Nethermind.Core.Crypto.Hash256 rootBefore = SszRoots.HashTreeRoot(state);
+
+        BeaconStateException exception = Assert.Throws<BeaconStateException>(() => apply(context, operand, null))!;
+
+        Assert.That(exception.Message, Does.Contain(expectedMessage));
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected operation must leave the state untouched");
+    }
+
     private static readonly Dictionary<string, string[]> OperationsAbsentByFork = new(StringComparer.Ordinal)
     {
         ["fulu"] = ["deposit"],

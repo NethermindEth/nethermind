@@ -97,46 +97,6 @@ public class GloasOperationsTests
         Assert.That(state.BuilderPendingPayments[32].ProposerIndex, Is.EqualTo((ulong)proposer));
     }
 
-    [TestCase("identical headers", "identical")]
-    [TestCase("different slots", "header slots do not match")]
-    [TestCase("different proposers", "proposer indices do not match")]
-    [TestCase("index out of range", "is out of range")]
-    [TestCase("bad signature", "Invalid proposer slashing signature")]
-    [TestCase("already slashed", "not slashable")]
-    public void ProcessProposerSlashing_rejects_an_invalid_slashing_and_mutates_nothing(string defect, string expectedMessage)
-    {
-        BeaconStateGloas state = CreateGloasState(out _, out _);
-        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
-        const int proposer = 3;
-        ProposerSlashing slashing = Equivocation(state, slot: 32, proposer);
-        switch (defect)
-        {
-            case "identical headers":
-                slashing.SignedHeader2 = slashing.SignedHeader1;
-                break;
-            case "different slots":
-                // Two honest proposals at consecutive slots, each validly signed: not an equivocation.
-                slashing.SignedHeader2 = SignedHeader(state, slot: 33, proposer, Hash(0x22));
-                break;
-            case "different proposers":
-                // Each header is validly signed by the validator it names; only the index check rejects the pair.
-                slashing.SignedHeader2 = SignedHeader(state, slot: 32, proposer + 1, Hash(0x22));
-                break;
-            case "index out of range":
-                slashing = Equivocation(state, slot: 32, ValidatorCount);
-                break;
-            case "bad signature":
-                slashing.SignedHeader2!.Signature = Corrupt(slashing.SignedHeader2.Signature);
-                break;
-            case "already slashed":
-                Validator alreadySlashed = state.Validators![proposer].Clone();
-                alreadySlashed.Slashed = true;
-                state.Validators[proposer] = alreadySlashed;
-                break;
-        }
-        AssertRefusedWithoutMutation(state, () =>
-            GloasBlockProcessing.ProcessProposerSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true), expectedMessage, "a rejected slashing must leave the state untouched");
-    }
 
 
     [Test]
@@ -611,79 +571,5 @@ public class GloasOperationsTests
         Assert.That(state.Validators[slashedProposer].Slashed, Is.True);
         Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111));
         Assert.That(state.Validators[credentialsChanger].WithdrawalCredentials!.Bytes[0], Is.EqualTo(Presets.EthWithdrawalPrefix));
-    }
-
-
-    private static readonly ulong ExitEligibleSlot = (Presets.ShardCommitteePeriod + 1) * Presets.SlotsPerEpoch;
-
-    [TestCase("bad signature", "Invalid voluntary exit signature")]
-    [TestCase("pending partial withdrawal", "pending partial withdrawals")]
-    [TestCase("already exiting", "already initiated an exit")]
-    [TestCase("not yet activated", "is not active")]
-    [TestCase("index out of range", "is out of range")]
-    [TestCase("too recently activated", "not been active long enough")]
-    [TestCase("exit epoch in the future", "not valid before epoch")]
-    public void ProcessVoluntaryExit_rejects_an_invalid_exit_and_mutates_nothing(string defect, string expectedMessage)
-    {
-        BeaconStateGloas state = CreateGloasState(out _, out _);
-        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
-        const int exiting = 9;
-        state.Slot = defect == "too recently activated" ? BoundarySlot : ExitEligibleSlot;
-        SignedVoluntaryExit exit = SignedExit(state,
-            defect == "index out of range" ? ValidatorCount : exiting,
-            epoch: defect switch
-            {
-                "too recently activated" => 1,
-                "exit epoch in the future" => Presets.ShardCommitteePeriod + 5,
-                _ => 3,
-            });
-        switch (defect)
-        {
-            case "bad signature":
-                exit.Signature = Corrupt(exit.Signature);
-                break;
-            case "not yet activated":
-                // Deposited but still queued: the only inactive validator the exit-epoch check does not already catch.
-                Validator pending = state.Validators![exiting].Clone();
-                pending.ActivationEligibilityEpoch = Presets.FarFutureEpoch;
-                pending.ActivationEpoch = Presets.FarFutureEpoch;
-                state.Validators[exiting] = pending;
-                break;
-            case "pending partial withdrawal":
-                state.PendingPartialWithdrawals = [new PendingPartialWithdrawal { ValidatorIndex = exiting, Amount = Gwei, WithdrawableEpoch = 1 }];
-                break;
-            case "already exiting":
-                Validator exitingValidator = state.Validators![exiting].Clone();
-                exitingValidator.ExitEpoch = Presets.ShardCommitteePeriod + 9;
-                state.Validators[exiting] = exitingValidator;
-                break;
-        }
-        AssertRefusedWithoutMutation(state, () =>
-            GloasBlockProcessing.ProcessVoluntaryExit(state, exit, new EpochCache(), pubkeys, verifySignature: true), expectedMessage, "a rejected exit must leave the state untouched");
-    }
-
-
-    [TestCase("bad signature", "Invalid BLS to execution change signature")]
-    [TestCase("credentials of another key", "does not match the withdrawal credentials")]
-    [TestCase("execution credentials already", "does not have BLS withdrawal credentials")]
-    [TestCase("index out of range", "is out of range")]
-    public void ProcessBlsToExecutionChange_rejects_an_invalid_change_and_mutates_nothing(string defect, string expectedMessage)
-    {
-        BeaconStateGloas state = CreateGloasState(out _, out _);
-        const int changing = 4;
-        Bls.SecretKey fromKey = DeriveKey(500);
-        Validator validator = state.Validators![changing].Clone();
-        validator.WithdrawalCredentials = defect switch
-        {
-            "credentials of another key" => BlsWithdrawalCredentials(new BlsPublicKey(new Bls.P1(DeriveKey(501)).Compress())),
-            "execution credentials already" => EthWithdrawalCredentials(0xAB),
-            _ => BlsWithdrawalCredentials(new BlsPublicKey(new Bls.P1(fromKey).Compress())),
-        };
-        state.Validators[changing] = validator;
-        SignedBlsToExecutionChange change = SignedBlsChange(state, defect == "index out of range" ? ValidatorCount : changing, fromKey, new Address(Hash(0xE7).Bytes[12..]));
-        if (defect == "bad signature")
-            change.Signature = Corrupt(change.Signature);
-        AssertRefusedWithoutMutation(state, () =>
-            GloasBlockProcessing.ProcessBlsToExecutionChange(state, change, verifySignature: true), expectedMessage, "a rejected change must leave the state untouched");
     }
 }
