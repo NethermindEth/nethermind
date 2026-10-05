@@ -253,7 +253,8 @@ public class OpcodeWeaverTests
         int targetIndex = caller.Body.Instructions.IndexOf(target);
 
         GuestDispatchRewriter.Rewrite(marker.DeclaringType);
-        MethodDefinition written = WriteAndRead(module).GetType(caller.DeclaringType.FullName).Methods.Single(m => m.Name == caller.Name);
+        using ModuleDefinition roundTripped = WriteAndRead(module);
+        MethodDefinition written = roundTripped.GetType(caller.DeclaringType.FullName).Methods.Single(m => m.Name == caller.Name);
 
         Assert.That(written.Body.Instructions[0].Operand, Is.SameAs(written.Body.Instructions[targetIndex + 2 * (sites - 1)]));
     }

@@ -220,9 +220,12 @@ namespace Nethermind.Facade.Find
             try
             {
                 long logIndexInBlock = 0;
+                Hash256? blockHash = null;
                 while (iterator.TryGetNext(out TxReceiptStructRef receipt))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+
+                    Hash256? txHash = null;
 
                     LogEntriesIterator logsIterator = iterator.IterateLogs(receipt);
                     if (!iterator.CanDecodeBloom || receipt.Bloom.Bytes.IsEmpty || filter.Matches(ref receipt.Bloom))
@@ -245,9 +248,9 @@ namespace Nethermind.Facade.Find
                                     logIndexInBlock,
                                     receipt.BlockNumber,
                                     blockTimestamp,
-                                    receipt.BlockHash.ToCommitment(),
+                                    blockHash ??= receipt.BlockHash.ToCommitment(),
                                     receipt.Index,
-                                    receipt.TxHash.ToCommitment(),
+                                    txHash ??= receipt.TxHash.ToCommitment(),
                                     log.Address.ToAddress(),
                                     log.Data.ToArray(),
                                     topics));
