@@ -10,6 +10,7 @@ using Nethermind.Network;
 using Nethermind.Optimism.CL;
 using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Core;
+using Nethermind.Network.Libp2p;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Optimism.CL.P2P;
@@ -55,12 +56,14 @@ public class OptimismGossipSettingsTests
     }
 
     [Test]
-    public void Block_gossip_is_unscored()
+    public void Block_gossip_uses_op_stack_limits_and_is_unscored()
     {
         PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings(BlocksTopic);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(settings.MaxRpcBytes, Is.EqualTo(Eth2MessageId.MaxMessageSize).And.GreaterThan(10 * 1024 * 1024));
+            Assert.That(settings.MaxIwantResponseBytes, Is.EqualTo(Eth2MessageId.MaxMessageSize));
             Assert.That(settings.TopicScoreParams[BlocksTopic].TopicWeight, Is.Zero);
             Assert.That(settings.BehaviorPenaltyWeight, Is.Zero);
             Assert.That(settings.IPColocationFactorWeight, Is.Zero);
