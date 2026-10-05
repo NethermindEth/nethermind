@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -61,7 +62,7 @@ public class EvmStackTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(buffer.AsSpan(offset, EvmPooledMemory.WordSize).ToArray(), Is.EqualTo(expected));
+            Assert.That(buffer.AsSpan(offset, EvmPooledMemory.WordSize), Is.SequenceEqualTo(expected));
             Assert.That(buffer[^1], Is.EqualTo(0xa5));
             if (offset > 0) Assert.That(buffer[offset - 1], Is.EqualTo(0xa5));
         }
@@ -268,7 +269,7 @@ public class EvmStackTests
             Assert.That(result, Is.EqualTo(EvmExceptionType.None));
             Assert.That(tracer.StackItem, Is.EqualTo(expected));
             Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
-            Assert.That(word.ToArray(), Is.EqualTo(expected));
+            Assert.That(word, Is.SequenceEqualTo(expected));
         }
     }
 

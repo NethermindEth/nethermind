@@ -11,6 +11,7 @@ using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Runner.Test")]
+[assembly: InternalsVisibleTo("nethermind")]
 
 namespace Nethermind.JsonRpc.Modules
 {

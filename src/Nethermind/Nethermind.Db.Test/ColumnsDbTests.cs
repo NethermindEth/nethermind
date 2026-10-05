@@ -32,20 +32,121 @@ public class ColumnsDbTests
         _db = CreateDb(DbPath, new DbConfig());
     }
 
-    private static ColumnsDb<ReceiptsColumns> CreateDb(string path, DbConfig dbConfig) =>
+    private static ColumnsDb<ReceiptsColumns> CreateDb(string path, DbConfig dbConfig, IRocksDbConfigFactory? factory = null) =>
         new(path,
             new("Blocks", path)
             {
                 DeleteOnStart = true,
             },
             dbConfig,
-            new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+            factory ?? new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
             Enum.GetValues<ReceiptsColumns>()
         );
 
     [TearDown]
     public void TearDown() => _db.Dispose();
+
+    [Test]
+    public void Snapshots_and_views_do_not_resolve_read_settings_again([Values] bool sequentialReadAhead)
+    {
+        DbConfig config = new();
+        CountingRocksDbConfigFactory factory = new(new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false));
+        using ColumnsDb<ReceiptsColumns> db = CreateDb(DbPath + "-read-settings", config, factory);
+        IDb column = db.GetColumnDb(ReceiptsColumns.Blocks);
+        column.Set([1], [2]);
+        int checksumReads = factory.TableConfig.VerifyChecksumReads;
+        int readAheadReads = factory.TableConfig.ReadAheadSizeReads;
+
+        for (int i = 0; i < 3; i++)
+        {
+            using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)db).CreateSnapshot(sequentialReadAhead);
+            IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(ReceiptsColumns.Blocks);
+            Assert.That(snapshotColumn.Get([1], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 2 }));
+            AssertView((ISortedKeyValueStore)snapshotColumn);
+            AssertView((ISortedKeyValueStore)column);
+            using IKeyValueStoreSnapshot columnSnapshot = ((ColumnDb)column).CreateSnapshot();
+            AssertView((ISortedKeyValueStore)columnSnapshot);
+            using IKeyValueStoreSnapshot tableSnapshot = ((DbOnTheRocks)db).CreateSnapshot();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.TableConfig.VerifyChecksumReads, Is.EqualTo(checksumReads));
+            Assert.That(factory.TableConfig.ReadAheadSizeReads, Is.EqualTo(readAheadReads));
+            Assert.That(factory.VerifyChecksumReadsBeforeColumns, Is.GreaterThan(0), "Init must see the resolved checksum setting");
+        }
+
+        static void AssertView(ISortedKeyValueStore store)
+        {
+            using ISortedView view = store.GetViewBetween([1], [3], ReadFlags.HintReadAhead);
+            Assert.That(view.MoveNext(), Is.True);
+            Assert.That(view.CurrentValue, Is.SequenceEqualTo(new byte[] { 2 }));
+        }
+    }
+
+    [Test]
+    public void Read_settings_are_fixed_while_open_and_resolved_for_new_instances()
+    {
+        string path = DbPath + "-read-settings";
+        DbConfig config = new();
+        using (ColumnsDb<ReceiptsColumns> db = CreateDb(path, config))
+        {
+            config.VerifyChecksum = false;
+            config.ReadAheadSize = 0;
+            AssertReadSettings(db, true, 256 * 1024);
+        }
+
+        using ColumnsDb<ReceiptsColumns> reopened = CreateDb(path, config);
+        AssertReadSettings(reopened, false, 0);
+
+        static void AssertReadSettings(ColumnsDb<ReceiptsColumns> db, bool checksum, ulong readAhead)
+        {
+            using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)db).CreateSnapshot(sequentialReadAhead: true);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.VerifyChecksum, Is.EqualTo(checksum));
+                Assert.That(db.ReadAheadSize, Is.EqualTo(readAhead));
+                Assert.That(((RocksDbReader)snapshot.GetColumn(ReceiptsColumns.Blocks)).IteratorManager is not null, Is.EqualTo(readAhead > 0));
+            }
+        }
+    }
+
+    private sealed class CountingRocksDbConfigFactory(IRocksDbConfigFactory inner) : IRocksDbConfigFactory
+    {
+        public CountingRocksDbConfig TableConfig { get; private set; } = null!;
+        public int? VerifyChecksumReadsBeforeColumns { get; private set; }
+
+        public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
+        {
+            IRocksDbConfig config = inner.GetForDatabase(databaseName, columnName);
+            if (columnName is null) return TableConfig = new CountingRocksDbConfig(config);
+            VerifyChecksumReadsBeforeColumns ??= TableConfig.VerifyChecksumReads;
+            return config;
+        }
+    }
+
+    private sealed class CountingRocksDbConfig(IRocksDbConfig inner) : IRocksDbConfig
+    {
+        public int VerifyChecksumReads { get; private set; }
+        public int ReadAheadSizeReads { get; private set; }
+        public bool? VerifyChecksum { get { VerifyChecksumReads++; return inner.VerifyChecksum; } }
+        public ulong? ReadAheadSize { get { ReadAheadSizeReads++; return inner.ReadAheadSize; } }
+        public ulong? WriteBufferSize => inner.WriteBufferSize;
+        public ulong? WriteBufferNumber => inner.WriteBufferNumber;
+        public string RocksDbOptions => inner.RocksDbOptions;
+        public string AdditionalRocksDbOptions => inner.AdditionalRocksDbOptions;
+        public int? MaxOpenFiles => inner.MaxOpenFiles;
+        public bool WriteAheadLogSync => inner.WriteAheadLogSync;
+        public bool EnableDbStatistics => inner.EnableDbStatistics;
+        public uint StatsDumpPeriodSec => inner.StatsDumpPeriodSec;
+        public ulong? RowCacheSize => inner.RowCacheSize;
+        public bool EnableFileWarmer => inner.EnableFileWarmer;
+        public double CompressibilityHint => inner.CompressibilityHint;
+        public FlushOnExitMode FlushOnExit => inner.FlushOnExit;
+        public nint? BlockCache => inner.BlockCache;
+        public bool CompactOnDeletions => inner.CompactOnDeletions;
+    }
 
     [Test]
     public void SmokeTest()
