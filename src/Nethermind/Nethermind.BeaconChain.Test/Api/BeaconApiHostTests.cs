@@ -12,13 +12,9 @@ using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
-using Nethermind.BeaconChain.Storage;
-using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Engine;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -28,60 +24,36 @@ using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-public class BeaconApiHostTests
+public class BeaconApiHostTests : BeaconApiFixture
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
-    private BeaconApiHost _host = null!;
-    private BeaconChainStatusHolder _statusHolder = null!;
-    private BeaconChainStore _store = null!;
     private NoOpEngineDriver _engine = null!;
-    private HttpClient _client = null!;
-    private ManualTimestamper _timestamper = null!;
-    private SlotClock _slotClock = null!;
-    private NoOpProcessExitSource _exitSource = null!;
 
     [OneTimeSetUp]
     public async Task StartHost()
     {
-        _timestamper = new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
-        _statusHolder = new BeaconChainStatusHolder(Spec, _timestamper);
-        _slotClock = new SlotClock(Spec, _timestamper);
-        _store = new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>());
         _engine = new NoOpEngineDriver();
-        _exitSource = new NoOpProcessExitSource();
-
-        BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
-        _host = new BeaconApiHost(apiConfig, new BeaconChainConfig(), Spec, _statusHolder, _slotClock, _store,
-            new LocalMetadataSource(), _engine, _exitSource, LimboLogs.Instance);
-
-        await _host.StartAsync(CancellationToken.None);
-        _client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{_host.Port}") };
-    }
-
-    [OneTimeTearDown]
-    public async Task StopHost()
-    {
-        _client.Dispose();
-        await _host.DisposeAsync();
+        _host = await BeaconApiTestHost.StartAsync(Spec, engine: _engine, forkAwareStore: false);
+        _host.Client.Timeout = TimeSpan.FromSeconds(100);
     }
 
     [SetUp]
     public void ResetSharedState()
     {
-        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero };
-        _statusHolder.JustifiedRoot = Hash256.Zero;
-        _statusHolder.ExecutionInSync = false;
+        _host.StatusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero };
+        _host.StatusHolder.JustifiedRoot = Hash256.Zero;
+        _host.StatusHolder.ExecutionInSync = false;
         _engine.HasAnsweredNewPayload = false;
         _engine.IsAvailable = true;
-        _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
+        _host.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
     }
 
     [TestCase("/eth/v1/node/health", HttpStatusCode.ServiceUnavailable, TestName = "Health_reports_503_before_any_head_is_known")]
     [TestCase("/eth/v1/node/peers/QmT78zSuBmuS4z925WZfrqQ1EFh5GHW9V4FjHkSBu7Q5yJ", HttpStatusCode.NotFound, TestName = "PeerById_is_404_for_a_valid_id_when_no_peer_manager_is_registered")]
     public async Task Missing_node_services_report_the_published_status(string endpoint, HttpStatusCode expected)
     {
-        HttpResponseMessage response = await _client.GetAsync(endpoint);
+        HttpResponseMessage response = await _host.Client.GetAsync(endpoint);
         Assert.That(response.StatusCode, Is.EqualTo(expected));
     }
 
@@ -89,20 +61,20 @@ public class BeaconApiHostTests
     public async Task Health_reports_200_when_caught_up_and_206_when_behind()
     {
         Hash256 root = TestRoot(1);
-        _statusHolder.ExecutionInSync = true;
-        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = _slotClock.CurrentSlot };
-        HttpResponseMessage caughtUp = await _client.GetAsync("/eth/v1/node/health");
+        _host.StatusHolder.ExecutionInSync = true;
+        _host.StatusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = _host.Clock.CurrentSlot };
+        HttpResponseMessage caughtUp = await _host.Client.GetAsync("/eth/v1/node/health");
         Assert.That(caughtUp.StatusCode, Is.EqualTo(HttpStatusCode.OK), "distance 0 is ready");
 
-        _timestamper.Add(TimeSpan.FromSeconds(Spec.SecondsPerSlot * 100));
-        HttpResponseMessage behind = await _client.GetAsync("/eth/v1/node/health");
+        _host.Timestamper.Add(TimeSpan.FromSeconds(Spec.SecondsPerSlot * 100));
+        HttpResponseMessage behind = await _host.Client.GetAsync("/eth/v1/node/health");
         Assert.That(behind.StatusCode, Is.EqualTo((HttpStatusCode)206), "far behind the wall clock is partial content");
     }
 
     [Test]
     public async Task Version_reports_the_same_client_string_the_libp2p_identify_protocol_advertises()
     {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/version");
+        HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/node/version");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         JsonDocument body = await ReadJsonAsync(response);
         string version = body.RootElement.GetProperty("data").GetProperty("version").GetString()!;
@@ -112,12 +84,12 @@ public class BeaconApiHostTests
     [Test]
     public async Task Syncing_does_not_infer_offline_from_missing_payload_calls()
     {
-        HttpResponseMessage before = await _client.GetAsync("/eth/v1/node/syncing");
+        HttpResponseMessage before = await _host.Client.GetAsync("/eth/v1/node/syncing");
         JsonDocument beforeBody = await ReadJsonAsync(before);
         Assert.That(beforeBody.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.False);
 
         _engine.HasAnsweredNewPayload = true;
-        HttpResponseMessage after = await _client.GetAsync("/eth/v1/node/syncing");
+        HttpResponseMessage after = await _host.Client.GetAsync("/eth/v1/node/syncing");
         JsonDocument afterBody = await ReadJsonAsync(after);
         Assert.That(afterBody.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.False);
     }
@@ -127,7 +99,7 @@ public class BeaconApiHostTests
     {
         _engine.HasAnsweredNewPayload = answeredNewPayload;
         _engine.IsAvailable = available;
-        using HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/syncing");
+        using HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/node/syncing");
         using JsonDocument body = await ReadJsonAsync(response);
         Assert.That(body.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.EqualTo(!available));
     }
@@ -135,13 +107,13 @@ public class BeaconApiHostTests
     [Test]
     public async Task Syncing_is_optimistic_tracks_the_status_sources_el_in_sync_flag()
     {
-        _statusHolder.ExecutionInSync = false;
-        HttpResponseMessage optimistic = await _client.GetAsync("/eth/v1/node/syncing");
+        _host.StatusHolder.ExecutionInSync = false;
+        HttpResponseMessage optimistic = await _host.Client.GetAsync("/eth/v1/node/syncing");
         JsonDocument optimisticBody = await ReadJsonAsync(optimistic);
         Assert.That(optimisticBody.RootElement.GetProperty("data").GetProperty("is_optimistic").GetBoolean(), Is.True, "EL not yet confirmed VALID");
 
-        _statusHolder.ExecutionInSync = true;
-        HttpResponseMessage confirmed = await _client.GetAsync("/eth/v1/node/syncing");
+        _host.StatusHolder.ExecutionInSync = true;
+        HttpResponseMessage confirmed = await _host.Client.GetAsync("/eth/v1/node/syncing");
         JsonDocument confirmedBody = await ReadJsonAsync(confirmed);
         Assert.That(confirmedBody.RootElement.GetProperty("data").GetProperty("is_optimistic").GetBoolean(), Is.False, "EL confirmed VALID by the orchestrator");
     }
@@ -149,7 +121,7 @@ public class BeaconApiHostTests
     [Test]
     public async Task Peer_count_is_zero_with_no_peer_manager_registered()
     {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/peer_count");
+        HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/node/peer_count");
         JsonDocument body = await ReadJsonAsync(response);
         Assert.That(body.RootElement.GetProperty("data").GetProperty("connected").GetString(), Is.EqualTo("0"));
     }
@@ -157,7 +129,7 @@ public class BeaconApiHostTests
     [Test]
     public async Task Peers_listing_with_no_peer_manager_is_an_empty_list_not_an_error()
     {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/peers");
+        HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/node/peers");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         JsonDocument body = await ReadJsonAsync(response);
         Assert.That(body.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
@@ -230,7 +202,7 @@ public class BeaconApiHostTests
     [Test]
     public async Task Validator_endpoints_are_501_regardless_of_the_path_under_them()
     {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/validator/duties/proposer/12345");
+        HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/validator/duties/proposer/12345");
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)501));
         JsonDocument body = await ReadJsonAsync(response);
         Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("non-attesting"));
@@ -244,36 +216,36 @@ public class BeaconApiHostTests
         ulong stateSlot = (fulu ? Spec.FuluForkEpoch : Spec.ElectraForkEpoch) * Spec.SlotsPerEpoch;
         if (stateId is "head" or "finalized")
         {
-            using HttpResponseMessage uninitialized = await _client.GetAsync($"/eth/v2/debug/beacon/states/{stateId}");
+            using HttpResponseMessage uninitialized = await _host.Client.GetAsync($"/eth/v2/debug/beacon/states/{stateId}");
             Assert.That(uninitialized.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
         }
 
         Hash256 root = TestRoot(2);
         Hash256 stateRoot = TestRoot(20);
-        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = canonicalSlot };
-        _store.DeleteState(root);
-        _store.SetCanonicalRoot(canonicalSlot, root);
+        _host.StatusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = canonicalSlot };
+        _host.Store.DeleteState(root);
+        _host.Store.SetCanonicalRoot(canonicalSlot, root);
         if (stateId == "root")
         {
             SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(stateSlot);
             block.Message!.StateRoot = stateRoot;
-            _store.PutBlock(root, block);
+            _host.Store.PutBlock(root, block);
         }
 
         string path = $"/eth/v2/debug/beacon/states/{(stateId == "root" ? stateRoot.ToString() : stateId)}";
         HttpRequestMessage missing = new(HttpMethod.Get, path);
         missing.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ContentTypeOctet));
-        HttpResponseMessage missingResponse = await _client.SendAsync(missing);
+        HttpResponseMessage missingResponse = await _host.Client.SendAsync(missing);
         Assert.That(missingResponse.StatusCode, Is.EqualTo(HttpStatusCode.NotFound), "no state stored for that root yet");
 
         byte[] stateBytes = new byte[48];
         BinaryPrimitives.WriteUInt64LittleEndian(stateBytes, Spec.GenesisTime);
         BinaryPrimitives.WriteUInt64LittleEndian(stateBytes.AsSpan(40), stateSlot);
-        _store.PutState(root, stateBytes);
+        _host.Store.PutState(root, stateBytes);
 
         HttpRequestMessage present = new(HttpMethod.Get, path);
         present.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ContentTypeOctet));
-        HttpResponseMessage presentResponse = await _client.SendAsync(present);
+        HttpResponseMessage presentResponse = await _host.Client.SendAsync(present);
         Assert.That(presentResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         Assert.That(presentResponse.Content.Headers.ContentType?.MediaType, Is.EqualTo(ContentTypeOctet));
         byte[] received = await presentResponse.Content.ReadAsByteArrayAsync();
@@ -286,12 +258,12 @@ public class BeaconApiHostTests
         [Values] bool ssz, [Values(1, 47)] int length)
     {
         Hash256 root = TestRoot(3);
-        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = 5 };
-        _store.PutState(root, new byte[length]);
+        _host.StatusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = 5 };
+        _host.Store.PutState(root, new byte[length]);
 
         HttpRequestMessage request = new(HttpMethod.Get, "/eth/v2/debug/beacon/states/head");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(ssz ? ContentTypeOctet : "application/json"));
-        HttpResponseMessage response = await _client.SendAsync(request);
+        HttpResponseMessage response = await _host.Client.SendAsync(request);
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError));
         JsonDocument body = await ReadJsonAsync(response);
         Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("not decodable"));
@@ -300,7 +272,7 @@ public class BeaconApiHostTests
     [Test]
     public async Task Genesis_reports_the_spec_values()
     {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/beacon/genesis");
+        HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/beacon/genesis");
         JsonDocument body = await ReadJsonAsync(response);
         Assert.That(body.RootElement.GetProperty("data").GetProperty("genesis_time").GetString(), Is.EqualTo(Spec.GenesisTime.ToString()));
     }
@@ -309,17 +281,17 @@ public class BeaconApiHostTests
     public async Task Headers_by_id_404s_for_an_unknown_root_and_200s_with_envelope_for_a_stored_canonical_block()
     {
         Hash256 unknownRoot = TestRoot(99);
-        HttpResponseMessage missing = await _client.GetAsync($"/eth/v1/beacon/headers/{unknownRoot}");
+        HttpResponseMessage missing = await _host.Client.GetAsync($"/eth/v1/beacon/headers/{unknownRoot}");
         Assert.That(missing.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
 
         const ulong slot = 13_200_000; // epoch 412,500 > FuluForkEpoch (411,392) on BeaconChainSpec.Mainnet
         SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(slot);
         Hash256 root = TestRoot(4);
-        _store.PutBlock(root, block);
-        _store.SetCanonicalRoot(slot, root);
-        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero, FinalizedEpoch = 0 };
+        _host.Store.PutBlock(root, block);
+        _host.Store.SetCanonicalRoot(slot, root);
+        _host.StatusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero, FinalizedEpoch = 0 };
 
-        HttpResponseMessage found = await _client.GetAsync($"/eth/v1/beacon/headers/{root}");
+        HttpResponseMessage found = await _host.Client.GetAsync($"/eth/v1/beacon/headers/{root}");
         Assert.That(found.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         Assert.That(found.Headers.TryGetValues("Eth-Consensus-Version", out System.Collections.Generic.IEnumerable<string>? versions)
                     && versions is not null && new System.Collections.Generic.List<string>(versions)[0] == "fulu",
@@ -334,16 +306,16 @@ public class BeaconApiHostTests
     [Test]
     public async Task Justified_id_is_503_until_the_driver_advertises_a_justified_root_and_then_resolves_to_it()
     {
-        HttpResponseMessage unknown = await _client.GetAsync("/eth/v1/beacon/headers/justified");
+        HttpResponseMessage unknown = await _host.Client.GetAsync("/eth/v1/beacon/headers/justified");
         string unknownRaw = await unknown.Content.ReadAsStringAsync();
         Assert.That(unknown.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable), unknownRaw);
 
         const ulong slot = 13_200_001; // epoch 412,500 > FuluForkEpoch (411,392) on BeaconChainSpec.Mainnet
         Hash256 root = TestRoot(5);
-        _store.PutBlock(root, BeaconApiTestHost.MinimalBlock(slot));
-        _statusHolder.JustifiedRoot = root;
+        _host.Store.PutBlock(root, BeaconApiTestHost.MinimalBlock(slot));
+        _host.StatusHolder.JustifiedRoot = root;
 
-        HttpResponseMessage justified = await _client.GetAsync("/eth/v1/beacon/headers/justified");
+        HttpResponseMessage justified = await _host.Client.GetAsync("/eth/v1/beacon/headers/justified");
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(justified);
         Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").GetProperty("root").GetString(), Is.EqualTo(root.ToString()));
     }
@@ -351,7 +323,7 @@ public class BeaconApiHostTests
     [Test]
     public async Task Unknown_route_is_404_with_the_beacon_api_error_shape()
     {
-        HttpResponseMessage response = await _client.GetAsync("/not/a/real/endpoint");
+        HttpResponseMessage response = await _host.Client.GetAsync("/not/a/real/endpoint");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
         JsonDocument body = await ReadJsonAsync(response);
         Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo(404));
@@ -364,7 +336,7 @@ public class BeaconApiHostTests
     {
         using HttpRequestMessage request = new(HttpMethod.Get, "/eth/v1/node/version");
         request.Headers.TryAddWithoutValidation("Accept", accept);
-        using HttpResponseMessage response = await _client.SendAsync(request);
+        using HttpResponseMessage response = await _host.Client.SendAsync(request);
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)406));
     }
 
@@ -390,7 +362,7 @@ public class BeaconApiHostTests
     private async Task<WeakReference> StartAndDisposeHostAsync(NoOpProcessExitSource exitSource)
     {
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
-        BeaconApiHost host = new(apiConfig, new BeaconChainConfig(), Spec, _statusHolder, _slotClock, _store,
+        BeaconApiHost host = new(apiConfig, new BeaconChainConfig(), Spec, _host.StatusHolder, _host.Clock, _host.Store,
             new LocalMetadataSource(), _engine, exitSource, LimboLogs.Instance);
 
         await host.StartAsync(CancellationToken.None);
@@ -411,15 +383,15 @@ public class BeaconApiHostTests
     public async Task Health_checks_optimism_and_the_requested_syncing_status(string query, int expected)
     {
         Hash256 root = TestRoot(40);
-        _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], HeadRoot = root, HeadSlot = _slotClock.CurrentSlot };
-        using HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/health" + query);
+        _host.StatusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], HeadRoot = root, HeadSlot = _host.Clock.CurrentSlot };
+        using HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/node/health" + query);
         Assert.That((int)response.StatusCode, Is.EqualTo(expected));
     }
 
     [Test]
     public async Task Malformed_peer_id_is_bad_request([Values("localhost", "0invalid", "16Uiu2HAmNoSuchPeer", "11", "11111111111111111111111111111111111111111111111111111111111111111")] string peerId)
     {
-        using HttpResponseMessage response = await _client.GetAsync($"/eth/v1/node/peers/{peerId}");
+        using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/node/peers/{peerId}");
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
