@@ -529,6 +529,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+      - name: Upload consensus spec report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: consensus-spec-report
+          path: src/Nethermind/artifacts/bin/Ethereum.ConsensusSpec.Test/release/consensus-spec-report.txt
+          if-no-files-found: warn
+          retention-days: 3
+
   matrix-guard:
     name: Check test project matrix is exhaustive
     runs-on: ubuntu-latest
