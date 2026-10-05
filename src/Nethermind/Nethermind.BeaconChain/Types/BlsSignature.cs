@@ -53,23 +53,13 @@ public static class BlsSignatureSszVectorTypeConverter
 
     public static BlsSignature FromSpan(ReadOnlySpan<byte> span) => new(span);
 
-    public static void FromSpan(ReadOnlySpan<byte> span, Span<BlsSignature> values)
-    {
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = FromSpan(span.Slice(i * Length, Length));
-        }
-    }
+    public static void FromSpan(ReadOnlySpan<byte> span, Span<BlsSignature> values) =>
+        span.Slice(0, values.Length * Length).CopyTo(MemoryMarshal.AsBytes(values));
 
     public static void ToSpan(Span<byte> span, BlsSignature value) => value.Bytes.CopyTo(span);
 
-    public static void ToSpan(Span<byte> span, ReadOnlySpan<BlsSignature> values)
-    {
-        for (int i = 0; i < values.Length; i++)
-        {
-            ToSpan(span.Slice(i * Length, Length), values[i]);
-        }
-    }
+    public static void ToSpan(Span<byte> span, ReadOnlySpan<BlsSignature> values) =>
+        MemoryMarshal.AsBytes(values).CopyTo(span.Slice(0, values.Length * Length));
 
     public static void Feed(ref Merkleizer merkleizer, BlsSignature value)
     {
