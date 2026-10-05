@@ -75,16 +75,11 @@ public partial class BeaconStateFulu : BeaconStateElectra
     public ulong[]? ProposerLookahead { get; set; }
 }
 
-/// <summary>
-/// Gloas <c>BeaconState</c> (specs/gloas/beacon-chain.md, "Modified containers", fetched from
-/// ethereum/consensus-specs `master` 2026-09-19): <c>ProgressiveContainer</c>, <c>ACTIVE_FIELDS</c>
-/// width 46, no gaps. Declared fresh rather than inheriting <see cref="BeaconStateFulu"/>: Gloas removes
-/// <c>latest_execution_payload_header</c> (EIP-7732 moves the payload out of state entirely) and retypes
-/// several inherited fields from bounded lists to <c>ProgressiveList</c> (EIP-7688), so this is not an
-/// additive change C# inheritance could express — every field is restated in spec order and indexed with
-/// <see cref="SszFieldAttribute"/>, which is what makes the SszGenerator treat this as a progressive
-/// container (see the remark at the top of GloasContainers.cs).
-/// </summary>
+/// <summary>Gloas beacon state (specs/gloas/beacon-chain.md, EIP-7732/EIP-7688).</summary>
+/// <remarks>
+/// Progressive container with 46 contiguous active fields indexed by <see cref="SszFieldAttribute"/>.
+/// Unlike <see cref="BeaconStateFulu"/>, it omits the execution payload header and uses progressive lists.
+/// </remarks>
 [SszContainer]
 public partial class BeaconStateGloas
 {
