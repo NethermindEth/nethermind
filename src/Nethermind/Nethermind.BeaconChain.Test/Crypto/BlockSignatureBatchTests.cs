@@ -90,30 +90,17 @@ public class BlockSignatureBatchTests
         Assert.That(batch.Count, Is.Zero);
     }
 
-    [Test]
-    public void A_signature_the_serial_path_cannot_decode_is_refused_at_its_call_site()
-    {
-        BlsSignature undecodable = new(Bytes.FromHexString("0x" + new string('f', 2 * BlsSignature.Length)));
-        BlockSignatureBatch batch = new();
-
-        bool serial = BlockSignatureBatch.Verify(PublicKey(1), undecodable, Message, deferral: null);
-        bool deferred = BlockSignatureBatch.Verify(PublicKey(1), undecodable, Message, batch.Defer("undecodable"));
-
-        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(serial, Is.False);
-        Assert.That(deferred, Is.False);
-        Assert.That(batch.Count, Is.Zero);
-    }
-
     private static IEnumerable<TestCaseData> PointsOutsideTheBatchConditions()
     {
         yield return new TestCaseData(G1Infinity, SignatureSets.G2PointAtInfinity, false).SetName("infinity_public_key_with_infinity_signature");
         yield return new TestCaseData(G1Infinity, SignedBy(3, Message).Bytes.ToArray(), false).SetName("infinity_public_key_with_a_real_signature");
         yield return new TestCaseData(NotInG1Pubkey, SignedBy(3, Message).Bytes.ToArray(), false).SetName("public_key_outside_g1");
         yield return new TestCaseData(new Bls.P1(DeriveKey(3)).Compress(), NotInG2Signature, false).SetName("signature_outside_g2");
+        yield return new TestCaseData(new Bls.P1(DeriveKey(1)).Compress(), Bytes.FromHexString("0x" + new string('f', 2 * BlsSignature.Length)), false)
+            .SetName("A_signature_the_serial_path_cannot_decode_is_refused_at_its_call_site");
     }
 
-    // Off-subgroup sets must get the serial verdict immediately; batching is only sound over subgroup points.
+    // Undecodable and off-subgroup sets must get the serial verdict immediately; batching is only sound over subgroup points.
     [TestCaseSource(nameof(PointsOutsideTheBatchConditions))]
     public void A_set_outside_the_batch_conditions_gets_the_serial_verdict_at_once(byte[] compressedPublicKey, byte[] signature, bool serialVerdict)
     {
