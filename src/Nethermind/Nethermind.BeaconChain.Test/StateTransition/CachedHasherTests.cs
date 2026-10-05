@@ -18,63 +18,136 @@ public class CachedHasherTests
 {
     private const ulong Gwei = 1_000_000_000;
 
-    [TestCase(64)]
-    [TestCase(10_000)]
-    public void Cached_root_matches_full_root_through_mutation_sequence(int validatorCount)
+    [TestCase(false, 64)]
+    [TestCase(false, 10_000)]
+    [TestCase(true, GloasTestFixtures.ValidatorCount)]
+    [HardTimeout(60_000)]
+    public void Cached_root_matches_full_root_through_mutation_sequence(bool gloas, int validatorCount)
     {
-        BeaconStateFulu state = CreateState(validatorCount);
+        dynamic state = gloas ? (object)GloasTestFixtures.CreateGloasState(out _, out _) : CreateState(validatorCount);
         CachedBeaconStateHasher hasher = new();
-
         AssertRootsMatch(hasher, state, "initial");
         AssertRootsMatch(hasher, state, "repeated call without mutation");
-
-        state.Balances![1] += 7;
-        state.Balances[validatorCount / 2] -= 3;
-        state.Balances[validatorCount - 1] = 2048 * Gwei;
+        if (gloas)
+        {
+            BeaconStateGloas uncached = GloasStateClone.Clone(state);
+            ulong targetSlot = 2 * Presets.SlotsPerEpoch + 1;
+            GloasSlotProcessing.ProcessSlots(state, targetSlot, new EpochCache { Hasher = hasher });
+            GloasSlotProcessing.ProcessSlots(uncached, targetSlot, new EpochCache());
+            Assert.That(state.StateRoots, Is.EqualTo(uncached.StateRoots), "state roots cached by slot processing across an epoch boundary");
+            AssertRootsMatch(hasher, state, "after slot and epoch processing");
+        }
+        int count = state.Validators.Length;
+        if (gloas)
+        {
+            // One index in each progressive subtree, which starts at (4^k - 1) / 3.
+            foreach (int i in (int[])[0, 1, 5, 21, 85, 341, 1365, count - 1])
+            {
+                state.Balances![i] += 7;
+            }
+        }
+        else
+        {
+            state.Balances![1] += 7;
+            state.Balances[validatorCount / 2] -= 3;
+            state.Balances[validatorCount - 1] = 2048 * Gwei;
+        }
         AssertRootsMatch(hasher, state, "scattered balance edits");
-
-        // Appends grow the registry lists (and cross a power-of-two boundary for the 64 case).
         for (int i = 0; i < 3; i++)
         {
-            state.AddValidatorToRegistry(Pubkey(validatorCount + i), FromFirstByte(0xAB), 32 * Gwei);
+            if (gloas)
+            {
+                Validator appended = ((Validator)state.Validators[0]).Clone();
+                appended.Pubkey = GloasTestFixtures.Pubkey((byte)(0xE0 + i));
+                state.Validators = (Validator[])[.. (Validator[])state.Validators, appended];
+                state.Balances = (ulong[])[.. (ulong[])state.Balances, 32 * Gwei];
+                state.PreviousEpochParticipation = (byte[])[.. (byte[])state.PreviousEpochParticipation, 0];
+                state.CurrentEpochParticipation = (byte[])[.. (byte[])state.CurrentEpochParticipation, 0];
+                state.InactivityScores = (ulong[])[.. (ulong[])state.InactivityScores, 0];
+            }
+            else
+            {
+                ((BeaconStateFulu)state).AddValidatorToRegistry(Pubkey(validatorCount + i), FromFirstByte(0xAB), 32 * Gwei);
+            }
         }
         AssertRootsMatch(hasher, state, "validator appends");
 
-        Validator replaced = state.Validators![2].Clone();
+        Validator replaced = ((Validator)state.Validators[2]).Clone();
         replaced.ExitEpoch = 12345;
         state.Validators[2] = replaced;
         AssertRootsMatch(hasher, state, "validator replacement");
 
         state.CurrentEpochParticipation![0] |= 0b001;
-        state.PreviousEpochParticipation![validatorCount - 1] |= 0b110;
+        state.PreviousEpochParticipation![count - 1] |= 0b110;
         AssertRootsMatch(hasher, state, "participation edits");
 
-        state.RandaoMixes![7] = FromFirstByte(0x77);
-        state.BlockRoots![1] = FromFirstByte(0x11);
-        state.StateRoots![2] = FromFirstByte(0x22);
+        PayloadTimelinessCommittee[]? window = null;
+        if (gloas)
+        {
+            state.InactivityScores![3] += 4;
+            AssertRootsMatch(hasher, state, "inactivity score edit");
+
+            Builder builder = state.Builders![0];
+            state.Builders = (Builder[])[builder, GloasCachedHasherTests.NewBuilder(builder, GloasTestFixtures.Pubkey(0xB1), balance: 9 * Gwei)];
+            AssertRootsMatch(hasher, state, "builder append");
+
+            state.Builders[0] = GloasCachedHasherTests.NewBuilder(builder, builder.Pubkey, balance: builder.Balance + Gwei);
+            AssertRootsMatch(hasher, state, "builder replacement");
+
+            state.Builders = ((Builder[])state.Builders)[..1];
+            AssertRootsMatch(hasher, state, "builder registry shrink");
+
+            window = state.PtcWindow!;
+            ulong[] indices = Enumerable.Repeat(7UL, (int)Presets.PtcSize).ToArray();
+            window[5] = new PayloadTimelinessCommittee { Indices = indices };
+            AssertRootsMatch(hasher, state, "ptc window element replacement");
+
+            int slotsPerEpoch = (int)Presets.SlotsPerEpoch;
+            Array.Copy(window, slotsPerEpoch, window, 0, window.Length - slotsPerEpoch);
+            AssertRootsMatch(hasher, state, "ptc window shift");
+
+            int availabilityIndex = (int)(state.Slot % Presets.SlotsPerHistoricalRoot);
+            state.ExecutionPayloadAvailability![availabilityIndex] = !state.ExecutionPayloadAvailability[availabilityIndex];
+            AssertRootsMatch(hasher, state, "execution payload availability bit flip");
+
+            state.BuilderPendingPayments![3] = new BuilderPendingPayment { Weight = 5, ProposerIndex = 1, Withdrawal = new BuilderPendingWithdrawal { Amount = Gwei, BuilderIndex = 0 } };
+            state.LatestBlockHash = GloasTestFixtures.Hash(0x5A);
+            state.NextWithdrawalBuilderIndex = 1;
+            AssertRootsMatch(hasher, state, "builder payment, latest block hash and builder sweep index");
+        }
+        state.RandaoMixes[7] = gloas ? GloasTestFixtures.Hash(0x77) : FromFirstByte(0x77);
+        state.BlockRoots[1] = gloas ? GloasTestFixtures.Hash(0x11) : FromFirstByte(0x11);
+        state.StateRoots[2] = gloas ? GloasTestFixtures.Hash(0x22) : FromFirstByte(0x22);
         AssertRootsMatch(hasher, state, "randao and root vector updates");
-
-        // A value-identical array replacement must be recognized as unchanged.
-        state.Balances = [.. state.Balances];
+        state.Balances = (ulong[])[.. (ulong[])state.Balances];
         AssertRootsMatch(hasher, state, "balances array replaced with an equal copy");
-
-        EpochProcessing.ProcessEpoch(state, new EpochCache());
-        state.Slot++;
-        AssertRootsMatch(hasher, state, "after ProcessEpoch");
-
+        if (!gloas)
+        {
+            EpochProcessing.ProcessEpoch(state, new EpochCache());
+            state.Slot++;
+            AssertRootsMatch(hasher, state, "after ProcessEpoch");
+        }
         Hash256 originalRoot = SszRoots.HashTreeRoot(state);
-        BeaconStateFulu clone = state.Clone();
-        Assert.That(SszRoots.HashTreeRoot(clone), Is.EqualTo(originalRoot), "clone preserves the root");
-
+        dynamic clone = gloas ? (object)GloasStateClone.Clone(state) : BeaconStateClone.Clone(state);
+        if (!gloas)
+            Assert.That(SszRoots.HashTreeRoot(clone), Is.EqualTo(originalRoot), "clone preserves the root");
         clone.Balances![1] += 42;
-        Validator cloneReplacement = clone.Validators![3].Clone();
+        Validator cloneReplacement = ((Validator)clone.Validators[3]).Clone();
         cloneReplacement.Slashed = true;
         clone.Validators[3] = cloneReplacement;
-        clone.RandaoMixes![9] = FromFirstByte(0x99);
-        clone.LatestBlockHeader!.StateRoot = FromFirstByte(0x88); // The in-place header write ProcessSlot performs.
-        clone.CurrentEpochParticipation![1] |= 0b010;
-        clone.Slashings![0] += Gwei;
-
+        if (gloas)
+        {
+            clone.LatestBlockHeader.StateRoot = GloasTestFixtures.Hash(0x88);
+            clone.ExecutionPayloadAvailability[0] = !clone.ExecutionPayloadAvailability[0];
+            clone.PtcWindow[0] = window![5];
+        }
+        else
+        {
+            clone.RandaoMixes![9] = FromFirstByte(0x99);
+            clone.LatestBlockHeader!.StateRoot = FromFirstByte(0x88); // The in-place header write ProcessSlot performs.
+            clone.CurrentEpochParticipation![1] |= 0b010;
+            clone.Slashings![0] += Gwei;
+        }
         AssertRootsMatch(hasher, clone, "same hasher on the mutated clone");
         AssertRootsMatch(new CachedBeaconStateHasher(), clone, "fresh hasher on the mutated clone");
         Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(originalRoot), "original state unchanged after mutating the clone");
@@ -138,7 +211,7 @@ public class CachedHasherTests
         Assert.That(cloneMs, Is.LessThan(200), "clone budget");
     }
 
-    private static void AssertRootsMatch(CachedBeaconStateHasher hasher, BeaconStateFulu state, string stage) =>
+    private static void AssertRootsMatch(CachedBeaconStateHasher hasher, dynamic state, string stage) =>
         Assert.That(hasher.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(state)), stage);
 
     internal static BeaconStateFulu CreateState(int validatorCount)
