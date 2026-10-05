@@ -71,6 +71,8 @@ public class FrameTxWidthFinalizerTests
         Block last = chain.Canonical[7];
         using SemaphoreSlim pausedCredits = new(0);
         using ManualResetEventSlim resume = new();
+        using SemaphoreSlim overlappingRaised = new(0);
+        chain.FinalizationRaised += number => { if (number == last.Number) overlappingRaised.Release(); };
         chain.Ledger.When(l => l.EarnWidthOnFinalization(Same(paused), Arg.Any<TxReceipt[]>()))
             .Do(_ =>
             {
@@ -82,6 +84,7 @@ public class FrameTxWidthFinalizerTests
         Task slower = Task.Run(() => chain.FinalizeAt(paused));
         bool firstCreditPaused = await pausedCredits.WaitAsync(TimeSpan.FromSeconds(10));
         Task overlapping = Task.Run(() => chain.FinalizeAt(last));
+        bool overlappingRaisedWhilePaused = await overlappingRaised.WaitAsync(TimeSpan.FromSeconds(10));
         bool creditedAgain = await pausedCredits.WaitAsync(TimeSpan.FromMilliseconds(500));
         resume.Set();
         await Task.WhenAll(slower, overlapping);
@@ -89,6 +92,7 @@ public class FrameTxWidthFinalizerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(firstCreditPaused, Is.True);
+            Assert.That(overlappingRaisedWhilePaused, Is.True);
             Assert.That(creditedAgain, Is.False);
             chain.Ledger.Received(1).EarnWidthOnFinalization(Same(paused), Arg.Any<TxReceipt[]>());
             chain.Ledger.Received(1).EarnWidthOnFinalization(Same(last), Arg.Any<TxReceipt[]>());
@@ -168,8 +172,9 @@ public class FrameTxWidthFinalizerTests
                 .AddSingleton(Ledger)
                 .AddSingleton<ITxPool>(_ => NullTxPool.Instance)
                 .Build();
-            _container.Resolve<ITxPool>();
             BlockTree = _container.Resolve<IBlockTree>();
+            BlockTree.BlocksFinalized += (_, e) => FinalizationRaised?.Invoke(e.FinalizedBlock.Number);
+            _container.Resolve<ITxPool>();
 
             Canonical = new Block[canonicalLength + 1];
             Canonical[0] = Build.A.Block.Genesis.TestObject;
@@ -188,6 +193,8 @@ public class FrameTxWidthFinalizerTests
         public IBlockTree BlockTree { get; }
 
         public Block[] Canonical { get; }
+
+        public event Action<ulong>? FinalizationRaised;
 
         public void FinalizeAt(Block block) => BlockTree.ForkChoiceUpdated(block.Hash, block.Hash);
 
