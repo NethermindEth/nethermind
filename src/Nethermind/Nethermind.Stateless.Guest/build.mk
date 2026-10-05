@@ -43,6 +43,10 @@ OPT_FLAGS ?= -Ot
 # Worth roughly 45% of the image on the sp1 and openvm guests.
 TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 
+# Objects a guest links besides the managed closure and its bindings library, each
+# assembled from the .S of the same name in the guest's directory.
+GUEST_OBJECTS ?=
+
 # Main, the ZkvmThrow export and the failure protocol are one file shared by all
 # three guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
 # sources, not the managed assembly, so the shared file has to be mounted and
@@ -106,7 +110,7 @@ dotnet-build:
 
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
-build: dotnet-build
+build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 	docker run --platform linux/amd64 --rm \
 		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
 		-e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
@@ -125,6 +129,7 @@ build: dotnet-build
 		--substitution $(SRC_DIR)/substitutions.xml \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
+		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
 		$(GUEST_OUT) \
@@ -136,6 +141,15 @@ build: dotnet-build
 	echo "Resource verification: OK - no manifest resources in the guest image"
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
+
+# Assembled by the bflat image's own clang, for the ISA the gates above allow.
+$(GUEST_DIR)/%.o: $(GUEST_DIR)/%.S
+	docker run --platform linux/amd64 --rm \
+		-w $(SRC_DIR) \
+		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+		--entrypoint clang \
+		$(BFLAT_IMAGE) \
+		--target=riscv64-unknown-elf -march=rv64im -mabi=lp64 -mno-relax -c $*.S -o $*.o
 
 # SP1 and OpenVM take the SSZ payload as-is; the shared fixtures are framed for
 # ZisK (8-byte little-endian length, payload, padding to 8), so the frame is
@@ -158,7 +172,8 @@ clean:
 		$(GUEST_DIR)/bin/** \
 		$(GUEST_DIR)/Program \
 		$(GUEST_DIR)/Program.o \
-		$(GUEST_DIR)/Program.map.xml
+		$(GUEST_DIR)/Program.map.xml \
+		$(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
 
 .PHONY: \

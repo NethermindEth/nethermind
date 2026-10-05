@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -36,8 +37,41 @@ public sealed partial class CodeInfo
     /// <remarks>
     /// Sized for the whole code so the shared bit test can index it, but a clear bit only means "not a
     /// destination, or not analyzed yet"; <see cref="AnalyzeJump"/> is what turns that into an answer.
+    /// On ZisK the precompile analyzes the whole code when the bitmap is created, so there a clear bit is the answer.
     /// </remarks>
-    internal long[] IncrementalJumpBitmap => _incrementalJumpBitmap ??= JumpDestinationAnalyzer.CreateBitmap(CodeLength);
+    internal long[] IncrementalJumpBitmap => _incrementalJumpBitmap ??= CreateJumpBitmap();
+
+    private long[] CreateJumpBitmap()
+    {
+        long[] bitmap = JumpDestinationAnalyzer.CreateBitmap(CodeLength);
+        // STOP-first code halts before any jump, so it is not worth analyzing.
+        if (ZiskJumpDestFlag.IsActive && CodeLength != 0 && _code.Span[0] != (byte)Instruction.STOP) AnalyzeWithPrecompile(bitmap);
+        return bitmap;
+    }
+
+    /// <summary>Marks every jump destination of this code in <paramref name="bitmap"/> with ZisK's JUMPDEST bitmap precompile.</summary>
+    /// <remarks>
+    /// The precompile takes two steps and a cost linear in the code length, which real code repays in lazy
+    /// analysis: deferring it to the first destination the look-back cannot decide skips too few codes to pay
+    /// for the look-backs. Moving the cursor to the end leaves every lazy path a plain bit test. It reads and
+    /// writes whole aligned words, reading at most 7 bytes past the code, which the execution padding holds; an
+    /// unaligned buffer keeps the lazy analysis, as the precompile cannot be proven on it.
+    /// </remarks>
+    private unsafe void AnalyzeWithPrecompile(long[] bitmap)
+    {
+        fixed (byte* code = _code.Span)
+        fixed (long* bits = bitmap)
+        {
+            if ((((nuint)code | (nuint)bits) & (sizeof(long) - 1)) != 0) return;
+            ZiskJumpDestBitmap(bits, code, (ulong)CodeLength);
+        }
+
+        _analyzedUntil = CodeLength;
+    }
+
+    /// <summary>ZisK's JUMPDEST bitmap precompile, from the guest's <c>jump_dest.S</c>.</summary>
+    [DllImport("__Internal", EntryPoint = "zisk_jump_dest_bitmap", ExactSpelling = true), SuppressGCTransition]
+    private static extern unsafe void ZiskJumpDestBitmap(long* bitmap, byte* code, ulong size);
 
     /// <summary>Extends the scan far enough to decide <paramref name="destination"/>, and reports whether it is a jump destination.</summary>
     /// <param name="destination">A destination inside the code.</param>

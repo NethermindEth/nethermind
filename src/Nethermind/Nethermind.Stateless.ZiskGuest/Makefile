@@ -11,6 +11,10 @@ GUEST_LIBC := zisk
 # The only target whose bindings library is not named after its libc.
 GUEST_EXTLIB := libziskos
 
+# The JUMPDEST bitmap precompile is a csrs/add pair the transpiler fuses only while
+# adjacent, which no compiler emits, so the guest links it as assembly.
+GUEST_OBJECTS := jump_dest.o
+
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
