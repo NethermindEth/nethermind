@@ -161,8 +161,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
             Signature = FilledSignature(0x24),
         };
 
-        Hash256[] proof = new Hash256[33];
-        for (int i = 0; i < proof.Length; i++) proof[i] = FilledHash((byte)(0x30 + i));
+        Hash256[] proof = Enumerable.Range(0, 33).Select(static i => FilledHash((byte)(0x30 + i))).ToArray();
 
         return new SignedBeaconBlock
         {
@@ -279,8 +278,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         BitArray justificationBits = new(4);
         justificationBits[0] = true;
         justificationBits[3] = true;
-        ulong[] lookahead = new ulong[(int)Presets.ProposerLookaheadSlots];
-        for (int i = 0; i < lookahead.Length; i++) lookahead[i] = (ulong)(i % 3);
+        ulong[] lookahead = Enumerable.Range(0, (int)Presets.ProposerLookaheadSlots).Select(static i => (ulong)(i % 3)).ToArray();
         ulong[] slashings = new ulong[(int)Presets.EpochsPerSlashingsVector];
         slashings[1] = 64_000_000_000;
 

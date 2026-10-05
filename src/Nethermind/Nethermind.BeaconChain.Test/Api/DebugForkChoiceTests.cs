@@ -119,11 +119,8 @@ public class DebugForkChoiceTests
 
     private static ForkChoiceSnapshot Snapshot(params Hash256[] roots)
     {
-        ForkChoiceSnapshotNode[] nodes = new ForkChoiceSnapshotNode[roots.Length];
-        for (int i = 0; i < nodes.Length; i++)
-        {
-            nodes[i] = new ForkChoiceSnapshotNode((ulong)i, roots[i], i == 0 ? null : roots[i - 1], 0, 0, 0, ExecutionStatus.Valid, roots[i]);
-        }
+        ForkChoiceSnapshotNode[] nodes = roots.Select((root, i) =>
+            new ForkChoiceSnapshotNode((ulong)i, root, i == 0 ? null : roots[i - 1], 0, 0, 0, ExecutionStatus.Valid, root)).ToArray();
 
         return new ForkChoiceSnapshot(new CheckpointRef(0, roots[0]), new CheckpointRef(0, roots[0]), Hash256.Zero, nodes);
     }

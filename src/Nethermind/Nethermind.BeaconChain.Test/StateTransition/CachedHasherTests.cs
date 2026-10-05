@@ -143,34 +143,17 @@ public class CachedHasherTests
 
     internal static BeaconStateFulu CreateState(int validatorCount)
     {
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
-        byte[] previousParticipation = new byte[validatorCount];
-        byte[] currentParticipation = new byte[validatorCount];
-        ulong[] inactivityScores = new ulong[validatorCount];
-        for (int i = 0; i < validatorCount; i++)
-        {
-            validators[i] = GloasTestFixtures.CreateActiveValidator(Pubkey(i));
-            balances[i] = 32 * Gwei + (ulong)i;
-            previousParticipation[i] = (byte)(i % 8);
-            currentParticipation[i] = (byte)(i % 4);
-            inactivityScores[i] = (ulong)(i % 5);
-        }
+        Validator[] validators = Enumerable.Range(0, validatorCount).Select(static i => GloasTestFixtures.CreateActiveValidator(Pubkey(i))).ToArray();
+        ulong[] balances = Enumerable.Range(0, validatorCount).Select(static i => 32 * Gwei + (ulong)i).ToArray();
+        byte[] previousParticipation = Enumerable.Range(0, validatorCount).Select(static i => (byte)(i % 8)).ToArray();
+        byte[] currentParticipation = Enumerable.Range(0, validatorCount).Select(static i => (byte)(i % 4)).ToArray();
+        ulong[] inactivityScores = Enumerable.Range(0, validatorCount).Select(static i => (ulong)(i % 5)).ToArray();
 
-        Hash256[] blockRoots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
-        Hash256[] stateRoots = new Hash256[(int)Presets.SlotsPerHistoricalRoot];
-        for (int i = 0; i < blockRoots.Length; i++)
-        {
-            blockRoots[i] = FromFirstByte(0x0B);
-            stateRoots[i] = FromFirstByte(0x0C);
-        }
+        Hash256[] blockRoots = Enumerable.Range(0, (int)Presets.SlotsPerHistoricalRoot).Select(static _ => FromFirstByte(0x0B)).ToArray();
+        Hash256[] stateRoots = Enumerable.Range(0, (int)Presets.SlotsPerHistoricalRoot).Select(static _ => FromFirstByte(0x0C)).ToArray();
         Hash256[] randaoMixes = Enumerable.Repeat(FromFirstByte(0x42), (int)Presets.EpochsPerHistoricalVector).ToArray();
 
-        BlsPublicKey[] committee = new BlsPublicKey[512];
-        for (int i = 0; i < committee.Length; i++)
-        {
-            committee[i] = validators[i % validatorCount].Pubkey;
-        }
+        BlsPublicKey[] committee = Enumerable.Range(0, 512).Select(i => validators[i % validatorCount].Pubkey).ToArray();
         SyncCommittee syncCommittee = new() { Pubkeys = committee, AggregatePubkey = Pubkey(0) };
 
         Eth1Data eth1Data = new() { DepositRoot = FromFirstByte(0x01), DepositCount = 16, BlockHash = FromFirstByte(0x02) };
