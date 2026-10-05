@@ -128,16 +128,6 @@ public class FullColumnSetAvailabilityTests
     {
         Index = index,
         KzgCommitments = [commitment],
-        SignedBlockHeader = new SignedBeaconBlockHeader
-        {
-            Message = new BeaconBlockHeader
-            {
-                Slot = block.Slot,
-                ProposerIndex = block.ProposerIndex,
-                ParentRoot = block.ParentRoot,
-                StateRoot = block.StateRoot,
-                BodyRoot = SszRoots.HashTreeRoot(block.Body!),
-            },
-        },
+        SignedBlockHeader = ImportableBlobBlock.HeaderFor(block),
     };
 }

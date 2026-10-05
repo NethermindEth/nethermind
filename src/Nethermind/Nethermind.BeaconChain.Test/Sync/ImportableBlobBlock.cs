@@ -128,6 +128,19 @@ internal sealed class ImportableBlobBlock
         return (signed, SszRoots.HashTreeRoot(signed.Message), BuildColumns(signed.Message, signed.Signature, blobs, commitments));
     }
 
+    internal static SignedBeaconBlockHeader HeaderFor(BeaconBlock block, BlsSignature signature = default) => new()
+    {
+        Message = new BeaconBlockHeader
+        {
+            Slot = block.Slot,
+            ProposerIndex = block.ProposerIndex,
+            ParentRoot = block.ParentRoot,
+            StateRoot = block.StateRoot,
+            BodyRoot = SszRoots.HashTreeRoot(block.Body!),
+        },
+        Signature = signature,
+    };
+
     private static DataColumnSidecar[] BuildColumns(BeaconBlock block, BlsSignature signature, DataColumnKzgFixture.BlobFixture[] blobs, SszKzgCommitment[] commitments)
     {
         BeaconBlockBody body = block.Body!;
@@ -141,18 +154,7 @@ internal sealed class ImportableBlobBlock
                 Column = [.. blobs.Select(b => DataColumnKzgFixture.CellAt(b, column))],
                 KzgCommitments = commitments,
                 KzgProofs = [.. blobs.Select(b => DataColumnKzgFixture.ProofAt(b, column))],
-                SignedBlockHeader = new SignedBeaconBlockHeader
-                {
-                    Message = new BeaconBlockHeader
-                    {
-                        Slot = block.Slot,
-                        ProposerIndex = block.ProposerIndex,
-                        ParentRoot = block.ParentRoot,
-                        StateRoot = block.StateRoot,
-                        BodyRoot = SszRoots.HashTreeRoot(body),
-                    },
-                    Signature = signature,
-                },
+                SignedBlockHeader = HeaderFor(block, signature),
                 KzgCommitmentsInclusionProof = inclusionProof,
             };
         }
