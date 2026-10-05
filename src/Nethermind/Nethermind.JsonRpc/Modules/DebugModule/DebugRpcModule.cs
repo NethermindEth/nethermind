@@ -333,7 +333,7 @@ public class DebugRpcModule(
 
     private static void ValidateLegacyTimeout(GethTraceOptions? options)
     {
-        // Only traceCall defers duration validation until tracer construction. Other methods retain
+        // traceCall and traceTransaction defer duration validation until tracer construction. Other methods retain
         // their parameter-error semantics, including paths that never inspect Timeout during execution.
         try { _ = options?.Timeout; }
         catch (FormatException ex) when (ex.Message.StartsWith("time:", StringComparison.Ordinal))

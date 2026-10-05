@@ -11,7 +11,9 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm;
@@ -24,6 +26,46 @@ namespace Nethermind.Consensus.Test.Tracing;
 
 public class GethStyleTracerTests
 {
+    [TestCase(null, 5)]
+    [TestCase(2, 2)]
+    public void Transaction_deadline_starts_with_target_and_defaults_to_five_seconds(int? timeoutSeconds, int expectedSeconds)
+    {
+        ManualTimeProvider clock = new();
+        Transaction target = Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
+        Transaction prefix = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(NullTxTracer.Instance);
+        GethTraceOptions options = new()
+        {
+            TxHash = target.Hash,
+            Timeout = timeoutSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null
+        };
+        using GethLikeBlockCallDeadlineTracer tracer = new(options, CancellationToken.None, _ =>
+        {
+            clock.AdvanceAndFireTimer(TimeSpan.FromSeconds(60));
+            return inner;
+        }, clock);
+        tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(prefix, target).TestObject);
+        using (tracer.StartNewTxTrace(prefix))
+        {
+            clock.AdvanceAndFireTimer(TimeSpan.FromSeconds(60));
+            Assert.That(tracer.Expired, Is.False);
+        }
+        tracer.EndTxTrace();
+        using (tracer.StartNewTxTrace(target))
+        {
+            clock.AdvanceAndFireTimer(TimeSpan.FromSeconds(expectedSeconds) - TimeSpan.FromTicks(1));
+            Assert.That(tracer.Expired, Is.False);
+            clock.AdvanceAndFireTimer(TimeSpan.FromTicks(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.Expired, Is.True);
+                Assert.That(tracer.Token.IsCancellationRequested, Is.True);
+                Assert.That(() => tracer.BuildResult(), Throws.TypeOf<TimeoutException>().With.Message.EqualTo("execution timeout"));
+            }
+        }
+    }
+
     /// <remarks>
     /// The retained obsolete overload has no other in-tree caller, so its bounds check would regress
     /// unnoticed. The block has to carry a transaction: on an empty block every index is out of range,

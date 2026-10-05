@@ -23,10 +23,10 @@ internal sealed class GethLikeBlockCallDeadlineTracer : IBlockTracer<GethLikeTxT
     private bool _disposed;
 
     internal GethLikeBlockCallDeadlineTracer(GethTraceOptions options, CancellationToken external,
-        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> factory)
+        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> factory, TimeProvider? clock = null)
     {
         _options = options;
-        _deadline = new(external);
+        _deadline = new(external, clock);
         try { _inner = factory(options with { ExecutionCancellation = _deadline.Token }); }
         catch { _deadline.Dispose(); throw; }
     }

@@ -21,6 +21,21 @@ engine failures or transport cancellation. Invalid global `slice` bounds interru
 the tracer even inside JavaScript `try/catch`, matching Geth; `toHex(null)` raises
 a catchable type error.
 
+## Transaction execution deadlines
+
+`debug_traceTransaction` applies Geth's five-second execution deadline when
+`timeout` is omitted, including opcode and native tracers. This changes the
+previous native/opcode behavior, which was limited only by `JsonRpc.Timeout`.
+Set the request's `timeout` to a Go duration such as `"30s"` for a larger execution
+budget; increasing `JsonRpc.Timeout` alone does not increase this default.
+The server's `JsonRpc.Timeout` remains an independent outer limit.
+
+The execution timer starts after tracer setup and preceding-transaction replay,
+when the selected transaction starts. `noopTracer` ignores the execution stop,
+matching Geth. An execution timeout is not a successful complete trace.
+The precommit and committed-streaming response rules below apply to both
+`debug_traceCall` and `debug_traceTransaction`.
+
 ## Streaming deadlines
 
 Before a response is committed, or when HTTP response buffering allows replacement,
