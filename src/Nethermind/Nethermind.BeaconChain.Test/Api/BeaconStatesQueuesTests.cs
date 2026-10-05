@@ -124,10 +124,8 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
         await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
-    /// <summary>
-    /// apis/beacon/states/pending_*.yaml and proposer_lookahead.yaml: a state from before the fork that introduced the
-    /// field is 400. Only the slot of such a state is ever read, so the stored bytes carry nothing else.
-    /// </summary>
+    /// <summary>pending_*.yaml and proposer_lookahead.yaml reject pre-fork states with 400;
+    /// only the slot is read, so the stored fixture omits other fields.</summary>
     [TestCase("pending_deposits", PreElectraEpoch)]
     [TestCase("pending_partial_withdrawals", PreElectraEpoch)]
     [TestCase("pending_consolidations", PreElectraEpoch)]

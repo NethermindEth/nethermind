@@ -64,10 +64,8 @@ public class BeaconStatesRandaoAndSyncCommitteesTests : BeaconApiFixture
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
-    /// <summary>
-    /// An epoch after the state's is 400 even where get_randao_mix's unsigned age would wrap into the window,
-    /// which needs a Fulu state younger than EPOCHS_PER_HISTORICAL_VECTOR: Hoodi epoch 60,000 (Fulu from 50,688).
-    /// </summary>
+    /// <summary>Hoodi epoch 60,000 (Fulu from 50,688) is younger than EPOCHS_PER_HISTORICAL_VECTOR,
+    /// exposing future epochs that unsigned age arithmetic wraps into the RANDAO window.</summary>
     [TestCase("60000", HttpStatusCode.OK)]
     [TestCase("60001", HttpStatusCode.BadRequest)]
     [TestCase("18446744073709551615", HttpStatusCode.BadRequest)]

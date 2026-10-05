@@ -8,11 +8,9 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
 /// <summary>
-/// Subnet derivation for a known (fixed) node id. Mainnet's <c>NUMBER_OF_COLUMNS ==
-/// NUMBER_OF_CUSTODY_GROUPS == 128</c> coincidence (see <c>CustodyGroupsTests</c>) makes
-/// group == column == subnet, so the expected subnets below are the spec's
-/// <c>get_custody_groups</c> result for the raw id bytes <c>00..1f</c>, computed from the pyspec
-/// algorithm outside this code base rather than through <see cref="CustodyGroups.GetCustodyGroups"/>.
+/// Mainnet's <c>NUMBER_OF_COLUMNS == NUMBER_OF_CUSTODY_GROUPS == 128</c> makes group == column == subnet
+/// (see <c>CustodyGroupsTests</c>). Expected subnets for raw id <c>00..1f</c> come from pyspec
+/// <c>get_custody_groups</c>, independently of <see cref="CustodyGroups.GetCustodyGroups"/>.
 /// </summary>
 public class LocalCustodyTests
 {
