@@ -23,33 +23,15 @@ using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.BeaconChain.Sync;
 
-/// <summary>
-/// The production <see cref="IBlockImporter"/>: state transition over a followed canonical lineage,
-/// proto-array fork choice, engine <c>newPayload</c> via the transition hook, and persistence.
-/// </summary>
+/// <summary>Applies state transitions, proto-array fork choice, engine newPayload and persistence.</summary>
 /// <remarks>
-/// <para>
-/// State lineage policy: one live <see cref="BeaconStateFulu"/> follows the canonical chain with a
-/// single <see cref="CachedBeaconStateHasher"/> (in the lineage <see cref="EpochCache"/>); rare
-/// fork branches are processed on clones with a fresh cache and the stateless
-/// <see cref="FullBeaconStateHasher"/>, and the lineage (with a fresh cached hasher) is re-adopted
-/// from the retained post-state when fork choice reorgs the head. Untrusted blocks (signature
-/// verification on) are applied to a clone of the lineage state so an invalid block cannot leave
-/// the lineage partially mutated; trusted store replays are applied in place.
-/// </para>
-/// <para>
-/// Gloas blocks have no in-place lineage: each runs on a clone of its parent's post-state (a Fulu
-/// parent is carried across the fork boundary on that clone), and the frozen result is retained for
-/// fork choice and for verifying the block's execution payload envelope. A child of the last Gloas block
-/// reuses its <see cref="CachedBeaconStateHasher"/>, which the envelope's state-root check shares; a fork
-/// branch starts with a fresh one.
-/// </para>
-/// <para>
-/// Post-states around epoch boundaries (both the last block of an epoch and the first block of the
-/// next) are retained in <see cref="PostStateCache"/> so fork choice can resolve checkpoint states
-/// regardless of whether the epoch's first slot was skipped. Not thread-safe; all calls must come
-/// from the orchestrator's import worker.
-/// </para>
+/// A live Fulu state follows the canonical lineage with one <see cref="CachedBeaconStateHasher"/> in its <see cref="EpochCache"/>.
+/// Branch clones use fresh caches and <see cref="FullBeaconStateHasher"/>; reorg adoption uses the retained post-state and fresh cached hasher.
+/// Untrusted blocks apply to clones to protect lineage from partial mutation; trusted persisted replays apply in place.
+/// Gloas always clones its parent's post-state, carrying Fulu parents across the fork on that clone, and retains frozen results
+/// for fork choice and envelope verification. A child of the last Gloas block reuses its CachedBeaconStateHasher with envelope root checks;
+/// branches start fresh. Retain each epoch's last block and the next epoch's first in <see cref="PostStateCache"/> for checkpoints despite skipped first slots.
+/// Not thread-safe: callers must use the orchestrator's import worker.
 /// </remarks>
 public sealed class BlockImporter : IBlockImporter
 {
@@ -84,10 +66,8 @@ public sealed class BlockImporter : IBlockImporter
 
     private readonly Dictionary<Hash256, ulong> _unfinalized = [];
 
-    /// <summary>
-    /// Blocks last answered <see cref="BlockImportResult.ParentPayloadUnverified"/>, keyed by root, with the nearest ancestor fork
-    /// choice holds, whose state checked their proposer; bounded by <see cref="MaxDeferredBlocks"/> and pruned at finalization.
-    /// </summary>
+    /// <summary>Tracks ParentPayloadUnverified blocks by root and their nearest held ancestor that verified the proposer.
+    /// Bounded by <see cref="MaxDeferredBlocks"/> and pruned at finalization.</summary>
     private readonly Dictionary<Hash256, DeferredBlock> _deferred = [];
 
     private EpochCache _lineageCache = new() { Hasher = new CachedBeaconStateHasher() };
@@ -321,18 +301,12 @@ public sealed class BlockImporter : IBlockImporter
         };
     }
 
-    /// <summary>
-    /// The <c>on_block</c> assertions that precede <c>state_transition</c> (specs/phase0/fork-choice.md), in spec
-    /// order, then the transition's own <c>block.slot &gt; parent slot</c>: a block that fails any of them costs no
-    /// <c>process_slots</c>, which is linear in the slot distance to the parent.
-    /// </summary>
-    /// <param name="failedValidation"><c>true</c> when the refusal is a validation failure that no later time can undo; <c>false</c> for a block from a future slot or at or below the finalized slot.</param>
-    /// <param name="rejectGossip">Whether the failed condition can reject gossip after all preceding checks pass.</param>
-    /// <returns>Why the block is refused, or <c>null</c>.</returns>
-    /// <remarks>
-    /// The current slot is the node's clock, allowing <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> as gossip does, never
-    /// fork-choice time: a block within that allowance of its slot's start waits for the slot (<see cref="IsBeforeItsSlot"/>).
-    /// </remarks>
+    /// <summary>Checks on_block conditions in spec order, then block.slot &gt; parent slot, before costly process_slots (phase0/fork-choice.md).</summary>
+    /// <param name="failedValidation">Permanent validation failure; false for future slots or blocks at/below finality.</param>
+    /// <param name="rejectGossip">Whether this failure rejects gossip after preceding checks pass.</param>
+    /// <returns>The refusal, or null.</returns>
+    /// <remarks>Uses the node clock, never fork-choice time, with MAXIMUM_GOSSIP_CLOCK_DISPARITY;
+    /// early blocks inside that allowance still wait for their slot (see <see cref="IsBeforeItsSlot"/>).</remarks>
     private string? CheckBeforeTransition(ulong slot, Hash256 parentRoot, out bool failedValidation, out bool rejectGossip)
     {
         failedValidation = false;
@@ -450,11 +424,8 @@ public sealed class BlockImporter : IBlockImporter
         BeaconBlock block = signedBlock.Message!;
         Hash256 parentRoot = block.ParentRoot!;
 
-        // The spec's on_block asserts is_data_available before state_transition; checking it here,
-        // ahead of the clone and the engine call, means a block trailing its columns costs nothing
-        // to defer and never reaches the engine. A stored block passed this gate before it was
-        // persisted, and the columns that satisfied it are not persisted, so a trusted replay can
-        // neither re-check them nor needs to.
+        // Check on_block availability before cloning or calling the engine, so missing columns defer cheaply.
+        // Trusted replays already passed this gate; their verifying columns were not persisted and cannot be rechecked.
         IDataAvailabilityRule availability = verifySignatures ? _availability : ReplayedBlockAvailability.Instance;
         if (!availability.IsDataAvailable(block, blockRoot, _spec))
         {
@@ -514,11 +485,8 @@ public sealed class BlockImporter : IBlockImporter
         _engine.CurrentBlock = signedBlock;
         try
         {
-            // A transition that runs in place cannot be abandoned part-way: ProcessBlockHeader has
-            // already advanced LatestBlockHeader by the time the engine is called, so a retry of
-            // the same block would fail its own header check forever. Drive newPayload before
-            // anything is mutated. A cloned transition can abort for free, and keeping the call in
-            // the hook there leaves the spec's validation order intact for untrusted blocks.
+            // In-place transitions must obtain newPayload before mutation: an advanced LatestBlockHeader would reject a retry.
+            // Cloned transitions can abort safely, so their hook preserves untrusted-block validation order.
             if (ReferenceEquals(state, parentState) && onLineage)
             {
                 verdict.Prime(block.Body!);
@@ -737,22 +705,15 @@ public sealed class BlockImporter : IBlockImporter
         return BlockImportResult.Imported;
     }
 
-    /// <summary>
-    /// Whether an untrusted block may cost the regeneration of a state that is not held: only once its proposer signature
-    /// verifies. A block from gossip must also be the first for its slot and proposer to cost one, and fit in
-    /// <see cref="MaxUntrustedRegenerationsPerSlot"/> per wall-clock slot. A range-sync block need not; a block fetched by root
-    /// fits in <see cref="MaxByRootRegenerationsPerSlot"/> of its own, since any gossip block can make this node fetch one.
-    /// </summary>
-    /// <remarks>
-    /// The signature is checked without the missing state: with the cached proposer key, and the domain of the block's fork
-    /// (specs/phase0/beacon-chain.md <c>get_domain</c>), whose fork version every state of that fork after the anchor shares.
-    /// Gossip validation does not verify it, so without this check a forged child of each evicted block buys a replay. Any
-    /// cached key signs, so the budget bounds what signed gossip can cost, and blocks this node fetched, a competing branch
-    /// from range sync or an ancestor a gossip block named, never wait on it. A gossip block refused here is recovered by
-    /// the by-root backfill of its first child. phase0/p2p-interface.md <c>beacon_block</c> ignores all but the first block
-    /// with a valid signature per slot and proposer, so a later one costs no regeneration.
-    /// </remarks>
-    /// <returns><c>null</c> when the regeneration may run; otherwise the result to answer for the block.</returns>
+    /// <summary>Allows untrusted state regeneration only after proposer-signature verification, subject to source budgets.</summary>
+    /// <remarks>Gossip must be the first signed (slot, proposer) proposal and fit <see cref="MaxUntrustedRegenerationsPerSlot"/> per wall slot.
+    /// Range sync bypasses that budget; by-root fetches use <see cref="MaxByRootRegenerationsPerSlot"/> separately.
+    /// Verify using the cached proposer key and block-fork domain without the missing state (phase0/beacon-chain.md get_domain).
+    /// Post-anchor states share that fork version. This gate prevents unsigned children of evicted blocks buying replay;
+    /// any cached key can sign, so the gossip budget still bounds signed abuse without blocking fetched ancestors or range forks.
+    /// Refused gossip is recovered by its first child's ByRoot backfill; later signed proposals cost no regeneration
+    /// (phase0/p2p-interface.md beacon_block).</remarks>
+    /// <returns>Null to allow regeneration; otherwise the block's refusal result.</returns>
     private BlockImportResult? RefuseRegeneration(Hash256 blockRoot, ulong slot, ulong proposerIndex, BlsSignature signature, Hash256? domain)
     {
         if (domain is null || proposerIndex >= (ulong)_pubkeys.Count || !_pubkeys.TryGetValidPublicKey((int)proposerIndex, out G1Affine key))
@@ -1254,12 +1215,9 @@ public sealed class BlockImporter : IBlockImporter
     private static bool IsGossipRejection(Exception error) =>
         error is ForkChoiceException { RejectGossip: true } or BeaconStateException { RejectGossip: true };
 
-    /// <summary>
-    /// The body replay <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IDataAvailabilityRule)"/>
-    /// leaves to its caller: feeds the block's attestations and attester slashings (already verified
-    /// by the transition) to fork choice. A refused operation is counted and skipped, never fatal.
-    /// </summary>
-    /// <remarks>Each vote is checked as <see cref="ForkChoiceRunner.OnBodyAttestation(Attestation, Hash256)"/> describes.</remarks>
+    /// <summary>Feeds transition-verified body attestations and slashings to fork choice; refused operations are counted and skipped.</summary>
+    /// <remarks>Completes <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IDataAvailabilityRule)"/>;
+    /// votes follow <see cref="ForkChoiceRunner.OnBodyAttestation(Attestation, Hash256)"/> checks.</remarks>
     private void ApplyBodyOperations(BeaconBlockBody body, Hash256 blockRoot)
     {
         foreach (Attestation attestation in body.Attestations!)
@@ -1519,25 +1477,14 @@ public sealed class BlockImporter : IBlockImporter
 }
 
 /// <inheritdoc cref="IBlockImporterFactory"/>
-/// <remarks>
-/// Every importer created here applies <see cref="CustodySamplingAvailability"/> to Fulu blocks and
-/// <see cref="GloasCustodySamplingAvailability"/> to Gloas execution payload envelopes: the production
-/// <c>is_data_available</c>, fed from the gossip sidecar pool and this node's discovery identity. The
-/// supernode <see cref="FullColumnSetAvailability"/> is for the consensus-spec vectors only and is
-/// deliberately not reachable from this factory.
-/// </remarks>
-/// <param name="pool">Where an importer looks up the columns this node holds for a block.</param>
-/// <param name="clock">
-/// The one wall clock the <see cref="DataAvailabilityBoundary"/> and the future-slot bound are measured against, shared with
-/// range sync so both agree on the window.
-/// </param>
-/// <param name="discovery">
-/// Supplies the node id the custody columns derive from; <c>null</c> (the P2P-less configuration
-/// some tests run) leaves the identity unknown, so no blob-carrying block is ever available.
-/// </param>
-/// <param name="forkChoiceSnapshots">Where every importer publishes its fork-choice snapshots; <c>null</c> publishes nothing.</param>
-/// <param name="proposerLookaheads">Where every importer publishes its head's proposer lookahead; <c>null</c> publishes nothing.</param>
-/// <param name="failedBlocks">Where every importer records the roots of blocks it refused for failing validation; <c>null</c> records nothing.</param>
+/// <remarks>Uses <see cref="CustodySamplingAvailability"/> for Fulu blocks and <see cref="GloasCustodySamplingAvailability"/>
+/// for Gloas envelopes, backed by gossip columns and discovery identity. Vector-only <see cref="FullColumnSetAvailability"/> is unreachable here.</remarks>
+/// <param name="pool">Supplies locally held columns.</param>
+/// <param name="clock">Shared with range sync for availability-window and future-slot bounds.</param>
+/// <param name="discovery">Supplies custody identity; null leaves it unknown, so blob blocks remain unavailable.</param>
+/// <param name="forkChoiceSnapshots">Receives fork-choice snapshots; null publishes nothing.</param>
+/// <param name="proposerLookaheads">Receives the head proposer lookahead; null publishes nothing.</param>
+/// <param name="failedBlocks">Receives roots refused for validation failure; null records nothing.</param>
 public sealed class BlockImporterFactory(
     BeaconChainSpec spec,
     BeaconChainStore store,

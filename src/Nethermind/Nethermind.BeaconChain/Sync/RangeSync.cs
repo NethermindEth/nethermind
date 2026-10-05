@@ -17,44 +17,20 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.BeaconChain.Sync;
 
-/// <summary>
-/// Downloads the canonical block range above an anchor block in batches over
-/// <c>beacon_blocks_by_range</c>, yielding parent-linked blocks in import order.
-/// </summary>
+/// <summary>Downloads blocks above an anchor with beacon_blocks_by_range, yielding parent-linked blocks in import order.</summary>
 /// <remarks>
-/// <para>
-/// Peers are taken round-robin from the pool and blocks are imported sequentially by the caller.
-/// Every batch is verified by root linkage before anything is yielded: the first block's
-/// <c>parent_root</c> must be the hash tree root of the last yielded block (initially the anchor),
-/// and each subsequent block must link to its predecessor. A mismatching batch is dropped, the
-/// peer penalized only when it also supplied the block it fails to link to, and the range re-requested from another peer - starting again from the
-/// slot after the last yielded block, which also recovers from a peer that falsely returned an
-/// empty range. Repeated failures halve the batch size down to a single slot.
-/// </para>
-/// <para>
-/// A verified batch containing blob-carrying blocks additionally requests this node's sampled data
-/// column sidecars before yielding (each column from a peer custodying it, for Fulu and Gloas alike), so the gossip-fed availability gates
-/// (<see cref="DataAvailability.CustodySamplingAvailability"/> for a Fulu block,
-/// <see cref="DataAvailability.GloasCustodySamplingAvailability"/> for a Gloas envelope) have something
-/// to check against for a range-synced block. Fulu and Gloas blocks get one request each, over a window
-/// that spans only that fork's blocks, since the two sidecar shapes cannot share a response. A Gloas
-/// sidecar carries no commitments, so it is verified against the bid of the batch block it names. A
-/// column-fetch failure penalizes the peer but does not fail the batch: a block whose columns are still
-/// missing simply fails its availability gate and is retried next round, since the sync tip only
-/// advances past a successfully imported block.
-/// </para>
-/// <para>
-/// Fulu and Gloas blocks before the <see cref="DataAvailabilityBoundary"/> of <paramref name="clock"/> get no
-/// column request (fulu/fork-choice.md <c>is_data_available</c> demands none).
-/// </para>
+/// Round-robin peers supply whole batches checked before yielding: the first parent must equal the anchor or last yielded root,
+/// and each later block must link to its predecessor. Drop mismatches and penalize only a peer that also supplied the predecessor.
+/// Retry from the slot after the last yielded block, recovering false empty replies; repeated failures halve batches down to one slot.
+/// Blob blocks fetch sampled columns from custodians before yielding, separately for Fulu and Gloas response shapes.
+/// Gloas sidecars verify against their named block's bid. Failed fetches penalize peers but still yield blocks;
+/// availability gates defer missing data, and the tip advances only on successful import.
+/// No columns are requested before <see cref="DataAvailabilityBoundary"/> (fulu/fork-choice.md is_data_available).
 /// </remarks>
-/// <param name="clock">The one wall clock the importer's availability gate also reads, so both agree on the window.</param>
+/// <param name="clock">The wall clock shared with the importer's availability gate so both use the same window.</param>
 public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, DataColumnSidecarPool sidecarPool, BeaconChainSpec spec, SlotClock clock, BeaconDiscovery? discovery = null)
 {
-    /// <summary>
-    /// Half an epoch per request. Larger batches trip peers' response rate limits, time out, and
-    /// burn the peer-failure budget - with few connected mainnet peers that spirals into starvation.
-    /// </summary>
+    /// <summary>Half-epoch batches avoid response rate limits, timeouts and exhaustion of scarce peers' failure budgets.</summary>
     public const ulong DefaultBatchSize = 16;
 
     private const int FailuresBeforeBatchShrink = 3;
@@ -79,17 +55,14 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// <summary>The anchor a run restarts from when its first block does not link to the unverified anchor it was given; <paramref name="Rejected"/> runs when that happens.</summary>
     public sealed record AnchorFallback(Hash256 Root, ulong Slot, Action Rejected);
 
-    /// <summary>
-    /// Streams verified-order blocks from <paramref name="anchorSlot"/> (exclusive) up to the target
-    /// head; completes when the target is reached. The caller re-invokes as its target advances.
-    /// </summary>
-    /// <param name="anchorRoot">The block root the first yielded block must link to.</param>
-    /// <param name="anchorSlot">The slot of the anchor block.</param>
-    /// <param name="targetHeadSlot">Re-evaluated each batch, so the target may move while syncing.</param>
-    /// <param name="fallback">Marks the anchor as unverified: while no block has linked to it, a first block that does not is not held against its peer, and the run restarts from this one.</param>
-    /// <param name="batchSource">Receives the supplying peer before its blocks are yielded.</param>
+    /// <summary>Streams linked blocks after <paramref name="anchorSlot"/> until the moving target is reached; callers restart as it advances.</summary>
+    /// <param name="anchorRoot">The required parent root of the first yielded block.</param>
+    /// <param name="anchorSlot">The anchor block's slot.</param>
+    /// <param name="targetHeadSlot">Re-evaluated each batch.</param>
+    /// <param name="fallback">Unverified-anchor fallback: before any block links, a mismatch restarts here without penalizing its peer.</param>
+    /// <param name="batchSource">Receives the serving peer before yielding its blocks.</param>
     /// <param name="beforeRetry">Flushes yielded blocks for verification before retrying a failed reply.</param>
-    /// <param name="superseded">The round generation, checked before attributing a reply while cancellation propagates asynchronously to the request token.</param>
+    /// <param name="superseded">Round generation checked before reply attribution while request cancellation propagates asynchronously.</param>
     public async IAsyncEnumerable<ForkedSignedBeaconBlock> Run(
         Hash256 anchorRoot,
         ulong anchorSlot,
@@ -289,21 +262,12 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         return (batch, roots, linked);
     }
 
-    /// <summary>
-    /// Requests and verifies this node's missing sampled data column sidecars for every blob-carrying block in
-    /// <paramref name="blocks"/>, adding verified sidecars to <see cref="sidecarPool"/> so
-    /// <see cref="DataAvailability.CustodySamplingAvailability"/> can see them when the importer checks a
-    /// range-synced block. Never fails the batch: a request failure or an unverifiable sidecar only penalizes
-    /// the peer, mirroring <see cref="FetchAndVerifyBatchAsync"/>'s parent-linkage handling.
-    /// </summary>
-    /// <remarks>
-    /// Only Fulu-shaped blocks inside the data availability window are considered and the request window spans only them: a Gloas block's
-    /// commitments are in its bid and its sidecars have the Gloas shape, so it has no part in a Fulu request. Each column is asked of one
-    /// peer that custodies it (<see cref="AssignColumns"/>), since fulu/p2p-interface.md DataColumnSidecarsByRange serves custodied columns only.
-    /// Peers whose <c>earliest_available_slot</c> is at or before the request's start are preferred; when none is, those serving from at or before the last blob-carrying slot are asked from their earliest slot.
-    /// A peer that fails or leaves a requested column unserved is not asked again for the batch; the sidecars a failed reply had already delivered are kept, and up to <see cref="MaxColumnRounds"/> rounds request only what is still missing, within <see cref="ColumnBatchBudget"/>.
-    /// Blocks are yielded whatever the outcome: the importer defers a block still missing columns and fetches them by root.
-    /// </remarks>
+    /// <summary>Fetches and pools verified missing sampled Fulu columns without failing the block batch.</summary>
+    /// <remarks>Only Fulu blocks inside the availability window enter the request window; Gloas shapes and bid commitments need separate requests.
+    /// Each column goes to a custodian (<see cref="AssignColumns"/>; fulu/p2p-interface.md DataColumnSidecarsByRange).
+    /// Prefer earliest_available_slot at or before the start; otherwise request from peers' earliest slot up to the last blob slot.
+    /// Failed or incomplete peers are excluded for the batch, but delivered sidecars remain. Up to <see cref="MaxColumnRounds"/>
+    /// request missing columns within <see cref="ColumnBatchBudget"/>. Failures penalize peers; blocks still yield for importer deferral and ByRoot recovery.</remarks>
     private async Task FetchColumnsForBatchAsync(IReadOnlyList<ForkedSignedBeaconBlock> blocks, Hash256[] roots, CancellationToken token)
     {
         ulong windowStartEpoch = DataAvailabilityStartEpoch();
@@ -420,12 +384,11 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         return true;
     }
 
-    /// <summary>Assigns each missing column to an eligible custodian, preferring status heads reaching the missing slot over the batch start. A per-peer even-share cap leaves overflow for later rounds, so only retrying callers set it.</summary>
-    /// <param name="batchStartSlot">The batch's first slot, which its blocks were requested from peers reaching. A column no custodian reaching <paramref name="startSlot"/>
-    /// custodies goes to one reaching only the batch start: a later round's first missing slot can lie past every peer's last status although a peer served the block there
-    /// (phase0/p2p-interface.md Status), while a custodian whose status reaches that slot is likelier to hold it.</param>
-    /// <param name="boundPerPeer">Caps each peer at an even share of <paramref name="missing"/>, at least <see cref="MinColumnsPerPeer"/>; a column the cap leaves out
-    /// waits for a later round, so only a caller that retries sets it.</param>
+    /// <summary>Assigns missing columns to custodians, preferring heads reaching the missing slot over the batch start.</summary>
+    /// <param name="batchStartSlot">Fallback head bound when no custodian reaches <paramref name="startSlot"/>;
+    /// Status may predate a served block (phase0/p2p-interface.md).</param>
+    /// <param name="boundPerPeer">An even share of <paramref name="missing"/>, at least <see cref="MinColumnsPerPeer"/>.
+    /// Overflow waits for later rounds, so only retrying callers enable this cap.</param>
     private List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignBatchColumns(List<ulong> missing, ulong batchStartSlot, ulong startSlot, ulong lastSlot, HashSet<string>? excluded, bool boundPerPeer)
     {
         IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
@@ -470,11 +433,9 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
     }
 
-    /// <summary>
-    /// The peers of <paramref name="peers"/> whose Status v2 <c>earliest_available_slot</c> is at or before <paramref name="startSlot"/>, so the range starts inside what they serve;
-    /// when none is, those whose earliest slot is at or before <paramref name="endSlot"/>, because the slots below it may be empty and a by-range reply skips empty slots (phase0/p2p-interface.md).
-    /// </summary>
-    /// <param name="nearestFallback">Narrows the fallback to the peers with the lowest earliest slot, at or before <paramref name="endSlot"/>.</param>
+    /// <summary>Prefers peers serving from <paramref name="startSlot"/>; otherwise accepts earliest slots through <paramref name="endSlot"/>.
+    /// Earlier slots may be empty and skipped by range replies (phase0/p2p-interface.md).</summary>
+    /// <param name="nearestFallback">Keeps only the lowest earliest slot within the fallback bound.</param>
     private IReadOnlyList<IBeaconSyncPeer> ServingFrom(IReadOnlyList<IBeaconSyncPeer> peers, ulong startSlot, ulong endSlot, bool nearestFallback = false)
     {
         IBeaconSyncPeer[] covering = [.. peers.Where(p => p.EarliestAvailableSlot <= startSlot)];
@@ -590,16 +551,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
     }
 
-    /// <summary>
-    /// Assigns each of <paramref name="columns"/> to one of <paramref name="peers"/> that custodies it, using at most
-    /// <paramref name="maxPeers"/> distinct peers and at most <paramref name="maxColumnsPerPeer"/> columns each, so one supernode
-    /// cannot take the whole batch. A column no usable peer with room custodies is left out.
-    /// </summary>
-    /// <remarks>
-    /// Deterministic: a peer with advertised custody is preferred over one known only by its <c>CUSTODY_REQUIREMENT</c>
-    /// floor, then the peer with the fewest columns so far, then the earlier peer in <paramref name="peers"/>.
-    /// </remarks>
-    /// <returns>One entry per chosen peer, in the order the peers were first chosen.</returns>
+    /// <summary>Assigns columns to custodians within <paramref name="maxPeers"/> peers and <paramref name="maxColumnsPerPeer"/> each; unassignable columns are omitted.</summary>
+    /// <remarks>Deterministic order: advertised custody before the CUSTODY_REQUIREMENT floor, then fewest assigned columns,
+    /// then position in <paramref name="peers"/>. The per-peer cap prevents one supernode taking the batch.</remarks>
+    /// <returns>Chosen peers in first-assignment order.</returns>
     internal static List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignColumns(IReadOnlyList<ulong> columns, IReadOnlyList<IBeaconSyncPeer> peers, int maxPeers, int maxColumnsPerPeer = int.MaxValue)
     {
         PeerColumnCustody[] custodies = new PeerColumnCustody[peers.Count];
@@ -652,30 +607,20 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     private static bool IsBetterColumnPeer(PeerColumnCustody candidate, int candidateLoad, PeerColumnCustody best, int bestLoad) =>
         candidate.IsAdvertised != best.IsAdvertised ? candidate.IsAdvertised : candidateLoad < bestLoad;
 
-    /// <summary>
-    /// Fetches this node's missing sampled data column sidecars for the Fulu block <paramref name="block"/> by root,
-    /// asking up to <see cref="MaxByRootColumnPeers"/> peers each only for the missing columns it custodies, and
-    /// adds each verified sidecar to the pool.
-    /// </summary>
+    /// <summary>Fetches and pools verified missing sampled Fulu columns by root from at most <see cref="MaxByRootColumnPeers"/> custodians.</summary>
     /// <param name="blockRoot">The root of <paramref name="block"/>.</param>
-    /// <param name="block">The block whose commitments the sidecars are verified against.</param>
+    /// <param name="block">Supplies the commitments used for verification.</param>
     /// <param name="token">Cancels the fetch.</param>
-    /// <returns>
-    /// Whether every sampled column is now held, or no column is demanded: the block commits no blobs or its
-    /// slot is before the data availability window. <c>false</c> while this node's custody identity is unknown.
-    /// </returns>
-    /// <remarks>
-    /// Peers with advertised custody are asked first; a peer custodying none of the missing columns is skipped
-    /// without counting toward the bound, since fulu/p2p-interface.md DataColumnSidecarsByRoot serves custodied columns only.
-    /// </remarks>
+    /// <returns>True when all sampled columns are held, no blobs are committed, or the block predates the availability window;
+    /// false while this node's custody identity is unknown.</returns>
+    /// <remarks>Advertised custodians come first. Peers custodying no missing columns neither receive requests nor consume the bound
+    /// (fulu/p2p-interface.md DataColumnSidecarsByRoot).</remarks>
     public Task<bool> FetchColumnsByRootAsync(Hash256 blockRoot, BeaconBlock block, CancellationToken token) =>
         FetchColumnsByRootAsync(blockRoot, block, new ColumnFetchRotation(clock), token);
 
     /// <inheritdoc cref="FetchColumnsByRootAsync(Hash256, BeaconBlock, CancellationToken)"/>
-    /// <param name="rotation">The custodians earlier fetches for this block asked; this call asks only custodians it has not, all at once.</param>
-    /// <remarks>
-    /// The requests run in parallel, so a peer that never answers costs one request timeout, not one per peer asked.
-    /// </remarks>
+    /// <param name="rotation">Tracks previously asked custodians; only unasked custodians are requested, in parallel.</param>
+    /// <remarks>A silent peer costs one request timeout rather than serial timeouts across peers.</remarks>
     internal async Task<bool> FetchColumnsByRootAsync(Hash256 blockRoot, BeaconBlock block, ColumnFetchRotation rotation, CancellationToken token)
     {
         SszKzgCommitment[] commitments = block.Body?.BlobKzgCommitments ?? [];
@@ -752,22 +697,14 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         return missing;
     }
 
-    /// <summary>
-    /// Fetches this node's missing sampled Gloas data column sidecars for the block at <paramref name="blockRoot"/>
-    /// by root, from up to <see cref="MaxByRootColumnPeers"/> peers, adding each verified sidecar to the pool.
-    /// </summary>
-    /// <param name="blockRoot">The root of the block that committed <paramref name="bid"/>.</param>
-    /// <param name="bid">The bid of that block; sidecars are verified against its commitments and slot.</param>
+    /// <summary>Fetches and pools verified missing sampled Gloas columns by root from at most <see cref="MaxByRootColumnPeers"/> custodians.</summary>
+    /// <param name="blockRoot">The root of the block committing <paramref name="bid"/>.</param>
+    /// <param name="bid">Supplies commitments and slot for verification.</param>
     /// <param name="token">Cancels the fetch.</param>
-    /// <returns>
-    /// Whether every sampled column is now held, or no column is demanded: the bid commits no blobs or its
-    /// slot is before the data availability window. <c>false</c> while this node's custody identity is unknown.
-    /// </returns>
-    /// <remarks>
-    /// The peers are asked at once, each for the missing columns it custodies, so a peer that never answers costs one request
-    /// timeout, not one per peer asked. A sidecar that fails verification penalizes its peer; the other sidecars in that
-    /// response still count, since each is verified on its own against the bid.
-    /// </remarks>
+    /// <returns>True when all sampled columns are held, no blobs are committed, or the bid predates the availability window;
+    /// false while this node's custody identity is unknown.</returns>
+    /// <remarks>Request only missing columns from each custodian in parallel, bounding silent-peer delay to one timeout.
+    /// Invalid sidecars penalize their peer; independently verified siblings in the response still count.</remarks>
     public Task<bool> FetchGloasColumnsByRootAsync(Hash256 blockRoot, ExecutionPayloadBid bid, CancellationToken token) =>
         FetchGloasColumnsByRootAsync(blockRoot, bid, new ColumnFetchRotation(clock), token);
 
@@ -1017,13 +954,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     private ulong DataAvailabilityStartEpoch() => DataAvailabilityBoundary.Compute(clock.CurrentEpoch, spec);
     private bool IsInDataAvailabilityWindow(ulong slot, ulong windowStartEpoch) => spec.GetEpoch(slot) >= windowStartEpoch;
 
-    /// <summary>The custodians the by-root column fetches for one block have asked, so repeated fetches rotate through every custodian.</summary>
-    /// <remarks>
-    /// A fetch takes custodians not asked yet, those absent at the previous fetch first but for one place kept for a custodian
-    /// seen before, so newcomers arriving before every fetch cannot keep an earlier custodian from being asked. Once every
-    /// custodian was asked the rotation starts over, at most once per slot of <paramref name="clock"/>. The asked set accumulates
-    /// across fetches and each fetch drops from it the peers that are no longer custodians. Not thread-safe.
-    /// </remarks>
+    /// <summary>Tracks by-root custodians already asked for a block, rotating through all of them.</summary>
+    /// <remarks>Prefer unasked newcomers but reserve one place for a previously seen custodian to prevent starvation.
+    /// Drop departed custodians from the accumulated set; after all are asked, restart at most once per slot of <paramref name="clock"/>.
+    /// Not thread-safe.</remarks>
     internal sealed class ColumnFetchRotation(SlotClock clock)
     {
         private readonly HashSet<string> _asked = new(StringComparer.Ordinal);

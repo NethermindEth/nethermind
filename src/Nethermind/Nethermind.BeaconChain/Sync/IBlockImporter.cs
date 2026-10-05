@@ -43,19 +43,16 @@ public enum BlockImportResult
     EngineUnavailable,
 
     /// <summary>
-    /// The block's blob data is not (yet) available under the caller's <c>is_data_available</c>
-    /// rule. The block is not invalid and nothing about it has been recorded, but unlike
-    /// <see cref="EngineUnavailable"/> a blind retry will not help: it must be retried once the
-    /// missing columns are held, not merely on the next tick.
+    /// The caller's <c>is_data_available</c> check lacks columns. The block is neither invalid nor recorded;
+    /// retry when those columns arrive, not merely on the next tick.
     /// </summary>
     DataUnavailable,
 
     /// <summary>
-    /// The block builds on its parent's full payload, whose envelope is not yet verified
-    /// (specs/gloas/fork-choice.md <c>on_block</c>: <c>is_parent_node_full</c> requires
-    /// <c>is_payload_verified</c>), or on a parent that is itself deferred for that reason. The block is
-    /// not invalid and fork choice has not recorded it; retry it once that envelope imports. Its proposer
-    /// and proposer signature are verified first.
+    /// The block needs its parent's unverified full payload, or its parent is deferred for that reason
+    /// (specs/gloas/fork-choice.md <c>on_block</c>: <c>is_parent_node_full</c> requires <c>is_payload_verified</c>).
+    /// Proposer and signature checks have passed; the block is neither invalid nor recorded by fork choice.
+    /// Retry after the missing envelope imports.
     /// </summary>
     ParentPayloadUnverified,
 
@@ -79,34 +76,27 @@ public sealed record HeadView(
     CheckpointRef Finalized,
     bool HeadPayloadFull = false);
 
-/// <summary>
-/// The consensus core of the import pipeline: the state transition, fork choice, and their
-/// persistence. Everything here mutates single-lineage state and must be called from the sync
-/// orchestrator's single worker only.
-/// </summary>
+/// <summary>Runs state transitions, fork choice and persistence for one lineage.</summary>
+/// <remarks>Call only from the sync orchestrator's single worker; the state is mutable.</remarks>
 public interface IBlockImporter
 {
     /// <summary>Whether the block is already known to fork choice.</summary>
     bool IsKnown(Hash256 blockRoot);
 
     /// <summary>
-    /// Runs the block through the state transition of the fork its slot belongs to, registers it
-    /// with fork choice along with its body attestations and attester slashings, and persists it.
-    /// A Fulu block drives <c>engine_newPayload</c> via the transition hook; a Gloas block carries
-    /// only a bid, and its payload reaches the engine through <see cref="ImportEnvelope"/>.
+    /// Runs the block's fork-specific state transition, registers its attestations and attester slashings
+    /// and the block with fork choice, then persists it. Fulu calls <c>engine_newPayload</c> through the transition;
+    /// Gloas carries a bid and sends its payload through <see cref="ImportEnvelope"/>.
     /// </summary>
     /// <param name="verifySignatures">
-    /// Skip for blocks replayed from the store, which were verified before being persisted. A
-    /// replayed Gloas block that builds on its parent's full payload also proves that payload was
-    /// verified, so the parent is recorded as such instead of deferring the block.
+    /// Disable for previously verified persisted blocks. A replayed Gloas child building on its parent's
+    /// full payload also proves that payload was verified; record the parent accordingly instead of deferring.
     /// </param>
     BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures);
 
-    /// <summary>Imports, with signatures verified, a block this node requested from a peer: by range sync or by a by-root backfill.</summary>
-    /// <remarks>
-    /// Such a block is not charged to the per-slot budget for regenerating missing states that blocks from gossip share. A
-    /// range-sync block regenerates freely; a block fetched by root, which a gossip block can name, has a small budget of its own.
-    /// </remarks>
+    /// <summary>Imports a requested range-sync or by-root block with signature verification.</summary>
+    /// <remarks>Range sync regenerates states freely. By-root requests, which gossip can induce,
+    /// use a separate small budget; neither consumes the gossip regeneration budget.</remarks>
     /// <param name="fetchedByRoot">Whether the block was fetched by root rather than by range sync.</param>
     BlockImportResult ImportRequested(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool fetchedByRoot = false) => Import(block, blockRoot, verifySignatures: true);
 
@@ -152,26 +142,21 @@ public interface IBlockImporter
     /// </summary>
     void OnForkchoiceUpdated(Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status);
 
-    /// <summary>
-    /// Reacts to a finalized-checkpoint advance: persists the finalized state, advances the
-    /// persisted anchor so restarts resume there, and prunes fork choice and the block store.
-    /// </summary>
+    /// <summary>Persists the finalized state and restart anchor, then prunes fork choice and block storage.</summary>
     void OnFinalized(CheckpointRef finalized);
 
     /// <summary>Feeds a gossip aggregate to fork choice once its aggregator is authenticated; invalid aggregates are counted and dropped.</summary>
     /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
     bool? OnGossipAggregate(SignedAggregateAndProof aggregate);
 
-    /// <summary>Feeds a Gloas gossip aggregate to fork choice once its aggregator is authenticated; invalid aggregates are counted and dropped.</summary>
-    /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
+    /// <inheritdoc cref="OnGossipAggregate(SignedAggregateAndProof)"/>
     bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate);
 
     /// <summary>Feeds a gossip attester slashing to fork choice; invalid slashings are counted and dropped.</summary>
     /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
     bool? OnGossipAttesterSlashing(AttesterSlashing slashing);
 
-    /// <summary>Feeds a Gloas gossip attester slashing to fork choice; invalid slashings are counted and dropped.</summary>
-    /// <returns>True when accepted, false for a gossip rejection, or null when validation cannot decide or must ignore.</returns>
+    /// <inheritdoc cref="OnGossipAttesterSlashing(AttesterSlashing)"/>
     bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing);
 
     /// <summary>Feeds a gossip payload attestation to fork choice; invalid votes are counted and dropped.</summary>
