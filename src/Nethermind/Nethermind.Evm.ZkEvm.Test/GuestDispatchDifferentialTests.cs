@@ -133,6 +133,41 @@ public class GuestDispatchDifferentialTests
         }
     }
 
+    /// <remarks>
+    /// Only the untraced table fuses the landed-on <c>CALLDEST</c> into <c>CALLSUB</c>, so every table must still agree,
+    /// including when the gas runs out on the fused charge.
+    /// </remarks>
+    [TestCase("6004BA00BBBC", EvmExceptionType.Stop, TestName = "EIP-7979 simple routine")]
+    [TestCase("6004BA00BB6009BABCBBBC", EvmExceptionType.Stop, TestName = "EIP-7979 two levels of subroutines")]
+    [TestCase("600556BBBC5B6003BA", EvmExceptionType.Stop, TestName = "EIP-7979 subroutine at end of code")]
+    [TestCase("6004BA00BB600856BBBC", EvmExceptionType.Stop, TestName = "EIP-7979 tail call by JUMP")]
+    [TestCase("6003BA5B00", EvmExceptionType.InvalidJumpDestination, TestName = "EIP-7979 CALLSUB to JUMPDEST")]
+    [TestCase("6004BA60BB00", EvmExceptionType.InvalidJumpDestination, TestName = "EIP-7979 CALLSUB to CALLDEST in PUSH data")]
+    [TestCase("6004BAE6BB00", EvmExceptionType.InvalidJumpDestination, TestName = "EIP-7979 CALLSUB to CALLDEST in an EIP-8024 immediate")]
+    [TestCase("BC", EvmExceptionType.ReturnStackUnderflow, TestName = "EIP-7979 RETURNSUB with an empty return stack")]
+    [TestCase("BB6000BA", EvmExceptionType.ReturnStackOverflow, TestName = "EIP-7979 return stack overflow")]
+    public void Eip7979_subroutines_match_across_tables(string hex, EvmExceptionType expected)
+    {
+        IReleaseSpec spec = new Bogota { IsEip7979Enabled = true };
+        byte[] code = Convert.FromHexString(hex);
+        const ulong gas = 100_000;
+        Outcome reference = Run(gas, [], 0, new CodeInfo(code), Table.Traced, spec, tableForSpec: true);
+        Assert.That(reference.Exception, Is.EqualTo(expected));
+
+        ulong used = gas - reference.GasLeft;
+        foreach (ulong available in IsFault(expected) ? [gas] : new[] { gas, used, used - 1 })
+        {
+            Outcome traced = Run(available, [], 0, new CodeInfo(code), Table.Traced, spec, tableForSpec: true);
+            Outcome untraced = Run(available, [], 0, new CodeInfo(code), Table.Untraced, spec, tableForSpec: true);
+            Outcome cancelable = Run(available, [], 0, new CodeInfo(code), Table.Cancelable, spec, tableForSpec: true);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Matches(untraced, traced), Is.True, $"gas {available}\n untraced {untraced}\n traced   {traced}");
+                Assert.That(Matches(cancelable, traced), Is.True, $"gas {available}\n cancelable {cancelable}\n traced     {traced}");
+            }
+        }
+    }
+
     private static bool IsFault(EvmExceptionType exception) => exception is not (EvmExceptionType.None or EvmExceptionType.Stop);
 
     private static bool Matches(Outcome outcome, Outcome reference) =>
@@ -258,7 +293,11 @@ public class GuestDispatchDifferentialTests
         _ => (byte)random.Next(256),
     };
 
-    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null)
+    /// <param name="tableForSpec">
+    /// Builds the tables for <paramref name="spec"/> rather than taking the process-wide ones, which keep the opcode set
+    /// of the first fork they were built for.
+    /// </param>
+    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null, bool tableForSpec = false)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
@@ -288,11 +327,14 @@ public class GuestDispatchDifferentialTests
 
         // The table's declared entry type is the host's signature; its entries take the guest's.
         nint[] handlers = new nint[256];
-        fixed (void* source = table switch
+        fixed (void* source = (table, tableForSpec) switch
         {
-            Table.Untraced => vm.GetOpcodeHandlers<OffFlag, OffFlag>(),
-            Table.Cancelable => vm.GetOpcodeHandlers<OffFlag, OnFlag>(),
-            _ => vm.GetOpcodeHandlers<OnFlag, OffFlag>(),
+            (Table.Untraced, false) => vm.GetOpcodeHandlers<OffFlag, OffFlag>(),
+            (Table.Cancelable, false) => vm.GetOpcodeHandlers<OffFlag, OnFlag>(),
+            (_, false) => vm.GetOpcodeHandlers<OnFlag, OffFlag>(),
+            (Table.Untraced, true) => VirtualMachine<EthereumGasPolicy>.GenerateOpcodeHandlers<OffFlag, OffFlag>(spec!),
+            (Table.Cancelable, true) => VirtualMachine<EthereumGasPolicy>.GenerateOpcodeHandlers<OffFlag, OnFlag>(spec!),
+            (_, true) => VirtualMachine<EthereumGasPolicy>.GenerateOpcodeHandlers<OnFlag, OffFlag>(spec!),
         })
             new ReadOnlySpan<nint>(source, handlers.Length).CopyTo(handlers);
         for (int opcode = 0; opcode < handlers.Length; opcode++)
@@ -309,6 +351,7 @@ public class GuestDispatchDifferentialTests
         fixed (nint* entries = handlers)
         {
             EvmStack stack = new(head, vm.Tracer, ref stackBytes[start], codeInfo.ExecutionCodeSpan, codeInfo);
+            if ((spec ?? ReleaseSpec).IsEip7979Enabled) stack.UseCallDestinations();
             stack.HoistInputData(inputData);
             VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Vm = vm, Memory = ref frame.Memory };
             exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)

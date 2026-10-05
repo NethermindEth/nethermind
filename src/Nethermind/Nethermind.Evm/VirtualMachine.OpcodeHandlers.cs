@@ -94,7 +94,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private static bool TablesHaveFastPaths<TTracingInst>() where TTracingInst : struct, IFlag =>
         !TTracingInst.IsActive && DispatchFlags.UntracedFastPaths && typeof(TGasPolicy) == typeof(GasPolicy.EthereumGasPolicy);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]
+    internal static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]
         GenerateOpcodeHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag

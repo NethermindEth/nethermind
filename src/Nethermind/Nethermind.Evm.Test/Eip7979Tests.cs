@@ -2,8 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -12,6 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -229,13 +237,102 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
         Assert.That(tracer.PollCount, Is.EqualTo(2), "the first poll is at frame entry and the second at a CALLSUB");
     }
 
-    [Test]
-    public void Trace_names_the_opcodes()
-    {
-        GethLikeTxTrace trace = ExecuteAndTrace(FromEipVector("6004B000B1B2"));
+    private const string SimpleRoutine = "6004B000B1B2";
+    private static readonly string[] SimpleRoutineOpcodes = ["PUSH1", "CALLSUB", "CALLDEST", "RETURNSUB", "STOP"];
+    private static readonly int[] SimpleRoutinePcs = [0, 2, 4, 5, 3];
+    private static readonly ulong[] SimpleRoutineCosts = [GasCostOf.VeryLow, GasCostOf.CallSub, GasCostOf.JumpDest, GasCostOf.ReturnSub, 0];
 
-        Assert.That(trace.Entries.Select(static e => e.Opcode),
-            Is.EqualTo(new[] { "PUSH1", "CALLSUB", "CALLDEST", "RETURNSUB", "STOP" }));
+    [Test]
+    public void Struct_log_trace_follows_the_subroutine()
+    {
+        GethLikeTxTrace trace = ExecuteAndTrace(FromEipVector(SimpleRoutine));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries.Select(static e => e.Opcode), Is.EqualTo(SimpleRoutineOpcodes));
+            Assert.That(trace.Entries.Select(static e => (int)e.ProgramCounter), Is.EqualTo(SimpleRoutinePcs));
+            Assert.That(trace.Entries.Select(static e => e.GasCost), Is.EqualTo(SimpleRoutineCosts));
+            Assert.That(trace.Entries.Select(static e => e.Depth), Is.All.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void JavaScript_tracer_follows_the_subroutine()
+    {
+        const string userTracer = """
+            {
+                retVal: [],
+                step: function(log, db) { this.retVal.push(log.op.toString() + ':' + log.getPC() + ':' + log.getDepth() + ':' + log.op.isPush() + ':' + log.getGas()) },
+                fault: function(log, db) { this.retVal.push('FAULT') },
+                result: function(ctx, db) { return this.retVal }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+            new GethLikeBlockJavaScriptTracer(TestState, Spec, GethTraceOptions.Default with { Tracer = userTracer }),
+            FromEipVector(SimpleRoutine));
+        using GethLikeTxTrace trace = tracer.BuildResult().Single();
+
+        ulong gas = GasLimit - GasCostOf.Transaction;
+        string[] expected = new string[SimpleRoutineOpcodes.Length];
+        for (int i = 0; i < expected.Length; i++)
+        {
+            expected[i] = $"{SimpleRoutineOpcodes[i]}:{SimpleRoutinePcs[i]}:1:{(i == 0 ? "true" : "false")}:{gas}";
+            gas -= SimpleRoutineCosts[i];
+        }
+
+        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions), Is.EqualTo(JsonSerializer.Serialize(expected)));
+    }
+
+    [Test]
+    public void Parity_vm_trace_follows_the_subroutine()
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, FromEipVector(SimpleRoutine));
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        IReadOnlyList<ParityVmOperationTrace> operations = trace.VmTrace!.Operations;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action!.Error, Is.Null);
+            Assert.That(trace.Action.Subtraces, Is.Empty, "a subroutine is not a call");
+            Assert.That(operations.Select(static op => op.Pc), Is.EqualTo(SimpleRoutinePcs));
+            Assert.That(operations.Select(static op => op.Cost), Is.EqualTo(SimpleRoutineCosts));
+            Assert.That(operations.Select(static op => op.Push?.Length ?? 0), Is.EqualTo(new[] { 1, 0, 0, 0, 0 }));
+            Assert.That(operations.Select(static op => op.Sub), Is.All.Null);
+        }
+    }
+
+    [Test]
+    public void Call_tracer_opens_no_frame_for_a_subroutine()
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, FromEipVector(SimpleRoutine));
+        NativeCallTracer tracer = new(transaction, Spec, GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer });
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Error, Is.Null);
+            Assert.That(root.Calls, Is.Empty);
+        }
+    }
+
+    [TestCase(EvmExceptionType.ReturnStackOverflow, "return stack limit reached")]
+    [TestCase(EvmExceptionType.ReturnStackUnderflow, "return stack underflow")]
+    public void Rpc_failure_text_is_the_evm_description(EvmExceptionType failure, string description)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, FromEipVector("B2"));
+
+        bool described = ExecutionFailureText.TryDescribe(_processor, transaction, new BlockExecutionContext(block.Header, Spec),
+            failure, failure.GetEvmExceptionDescription(), CancellationToken.None, out string text);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(described, Is.False, "no rerun is needed to describe it");
+            Assert.That(text, Is.EqualTo(description));
+        }
     }
 
     private sealed class UntracedInstructionsTracer : TestAllTracerWithOutput
