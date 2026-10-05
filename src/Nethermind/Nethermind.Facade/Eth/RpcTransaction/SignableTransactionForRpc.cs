@@ -41,6 +41,6 @@ public abstract class SignableTransactionForRpc : TransactionForRpc
             };
 
         public override void Write(Utf8JsonWriter writer, SignableTransactionForRpc value, JsonSerializerOptions options) =>
-            TypeInfoJsonSerializer.Serialize(writer, value, value.GetType(), options);
+            TransactionForRpc.TransactionJsonConverter.WriteAsRuntimeType(writer, value, options);
     }
 }

@@ -50,16 +50,25 @@ internal static class JsonWriterEmitter
         sb.AppendLine("{");
         sb.AppendLine("    [global::System.Runtime.CompilerServices.ModuleInitializer]");
         sb.AppendLine("    [global::System.Diagnostics.CodeAnalysis.SuppressMessage(\"Usage\", \"CA2255\", Justification = \"Registers the writers before any code in this assembly serializes.\")]");
-        sb.Append("    internal static void Register() => ").Append(Runtime).AppendLine(".GeneratedJsonWriters.Register(");
+        sb.AppendLine("    internal static void Register()");
+        sb.AppendLine("    {");
+        EmitRegistrationCall(sb, "Register", types.Where(static t => t.RegisterWithSerializer).ToList());
+        EmitRegistrationCall(sb, "RegisterForDispatch", types.Where(static t => !t.RegisterWithSerializer).ToList());
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
+        return sb.ToString();
+    }
+
+    private static void EmitRegistrationCall(StringBuilder sb, string method, List<TypeModel> types)
+    {
+        if (types.Count == 0) return;
+        sb.Append("        ").Append(Runtime).Append(".GeneratedJsonWriters.").Append(method).AppendLine("(");
         for (int i = 0; i < types.Count; i++)
         {
             TypeModel type = types[i];
             string name = type.Namespace is null ? "global::" + type.WriterName : "global::" + type.Namespace + "." + type.WriterName;
-            sb.Append("        new ").Append(name).Append("()").AppendLine(i == types.Count - 1 ? ");" : ",");
+            sb.Append("            new ").Append(name).Append("()").AppendLine(i == types.Count - 1 ? ");" : ",");
         }
-
-        sb.AppendLine("}");
-        return sb.ToString();
     }
 
     private static void EmitContract(StringBuilder sb, TypeModel type)

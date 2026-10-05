@@ -35,8 +35,14 @@ internal static class TypeModelBuilder
         public bool IsIgnored => Model.Kind == ContractKind.Ignored;
     }
 
-    public static TypeModel Build(INamedTypeSymbol type, Compilation compilation)
+    public static TypeModel Build(INamedTypeSymbol type, AttributeData attribute, Compilation compilation)
     {
+        bool registerWithSerializer = true;
+        foreach (KeyValuePair<string, TypedConstant> argument in attribute.NamedArguments)
+        {
+            if (argument.Key == "RegisterWithSerializer" && argument.Value.Value is bool value) registerWithSerializer = value;
+        }
+
         List<DiagnosticModel> diagnostics = [];
         CheckType(type, diagnostics);
 
@@ -84,6 +90,7 @@ internal static class TypeModelBuilder
             GetWriterName(type),
             Implements(type, OnSerializing),
             Implements(type, OnSerialized),
+            registerWithSerializer,
             new EquatableArray<PropertyModel>([.. entries.Select(static e => e.Model)]),
             new EquatableArray<DiagnosticModel>([.. diagnostics]),
             type.Locations.FirstOrDefault());

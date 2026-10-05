@@ -42,6 +42,7 @@ internal sealed record TypeModel(
     string WriterName,
     bool HasOnSerializing,
     bool HasOnSerialized,
+    bool RegisterWithSerializer,
     EquatableArray<PropertyModel> Contract,
     EquatableArray<DiagnosticModel> Diagnostics,
     Location? Location);

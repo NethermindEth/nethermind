@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -14,8 +15,14 @@ namespace Nethermind.Serialization.Json;
 /// <summary>Marks a converter emitted by the JSON writer generator.</summary>
 public interface IGeneratedJsonWriter
 {
+    /// <summary>The exact type the writer writes.</summary>
+    Type WrittenType { get; }
+
     /// <summary>Whether writes with <paramref name="options"/> use the generated code rather than the metadata path.</summary>
     bool IsActive(JsonSerializerOptions options);
+
+    /// <summary>Writes <paramref name="value"/>, an instance of exactly <see cref="WrittenType"/>.</summary>
+    void WriteValue(Utf8JsonWriter writer, object value, JsonSerializerOptions options);
 }
 
 /// <summary>How a generated writer treats one entry of the type's metadata contract.</summary>
@@ -53,6 +60,8 @@ public readonly struct GeneratedJsonProperty(string memberName, string? explicit
 /// Writes go through the generated code only for options it can honour and whose metadata contract for
 /// <typeparamref name="T"/> matches the one it was generated for; otherwise, and for every read, the converter defers to
 /// the metadata path through <see cref="GeneratedJsonWriters.GetMetadataOptions"/>, options that lack the generated writers.
+/// A writer used only through <see cref="GeneratedJsonWriters.TryGetDispatchWriter"/> is never registered with options, so
+/// STJ never reads through it.
 /// </para>
 /// <para>The per-options state is cached in two entries, so request and response options do not evict each other.</para>
 /// </remarks>
@@ -82,8 +91,12 @@ public abstract class GeneratedJsonWriter<T, TState> : JsonConverter<T>, IGenera
         }
     }
 
+    public Type WrittenType => typeof(T);
+
     /// <summary>Whether writes with <paramref name="options"/> use the generated code rather than the metadata path.</summary>
     public bool IsActive(JsonSerializerOptions options) => GetState(options) is not null;
+
+    public void WriteValue(Utf8JsonWriter writer, object value, JsonSerializerOptions options) => Write(writer, (T)value, options);
 
     /// <summary>Builds the state for <paramref name="options"/>, or returns <see langword="null"/> to defer to the metadata path.</summary>
     protected abstract TState? CreateState(JsonSerializerOptions options);
@@ -133,7 +146,9 @@ public static class GeneratedJsonWriters
     private const int DefaultMaxDepth = 64;
 
     private static readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> MetadataOptions = [];
+    private static readonly Lock DispatchLock = new();
     private static MetadataOptionsEntry? _lastMetadataOptions;
+    private static Dictionary<Type, IGeneratedJsonWriter> _dispatchWriters = [];
 
     /// <summary>Registers generated writers with every options instance <see cref="EthereumJsonSerializer"/> builds.</summary>
     public static void Register(params JsonConverter[] writers)
@@ -143,6 +158,26 @@ public static class GeneratedJsonWriters
             EthereumJsonSerializer.AddConverter(writer);
         }
     }
+
+    /// <summary>Makes generated writers available to the hand-written converters that dispatch to their types.</summary>
+    /// <remarks>Copy-on-write, so lookups take no lock; registrations happen at module initialization.</remarks>
+    public static void RegisterForDispatch(params IGeneratedJsonWriter[] writers)
+    {
+        lock (DispatchLock)
+        {
+            Dictionary<Type, IGeneratedJsonWriter> updated = new(_dispatchWriters);
+            foreach (IGeneratedJsonWriter writer in writers)
+            {
+                updated[writer.WrittenType] = writer;
+            }
+
+            Volatile.Write(ref _dispatchWriters, updated);
+        }
+    }
+
+    /// <summary>Gets the dispatch writer registered for exactly <paramref name="type"/>.</summary>
+    public static bool TryGetDispatchWriter(Type type, [NotNullWhen(true)] out IGeneratedJsonWriter? writer) =>
+        Volatile.Read(ref _dispatchWriters).TryGetValue(type, out writer);
 
     /// <summary>Gets a copy of <paramref name="options"/> without generated writers, so types resolve through their metadata.</summary>
     public static JsonSerializerOptions GetMetadataOptions(JsonSerializerOptions options)

@@ -46,7 +46,7 @@ public sealed class JsonWriterGenerator : IIncrementalGenerator
         IncrementalValuesProvider<TypeModel> types = context.SyntaxProvider.ForAttributeWithMetadataName(
             AttributeName,
             static (node, _) => node is ClassDeclarationSyntax,
-            static (ctx, _) => TypeModelBuilder.Build((INamedTypeSymbol)ctx.TargetSymbol, ctx.SemanticModel.Compilation));
+            static (ctx, _) => TypeModelBuilder.Build((INamedTypeSymbol)ctx.TargetSymbol, ctx.Attributes[0], ctx.SemanticModel.Compilation));
 
         IncrementalValueProvider<ImmutableArray<ConverterTarget>> handWritten = context.SyntaxProvider.CreateSyntaxProvider(
                 static (node, _) => node is ClassDeclarationSyntax { BaseList: not null },

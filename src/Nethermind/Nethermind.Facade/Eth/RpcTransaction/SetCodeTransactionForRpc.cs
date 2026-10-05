@@ -8,7 +8,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-[GenerateJsonWriter]
+[GenerateJsonWriter(RegisterWithSerializer = false)]
 public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<SetCodeTransactionForRpc>
 {
     public new static TxType TxType => TxType.SetCode;

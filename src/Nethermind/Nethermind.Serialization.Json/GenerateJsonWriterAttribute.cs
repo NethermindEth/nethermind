@@ -10,9 +10,16 @@ namespace Nethermind.Serialization.Json;
 /// does, without its per-property dispatch.
 /// </summary>
 /// <remarks>
-/// The generated converter registers itself with <see cref="EthereumJsonSerializer"/> and reads through the metadata path.
 /// The generator reports a diagnostic and emits nothing for a type with a hand-written converter or a shape it cannot write
 /// identically.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
-public sealed class GenerateJsonWriterAttribute : Attribute;
+public sealed class GenerateJsonWriterAttribute : Attribute
+{
+    /// <summary>
+    /// Whether the writer is registered with <see cref="EthereumJsonSerializer"/>, which then reads the type through the metadata
+    /// path; otherwise it is only reachable through <see cref="GeneratedJsonWriters.TryGetDispatchWriter"/>.
+    /// </summary>
+    /// <remarks>Set it to <see langword="false"/> for types a hand-written converter already dispatches to, so their reads stay untouched.</remarks>
+    public bool RegisterWithSerializer { get; init; } = true;
+}

@@ -185,18 +185,21 @@ public class JsonWriterGeneratorTests
     }
 
     [Test]
-    public void Registration_lists_every_generated_writer()
+    public void Registration_routes_each_writer_to_the_serializer_or_the_dispatch()
     {
         GeneratorDriverRunResult result = Run(Usings + """
             namespace A { [GenerateJsonWriter] public class One { public int X { get; set; } } }
-            namespace B { [GenerateJsonWriter] public class Two { public int Y { get; set; } } }
+            namespace B { [GenerateJsonWriter(RegisterWithSerializer = false)] public class Two { public int Y { get; set; } } }
             """, out _);
 
         string registration = result.GeneratedTrees.Single(static t => Path.GetFileName(t.FilePath) == "GeneratedJsonWriterRegistration.g.cs").GetText().ToString();
+        string withSerializer = registration[..registration.IndexOf("RegisterForDispatch(", StringComparison.Ordinal)];
+        string forDispatch = registration[registration.IndexOf("RegisterForDispatch(", StringComparison.Ordinal)..];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(registration, Does.Contain("new global::A.OneJsonWriter()"));
-            Assert.That(registration, Does.Contain("new global::B.TwoJsonWriter()"));
+            Assert.That(withSerializer, Does.Contain("new global::A.OneJsonWriter()"));
+            Assert.That(forDispatch, Does.Contain("new global::B.TwoJsonWriter()"));
+            Assert.That(forDispatch, Does.Not.Contain("OneJsonWriter"), "a dispatch-only writer must not reach the serializer options");
         }
     }
 

@@ -76,6 +76,11 @@ public class RpcResultSerializationBenchmarks
             if (!writer.IsActive(_generated)) throw new InvalidOperationException($"{writer.GetType().Name} defers to the metadata path");
         }
 
+        if (!GeneratedJsonWriters.TryGetDispatchWriter(typeof(Facade.Eth.RpcTransaction.EIP1559TransactionForRpc), out IGeneratedJsonWriter? txWriter) || !txWriter.IsActive(_generated))
+        {
+            throw new InvalidOperationException("the EIP-1559 transaction writer is not reached through the dispatch");
+        }
+
         SetUpRpcModule();
 
         Check("full block", () => Serialize(_full, _generated), () => Serialize(_full, _metadata));
