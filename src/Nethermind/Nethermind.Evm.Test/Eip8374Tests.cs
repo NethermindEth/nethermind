@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -43,7 +44,6 @@ public class Eip8374Tests : VirtualMachineTestsBase
     private static readonly Address Warmer = TestItem.AddressC;
     private static readonly Address Outer = TestItem.AddressE;
     private static readonly Address Probed = TestItem.AddressF;
-    private static readonly Address Sha256Precompile = new("0x0000000000000000000000000000000000000002");
 
     private readonly OverridableReleaseSpec _spec = new(Bogota.Instance);
     private ISpecProvider? _specProvider;
@@ -111,14 +111,10 @@ public class Eip8374Tests : VirtualMachineTestsBase
         Deploy(authority, Bytes.Concat(Eip7702Constants.DelegationHeader, Probed.Bytes));
         Deploy(Warmer, Prepare.EvmCode.Call(authority, 50_000).Op(Instruction.POP).Revert(0, 0).Done);
 
-        byte[] code = Prepare.EvmCode.Call(Warmer, SubCallGas).Op(Instruction.POP)
-            .Op(Instruction.GAS).PushData(Probed).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.GAS)
-            .Op(Instruction.SWAP1).Op(Instruction.SUB).PushData(AccountCostSlot).Op(Instruction.SSTORE)
-            .Op(Instruction.GAS).PushData(authority).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.GAS)
-            .Op(Instruction.SWAP1).Op(Instruction.SUB).PushData(SecondAccountCostSlot).Op(Instruction.SSTORE)
-            .Done;
+        Prepare code = MeasureBalance(Prepare.EvmCode.Call(Warmer, SubCallGas).Op(Instruction.POP), Probed, AccountCostSlot);
+        code = MeasureBalance(code, authority, SecondAccountCostSlot);
 
-        TestAllTracerWithOutput result = Execute(Activation, TxGasLimit, code);
+        TestAllTracerWithOutput result = Execute(Activation, TxGasLimit, code.Done);
 
         ulong expected = (eip8374 ? Warm : ColdAccount) + MeasureOverhead;
         using (Assert.EnterMultipleScope())
@@ -137,16 +133,12 @@ public class Eip8374Tests : VirtualMachineTestsBase
     public void Caller_side_and_precompile_warmth_is_independent_of_eip8374([Values] bool eip8374)
     {
         _spec.IsEip8374Enabled = eip8374;
-        Deploy(Warmer, Prepare.EvmCode.PushData(Sha256Precompile).Op(Instruction.BALANCE).Op(Instruction.POP).Revert(0, 0).Done);
+        Deploy(Warmer, Prepare.EvmCode.PushData(Sha256Precompile.Address).Op(Instruction.BALANCE).Op(Instruction.POP).Revert(0, 0).Done);
 
-        byte[] code = Prepare.EvmCode.CallWithValue(Warmer, SubCallGas, UInt256.One).Op(Instruction.POP)
-            .Op(Instruction.GAS).PushData(Warmer).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.GAS)
-            .Op(Instruction.SWAP1).Op(Instruction.SUB).PushData(AccountCostSlot).Op(Instruction.SSTORE)
-            .Op(Instruction.GAS).PushData(Sha256Precompile).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.GAS)
-            .Op(Instruction.SWAP1).Op(Instruction.SUB).PushData(SecondAccountCostSlot).Op(Instruction.SSTORE)
-            .Done;
+        Prepare code = MeasureBalance(Prepare.EvmCode.CallWithValue(Warmer, SubCallGas, UInt256.One).Op(Instruction.POP), Warmer, AccountCostSlot);
+        code = MeasureBalance(code, Sha256Precompile.Address, SecondAccountCostSlot);
 
-        TestAllTracerWithOutput result = Execute(Activation, TxGasLimit, code);
+        TestAllTracerWithOutput result = Execute(Activation, TxGasLimit, code.Done);
 
         using (Assert.EnterMultipleScope())
         {
@@ -202,11 +194,14 @@ public class Eip8374Tests : VirtualMachineTestsBase
     }
 
     /// <summary>Appends a cost measurement of SLOAD <see cref="ProbedSlot"/> and BALANCE <see cref="Probed"/>.</summary>
-    private static Prepare Measure(Prepare code) => code
+    private static Prepare Measure(Prepare code) => MeasureBalance(code
         .Op(Instruction.GAS).PushData(ProbedSlot).Op(Instruction.SLOAD).Op(Instruction.POP).Op(Instruction.GAS)
-        .Op(Instruction.SWAP1).Op(Instruction.SUB).PushData(StorageCostSlot).Op(Instruction.SSTORE)
-        .Op(Instruction.GAS).PushData(Probed).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.GAS)
-        .Op(Instruction.SWAP1).Op(Instruction.SUB).PushData(AccountCostSlot).Op(Instruction.SSTORE);
+        .Op(Instruction.SWAP1).Op(Instruction.SUB).PushData(StorageCostSlot).Op(Instruction.SSTORE), Probed, AccountCostSlot);
+
+    /// <summary>Appends a cost measurement of BALANCE <paramref name="address"/>, stored in <paramref name="resultSlot"/>.</summary>
+    private static Prepare MeasureBalance(Prepare code, Address address, int resultSlot) => code
+        .Op(Instruction.GAS).PushData(address).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.GAS)
+        .Op(Instruction.SWAP1).Op(Instruction.SUB).PushData(resultSlot).Op(Instruction.SSTORE);
 
     private void AssertAccessCosts(bool warm)
     {
