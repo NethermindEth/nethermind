@@ -63,6 +63,19 @@ internal static class ContentNegotiation
         return bestSszQ > bestJsonQ ? ResponseFormat.Ssz : ResponseFormat.Json;
     }
 
+    /// <summary>Invokes a JSON-only handler after accepting its response representation.</summary>
+    public static Task JsonOnly(HttpContext c, BeaconApiContext ctx, Func<HttpContext, BeaconApiContext, Task> handler) =>
+        Negotiate(c, sszSupported: false) is null
+            ? WriteNotAcceptable(c)
+            : handler(c, ctx);
+
+    /// <inheritdoc cref="JsonOnly(HttpContext, BeaconApiContext, Func{HttpContext, BeaconApiContext, Task})"/>
+    public static Task JsonOnly(HttpContext c, BeaconApiContext ctx, string id,
+        Func<HttpContext, string, BeaconApiContext, Task> handler) =>
+        Negotiate(c, sszSupported: false) is null
+            ? WriteNotAcceptable(c)
+            : handler(c, id, ctx);
+
     private static void SetQuality(double q, int specificity, ref double quality, ref int selectedSpecificity)
     {
         // RFC 9110 section 12.5.1: the most specific matching range determines quality, including zero.

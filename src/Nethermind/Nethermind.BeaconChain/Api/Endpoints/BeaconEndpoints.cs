@@ -22,12 +22,12 @@ internal static class BeaconEndpoints
 {
     public static void Map(WebApplication app, BeaconApiContext ctx)
     {
-        app.MapGet("/eth/v1/beacon/genesis", c => Genesis(c, ctx));
-        app.MapGet("/eth/v1/beacon/headers", c => HeaderList(c, ctx.ForRequest()));
-        app.MapGet("/eth/v1/beacon/headers/{block_id}", (HttpContext c, string block_id) => HeaderById(c, block_id, ctx.ForRequest()));
-        app.MapGet("/eth/v1/beacon/blocks/{block_id}/root", (HttpContext c, string block_id) => BlockRoot(c, block_id, ctx.ForRequest()));
+        app.MapGet("/eth/v1/beacon/genesis", c => ContentNegotiation.JsonOnly(c, ctx, Genesis));
+        app.MapGet("/eth/v1/beacon/headers", c => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), HeaderList));
+        app.MapGet("/eth/v1/beacon/headers/{block_id}", (HttpContext c, string block_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), block_id, HeaderById));
+        app.MapGet("/eth/v1/beacon/blocks/{block_id}/root", (HttpContext c, string block_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), block_id, BlockRoot));
         app.MapGet("/eth/v2/beacon/blocks/{block_id}", (HttpContext c, string block_id) => BlockContent(c, block_id, ctx.ForRequest()));
-        app.MapGet("/eth/v2/beacon/blocks/{block_id}/attestations", (HttpContext c, string block_id) => BlockAttestations(c, block_id, ctx.ForRequest()));
+        app.MapGet("/eth/v2/beacon/blocks/{block_id}/attestations", (HttpContext c, string block_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), block_id, BlockAttestations));
         app.MapGet("/eth/v1/beacon/execution_payload_envelopes/{block_id}", (HttpContext c, string block_id) => ExecutionPayloadEnvelope(c, block_id, ctx.ForRequest()));
     }
 
@@ -88,11 +88,6 @@ internal static class BeaconEndpoints
     /// </remarks>
     private static Task BlockAttestations(HttpContext c, string blockId, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
@@ -121,11 +116,6 @@ internal static class BeaconEndpoints
 
     private static Task Genesis(HttpContext c, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         GenesisDto dto = new(
             ctx.Spec.GenesisTime.ToString(),
             ctx.Spec.GenesisValidatorsRoot.ToString(),
@@ -135,11 +125,6 @@ internal static class BeaconEndpoints
 
     private static Task HeaderList(HttpContext c, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         if (c.Request.Query.TryGetValue("parent_root", out Microsoft.Extensions.Primitives.StringValues parentRootValue))
         {
             return HeadersByParent(c, parentRootValue.ToString(), ctx);
@@ -262,11 +247,6 @@ internal static class BeaconEndpoints
 
     private static Task HeaderById(HttpContext c, string blockId, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
@@ -282,11 +262,6 @@ internal static class BeaconEndpoints
 
     private static Task BlockRoot(HttpContext c, string blockId, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);

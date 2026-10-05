@@ -16,9 +16,9 @@ internal static class ConfigEndpoints
 {
     public static void Map(WebApplication app, BeaconApiContext ctx)
     {
-        app.MapGet("/eth/v1/config/spec", c => Spec(c, ctx));
-        app.MapGet("/eth/v1/config/fork_schedule", c => ForkSchedule(c, ctx));
-        app.MapGet("/eth/v1/config/deposit_contract", c => DepositContract(c, ctx));
+        app.MapGet("/eth/v1/config/spec", c => ContentNegotiation.JsonOnly(c, ctx, Spec));
+        app.MapGet("/eth/v1/config/fork_schedule", c => ContentNegotiation.JsonOnly(c, ctx, ForkSchedule));
+        app.MapGet("/eth/v1/config/deposit_contract", c => ContentNegotiation.JsonOnly(c, ctx, DepositContract));
     }
 
     /// <summary>The network config's <c>DEPOSIT_CONTRACT_ADDRESS</c>, or <c>null</c> for a chain this driver has no network config for.</summary>
@@ -36,11 +36,6 @@ internal static class ConfigEndpoints
 
     private static Task DepositContract(HttpContext c, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         if (DepositContractAddress(ctx.Spec.ChainId) is not { } address)
         {
             return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
@@ -59,11 +54,6 @@ internal static class ConfigEndpoints
     /// </remarks>
     private static Task Spec(HttpContext c, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         BeaconChainSpec spec = ctx.Spec;
         Dictionary<string, object> data = new(SpecValues.Mainnet.Count + SpecConstants.All.Count + 4);
         foreach ((string key, string value) in SpecValues.Mainnet)
@@ -135,11 +125,6 @@ internal static class ConfigEndpoints
 
     private static Task ForkSchedule(HttpContext c, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         ForkScheduleEntry[] forks = ctx.Spec.Forks;
         ForkDto[] data = new ForkDto[forks.Length];
         for (int i = 0; i < forks.Length; i++)
