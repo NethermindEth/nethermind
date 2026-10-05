@@ -105,6 +105,12 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 
     public int Count => _count;
 
+    /// <summary>
+    /// The built entries in key order, each carrying <c>(uint)Key.GetHashCode()</c> in <see cref="Entry.HashCode"/>.
+    /// Valid until the next build, clear or dispose.
+    /// </summary>
+    internal ReadOnlySpan<Entry> Entries => _entries.AsSpan(0, _count);
+
     public bool TryGetValue(TKey key, out TValue value)
     {
         int count = _count;
