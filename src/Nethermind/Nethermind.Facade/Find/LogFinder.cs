@@ -26,9 +26,9 @@ namespace Nethermind.Facade.Find
         IReceiptStorage? receiptStorage,
         ILogManager? logManager,
         IReceiptsRecovery? receiptsRecovery,
+        ISpecProvider specProvider,
         IReceiptConfig? receiptConfig = null,
-        IPrunedLogsRetention? prunedLogsRetention = null,
-        ISpecProvider? specProvider = null)
+        IPrunedLogsRetention? prunedLogsRetention = null)
         : ILogFinder
     {
         private static int ParallelExecutions = 0;

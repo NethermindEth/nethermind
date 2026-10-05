@@ -28,13 +28,13 @@ public class IndexedLogFinder(
     IReceiptStorage receiptStorage,
     ILogManager logManager,
     IReceiptsRecovery receiptsRecovery,
+    ISpecProvider specProvider,
     ILogIndexStorage logIndexStorage,
     int minBlocksToUseIndex = 32,
     IReceiptConfig? receiptConfig = null,
     IPrunedLogsRetention? prunedLogsRetention = null,
-    IHistoryPruner? historyPruner = null,
-    ISpecProvider? specProvider = null)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention, specProvider)
+    IHistoryPruner? historyPruner = null)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, specProvider, receiptConfig, prunedLogsRetention)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
     // CS9107: a primary-ctor parameter that also flows to the base ctor cannot be used in a method body.

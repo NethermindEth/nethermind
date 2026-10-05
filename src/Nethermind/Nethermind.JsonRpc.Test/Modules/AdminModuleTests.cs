@@ -26,6 +26,7 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
@@ -68,7 +69,7 @@ public class AdminModuleTests
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
-        _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager);
+        _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager, MainnetSpecProvider.Instance);
         _stateReader = Substitute.For<IStateReader>();
         _networkConfig = new NetworkConfig();
 

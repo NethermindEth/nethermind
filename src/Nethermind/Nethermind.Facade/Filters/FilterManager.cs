@@ -49,7 +49,7 @@ namespace Nethermind.Facade.Filters
             ITxPool txPool,
             IReceiptMonitor receiptMonitor,
             ILogManager logManager,
-            ISpecProvider? specProvider = null)
+            ISpecProvider specProvider)
         {
             _eip8116 = new Eip8116Schedule(specProvider);
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));

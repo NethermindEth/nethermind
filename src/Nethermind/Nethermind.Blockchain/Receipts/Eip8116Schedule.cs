@@ -8,11 +8,11 @@ namespace Nethermind.Blockchain.Receipts;
 /// <summary>Tells whether EIP-8116 receipt semantics apply to a block.</summary>
 /// <remarks>
 /// On a chain that never schedules EIP-8116 no spec is looked up per block, keeping per-block log scans as cheap
-/// as they were before the EIP. A <see langword="null"/> provider means EIP-8116 never applies.
+/// as they were before the EIP.
 /// </remarks>
-public readonly struct Eip8116Schedule(ISpecProvider? specProvider)
+public readonly struct Eip8116Schedule(ISpecProvider specProvider)
 {
-    private readonly ISpecProvider? _specProvider = specProvider?.GetFinalSpec().IsEip8116Enabled == true ? specProvider : null;
+    private readonly ISpecProvider? _specProvider = specProvider.GetFinalSpec().IsEip8116Enabled ? specProvider : null;
 
     /// <summary>Whether the block at <paramref name="blockNumber"/> and <paramref name="timestamp"/> follows EIP-8116.</summary>
     public bool IsEnabled(ulong blockNumber, ulong timestamp) =>

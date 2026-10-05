@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 
-        public ReceiptCanonicalityMonitor(IReceiptStorage? receiptStorage, IBlockTree blockTree, ILogManager? logManager, ISpecProvider? specProvider = null)
+        public ReceiptCanonicalityMonitor(IReceiptStorage? receiptStorage, IBlockTree blockTree, ILogManager? logManager, ISpecProvider specProvider)
         {
             _eip8116 = new Eip8116Schedule(specProvider);
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
