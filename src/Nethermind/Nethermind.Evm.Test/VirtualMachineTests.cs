@@ -2582,9 +2582,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
     {
         (Transaction transaction, BlockExecutionContext context) = PrepareOnce(BuildDifferentialProgram(name));
 
-        string cold = Observe(transaction, context, traced, actions: false);
-        string warm = Observe(transaction, context, traced, actions: false);
-        string uncached = Uncached(() => Observe(transaction, context, traced, actions: false));
+        (string cold, string warm, string uncached) = CachedWarmUncached(() => Observe(transaction, context, traced, actions: false));
         string warmAgain = Observe(transaction, context, traced, actions: false);
 
         using (Assert.EnterMultipleScope())
@@ -2679,9 +2677,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        string cached = Observe(code, traced: false);
-        string warm = Observe(code, traced: false);
-        string uncached = Uncached(() => Observe(code, traced: false));
+        (string cached, string warm, string uncached) = CachedWarmUncached(() => Observe(code, traced: false));
 
         using (Assert.EnterMultipleScope())
         {
@@ -2980,9 +2976,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
 
         byte[] program = code.RETURN(0x1000, (UInt256)(slot - 0x1000)).Done;
         (Transaction transaction, BlockExecutionContext context) = PrepareOnce(program);
-        string cached = Observe(transaction, context, traced);
-        string warm = Observe(transaction, context, traced);
-        string uncached = Uncached(() => Observe(transaction, context, traced));
+        (string cached, string warm, string uncached) = CachedWarmUncached(() => Observe(transaction, context, traced));
         UInt256[] words = Words(RunAndRestore(program, traced: false));
 
         using (Assert.EnterMultipleScope())
@@ -3028,9 +3022,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             .RETURN(0x100, 0xc0);
 
         (Transaction transaction, BlockExecutionContext context) = PrepareOnce(code.Done);
-        string cached = Observe(transaction, context, traced: false);
-        string warm = Observe(transaction, context, traced: false);
-        string uncached = Uncached(() => Observe(transaction, context, traced: false));
+        (string cached, string warm, string uncached) = CachedWarmUncached(() => Observe(transaction, context, traced: false));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(cached, Does.StartWith("status=1"));
@@ -3184,9 +3176,7 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
 
         // Prepared once: preparing credits the driver, whose balance the probes read under CALLCODE and DELEGATECALL.
         (Transaction transaction, BlockExecutionContext context) = PrepareOnce(code);
-        string cached = Observe(transaction, context, traced, orphanAt, memory: false);
-        string warm = Observe(transaction, context, traced, orphanAt, memory: false);
-        string uncached = Uncached(() => Observe(transaction, context, traced, orphanAt, memory: false));
+        (string cached, string warm, string uncached) = CachedWarmUncached(() => Observe(transaction, context, traced, orphanAt, memory: false));
 
         using (Assert.EnterMultipleScope())
         {
@@ -3318,6 +3308,10 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
         _processor.CallAndRestore(transaction, context, tracer);
         return tracer.ReturnValue;
     }
+
+    /// <summary>Runs <paramref name="observe"/> twice on the cached path (first use, then reuse of the cached frames) and once with the cache off.</summary>
+    private (string Cached, string Warm, string Uncached) CachedWarmUncached(Func<string> observe) =>
+        (observe(), observe(), Uncached(observe));
 
     /// <summary>Runs <paramref name="run"/> with the frame and environment caches swapped for empty ones.</summary>
     private T Uncached<T>(Func<T> run)
