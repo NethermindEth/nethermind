@@ -16,7 +16,6 @@ using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.SszRest;
@@ -29,7 +28,6 @@ namespace Nethermind.BeaconChain.Test.Sync;
 internal sealed class ImportableBlobBlock
 {
     private const int ValidatorCount = 16;
-    private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
 
     /// <summary>Activate Fulu at genesis so fixture blocks fall inside the availability window.</summary>
     public static BeaconChainSpec FuluFromGenesis { get; } = BeaconChainSpec.Mainnet with
@@ -54,7 +52,7 @@ internal sealed class ImportableBlobBlock
     public static ImportableBlobBlock Create(int blobCount = 2, int validatorCount = ValidatorCount)
     {
         BlsPublicKey[] pubkeys = Enumerable.Range(0, validatorCount).Select(static i =>
-            new BlsPublicKey(new Bls.P1(DeriveKey(i)).Compress())).ToArray();
+            new BlsPublicKey(new Bls.P1(GloasTestFixtures.DeriveKey(i)).Compress())).ToArray();
 
         BeaconStateFulu anchorState = CreateState(pubkeys);
         SignedBeaconBlock anchorBlock = TestChain.CreateBlock(slot: 0, parentRoot: Hash(0x02));
@@ -79,7 +77,7 @@ internal sealed class ImportableBlobBlock
         DataColumnKzgFixture.BlobFixture[] blobs = [.. Enumerable.Range(0, blobCount).Select(i => DataColumnKzgFixture.BuildBlob((byte)(0x10 * (i + 1))))];
         SszKzgCommitment[] commitments = [.. blobs.Select(DataColumnKzgFixture.CommitmentOf)];
 
-        Bls.SecretKey proposerKey = DeriveKey(0);
+        Bls.SecretKey proposerKey = GloasTestFixtures.DeriveKey(0);
         BeaconBlock block = TestChain.CreateBlock(slot: 1, parentRoot: anchorRoot).Message!;
         block.ProposerIndex = 0;
         BeaconBlockBody body = block.Body!;
@@ -162,12 +160,11 @@ internal sealed class ImportableBlobBlock
     }
 
     public static ImportableBlobBlock CreateWithoutBlobs() => Create(blobCount: 0);
-    internal static Bls.SecretKey DeriveKey(int index) => new(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)index));
 
     internal static BlsSignature Sign(Bls.SecretKey key, Hash256 objectRoot, Hash256 domain) =>
-        new(BlsSigner.Sign(key, Domains.ComputeSigningRoot(objectRoot, domain).Bytes).Bytes);
+        GloasTestFixtures.Sign(key, Domains.ComputeSigningRoot(objectRoot, domain));
 
-    internal static BlsSignature SignAs(ulong validatorIndex, Hash256 objectRoot, Hash256 domain) => Sign(DeriveKey((int)validatorIndex), objectRoot, domain);
+    internal static BlsSignature SignAs(ulong validatorIndex, Hash256 objectRoot, Hash256 domain) => Sign(GloasTestFixtures.DeriveKey((int)validatorIndex), objectRoot, domain);
 
     internal static Hash256 EpochRoot(ulong epoch)
     {

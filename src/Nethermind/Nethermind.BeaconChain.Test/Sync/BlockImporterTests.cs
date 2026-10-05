@@ -1600,7 +1600,7 @@ public class BlockImporterTests
         await BeaconSyncOrchestratorTests.AssertOperationVerdictAsync(importer, slot + 1, GossipTopics.BeaconAggregateAndProof, payload, aggregate.Work, expected);
 
         BlsSignature SignAs(int validator, Hash256 root, ReadOnlySpan<byte> domainType) =>
-            ImportableBlobBlock.Sign(ImportableBlobBlock.DeriveKey(validator), root, state.GetDomain(domainType, 0));
+            ImportableBlobBlock.Sign(GloasTestFixtures.DeriveKey(validator), root, state.GetDomain(domainType, 0));
     }
 
     [Test]
@@ -1777,7 +1777,7 @@ public class BlockImporterTests
         ulong newIndex = (ulong)justifiedState.Validators!.Length;
         Validator deposited = new()
         {
-            Pubkey = new BlsPublicKey(new Bls.P1(ImportableBlobBlock.DeriveKey((int)newIndex)).Compress()),
+            Pubkey = new BlsPublicKey(new Bls.P1(GloasTestFixtures.DeriveKey((int)newIndex)).Compress()),
             WithdrawalCredentials = Hash256.Zero,
             EffectiveBalance = justifiedState.Validators[0].EffectiveBalance,
             ActivationEligibilityEpoch = Presets.FarFutureEpoch,
@@ -1798,9 +1798,9 @@ public class BlockImporterTests
             bool includesNewValidator = (attestationsWithNewValidator & (1 << i)) != 0;
             if (includesNewValidator) vote.AttestingIndices = [.. existing, newIndex];
             Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(vote.Data!), headState.GetDomain(DomainType.BeaconAttester, 0));
-            BlsSigner.Signature signature = BlsSigner.Sign(ImportableBlobBlock.DeriveKey((int)existing[0]), signingRoot.Bytes);
+            BlsSigner.Signature signature = BlsSigner.Sign(GloasTestFixtures.DeriveKey((int)existing[0]), signingRoot.Bytes);
             foreach (ulong index in vote.AttestingIndices!.Skip(1))
-                signature.Aggregate(BlsSigner.Sign(ImportableBlobBlock.DeriveKey((int)index), signingRoot.Bytes));
+                signature.Aggregate(BlsSigner.Sign(GloasTestFixtures.DeriveKey((int)index), signingRoot.Bytes));
             vote.Signature = new BlsSignature(signature.Bytes);
             Assert.That(BlockProcessing.IsValidIndexedAttestation(headState, vote, chain.Anchor.Pubkeys, verifySignature: true), Is.True,
                 "both signatures must authenticate against the head with all keys cached");
@@ -1822,7 +1822,7 @@ public class BlockImporterTests
         AttesterSlashing slashing = chain.DoubleVote([1], 1, chain.AnchorRoot, UnknownBlockRoot);
         foreach (IndexedAttestation vote in new[] { slashing.Attestation1!, slashing.Attestation2! })
         {
-            vote.Signature = ImportableBlobBlock.Sign(ImportableBlobBlock.DeriveKey(1), SszRoots.HashTreeRoot(vote.Data!),
+            vote.Signature = ImportableBlobBlock.Sign(GloasTestFixtures.DeriveKey(1), SszRoots.HashTreeRoot(vote.Data!),
                 chain.Anchor.AnchorState.GetDomain(DomainType.BeaconAttester, vote.Data!.Target!.Epoch));
         }
         return slashing;
