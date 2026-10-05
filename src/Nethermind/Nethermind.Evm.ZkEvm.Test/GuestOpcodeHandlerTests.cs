@@ -32,11 +32,15 @@ public class GuestOpcodeHandlerTests
     private const byte STOP = (byte)Instruction.STOP;
     private const byte ADD = (byte)Instruction.ADD;
     private const byte SUB = (byte)Instruction.SUB;
+    private const byte MUL = (byte)Instruction.MUL;
+    private const byte DIV = (byte)Instruction.DIV;
     private const byte AND = (byte)Instruction.AND;
     private const byte OR = (byte)Instruction.OR;
     private const byte XOR = (byte)Instruction.XOR;
     private const byte LT = (byte)Instruction.LT;
     private const byte GT = (byte)Instruction.GT;
+    private const byte SLT = (byte)Instruction.SLT;
+    private const byte SGT = (byte)Instruction.SGT;
     private const byte EQ = (byte)Instruction.EQ;
     private const byte SHL = (byte)Instruction.SHL;
     private const byte SHR = (byte)Instruction.SHR;
@@ -60,6 +64,7 @@ public class GuestOpcodeHandlerTests
     private const byte SWAP1 = (byte)Instruction.SWAP1;
     private const byte POP = (byte)Instruction.POP;
     private const byte CALLDATALOAD = (byte)Instruction.CALLDATALOAD;
+    private const byte CALLDATASIZE = (byte)Instruction.CALLDATASIZE;
     private const byte KECCAK256 = (byte)Instruction.KECCAK256;
     private const byte INVALID = (byte)Instruction.INVALID;
 
@@ -121,8 +126,16 @@ public class GuestOpcodeHandlerTests
             Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 0, LT, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
         yield return Succeeds("GT PUSH2 JUMPI loop",
             Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, PUSH1, 0, DUP2, GT, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
+        yield return Succeeds("SLT PUSH2 JUMPI loop",
+            Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 0, SLT, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
+        yield return Succeeds("SGT PUSH2 JUMPI loop",
+            Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, PUSH1, 0, DUP2, SGT, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
         yield return Succeeds("ISZERO ISZERO PUSH2 JUMPI loop",
             Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, ISZERO, ISZERO, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
+        yield return Succeeds("SLT ISZERO PUSH2 JUMPI loop",
+            Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, PUSH1, 1, DUP2, SLT, ISZERO, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * (conditionIteration + 3));
+        yield return Succeeds("SGT ISZERO PUSH2 JUMPI loop",
+            Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 1, SGT, ISZERO, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * (conditionIteration + 3));
         yield return Succeeds("EQ ISZERO PUSH2 JUMPI loop",
             Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 0, EQ, ISZERO, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * (conditionIteration + 3));
         yield return Succeeds("EQ PUSH2 JUMPI not taken onto an invalid destination",
@@ -183,6 +196,17 @@ public class GuestOpcodeHandlerTests
         yield return Succeeds("PUSH2 with one immediate", Code(PUSH2, 1), 3);
         yield return Succeeds("PUSH2 ending the code", Code(PUSH2, 1, 2), 3);
         yield return Succeeds("PUSH2 onto a stack one short of full", Code([.. Filled(1023, PUSH0), PUSH2, 0, 0, STOP]), 1023 * 2 + 3);
+
+        // Every width from three bytes up, each with a leading limb of its own width.
+        for (int n = 3; n <= 32; n++)
+        {
+            byte[] immediates = DistinctWord(n)[..n];
+            yield return Succeeds($"PUSH{n}", Code([(byte)(PUSH1 + n - 1), .. immediates, PUSH1, 0, MSTORE, STOP]), 3 + 3 + (3 + 3),
+                [.. new byte[32 - n], .. immediates]);
+        }
+
+        // Pairs fuse, and the odd one out runs alone.
+        yield return Succeeds("POP runs", Code(PUSH0, PUSH0, PUSH0, POP, POP, POP, PUSH0, POP, STOP), 4 * 2 + 4 * 2);
 
         // Memory starts empty, so the first store grows it; the next two reuse it and the last grows it again.
         yield return Succeeds("MSTORE and MLOAD round trip",
@@ -253,6 +277,9 @@ public class GuestOpcodeHandlerTests
         [
             (wordA, wordB), (wordB, wordA), (allOnes, 1), (1, allOnes), (ulong.MaxValue, 1), (0, 1),
             (BigInteger.One << 192, (BigInteger.One << 192) - 1),
+            // A word below 2^64 against one whose carry or borrow stops at each limb in turn.
+            (1, (BigInteger.One << 64) - 1), (1, (BigInteger.One << 128) - 1), (1, (BigInteger.One << 192) - 1),
+            (BigInteger.One << 64, 1), (BigInteger.One << 128, 1), (BigInteger.One << 192, 1),
         ];
         (byte Op, string Name, Func<BigInteger, BigInteger, BigInteger> Apply)[] operations =
         [
@@ -267,6 +294,38 @@ public class GuestOpcodeHandlerTests
                     Code([PUSH32, .. Word(second), PUSH32, .. Word(top), op, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 3 + (3 + 3 + 3),
                     Word(apply(top, second)));
             }
+        }
+
+        // Signs either way, equal words, and words that differ only below the sign limb.
+        (BigInteger Top, BigInteger Second)[] signedOperands =
+        [
+            (-1, 1), (1, -1), (-2, -1), (-1, -2), (-1, -1), (BigInteger.One << 254, -(BigInteger.One << 254)), (5, 7), (BigInteger.One << 192, 1),
+        ];
+        foreach ((BigInteger top, BigInteger second) in signedOperands)
+        {
+            yield return Succeeds($"SLT of {top} and {second}",
+                Code([PUSH32, .. Word(second), PUSH32, .. Word(top), SLT, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 3 + (3 + 3 + 3),
+                Word(top < second ? 1 : 0));
+            yield return Succeeds($"SGT of {top} and {second}",
+                Code([PUSH32, .. Word(second), PUSH32, .. Word(top), SGT, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 3 + (3 + 3 + 3),
+                Word(top > second ? 1 : 0));
+        }
+
+        // Operands below 2^64, powers of two on either side, a zero divisor, and wider ones the shared handlers take.
+        (BigInteger Top, BigInteger Second)[] factors =
+        [
+            (ulong.MaxValue, ulong.MaxValue), (ulong.MaxValue, 7), (7, ulong.MaxValue), (0, wordA), (wordA, 0), (wordA, 1), (1, wordA),
+            (BigInteger.One << 200, wordA), (wordA, BigInteger.One << 64), (wordA, BigInteger.One << 224), (wordA, BigInteger.One << 255),
+            (wordA, wordB), (wordB, (BigInteger.One << 64) + 1),
+        ];
+        foreach ((BigInteger top, BigInteger second) in factors)
+        {
+            yield return Succeeds($"MUL of {top:x} and {second:x}",
+                Code([PUSH32, .. Word(second), PUSH32, .. Word(top), MUL, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 5 + (3 + 3 + 3),
+                Word(top * second));
+            yield return Succeeds($"DIV of {top:x} by {second:x}",
+                Code([PUSH32, .. Word(second), PUSH32, .. Word(top), DIV, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 5 + (3 + 3 + 3),
+                Word(second.IsZero ? BigInteger.Zero : top / second));
         }
 
         // At every depth: the word moved to the top is stored first, then the word under it after the copy, or for a
@@ -290,6 +349,8 @@ public class GuestOpcodeHandlerTests
                 3 + 3 + (3 + 3 + 3), padded[offset..(offset + 32)], input);
         }
 
+        yield return Succeeds("CALLDATASIZE", Code(CALLDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), Word(input.Length), input);
+        yield return Succeeds("CALLDATASIZE of no input", Code(CALLDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), new byte[32]);
         yield return Succeeds("CALLDATALOAD at 2^32", Code(PUSH5, 1, 0, 0, 0, 0, CALLDATALOAD, PUSH1, 0, MSTORE, STOP), 3 + 3 + (3 + 3 + 3), new byte[32], input);
         yield return Succeeds("CALLDATALOAD of no input", Code(PUSH1, 0, CALLDATALOAD, PUSH1, 0, MSTORE, STOP), 3 + 3 + (3 + 3 + 3), new byte[32]);
 
@@ -329,6 +390,8 @@ public class GuestOpcodeHandlerTests
         yield return Fails("PUSH2 JUMP onto a non-JUMPDEST byte", Code(PUSH2, 0, 4, JUMP, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("PUSH2 JUMPI onto a non-JUMPDEST byte", Code(PUSH1, 1, PUSH2, 0, 6, JUMPI, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("PUSH2 JUMPI on an empty stack", Code(PUSH2, 0, 4, JUMPI, JUMPDEST), EvmExceptionType.StackUnderflow);
+        yield return Fails("PUSH0 onto a full stack", Filled(1025, PUSH0), EvmExceptionType.StackOverflow);
+        yield return Fails("CALLDATASIZE onto a full stack", Code([.. Filled(1024, PUSH0), CALLDATASIZE]), EvmExceptionType.StackOverflow);
         yield return Fails("PUSH1 onto a full stack", Code([.. Filled(1024, PUSH0), PUSH1, 0, STOP]), EvmExceptionType.StackOverflow);
         // The branch's PUSH2 overflows the stack an ISZERO leaves full, so the comparison runs unfused before it faults.
         yield return Fails("ISZERO PUSH2 JUMPI on a full stack", Code([.. Filled(1024, PUSH0), ISZERO, PUSH2, 0, 0x3f, JUMPI, STOP]), EvmExceptionType.StackOverflow);
@@ -360,6 +423,8 @@ public class GuestOpcodeHandlerTests
         // A following jump does not exempt the push from the stack limit.
         yield return Fails("PUSH2 JUMP onto a full stack", Code([.. Filled(1024, PUSH0), PUSH2, 0x04, 0x04, JUMP, JUMPDEST]), EvmExceptionType.StackOverflow);
 
+        yield return Fails("POP on an empty stack", Code(POP), EvmExceptionType.StackUnderflow);
+        yield return Fails("POP POP of one word", Code(PUSH0, POP, POP), EvmExceptionType.StackUnderflow);
         yield return Fails("MSTORE with one operand", Code(PUSH1, 0, MSTORE), EvmExceptionType.StackUnderflow);
         yield return Fails("MLOAD on an empty stack", Code(MLOAD), EvmExceptionType.StackUnderflow);
         yield return Fails("MSTORE at 2^32", Code(PUSH1, 1, PUSH5, 1, 0, 0, 0, 0, MSTORE), EvmExceptionType.OutOfGas);
@@ -446,6 +511,17 @@ public class GuestOpcodeHandlerTests
     public void MLoad_past_the_active_size_of_fresh_memory_charges_its_expansion() =>
         AssertSucceedsOnExactlyItsGas(Code(PUSH1, 0, MLOAD, STOP), 3 + (3 + 3), new byte[32], [], freshMemory: true);
 
+    /// <remarks>The first run leaves its words in the pooled frame's memory, where the gap of the second run's store lies.</remarks>
+    [Test]
+    public void MStore_leaving_a_gap_clears_it([Values(0x10, 0x30, 0x40, 0x45)] int offset)
+    {
+        Run(Code([PUSH32, .. WordB, PUSH1, 0, MSTORE, PUSH32, .. WordB, PUSH1, 32, MSTORE, PUSH32, .. WordB, PUSH1, 64, MSTORE, STOP]), 100);
+
+        ulong words = (ulong)(offset + 32 + 31) / 32;
+        AssertSucceedsOnExactlyItsGas(Code([PUSH32, .. WordA, PUSH1, (byte)offset, MSTORE, STOP]), 3 + 3 + 3 + MemoryCost(words),
+            [.. new byte[offset], .. WordA, .. new byte[(int)words * 32 - offset - 32]], []);
+    }
+
     /// <remarks>
     /// Once the first pass has analyzed the destination, every later iteration runs the fused step, and the range
     /// of gas lets it run out at each of the charges inside it.
@@ -507,9 +583,9 @@ public class GuestOpcodeHandlerTests
             // The code info's copy of the code is the one followed by the padding that dispatch may read.
             EvmStack stack = new(0, ref stackStart, codeInfo.CodeSpan, codeInfo);
             stack.HoistInputData(env.InputData.Span);
-            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm };
-            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)table[code[0]])(
-                ref stack, gas, ref state, 0, stack.Head, table, ref stack.Code, stack.CodeLength);
+            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm, Memory = ref frame.Memory };
+            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[code[0]])(
+                ref stack, gas, ref state, ref stack.Code, stack.Head, table, ref stack.Code, ref stack.Bottom);
         }
 
         ulong size = frame.Memory.Size;

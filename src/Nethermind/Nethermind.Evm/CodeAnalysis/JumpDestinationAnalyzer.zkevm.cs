@@ -35,6 +35,10 @@ public sealed partial class JumpDestinationAnalyzer
     /// <summary>How far before a destination the search may look for an instruction start to scan from.</summary>
     private const int MaxLocalScan = 256;
 
+    /// <summary>How far before a destination a jump destination already marked may lie for the scan to start from it.</summary>
+    /// <remarks>Scanning that far costs about as much as the look-backs it saves.</remarks>
+    private const int MaxMarkedDistance = 64;
+
     /// <summary>The look-back's comparands: the high bit of each byte, then each window word's lane offsets plus one.</summary>
     /// <remarks>An array for the same reason as <see cref="_byteScanThresholds"/>: materialising each 64-bit constant takes several instructions.</remarks>
     private static readonly ulong[] _reachBiases =
@@ -132,7 +136,9 @@ public sealed partial class JumpDestinationAnalyzer
     /// themselves: a destination proven that way is marked without scanning. Otherwise every position after the
     /// earliest such byte is within its reach too, so the search moves back to that byte, and scans from the
     /// first position it proves, since a scan from any instruction start marks the same jump destinations the
-    /// scan from the start of the code would. Once the search comes within a PUSH's reach of the cursor, or runs
+    /// scan from the start of the code would; a jump destination already marked at most
+    /// <see cref="MaxMarkedDistance"/> bytes before it is such a start, so the scan starts from the last one without
+    /// a look-back. Once the search comes within a PUSH's reach of the cursor, or runs
     /// out of look-backs or distance, the contiguous scan resumes instead, stopping at the first instruction
     /// boundary beyond the destination.
     /// </remarks>
@@ -140,6 +146,13 @@ public sealed partial class JumpDestinationAnalyzer
     {
         ref byte codeStart = ref MemoryMarshal.GetReference(code);
         nint cursor = analyzedUntil;
+        // A marked jump destination starts an instruction, so the scan may start there without any look-back.
+        if (destination > cursor)
+        {
+            nint marked = FindMarkedBelow(bitmap, destination, Math.Max(cursor, destination - MaxMarkedDistance));
+            if (marked >= 0) return ScanFrom(marked, destination, bitmap, code, ref analyzedUntil);
+        }
+
         // Within a PUSH's reach of the cursor, the contiguous scan is as cheap as any search.
         nint floor = Math.Max(cursor, destination - MaxLocalScan) + MaxImmediateLength;
         nint position = destination;
@@ -194,6 +207,24 @@ public sealed partial class JumpDestinationAnalyzer
         word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, 3 * sizeof(ulong)));
         reach |= (word + Unsafe.Add(ref biases, 4)) & ~word;
         return (reach & biases) != 0;
+    }
+
+    /// <summary>Returns the last position below <paramref name="destination"/> and at or above <paramref name="limit"/> that <paramref name="bitmap"/> marks, or -1.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nint FindMarkedBelow(long[] bitmap, nint destination, nint limit)
+    {
+        ref long words = ref MemoryMarshal.GetArrayDataReference(bitmap);
+        nint word = destination >> BitShiftPerInt64;
+        // The positions of the destination's word below it; a shift counts modulo 64.
+        ulong marks = (ulong)Unsafe.Add(ref words, word) & ((1UL << (int)destination) - 1);
+        while (marks == 0)
+        {
+            if (--word < limit >> BitShiftPerInt64) return -1;
+            marks = (ulong)Unsafe.Add(ref words, word);
+        }
+
+        nint marked = (word << BitShiftPerInt64) + 63 - BitOperations.LeadingZeroCount(marks);
+        return marked >= limit ? marked : -1;
     }
 
     /// <summary>Scans from the instruction start <paramref name="start"/> through <paramref name="destination"/> and reports whether it is marked.</summary>
