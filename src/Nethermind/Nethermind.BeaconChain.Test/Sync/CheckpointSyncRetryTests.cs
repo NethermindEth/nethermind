@@ -55,7 +55,9 @@ public class CheckpointSyncRetryTests
             consensusVersion: failure == DownloadFailure.UnsupportedFork ? "heze" : null);
         TestLogRecorder logs = new();
         BeaconChainStore store = NewStore();
+        OutstandingArrayPool pool = new();
         using CheckpointSync sync = NewSync(provider, store, logs,
+            bufferPool: pool,
             maxDownloadAttempts: failure == DownloadFailure.RepeatedDrop ? 3 : 5,
             responseHeadersTimeout: failure == DownloadFailure.HeadersStall ? TimeSpan.FromSeconds(2) : null);
         if (failure is DownloadFailure.RepeatedDrop or DownloadFailure.MissingEndpoint or DownloadFailure.UnsupportedFork)
@@ -78,6 +80,8 @@ public class CheckpointSyncRetryTests
         CheckpointAnchor anchor = failure == DownloadFailure.ServerError ? await run : await run.WaitAsync(RunBound);
         (string Level, string Text)[] retries = [.. logs.Lines.Where(static l => l.Text.Contains("failed on attempt"))];
         using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.Outstanding, Is.Zero, "completed downloads return their buffers");
+        if (failure == DownloadFailure.StateDrop) Assert.That(pool.Rented, Is.GreaterThanOrEqualTo(2), "each attempt reads into the pool");
         Assert.That(provider.StateRequests, Is.EqualTo(anchorFailure ? 1 : 2));
         if (anchorFailure)
         {
@@ -224,20 +228,6 @@ public class CheckpointSyncRetryTests
 
         string[] waits = [.. logs.Lines.Where(static l => l.Text.Contains("failed on attempt")).Select(static l => l.Text[l.Text.LastIndexOf("retrying in ", StringComparison.Ordinal)..])];
         Assert.That(waits, Is.EqualTo(new[] { "retrying in 1 s.", "retrying in 2 s." }));
-    }
-
-    [Test]
-    public async Task The_buffer_of_a_dropped_download_goes_back_to_the_pool()
-    {
-        await using FlakyCheckpointProvider provider = await FlakyCheckpointProvider.StartAsync(static n => n == 1 ? StateResponse.DropMidBody : StateResponse.Serve);
-        OutstandingArrayPool pool = new();
-        using CheckpointSync sync = NewSync(provider, NewStore(), new TestLogRecorder(), bufferPool: pool);
-
-        await sync.RunAsync(CancellationToken.None);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(pool.Rented, Is.GreaterThanOrEqualTo(2), "each attempt reads into the pool");
-        Assert.That(pool.Outstanding, Is.Zero);
     }
 
     [Test]
