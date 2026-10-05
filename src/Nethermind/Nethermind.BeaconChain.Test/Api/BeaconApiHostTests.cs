@@ -110,15 +110,6 @@ public class BeaconApiHostTests
     }
 
     [Test]
-    public async Task Version_with_only_octet_stream_accept_is_406()
-    {
-        HttpRequestMessage request = new(HttpMethod.Get, "/eth/v1/node/version");
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
-        HttpResponseMessage response = await _client.SendAsync(request);
-        Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)406));
-    }
-
-    [Test]
     public async Task Syncing_does_not_infer_offline_from_missing_payload_calls()
     {
         HttpResponseMessage before = await _client.GetAsync("/eth/v1/node/syncing");
@@ -368,12 +359,12 @@ public class BeaconApiHostTests
     }
 
     [Test]
-    public async Task Accept_explicit_zero_quality_is_406(
-        [Values("application/json;q=0", "application/json;q=0, */*", "application/json;q=0, application/*;q=1", "application/*;q=0, */*")] string accept)
+    public async Task Accept_without_acceptable_json_is_406(
+        [Values("application/octet-stream", "application/json;q=0", "application/json;q=0, */*", "application/json;q=0, application/*;q=1", "application/*;q=0, */*")] string accept)
     {
-        HttpRequestMessage request = new(HttpMethod.Get, "/eth/v1/node/version");
+        using HttpRequestMessage request = new(HttpMethod.Get, "/eth/v1/node/version");
         request.Headers.TryAddWithoutValidation("Accept", accept);
-        HttpResponseMessage response = await _client.SendAsync(request);
+        using HttpResponseMessage response = await _client.SendAsync(request);
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)406));
     }
 
