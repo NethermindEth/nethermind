@@ -157,7 +157,6 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             }, SecurityAlgorithms.HmacSha256)
         });
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Task<bool> Authenticate(string? token)
     {
         if (string.IsNullOrEmpty(token))
