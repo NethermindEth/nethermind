@@ -72,42 +72,28 @@ public class CachedHasherFixedVectorTests
         Assert.That(SnapshotLength(hasher, "_balances"), Is.GreaterThan(0));
     }
 
-    [Test]
-    public void Fulu_cached_hasher_refuses_a_null_root_element_like_the_generated_hasher(
-        [Values("BlockRoots", "StateRoots", "RandaoMixes")] string field, [Values] bool warm)
-    {
-        CachedBeaconStateHasher hasher = new();
-        BeaconStateFulu state = CreateFuluStateAtBoundary(ValidatorCount);
-        AssertNullRootElement(state, field, warm, RootVector(state, field), s => hasher.HashTreeRoot(s), s => SszRoots.HashTreeRoot(s));
-    }
-
-    [Test]
-    public void Gloas_cached_hasher_refuses_a_null_root_element_like_the_generated_hasher(
-        [Values("BlockRoots", "StateRoots", "RandaoMixes")] string field, [Values] bool warm)
-    {
-        CachedBeaconStateHasher hasher = new();
-        BeaconStateGloas state = CreateGloasState(out _, out _);
-        AssertNullRootElement(state, field, warm, RootVector(state, field), s => hasher.HashTreeRoot(s), s => SszRoots.HashTreeRoot(s));
-    }
-
-    private static Hash256[] RootVector(object state, string field) => (Hash256[])state.GetType().GetProperty(field)!.GetValue(state)!;
-
     // An earlier changed element plus a later null proves a refusal cannot leave a half-updated tree behind.
-    private static void AssertNullRootElement<TState>(TState state, string field, bool warm, Hash256[] vector,
-        Func<TState, Hash256> cached, Func<TState, Hash256> generated)
+    [Test]
+    public void Cached_hasher_refuses_a_null_root_element_like_the_generated_hasher(
+        [Values] bool gloas, [Values("BlockRoots", "StateRoots", "RandaoMixes")] string field, [Values] bool warm)
     {
+        CachedBeaconStateHasher hasher = new();
+        dynamic state = gloas ? (object)CreateGloasState(out _, out _) : CreateFuluStateAtBoundary(ValidatorCount);
+        Hash256[] vector = RootVector(state, field);
         if (warm)
-            cached(state);
+            hasher.HashTreeRoot(state);
 
         vector[2] = new Hash256(new byte[32].Select((_, i) => (byte)(i + 1)).ToArray());
         vector[5] = null!;
 
-        Assert.Throws<NullReferenceException>(() => generated(state), "fixture: the generated hasher refuses a null element");
-        AssertParity(() => generated(state), () => cached(state), field, null);
+        Assert.Throws<NullReferenceException>(() => SszRoots.HashTreeRoot(state), "fixture: the generated hasher refuses a null element");
+        AssertParity(() => SszRoots.HashTreeRoot(state), () => hasher.HashTreeRoot(state), field, null);
 
         vector[5] = new Hash256(new byte[32].Select((_, i) => (byte)(i + 9)).ToArray());
-        Assert.That(cached(state), Is.EqualTo(generated(state)), "a refused state must not poison the caches");
+        Assert.That((Hash256)hasher.HashTreeRoot(state), Is.EqualTo((Hash256)SszRoots.HashTreeRoot(state)), "a refused state must not poison the caches");
     }
+
+    private static Hash256[] RootVector(object state, string field) => (Hash256[])state.GetType().GetProperty(field)!.GetValue(state)!;
 
     private static int SnapshotLength(CachedBeaconStateHasher hasher, string cacheField)
     {

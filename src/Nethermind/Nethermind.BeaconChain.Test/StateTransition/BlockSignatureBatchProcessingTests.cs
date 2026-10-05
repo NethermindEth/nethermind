@@ -93,14 +93,8 @@ public class BlockSignatureBatchProcessingTests
         PayloadAttestationData ptcData = new() { BeaconBlockRoot = parentRoot, Slot = ParentSlot, PayloadPresent = false, BlobDataAvailable = false };
         body.PayloadAttestations = [PtcAttestation(pre, ptcData, [0, 1, 2], sign: true)];
 
-        BitArray bits = new(Presets.SyncCommitteeSize);
-        for (int i = 0; i < SyncParticipants; i++)
-        {
-            bits[i] = true;
-        }
-        Hash256 syncRoot = Domains.ComputeSigningRoot(parentRoot, pre.GetDomain(DomainType.SyncCommittee, BeaconStateAccessors.ComputeEpochAtSlot(ParentSlot)));
         // InstallRealValidatorKeys seats validator 0 in every sync committee position.
-        body.SyncAggregate = new SyncAggregate { SyncCommitteeBits = bits, SyncCommitteeSignature = AggregateSignature(syncRoot, new int[SyncParticipants]) };
+        body.SyncAggregate = SignedSyncAggregate(parentRoot, pre.GetDomain(DomainType.SyncCommittee, BeaconStateAccessors.ComputeEpochAtSlot(ParentSlot)));
         return block;
     }
 
@@ -328,16 +322,16 @@ public class BlockSignatureBatchProcessingTests
         Hash256 changeDomain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, BeaconChainSpec.ForGenesisValidatorsRoot(pre.GenesisValidatorsRoot!).GenesisForkVersion, pre.GenesisValidatorsRoot!);
         body.BlsToExecutionChanges = [new SignedBlsToExecutionChange { Message = change, Signature = Sign(DeriveKey(BlsChangeKeyIndex), Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), changeDomain)) }];
 
-        BitArray bits = new(Presets.SyncCommitteeSize);
-        for (int i = 0; i < SyncParticipants; i++)
-        {
-            bits[i] = true;
-        }
-        Hash256 syncRoot = Domains.ComputeSigningRoot(pre.GetBlockRootAtSlot(voteSlot), pre.GetDomain(DomainType.SyncCommittee, epoch));
         // The anchor seats validator 0 in every sync committee position.
-        body.SyncAggregate = new SyncAggregate { SyncCommitteeBits = bits, SyncCommitteeSignature = AggregateSignature(syncRoot, new int[SyncParticipants]) };
+        body.SyncAggregate = SignedSyncAggregate(pre.GetBlockRootAtSlot(voteSlot), pre.GetDomain(DomainType.SyncCommittee, epoch));
         return block;
     }
+
+    private static SyncAggregate SignedSyncAggregate(Hash256 blockRoot, Hash256 domain) => new()
+    {
+        SyncCommitteeBits = new BitArray(SyncParticipants, true) { Length = Presets.SyncCommitteeSize },
+        SyncCommitteeSignature = AggregateSignature(Domains.ComputeSigningRoot(blockRoot, domain), new int[SyncParticipants]),
+    };
 
     private static SignedBeaconBlockHeader SignedFuluHeader(BeaconStateFulu state, ulong slot, Hash256 bodyRoot)
     {

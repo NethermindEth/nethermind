@@ -285,13 +285,9 @@ public class ImportHotPathAllocationTests
         AttestationGloas attestation = new()
         {
             Data = data,
-            CommitteeBits = new BitArray(Presets.MaxCommitteesPerSlot),
+            CommitteeBits = new BitArray(committees.CommitteesPerSlot, true) { Length = Presets.MaxCommitteesPerSlot },
             AggregationBits = new BitArray(AttestersPerSlot, true),
         };
-        for (int committee = 0; committee < committees.CommitteesPerSlot; committee++)
-        {
-            attestation.CommitteeBits[committee] = true;
-        }
 
         BeaconStateGloas warm = state.Clone();
         GloasBlockProcessing.ProcessAttestation(warm, attestation, parentSlot: state.Slot - 1, cache, new PubkeyCache(), verifySignature: false);
@@ -331,11 +327,7 @@ public class ImportHotPathAllocationTests
     private static Attestation WholeSlot(BeaconStateFulu state, EpochCache cache)
     {
         CommitteeCache committees = cache.GetCommitteeCache(state, 0);
-        BitArray committeeBits = new(Presets.MaxCommitteesPerSlot);
-        for (int committee = 0; committee < committees.CommitteesPerSlot; committee++)
-        {
-            committeeBits[committee] = true;
-        }
+        BitArray committeeBits = new(committees.CommitteesPerSlot, true) { Length = Presets.MaxCommitteesPerSlot };
 
         return new Attestation
         {
