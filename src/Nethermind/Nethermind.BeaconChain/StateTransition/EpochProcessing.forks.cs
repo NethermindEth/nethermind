@@ -22,11 +22,9 @@ public static partial class EpochProcessing
 
     /// <summary>Altair <c>process_rewards_and_penalties</c>: per-flag participation deltas plus inactivity penalties.</summary>
     /// <remarks>
-    /// Fuses the spec's per-flag <c>get_flag_index_deltas</c> passes and
-    /// <c>get_inactivity_penalty_deltas</c> into one loop. This is equivalent because validators
-    /// are independent and per validator the deltas are applied in the spec order
-    /// (source, target, head, inactivity), and because the inputs (effective balances,
-    /// participation, inactivity scores) are not modified by applying balance deltas.
+    /// Fuses <c>get_flag_index_deltas</c> and <c>get_inactivity_penalty_deltas</c>: validators are
+    /// independent, deltas retain spec order (source, target, head, inactivity), and balance changes
+    /// leave effective balances, participation and inactivity scores unchanged.
     /// </remarks>
     public static partial void ProcessRewardsAndPenalties(ForkState state, EpochCache cache)
     {
@@ -89,7 +87,6 @@ public static partial class EpochProcessing
     public static partial void ProcessEth1DataReset(ForkState state)
     {
         ulong nextEpoch = state.GetCurrentEpoch() + 1;
-        // Reset eth1 data votes.
         if (nextEpoch % Presets.EpochsPerEth1VotingPeriod == 0)
             state.Eth1DataVotes = [];
     }
@@ -129,14 +126,12 @@ public static partial class EpochProcessing
     public static partial void ProcessRandaoMixesReset(ForkState state)
     {
         ulong currentEpoch = state.GetCurrentEpoch();
-        // Seed the next epoch's mix with the current one.
         state.RandaoMixes![(int)((currentEpoch + 1) % Presets.EpochsPerHistoricalVector)] = state.GetRandaoMix(currentEpoch);
     }
 
     /// <summary>Capella <c>process_historical_summaries_update</c>.</summary>
     public static partial void ProcessHistoricalSummariesUpdate(ForkState state)
     {
-        // Set the historical block root accumulator.
         ulong nextEpoch = state.GetCurrentEpoch() + 1;
         if (nextEpoch % (Presets.SlotsPerHistoricalRoot / Presets.SlotsPerEpoch) == 0)
         {
@@ -221,13 +216,7 @@ public static partial class EpochProcessing
     {
         JustificationAndFinalizationState result = new(state);
 
-#if GLOAS
-        // Skip FFG updates in the first two epochs so the 0x00 root stubs are never touched.
-#else
-        // Initial FFG checkpoint values have a `0x00` stub for `root`.
-        // Skip FFG updates in the first two epochs to avoid corner cases that might result in
-        // modifying this stub.
-#endif
+        // Skip FFG updates in the first two epochs to preserve the initial 0x00 checkpoint root stubs.
         if (state.GetCurrentEpoch() <= Presets.GenesisEpoch + 1)
             return result;
 
