@@ -280,6 +280,47 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success), callResult.Error?.Message);
     }
 
+    /// <summary>EIP-7666: a simulated fork block installs the identity code, also when its parent is a simulated block.</summary>
+    /// <param name="forkBlock">The EIP-7666 fork block; the head is block 3, so blocks 4 to 6 are simulated.</param>
+    /// <param name="installedFrom">The first simulated block expected to see the code at 0x04.</param>
+    [TestCase(4ul, 4ul, TestName = "EIP-7666 fork at the first simulated block")]
+    [TestCase(5ul, 5ul, TestName = "EIP-7666 fork at a simulated block with a simulated parent")]
+    [TestCase(null, ulong.MaxValue, TestName = "EIP-7666 fork not scheduled")]
+    public async Task Test_eth_simulateV1_installs_the_identity_code_at_the_eip7666_fork_block(ulong? forkBlock, ulong installedFrom)
+    {
+        TestSpecProvider specProvider = new(Bogota.Instance)
+        {
+            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip7666Enabled = forkBlock is not null },
+            ForkOnBlockNumber = forkBlock,
+            AllowTestChainOverride = false,
+        };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+
+        // PUSH1 0x04 EXTCODESIZE PUSH0 MSTORE PUSH1 0x20 PUSH0 RETURN
+        Address probe = new("0xc200000000000000000000000000000000000000");
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = [.. Enumerable.Range(0, 3).Select(i => new BlockStateCall<TransactionForRpc>
+            {
+                StateOverrides = i == 0
+                    ? new Dictionary<Address, AccountOverride> { { probe, new AccountOverride { Code = Bytes.FromHexString("0x60043b5f5260205ff3") } } }
+                    : null,
+                Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = probe, Gas = 100_000, GasPrice = 0 }]
+            })]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.ToString());
+        foreach (SimulateBlockResult<SimulateCallResult> block in result.Data)
+        {
+            SimulateCallResult call = block.Calls.Single();
+            int expectedSize = block.Number >= installedFrom ? Eip7666Constants.IdentityCode.Length : 0;
+            Assert.That(new UInt256(call.ReturnData, isBigEndian: true), Is.EqualTo((UInt256)expectedSize), $"EXTCODESIZE(0x04) in block {block.Number}");
+        }
+    }
+
     private sealed class GenesisOnlyRpcBlockchain : TestRpcBlockchain
     {
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
