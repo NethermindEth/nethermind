@@ -309,9 +309,8 @@ public class BeaconDiscoveryTests
         Assert.That(decoded, Is.Null, "the zero default means no next fork is scheduled");
     }
 
-    [TestCase(4ul)]
-    [TestCase(128ul)]
-    public void Local_enr_carries_the_cgc_entry_at_the_configured_custody_group_count(ulong custodyGroupCount)
+    [Test]
+    public void Local_enr_carries_the_cgc_entry_at_the_configured_custody_group_count([Values(4ul, 128ul)] ulong custodyGroupCount)
     {
         BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, tcpPort: 9000, udpPort: 9001, TestForkId, custodyGroupCount);
 
@@ -436,14 +435,7 @@ public class BeaconDiscoveryTests
         {
         }
 
-        int matching = 0;
-        foreach (BeaconPeerCandidate candidate in candidates)
-        {
-            if (Bytes.AreEqual(candidate.ForkDigest, currentDigest))
-            {
-                matching++;
-            }
-        }
+        int matching = candidates.Count(candidate => Bytes.AreEqual(candidate.ForkDigest, currentDigest));
 
         TestContext.Progress.WriteLine($"Discovered {candidates.Count} candidates, {matching} with the current fork digest {currentDigest.ToHexString()}");
         Assert.That(matching, Is.GreaterThanOrEqualTo(5));
