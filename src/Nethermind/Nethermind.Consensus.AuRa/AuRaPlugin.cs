@@ -11,25 +11,34 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Data;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa")]
 
@@ -77,6 +86,7 @@ namespace Nethermind.Consensus.AuRa
                 .Bind<IBlockProducerRunnerFactory, AuRaBlockProducerFactory>()
                 .AddSingleton<AuraStatefulComponents>()
                 .AddSingleton<TxAuRaFilterBuilders>()
+                .AddSingleton<ITxPool>(CreateTxPool)
                 .AddSingleton<PermissionBasedTxFilter.Cache>()
                 .AddSingleton<IValidatorStore, ValidatorStore>()
                 .AddSingleton<AuRaContractGasLimitOverride.Cache, AuRaContractGasLimitOverride.Cache>()
@@ -121,6 +131,94 @@ namespace Nethermind.Consensus.AuRa
             }
 
             if (Rlp.GetDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
+        }
+
+        private static ITxPool CreateTxPool(IComponentContext ctx)
+        {
+            TxAuRaFilterBuilders txAuRaFilterBuilders = ctx.Resolve<TxAuRaFilterBuilders>();
+            IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+            ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+            ILogManager logManager = ctx.Resolve<ILogManager>();
+
+            // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
+            TxPriorityContract txPriorityContract = txAuRaFilterBuilders.CreateTxPrioritySources();
+            TxPriorityContract.LocalDataSource? localDataSource = ctx.Resolve<AuraStatefulComponents>().TxPriorityContractLocalDataSource;
+
+            ReportTxPriorityRules(logManager, txPriorityContract, localDataSource);
+
+            DictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore
+                = txAuRaFilterBuilders.CreateMinGasPricesDataStore(txPriorityContract, localDataSource);
+
+            ITxFilter txPoolFilter = txAuRaFilterBuilders.CreateAuRaTxFilterForProducer(minGasPricesContractDataStore);
+
+            return new TxPool.TxPool(
+                ctx.Resolve<IEthereumEcdsa>(),
+                ctx.Resolve<IBlobTxStorage>(),
+                ctx.Resolve<IChainHeadInfoProvider>(),
+                ctx.Resolve<ITxPoolConfig>(),
+                ctx.Resolve<ITxValidator>(),
+                ctx.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey),
+                logManager,
+                CreateTxPoolTxComparer(ctx, txPriorityContract, localDataSource),
+                ctx.Resolve<ITxGossipPolicy>(),
+                [new TxFilterAdapter(blockTree, txPoolFilter, logManager, specProvider)],
+                txPriorityContract is not null || localDataSource is not null,
+                frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>());
+        }
+
+        private static IComparer<Transaction> CreateTxPoolTxComparer(IComponentContext ctx, TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
+        {
+            if (txPriorityContract is not null || localDataSource is not null)
+            {
+                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                IReceiptFinder receiptFinder = ctx.Resolve<IReceiptFinder>();
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                IDisposableStack disposeStack = ctx.Resolve<IDisposableStack>();
+
+                ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
+                    new HashSetContractDataStoreCollection<Address>(),
+                    txPriorityContract?.SendersWhitelist,
+                    blockTree,
+                    receiptFinder,
+                    logManager,
+                    localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
+
+                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
+                    new(
+                        new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
+                        txPriorityContract?.Priorities,
+                        blockTree,
+                        receiptFinder,
+                        logManager,
+                        localDataSource?.GetPrioritiesLocalDataSource());
+
+                disposeStack.Push(whitelistContractDataStore);
+                disposeStack.Push(prioritiesContractDataStore);
+                IComparer<Transaction> txByPriorityComparer = new CompareTxByPriorityOnHead(whitelistContractDataStore, prioritiesContractDataStore, blockTree);
+                IComparer<Transaction> sameSenderNonceComparer = new CompareTxSameSenderNonce(new GasPriceTxComparer(blockTree, ctx.Resolve<ISpecProvider>()), txByPriorityComparer);
+
+                return sameSenderNonceComparer
+                    .ThenBy(CompareTxByTimestamp.Instance)
+                    .ThenBy(CompareTxByPoolIndex.Instance)
+                    .ThenBy(CompareTxByGasLimit.Instance);
+            }
+
+            return ctx.Resolve<ITransactionComparerProvider>().GetDefaultComparer();
+        }
+
+        private static void ReportTxPriorityRules(ILogManager logManager, TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
+        {
+            ILogger logger = logManager.GetClassLogger<AuRaModule>();
+
+            if (localDataSource?.FilePath is not null)
+            {
+                if (logger.IsInfo) logger.Info($"Using TxPriority rules from local file: {localDataSource.FilePath}.");
+            }
+
+            if (txPriorityContract is not null)
+            {
+                if (logger.IsInfo) logger.Info($"Using TxPriority rules from contract at address: {txPriorityContract.ContractAddress}.");
+            }
         }
 
         /// <summary>
