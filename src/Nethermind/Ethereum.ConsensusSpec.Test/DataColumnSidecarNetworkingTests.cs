@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using Ethereum.Ssz.Test;
 using Google.Protobuf;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
@@ -10,7 +9,6 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
-using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -151,21 +149,20 @@ public class DataColumnSidecarNetworkingTests
             },
         };
         SlotClock clock = new(spec, timestamper);
-        BeaconChainStore store = GossipValidationTests.SeedStore(testCase.CasePath, spec);
-        FailedBlockRoots failedBlocks = GossipValidationTests.SeedFailedBlocks(testCase.CasePath, spec);
+        GossipValidationTests.SeededBlocks seeded = GossipValidationTests.SeedBlocks(testCase.CasePath, meta, spec);
         ColumnGossipRouter router;
         if (anchor is null)
         {
-            router = new(spec, clock, LimboLogs.Instance, store: store, status: status, failedBlocks: failedBlocks);
+            router = new(spec, clock, LimboLogs.Instance, store: seeded.Store, status: status, failedBlocks: seeded.FailedBlocks);
         }
         else
         {
-            (ForkChoiceSnapshot snapshot, ProposerLookaheadSnapshot lookahead) = SeedForkChoice(testCase.CasePath, meta, spec, anchor);
-            router = new(spec, clock, LimboLogs.Instance, store: store, status: status,
+            (ForkChoiceSnapshot snapshot, ProposerLookaheadSnapshot lookahead) = SeedForkChoice(testCase.CasePath, meta, seeded, anchor);
+            router = new(spec, clock, LimboLogs.Instance, store: seeded.Store, status: status,
                 forkChoice: new ForkChoiceSnapshotHolder { Current = snapshot },
                 pubkeys: FuluDriverSupport.BuildPubkeyCache(anchor.Validators!),
                 proposerLookahead: new ProposerLookaheadHolder { Current = lookahead },
-                failedBlocks: failedBlocks);
+                failedBlocks: seeded.FailedBlocks);
         }
 
         ulong[] subnets = [.. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static s => (ulong)s)];
@@ -231,11 +228,9 @@ public class DataColumnSidecarNetworkingTests
             throw new NotImplementedInDriverException($"ColumnGossipRouter does not reject: {string.Join("; ", uncheckedRejects)}");
     }
 
-    private static (ForkChoiceSnapshot Snapshot, ProposerLookaheadSnapshot Lookahead) SeedForkChoice(string casePath, GossipValidationTests.VectorMeta meta, BeaconChainSpec spec, BeaconStateFulu anchor)
+    private static (ForkChoiceSnapshot Snapshot, ProposerLookaheadSnapshot Lookahead) SeedForkChoice(string casePath, GossipValidationTests.VectorMeta meta, GossipValidationTests.SeededBlocks seeded, BeaconStateFulu anchor)
     {
-        ForkedSignedBeaconBlock[] blocks = [.. meta.Blocks
-            .Where(static block => !block.Failed)
-            .Select(block => SignedBeaconBlockCodec.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, block.Name + ".ssz_snappy")), spec))
+        ForkedSignedBeaconBlock[] blocks = [.. seeded.Blocks.Select(static entry => entry.Block)
             .OrderBy(static block => block.Slot)];
         if (blocks.Length == 0 || blocks[0].Slot != anchor.Slot)
             throw new InvalidDataException($"no accepted block at the anchor state's slot {anchor.Slot}");
