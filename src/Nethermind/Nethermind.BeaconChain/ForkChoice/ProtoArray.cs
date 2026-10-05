@@ -20,9 +20,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
 
     /// <summary>Do not prune unless the finalized block is at least this deep; small prunes waste time.</summary>
     public int PruneThreshold { get; set; } = ProtoArrayForkChoice.DefaultPruneThreshold;
-
     public List<ProtoNode> Nodes { get; } = [];
-
     public Dictionary<Hash256, int> Indices { get; } = [];
 
     /// <summary>

@@ -21,17 +21,13 @@ public partial class DataColumnSidecarGloas
 {
     /// <summary>The column index in the extended data matrix, in <c>[0, NUMBER_OF_COLUMNS)</c>.</summary>
     public ulong Index { get; set; }
-
     /// <summary>One cell per blob in the block, at <see cref="Index"/>'s column position.</summary>
     [SszProgressiveList]
     public SszBlobCell[]? Column { get; set; }
-
     /// <summary>One cell KZG proof per blob, for this column. <c>KZGProof</c> is a 48-byte ByteVector,
     /// so it reuses <see cref="SszKzgCommitment"/>'s wire/merkleization shape.</summary>
     [SszProgressiveList]
     public SszKzgCommitment[]? KzgProofs { get; set; }
-
     public ulong Slot { get; set; }
-
     public Hash256? BeaconBlockRoot { get; set; }
 }

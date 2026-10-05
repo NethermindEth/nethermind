@@ -269,9 +269,7 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>The client string this node advertises over libp2p identify and reports from <c>/eth/v1/node/version</c>.</summary>
     internal static string ClientAgentVersion => ProductInfo.ClientId;
-
     public PeerId? LocalPeerId => _localPeer?.Identity.PeerId;
-
     public IReadOnlyList<Multiaddress> ListenAddresses => _localPeer is null ? [] : [.. _localPeer.ListenAddresses];
 
     /// <summary>Starts listening and the pubsub router.</summary>
@@ -374,37 +372,26 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>The peer id the session's handshake actually established, as opposed to whatever the dial address claimed.</summary>
     public static PeerId? RemotePeerIdOf(ISession session) => (session as LocalPeer.Session)?.State.RemotePeerId;
-
     /// <summary>The public key the session's handshake verified, from which the peer's discv5 node id derives.</summary>
     internal static Nethermind.Libp2p.Core.Dto.PublicKey? RemotePublicKeyOf(ISession session) => (session as LocalPeer.Session)?.State.RemotePublicKey;
-
     /// <summary>Internal so a test can check the container gave the host the pool that request violations are reported to.</summary>
     internal IBeaconSyncPeerPool? PeerPoolForTest => _peerPool?.Value;
-
     /// <summary>Internal so a test can give one node a distinguishable agent string before it connects.</summary>
     internal IdentifyProtocolSettings IdentifySettingsForTest => _serviceProvider.GetRequiredService<IdentifyProtocolSettings>();
-
     /// <summary>Internal so a test can read the gossipsub parameters the host was built with.</summary>
     internal PubsubSettings PubsubSettingsForTest => _serviceProvider.GetRequiredService<PubsubSettings>();
-
     /// <summary>Internal so a test can read what a peer advertised in its identify answers.</summary>
     internal PeerStore.PeerInfo PeerInfoForTest(PeerId peerId) => _serviceProvider.GetRequiredService<PeerStore>().GetPeerInfo(peerId);
-
     /// <summary>Internal so a test can change the listen addresses, which makes the node push its identify to every session.</summary>
     internal LocalPeer? LocalPeerForTest => _localPeer;
-
     /// <summary>Internal so a test can observe a refused inbound session being torn down, not just never admitted.</summary>
     internal int SessionCountForTest => _localPeer?.Sessions.Count ?? 0;
-
     /// <summary>The fixed part of every request's budget; internal so a test need not wait out the production value.</summary>
     internal TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(15);
-
     /// <summary>How long a request's first channel may take to reach its protocol before it is opened again (see <see cref="RetryUnopenedAsync"/>).</summary>
     internal TimeSpan ChannelOpenBound { get; init; } = TimeSpan.FromSeconds(2);
-
     /// <summary>Internal so a test can tell a session closed for an unanswered identify from a failure of the code under test.</summary>
     internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
-
     /// <summary>Whether the pubsub router holds a gossip channel with <paramref name="peerId"/>, opened by either side.</summary>
     internal bool HasGossipChannel(PeerId peerId) => _router is IRoutingStateContainer router && router.ConnectedPeers.Contains(peerId);
 
@@ -414,10 +401,8 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Internal so a test can see which peers the started router holds a gossip connection to.</summary>
     internal IRoutingStateContainer? RoutingStateForTest => _router;
-
     /// <summary>Internal so a test can see the deferred validation installed on the started router.</summary>
     internal DeferredGossipValidation? DeferredValidationForTest => _deferredValidation;
-
     /// <summary>Internal so a test can see the validator installed on the started router; without it the node forwards every message unchecked.</summary>
     internal Func<PeerId, Libp2p.Protocols.Pubsub.Dto.Message, MessageValidity>? VerifyMessageForTest => _router?.VerifyMessage;
 
@@ -481,11 +466,8 @@ public sealed class BeaconP2P : IAsyncDisposable
         private int _opened;
 
         public PeerId PeerId => peerId;
-
         public int Opened => Volatile.Read(ref _opened);
-
         internal void Count() => Interlocked.Increment(ref _opened);
-
         public void Dispose() => owner._sessionWatches.TryRemove(this, out _);
     }
 
@@ -896,7 +878,6 @@ public sealed class BeaconP2P : IAsyncDisposable
         private readonly CancellationTokenSource _closed = new();
 
         public CancellationToken Token { get; }
-
         public SessionLifetime() => Token = _closed.Token;
 
         public async Task CloseAsync()

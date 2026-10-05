@@ -60,13 +60,10 @@ internal sealed class DeferredGossipValidation(
 
     /// <summary>The messages other than votes deferred for validation whose verdict is not given yet.</summary>
     internal int Pending => Volatile.Read(ref _pending);
-
     /// <summary>The bytes of <see cref="Pending"/>.</summary>
     internal long PendingBytes => Interlocked.Read(ref _pendingBytes);
-
     /// <summary>The votes deferred for validation whose verdict is not given yet.</summary>
     internal int PendingVotes => Volatile.Read(ref _pendingVotes);
-
     /// <summary>The most messages other than votes and columns from one delivering peer that may await a verdict at once.</summary>
     internal int MaxPendingPerSource => _maxPendingPerSource;
 

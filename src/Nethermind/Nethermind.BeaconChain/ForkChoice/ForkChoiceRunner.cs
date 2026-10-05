@@ -290,28 +290,18 @@ public sealed class ForkChoiceRunner
 
     /// <summary>The wall-clock time in seconds (the spec store's <c>time</c>).</summary>
     public ulong Time { get; private set; }
-
     public ulong GenesisTime { get; }
-
     public ulong CurrentSlot => _store.CurrentSlot;
-
     public CheckpointRef JustifiedCheckpoint => _store.JustifiedCheckpoint;
-
     public CheckpointRef FinalizedCheckpoint => _store.FinalizedCheckpoint;
-
     public Hash256 ProposerBoostRoot => _store.ProposerBoostRoot;
-
     public bool ContainsBlock(Hash256 blockRoot) => _protoArray.ContainsBlock(blockRoot);
-
     /// <inheritdoc cref="ProtoArrayForkChoice.GetBlockSlot"/>
     public ulong? GetBlockSlot(Hash256 blockRoot) => _protoArray.GetBlockSlot(blockRoot);
-
     /// <inheritdoc cref="ProtoArrayForkChoice.GetExecutionBlockHash"/>
     public Hash256? GetExecutionBlockHash(Hash256 blockRoot) => _protoArray.GetExecutionBlockHash(blockRoot);
-
     /// <inheritdoc cref="ProtoArrayForkChoice.EnumerateAncestorNodes"/>
     public IEnumerable<ProtoNode> EnumerateAncestors(Hash256 blockRoot) => _protoArray.EnumerateAncestorNodes(blockRoot);
-
     /// <summary>The execution status of <paramref name="blockRoot"/>'s payload, or <c>null</c> when the block is unknown.</summary>
     internal ExecutionStatus? GetBlockExecutionStatus(Hash256 blockRoot) => _protoArray.GetBlockExecutionStatus(blockRoot);
 
@@ -2082,9 +2072,7 @@ public sealed class ForkChoiceRunner
     private sealed class KnownSlotRoots(ulong firstSlot, Hash256[] roots, IBeaconStateHasher next) : IBeaconStateHasher
     {
         public Hash256 HashTreeRoot(BeaconStateFulu state) => Known(state.Slot) ?? next.HashTreeRoot(state);
-
         public Hash256 HashTreeRoot(BeaconStateGloas state) => Known(state.Slot) ?? next.HashTreeRoot(state);
-
         private Hash256? Known(ulong slot) => slot >= firstSlot && slot - firstSlot < (ulong)roots.Length ? roots[slot - firstSlot] : null;
     }
 

@@ -12,7 +12,6 @@ public sealed class MetaDataProtocolV3(LocalMetadataSource metadataSource) : Sin
     private const int MetaDataV3Length = 25;
 
     public override string Id => "/eth2/beacon_chain/req/metadata/3/ssz_snappy";
-
     protected override int MaxRequestSize => 0;
     protected override int MaxResponseSize => MetaDataV3Length;
     protected override byte[] EncodeRequest(ulong request) => [];

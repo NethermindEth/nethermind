@@ -10,8 +10,6 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 internal sealed class Eth2Entry(byte[] sszValue) : EnrContentEntry<byte[]>(sszValue)
 {
     public override string Key => EnrContentKey.Eth2;
-
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
-
     protected override void EncodeValue<TWriter>(ref TWriter writer) => writer.Encode(Value);
 }

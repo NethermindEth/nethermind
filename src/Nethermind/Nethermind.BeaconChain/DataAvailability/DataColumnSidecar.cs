@@ -23,22 +23,17 @@ public partial class DataColumnSidecar
 {
     /// <summary>The column index in the extended data matrix, in <c>[0, NUMBER_OF_COLUMNS)</c>.</summary>
     public ulong Index { get; set; }
-
     /// <summary>One cell per blob in the block, at <see cref="Index"/>'s column position.</summary>
     [SszList(Eip7594DasConstants.MaxBlobCommitmentsPerBlock)]
     public SszBlobCell[]? Column { get; set; }
-
     /// <summary>One KZG commitment per blob in the block.</summary>
     [SszList(Eip7594DasConstants.MaxBlobCommitmentsPerBlock)]
     public SszKzgCommitment[]? KzgCommitments { get; set; }
-
     /// <summary>One cell KZG proof per blob, for this column. <c>KZGProof</c> is also a 48-byte
     /// ByteVector, so it reuses <see cref="SszKzgCommitment"/>'s wire/merkleization shape.</summary>
     [SszList(Eip7594DasConstants.MaxBlobCommitmentsPerBlock)]
     public SszKzgCommitment[]? KzgProofs { get; set; }
-
     public SignedBeaconBlockHeader? SignedBlockHeader { get; set; }
-
     /// <summary>
     /// Merkle branch proving <c>hash_tree_root(kzg_commitments)</c> is the block's
     /// <c>blob_kzg_commitments</c> field, against <c>signed_block_header.message.body_root</c>.

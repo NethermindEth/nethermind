@@ -20,8 +20,6 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 internal sealed class CustodyGroupCountEntry(ulong custodyGroupCount) : EnrContentEntry<ulong>(custodyGroupCount)
 {
     public override string Key => "cgc";
-
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
-
     protected override void EncodeValue<TWriter>(ref TWriter writer) => writer.Encode(Value);
 }

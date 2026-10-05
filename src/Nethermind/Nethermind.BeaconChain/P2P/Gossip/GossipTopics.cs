@@ -59,7 +59,6 @@ public static class GossipTopics
 
     /// <summary>Builds the full topic string for a fork digest and topic name.</summary>
     public static string Topic(byte[] forkDigest, string name) => $"/eth2/{forkDigest.ToHexString()}/{name}/ssz_snappy";
-
     /// <summary>Builds the <c>data_column_sidecar_{subnet_id}</c> topic name for a subnet.</summary>
     public static string DataColumnSidecarTopicName(ulong subnetId) => $"{DataColumnSidecarPrefix}{subnetId}";
 
@@ -133,7 +132,6 @@ public static class GossipTopics
     }
 
     private static bool IsDecimal(ReadOnlySpan<char> value) => !value.IsEmpty && !value.ContainsAnyExceptInRange('0', '9');
-
     /// <summary>The fork digest in effect at <paramref name="epoch"/>.</summary>
     public static byte[] CurrentDigest(BeaconChainSpec spec, ulong epoch) => ForkDigest.Compute(spec, epoch);
 

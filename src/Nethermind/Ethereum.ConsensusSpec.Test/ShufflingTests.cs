@@ -21,7 +21,6 @@ public class ShufflingTests
 
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(ShufflingCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(ShufflingCase testCase) => Execute(testCase);
     [Test]

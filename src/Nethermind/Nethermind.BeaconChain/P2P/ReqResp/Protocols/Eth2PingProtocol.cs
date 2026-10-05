@@ -10,10 +10,8 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 public sealed class Eth2PingProtocol(LocalMetadataSource metadataSource) : SingleChunkProtocol<ulong, ulong>
 {
     public override string Id => "/eth2/beacon_chain/req/ping/1/ssz_snappy";
-
     protected override int MaxRequestSize => sizeof(ulong);
     protected override int MaxResponseSize => sizeof(ulong);
-
     protected override byte[] EncodeRequest(ulong request) => EncodeUint64(request);
     protected override ulong DecodeRequest(byte[] ssz) => DecodeUint64(ssz);
     protected override byte[] EncodeResponse(ulong response) => EncodeUint64(response);

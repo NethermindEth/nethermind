@@ -30,9 +30,7 @@ public sealed class ProposerLookaheadSnapshot
     }
 
     public ulong Epoch { get; }
-
     public Hash256 DependentRoot { get; }
-
     /// <summary>The first slot whose proposer this lookahead holds.</summary>
     public ulong StartSlot => BeaconStateAccessors.ComputeStartSlotAtEpoch(Epoch);
 

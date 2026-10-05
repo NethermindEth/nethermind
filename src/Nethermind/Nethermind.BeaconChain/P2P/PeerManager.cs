@@ -193,15 +193,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     }
 
     private TimeSpan NextMaintenanceInterval => _peers.Count < _config.MinPeerCount ? UnderPeeredMaintenanceInterval : MaintenanceInterval;
-
     internal TimeSpan NextMaintenanceIntervalForTest => NextMaintenanceInterval;
-
     /// <summary>Maximum status age before a refresh is requested.</summary>
     internal TimeSpan StatusRefreshInterval { get; set; } = TimeSpan.FromMinutes(1);
-
     /// <summary>Minimum interval between status refreshes outside health checks.</summary>
     internal TimeSpan MinStatusRefreshInterval { get; set; } = TimeSpan.FromSeconds(12);
-
     /// <summary>Interval between gossip-channel checks and the initial check after opening.</summary>
     internal TimeSpan GossipChannelCheckInterval { get; set; } = TimeSpan.FromSeconds(5);
 
@@ -2041,7 +2037,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <summary>Internal so a test can assert ban state without dialing: see <see cref="RecordDisconnect(string,long,long,ulong,string,bool)"/>.</summary>
     internal bool IsBannedForTest(string peerId) => IsBanned(peerId);
-
     internal static long MessagesSentForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).MessagesSent;
 
     /// <summary>Internal so a test can hold a peer's requests open on a session it controls, without a status exchange.</summary>
@@ -2064,16 +2059,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <summary>Internal so a test can run a drop that began before the peer's session closed, as the band trim can.</summary>
     internal Task DropForTest(IBeaconSyncPeer peer, ulong reason, string detail) => DropAsync((ManagedPeer)peer, reason, detail, CancellationToken.None);
-
     internal static int RequestsInFlightForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).RequestsInFlight;
-
     internal static int ConsecutiveFailuresForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).ConsecutiveFailures;
-
     /// <summary>Internal so a test with one silent peer can count its timeouts, which this node could not tell from its own stall.</summary>
     internal void CountEveryTimeoutForTest() => Volatile.Write(ref _lastAnswerAt, long.MaxValue);
-
     internal static long FailuresReportedForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).FailuresReported;
-
     /// <summary>Internal so a test can put an address straight into the "dialing" reservation set,
     /// to exercise <see cref="TryGetPeer"/>'s own guard without racing a real dial's transient window.
     /// <paramref name="enr"/> lets a test also exercise the Beacon API's <c>enr</c> field without a live dial.</summary>
@@ -2131,14 +2121,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private bool _closeCountedAsFault;
 
         public ISession Session { get; } = session;
-
         /// <summary>The outbound dial that admitted this peer; <c>null</c> for a session the remote opened.</summary>
         public DialRecord? Dial { get; init; }
         public StatusMessageV2? Status => _status;
-
         /// <summary>Whether the libp2p layer has dropped <see cref="Session"/>; every further request to it fails.</summary>
         public bool IsSessionClosed => p2p.SessionClosedToken(Session).IsCancellationRequested;
-
         /// <summary>UTC ticks at which the current <see cref="Status"/> was received.</summary>
         public long StatusReceivedTicks => Interlocked.Read(ref _statusReceivedTicks);
 
@@ -2155,7 +2142,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         public void StatusRequestEnded() => Interlocked.Decrement(ref _statusRequestsInFlight);
-
         public void StatusRequestFailed(long nowTicks) => Interlocked.Exchange(ref _statusFailedTicks, nowTicks);
 
         /// <summary>Whether the current status was received before <paramref name="sinceTicks"/> and a request for a newer one failed since.</summary>
@@ -2178,20 +2164,15 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         /// <summary>Ends a refresh <see cref="TryClaimStatusRefresh"/> claimed, whether it ran, failed or was cancelled while queued.</summary>
         public void ReleaseStatusRefresh() => Volatile.Write(ref _statusRefreshClaimed, 0);
-
         /// <summary>The libp2p peer id this session was dialed as (see <see cref="PeerManager.ExtractPeerId"/>).</summary>
         public string PeerId { get; } = peerId;
-
         /// <summary>Which side opened the session, as the libp2p layer saw it happen.</summary>
         public PeerDirection Direction { get; } = direction;
-
         /// <summary>The identify agent string, <c>null</c> when the peer left the probe unanswered.</summary>
         public string? AgentVersion { get; } = agentVersion;
-
         /// <summary>The discv5 ENR text this peer was discovered with; <c>null</c> for a static peer or
         /// an inbound session (see <see cref="PeerManager.TryAddPeerAsync"/>'s optional parameter).</summary>
         public string? Enr { get; } = enr;
-
         public int ConsecutiveFailures => Volatile.Read(ref _consecutiveFailures);
 
         /// <summary>The selection penalty from failed requests; a passing health check clears only its health-timeout contribution.</summary>
@@ -2230,10 +2211,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         /// <summary>Keeps a peer that failed its health checks out of selection until one passes, when it is not dropped (see <see cref="IsKeptAtPeerFloor"/>).</summary>
         public void HoldOutOfSelection() => _heldOutOfSelection = true;
-
         /// <summary>Whether a request of ours failed within <see cref="RequestFailureCooldown"/> of <paramref name="nowTicks"/>. Unlike <see cref="RequestFailures"/>, a served request does not end it.</summary>
         public bool IsCoolingDown(long nowTicks) => nowTicks < Volatile.Read(ref _cooldownUntilTicks);
-
         /// <summary>A reply since the last passing health check failed a content check, which a timeout in the same run does not excuse.</summary>
         public bool ViolatedProtocolSinceLastHealthyCheck => Volatile.Read(ref _violatedProtocol);
 
@@ -2375,14 +2354,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public long MessagesSent => Interlocked.Read(ref _messagesSent);
         public long FailuresReported => Interlocked.Read(ref _failuresReported);
-
         public string Id => address;
         public ulong HeadSlot => Status?.HeadSlot ?? 0;
         public ulong EarliestAvailableSlot => Status?.EarliestAvailableSlot ?? 0;
-
         /// <summary>Until <c>MetaData</c> answers, the ENR's <c>cgc</c> when this peer was discovered, else the <c>CUSTODY_REQUIREMENT</c> floor.</summary>
         public PeerColumnCustody Custody => _custody;
-
         /// <summary>The <c>seq_number</c> of the last <c>MetaData</c> applied; <c>null</c> before the first.</summary>
         public ulong? MetadataSeqNumber { get; private set; }
 
@@ -2396,7 +2372,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             PeerColumnCustody.NodeIdOf(BeaconP2P.RemotePublicKeyOf(session)) is { } nodeId ? PeerColumnCustody.ForNode(nodeId, custodyGroupCount) : PeerColumnCustody.None;
 
         public void RecordMessageSent() => Interlocked.Increment(ref _messagesSent);
-
         /// <summary>Requests of ours to this peer that are waiting for a slot or running.</summary>
         public int RequestsInFlight => Volatile.Read(ref _requestsInFlight);
 

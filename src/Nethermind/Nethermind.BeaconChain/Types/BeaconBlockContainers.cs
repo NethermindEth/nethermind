@@ -12,36 +12,24 @@ namespace Nethermind.BeaconChain.Types;
 public partial class BeaconBlockBody
 {
     public BlsSignature RandaoReveal { get; set; }
-
     public Eth1Data? Eth1Data { get; set; }
-
     public Hash256? Graffiti { get; set; }
-
     [SszList(16)]
     public ProposerSlashing[]? ProposerSlashings { get; set; }
-
     [SszList(1)]
     public AttesterSlashing[]? AttesterSlashings { get; set; }
-
     [SszList(8)]
     public Attestation[]? Attestations { get; set; }
-
     [SszList(16)]
     public Deposit[]? Deposits { get; set; }
-
     [SszList(16)]
     public SignedVoluntaryExit[]? VoluntaryExits { get; set; }
-
     public SyncAggregate? SyncAggregate { get; set; }
-
     public ExecutionPayload? ExecutionPayload { get; set; }
-
     [SszList(16)]
     public SignedBlsToExecutionChange[]? BlsToExecutionChanges { get; set; }
-
     [SszList(4096)]
     public SszKzgCommitment[]? BlobKzgCommitments { get; set; }
-
     public ExecutionRequests? ExecutionRequests { get; set; }
 }
 
@@ -50,13 +38,9 @@ public partial class BeaconBlockBody
 public partial class BeaconBlock
 {
     public ulong Slot { get; set; }
-
     public ulong ProposerIndex { get; set; }
-
     public Hash256? ParentRoot { get; set; }
-
     public Hash256? StateRoot { get; set; }
-
     public BeaconBlockBody? Body { get; set; }
 }
 
@@ -65,6 +49,5 @@ public partial class BeaconBlock
 public partial class SignedBeaconBlock
 {
     public BeaconBlock? Message { get; set; }
-
     public BlsSignature Signature { get; set; }
 }

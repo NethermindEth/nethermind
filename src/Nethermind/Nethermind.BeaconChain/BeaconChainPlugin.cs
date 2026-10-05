@@ -34,7 +34,6 @@ public class BeaconChainPlugin(IBeaconChainConfig config) : INethermindPlugin
     public string Description => "Embedded Ethereum consensus-layer driver";
     public string Author => "Nethermind";
     public bool Enabled => config.Enabled;
-
     public IModule Module => new BeaconChainModule();
 }
 

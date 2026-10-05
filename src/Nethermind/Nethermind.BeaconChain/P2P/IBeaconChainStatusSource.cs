@@ -78,7 +78,6 @@ public class BeaconChainStatusHolder(BeaconChainSpec spec, ITimestamper timestam
     }
 
     private byte[] WallClockForkDigest() => ForkDigest.Compute(spec, spec.GetEpoch(spec.GetSlotAtTime((ulong)timestamper.UnixTime.Seconds)));
-
     /// <summary>Replaces the status and the FULL head root in one step, so a reader never pairs a head with another head's payload status.</summary>
     public void Publish(StatusMessageV2 status, Hash256? fullHeadRoot) => _head = new HeadSnapshot(status, fullHeadRoot);
 

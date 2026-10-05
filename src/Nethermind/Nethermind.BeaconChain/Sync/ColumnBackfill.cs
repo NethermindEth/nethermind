@@ -49,7 +49,6 @@ public sealed class ColumnBackfill(
     internal const int BlockedAttemptsBeforeWarning = 10;
 
     internal TimeSpan WindowPause { get; init; } = TimeSpan.FromMilliseconds(200);
-
     internal TimeSpan HeadPollDelay { get; init; } = TimeSpan.FromSeconds(1);
 
     internal ulong? CompleteFrom
@@ -206,7 +205,6 @@ public sealed class ColumnBackfill(
     }
 
     private ulong BoundarySlot() => DataAvailabilityBoundary.ComputeStartSlot(clock.CurrentEpoch, spec);
-
     private bool IsFollowingHead() => status.CurrentStatus.HeadSlot + FollowingHeadSlackSlots >= clock.CurrentSlot;
 
     private enum WindowOutcome

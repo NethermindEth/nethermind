@@ -16,7 +16,6 @@ public class BlockSequenceTests
 
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(SanityCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(SanityCase testCase) => Execute(testCase);
     [Test]

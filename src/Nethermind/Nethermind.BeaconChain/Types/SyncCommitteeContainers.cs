@@ -12,7 +12,6 @@ public partial class SyncCommittee
 {
     [SszVector(512)]
     public BlsPublicKey[]? Pubkeys { get; set; }
-
     public BlsPublicKey AggregatePubkey { get; set; }
 }
 
@@ -22,6 +21,5 @@ public partial class SyncAggregate
 {
     [SszVector(512)]
     public BitArray? SyncCommitteeBits { get; set; }
-
     public BlsSignature SyncCommitteeSignature { get; set; }
 }

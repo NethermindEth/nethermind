@@ -25,7 +25,6 @@ internal sealed class BeaconJsonStream(PipeWriter output, CancellationToken toke
     private long _flushedBytes;
 
     public Utf8JsonWriter Writer { get; } = new(output);
-
     /// <summary>Pushes buffered bytes to the client once enough have accumulated since the last flush; call between elements of long arrays.</summary>
     /// <remarks>Counts committed bytes too: <see cref="Utf8JsonWriter.BytesPending"/> alone resets every time the writer
     /// grows into a new pipe segment (about 4 KB), so it can never reach the threshold.</remarks>
@@ -200,11 +199,8 @@ internal static partial class BeaconJsonWriter
     public static partial Task WriteBeaconStateAsync(BeaconJsonStream s, BeaconStateElectra state);
 
     public static Task WritePendingDepositsAsync(BeaconJsonStream s, PendingDeposit[] deposits) => WriteArrayValueAsync(s, deposits, WritePendingDeposit);
-
     public static Task WritePendingPartialWithdrawalsAsync(BeaconJsonStream s, PendingPartialWithdrawal[] withdrawals) => WriteArrayValueAsync(s, withdrawals, WritePendingPartialWithdrawal);
-
     public static Task WritePendingConsolidationsAsync(BeaconJsonStream s, PendingConsolidation[] consolidations) => WriteArrayValueAsync(s, consolidations, WritePendingConsolidation);
-
     public static Task WriteUIntArrayValueAsync(BeaconJsonStream s, ulong[] items) => WriteArrayValueAsync(s, items, WriteUIntValue);
 
     private static partial void WritePendingDeposit(Utf8JsonWriter w, PendingDeposit deposit);

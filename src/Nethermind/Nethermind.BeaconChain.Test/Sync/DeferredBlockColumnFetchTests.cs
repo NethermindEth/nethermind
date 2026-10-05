@@ -1385,7 +1385,6 @@ public class DeferredBlockColumnFetchTests
         public HashSet<Hash256> Stuck { get; } = [];
         public HashSet<Hash256> EngineDown { get; } = [];
         public HashSet<Hash256> Invalid { get; } = [];
-
         /// <summary>Blocks reported imported without the inner importer, so a test can import a chain its blocks cannot.</summary>
         public HashSet<Hash256> Accepted { get; } = [];
         public List<Hash256> ImportCalls { get; } = [];
@@ -1468,7 +1467,6 @@ public class DeferredBlockColumnFetchTests
         public BeaconDiscovery Discovery => _discovery;
         public ImportableBlobBlock Chain { get; } = ImportableBlobBlock.Create();
         public DataColumnSidecarPool SidecarPool { get; } = new();
-
         /// <summary>Starts at epoch 1, which keeps the epoch-0 block inside the data availability window.</summary>
         public SlotClock Clock { get; private set; } = null!;
         public IBlockImporter Importer { get; private set; } = null!;

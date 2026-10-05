@@ -36,7 +36,6 @@ public static partial class BeaconStateAccessors
     }
 
     public static ulong ComputeStartSlotAtEpoch(ulong epoch) => epoch * Presets.SlotsPerEpoch;
-
     /// <summary>Returns the epoch at which an activation or exit triggered in <paramref name="epoch"/> takes effect.</summary>
     public static ulong ComputeActivationExitEpoch(ulong epoch) => epoch + 1 + Presets.MaxSeedLookahead;
 

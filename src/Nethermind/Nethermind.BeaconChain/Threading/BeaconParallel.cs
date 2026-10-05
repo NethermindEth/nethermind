@@ -16,7 +16,6 @@ internal static class BeaconParallel
     private static readonly ParallelOptions DefaultOptions = new() { TaskScheduler = ComputeScheduler.Instance };
 
     public static void For(int fromInclusive, int toExclusive, Action<int> body) => Parallel.For(fromInclusive, toExclusive, DefaultOptions, body);
-
     public static void For(int fromInclusive, int toExclusive, Action<int, ParallelLoopState> body) => Parallel.For(fromInclusive, toExclusive, DefaultOptions, body);
 
     /// <param name="maxDegreeOfParallelism">The most threads the loop uses, the calling one included.</param>
@@ -59,7 +58,6 @@ internal static class BeaconParallel
         // A queued helper a waiting loop runs itself is claimed once; the thread that dequeues it later finds it done. This keeps a
         // nested loop on these threads from waiting for a thread that is itself waiting.
         protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => TryExecuteTask(task);
-
         protected override IEnumerable<Task> GetScheduledTasks() => _tasks.ToArray();
     }
 }

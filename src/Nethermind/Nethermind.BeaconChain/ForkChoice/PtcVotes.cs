@@ -12,7 +12,6 @@ namespace Nethermind.BeaconChain.ForkChoice;
 internal sealed class PtcVotes
 {
     public bool?[] Timeliness { get; } = new bool?[Presets.PtcSize];
-
     public bool?[] DataAvailability { get; } = new bool?[Presets.PtcSize];
 
     /// <summary>

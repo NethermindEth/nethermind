@@ -30,13 +30,9 @@ public sealed class CommitteeCache
 
     /// <summary>The epoch this cache was built for.</summary>
     public ulong Epoch { get; }
-
     public int CommitteesPerSlot { get; }
-
     public int ActiveValidatorCount => _shuffling.Length;
-
     public int EpochCommitteeCount => CommitteesPerSlot * (int)Presets.SlotsPerEpoch;
-
     /// <summary>The shuffled active validator indices for the epoch (not in ascending order).</summary>
     public ReadOnlySpan<int> ShuffledIndices => _shuffling;
 

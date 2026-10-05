@@ -82,7 +82,6 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
     public ChainBlock First { get; }
     public IReadOnlyList<ChainBlock> Voting { get; }
     public ulong[] Committee32 { get; }
-
     /// <summary>These slot-31 voters never cast a later vote that would replace their latest message.</summary>
     public int LastFuluVotesStanding { get; }
 

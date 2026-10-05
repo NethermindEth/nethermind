@@ -32,7 +32,6 @@ public readonly struct BlsPublicKey : IEquatable<BlsPublicKey>
         MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<BlsPublicKey, byte>(ref Unsafe.AsRef(in this)), Length);
 
     public bool Equals(BlsPublicKey other) => Bytes.SequenceEqual(other.Bytes);
-
     public override bool Equals(object? obj) => obj is BlsPublicKey other && Equals(other);
 
     public override int GetHashCode()
@@ -43,9 +42,7 @@ public readonly struct BlsPublicKey : IEquatable<BlsPublicKey>
     }
 
     public static bool operator ==(BlsPublicKey left, BlsPublicKey right) => left.Equals(right);
-
     public static bool operator !=(BlsPublicKey left, BlsPublicKey right) => !left.Equals(right);
-
     public override string ToString() => Bytes.ToHexString(true);
 }
 

@@ -13,37 +13,21 @@ namespace Nethermind.BeaconChain.Types;
 public partial class ExecutionPayloadHeader
 {
     public Hash256? ParentHash { get; set; }
-
     public Address? FeeRecipient { get; set; }
-
     public Hash256? StateRoot { get; set; }
-
     public Hash256? ReceiptsRoot { get; set; }
-
     public Bloom? LogsBloom { get; set; }
-
     public Hash256? PrevRandao { get; set; }
-
     public ulong BlockNumber { get; set; }
-
     public ulong GasLimit { get; set; }
-
     public ulong GasUsed { get; set; }
-
     public ulong Timestamp { get; set; }
-
     [SszList(32)]
     public byte[]? ExtraData { get; set; }
-
     public UInt256 BaseFeePerGas { get; set; }
-
     public Hash256? BlockHash { get; set; }
-
     public Hash256? TransactionsRoot { get; set; }
-
     public Hash256? WithdrawalsRoot { get; set; }
-
     public ulong BlobGasUsed { get; set; }
-
     public ulong ExcessBlobGas { get; set; }
 }

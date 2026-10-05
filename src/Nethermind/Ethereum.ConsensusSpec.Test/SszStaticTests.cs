@@ -218,7 +218,6 @@ public class SszStaticTests
 
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(SszStaticCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(SszStaticCase testCase) => Execute(testCase);
     [Test]

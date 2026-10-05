@@ -10,7 +10,6 @@ public class SyncTests
 {
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(ForkChoiceCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(ForkChoiceCase testCase) => Execute(testCase);
     [Test]

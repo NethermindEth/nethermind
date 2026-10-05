@@ -21,7 +21,6 @@ public class CustodyNetworkingTests
 
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(CustodyCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(CustodyCase testCase) => Execute(testCase);
     [Test]

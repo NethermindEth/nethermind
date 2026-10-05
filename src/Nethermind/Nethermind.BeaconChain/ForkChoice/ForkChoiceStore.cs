@@ -22,17 +22,11 @@ namespace Nethermind.BeaconChain.ForkChoice;
 public sealed class ForkChoiceStore(ulong slotsPerEpoch, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
 {
     public ulong CurrentSlot { get; private set; } = currentSlot;
-
     public ulong CurrentEpoch => CurrentSlot / slotsPerEpoch;
-
     public CheckpointRef JustifiedCheckpoint { get; private set; } = justifiedCheckpoint;
-
     public CheckpointRef FinalizedCheckpoint { get; private set; } = finalizedCheckpoint;
-
     public CheckpointRef UnrealizedJustifiedCheckpoint { get; private set; } = justifiedCheckpoint;
-
     public CheckpointRef UnrealizedFinalizedCheckpoint { get; private set; } = finalizedCheckpoint;
-
     /// <summary>The root receiving the proposer score boost; <see cref="Hash256.Zero"/> when no boost applies.</summary>
     public Hash256 ProposerBoostRoot { get; set; } = Hash256.Zero;
 

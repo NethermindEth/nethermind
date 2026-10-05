@@ -31,7 +31,6 @@ public sealed class PeerColumnCustody
 
     /// <summary>Whether the set derives from the custody group count the peer advertised, not from the <c>CUSTODY_REQUIREMENT</c> floor.</summary>
     public bool IsAdvertised { get; }
-
     public bool Custodies(ulong column) => column < (ulong)_columns.Length && _columns[column];
 
     /// <summary>How many of <paramref name="columns"/> this peer custodies.</summary>

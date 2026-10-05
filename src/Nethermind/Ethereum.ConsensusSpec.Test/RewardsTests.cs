@@ -21,7 +21,6 @@ public class RewardsTests
 
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(RewardsCase testCase) => Execute(testCase);
-
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(RewardsCase testCase) => Execute(testCase);
     [Test]

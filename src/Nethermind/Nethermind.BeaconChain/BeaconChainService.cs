@@ -51,7 +51,6 @@ public sealed class BeaconChainService(
 
     /// <summary>How long <see cref="StopAsync"/> waits for the run loop before it returns anyway.</summary>
     internal TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(8);
-
     /// <summary>Wait before checkpoint sync starts over after a network failure that outlasted its own retries.</summary>
     internal TimeSpan StartRetryDelay { get; init; } = DefaultStartRetryDelay;
 

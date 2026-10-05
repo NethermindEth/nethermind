@@ -320,40 +320,27 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>Whether gossip has started; settable by tests to keep it from starting.</summary>
     internal bool GossipStarted { get; set; }
-
     /// <summary>A work item or vote that holds the worker at least this long is logged at Debug with what it was.</summary>
     internal TimeSpan SlowWorkItemThreshold { get; set; } = TimeSpan.FromSeconds(1);
-
     internal byte[] CurrentGossipDigest => _currentDigest;
-
     internal (Hash256 Root, ulong Slot) SyncTip => (_syncTip.Root, _syncTip.Slot);
-
     internal ChannelWriter<WorkItem> WorkWriter => _work.Writer;
-
     /// <summary>Completes when a work item is queued, without taking it; for tests that drive the worker by hand.</summary>
     internal ValueTask<bool> WaitForWorkAsync(CancellationToken token) => _work.Reader.WaitToReadAsync(token);
-
     /// <summary>The work items queued and not yet taken; for tests.</summary>
     internal int QueuedWorkCount => _work.Reader.Count;
-
     /// <summary>The by-root column fetches running off the worker; for tests.</summary>
     internal int ColumnFetchesInFlight => _columnFetchesInFlight.Count;
-
     /// <summary>The by-root ancestor fetches running off the worker, bounded by <see cref="MaxConcurrentAncestorFetches"/>; for tests.</summary>
     internal int AncestorFetchesInFlight => _ancestorFetches.Count;
-
     /// <summary>The gossip blocks held for a parent, bounded by <see cref="MaxPendingGossipBlocks"/>; for tests.</summary>
     internal int PendingGossipBlockCount => _pendingCount;
-
     /// <summary>The blocks whose by-root column fetches are tracked, bounded by the retry set; for tests.</summary>
     internal int ColumnFetchRotationCount => _columnFetchRotations.Count;
-
     /// <summary>The blocks awaiting a data or engine retry, bounded by <see cref="MaxPendingRetryBlocks"/>; for tests.</summary>
     internal int PendingRetryBlockCount => _pendingRetry.Count + _pendingRetryCopyCount;
-
     /// <summary>The slot of the newest range-synced block held for a deferred block, or <c>null</c> when none is; for tests.</summary>
     internal ulong? RangeHeldSlot => _rangeHeld?.Tip.Slot;
-
     /// <summary>The held blocks waiting for a place among the by-root column fetches, bounded by <see cref="MaxRangeHeldBlocks"/>; for tests.</summary>
     internal int HeldColumnFetchQueueCount => _heldColumnFetchQueue.Count;
 
@@ -640,7 +627,6 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>Queues each admitted peer for the worker; an admission the full queue refuses is left to the slot tick.</summary>
     internal void RoutePeerAdmissions() => peerPool.PeerAdmitted += OnPeerAdmitted;
-
     private void OnPeerAdmitted(IBeaconSyncPeer peer) => _work.Writer.TryWrite(new PeerAdmittedItem(peer));
 
     /// <summary>
@@ -1602,7 +1588,6 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     private ulong FinalizedSlot => _lastHead is { } head ? BeaconStateAccessors.ComputeStartSlotAtEpoch(head.Finalized.Epoch) : 0;
-
     private bool IsRetryExpired(ulong queuedAtSlot, ulong currentSlot) => currentSlot > queuedAtSlot + MaxPendingRetryAgeEpochs * spec.SlotsPerEpoch;
 
     /// <summary>Drops finalized or over-age envelopes and retries data/engine deferrals. Their claimed slots are unverified, so per-root, total and age limits bound forged entries.</summary>

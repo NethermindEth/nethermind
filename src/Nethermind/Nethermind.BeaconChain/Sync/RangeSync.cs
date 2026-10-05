@@ -1015,7 +1015,6 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
     /// <summary>The first epoch whose columns are demanded. The window moves every epoch, so callers recompute it per use.</summary>
     private ulong DataAvailabilityStartEpoch() => DataAvailabilityBoundary.Compute(clock.CurrentEpoch, spec);
-
     private bool IsInDataAvailabilityWindow(ulong slot, ulong windowStartEpoch) => spec.GetEpoch(slot) >= windowStartEpoch;
 
     /// <summary>The custodians the by-root column fetches for one block have asked, so repeated fetches rotate through every custodian.</summary>

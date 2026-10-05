@@ -37,7 +37,6 @@ public sealed class BlockSignatureBatch
     private readonly List<string> _failures = [];
 
     internal BlockSignatureBatch() { }
-
     internal int Count => _sets.Count;
 
     /// <summary>Runs <paramref name="process"/> against a new batch, then verifies every signature it deferred.</summary>
@@ -72,7 +71,6 @@ public sealed class BlockSignatureBatch
         }
 
         internal BlockSignatureBatch Batch { get; }
-
         internal string Failure { get; }
     }
 

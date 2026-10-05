@@ -25,8 +25,6 @@ internal sealed class NfdEntry(byte[] nextForkDigest) : EnrContentEntry<byte[]>(
     public static readonly byte[] NoneScheduled = new byte[4];
 
     public override string Key => "nfd";
-
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
-
     protected override void EncodeValue<TWriter>(ref TWriter writer) => writer.Encode(Value);
 }

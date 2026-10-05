@@ -35,9 +35,7 @@ public sealed class EnrForkId : IEquatable<EnrForkId>
     }
 
     public byte[] ForkDigest { get; }
-
     public byte[] NextForkVersion { get; }
-
     public ulong NextForkEpoch { get; }
 
     public byte[] Encode()
@@ -135,8 +133,6 @@ public sealed class EnrForkId : IEquatable<EnrForkId>
         Bytes.AreEqual(NextForkVersion, other.NextForkVersion);
 
     public override bool Equals(object? obj) => Equals(obj as EnrForkId);
-
     public override int GetHashCode() => HashCode.Combine(BinaryPrimitives.ReadUInt32LittleEndian(ForkDigest), NextForkEpoch);
-
     public override string ToString() => $"fork_digest: {ForkDigest.ToHexString()}, next_fork_version: {NextForkVersion.ToHexString()}, next_fork_epoch: {NextForkEpoch}";
 }

@@ -97,10 +97,8 @@ public sealed class BeaconDiscovery(
 
     /// <summary>The local signed ENR, exposed for logging and diagnostics. Only valid once <see cref="Start"/> has returned.</summary>
     public NodeRecord LocalNodeRecord => _localEnr!.Current;
-
     /// <summary>This node's own custody groups and gossip subnets. Only valid once <see cref="Start"/> has returned.</summary>
     public LocalCustody LocalCustody { get; private set; } = null!;
-
     /// <summary>The sampled columns no connected peer custodies, as last reported to <see cref="RequestColumnCustodians"/>.</summary>
     internal IReadOnlyList<ulong> WantedColumns => Volatile.Read(ref _wantedColumns);
 
@@ -553,7 +551,6 @@ public sealed class BeaconDiscovery(
     }
 
     private ulong CurrentEpoch => spec.GetEpoch(spec.GetSlotAtTime(timestamper.UnixTime.Seconds));
-
     /// <summary>The address the local ENR advertises: the external IPv4 address, since the libp2p host and the discv5 socket listen on IPv4 only.</summary>
     /// <remarks>consensus-specs v1.7.0-beta.2 networking Transport: advertised listening endpoints must be publicly dialable.</remarks>
     internal static IPAddress? AdvertisedAddress(IIPResolver.NethermindIp ip) => ip.ExternalIpV4;

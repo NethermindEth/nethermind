@@ -430,7 +430,6 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     private sealed class ColumnWatch(HashSet<ulong> missing, Action wake)
     {
         public HashSet<ulong> Missing { get; } = missing;
-
         public Action Wake { get; } = wake;
     }
 
@@ -894,7 +893,6 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
 
         /// <summary>One past the highest slot that lost or was refused a retained sidecar; every slot from here up is retained completely.</summary>
         public ulong IncompleteBelow { get; private set; }
-
         public int SlotCount => _keysBySlot.Count;
 
         public void Set((Hash256 BlockRoot, ulong Column) key, ulong slot, TSidecar sidecar)

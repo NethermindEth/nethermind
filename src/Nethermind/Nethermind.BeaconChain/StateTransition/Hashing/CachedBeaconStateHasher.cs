@@ -546,13 +546,9 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         private UInt256[] _leaves = [];
 
         public void SetLeafCount(int count) => _leaves = _tree.SetLeafCount(count);
-
         public ref UInt256 Leaf(int index) => ref _leaves[index];
-
         public void Rebuild() => _tree.Rebuild();
-
         public void Update(int[] dirtyIndices, int dirtyCount) => _tree.Update(dirtyIndices, dirtyCount);
-
         public UInt256 Root => _tree.Root;
 
         public void Reset()
@@ -649,7 +645,6 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
 
         /// <summary>The first leaf index of subtree <paramref name="k"/>, <c>(4^k - 1) / 3</c>.</summary>
         private static long SubtreeStart(int k) => ((1L << (2 * k)) - 1) / 3;
-
         private static int SubtreeOf(int index) => BitOperations.Log2(3UL * (uint)index + 1) >> 1;
 
         private static UInt256 HashPair(in UInt256 left, in UInt256 right)

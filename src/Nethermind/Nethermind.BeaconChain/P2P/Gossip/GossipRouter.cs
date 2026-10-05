@@ -190,17 +190,13 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     public event Action<PayloadAttestationMessage, GossipVerdict>? PayloadAttestationMessageReceived;
 
     public long GetDropCount(GossipDropReason reason) => Interlocked.Read(ref _dropCounts[(int)reason]);
-
     /// <summary>Whether a block with a valid proposer signature has been seen for <paramref name="slot"/> and <paramref name="proposerIndex"/>.</summary>
     internal bool IsProposalSeen(ulong slot, ulong proposerIndex) => _seenProposals.Get((slot, proposerIndex));
-
     /// <summary>Records that a block for <paramref name="slot"/> by <paramref name="proposerIndex"/> passed its proposer signature check.</summary>
     /// <remarks>The spec IGNOREs later blocks for the pair only once one with a valid signature is seen, so a forged block must never mark it.</remarks>
     internal void MarkProposalSeen(ulong slot, ulong proposerIndex) => _seenProposals.Set((slot, proposerIndex));
-
     /// <summary>Whether a valid envelope from <paramref name="builderIndex"/> has been seen for the block <paramref name="blockRoot"/>.</summary>
     internal bool IsEnvelopeSeen(Hash256 blockRoot, ulong builderIndex) => _seenEnvelopes.Get((blockRoot, builderIndex));
-
     /// <summary>Records that an envelope for <paramref name="blockRoot"/> from <paramref name="builderIndex"/> passed every gossip check, its signature included.</summary>
     /// <remarks>The spec IGNOREs later envelopes for the pair only once a valid one is seen, so an unverified envelope must never mark it.</remarks>
     /// <returns>Whether the pair was not marked yet, so this envelope is the first valid one for it.</returns>
@@ -1263,11 +1259,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private readonly record struct Verdict(GossipDropReason Reason, MessageValidity Validity, ulong? DeferToSlot = null, bool Settled = false, Action? Release = null)
     {
         public static Verdict Settle(MessageValidity validity, Action? release = null) => new(default, validity, Settled: true, Release: release);
-
         public static Verdict Reject(GossipDropReason reason) => new(reason, MessageValidity.Rejected);
-
         public static Verdict Ignore(GossipDropReason reason) => new(reason, MessageValidity.Ignored);
-
         public static Verdict DeferTo(ulong slot) => new(GossipDropReason.FutureSlot, MessageValidity.Ignored, slot);
     }
 }
