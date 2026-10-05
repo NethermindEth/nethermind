@@ -33,56 +33,35 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         _host.Client.Timeout = TimeSpan.FromSeconds(5);
     }
 
-    [Test]
-    public async Task Header_reports_finalized_true_when_the_blocks_epoch_is_at_or_before_the_finalized_checkpoint()
+    [TestCase(true, TestName = "Header_reports_finalized_true_when_the_blocks_epoch_is_at_or_before_the_finalized_checkpoint")]
+    [TestCase(false, TestName = "Header_reports_finalized_false_for_a_non_canonical_block_at_a_finalized_epoch")]
+    public async Task Header_finalization_depends_on_canonical_membership(bool canonical)
     {
         const ulong slot = 13_200_000;
-        SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(slot);
-        Hash256 root = TestRoot(7);
-        _host.Store.PutBlock(root, block);
-        _host.Store.SetCanonicalRoot(slot, root);
+        Hash256 root = TestRoot(canonical ? (byte)7 : (byte)9);
+        Hash256 canonicalRoot = canonical ? root : TestRoot(10);
+        _host.Store.PutBlock(root, BeaconApiTestHost.MinimalBlock(slot));
+        _host.Store.SetCanonicalRoot(slot, canonicalRoot);
         _host.StatusHolder.CurrentStatus = new StatusMessageV2
         {
             ForkDigest = [],
-            FinalizedRoot = root,
-            HeadRoot = root,
+            FinalizedRoot = canonicalRoot,
+            HeadRoot = canonicalRoot,
             FinalizedEpoch = 500_000,
         };
 
-        HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/headers/{root}");
+        using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/headers/{root}");
         string raw = await response.Content.ReadAsStringAsync();
-        JsonDocument body = JsonDocument.Parse(raw);
+        using JsonDocument body = JsonDocument.Parse(raw);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((int)response.StatusCode, Is.EqualTo(200), $"unexpected status; body: {raw}");
-        Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
-        Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True);
-    }
-
-    [Test]
-    public async Task Header_reports_finalized_false_for_a_non_canonical_block_at_a_finalized_epoch()
-    {
-        const ulong slot = 13_200_000;
-        Hash256 root = TestRoot(9);
-        Hash256 canonicalRival = TestRoot(10);
-        _host.Store.PutBlock(root, BeaconApiTestHost.MinimalBlock(slot));
-        _host.Store.SetCanonicalRoot(slot, canonicalRival);
-        _host.StatusHolder.CurrentStatus = new StatusMessageV2
-        {
-            ForkDigest = [],
-            FinalizedRoot = canonicalRival,
-            HeadRoot = canonicalRival,
-            FinalizedEpoch = 500_000,
-        };
-
-        HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/headers/{root}");
-        string raw = await response.Content.ReadAsStringAsync();
-        JsonDocument body = JsonDocument.Parse(raw);
-
-        Assert.That((int)response.StatusCode, Is.EqualTo(200), $"unexpected status; body: {raw}");
-        Assert.That(body.RootElement.GetProperty("data").GetProperty("canonical").GetBoolean(), Is.False);
-        Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.False,
-            "a block that lost to a rival at its slot is what finalization discarded, whatever its epoch");
+        Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.EqualTo(canonical),
+            canonical ? null : "a block that lost to a rival at its slot is what finalization discarded, whatever its epoch");
+        if (canonical)
+            Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True);
+        else
+            Assert.That(body.RootElement.GetProperty("data").GetProperty("canonical").GetBoolean(), Is.False);
     }
 
     [Test]
@@ -177,24 +156,17 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.EqualTo(offset == 0));
     }
 
-    [Test]
-    public async Task Events_without_a_topics_query_parameter_is_400()
+    [TestCase(null, TestName = "Events_without_a_topics_query_parameter_is_400")]
+    [TestCase("chain_reorg", TestName = "Events_with_an_unsupported_topic_is_400_naming_the_supported_set")]
+    public async Task Events_rejects_missing_or_unsupported_topics(string? topic)
     {
-        HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/events");
+        using HttpResponseMessage response = await _host.Client.GetAsync(topic is null ? "/eth/v1/events" : $"/eth/v1/events?topics={topic}");
         string raw = await response.Content.ReadAsStringAsync();
+        using JsonDocument? body = topic is null ? null : JsonDocument.Parse(raw);
 
         Assert.That((int)response.StatusCode, Is.EqualTo(400), $"body: {raw}");
-    }
-
-    [Test]
-    public async Task Events_with_an_unsupported_topic_is_400_naming_the_supported_set()
-    {
-        HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/events?topics=chain_reorg");
-        string raw = await response.Content.ReadAsStringAsync();
-        JsonDocument body = JsonDocument.Parse(raw);
-
-        Assert.That((int)response.StatusCode, Is.EqualTo(400), $"body: {raw}");
-        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("chain_reorg"));
+        if (body is not null)
+            Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("chain_reorg"));
     }
 
     [Test]
