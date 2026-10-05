@@ -50,9 +50,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Payload_attestation_pair_is_verified_at_most_the_attempt_limit_of_times_whatever_the_signature()
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Importer.AcceptsGossipOperations = false;
         harness.Orchestrator.RouteGossipEvents();
 
@@ -77,9 +75,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Payload_attestation_genuine_vote_after_a_refused_forgery_is_verified_and_closes_the_pair()
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Orchestrator.RouteGossipEvents();
 
         harness.Importer.AcceptsGossipOperations = false;
@@ -101,9 +97,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Payload_attestation_votes_queued_before_the_first_verifies_are_applied_once()
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Orchestrator.RouteGossipEvents();
 
         PtcVote(router, slot, validatorIndex: 7, payloadPresent: true, signatureSeed: 1);
@@ -116,9 +110,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Payload_attestation_refused_by_a_full_vote_channel_can_still_be_verified_later([Values] bool identicalCopy)
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Orchestrator.RouteGossipEvents();
         const ulong member = BeaconSyncOrchestrator.VoteQueueCapacity;
         for (ulong validator = 0; validator < BeaconSyncOrchestrator.VoteQueueCapacity; validator++)
@@ -160,9 +152,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Gossip_vote_flood_does_not_drop_or_starve_a_gossip_block([Values] FloodKind kind)
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Importer.AcceptsGossipOperations = false;
         harness.Orchestrator.RouteGossipEvents();
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1);
@@ -217,9 +207,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Gossip_aggregate_marks_the_seen_sets_only_once_fork_choice_accepts_it([Values] bool accepted)
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Importer.AcceptsGossipOperations = accepted;
         harness.Orchestrator.RouteGossipEvents();
         Assert.That(Handle(Aggregate(participants: 2, aggregator: 7)), Is.EqualTo(MessageValidity.Ignored), "fixture: the aggregate is raised");
@@ -250,9 +238,7 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Payload_attestations_reach_fork_choice_in_order_with_a_slot_tick(
         [Values(1, BeaconSyncOrchestrator.VotesPerPass, BeaconSyncOrchestrator.VotesPerPass + 3)] int votesBeforeTick)
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Orchestrator.RouteGossipEvents();
         int ticksBefore = harness.Importer.Ticks.Count;
         const int votesAfterTick = 2;
@@ -278,9 +264,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Payload_attestation_queued_after_a_skipped_tick_reaches_fork_choice_at_that_tick()
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Orchestrator.RouteGossipEvents();
         int ticksBefore = harness.Importer.Ticks.Count;
         await harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 1, CancellationToken.None);
@@ -298,9 +282,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Votes_stamped_with_a_tick_waiting_on_a_full_work_channel_are_bounded()
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Orchestrator.RouteGossipEvents();
         const int earlyVotes = 3;
         for (ulong validator = 0; validator < earlyVotes; validator++)
@@ -337,9 +319,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Payload_attestation_read_in_a_later_pass_still_reaches_fork_choice_at_the_skipped_tick()
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Orchestrator.RouteGossipEvents();
         int ticksBefore = harness.Importer.Ticks.Count;
         await harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 1, CancellationToken.None);
@@ -359,9 +339,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Votes_stamped_with_a_tick_do_not_use_up_the_bound_once_read_or_refused()
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Orchestrator.RouteGossipEvents();
         ulong validator = 0;
         ulong nextTick = WallSlot + 1;
@@ -408,9 +386,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Payload_attestation_arriving_during_a_pass_wakes_the_worker()
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Orchestrator.RouteGossipEvents();
         harness.Importer.OnTick = _ => PtcVote(router, slot, validatorIndex: 7, payloadPresent: true);
 
@@ -431,9 +407,7 @@ public partial class BeaconSyncOrchestratorTests
     [Test]
     public async Task Gossip_votes_past_the_vote_channel_capacity_are_counted_as_dropped()
     {
-        ulong slot = FirstGloasSlot + 1;
-        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
-        Harness harness = CreateHarness(router: router);
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Importer.AcceptsGossipOperations = false;
         harness.Orchestrator.RouteGossipEvents();
         const int overflow = 10;
@@ -534,6 +508,13 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
         Assert.That((vote, harness.Importer.GossipOperations.Count), Is.EqualTo((MessageValidity.Ignored, 0)));
+    }
+
+    private static (ulong Slot, GossipRouter Router, Harness Harness) CreatePayloadVoteHarness()
+    {
+        ulong slot = FirstGloasSlot + 1;
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot + 9))), LimboLogs.Instance);
+        return (slot, router, CreateHarness(router: router));
     }
 
     private static MessageValidity PtcVoteWithoutPtc(GossipRouter router, ulong slot, ulong validatorIndex, byte signatureSeed = 0) =>
