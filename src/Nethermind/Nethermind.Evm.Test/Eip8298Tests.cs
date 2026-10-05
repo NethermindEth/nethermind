@@ -2,19 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Text.Json;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -273,6 +284,91 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         ParityTraceAction action = tracer.BuildResult().Action!;
         return kind == CreationKind.Transaction ? action : action.Subtraces[0];
+    }
+
+    [Test]
+    public void CallTracer_ReportsAdoptedCodeAsCreationOutput([Values(CreationKind.Create, CreationKind.Create2)] CreationKind kind)
+    {
+        DeploySource();
+        (Block block, Transaction tx, _) = PrepareCreation(kind, AdoptingInitCode(0xef, 32), 0);
+        using NativeCallTracer tracer = new(tx, SpecProvider.GetSpec(block.Header), GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer });
+
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
+        NativeCallTracerCallFrame creation = frame.Calls[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(creation.Error, Is.Null, "error");
+            Assert.That(creation.Output!.AsSpan().ToArray(), Is.EqualTo(SourceCode), "output");
+        }
+    }
+
+    [Test]
+    public void PrestateTracer_IncludesSourceAndAdoptedCode([Values] bool eip8298Enabled, [Values] bool diffMode)
+    {
+        _eip8298Enabled = eip8298Enabled;
+        DeploySource();
+        (Block block, Transaction tx) = PrepareTx(Activation, 1_000_000, Prepare.EvmCode.SETCODEFROM(Source).STOP().Done);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = NativePrestateTracer.PrestateTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>(diffMode ? """{"diffMode":true}""" : "{}")
+        };
+        GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(options, block, tx, TestState, spec);
+
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        if (diffMode)
+        {
+            Dictionary<AddressAsKey, NativePrestateTracerAccount> post = ((NativePrestateTracerDiffMode)trace.CustomTracerResult!.Value).post;
+            Assert.That(post.TryGetValue(Recipient, out NativePrestateTracerAccount? recipient) ? recipient.Code.ToArray() : null,
+                eip8298Enabled ? Is.EqualTo(SourceCode) : Is.Null.Or.Empty, "adopted code in post state");
+            return;
+        }
+
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> prestate = (Dictionary<AddressAsKey, NativePrestateTracerAccount>)trace.CustomTracerResult!.Value;
+        Assert.That(prestate.TryGetValue(Source, out NativePrestateTracerAccount? source), Is.EqualTo(eip8298Enabled), "source in prestate");
+        if (eip8298Enabled) Assert.That(source!.Code.ToArray(), Is.EqualTo(SourceCode), "source code");
+    }
+
+    [Test]
+    public void ParityStateDiff_ReportsAdoptedCode([Values] bool eip8298Enabled)
+    {
+        _eip8298Enabled = eip8298Enabled;
+        DeploySource();
+        (Block block, Transaction tx) = PrepareTx(Activation, 1_000_000, Prepare.EvmCode.SETCODEFROM(Source).STOP().Done);
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.StateDiff);
+
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Dictionary<Address, ParityAccountStateChange> changes = tracer.BuildResult().StateChanges!;
+        Assert.That(changes.TryGetValue(Recipient, out ParityAccountStateChange? recipient) ? recipient.Code?.After : null,
+            eip8298Enabled ? Is.EqualTo(SourceCode) : Is.Null);
+    }
+
+    [Test]
+    public void BlockAccessList_RecordsSourceReadAndCodeChange([Values] bool eip8298Enabled, [Values] bool parallel)
+    {
+        _eip8298Enabled = eip8298Enabled;
+        DeploySource();
+        TracedAccessWorldState tracedState = new(TestState, parallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, Machine,
+            new EthereumCodeInfoRepository(tracedState), LimboLogs.Instance);
+        (Block block, Transaction tx) = PrepareTx(Activation, 1_000_000, Prepare.EvmCode.SETCODEFROM(Source).STOP().Done);
+
+        processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        BlockAccessListAtIndex accessList = tracedState.GetGeneratingBlockAccessList()!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList.GetAccountChanges(Source), eip8298Enabled ? Is.Not.Null : Is.Null, "source read");
+            Assert.That(accessList.GetAccountChanges(Recipient)?.CodeChange?.Code, eip8298Enabled ? Is.EqualTo(SourceCode) : Is.Null, "code change");
+        }
     }
 
     // Creation completion only consults EIP-8298 once SETCODEFROM has run, so plain creations must not change.
