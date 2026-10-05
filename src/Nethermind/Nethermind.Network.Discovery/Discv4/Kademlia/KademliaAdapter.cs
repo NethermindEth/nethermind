@@ -496,6 +496,7 @@ public class KademliaAdapter(
         }
 
         Node? enrNode = null;
+        Node? verifiedEnrNode = null;
         NodeRecord? record = node.Enr;
         if (record is { Signature: not null } &&
             record.EnrSequence >= node.HighestObservedEnrSequence &&
@@ -505,12 +506,21 @@ public class KademliaAdapter(
                 record,
                 DiscoveryAddressSupport.GetFamily(discoveryEndpoint.Address),
                 out Node? candidate) &&
-            candidate.Id.Equals(node.Id) &&
-            candidate.HasDiscoveryEndpoint &&
-            candidate.DiscoveryAddress.Equals(discoveryEndpoint))
+            candidate.Id.Equals(node.Id))
         {
-            candidate.SetVerifiedEnr(record);
-            enrNode = candidate;
+            bool endpointMatchesEnr = candidate.HasDiscoveryEndpoint && candidate.DiscoveryAddress.Equals(discoveryEndpoint);
+            if (endpointMatchesEnr || signedPing is not null)
+            {
+                candidate.SetVerifiedEnr(record);
+                if (endpointMatchesEnr)
+                {
+                    enrNode = candidate;
+                }
+                else
+                {
+                    verifiedEnrNode = candidate;
+                }
+            }
         }
 
         bool useSignedPing = signedPing is
@@ -528,6 +538,10 @@ public class KademliaAdapter(
         {
             peerCandidate = new Node(node.Id, node.Address, node.DiscoveryPort);
             peerCandidate.ObserveEnrSequence(node.HighestObservedEnrSequence);
+            if (verifiedEnrNode is not null)
+            {
+                peerCandidate.MergeEnrStateFrom(verifiedEnrNode);
+            }
         }
         else if (enrNode is not null)
         {

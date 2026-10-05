@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -21,6 +22,7 @@ using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
@@ -291,7 +293,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             ulong responseSequence,
             int? tcpPort = null,
             IPAddress? ipAddress = null,
-            Action<NodeRecord>? configureExtras = null)
+            Action<NodeRecord>? configureExtras = null,
+            IPEndPoint? responseEndpoint = null)
         {
             NodeRecord remoteRecord = TestEnrBuilder.BuildSigned(
                 TestItem.PrivateKeyB,
@@ -324,7 +327,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
                     ValueHash256 requestHash = TestItem.KeccakA.ValueHash256;
                     sent.Hash = requestHash;
-                    EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(_receiver.Address, remoteRecord, new Hash256(requestHash)));
+                    EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(responseEndpoint ?? _receiver.Address, remoteRecord, new Hash256(requestHash)));
                     return _adapter.OnIncomingMsg(response);
                 });
 
@@ -1184,6 +1187,62 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 Assert.That(peerNode.Id, Is.EqualTo(_receiver.Id));
                 Assert.That(peerNode.Enr, Is.Null);
                 Assert.That(peerNode.HighestObservedEnrSequence, Is.EqualTo(advertisedSequence));
+            }
+        }
+
+        [TestCase("192.168.1.9", 30303)]
+        [TestCase("192.168.1.2", 30304)]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_should_keep_verified_enr_when_bonded_endpoint_differs(
+            string pingAddress,
+            int pingPort,
+            CancellationToken token)
+        {
+            const ulong advertisedSequence = 2;
+            IPAddress ipv6Address = IPAddress.Parse("fd00::2");
+            _receiver = new Node(TestItem.PublicKeyB, pingAddress, 30303, pingPort);
+            IPEndPoint discoveryEndpoint = _receiver.DiscoveryAddress;
+            NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
+                advertisedSequence,
+                advertisedSequence,
+                tcpPort: 30303,
+                configureExtras: record =>
+                {
+                    record.SetEntry(new Ip6Entry(ipv6Address));
+                    record.SetEntry(new Tcp6Entry(30305));
+                    record.SetEntry(new Udp6Entry(30306));
+                },
+                responseEndpoint: discoveryEndpoint);
+            PingMsg pingMsg = new(
+                discoveryEndpoint,
+                _timestamper.UnixTime.SecondsLong + 20,
+                discoveryEndpoint,
+                30303,
+                0)
+            {
+                FarAddress = discoveryEndpoint,
+                EnrSequence = advertisedSequence
+            };
+            pingMsg = AddReceiverFarAddress(pingMsg);
+
+            await _adapter.OnIncomingMsg(pingMsg);
+
+            Node peerNode = await ReadPeerCandidate(token);
+            NodeRecord peerEnr = peerNode.Enr
+                ?? throw new AssertionException("Expected the signed-PING candidate to retain the verified ENR.");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peerNode.Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse(pingAddress), 30303)));
+                Assert.That(peerNode.DiscoveryAddress, Is.EqualTo(discoveryEndpoint));
+                Assert.That(peerNode.IsVerifiedEnr(peerEnr), Is.True);
+                Assert.That(peerEnr.GetHex(), Is.EqualTo(remoteRecord.GetHex()));
+            }
+
+            if (Socket.OSSupportsIPv6)
+            {
+                Assert.That(RlpxHost.TryCreateAlternateDialNode(peerNode, true, out Node? alternate), Is.True);
+                Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(ipv6Address, 30305)));
+                Assert.That(alternate.DiscoveryAddress, Is.EqualTo(new IPEndPoint(ipv6Address, 30306)));
             }
         }
 
