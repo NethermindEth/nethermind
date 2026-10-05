@@ -127,27 +127,31 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
     pivotTotalDifficulty = int(pivot['result'].get('totalDifficulty', '0x0'), 16)
 
     print(configuration + ' LatestBlock: ' + str(latestBlock))
-    writePivot(configuration, baseBlock, pivotHash, pivotTotalDifficulty, isPoS)
-    for follower in PIVOT_FOLLOWERS.get(configuration, []):
-        writePivot(follower, baseBlock, pivotHash, pivotTotalDifficulty, isPoS)
+    return baseBlock, pivotHash, pivotTotalDifficulty
 
-def writePivot(configuration, baseBlock, pivotHash, pivotTotalDifficulty, isPoS):
-    print(configuration + ' PivotNumber: ' + str(baseBlock))
-    print(configuration + ' PivotHash: ' + str(pivotHash))
-    if not isPoS:
-      print(configuration + ' PivotTotalDifficulty: ' + str(pivotTotalDifficulty))
+def writePivot(configurations, baseBlock, pivotHash, pivotTotalDifficulty, isPoS):
+    # Load every target before writing any, so a broken follower config can't leave its leader on a different pivot.
+    updated = {}
+    for configuration in configurations:
+        print(configuration + ' PivotNumber: ' + str(baseBlock))
+        print(configuration + ' PivotHash: ' + str(pivotHash))
+        if not isPoS:
+          print(configuration + ' PivotTotalDifficulty: ' + str(pivotTotalDifficulty))
 
-    with open(f'{CONFIGS_PATH}/{configuration}.json', 'r') as mainnetCfg:
-        data = json.load(mainnetCfg)
+        with open(f'{CONFIGS_PATH}/{configuration}.json', 'r') as mainnetCfg:
+            data = json.load(mainnetCfg)
 
-    data['Sync']['PivotNumber'] = baseBlock
-    data['Sync']['PivotHash'] = pivotHash
+        data['Sync']['PivotNumber'] = baseBlock
+        data['Sync']['PivotHash'] = pivotHash
 
-    if not isPoS:
-        data['Sync']['PivotTotalDifficulty'] = str(pivotTotalDifficulty)
+        if not isPoS:
+            data['Sync']['PivotTotalDifficulty'] = str(pivotTotalDifficulty)
 
-    with open(f'{CONFIGS_PATH}/{configuration}.json', 'w') as mainnetCfgChanged:
-        json.dump(data, mainnetCfgChanged, indent=2)
+        updated[configuration] = data
+
+    for configuration, data in updated.items():
+        with open(f'{CONFIGS_PATH}/{configuration}.json', 'w') as mainnetCfgChanged:
+            json.dump(data, mainnetCfgChanged, indent=2)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fast Sync configuration settings")
@@ -167,7 +171,7 @@ if __name__ == "__main__":
         # Public RPCs intermittently time out or answer with a non-JSON body; one flaky endpoint must not block the others.
         for attempt in range(1, ATTEMPTS + 1):
             try:
-                fastBlocksSettings(config, value['url'], value['blockReduced'], value['multiplierRequirement'], value['isPoS'])
+                pivot = fastBlocksSettings(config, value['url'], value['blockReduced'], value['multiplierRequirement'], value['isPoS'])
                 break
             except (requests.RequestException, ValueError, KeyError, TypeError) as e:
                 print(f"{config} attempt {attempt}/{ATTEMPTS} failed: {type(e).__name__}")
@@ -176,6 +180,9 @@ if __name__ == "__main__":
         else:
             print(f"::error::{config}: could not fetch the pivot from {value['url']}, config left unchanged")
             failed.append(config)
+            continue
+
+        writePivot([config, *PIVOT_FOLLOWERS.get(config, [])], *pivot, value['isPoS'])
 
     if failed:
         sys.exit(f"Failed to update: {', '.join(failed)}")

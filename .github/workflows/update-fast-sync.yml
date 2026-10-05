@@ -36,7 +36,7 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Create a pull request
-        if: ${{ !cancelled() && steps.update.conclusion != 'skipped' }}
+        if: ${{ !cancelled() && steps.gh-app.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
