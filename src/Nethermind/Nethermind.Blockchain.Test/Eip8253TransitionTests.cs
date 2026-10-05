@@ -11,6 +11,8 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Validators;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -25,6 +27,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -106,6 +109,28 @@ public class Eip8253TransitionTests
 
         Assert.That(process, dropBump ? Throws.InstanceOf<InvalidBlockException>().With.Message.Contains("InvalidBlockLevelAccessList") : Throws.Nothing);
         Assert.That(balManager.ParallelExecutionEnabled, Is.EqualTo(parallelExecution), "the suggested BAL drives the requested execution path");
+    }
+
+    [Test]
+    public async Task Fork_block_witness_replays_statelessly_to_the_same_state_root()
+    {
+        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, ForkBlockNumber, parallelExecution: false);
+        await chain.AddBlock();
+        Block fork = await chain.AddBlock(Transfer(0, Target, UInt256.One));
+        BlockHeader parent = chain.BlockTree.FindHeader(fork.ParentHash!, BlockTreeLookupOptions.None)!;
+
+        using IWitnessGeneratingBlockProcessingEnvScope witnessScope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
+        using Witness witness = witnessScope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, fork);
+        StatelessBlockProcessingEnv stateless = new(witness, chain.SpecProvider, Always.Valid, LimboLogs.Instance);
+        using IDisposable stateScope = stateless.WorldState.BeginScope(parent);
+        (Block processed, _) = stateless.BlockProcessor.ProcessOne(
+            fork.WithReplacedHeader(fork.Header.Clone()), ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, chain.SpecProvider.GetSpec(fork.Header), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed.Header.StateRoot, Is.EqualTo(fork.Header.StateRoot));
+            Assert.That(stateless.WorldState.GetNonce(Target), Is.EqualTo(1UL));
+        }
     }
 
     [TestCase(BlockchainIds.Mainnet, 0ul, TestName = "Transition_skipped_when_parent_already_has_the_fork")]
