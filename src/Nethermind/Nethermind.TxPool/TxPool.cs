@@ -1173,12 +1173,14 @@ namespace Nethermind.TxPool
         /// the canonical head's <c>current_slot</c>, its <c>slotNumber + 1</c>.</summary>
         /// <remarks>Head events are consumed after the chain has moved, and admission validates against the canonical
         /// head, so the header and the state are taken as one snapshot of that head, not from the event's block: a
-        /// transaction admitted against a newer head is never judged at an older event's slot. Every such transaction goes once the head is before activation or the code at <c>RECENT_ROOT_ADDRESS</c>
-        /// is not <c>RECENT_ROOT_CODE</c>. A head extending the previous one only ages tuples out: its block writes the
-        /// ring-buffer cells of its own slot, and a pending tuple naming that slot was admitted against the same write,
-        /// while any other tuple aliasing those cells is already out of the window. Any other head rereads every recorded
-        /// entry, which covers a rollback on the abandoned branch as well as a write on the new one. Every failure,
-        /// age included, can reverse with a reorg to an earlier slot, so the hash is released for resubmission.</remarks>
+        /// transaction admitted against a newer head is never judged at an older event's slot. Every pending
+        /// <c>recent_root_verify</c> transaction goes once the head is before activation or the code at
+        /// <c>RECENT_ROOT_ADDRESS</c> is not <c>RECENT_ROOT_CODE</c>. A head extending the previous one only ages tuples
+        /// out: its block writes the ring-buffer cells of its own slot, and a pending tuple naming that slot was admitted
+        /// against the same write, while any other tuple aliasing those cells is already out of the window. Any other
+        /// head rereads every recorded entry, which covers a rollback on the abandoned branch as well as a write on the
+        /// new one. Every failure, age included, can reverse with a reorg to an earlier slot, so the hash is released
+        /// for resubmission.</remarks>
         private void RemoveUnreferenceableRecentRootTransactions(bool extendsPreviousHead)
         {
             if (_recentRootDependencies.Count == 0
