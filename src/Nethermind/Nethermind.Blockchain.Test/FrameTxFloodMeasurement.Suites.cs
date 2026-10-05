@@ -292,10 +292,21 @@ public partial class FrameTxFloodMeasurement
             int slots = HonestSlotsFor(millions);
             int spamRate = millions == 0 ? 0 : RateFor(millions, declaredGasPerTx);
             HonestOutcome o = RunHonestSlots(spamRate, slots, ref cursor);
+            double honestAchieved = o.Honest.Total / o.ElapsedS;
+            double spamAchieved = o.Spam.Total / o.ElapsedS;
+            double honestLagBudgetUs = 1_000_000.0 / HonestRate * MaxSustainedLagPeriods;
+            double spamLagBudgetUs = spamRate == 0 ? 0 : 1_000_000.0 / spamRate * MaxSustainedLagPeriods;
+            // The same test the producer and import rows apply, to both generators: a lagging one delivers its
+            // load late or in bursts, so the admitted share would belong to a different load than the row names.
+            bool sustained = honestAchieved >= HonestRate * RateHeldFloor && o.HonestMaxLagUs <= honestLagBudgetUs
+                && (spamRate == 0 || (spamAchieved >= spamRate * RateHeldFloor && o.SpamMaxLagUs <= spamLagBudgetUs));
 
             Emit($"case=honest_level shape=keccak-wide ceiling={ceiling} shedding=on {SimBudgetField} {CpuFields} "
                  + $"target_declared_gas_per_s={millions * 1_000_000L} declared_gas_per_tx={declaredGasPerTx} spam_rate={spamRate} "
-                 + $"slots={slots} slot_s={SlotLength.TotalSeconds:F0} honest_rate={HonestRate} honest_verify_gas={HonestVerifyGas} "
+                 + $"slots={slots} slot_s={SlotLength.TotalSeconds:F0} elapsed_s={o.ElapsedS:F2} sustained={(sustained ? "yes" : "no")} "
+                 + $"honest_rate={HonestRate} honest_achieved_rate={honestAchieved:F2} honest_max_lag_us={o.HonestMaxLagUs:F0} "
+                 + $"honest_lag_budget_us={honestLagBudgetUs:F0} spam_achieved_rate={spamAchieved:F1} spam_max_lag_us={o.SpamMaxLagUs:F0} "
+                 + $"spam_lag_budget_us={spamLagBudgetUs:F0} honest_verify_gas={HonestVerifyGas} "
                  + $"honest_offered={o.Honest.Total} honest_admitted={o.Honest.Accepted} honest_deferred={o.Honest.Deferred} "
                  + $"honest_deferred_budget={o.Honest.DeferredBudget} honest_deferred_preempted={o.Honest.DeferredPreempted} "
                  + $"honest_deferred_busy={o.Honest.DeferredBusy} honest_deferred_other={o.Honest.DeferredOther} honest_other={o.Honest.Other} "
@@ -498,9 +509,11 @@ public partial class FrameTxFloodMeasurement
             }
         }
 
+        long start = Stopwatch.GetTimestamp();
         if (spamRate == 0)
         {
             honestGenerator.Run(() => { Slots(); return 0; });
+            outcome.Finish(Stopwatch.GetElapsedTime(start), honestGenerator.MaxLagUs, 0);
             return outcome;
         }
 
@@ -509,6 +522,7 @@ public partial class FrameTxFloodMeasurement
         _saltCursor += spamCount;
         using FloodGenerator spamGenerator = new(tx => outcome.RecordSpam(_chain.TxPool.SubmitTx(tx, TxHandlingOptions.None)), spam, spamRate);
         honestGenerator.Run(() => spamGenerator.Run(() => { Slots(); return 0; }));
+        outcome.Finish(Stopwatch.GetElapsedTime(start), honestGenerator.MaxLagUs, spamGenerator.MaxLagUs);
         return outcome;
     }
 
@@ -525,6 +539,18 @@ public partial class FrameTxFloodMeasurement
         public Tally Honest { get; } = new();
         public Tally Spam { get; } = new();
         public List<double> FirstDeferMs { get; } = [];
+
+        /// <summary>Wall time both generators ran, which is what the achieved rates are taken over.</summary>
+        public double ElapsedS { get; private set; }
+        public double HonestMaxLagUs { get; private set; }
+        public double SpamMaxLagUs { get; private set; }
+
+        public void Finish(TimeSpan elapsed, double honestMaxLagUs, double spamMaxLagUs)
+        {
+            ElapsedS = elapsed.TotalSeconds;
+            HonestMaxLagUs = honestMaxLagUs;
+            SpamMaxLagUs = spamMaxLagUs;
+        }
 
         public void MarkHead()
         {

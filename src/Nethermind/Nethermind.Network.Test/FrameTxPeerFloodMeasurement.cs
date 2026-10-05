@@ -10,7 +10,6 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
-using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -215,16 +214,9 @@ public class FrameTxPeerFloodMeasurement
     {
         IMessageSerializationService serializer = Build.A.SerializationService().WithEth68().TestObject;
         StatusMessage status = new() { GenesisHash = genesis.Hash!, BestHash = genesis.Hash! };
-        IByteBuffer buffer = serializer.ZeroSerialize(status);
-        try
-        {
-            buffer.ReadByte();
-            handler.HandleMessage(new ZeroPacket(buffer) { PacketType = Eth62MessageCode.Status });
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        using DisposableByteBuffer buffer = serializer.ZeroSerialize(status).AsDisposable();
+        buffer.ReadByte();
+        handler.HandleMessage(new ZeroPacket(buffer) { PacketType = Eth62MessageCode.Status });
     }
 
     /// <summary>Wire bytes of one <c>Transactions</c> message, without the message-code prefix.</summary>
@@ -239,18 +231,11 @@ public class FrameTxPeerFloodMeasurement
 
         using TransactionsMessage message = new(transactions);
         IMessageSerializationService serializer = Build.A.SerializationService().WithEth68().TestObject;
-        IByteBuffer buffer = serializer.ZeroSerialize(message);
-        try
-        {
-            buffer.ReadByte();
-            byte[] bytes = new byte[buffer.ReadableBytes];
-            buffer.ReadBytes(bytes);
-            return bytes;
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        using DisposableByteBuffer buffer = serializer.ZeroSerialize(message).AsDisposable();
+        buffer.ReadByte();
+        byte[] bytes = new byte[buffer.ReadableBytes];
+        buffer.ReadBytes(bytes);
+        return bytes;
     }
 
     private static void Emit(Shape shape, int rate, int txsPerMessage, Outcome[] outcomes)
