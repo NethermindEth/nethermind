@@ -101,8 +101,8 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
 
     [TestCase("60FFB000B1B2", EvmExceptionType.InvalidJumpDestination, TestName = "EIP vector: destination out of range")]
     [TestCase("B2", EvmExceptionType.ReturnStackUnderflow, TestName = "EIP vector: empty return stack")]
-    [TestCase("6004B060B100", EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB to CALLDEST inside PUSH data")]
-    [TestCase("60045660B100", EvmExceptionType.InvalidJumpDestination, TestName = "JUMP to CALLDEST inside PUSH data")]
+    [TestCase("6004B060BB00", EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB to CALLDEST inside PUSH data")]
+    [TestCase("60045660BB00", EvmExceptionType.InvalidJumpDestination, TestName = "JUMP to CALLDEST inside PUSH data")]
     [TestCase("6003B05B00", EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB to JUMPDEST")]
     [TestCase("6004B0E6B100", EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB to CALLDEST inside an EIP-8024 immediate")]
     [TestCase("640100000004B000B1", EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB destination above uint32")]
