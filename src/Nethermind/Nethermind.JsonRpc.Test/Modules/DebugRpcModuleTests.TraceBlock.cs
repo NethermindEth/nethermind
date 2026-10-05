@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -39,6 +40,68 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceBlock_checks_replay_parent_state(
+        [Values("debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
+        [Values] bool streaming,
+        [Values] bool parentAvailable)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .WithTo(TestItem.AddressC).WithValue(1).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block processed = await chain.AddBlock(transaction);
+        Hash256 retainedRoot = processed.StateRoot!;
+        if (!parentAvailable)
+        {
+            BlockHeader unavailableHeader = parent.Clone();
+            unavailableHeader.StateRoot = TestItem.KeccakA;
+            unavailableHeader.Hash = unavailableHeader.CalculateHash();
+            Block unavailableParent = new(unavailableHeader, [], []);
+            chain.BlockTree.SuggestBlock(unavailableParent, BlockTreeSuggestOptions.ForceDontSetAsMain);
+            parent = unavailableHeader;
+        }
+        Block unprocessed = Build.A.Block.WithParent(parent).WithStateRoot(parentAvailable ? TestItem.KeccakA : retainedRoot)
+            .WithTransactions(transaction).TestObject;
+        chain.BlockTree.SuggestBlock(unprocessed, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Assert.That(chain.BlockTree.TryUpdateMainChain(unprocessed.Header, true, true, unprocessed), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.StateReader.HasStateForBlock(parent), Is.EqualTo(parentAvailable));
+            Assert.That(chain.StateReader.HasStateForBlock(unprocessed.Header), Is.EqualTo(!parentAvailable));
+        }
+        object selector = method switch
+        {
+            "debug_traceBlockByHash" => unprocessed.Hash!,
+            "debug_traceBlockByNumber" => unprocessed.Number,
+            _ => Rlp.Encode(unprocessed).ToString()
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, selector);
+        JToken actual = JToken.Parse(response);
+        if (!parentAvailable)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual["result"], Is.Null, response);
+                Assert.That(actual["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.ResourceUnavailable));
+                Assert.That(actual["error"]?["message"]?.Value<string>(),
+                    Is.EqualTo($"No state available for block {parent.Number} ({parent.Hash})"));
+            }
+            return;
+        }
+        Assert.That(actual["error"], Is.Null, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["result"]!.Count(), Is.EqualTo(1));
+            Assert.That(actual["result"]![0]!["txHash"]!.Value<string>(), Is.EqualTo(transaction.Hash!.ToString()));
+            Assert.That(actual["result"]![0]!["result"]!["gas"]!.Value<long>(), Is.EqualTo(21_000));
+            Assert.That(actual["result"]![0]!["result"]!["failed"]!.Value<bool>(), Is.False);
+        }
+    }
+
     [Test]
     public async Task Debug_traceBlock_SuppliedBody_DoesNotUseIndexedHeaderState()
     {

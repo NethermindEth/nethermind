@@ -645,6 +645,8 @@ public class DebugModuleTests
     private void SetUpBlockTrace(GethLikeTxTrace[] traces)
     {
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _blockFinder.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.None, 0)
+            .Returns(Build.A.Block.WithNumber(0).TestObject.Header);
 
         // Production backs the collection with a DisposableResettableList<GethLikeTxTrace> (BlockTracerBase.cs),
         // whose own Dispose() disposes every item a second time on top of GethLikeTxTraceCollection.DisposeItems()
