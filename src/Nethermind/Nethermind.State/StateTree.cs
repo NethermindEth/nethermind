@@ -80,7 +80,8 @@ namespace Nethermind.State
         public void Set(Address address, Account? account)
         {
             KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
-            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account));
+            Set(keccak.BytesAsSpan, account is null ? CappedArray<byte>.Empty
+                : new CappedArray<byte>(account.IsTotallyEmpty ? EmptyAccountRlp.Bytes : _decoder.EncodeAsBytes(account)));
         }
 
         [SkipLocalsInit]

@@ -222,5 +222,19 @@ namespace Nethermind.Trie
 
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: left to the JIT.</summary>
         private const MethodImplOptions GetChildWithChildPathInlining = default;
+
+        /// <summary>How <see cref="SetChild"/> is inlined: left to the JIT.</summary>
+        private const MethodImplOptions SetChildInlining = default;
+
+        /// <summary>How <see cref="PrepareRlp"/> is inlined: left to the JIT.</summary>
+        private const MethodImplOptions PrepareRlpInlining = default;
+
+        /// <summary>Descends <paramref name="path"/> into child <paramref name="index"/> of the node being encoded.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void EnterChildPath(ref TreePath path, int index) => path.AppendMut(index);
+
+        /// <summary>Climbs <paramref name="path"/> back out of the child <see cref="EnterChildPath"/> entered.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void LeaveChildPath(ref TreePath path) => path.TruncateOne();
     }
 }
