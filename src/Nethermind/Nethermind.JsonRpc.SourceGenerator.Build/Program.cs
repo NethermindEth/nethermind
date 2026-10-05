@@ -66,7 +66,7 @@ internal static class Program
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         List<ITypeSymbol> typeSymbols = CollectTypeSymbols(compilation, syntaxTrees);
-        string[] sortedTypes = GetSourceGeneratedTypes(typeSymbols, compilation.Assembly);
+        JsonRoot[] sortedTypes = GetSourceGeneratedTypes(typeSymbols, compilation.Assembly);
         if (sortedTypes.Length == 0)
         {
             File.Delete(arguments.OutputPath);
@@ -105,7 +105,7 @@ internal static class Program
     /// Builds the source file that declares all eligible <see cref="JsonSerializableAttribute"/> roots
     /// and registers the generated resolver at module initialization time.
     /// </summary>
-    private static string GenerateContextSource(string[] sortedTypes)
+    private static string GenerateContextSource(JsonRoot[] sortedTypes)
     {
         StringBuilder builder = new();
         builder.AppendLine(GeneratedSourceHeader).AppendLine(
@@ -125,7 +125,10 @@ internal static class Program
             """);
         for (int i = 0; i < sortedTypes.Length; i++)
         {
-            builder.AppendLine($"[JsonSerializable(typeof({sortedTypes[i]}))]");
+            JsonRoot root = sortedTypes[i];
+            builder.AppendLine(root.TypeInfoPropertyName is null
+                ? $"[JsonSerializable(typeof({root.DisplayName}))]"
+                : $"[JsonSerializable(typeof({root.DisplayName}), TypeInfoPropertyName = \"{root.TypeInfoPropertyName}\")]");
         }
 
         builder.AppendLine(
@@ -143,10 +146,10 @@ internal static class Program
     }
 
     /// <summary>
-    /// Deduplicates discovered types and removes roots that would fail or collide in the generated
-    /// System.Text.Json metadata context.
+    /// Deduplicates discovered types, removes roots the generated System.Text.Json metadata context cannot
+    /// represent, and names types whose generated metadata members would otherwise collide.
     /// </summary>
-    private static string[] GetSourceGeneratedTypes(List<ITypeSymbol> typeSymbols, IAssemblySymbol currentAssembly)
+    private static JsonRoot[] GetSourceGeneratedTypes(List<ITypeSymbol> typeSymbols, IAssemblySymbol currentAssembly)
     {
         JsonContextEligibility eligibility = new(currentAssembly);
         Dictionary<string, JsonTypeCandidate> candidatesByDisplayName = new(StringComparer.Ordinal);
@@ -162,51 +165,91 @@ internal static class Program
             }
         }
 
-        HashSet<string> collidingGeneratedTypeNames = GetCollidingGeneratedTypeNames(candidatesByDisplayName.Values);
-        List<string> filteredTypes = new(candidatesByDisplayName.Count);
-        foreach (JsonTypeCandidate candidate in candidatesByDisplayName.Values)
+        Dictionary<string, HashSet<string>> displayNamesByGeneratedName = GetDisplayNamesByGeneratedName(candidatesByDisplayName.Values);
+        HashSet<string> unnameableCollisions = new(StringComparer.Ordinal);
+        Dictionary<string, string?> propertyNameByDisplayName = new(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, HashSet<string>> group in displayNamesByGeneratedName)
         {
-            if (!collidingGeneratedTypeNames.Overlaps(candidate.GeneratedTypeNames.Keys))
+            if (group.Value.Count < 2)
             {
-                filteredTypes.Add(candidate.DisplayName);
+                continue;
+            }
+
+            // A colliding type the context cannot name in typeof() keeps the collision, so its roots are dropped.
+            if (!group.Value.All(eligibility.IsAccessible))
+            {
+                unnameableCollisions.Add(group.Key);
+                continue;
+            }
+
+            foreach (string displayName in group.Value)
+            {
+                propertyNameByDisplayName[displayName] = GetUniquePropertyName(displayName);
             }
         }
 
-        filteredTypes.Sort(StringComparer.Ordinal);
-        return [.. filteredTypes];
+        foreach (JsonTypeCandidate candidate in candidatesByDisplayName.Values)
+        {
+            if (!unnameableCollisions.Overlaps(candidate.GeneratedTypeNames.Keys))
+            {
+                propertyNameByDisplayName.TryAdd(candidate.DisplayName, null);
+            }
+        }
+
+        JsonRoot[] roots = new JsonRoot[propertyNameByDisplayName.Count];
+        int index = 0;
+        foreach (KeyValuePair<string, string?> root in propertyNameByDisplayName)
+        {
+            roots[index++] = new JsonRoot(root.Key, root.Value);
+        }
+
+        Array.Sort(roots, static (left, right) => StringComparer.Ordinal.Compare(left.DisplayName, right.DisplayName));
+        return roots;
     }
 
-    private static HashSet<string> GetCollidingGeneratedTypeNames(IEnumerable<JsonTypeCandidate> candidates)
+    private static Dictionary<string, HashSet<string>> GetDisplayNamesByGeneratedName(IEnumerable<JsonTypeCandidate> candidates)
     {
-        Dictionary<string, string> ownerByGeneratedName = new(StringComparer.Ordinal);
-        HashSet<string> collisions = new(StringComparer.Ordinal);
-
+        Dictionary<string, HashSet<string>> displayNamesByGeneratedName = new(StringComparer.Ordinal);
         foreach (JsonTypeCandidate candidate in candidates)
         {
             foreach (KeyValuePair<string, string> generatedTypeName in candidate.GeneratedTypeNames)
             {
-                if (!ownerByGeneratedName.TryAdd(generatedTypeName.Key, generatedTypeName.Value) &&
-                    ownerByGeneratedName[generatedTypeName.Key] != generatedTypeName.Value)
+                if (!displayNamesByGeneratedName.TryGetValue(generatedTypeName.Key, out HashSet<string>? displayNames))
                 {
-                    collisions.Add(generatedTypeName.Key);
+                    displayNamesByGeneratedName[generatedTypeName.Key] = displayNames = new(StringComparer.Ordinal);
                 }
+
+                displayNames.Add(generatedTypeName.Value);
             }
         }
 
-        return collisions;
+        return displayNamesByGeneratedName;
+    }
+
+    /// <summary>Derives a metadata property name from the namespace-qualified type name, which is unique per type.</summary>
+    private static string GetUniquePropertyName(string displayName)
+    {
+        StringBuilder builder = new(displayName.Length);
+        foreach (char c in displayName.Replace("global::", string.Empty, StringComparison.Ordinal).Replace("[]", "Array", StringComparison.Ordinal))
+        {
+            builder.Append(char.IsLetterOrDigit(c) ? c : '_');
+        }
+
+        return builder.ToString();
     }
 
     private sealed record JsonTypeCandidate(string DisplayName, Dictionary<string, string> GeneratedTypeNames);
+
+    private sealed record JsonRoot(string DisplayName, string? TypeInfoPropertyName);
 
     /// <summary>
     /// Mirrors the constraints that matter for a generated <see cref="JsonSerializerContext"/> emitted
     /// into the target assembly.
     /// </summary>
     /// <remarks>
-    /// A root is accepted only when it is owned by the target assembly, or is a framework/generic type
-    /// whose payload is owned by that assembly. The traversal also rejects metadata graphs that require
-    /// inaccessible custom converters or that produce colliding generated metadata member names.
-    /// Rejected roots continue to use the normal reflection resolver path.
+    /// A root is accepted when the target assembly can name it. The traversal rejects metadata graphs that
+    /// require inaccessible custom converters; those types stay with the context of the assembly that owns
+    /// the converter, or with the reflection resolver.
     /// </remarks>
     private sealed class JsonContextEligibility(IAssemblySymbol currentAssembly)
     {
@@ -214,12 +257,16 @@ internal static class Program
         private const string SystemNamespace = "System";
 
         private readonly IAssemblySymbol _currentAssembly = currentAssembly;
+        private readonly Dictionary<string, bool> _accessibleByDisplayName = new(StringComparer.Ordinal);
+
+        /// <summary>Whether generated code in the target assembly can name a type the traversal visited.</summary>
+        public bool IsAccessible(string displayName) => _accessibleByDisplayName.TryGetValue(displayName, out bool accessible) && accessible;
 
         // The context is emitted into the target assembly, so roots that require inaccessible
         // converters or colliding generated metadata names must stay on the existing resolver path.
         public JsonTypeCandidate? CreateCandidate(ITypeSymbol type, string displayName)
         {
-            if (!IsRootOwnedByCurrentAssembly(type))
+            if (!IsAccessibleType(type))
             {
                 return null;
             }
@@ -231,38 +278,31 @@ internal static class Program
                 : null;
         }
 
-        private bool IsRootOwnedByCurrentAssembly(ITypeSymbol type) =>
-            type switch
-            {
-                IArrayTypeSymbol arrayType => IsRootOwnedByCurrentAssembly(arrayType.ElementType),
-                INamedTypeSymbol namedType when namedType.SpecialType != SpecialType.None || IsSystemType(namedType) =>
-                    namedType.TypeArguments.Length == 0 || HasCurrentAssemblyTypeArgument(namedType),
-                INamedTypeSymbol namedType => SymbolEqualityComparer.Default.Equals(namedType.ContainingAssembly, _currentAssembly) ||
-                    namedType.IsGenericType && HasCurrentAssemblyTypeArgument(namedType),
-                _ => false
-            };
-
-        private bool HasCurrentAssemblyTypeArgument(INamedTypeSymbol type)
+        private bool IsAccessibleType(ITypeSymbol type)
         {
-            for (int i = 0; i < type.TypeArguments.Length; i++)
+            switch (type)
             {
-                if (IsCurrentAssemblyType(type.TypeArguments[i]))
-                {
+                case IArrayTypeSymbol arrayType:
+                    return IsAccessibleType(arrayType.ElementType);
+                case INamedTypeSymbol namedType:
+                    if (!IsAccessibleFromGeneratedContext(namedType))
+                    {
+                        return false;
+                    }
+
+                    for (int i = 0; i < namedType.TypeArguments.Length; i++)
+                    {
+                        if (!IsAccessibleType(namedType.TypeArguments[i]))
+                        {
+                            return false;
+                        }
+                    }
+
                     return true;
-                }
+                default:
+                    return false;
             }
-
-            return false;
         }
-
-        private bool IsCurrentAssemblyType(ITypeSymbol type) =>
-            type switch
-            {
-                IArrayTypeSymbol arrayType => IsCurrentAssemblyType(arrayType.ElementType),
-                INamedTypeSymbol namedType => SymbolEqualityComparer.Default.Equals(namedType.ContainingAssembly, _currentAssembly) ||
-                    HasCurrentAssemblyTypeArgument(namedType),
-                _ => false
-            };
 
         private bool CanGenerateMetadata(
             ITypeSymbol type,
@@ -281,6 +321,7 @@ internal static class Program
                 return true;
             }
 
+            _accessibleByDisplayName[displayName] = IsAccessibleType(type);
             if (!AddGeneratedTypeName(type, generatedTypeNames) ||
                 !HasOnlyAccessibleJsonConverterAttributes(type))
             {

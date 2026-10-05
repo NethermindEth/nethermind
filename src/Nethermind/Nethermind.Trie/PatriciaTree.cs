@@ -586,7 +586,7 @@ namespace Nethermind.Trie
                         if (node.IsExtension)
                         {
                             // Continue traversal to the child of the extension
-                            path.AppendMut(node.Key);
+                            if (TracksPath) path.AppendMut(node.Key);
                             TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
 
                             traverseStack.Push(new TraverseStackFrame()
@@ -671,7 +671,7 @@ namespace Nethermind.Trie
                 }
 
                 int nib = remainingKey[0];
-                path.AppendMut(nib);
+                if (TracksPath) path.AppendMut(nib);
                 TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
 
                 traverseStack.Push(new TraverseStackFrame()
@@ -693,7 +693,7 @@ namespace Nethermind.Trie
 
                 if (node.IsExtension)
                 {
-                    path.TruncateMut(path.Length - node.Key!.Length);
+                    if (TracksPath) path.TruncateMut(path.Length - node.Key!.Length);
 
                     if (ShouldUpdateChild(node, cStack.OriginalChild, child))
                     {
@@ -710,7 +710,7 @@ namespace Nethermind.Trie
                         }
                         else
                         {
-                            if (node.IsSealed) node = node.Clone();
+                            if (node.IsSealed) node = node.Unseal();
                             node.SetChild(0, child);
                         }
                     }
@@ -722,12 +722,12 @@ namespace Nethermind.Trie
                 int nib = cStack.ChildIdx;
 
                 bool hasRemove = false;
-                path.TruncateOne();
+                if (TracksPath) path.TruncateOne();
 
                 if (ShouldUpdateChild(node, cStack.OriginalChild, child))
                 {
                     if (child is null) hasRemove = true;
-                    if (node.IsSealed) node = node.Clone();
+                    if (node.IsSealed) node = node.Unseal();
 
                     node.SetChild(nib, child);
                 }
@@ -765,25 +765,12 @@ namespace Nethermind.Trie
         {
             Debug.Assert(node.IsBranch, "MaybeCombineNode requires a branch node.");
 
-            int onlyChildIdx = -1;
-            for (int i = 0; i < TrieNode.BranchesCount; i++)
-            {
-                if (!node.IsChildNull(i)) // presence check only, no resolution (useful for witness recording, stateless execution and perfs)
-                {
-                    if (onlyChildIdx == -1)
-                    {
-                        onlyChildIdx = i;
-                    }
-                    else
-                    {
-                        // 63%
-                        // 2+ non-null children, no need to collapse any node
-                        // Nothing resolved, nothing captured (for witness recording, stateless execution)
-                        return node;
-                    }
-                }
-
-            }
+            // Presence check only, no resolution (useful for witness recording, stateless execution and perfs)
+            int onlyChildIdx = node.FindOnlyChild();
+            // 63%
+            // 2+ non-null children, no need to collapse any node
+            // Nothing resolved, nothing captured (for witness recording, stateless execution)
+            if (onlyChildIdx == TrieNode.SeveralChildren) return node;
 
             if (onlyChildIdx == -1) return null; // No child at all
 
@@ -941,7 +928,7 @@ namespace Nethermind.Trie
                             }
 
                             // Continue traversal to the child of the extension
-                            path.AppendMut(node.Key);
+                            if (TracksPath) path.AppendMut(node.Key);
                             TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
                             remainingKey = remainingKey[node!.Key.Length..];
                             node = extensionChild;
@@ -959,7 +946,7 @@ namespace Nethermind.Trie
                     }
 
                     int nib = remainingKey[0];
-                    path.AppendMut(nib);
+                    if (TracksPath) path.AppendMut(nib);
                     TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
 
                     // Continue loop with child as current node
@@ -969,7 +956,7 @@ namespace Nethermind.Trie
             }
             finally
             {
-                path.TruncateMut(originalPathLength);
+                if (TracksPath) path.TruncateMut(originalPathLength);
             }
         }
 

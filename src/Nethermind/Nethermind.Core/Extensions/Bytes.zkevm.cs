@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Core.Extensions;
 
@@ -68,15 +66,8 @@ public static unsafe partial class Bytes
             return;
         }
 
-        if ((uint)source.Length > (uint)destination.Length) ThrowDestinationTooShort();
-        Memmove(ref MemoryMarshal.GetReference(destination), ref MemoryMarshal.GetReference(source), (nuint)source.Length);
+        Accelerators.Memmove(source, destination);
     }
-
-    [DllImport("__Internal", EntryPoint = "memmove", ExactSpelling = true), SuppressGCTransition]
-    private static extern void Memmove(ref byte destination, ref byte source, nuint length);
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowDestinationTooShort() => throw new ArgumentException("Destination is too short.", "destination");
 
     /// <summary>Compares the 32 bytes at <paramref name="a"/> with the 32 bytes at <paramref name="b"/>.</summary>
     /// <remarks>
