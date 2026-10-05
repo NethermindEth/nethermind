@@ -960,9 +960,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         _config.StaticPeers?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
 
     /// <summary>Refuses a static peer the maintenance round could never dial.</summary>
-    /// <remarks>The libp2p dial needs the <c>/p2p/</c> peer id, and it keeps a dial whose name resolution failed as the
-    /// answer for that peer id from then on, so a static peer must name its IP address.</remarks>
-    /// <exception cref="InvalidConfigurationException">An address does not decode, has no peer id, or names a DNS host.</exception>
+    /// <exception cref="InvalidConfigurationException">An address does not decode, has no peer id, or uses an unsupported address form.</exception>
     private static void ValidateStaticPeers(string[] addresses)
     {
         foreach (string address in addresses)
@@ -977,9 +975,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 throw new InvalidConfigurationException($"BeaconChain.StaticPeers entry '{address}' is not a multiaddr: {e.Message}", ExitCodes.ForbiddenOptionValue);
             }
 
-            if (multiaddress.GetPeerId() is null || !(multiaddress.Has<IP4>() || multiaddress.Has<IP6>()))
+            bool supported = multiaddress.Has<IP4>() || multiaddress.Has<IP6>()
+                || address.Split('/') is ["", "dns" or "dns4" or "dns6", _, "tcp", _, "p2p", _];
+            if (multiaddress.GetPeerId() is null || !supported)
             {
-                throw new InvalidConfigurationException($"BeaconChain.StaticPeers entry '{address}' must be /ip4 or /ip6 with a /p2p/<peer-id> component.", ExitCodes.ForbiddenOptionValue);
+                throw new InvalidConfigurationException($"BeaconChain.StaticPeers entry '{address}' must name an IP address or a DNS TCP endpoint with a /p2p/<peer-id> component.", ExitCodes.ForbiddenOptionValue);
             }
         }
     }
