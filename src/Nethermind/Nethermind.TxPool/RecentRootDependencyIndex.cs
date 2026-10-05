@@ -57,6 +57,12 @@ internal sealed class RecentRootDependencyIndex
         lock (_lock) RemoveLocked(tx.Hash!.ValueHash256);
     }
 
+    /// <summary>Drops the record under <paramref name="hash"/>, if any.</summary>
+    public void Remove(Hash256 hash)
+    {
+        lock (_lock) RemoveLocked(hash.ValueHash256);
+    }
+
     /// <summary>Adds every indexed transaction to <paramref name="into"/>.</summary>
     public void CollectAll(List<Hash256> into)
     {

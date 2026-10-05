@@ -1207,7 +1207,11 @@ namespace Nethermind.TxPool
 
             foreach (Hash256 hash in unreferenceable)
             {
-                if (!RemoveTransaction(hash, out Transaction? pooled)) continue;
+                if (!RemoveTransaction(hash, out Transaction? pooled))
+                {
+                    _recentRootDependencies.Remove(hash);
+                    continue;
+                }
 
                 EvictedPending?.Invoke(this, new TxEventArgs(pooled));
                 _hashCache.DeleteFromLongTerm(hash);

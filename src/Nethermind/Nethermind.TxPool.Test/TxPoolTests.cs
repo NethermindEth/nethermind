@@ -3622,6 +3622,21 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public async Task Recent_root_dependency_of_a_transaction_the_pool_no_longer_holds_is_dropped_on_new_head()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true }));
+            _stateProvider.InsertCode(Eip8272Constants.RecentRootCode.ToArray(), Eip8272Constants.RecentRootAddress);
+            RecentRootDependencyIndex dependencies = (RecentRootDependencyIndex)typeof(TxPool)
+                .GetField("_recentRootDependencies", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(_txPool)!;
+            dependencies.Add(SignedFrameTx([FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple), SelfVerifyPrefixFrame()]));
+
+            await RaiseCanonicalHeadAndWait(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject);
+
+            Assert.That(dependencies.Count, Is.Zero);
+        }
+
         [TestCase(true, 1, TestName = "blob_carrying_recent_root_frame_is_retained_while_its_entry_verifies")]
         [TestCase(false, 0, TestName = "blob_carrying_recent_root_frame_is_evicted_when_its_entry_is_missing")]
         public async Task Blob_carrying_recent_root_frame_transaction_is_rechecked_on_new_head(bool committed, int expectedPending)
