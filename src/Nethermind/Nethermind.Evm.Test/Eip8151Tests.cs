@@ -351,7 +351,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
         using GethLikeTxTrace trace = tracer.BuildResult();
         Dictionary<AddressAsKey, NativePrestateTracerAccount> prestate = (Dictionary<AddressAsKey, NativePrestateTracerAccount>)trace.CustomTracerResult!.Value;
         Assert.That(prestate.TryGetValue(Signer, out NativePrestateTracerAccount? signer), Is.EqualTo(eip8151Enabled), "recovered account in prestate");
-        if (eip8151Enabled) Assert.That(signer!.Code, Is.EqualTo(ContractCode), "recovered account code");
+        if (eip8151Enabled) Assert.That(signer!.Code.ToArray(), Is.EqualTo(ContractCode), "recovered account code");
     }
 
     [Test]

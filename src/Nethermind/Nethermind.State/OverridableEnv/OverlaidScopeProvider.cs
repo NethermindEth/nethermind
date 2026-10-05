@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -44,9 +45,9 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public void UpdateRootHash() => inner.UpdateRootHash();
 
-        public void HintWarmAccount(in ValueAddress address) => inner.HintWarmAccount(in address);
+        public void HintWarmAccount(Address address) => inner.HintWarmAccount(address);
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => inner.HintWarmSlot(in address, in index);
+        public void HintWarmSlot(Address address, in UInt256 index) => inner.HintWarmSlot(address, in index);
 
         public Account? Get(Address address)
         {
@@ -81,6 +82,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => inner.WriteBackCommittedState(takeSnapshot);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => inner.HintBal(bal, sink);
+        public void ApplyBal(ReadOnlyBlockAccessList bal) => inner.ApplyBal(bal);
 
         public void Dispose() => inner.Dispose();
     }
@@ -89,8 +91,13 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
     /// costs what it did.</summary>
     private sealed class CodeDb(IWorldStateScopeProvider.ICodeDb inner, StateReadOverlaySlot slot) : IWorldStateScopeProvider.ICodeDb
     {
-        public byte[]? GetCode(in ValueHash256 codeHash) =>
-            inner.GetCode(in codeHash) ?? (slot.Current is { } overlay && overlay.TryGetCode(in codeHash, out byte[]? code) ? code : null);
+        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
+        {
+            ReadOnlyMemory<byte> code = inner.GetCode(in codeHash);
+            return !code.IsNull() ? code
+                : slot.Current is { } overlay && overlay.TryGetCode(in codeHash, out byte[]? overlaid) ? overlaid
+                : default;
+        }
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => inner.BeginCodeWrite();
 
@@ -129,5 +136,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         }
 
         public void HintSet(in UInt256 index) => inner.HintSet(in index);
+
+        public void HintSet(in UInt256 index, in UInt256 value) => inner.HintSet(in index, in value);
     }
 }

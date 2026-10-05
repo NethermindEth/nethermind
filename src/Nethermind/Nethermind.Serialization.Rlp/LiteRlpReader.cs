@@ -33,11 +33,6 @@ internal readonly ref struct LiteRlpReader(ReadOnlySpan<byte> data)
     public int PeekNextRlpLength(int position)
         => RlpHelpers.PeekNextRlpLength(_data, position);
 
-    /// <inheritdoc cref="RlpHelpers.CountItems(ReadOnlySpan{byte}, int, int, int)"/>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int CountItems(int position, int end, int maxSearch)
-        => RlpHelpers.CountItems(_data, position, end, maxSearch);
-
     /// <inheritdoc cref="RlpHelpers.SkipLength(ReadOnlySpan{byte}, int)" path="/summary"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipLength(scoped ref int position)
@@ -267,6 +262,16 @@ internal readonly ref struct LiteRlpReader(ReadOnlySpan<byte> data)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DecodeKeccak(scoped ref int position, out Hash256 keccak)
         => position = RlpHelpers.DecodeKeccak(_data, position, out keccak);
+
+    /// <inheritdoc cref="RlpHelpers.DecodeLogTopic0(ReadOnlySpan{byte}, int, out Hash256)" path="/summary"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecodeLogTopic0(scoped ref int position, out Hash256 topic)
+        => position = RlpHelpers.DecodeLogTopic0(_data, position, out topic);
+
+    /// <inheritdoc cref="RlpHelpers.DecodeZeroPrefixLogTopic0(ReadOnlySpan{byte}, int, out Hash256)" path="/summary"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecodeZeroPrefixLogTopic0(scoped ref int position, out Hash256 topic)
+        => position = RlpHelpers.DecodeZeroPrefixLogTopic0(_data, position, out topic);
 
     /// <inheritdoc cref="RlpHelpers.DecodeValueKeccakNonNull(ReadOnlySpan{byte}, int, out ValueHash256)" path="/summary"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

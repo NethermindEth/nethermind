@@ -246,7 +246,7 @@ public class ChainSpecParamsJson : IHasNamedForks
             if (label.Kind == kind && NamedForks.TryGetValue(label.LabelName, out JsonElement element))
             {
                 result ??= new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
-                result[label.LabelName] = element.Deserialize<T>(EthereumJsonSerializer.JsonOptions);
+                result[label.LabelName] = TypeInfoJsonSerializer.Deserialize<T>(element, EthereumJsonSerializer.JsonOptions);
             }
         }
         return result;

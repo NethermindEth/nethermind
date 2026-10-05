@@ -801,13 +801,13 @@
   },
   {
     "pname": "Nethermind.Numerics.Int256",
-    "version": "1.9.0",
-    "hash": "sha256-AlueeeeK61ptszw/pbyCzjbPEjGYdVNF+wKrzB/XuZw="
+    "version": "1.10.0",
+    "hash": "sha256-kQPmDuI075MaubUjoA7x54zrZswUTpDe2veyZ98EMgM="
   },
   {
     "pname": "Nethermind.RocksDbBindings",
-    "version": "11.8.1-preview.92",
-    "hash": "sha256-DXrV5LELNDICN6tK68/cFR0/dJuj9+bjZqfU29nGKUk="
+    "version": "11.8.1-preview.140",
+    "hash": "sha256-bs7Au30itZw16/Qkp1lx1cfGscRbllJzUjF5P86ryXA="
   },
   {
     "pname": "Nethermind.TurboPForBindings",

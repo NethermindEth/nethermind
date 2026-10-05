@@ -9,13 +9,16 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Xml;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Seq.Config;
 using NLog;
 using NLog.Common;
 using NLog.Config;
 using NLog.Layouts;
 using NLog.Targets;
 using NLog.Targets.Seq;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Runner.Logging;
 
@@ -173,6 +176,95 @@ public static class NLogConfigurator
         5 => 2, // Fatal -> critical
         _ => 6
     };
+
+    /// <summary>
+    /// Applies the <c>--log</c> level and <c>--logging-format</c> to the current configuration, and again every time
+    /// NLog swaps in a reloaded one.
+    /// </summary>
+    /// <remarks>
+    /// Call before constructing the <c>NLogManager</c>, so that <c>Init.LogRules</c> keep their own levels as at startup.
+    /// See <see cref="ReapplyOnReload"/> for how the order carries over to a reload.
+    /// </remarks>
+    /// <returns>A subscription that stops the re-application when disposed.</returns>
+    internal static IDisposable ConfigureCommandLineOverrides(string? logLevel, string loggingFormat, ILogger logger)
+    {
+        ApplyLogLevel();
+
+        try
+        {
+            ConfigureConsoleFormat(loggingFormat);
+        }
+        catch (ArgumentException ex)
+        {
+            // Startup already rejected the format, so a reload must not report it again.
+            logger.Error(ex.Message);
+            return ReapplyOnReload(logger, ApplyLogLevel);
+        }
+
+        return ReapplyOnReload(logger, ApplyLogLevel, () => ConfigureConsoleFormat(loggingFormat));
+
+        void ApplyLogLevel()
+        {
+            // TODO: dynamically switch log levels from CLI
+            if (logLevel is not null) ConfigureLogLevels(logLevel);
+        }
+    }
+
+    /// <summary>
+    /// Applies the Seq settings to the current configuration, and again every time NLog swaps in a reloaded one.
+    /// </summary>
+    /// <remarks>Call after constructing the <c>NLogManager</c>, as startup applies Seq last.</remarks>
+    /// <returns>A subscription that stops the re-application when disposed.</returns>
+    internal static IDisposable ConfigureSeq(ISeqConfig seqConfig, ILogger logger)
+    {
+        ApplySeq();
+        return ReapplyOnReload(logger, ApplySeq);
+
+        void ApplySeq()
+        {
+            if (!seqConfig.MinLevel.Equals("Off", StringComparison.Ordinal))
+            {
+                ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
+            }
+            else
+            {
+                // Clear it up; otherwise, internally it will keep requesting localhost as `all` target includes this.
+                ClearSeqTarget();
+            }
+        }
+    }
+
+    /// <remarks>
+    /// <c>autoReload</c> on <c>NLog.config</c> replaces the whole configuration, discarding everything applied in code.
+    /// NLog invokes <see cref="LogManager.ConfigurationChanged"/> handlers in subscription order once the reloaded
+    /// configuration is live, so subscribing each override where startup applies it makes a reload replay the startup
+    /// sequence, with the <c>NLogManager</c> restoring the log file and <c>Init.LogRules</c> in between. A handler
+    /// subscribed later, such as the <c>NLogManager</c> created for a critical error, runs after all of them, so no
+    /// step relies on running last. Within this handler, each step's failure is logged on its own, so it neither skips the
+    /// handler's remaining steps nor escapes into NLog's reload. Shutdown raises the event without a configuration, which is left alone.
+    /// </remarks>
+    private static IDisposable ReapplyOnReload(ILogger logger, params Action[] steps)
+    {
+        void OnConfigurationChanged(object? sender, LoggingConfigurationChangedEventArgs args)
+        {
+            if (args.ActivatedConfiguration is null) return;
+
+            foreach (Action step in steps)
+            {
+                try
+                {
+                    step();
+                }
+                catch (Exception ex)
+                {
+                    if (logger.IsError) logger.Error("Failed to reapply a logging override after the NLog configuration changed.", ex);
+                }
+            }
+        }
+
+        LogManager.ConfigurationChanged += OnConfigurationChanged;
+        return new Reactive.AnonymousDisposable(() => LogManager.ConfigurationChanged -= OnConfigurationChanged);
+    }
 
     public static void ConfigureSeqBufferTarget(
         string url = "http://localhost:5341",

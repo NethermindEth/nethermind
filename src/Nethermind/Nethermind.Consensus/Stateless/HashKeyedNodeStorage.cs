@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -39,38 +41,60 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     private readonly Dictionary<NodeKey, byte[]> _overflow = [];
     private readonly NodeKey[] _keys;
     private readonly byte[][] _values;
-    private readonly int[] _starts;
+    // Per bucket, one past its newest entry's index: 0 when empty, Overflowed once it outgrew MaxBucketLength.
+    private readonly int[] _heads;
+    // Per entry, one past the index of the next older entry in its bucket: 0 at the end of the chain.
+    private readonly int[] _next;
     private readonly int _bucketMask;
     private const int MaxBucketLength = 8;
+    private const int Overflowed = -1;
 
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>
     public HashKeyedNodeStorage(ReadOnlySpan<byte[]> state)
     {
         int count = state.Length + 1;
         int bucketCount = (int)BitOperations.RoundUpToPowerOf2((uint)count);
-        _bucketMask = bucketCount - 1;
-        _starts = new int[bucketCount + 1];
-        NodeKey[] unsorted = new NodeKey[count];
+        // Locals rather than the fields, which the loop would reload after every call out of it.
+        int bucketMask = _bucketMask = bucketCount - 1;
+        int[] heads = _heads = new int[bucketCount];
+        int[] next = _next = new int[count];
+        NodeKey[] keys = _keys = new NodeKey[count];
+        byte[][] values = _values = new byte[count][];
+        state.CopyTo(values);
+        values[state.Length] = [128];
+        keys[state.Length] = EmptyRootKey;
+        // Hashed in a method of its own so the bucketing loop keeps its locals in registers.
+        HashNodes(values, state.Length, keys);
+
+        int[] lengths = new int[bucketCount];
         for (int i = 0; i < count; i++)
         {
-            NodeKey key = i == state.Length ? EmptyRootKey : new NodeKey(ValueKeccak.Compute(state[i]));
-            unsorted[i] = key;
-            _starts[key.Bucket(_bucketMask) + 1]++;
+            ref readonly NodeKey key = ref keys[i];
+            int bucket = key.Bucket(bucketMask);
+            int head = heads[bucket];
+            if (head != Overflowed && ++lengths[bucket] <= MaxBucketLength)
+            {
+                next[i] = head;
+                heads[bucket] = i + 1;
+                continue;
+            }
+
+            _overflow[key] = values[i];
+            if (head == Overflowed) continue;
+            for (int entry = head; entry != 0; entry = next[entry - 1])
+                _overflow[keys[entry - 1]] = values[entry - 1];
+            heads[bucket] = Overflowed;
         }
-        for (int i = 1; i < _starts.Length; i++) _starts[i] += _starts[i - 1];
-        int[] cursors = (int[])_starts.Clone();
-        _keys = new NodeKey[count];
-        _values = new byte[count][];
-        for (int i = 0; i < count; i++)
-        {
-            NodeKey key = unsorted[i];
-            byte[] value = i == state.Length ? [128] : state[i];
-            int bucket = key.Bucket(_bucketMask);
-            int slot = cursors[bucket]++;
-            _keys[slot] = key;
-            _values[slot] = value;
-            if (_starts[bucket + 1] - _starts[bucket] > MaxBucketLength) _overflow[key] = value;
-        }
+    }
+
+    /// <summary>Keys each of the first <paramref name="count"/> of <paramref name="nodes"/> by its keccak, at the same index of <paramref name="keys"/>.</summary>
+    /// <remarks>Through <see cref="KeccakHash.ComputeHash256OfWitnessNodes"/>, which lets the commit re-hash an edited
+    /// branch from its first changed rate block; <see cref="Find"/> tells it which node it hands out.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void HashNodes(byte[][] nodes, int count, Span<NodeKey> keys)
+    {
+        Debug.Assert(Unsafe.SizeOf<NodeKey>() == Unsafe.SizeOf<ValueHash256>(), "NodeKey is reinterpreted as its keccak");
+        KeccakHash.ComputeHash256OfWitnessNodes(nodes, count, MemoryMarshal.Cast<NodeKey, ValueHash256>(keys));
     }
 
     /// <inheritdoc/>
@@ -87,19 +111,24 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     /// <remarks>
     /// <see cref="NodeStorage"/> falls back to a half-path key when the hash key misses. Nothing writes
     /// a half-path key under <see cref="INodeStorage.KeyScheme.Hash"/>, so that probe can only miss here.
+    /// The keccak is viewed as a <see cref="NodeKey"/>, which wraps it alone, rather than copied into one: a copy
+    /// holds its four words in callee-saved registers across the whole inlined resolve.
     /// </remarks>
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
-        => Find(new NodeKey(keccak));
+        => Find(in Unsafe.As<ValueHash256, NodeKey>(ref Unsafe.AsRef(in keccak)));
 
-    private byte[]? Find(NodeKey key)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[]? Find(in NodeKey key)
     {
         if (_nodes.Count != 0 && _nodes.TryGetValue(key, out byte[]? value)) return value;
-        int bucket = key.Bucket(_bucketMask);
-        int start = _starts[bucket];
-        int end = _starts[bucket + 1];
-        if (end - start > MaxBucketLength) return _overflow.GetValueOrDefault(key);
-        for (int i = end - 1; i >= start; i--)
-            if (_keys[i].Equals(key)) return _values[i];
+        int entry = _heads[key.Bucket(_bucketMask)];
+        if (entry == Overflowed) return _overflow.GetValueOrDefault(key);
+        for (; entry != 0; entry = _next[entry - 1])
+            if (_keys[entry - 1].Equals(key))
+            {
+                KeccakHash.NoteWitnessNodeLoaded(entry);
+                return _values[entry - 1];
+            }
         return null;
     }
 
@@ -173,7 +202,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     {
         private readonly ValueHash256 _hash = hash;
 
-        internal int Bucket(int mask) => (int)Unsafe.ReadUnaligned<uint>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
+        internal int Bucket(int mask) => (int)Unsafe.ReadUnaligned<ulong>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
 
         public bool Equals(NodeKey other)
         {

@@ -51,14 +51,12 @@ public class StatelessBlockProcessingEnv(
     // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
     private const int CodeCacheCapacity = 512;
 
-    /// <summary>Controls whether replay records derived requests or preserves the supplied requests hash.</summary>
-    public IExecutionRequestsProcessorFactory ExecutionRequestsProcessorFactory { get; init; } = StatelessExecutionRequestsProcessorFactory.Instance;
-
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
     public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
         new WorldState(
             new TrieStoreScopeProvider(
+                // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
                 new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
             ),
             logManager
@@ -81,8 +79,7 @@ public class StatelessBlockProcessingEnv(
             },
             new WithdrawalProcessorFactory(logManager),
             new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
-                codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
-            executionRequestsProcessorFactory: ExecutionRequestsProcessorFactory
+                codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache))
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -115,7 +112,7 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            ExecutionRequestsProcessorFactory.Create(txProcessor),
+            new ExecutionRequestsProcessor(txProcessor),
             blockAccessListManager
         );
     }

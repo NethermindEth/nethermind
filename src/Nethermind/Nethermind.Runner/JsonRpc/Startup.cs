@@ -34,10 +34,8 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
-using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
@@ -163,9 +161,6 @@ public class Startup : IStartup
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, JsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
-        EthereumJsonSerializer.AddTypeInfoResolver(FacadeJsonContext.Default, JsonTypeInfoResolverPriority.Facade);
-        EthereumJsonSerializer.AddTypeInfoResolver(EthRpcJsonContext.Default, JsonTypeInfoResolverPriority.EthRpc);
-        EthereumJsonSerializer.AddTypeInfoResolver(JsonRpcResponseJsonContext.Default, JsonTypeInfoResolverPriority.JsonRpcResponse);
 
         EthereumJsonSerializer.WarmupSerializer(
             new JsonRpcSuccessResponse { Id = 0 },
@@ -497,6 +492,13 @@ public class Startup : IStartup
                 responseSink,
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
+        }
+        catch (Exception e) when (responseSink is { BytesWritten: > 0 })
+        {
+            bool responseStarted = ctx.Response.HasStarted;
+            responseSink.Abort(abortTransport: responseStarted);
+            if (!responseStarted || (e is not OperationCanceledException && e.InnerException is not OperationCanceledException)) throw;
+            if (_logger.IsDebug) _logger.Debug("Aborted an incomplete JSON-RPC response after cancellation.");
         }
         catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
         {

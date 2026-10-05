@@ -86,6 +86,7 @@ public class FrameTxPrefixSimulatorTests
             Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
             Assert.That(result.Indeterminate, Is.True);
             Assert.That(result.Reason, Does.Contain("budget"));
+            Assert.That(result.Yielded, Is.False);
             envFactory.DidNotReceive().Create();
         }
     }
@@ -292,6 +293,77 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [Test]
+    public void Simulate_TimedOutThenBlockStarts_IsStillChargedToTheSender()
+    {
+        ManualTimeProvider time = new();
+        bool processingBlock = false;
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, timeoutMs: 1, time: time);
+        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
+            .Returns<TransactionResult>(call =>
+            {
+                time.Advance(TimeSpan.FromMilliseconds(50));
+                bool cancelled = call.ArgAt<ITxTracer>(1).IsCancelled;
+                processingBlock = true;
+                if (cancelled) throw new OperationCanceledException();
+                return TransactionResult.Ok;
+            });
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx(), preempt: () => processingBlock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.Yielded, Is.False);
+            Assert.That(result.NodeBound, Is.False);
+            Assert.That(result.Reason, Does.Contain("timed out"));
+        }
+    }
+
+    [Test]
+    public void Simulate_PreemptedBeforeStart_DefersWithoutBuildingAnEnv()
+    {
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out _);
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx(), preempt: static () => true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.NodeBound, Is.True);
+            Assert.That(result.Reason, Does.Contain("preempted"));
+            Assert.That(result.Yielded, Is.True);
+            envFactory.DidNotReceive().Create();
+        }
+    }
+
+    [Test]
+    public void Simulate_PreemptedMidRun_DefersEvenAfterTheBlockEnds()
+    {
+        bool processingBlock = false;
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor);
+        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
+            .Returns<TransactionResult>(call =>
+            {
+                processingBlock = true;
+                bool cancelled = call.ArgAt<ITxTracer>(1).IsCancelled;
+                processingBlock = false;
+                if (cancelled) throw new OperationCanceledException();
+                return TransactionResult.Ok;
+            });
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx(), preempt: () => processingBlock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.NodeBound, Is.True);
+            Assert.That(result.Reason, Does.Contain("preempted"));
+            Assert.That(result.Yielded, Is.True);
+        }
+    }
+
+    [Test]
     public void Simulate_AfterDispose_LeavesTheTransactionUndecided()
     {
         FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out _);
@@ -333,6 +405,7 @@ public class FrameTxPrefixSimulatorTests
         {
             Assert.That(result.Reason, Does.Contain("busy"));
             Assert.That(result.NodeBound, Is.True, "the peer did not choose when this node is busy");
+            Assert.That(result.Yielded, Is.True);
             Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "shedding must not wait for the timeout");
         }
     }
