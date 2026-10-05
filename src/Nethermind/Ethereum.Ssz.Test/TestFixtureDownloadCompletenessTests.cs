@@ -33,47 +33,31 @@ public class TestFixtureDownloadCompletenessTests
             () => TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
                 selective ? _ => true : null))!;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(ex.Message, Does.Contain("expected"));
-            Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.False,
-                "a truncated archive marked complete is cached and read as green by every suite using it");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ex.Message, Does.Contain("expected"));
+        Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.False,
+            "a truncated archive marked complete is cached and read as green by every suite using it");
     }
 
-    [Test]
-    public void A_complete_body_with_trailing_tar_padding_is_marked_complete([Values] bool selective)
+    [TestCase(0, false)]
+    [TestCase(64 * 1024, false)]
+    [TestCase(64 * 1024, true)]
+    public void A_complete_body_extracts_and_is_marked_complete(int trailingPadding, bool selective)
     {
-        byte[] archive = BuildArchive(64 * 1024, EntryPath);
-        using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        using CacheCleanup cleanup = CreateCache("PaddedDownloadTest", out string suite, out string target);
-
-        TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
-            selective ? _ => true : null);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.True);
-            Assert.That(File.ReadAllBytes(Path.Combine(target, EntryPath.Replace('/', Path.DirectorySeparatorChar))),
-                Is.EqualTo(EntryContent));
-        });
-    }
-
-    [Test]
-    public void A_complete_body_extracts_and_is_marked_complete()
-    {
-        byte[] archive = BuildArchive();
+        byte[] archive = BuildArchive(trailingPadding, EntryPath);
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
         using CacheCleanup cleanup = CreateCache("CompleteDownloadTest", out string suite, out string target);
-        string extracted = TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz");
+        string extracted = TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
+            selective ? _ => true : null);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(File.ReadAllLines(Path.Combine(target, ".completed")), Is.EqualTo(new[] { "v0", EntrySubtree }),
-                "the marker must record the version and every extracted subtree, so a later loss of a subtree is detectable");
-            Assert.That(File.ReadAllBytes(Path.Combine(extracted, EntryPath.Replace('/', Path.DirectorySeparatorChar))),
-                Is.EqualTo(EntryContent));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.True);
+        Assert.That(File.ReadAllLines(Path.Combine(target, ".completed")), Is.EqualTo(new[] { "v0", EntrySubtree }),
+            "the marker must record the version and every extracted subtree, so a later loss of a subtree is detectable");
+        Assert.That(File.ReadAllBytes(Path.Combine(target, EntryPath.Replace('/', Path.DirectorySeparatorChar))),
+            Is.EqualTo(EntryContent));
+        Assert.That(File.ReadAllBytes(Path.Combine(extracted, EntryPath.Replace('/', Path.DirectorySeparatorChar))),
+            Is.EqualTo(EntryContent));
     }
 
     [Test]
@@ -87,14 +71,12 @@ public class TestFixtureDownloadCompletenessTests
 
         string extracted = TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz");
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(server.RequestCount, Is.EqualTo(1),
-                "a marker over an empty directory must not short-circuit the download: nothing under it can be run");
-            Assert.That(File.Exists(Path.Combine(extracted, EntryPath.Replace('/', Path.DirectorySeparatorChar))), Is.True,
-                "the re-download must actually repopulate the cache");
-            Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.True);
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(server.RequestCount, Is.EqualTo(1),
+            "a marker over an empty directory must not short-circuit the download: nothing under it can be run");
+        Assert.That(File.Exists(Path.Combine(extracted, EntryPath.Replace('/', Path.DirectorySeparatorChar))), Is.True,
+            "the re-download must actually repopulate the cache");
+        Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.True);
     }
 
     [TestCase(false)]
@@ -129,13 +111,11 @@ public class TestFixtureDownloadCompletenessTests
         using StubArchiveServer second = new(archive, contentLength: archive.Length);
         TestFixtureDownloader.EnsureDownloaded(suite, second.UrlTemplate, "v0", "general.tar.gz");
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(second.RequestCount, Is.EqualTo(1),
-                "a marker over a cache missing a recorded subtree must not short-circuit the download: every suite over that subtree runs zero vectors");
-            Assert.That(File.Exists(Path.Combine(target, SecondEntryPath.Replace('/', Path.DirectorySeparatorChar))), Is.True,
-                "the re-download must restore the missing subtree");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(second.RequestCount, Is.EqualTo(1),
+            "a marker over a cache missing a recorded subtree must not short-circuit the download: every suite over that subtree runs zero vectors");
+        Assert.That(File.Exists(Path.Combine(target, SecondEntryPath.Replace('/', Path.DirectorySeparatorChar))), Is.True,
+            "the re-download must restore the missing subtree");
     }
 
     [Test]
@@ -151,14 +131,12 @@ public class TestFixtureDownloadCompletenessTests
 
         TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", _ => true, "ssz_static=*;operations=fulu");
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(server.RequestCount, Is.EqualTo(1),
-                "a marker for a narrower filter must not short-circuit the download: the subtrees the wider filter keeps are missing");
-            Assert.That(File.Exists(staleEntry), Is.False, "the stale extraction must be replaced, not merged into");
-            Assert.That(File.ReadAllLines(Path.Combine(target, ".completed"))[0], Is.EqualTo("ssz_static=*;operations=fulu"),
-                "the marker must record the filter that produced the extraction");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(server.RequestCount, Is.EqualTo(1),
+            "a marker for a narrower filter must not short-circuit the download: the subtrees the wider filter keeps are missing");
+        Assert.That(File.Exists(staleEntry), Is.False, "the stale extraction must be replaced, not merged into");
+        Assert.That(File.ReadAllLines(Path.Combine(target, ".completed"))[0], Is.EqualTo("ssz_static=*;operations=fulu"),
+            "the marker must record the filter that produced the extraction");
     }
 
     [TestCase(null, 0)]
@@ -175,11 +153,9 @@ public class TestFixtureDownloadCompletenessTests
 
         TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", null, extractionTag);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(server.RequestCount, Is.EqualTo(expectedDownloads));
-            Assert.That(File.ReadAllLines(Path.Combine(target, ".completed"))[0], Is.EqualTo(extractionTag ?? "v0"));
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(server.RequestCount, Is.EqualTo(expectedDownloads));
+        Assert.That(File.ReadAllLines(Path.Combine(target, ".completed"))[0], Is.EqualTo(extractionTag ?? "v0"));
     }
 
     [TestCase(true)]
@@ -193,12 +169,10 @@ public class TestFixtureDownloadCompletenessTests
             () => TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
                 selective ? _ => false : null))!;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(ex.Message, Does.Contain("no files"));
-            Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.False,
-                "an empty extraction marked complete is exactly the cache state every suite then reads as green");
-        });
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(ex.Message, Does.Contain("no files"));
+        Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.False,
+            "an empty extraction marked complete is exactly the cache state every suite then reads as green");
     }
 
     // Cache roots are shared across processes; fixed suite names let concurrent runs delete each other's directories.
@@ -224,17 +198,19 @@ public class TestFixtureDownloadCompletenessTests
 
     private static byte[] BuildArchive(params string[] entryPaths) => BuildArchive(0, entryPaths);
 
-    private static byte[] BuildArchive(int trailingPadding, params string[] entryPaths)
+    private static byte[] BuildArchive(int trailingPadding, params string[] entryPaths) => BuildArchive(trailingPadding, writer =>
+    {
+        foreach (string entryPath in entryPaths)
+        {
+            PaxTarEntry entry = new(TarEntryType.RegularFile, entryPath) { DataStream = new MemoryStream(EntryContent) };
+            writer.WriteEntry(entry);
+        }
+    });
+
+    private static byte[] BuildArchive(int trailingPadding, Action<TarWriter> writeEntries)
     {
         using MemoryStream tar = new();
-        using (TarWriter writer = new(tar, leaveOpen: true))
-        {
-            foreach (string entryPath in entryPaths)
-            {
-                PaxTarEntry entry = new(TarEntryType.RegularFile, entryPath) { DataStream = new MemoryStream(EntryContent) };
-                writer.WriteEntry(entry);
-            }
-        }
+        using (TarWriter writer = new(tar, leaveOpen: true)) writeEntries(writer);
 
         tar.SetLength(tar.Length + trailingPadding);
         tar.Position = 0;
@@ -247,23 +223,8 @@ public class TestFixtureDownloadCompletenessTests
         return gz.ToArray();
     }
 
-    private static byte[] BuildDirectoryOnlyArchive()
-    {
-        using MemoryStream tar = new();
-        using (TarWriter writer = new(tar, leaveOpen: true))
-        {
-            writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "tests/general/phase0/ssz_generic/"));
-        }
-
-        tar.Position = 0;
-        using MemoryStream gz = new();
-        using (GZipStream compressor = new(gz, CompressionMode.Compress, leaveOpen: true))
-        {
-            tar.CopyTo(compressor);
-        }
-
-        return gz.ToArray();
-    }
+    private static byte[] BuildDirectoryOnlyArchive() => BuildArchive(0,
+        writer => writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "tests/general/phase0/ssz_generic/")));
 
     // HttpListener requires a URL reservation on Windows.
     private sealed class StubArchiveServer : IDisposable
