@@ -114,7 +114,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         ForcedNumberConversion.Value = NumberConversion.Raw;
         try
         {
-            return new RenderedJson(JsonSerializer.SerializeToUtf8Bytes(scriptResult, EthereumJsonSerializer.JsonOptions));
+            return new RenderedJson(TypeInfoJsonSerializer.SerializeToUtf8Bytes(scriptResult, EthereumJsonSerializer.JsonOptions));
         }
         finally
         {

@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Processing;
 /// Implementation is split across partial files by concern:
 ///   * BlockAccessListManager.cs                       — lifecycle, per-tx hot path, fields
 ///   * BlockAccessListManager.Validation.cs            — incremental + per-tx 2D inclusion check
-///   * BlockAccessListManager.StateChanges.cs          — ApplyStateChanges, SetBlockAccessList
+///   * BlockAccessListManager.StateChanges.cs          — SetBlockAccessList
 ///   * BlockAccessListManager.SystemContracts.cs       — beacon root, blockhash, withdrawals, requests
 ///   * BlockAccessListManager.TxProcessorPool.cs       — nested pool / processor / world-state types
 /// </summary>
@@ -278,6 +278,10 @@ public partial class BlockAccessListManager(
         if (ExecutionFlags.ParallelExecution && _parallelTxProcessorWithWorldStateManager!.IsValueCreated)
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
+        }
+        if (_sequentialTxProcessorWithWorldStateManager.IsValueCreated)
+        {
+            _sequentialTxProcessorWithWorldStateManager.Value.Dispose();
         }
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);

@@ -80,7 +80,7 @@ public class DebugRpcModule(
         Hash256? blockHash = debugBridge.GetTransactionBlockHash(transactionHash);
         if (blockHash is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find block hash for transaction {transactionHash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
         TryGetHeaderAndCheckState(blockHash!, out ResultWrapper<GethLikeTxTrace>? headerError);
@@ -102,7 +102,7 @@ public class DebugRpcModule(
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {transactionHash}, result: trace");

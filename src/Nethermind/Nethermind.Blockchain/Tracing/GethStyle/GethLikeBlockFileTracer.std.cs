@@ -8,15 +8,16 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Serialization.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
 using System.IO.Abstractions;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
+#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>, IDisposable, IGethFileTraceSink
 {
     private const string Alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -30,7 +31,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private Utf8JsonWriter? _jsonWriter;
     private readonly GethTraceOptions _options;
     private readonly IReleaseSpec _spec;
-    private readonly JsonSerializerOptions _serializerOptions = new();
+    private readonly JsonSerializerOptions _serializerOptions = new() { TypeInfoResolver = TracingJsonContext.Default };
 
     /// <summary>
     /// Creates a file tracer for the transactions in a block.
@@ -114,7 +115,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private void DumpTraceEntry(GethTxFileTraceEntry entry)
     {
         if (!LimitReached)
-            JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+            TypeInfoJsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
         if (LimitReached) _txTracer?.StopCapture();
     }
 
@@ -123,7 +124,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         if (LimitReached)
             return;
 
-        JsonSerializer.Serialize(_jsonWriter, new FileTraceSummary(output, gasUsed, error), _serializerOptions);
+        TypeInfoJsonSerializer.Serialize(_jsonWriter, new FileTraceSummary(output, gasUsed, error), _serializerOptions);
         GethLikeTxTraceJsonLinesConverter.WriteLineEnd(_jsonWriter);
     }
 
@@ -148,7 +149,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     }
 
     public void Dispose() => DisposeFileStreamIfAny();
-    private readonly record struct FileTraceSummary(ReadOnlyMemory<byte> Output, ulong GasUsed, string? Error);
+    internal readonly record struct FileTraceSummary(ReadOnlyMemory<byte> Output, ulong GasUsed, string? Error);
 
     private sealed class FileTraceSummaryConverter : JsonConverter<FileTraceSummary>
     {

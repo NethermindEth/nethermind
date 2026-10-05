@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -81,7 +80,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _isEip6780Enabled = spec?.IsEip6780Enabled ?? false;
         _isEip7702Enabled = spec?.IsEip7702Enabled ?? false;
 
-        NativePrestateTracerConfig config = options.TracerConfig?.Deserialize<NativePrestateTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
+        NativePrestateTracerConfig config = TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
         _includeEmpty = config.IncludeEmpty;
         if (_diffMode && _includeEmpty)

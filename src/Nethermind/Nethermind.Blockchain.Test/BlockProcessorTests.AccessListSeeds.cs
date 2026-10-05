@@ -364,6 +364,8 @@ public partial class BlockProcessorTests
         using BasicTestBlockchain chain = await CreateAccessListSeedChain();
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = Historical(await AddSharedStateBlock(chain));
+        // The block's own list is written in the background and served while pending, so drain it before corrupting the stored one.
+        chain.Container.Resolve<IDeferredBlockDataWriter>().Drain();
         chain.Container.Resolve<IBlockAccessListStore>().Insert((ulong)block.Number, block.Hash!, new byte[] { 0xf8, 0xff, 0x01 });
         Hash256 target = block.Transactions[^1].Hash!;
         GethTraceOptions options = new() { TxHash = target, Tracer = "prestateTracer", TracerConfig = JsonDocument.Parse("{\"diffMode\":true}").RootElement };

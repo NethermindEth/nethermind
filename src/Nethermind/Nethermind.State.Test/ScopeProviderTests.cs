@@ -17,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -417,7 +418,7 @@ public class ScopeProviderTests(bool useFlat)
         else
         {
             using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
-            Assert.That(scope.CodeDb.GetCode(TestItem.KeccakA).ToArray(), Is.EqualTo([1, 2, 3]));
+            Assert.That(scope.CodeDb.GetCode(TestItem.KeccakA), Is.SequenceEqualTo<byte>([1, 2, 3]));
         }
     }
 
@@ -476,7 +477,9 @@ public class ScopeProviderTests(bool useFlat)
             .TestObject;
 
         // Collect results via HintBal(bal, sink) — the merged trie warmup + BAL read pass
-        CollectingBalSink sink = new();
+        CollectingBalSink sink = new(useFlat ? null : () =>
+            Assert.That(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0,
+                Is.EqualTo(Core.Cpu.RuntimeInformation.IsSingleProcessor ? 0 : Environment.ProcessorCount)));
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             scope.HintBal(bal, sink).Wait();
@@ -719,6 +722,120 @@ public class ScopeProviderTests(bool useFlat)
             Assert.That(consumer.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)400));
             consumer.Get(in SlotA1, out UInt256 storageValue1);
             Assert.That(storageValue1.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 7 }));
+        }
+    }
+
+    [Test]
+    public void Test_ApplyBal_BypassesTheCachesInScope_AndWritesTheBalsFinalValuesBack()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(1, 400))
+                .WithStorageChanges(SlotA1.Index, new StorageChange(1, 7))
+                .TestObject)
+            .TestObject;
+
+        UInt256 balanceReadInScope = default;
+        UInt256 slotReadInScope = default;
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            ws.ApplyBal(bal);
+            ws.RecalculateStateRoot();
+            balanceReadInScope = ws.GetBalance(TestItem.AddressA);
+            ws.Get(in SlotA1, out slotReadInScope);
+        });
+
+        bool carried = caches.PrepareFor(newRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(balanceReadInScope, Is.EqualTo((UInt256)400), "the pre-block cached account must not hide the applied one");
+            Assert.That(slotReadInScope, Is.EqualTo((UInt256)7), "the pre-block cached slot must not hide the applied one");
+            Assert.That(carried, Is.True, "the caches describe the committed state");
+            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)400));
+            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
+            Assert.That(CachedAccount(caches, TestItem.AddressC).Balance, Is.EqualTo((UInt256)300), "untouched entries survive");
+        }
+    }
+
+    [Test]
+    public void Test_ApplyBal_WritesBack_TheChangesCommittedBeforeIt_UnderTheBalsValues()
+    {
+        StorageCell slotC6 = new(TestItem.AddressC, 6);
+        byte[] code = [0x60, 0x00];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressC)
+                .WithBalanceChanges(new BalanceChange(1, 900))
+                .WithStorageChanges(slotC6.Index, new StorageChange(1, 11))
+                .TestObject)
+            .TestObject;
+
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            // Writes the BAL never recorded, like AuRa's contract rewrites: A keeps them, and so does C where the BAL
+            // leaves them alone (its code and slot 5), while its balance and slot 6 are superseded by the BAL.
+            ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _);
+            ws.Set(in SlotA1, (UInt256)7);
+            ws.AddToBalance(TestItem.AddressC, 1, Cancun.Instance, out _);
+            ws.InsertCode(TestItem.AddressC, code, Cancun.Instance);
+            ws.Set(in SlotC5, (UInt256)9);
+            ws.Set(in slotC6, (UInt256)12);
+            ws.Commit(Cancun.Instance);
+            ws.ApplyBal(bal);
+            ws.RecalculateStateRoot();
+        });
+
+        using Context reference = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 referenceRoot = CommitThroughConsumer(WarmConsumerCaches(reference, CommitBaseState(reference)).Consumer, baseRoot, ws =>
+        {
+            ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _);
+            ws.Set(in SlotA1, (UInt256)7);
+            ws.AddToBalance(TestItem.AddressC, 600, Cancun.Instance, out _);
+            ws.InsertCode(TestItem.AddressC, code, Cancun.Instance);
+            ws.Set(in SlotC5, (UInt256)9);
+            ws.Set(in slotC6, (UInt256)11);
+        });
+
+        bool carried = caches.PrepareFor(newRoot);
+        // C's slots may either be cached with their final values or not be served from the cache at all.
+        byte[] servedC5 = ServedFromCache(caches, in SlotC5) ? CachedSlot(caches, in SlotC5) : [9];
+        byte[] servedC6 = ServedFromCache(caches, in slotC6) ? CachedSlot(caches, in slotC6) : [11];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newRoot, Is.EqualTo(referenceRoot), "the BAL is applied over the changes committed before it");
+            Assert.That(carried, Is.True, "the caches describe the committed state");
+            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)400));
+            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
+            Assert.That(CachedAccount(caches, TestItem.AddressC).Balance, Is.EqualTo((UInt256)900));
+            Assert.That(CachedAccount(caches, TestItem.AddressC).CodeHash.ValueHash256, Is.EqualTo(codeHash));
+            Assert.That(servedC5, Is.EqualTo(new byte[] { 9 }), "a slot the BAL left alone keeps its pre-BAL value");
+            Assert.That(servedC6, Is.EqualTo(new byte[] { 11 }));
+        }
+
+        using (consumer.BeginScope(HeaderAt(newRoot, 2)))
+        {
+            consumer.Get(in SlotA1, out UInt256 slotA1);
+            consumer.Get(in SlotC5, out UInt256 slotC5);
+            consumer.Get(in slotC6, out UInt256 slotC6Value);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(consumer.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)400));
+                Assert.That(slotA1, Is.EqualTo((UInt256)7));
+                Assert.That(consumer.GetBalance(TestItem.AddressC), Is.EqualTo((UInt256)900));
+                Assert.That(consumer.GetCodeHash(TestItem.AddressC), Is.EqualTo(codeHash));
+                Assert.That(slotC5, Is.EqualTo((UInt256)9));
+                Assert.That(slotC6Value, Is.EqualTo((UInt256)11));
+            }
         }
     }
 
@@ -2226,7 +2343,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
 #nullable enable
-    private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
+    private class CollectingBalSink(Action? onAccountRead = null) : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
         public ConcurrentDictionary<Address, Account> Accounts { get; } = new();
         public ConcurrentDictionary<Address, byte> NullAccounts { get; } = new();
@@ -2234,6 +2351,7 @@ public class ScopeProviderTests(bool useFlat)
 
         public void OnAccountRead(Address address, Account? account)
         {
+            onAccountRead?.Invoke();
             if (account is null)
                 NullAccounts[address] = 0;
             else

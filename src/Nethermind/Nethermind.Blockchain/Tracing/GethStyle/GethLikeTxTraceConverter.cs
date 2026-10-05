@@ -43,7 +43,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
                 ForcedNumberConversion.Value = NumberConversion.Raw;
                 try
                 {
-                    trace.Gas = JsonSerializer.Deserialize<ulong>(ref reader, options);
+                    trace.Gas = TypeInfoJsonSerializer.Deserialize<ulong>(ref reader, options);
                 }
                 finally
                 {
@@ -56,21 +56,21 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             if (reader.ValueTextEquals("failed"u8))
             {
                 reader.Read();
-                trace.Failed = JsonSerializer.Deserialize<bool>(ref reader, options);
+                trace.Failed = TypeInfoJsonSerializer.Deserialize<bool>(ref reader, options);
                 continue;
             }
 
             if (reader.ValueTextEquals("returnValue"u8))
             {
                 reader.Read();
-                trace.ReturnValue = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+                trace.ReturnValue = TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
                 continue;
             }
 
             if (reader.ValueTextEquals("structLogs"u8))
             {
                 reader.Read();
-                trace.Entries = JsonSerializer.Deserialize<List<GethTxTraceEntry>>(ref reader, options);
+                trace.Entries = TypeInfoJsonSerializer.Deserialize<List<GethTxTraceEntry>>(ref reader, options);
                 continue;
             }
 
@@ -94,7 +94,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
 
         if (value.CustomTracerResult is not null)
         {
-            JsonSerializer.Serialize(writer, value.CustomTracerResult, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.CustomTracerResult, options);
             return;
         }
 
@@ -105,7 +105,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         try
         {
             writer.WritePropertyName("gas"u8);
-            JsonSerializer.Serialize(writer, value.Gas, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Gas, options);
         }
         finally
         {
@@ -113,10 +113,10 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         }
 
         writer.WritePropertyName("failed"u8);
-        JsonSerializer.Serialize(writer, value.Failed, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.Failed, options);
 
         writer.WritePropertyName("returnValue"u8);
-        JsonSerializer.Serialize(writer, value.ReturnValue, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.ReturnValue, options);
 
         writer.WritePropertyName("structLogs"u8);
         WriteEntriesWithStorageForwardPass(writer, value.Entries);
@@ -156,9 +156,10 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
     }
 
     /// <summary>Estimates opcode JSON size from lengths and counts without inspecting field contents.</summary>
+    /// <remarks>Fixed fields fit within 256 bytes. Opcode and error strings allow six bytes per escaped UTF-16 code unit;
+    /// return data is unescaped hex.</remarks>
     internal static long EstimateEntrySize(GethTxTraceEntry entry, int? storageCount) =>
-        // Fixed fields fit within 256 bytes; strings allow six bytes per escaped UTF-16 code unit.
-        256L + 6L * ((long)(entry.Opcode?.Length ?? 0) + (entry.Error?.Length ?? 0) + (entry.ReturnData?.Length ?? 0))
+        256L + 6L * ((long)(entry.Opcode?.Length ?? 0) + (entry.Error?.Length ?? 0)) + (entry.ReturnData?.Length ?? 0)
         + 69L * ((entry.Stack?.Length ?? 0) / EvmStack.WordSize + (long)(entry.Memory?.Length ?? 0) / EvmPooledMemory.WordSize)
         + 140L * (storageCount ?? entry.Storage?.Count ?? 0);
 

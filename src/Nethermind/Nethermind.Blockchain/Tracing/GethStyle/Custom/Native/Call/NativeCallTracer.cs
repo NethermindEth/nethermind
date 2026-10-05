@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -89,7 +88,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _frameTx = _isFrameTx ? tx : null;
         _frameTxSpec = _isFrameTx ? spec : null;
 
-        _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
+        _config = TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
         if (_config.WithLog)
         {

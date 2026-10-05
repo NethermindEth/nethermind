@@ -56,6 +56,7 @@ public class StatelessBlockProcessingEnv(
     public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
         new WorldState(
             new TrieStoreScopeProvider(
+                // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
                 new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
             ),
             logManager

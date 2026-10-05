@@ -366,8 +366,8 @@ namespace Nethermind.Db.Test
                 Assert.That(index, Is.LessThan(10), "bounded scan returned more rows than requested");
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(keys[100 + index]));
-                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(values[100 + index]));
+                    Assert.That(view.CurrentKey, Is.SequenceEqualTo(keys[100 + index]));
+                    Assert.That(view.CurrentValue, Is.SequenceEqualTo(values[100 + index]));
                 }
 
                 index++;
@@ -1472,8 +1472,8 @@ namespace Nethermind.Db.Test
                 bool found = sorted.TryGetCeiling(lowerBoundIncl, upperBoundExcl, key, out int keyLength, value, out int valueLength);
 
                 Assert.That(found, Is.True, $"write {i} must be visible to the pooled iterator ({because})");
-                Assert.That(key[..keyLength].ToArray(), Is.EqualTo([1, i]), $"key of {i} ({because})");
-                Assert.That(value[..valueLength].ToArray(), Is.EqualTo([i]), $"value of {i} ({because})");
+                Assert.That(key[..keyLength], Is.SequenceEqualTo<byte>([1, i]), $"key of {i} ({because})");
+                Assert.That(value[..valueLength], Is.SequenceEqualTo([i]), $"value of {i} ({because})");
             }
 
             void AssertFindsNothing(ReadOnlySpan<byte> lowerBoundIncl, ReadOnlySpan<byte> upperBoundExcl, string because)
@@ -1601,7 +1601,7 @@ namespace Nethermind.Db.Test
             byte[] value = new byte[] { 4, 5, 6 };
             _db.PutSpan(key, value);
             Span<byte> readSpan = _db.GetSpan(key);
-            Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+            Assert.That(readSpan, Is.SequenceEqualTo(new byte[] { 4, 5, 6 }));
 
             Assert.That(AllocatedSpan, Is.EqualTo(1));
             _db.DangerousReleaseMemory(readSpan);
@@ -1615,11 +1615,11 @@ namespace Nethermind.Db.Test
             byte[] value = new byte[] { 4, 5, 6 };
             _db.PutSpan(key, value);
             Span<byte> readSpan = _db.GetSpan(key);
-            Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+            Assert.That(readSpan, Is.SequenceEqualTo(new byte[] { 4, 5, 6 }));
 
             IMemoryOwner<byte> manager = new DbSpanMemoryManager(_db, readSpan);
             Memory<byte> theMemory = manager.Memory;
-            Assert.That(theMemory.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+            Assert.That(theMemory, Is.SequenceEqualTo(new byte[] { 4, 5, 6 }));
 
             Assert.That(AllocatedSpan, Is.EqualTo(1));
             manager.Dispose();
@@ -1766,8 +1766,8 @@ namespace Nethermind.Db.Test
                 i = 0;
                 while (view.MoveNext())
                 {
-                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo([i, i, i]));
-                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo([i, i, i]));
+                    Assert.That(view.CurrentKey, Is.SequenceEqualTo([i, i, i]));
+                    Assert.That(view.CurrentValue, Is.SequenceEqualTo([i, i, i]));
                     i++;
                 }
 
@@ -1804,18 +1804,18 @@ namespace Nethermind.Db.Test
                 Assert.That(kv.Get(key, flags: flag), Is.EqualTo(value.ToArray()));
 
                 Span<byte> buffer = kv.GetSpan(key, flag);
-                Assert.That(buffer.ToArray(), Is.EqualTo(value.ToArray()));
+                Assert.That(buffer, Is.SequenceEqualTo(value));
                 kv.DangerousReleaseMemory(buffer);
 
                 int length = kv.Get(key, outBuffer);
-                Assert.That(outBuffer[..length].ToArray(), Is.EqualTo(value.ToArray()));
+                Assert.That(outBuffer[..length], Is.SequenceEqualTo(value));
             }
 
             using ISortedView iterator = ((ISortedKeyValueStore)kv).GetViewBetween(key, CreateNextKey(key));
             if (iterator.MoveNext())
             {
-                Assert.That(iterator.CurrentKey.ToArray(), Is.EqualTo(key.ToArray()));
-                Assert.That(iterator.CurrentValue.ToArray(), Is.EqualTo(value.ToArray()));
+                Assert.That(iterator.CurrentKey, Is.SequenceEqualTo(key));
+                Assert.That(iterator.CurrentValue, Is.SequenceEqualTo(value));
             }
 
             Assert.That(iterator.MoveNext(), Is.False);

@@ -62,6 +62,11 @@ public partial class PatriciaTree
         flags |= Flags.DoNotParallelize;
 #endif
 
+        using ParallelUnbalancedWork.WorkerScope? workers = !Core.Cpu.RuntimeInformation.IsSingleProcessor
+            && entries.Count >= MinEntriesToParallelizeThreshold && (flags & Flags.DoNotParallelize) == 0
+            ? ParallelUnbalancedWork.BeginWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount)
+            : null;
+
         TraverseStack traverseStack = GetTraverseStack();
 
         TreePath path = TreePath.Empty;
@@ -285,7 +290,7 @@ public partial class PatriciaTree
                     nonNullChildCount++;
 
                 if (node.IsSealed)
-                    node = node.Clone();
+                    node = node.Unseal();
 
                 node.SetChild(i, newChild);
             }
@@ -333,7 +338,7 @@ public partial class PatriciaTree
                     nonNullChildCount++;
 
                 if (node.IsSealed)
-                    node = node.Clone();
+                    node = node.Unseal();
 
                 node.SetChild(nib, newChild);
             }
