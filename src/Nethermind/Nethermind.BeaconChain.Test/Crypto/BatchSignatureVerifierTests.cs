@@ -17,9 +17,7 @@ public class BatchSignatureVerifierTests
         new(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)index));
 
     private static byte[] CompressedPubkey(Bls.SecretKey sk) => new Bls.P1(sk).Compress();
-
     private static byte[] Sign(Bls.SecretKey sk, byte[] message) => BlsSigner.Sign(sk, message).Bytes.ToArray();
-
     private static byte[] Msg(byte fill) => Enumerable.Repeat(fill, 32).ToArray();
 
     private static BlsSignatureSet MakeSet(int keyIndex, byte[] message)

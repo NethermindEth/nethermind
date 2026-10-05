@@ -281,10 +281,7 @@ public class SszRoundTripTests
     }
 
     private static byte[] Filled(int length, byte value) => Enumerable.Repeat(value, length).ToArray();
-
     private static Hash256 Hash(byte value) => new(Filled(Hash256.Size, value));
-
     private static BlsPublicKey Pubkey(byte value) => new(Filled(BlsPublicKey.Length, value));
-
     private static BlsSignature Signature(byte value) => new(Filled(BlsSignature.Length, value));
 }

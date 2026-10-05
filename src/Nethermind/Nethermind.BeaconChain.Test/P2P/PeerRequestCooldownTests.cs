@@ -105,7 +105,6 @@ public class PeerRequestCooldownTests
         private Node BehindNode { get; set; } = null!;
         public IBeaconSyncPeer Ahead { get; private set; } = null!;
         public IBeaconSyncPeer Behind { get; private set; } = null!;
-
         public string[] Listed => [.. Manager.GetBestPeers(0).Select(static p => p.Id)];
 
         public static async Task<Fixture> CreateAsync(CancellationToken token, bool connectBehind = true)

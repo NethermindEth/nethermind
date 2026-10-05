@@ -691,7 +691,6 @@ public class RangeSyncGloasColumnsTests
         }
 
         public DataColumnSidecarGloas GloasSidecar(ulong column) => DataColumnSidecarGloasTestFixture.BuildSidecar(column, GloasSlot, GloasRoot);
-
         public DataColumnSidecarGloas SecondGloasSidecar(ulong column) => DataColumnSidecarGloasTestFixture.BuildSidecar(column, SecondGloasSlot, SecondGloasRoot!);
 
         public RangeSyncTests.StubPeer HonestPeer(string id, PeerColumnCustody? custody = null) =>

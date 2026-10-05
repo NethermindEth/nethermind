@@ -298,9 +298,7 @@ public class PeerHealthCheckRoundTests
         private int _count;
 
         public int Count => Volatile.Read(ref _count);
-
         public FailedCheckCounter() => Logger = new(new TestLogRecorder(TestLogLevels.Debug, (_, text, _) => Record(text)));
-
         public ILogger Logger { get; }
 
         private string? _last;

@@ -27,7 +27,6 @@ public abstract class ForkDriver
     private sealed class Fulu : ForkDriver<BeaconStateFulu>
     {
         public override string Fork => "fulu";
-
         public override BeaconStateFulu DecodePre(string path) => FuluDriverSupport.DecodeState(path);
 
         public override (object State, Hash256 Root) DecodePost(string path)
@@ -37,15 +36,10 @@ public abstract class ForkDriver
         }
 
         public override Hash256 StateRoot(BeaconStateFulu state) => FuluDriverSupport.StateRoot(state);
-
         public override object ForDiff(BeaconStateFulu state) => state;
-
         public override EpochCache NewCache() => new() { Hasher = new DifferentialBeaconStateHasher() };
-
         public override Hash256 CachedRoot(BeaconStateFulu state, EpochCache cache) => cache.Hasher.HashTreeRoot(state);
-
         public override ulong SlotOf(BeaconStateFulu state) => state.Slot;
-
         public override Validator[] ValidatorsOf(BeaconStateFulu state) => state.Validators!;
 
         public override void ProcessSlots(BeaconStateFulu state, ulong targetSlot, EpochCache cache) =>
@@ -92,9 +86,7 @@ public abstract class ForkDriver
         }
 
         public override EpochCache NewCache() => new() { Hasher = new ElectraShapeHasher() };
-
         public override ulong SlotOf(BeaconStateFulu state) => state.Slot;
-
         public override Validator[] ValidatorsOf(BeaconStateFulu state) => state.Validators!;
 
         public override void ProcessSlots(BeaconStateFulu state, ulong targetSlot, EpochCache cache)
@@ -165,7 +157,6 @@ public abstract class ForkDriver
     private sealed class Gloas : ForkDriver<BeaconStateGloas>
     {
         public override string Fork => "gloas";
-
         public override BeaconStateGloas DecodePre(string path) => DecodeGloas(path);
 
         public override (object State, Hash256 Root) DecodePost(string path)
@@ -184,11 +175,8 @@ public abstract class ForkDriver
         }
 
         public override EpochCache NewCache() => new() { Hasher = new DifferentialBeaconStateHasher() };
-
         public override Hash256 CachedRoot(BeaconStateGloas state, EpochCache cache) => cache.Hasher.HashTreeRoot(state);
-
         public override ulong SlotOf(BeaconStateGloas state) => state.Slot;
-
         public override Validator[] ValidatorsOf(BeaconStateGloas state) => state.Validators!;
 
         public override void ProcessSlots(BeaconStateGloas state, ulong targetSlot, EpochCache cache) =>
@@ -254,22 +242,13 @@ public abstract class ForkDriver
 public abstract class ForkDriver<TState> : ForkDriver where TState : class
 {
     public abstract TState DecodePre(string path);
-
     public abstract (object State, Hash256 Root) DecodePost(string path);
-
     public abstract Hash256 StateRoot(TState state);
-
     public abstract object ForDiff(TState state);
-
     public abstract EpochCache NewCache();
-
     public virtual Hash256 CachedRoot(TState state, EpochCache cache) => StateRoot(state);
-
     public abstract ulong SlotOf(TState state);
-
     public abstract Validator[] ValidatorsOf(TState state);
-
     public abstract void ProcessSlots(TState state, ulong targetSlot, EpochCache cache);
-
     public abstract void ApplyBlock(TState state, byte[] signedBlockSsz, BeaconChainSpec spec, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, bool verifySignatures);
 }

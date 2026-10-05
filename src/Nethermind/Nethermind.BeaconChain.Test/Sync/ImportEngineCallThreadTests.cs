@@ -41,13 +41,9 @@ public class ImportEngineCallThreadTests
     private sealed class SlowEngine : IEngineDriver
     {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
         public ManualResetEventSlim Answer { get; } = new();
-
         public bool CalledOnPoolThread { get; private set; }
-
         public SignedBeaconBlock? CurrentBlock { get; set; }
-
         public bool HasAnsweredNewPayload { get; private set; }
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>

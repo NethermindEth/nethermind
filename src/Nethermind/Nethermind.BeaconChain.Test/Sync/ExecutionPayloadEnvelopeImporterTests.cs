@@ -414,7 +414,6 @@ public class ExecutionPayloadEnvelopeImporterTests
     private sealed class WrongRootHasher : IBeaconStateHasher
     {
         public Hash256 HashTreeRoot(BeaconStateFulu state) => Keccak.Zero;
-
         public Hash256 HashTreeRoot(BeaconStateGloas state) => Keccak.Zero;
     }
 

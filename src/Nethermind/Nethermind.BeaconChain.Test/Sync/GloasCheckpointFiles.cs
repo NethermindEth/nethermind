@@ -32,11 +32,8 @@ internal sealed class GloasCheckpointFiles : IDisposable
 
     /// <summary>Include the Gloas version in the schedule so checkpoint decoding can resolve fork.current_version.</summary>
     public static BeaconChainSpec Spec { get; } = WithGloasScheduled(ForkCrossingChain.Instance.Spec, fuluInGloasEpoch: false);
-
     public static BeaconChainSpec SharedActivationEpochSpec { get; } = WithGloasScheduled(ForkCrossingChain.Instance.Spec, fuluInGloasEpoch: true);
-
     public string StateFile { get; }
-
     public string PostStateFile => Path.ChangeExtension(StateFile, ".post-state.ssz");
 
     public static GloasCheckpointFiles Write(BeaconStateGloas state, ForkedSignedBeaconBlock? block) =>

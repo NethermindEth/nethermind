@@ -319,9 +319,7 @@ public class PeerRequestFailureTests
         private volatile bool _broken;
 
         public void Hang() => _released.Reset();
-
         public void Break() => _broken = true;
-
         public void Release() => _released.Set();
 
         public StatusMessageV2 CurrentStatus
@@ -339,7 +337,6 @@ public class PeerRequestFailureTests
         }
 
         public Hash256 JustifiedRoot => inner.JustifiedRoot;
-
         public bool ExecutionInSync => inner.ExecutionInSync;
     }
 
@@ -355,15 +352,10 @@ public class PeerRequestFailureTests
         public ManualTimestamper Time { get; } = new();
         public PeerManager Manager { get; private set; } = null!;
         public IBeaconSyncPeer Peer { get; private set; } = null!;
-
         public bool IsSelectable => Manager.GetBestPeers(0).Contains(Peer);
-
         public BeaconChainConfig Config => _client.Config;
-
         public void StopAnswering() => _hang!.Hang();
-
         public void ResumeAnswering() => _hang!.Release();
-
         public void Break() => _hang!.Break();
 
         public static async Task<Fixture> CreateAsync(CancellationToken token, ulong? serverEarliestAvailableSlot = null, bool hangable = false, bool withUsablePeer = false)

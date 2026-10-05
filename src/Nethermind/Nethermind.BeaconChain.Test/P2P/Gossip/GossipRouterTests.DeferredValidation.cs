@@ -217,7 +217,6 @@ public partial class GossipRouterTests
     private sealed class SteppedTime(DateTimeOffset start) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = start;
-
         public override DateTimeOffset GetUtcNow() => Now;
     }
 
@@ -284,15 +283,10 @@ public partial class GossipRouterTests
         }
 
         public PubsubRouter Pubsub { get; }
-
         public GossipRouter Router { get; }
-
         public DeferredGossipValidation Validation { get; }
-
         public List<GossipVerdict> Raised { get; }
-
         public PeerId Sender { get; }
-
         public PeerId Neighbor { get; }
 
         public static async Task<DeferredFixture> Create(int maxPending, long maxPendingBytes, TimeSpan timeout, string protocol = PubsubRouter.GossipsubProtocolVersionV11, int maxPendingVotes = 1024,
@@ -329,7 +323,6 @@ public partial class GossipRouterTests
         }
 
         public void ReceiveRpc(PeerId from, Rpc rpc) => (from == Sender ? _fromSender : _fromNeighbor)(rpc);
-
         public IReadOnlyList<Rpc> SentTo(PeerId peer) => peer == Sender ? _sentToSender : _sentToNeighbor;
 
         public IEnumerable<MessageId> IdontwantsTo(PeerId peer) =>

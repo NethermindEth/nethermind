@@ -24,16 +24,13 @@ internal sealed class TestLogRecorder(TestLogLevels levels = TestLogLevels.All, 
 
     public IReadOnlyCollection<(string Level, string Text)> Lines => _lines;
     public string[] Messages => [.. _lines.Select(static line => line.Text)];
-
     public bool IsInfo { get; init; } = (levels & TestLogLevels.Info) != 0;
     public bool IsWarn { get; init; } = (levels & TestLogLevels.Warn) != 0;
     public bool IsDebug { get; init; } = (levels & TestLogLevels.Debug) != 0;
     public bool IsTrace { get; init; } = (levels & TestLogLevels.Trace) != 0;
     public bool IsError { get; init; } = (levels & TestLogLevels.Error) != 0;
-
     public ILogger GetLogger(string loggerName) => new(this);
     public ILogger GetClassLogger<T>() => GetLogger(typeof(T).Name);
-
     public void Info(string text) => Write(LogLevel.Info, text);
     public void Warn(string text) => Write(LogLevel.Warn, text);
     public void Debug(string text) => Write(LogLevel.Debug, text);

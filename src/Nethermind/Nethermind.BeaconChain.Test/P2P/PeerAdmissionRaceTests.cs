@@ -248,7 +248,6 @@ public class PeerAdmissionRaceTests
         }
 
         public string AddressOf(BeaconP2P node) => $"/ip4/127.0.0.1/tcp/{((IPEndPoint)_front.LocalEndpoint).Port}/p2p/{node.LocalPeerId}";
-
         public Task WhenEndedAsync(int connection) => EndedOf(connection - 1).Task;
 
         private TaskCompletionSource EndedOf(int index)

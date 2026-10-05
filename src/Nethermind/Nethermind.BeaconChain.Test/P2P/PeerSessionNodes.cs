@@ -158,18 +158,14 @@ internal sealed class ScriptedStatusSource(Func<int, StatusMessageV2> answer) : 
     private int _requests;
 
     public int Requests => Volatile.Read(ref _requests);
-
     public StatusMessageV2 CurrentStatus => answer(Interlocked.Increment(ref _requests));
-
     public Hash256 JustifiedRoot => Hash256.Zero;
-
     public bool ExecutionInSync => false;
 }
 
 internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsyncDisposable
 {
     public LocalPeer Peer => peer;
-
     public Multiaddress Address => peer.ListenAddresses.First();
 
     public static async Task<PlainPeer> StartAsync(Func<IProtocolStackSettings, IdentifyProtocol> identify, CancellationToken token, IBeaconChainStatusSource? statusSource = null,

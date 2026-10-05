@@ -52,21 +52,13 @@ internal sealed class ImportableBlobBlock
     };
 
     public BeaconChainSpec Spec => FuluFromGenesis;
-
     public required BeaconStateFulu AnchorState { get; init; }
-
     public required SignedBeaconBlock AnchorBlock { get; init; }
-
     public required Hash256 AnchorRoot { get; init; }
-
     public required PubkeyCache Pubkeys { get; init; }
-
     public required SignedBeaconBlock Block { get; init; }
-
     public required Hash256 BlockRoot { get; init; }
-
     public required DataColumnSidecar[] Columns { get; init; }
-
     public SlotClock ClockAtEpoch(ulong epoch) => ClockAtSlot(epoch * Spec.SlotsPerEpoch);
 
     public SlotClock ClockAtSlot(ulong slot) =>
@@ -184,7 +176,6 @@ internal sealed class ImportableBlobBlock
     }
 
     public static ImportableBlobBlock CreateWithoutBlobs() => Create(blobCount: 0);
-
     internal static Bls.SecretKey DeriveKey(int index) => new(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)index));
 
     internal static BlsSignature Sign(Bls.SecretKey key, Hash256 objectRoot, Hash256 domain) =>

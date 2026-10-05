@@ -168,9 +168,7 @@ public class ColumnGossipRouterReconstructionTests
         private int _calls;
 
         public ManualResetEventSlim Entered { get; } = new(false);
-
         public ManualResetEventSlim Release { get; } = new(false);
-
         public int Calls => Volatile.Read(ref _calls);
 
         public void Dispose()

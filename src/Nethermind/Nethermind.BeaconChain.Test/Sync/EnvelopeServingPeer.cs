@@ -23,11 +23,9 @@ internal sealed class EnvelopeServingPeer(
     public List<Hash256[]> RootRequests { get; } = [];
     public List<DataColumnsByRootIdentifier[]> ColumnRootRequests { get; } = [];
     public List<PeerFailureReason> Reports { get; } = [];
-
     public string Id => id;
     public ulong HeadSlot => headSlot;
     public ulong EarliestAvailableSlot => earliestAvailableSlot;
-
     public PeerColumnCustody Custody { get; } = new(Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c), isAdvertised: true);
 
     public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) =>

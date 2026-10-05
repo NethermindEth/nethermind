@@ -259,7 +259,6 @@ public class GossipValidationTests
         UnroutedSuites.Any(suite => suite.Fork == testCase.Fork && suite.Handlers.Contains(testCase.Handler));
 
     private static string KeyOf(GossipValidationCase testCase) => $"{testCase.Fork}/{testCase.Handler}";
-
     private static List<GossipValidationCase> TestedCases() => [.. AllCases().Where(static testCase => !IsUnrouted(testCase))];
 
     private static List<GossipValidationCase> AllCases() =>
@@ -605,8 +604,6 @@ internal readonly record struct RouterVerdict(RouterAction Action, GossipDropRea
     public static readonly RouterVerdict Deferred = new(RouterAction.Deferred);
 
     public static RouterVerdict Ignored(GossipDropReason drop) => new(RouterAction.Ignored, drop);
-
     public static RouterVerdict Rejected(GossipDropReason drop) => new(RouterAction.Rejected, drop);
-
     public override string ToString() => Drop is null ? Action.ToString() : $"{Action} as {Drop}";
 }

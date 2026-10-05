@@ -713,9 +713,7 @@ public class BeaconChainServiceStartupTests
         private readonly TaskCompletionSource _reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task Reached => _reached.Task;
-
         public void Arm() => Volatile.Write(ref _armed, 1);
-
         public void Release() => _release.Set();
 
         public void PassThrough()

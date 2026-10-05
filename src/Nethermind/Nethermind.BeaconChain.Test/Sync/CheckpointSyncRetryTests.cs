@@ -375,9 +375,7 @@ public class CheckpointSyncRetryTests
         private byte[]? _lastRented;
 
         public int Rented => Volatile.Read(ref _rented);
-
         public int LargestRequest { get; private set; }
-
         public byte[]? LastRented => Volatile.Read(ref _lastRented);
 
         public int Outstanding

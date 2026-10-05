@@ -14,17 +14,11 @@ internal sealed class SlotReadHookColumnsDb(ulong slot) : IColumnsDb<BeaconChain
     private readonly HookedIndex _index = new(slot);
 
     public Action? OnRead { set => _index.OnRead = value; }
-
     public IDb GetColumnDb(BeaconChainDbColumns key) => key == BeaconChainDbColumns.BlockIndex ? _index : _inner.GetColumnDb(key);
-
     public IEnumerable<BeaconChainDbColumns> ColumnKeys => _inner.ColumnKeys;
-
     public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-
     public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
-
     public void Flush(bool onlyWal) { }
-
     public void Dispose() { }
 
     private sealed class HookedIndex(ulong slot) : MemDb

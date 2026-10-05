@@ -34,15 +34,12 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
 
     /// <summary>Copy the shared anchor so importer mutation cannot contaminate other cases.</summary>
     public BeaconStateFulu AnchorState { get; } = ForkCrossingChain.Instance.AnchorState.Clone();
-
     public SignedBeaconBlock AnchorBlock { get; } = new() { Message = ForkCrossingChain.Instance.AnchorBlock, Signature = default };
-
     public Hash256 AnchorRoot => ForkCrossingChain.Instance.AnchorRoot;
 
     public sealed record Block(SignedBeaconBlockGloas Signed, Hash256 Root, BeaconStateGloas PostState, SignedExecutionPayloadEnvelope Envelope)
     {
         public ForkedSignedBeaconBlock Forked => new ForkedSignedBeaconBlock.OfGloas(Signed);
-
         public ExecutionPayloadBid Bid => Signed.Message!.Body!.SignedExecutionPayloadBid!.Message!;
     }
 
@@ -156,13 +153,9 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
     internal sealed class EnvelopeEngine : IEngineDriver
     {
         public ExecutionStatus EnvelopeVerdict { get; set; } = ExecutionStatus.Valid;
-
         public int EnvelopeCalls { get; private set; }
-
         public List<(Hash256 Head, Hash256 Safe, Hash256 Finalized)> FcuCalls { get; } = [];
-
         public SignedBeaconBlock? CurrentBlock { get; set; }
-
         public bool HasAnsweredNewPayload { get; private set; }
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
