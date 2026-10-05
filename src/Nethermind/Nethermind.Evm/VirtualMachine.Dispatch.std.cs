@@ -49,10 +49,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         !TTracingInst.IsActive && typeof(TGasPolicy) == typeof(GasPolicy.EthereumGasPolicy);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong GetExecutionGas(ref TGasPolicy gas) =>
-        Unsafe.As<TGasPolicy, GasPolicy.EthereumGasPolicy>(ref gas).Value;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void SetExecutionGas(ref TGasPolicy gas, ulong value) =>
         Unsafe.As<TGasPolicy, GasPolicy.EthereumGasPolicy>(ref gas).Value = value;
 
@@ -277,8 +273,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 // Fast probes promise to leave the stack and policy untouched when they return false. Keep the
                 // probe's policy local so a failed probe cannot touch the authoritative full policy.
-                TGasPolicy fastGas = default;
-                SetExecutionGas(ref fastGas, gas);
+                LoadFixedGas(out TGasPolicy fastGas, gas);
                 if (TOpcode.TryExecuteFast(ref stack, ref fastGas, ref state))
                 {
                     gas = GetExecutionGas(ref fastGas);
@@ -317,8 +312,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 if (carriesExecutionGas)
                 {
-                    TGasPolicy localGas = default;
-                    SetExecutionGas(ref localGas, gas);
+                    LoadFixedGas(out TGasPolicy localGas, gas);
                     exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag>(ref stack, ref localGas, null!, ref pc, ref opCodeCount);
                     gas = GetExecutionGas(ref localGas);
                 }
@@ -331,8 +325,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 if (carriesExecutionGas)
                 {
-                    TGasPolicy localGas = default;
-                    SetExecutionGas(ref localGas, gas);
+                    LoadFixedGas(out TGasPolicy localGas, gas);
                     exceptionType = EvmInstructions.InstructionJumpCore<TGasPolicy, OffFlag>(
                         ref stack, ref localGas, null!, ref pc, ref opCodeCount);
                     gas = GetExecutionGas(ref localGas);
@@ -352,8 +345,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 OpcodeResult checkedResult;
                 if (carriesExecutionGas)
                 {
-                    TGasPolicy localGas = default;
-                    SetExecutionGas(ref localGas, gas);
+                    LoadFixedGas(out TGasPolicy localGas, gas);
                     checkedResult = ExecuteCheckedBody<TOpcode>(ref stack, ref localGas, ref state, pc);
                     gas = GetExecutionGas(ref localGas);
                 }
@@ -369,8 +361,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
             else if (carriesExecutionGas && TOpcode.ChargesFixedGas)
             {
-                TGasPolicy localGas = default;
-                SetExecutionGas(ref localGas, gas);
+                LoadFixedGas(out TGasPolicy localGas, gas);
                 if (TOpcode.UsesVm)
                     exceptionType = TOpcode.Execute(ref stack, ref localGas, state.Vm, ref pc);
                 else
@@ -475,8 +466,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             OpcodeResult result;
             if (carriesExecutionGas)
             {
-                TGasPolicy localGas = default;
-                SetExecutionGas(ref localGas, gas);
+                LoadFixedGas(out TGasPolicy localGas, gas);
                 result = TTracingInst.IsActive
                     ? EvmInstructions.InstructionJumpIf(ref stack, ref localGas, vm, pc)
                     : EvmInstructions.InstructionJumpIfAndSkipJumpDest(ref stack, ref localGas, vm, pc);
