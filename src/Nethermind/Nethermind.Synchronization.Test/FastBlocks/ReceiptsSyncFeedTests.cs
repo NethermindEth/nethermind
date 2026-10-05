@@ -379,6 +379,24 @@ public class ReceiptsSyncFeedTests
     }
 
     [Test]
+    public async Task Progress_reaches_exactly_the_total_when_finished([Values(1UL, 512UL)] ulong barrier)
+    {
+        _syncConfig.AncientBodiesBarrier = barrier;
+        _syncConfig.AncientReceiptsBarrier = barrier;
+        LoadScenario(_1024BodiesWithOneTxEach);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(barrier);
+
+        using ReceiptsSyncBatch? _ = await _feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(_progressLogger.TargetValue, Is.EqualTo(_pivotNumber - barrier));
+            Assert.That(_progressLogger.CurrentValue, Is.EqualTo(_progressLogger.TargetValue));
+        }
+    }
+
+    [Test]
     public async Task Can_create_receipts_batches_for_all_bodies_inserted_and_then_generate_null_batches_for_other_peers()
     {
         LoadScenario(_256BodiesWithOneTxEach);
