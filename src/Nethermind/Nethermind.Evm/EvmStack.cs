@@ -103,11 +103,12 @@ public ref partial struct EvmStack
         if (CodeLength != 0 && _codeInfo is not null)
         {
             _jumpDestinations = _codeInfo.JumpAndCallDestinationBitmap;
-#if ZK_EVM
-            _jumpDestinationBits = ref MemoryMarshal.GetArrayDataReference(_jumpDestinations);
-#endif
+            OnJumpDestinationsReplaced();
         }
     }
+
+    /// <summary>Lets the build flavour follow a bitmap <see cref="UseCallDestinations"/> swapped in.</summary>
+    partial void OnJumpDestinationsReplaced();
 
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;

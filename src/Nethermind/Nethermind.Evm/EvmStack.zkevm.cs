@@ -98,6 +98,8 @@ public ref partial struct EvmStack
     /// <summary>The first word of <see cref="_jumpDestinations"/>, which the bit test indexes without a null check.</summary>
     private ref long _jumpDestinationBits;
 
+    partial void OnJumpDestinationsReplaced() => _jumpDestinationBits = ref MemoryMarshal.GetArrayDataReference(_jumpDestinations!);
+
     // Resolved when the stack is built, as the host form is: resolving on the first jump put a call and a
     // write barrier into every handler that validates a jump. A stack over code without its code info gets
     // an empty bitmap sized for that code, so the unchecked bit test stays inside it and rejects everything.
