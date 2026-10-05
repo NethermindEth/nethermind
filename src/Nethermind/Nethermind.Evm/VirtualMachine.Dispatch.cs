@@ -32,6 +32,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool IsActive => true;
     }
 
+    /// <summary>The execution gas a handler carries in its scalar argument, read back from <paramref name="gas"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong GetExecutionGas(ref TGasPolicy gas) => TGasPolicy.GetRemainingGas(in gas);
+
+    /// <summary>A policy that holds only the carried execution <paramref name="gas"/>, for a body that charges nothing else.</summary>
+    /// <remarks>
+    /// Such a body never reads the rest of the policy, so it stays uninitialized, and a local policy can stay in registers.
+    /// A body that may touch the rest runs on the frame's policy instead: the carried gas is written to it with
+    /// <c>SetExecutionGas</c> before the body and read back with <see cref="GetExecutionGas"/> after, and written to it
+    /// once more as the chain leaves.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void LoadFixedGas(out TGasPolicy fixedGas, ulong gas)
+    {
+        Unsafe.SkipInit(out fixedGas);
+        SetExecutionGas(ref fixedGas, gas);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]
         GetOpcodeHandlers<TTracingInst, TCancelable>()
