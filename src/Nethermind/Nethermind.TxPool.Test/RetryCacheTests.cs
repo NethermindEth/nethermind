@@ -239,6 +239,90 @@ public class RetryCacheTests
     }
 
     [Test]
+    public void TryAwaitAnnouncement_LetsOneAnnouncerRequestAnUnrequestedResource([Values] bool claimedWhileKnown)
+    {
+        TestHandler claimant = new();
+        TestHandler retryPeer = new();
+        Assert.That(_cache.TryAwaitAnnouncement(1), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryAwaitAnnouncement(1), Is.True, "a resend of the same unrequested resource");
+            Assert.That(_cache.TryDefer(1), Is.False, "nothing was requested, so nothing is owed a deferral");
+        }
+
+        AnnounceResult claim = claimedWhileKnown
+            ? _cache.TryClaimUnrequested(1, claimant) ? AnnounceResult.RequestRequired : AnnounceResult.Delayed
+            : _cache.Announced(1, claimant);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(claim, Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(_cache.TryClaimUnrequested(1, retryPeer), Is.False);
+            Assert.That(_cache.Announced(1, retryPeer), Is.EqualTo(AnnounceResult.Delayed));
+            Assert.That(_cache.TryAwaitAnnouncement(1), Is.False, "claimed, so a delivery is the claimant's response");
+            Assert.That(_cache.TryDefer(1), Is.True);
+            Assert.That(_cache.TryDefer(1), Is.False);
+        }
+    }
+
+    [Test]
+    public void TryAwaitAnnouncement_ClaimStartsAFullTimeout()
+    {
+        TestHandler claimant = new();
+        TestHandler laterPeer = new();
+        Assert.That(_cache.TryAwaitAnnouncement(1), Is.True);
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 3 / 4));
+        Assert.That(_cache.Announced(1, claimant), Is.EqualTo(AnnounceResult.RequestRequired));
+        Assert.That(_cache.Announced(1, laterPeer), Is.EqualTo(AnnounceResult.Delayed));
+
+        // Past the push's deadline, inside the claim's: the claimed request is still in flight.
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+        _cache.ProcessRetryTick();
+        Assert.That(laterPeer.WasCalled, Is.False, "a late claim must get a full timeout before a retry");
+
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2 + 1));
+        _cache.ProcessRetryTick();
+        Assert.That(laterPeer.HandleMessageCallCount, Is.EqualTo(1), "once the claim's own timeout passes, the next announcer is asked");
+        _cache.Received(1);
+    }
+
+    [Test]
+    public void TryAwaitAnnouncement_ClaimRacingExpiryKeepsALiveLifecycle()
+    {
+        const int attempts = 1_000;
+        for (int resourceId = 0; resourceId < attempts; resourceId++)
+        {
+            Assert.That(_cache.TryAwaitAnnouncement(resourceId), Is.True);
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs + 1));
+
+            bool claimed = false;
+            Parallel.Invoke(
+                _cache.ProcessRetryTick,
+                () => claimed = _cache.TryClaimUnrequested(resourceId, new TestHandler()));
+
+            // Expiry losing to the claim must not leave it a deactivated bag, or the claimed request is owed no deferral.
+            if (claimed) Assert.That(_cache.TryDefer(resourceId), Is.True, $"attempt {resourceId}");
+            _cache.Received(resourceId);
+        }
+    }
+
+    [Test]
+    public void TryAwaitAnnouncement_ExpiresUnclaimedWithoutRequesting()
+    {
+        Assert.That(_cache.TryAwaitAnnouncement(1), Is.True);
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        Assert.That(() => _cache.TrackedRequestsInUse, Is.Zero.After(AssertTimeoutMs, 10));
+
+        TestHandler announcer = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+            Assert.That(_cache.TryClaimUnrequested(1, announcer), Is.False);
+            Assert.That(_cache.Announced(1, announcer), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(_cache.Announced(1, new TestHandler()), Is.EqualTo(AnnounceResult.Delayed), "a fresh lifecycle, not one left firing");
+        }
+    }
+
+    [Test]
     public void Announced_AfterTimeout_ExecutesOneRetryPerTimeout()
     {
         TestHandler request1 = new();
