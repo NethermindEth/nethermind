@@ -676,7 +676,6 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result.Error, Is.EqualTo(expectedMessage));
     }
 
-    // Minimal bytecode: PREVRANDAO PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
     // PUSH1 0, PUSH1 0, PUSH1 0, CREATE, PUSH1 0, MSTORE, PUSH1 32, PUSH1 0, RETURN: returns the created address, or zero on a collision.
     private static readonly byte[] CreateAndReturnAddress = [0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0xf0, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3];
 
@@ -722,6 +721,7 @@ public class EthSimulateTestsBlocksAndTransactions
         };
     }
 
+    // Minimal bytecode: PREVRANDAO PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
     private static readonly byte[] PrevRandaoBytecode = [0x44, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xF3];
 
     private static Task<TestRpcBlockchain> CreatePostMergeChain()
