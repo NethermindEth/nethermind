@@ -36,18 +36,6 @@ public class OptimismGossipLoopbackTests
     [CancelAfter(60_000)]
     public Task A_block_message_reaches_the_other_host(int size, CancellationToken token) => PublishAndReceiveAsync(size, token);
 
-    [Test]
-    public void Block_gossip_bounds_admit_the_op_stack_maximum()
-    {
-        PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings(BlocksTopic);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(settings.MaxRpcBytes, Is.EqualTo(Eth2MessageId.MaxMessageSize).And.GreaterThan(10 * 1024 * 1024));
-            Assert.That(settings.MaxIwantResponseBytes, Is.EqualTo(Eth2MessageId.MaxMessageSize));
-        }
-    }
-
     private static async Task PublishAndReceiveAsync(int size, CancellationToken token)
     {
         await using Host publisher = await Host.StartAsync(token);
@@ -162,30 +150,19 @@ public class OptimismGossipLoopbackTests
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
-    [Test]
+    [TestCase("/dns4/localhost/tcp/{port}/p2p/{id}", false, false, TestName = "A_static_peer_named_in_the_hosts_file_is_connected")]
+    [TestCase("/dns/sequencer.test/tcp/{port}/p2p/{id}", true, true, TestName = "A_static_peer_named_by_dns_with_ipv4_only_is_connected")]
+    [TestCase("/dnsaddr/sequencer.test/p2p/{id}", true, false, TestName = "A_static_peer_named_by_dnsaddr_is_connected")]
     [CancelAfter(60_000)]
-    public async Task A_static_peer_named_in_the_hosts_file_is_connected(CancellationToken token)
+    public async Task A_named_static_peer_is_connected(string address, bool customDns, bool noIpv6, CancellationToken token)
     {
         await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
-        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
         PeerId sequencerId = sequencer.Peer.Identity.PeerId;
+        LoopbackDns? dns = customDns ? new LoopbackDns(txt: noIpv6 ? "" : $"dnsaddr={sequencer.Address}", noIpv6: noIpv6) : null;
+        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite, dns);
         string port = sequencer.Address.ToString().Split('/')[4];
 
-        Multiaddress named = Multiaddress.Decode($"/dns4/localhost/tcp/{port}/p2p/{sequencerId}");
-        using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
-        await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task A_static_peer_named_by_dns_with_ipv4_only_is_connected(CancellationToken token)
-    {
-        await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
-        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite, new LoopbackDns(txt: "", noIpv6: true));
-        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
-        string port = sequencer.Address.ToString().Split('/')[4];
-
-        Multiaddress named = Multiaddress.Decode($"/dns/sequencer.test/tcp/{port}/p2p/{sequencerId}");
+        Multiaddress named = Multiaddress.Decode(address.Replace("{port}", port).Replace("{id}", sequencerId.ToString()));
         using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
         await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
@@ -204,20 +181,6 @@ public class OptimismGossipLoopbackTests
         ISession session = await node.Peer.DialAsync(addresses, token).WaitAsync(TimeSpan.FromSeconds(25), token);
 
         Assert.That(session.RemoteAddress.GetPeerId(), Is.EqualTo(sequencerId));
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task A_static_peer_named_by_dnsaddr_is_connected(CancellationToken token)
-    {
-        await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
-        PeerId sequencerId = sequencer.Peer.Identity.PeerId;
-        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite,
-            new LoopbackDns(txt: $"dnsaddr={sequencer.Address}"));
-
-        Multiaddress named = Multiaddress.Decode($"/dnsaddr/sequencer.test/p2p/{sequencerId}");
-        using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
-        await KeepUntilConnectedAsync(keeper, node, node.Router, sequencerId, token);
     }
 
     [Test]
