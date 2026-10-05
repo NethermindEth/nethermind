@@ -73,25 +73,16 @@ public class DataColumnSidecarContainerTests
         Assert.That(decoded.KzgCommitmentsInclusionProof, Has.Length.EqualTo(Eip7594DasConstants.KzgCommitmentsInclusionProofDepth));
     }
 
-    [Test]
-    public void A_different_column_index_changes_the_root()
+    [TestCase(false, TestName = "A_different_column_index_changes_the_root")]
+    [TestCase(true, TestName = "A_different_cell_value_changes_the_root")]
+    public void Changing_a_column_changes_the_root(bool changeCell)
     {
         DataColumnSidecar a = CreateRepresentative();
         DataColumnSidecar b = CreateRepresentative();
-        b.Index = a.Index + 1;
-
-        DataColumnSidecar.Merkleize(a, out UInt256 rootA);
-        DataColumnSidecar.Merkleize(b, out UInt256 rootB);
-
-        Assert.That(rootB, Is.Not.EqualTo(rootA));
-    }
-
-    [Test]
-    public void A_different_cell_value_changes_the_root()
-    {
-        DataColumnSidecar a = CreateRepresentative();
-        DataColumnSidecar b = CreateRepresentative();
-        b.Column![0] = SszBlobCell.FromSpan(Enumerable.Repeat((byte)0x99, SszBlobCell.BlobCellLength).ToArray());
+        if (changeCell)
+            b.Column![0] = SszBlobCell.FromSpan(Enumerable.Repeat((byte)0x99, SszBlobCell.BlobCellLength).ToArray());
+        else
+            b.Index = a.Index + 1;
 
         DataColumnSidecar.Merkleize(a, out UInt256 rootA);
         DataColumnSidecar.Merkleize(b, out UInt256 rootB);
