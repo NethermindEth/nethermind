@@ -224,11 +224,7 @@ public class InboundRequestWatchTests
         TaskCompletionSource holdEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource hold = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IChannel serverSide = HoldSecondWrite(channel.Reverse, holdEntered, hold);
-        Task listen = Task.Run(async () =>
-        {
-            await protocol.ListenAsync(serverSide, Context());
-            await channel.Reverse.WriteEofAsync();
-        }, token);
+        Task listen = Task.Run(() => ReqRespTestChannel.ListenThenCloseAsync(protocol, serverSide, Context()), token);
 
         ChannelStreamAdapter client = new(channel);
         await ReqRespFraming.WriteRequestAsync(client, BeaconBlocksByRangeRequest.Encode(new BeaconBlocksByRangeRequest { StartSlot = 1, Count = 3, Step = 1 }), token);
