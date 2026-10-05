@@ -22,10 +22,11 @@ namespace Nethermind.Consensus.Test;
 public class PredeployInstallerTests
 {
     [Test]
-    public void Recent_root_predeploy_carrying_its_code_and_nonce_writes_nothing()
+    public void Recent_root_predeploy_over_an_account_holding_code_writes_nothing([Values] bool canonicalCode)
     {
+        byte[] code = canonicalCode ? Eip8272Constants.RecentRootCode.ToArray() : [0x5f, 0x5f, 0xfd];
         (_, _, IWorldState writeState) =
-            Install(static spec => spec.IsEip8272Enabled.Returns(true), Eip8272Constants.RecentRootAddress, nonce: 1, code: Eip8272Constants.RecentRootCode.ToArray());
+            Install(static spec => spec.IsEip8272Enabled.Returns(true), Eip8272Constants.RecentRootAddress, nonce: 1, code: code);
 
         writeState.DidNotReceiveWithAnyArgs().InsertCode(default!, default, default!);
         writeState.DidNotReceive().SetNonce(Eip8272Constants.RecentRootAddress, Arg.Any<ulong>());

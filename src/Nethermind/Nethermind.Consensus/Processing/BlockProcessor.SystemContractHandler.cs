@@ -21,7 +21,8 @@ public partial class BlockProcessor
     {
         /// <summary>Installs every predeploy <paramref name="spec"/> activates, so their code and nonce are
         /// captured in the computed state root and, on the BAL path, the block-level access list.</summary>
-        void InstallPredeploys(IReleaseSpec spec);
+        /// <returns><see langword="false"/> when a predeploy cannot be initialised, which makes the block invalid.</returns>
+        bool InstallPredeploys(IReleaseSpec spec);
     }
 
     public sealed class SystemContractHandler(
@@ -52,7 +53,7 @@ public partial class BlockProcessor
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        public void InstallPredeploys(IReleaseSpec spec)
+        public bool InstallPredeploys(IReleaseSpec spec)
             => PredeployInstaller.Install(stateProvider, stateProvider, spec);
     }
 }

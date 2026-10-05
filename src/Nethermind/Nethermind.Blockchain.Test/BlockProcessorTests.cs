@@ -1959,6 +1959,26 @@ public partial class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Rejects_recent_root_activation_block_when_the_predeploy_address_has_storage()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true };
+        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: new TestSingleReleaseSpecProvider(spec));
+
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        InstallExecutionRequestPredeploys(stateProvider, spec);
+        stateProvider.CreateAccount(Eip8272Constants.RecentRootAddress, 0, 1);
+        stateProvider.Set(new StorageCell(Eip8272Constants.RecentRootAddress, 1), 1);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        Block block = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        InvalidBlockException exception = Assert.Throws<InvalidBlockException>(() =>
+            processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None))!;
+
+        Assert.That(exception.Message, Is.EqualTo(Core.Messages.BlockErrorMessages.RecentRootPredeployNotEmpty));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Prepared_block_contains_author_field()
     {
         (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch();
@@ -3804,9 +3824,7 @@ public partial class BlockProcessorTests
         {
         }
 
-        public void InstallPredeploys(IReleaseSpec spec)
-        {
-        }
+        public bool InstallPredeploys(IReleaseSpec spec) => true;
 
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
         {
