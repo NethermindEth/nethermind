@@ -23,8 +23,6 @@ namespace Nethermind.BeaconChain.Test.Api;
 
 public class BeaconApiErrorMappingTests
 {
-    // Sepolia is the only network with a real, non-far-future GloasForkEpoch (353024), so it is the
-    // only spec that can actually drive BeaconStateCodec into its NotSupportedException branch.
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Sepolia;
 
     private const string UnrelatedInternalDetail = "internal detail from an unrelated layer";
@@ -62,28 +60,17 @@ public class BeaconApiErrorMappingTests
         _host.Db.Dispose();
     }
 
-    [Test]
-    public async Task An_unrelated_NotSupportedException_is_a_500_that_leaks_nothing()
+    [TestCase("/test/not-supported", 500, "Internal server error", TestName = "An_unrelated_NotSupportedException_is_a_500_that_leaks_nothing")]
+    [TestCase("/test/unsupported-fork", 501, BeaconApiEndpoints.UnsupportedForkMessage, TestName = "The_API_owned_unsupported_fork_exception_is_a_501_with_the_fixed_message")]
+    public async Task Exceptions_return_their_public_status_and_message_without_internal_details(string route, int status, string message)
     {
-        HttpResponseMessage response = await _pipelineClient.GetAsync("/test/not-supported");
+        using HttpResponseMessage response = await _pipelineClient.GetAsync(route);
         string raw = await response.Content.ReadAsStringAsync();
 
-        Assert.That((int)response.StatusCode, Is.EqualTo(500), $"an unrelated NotSupportedException is a malfunction, not a capability gap; body: {raw}");
+        Assert.That((int)response.StatusCode, Is.EqualTo(status), $"body: {raw}");
         Assert.That(raw, Does.Not.Contain(UnrelatedInternalDetail), "an exception's own text must never reach the caller");
-        JsonDocument body = JsonDocument.Parse(raw);
-        Assert.That(body.RootElement.GetProperty("message").GetString(), Is.EqualTo("Internal server error"));
-    }
-
-    [Test]
-    public async Task The_API_owned_unsupported_fork_exception_is_a_501_with_the_fixed_message()
-    {
-        HttpResponseMessage response = await _pipelineClient.GetAsync("/test/unsupported-fork");
-        string raw = await response.Content.ReadAsStringAsync();
-
-        Assert.That((int)response.StatusCode, Is.EqualTo(501), $"body: {raw}");
-        Assert.That(raw, Does.Not.Contain(UnrelatedInternalDetail), "the codec's own text is for the log, not the wire");
-        JsonDocument body = JsonDocument.Parse(raw);
-        Assert.That(body.RootElement.GetProperty("message").GetString(), Is.EqualTo(BeaconApiEndpoints.UnsupportedForkMessage));
+        using JsonDocument body = JsonDocument.Parse(raw);
+        Assert.That(body.RootElement.GetProperty("message").GetString(), Is.EqualTo(message));
     }
 
     private static async Task FaultAfterFirstFlush(HttpContext c)
