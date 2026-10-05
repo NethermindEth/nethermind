@@ -79,11 +79,14 @@ internal static class GloasForkChoiceStepDriver
         else if (TryGetScalar(step, "execution_payload", out string? envelopeKey))
             RunEnvelopeStep(context, envelopeKey!, valid, stepIndex);
         else if (TryGetScalar(step, "attestation", out string? attestationKey))
-            RunAttestationStep(context, attestationKey!, valid, stepIndex);
+            RunOperandStep<AttestationGloas>($"step {stepIndex}: attestation {attestationKey}", valid, context.Read(attestationKey!),
+                operand => context.Runner.OnAttestation(operand, isFromBlock: false, verifySignature: true));
         else if (TryGetScalar(step, "attester_slashing", out string? slashingKey))
-            RunAttesterSlashingStep(context, slashingKey!, valid, stepIndex);
+            RunOperandStep<AttesterSlashingGloas>($"step {stepIndex}: attester_slashing {slashingKey}", valid, context.Read(slashingKey!),
+                operand => context.Runner.OnAttesterSlashing(operand, verifySignatures: true));
         else if (TryGetScalar(step, "payload_attestation_message", out string? messageKey))
-            RunPayloadAttestationStep(context, messageKey!, valid, stepIndex);
+            RunOperandStep<PayloadAttestationMessage>($"step {stepIndex}: payload_attestation_message {messageKey}", valid, context.Read(messageKey!),
+                operand => context.Runner.OnPayloadAttestationMessage(operand, isFromBlock: false, verifySignature: context.VerifySignatures));
         else if (TryGetChild(step, "checks", out YamlNode? checks))
             RunChecksStep(context, (YamlMappingNode)checks!, stepIndex);
         else
@@ -152,27 +155,6 @@ internal static class GloasForkChoiceStepDriver
         });
 
         AssertVerdict($"step {stepIndex}: execution_payload {key}", expectedValid, rejection);
-    }
-
-    private static void RunAttestationStep(Context context, string key, bool expectedValid, int stepIndex)
-    {
-        AttestationGloas.Decode(context.Read(key), out AttestationGloas attestation);
-        AssertVerdict($"step {stepIndex}: attestation {key}", expectedValid,
-            Attempt(() => context.Runner.OnAttestation(attestation, isFromBlock: false, verifySignature: true)));
-    }
-
-    private static void RunPayloadAttestationStep(Context context, string key, bool expectedValid, int stepIndex)
-    {
-        PayloadAttestationMessage.Decode(context.Read(key), out PayloadAttestationMessage message);
-        AssertVerdict($"step {stepIndex}: payload_attestation_message {key}", expectedValid,
-            Attempt(() => context.Runner.OnPayloadAttestationMessage(message, isFromBlock: false, verifySignature: context.VerifySignatures)));
-    }
-
-    private static void RunAttesterSlashingStep(Context context, string key, bool expectedValid, int stepIndex)
-    {
-        AttesterSlashingGloas.Decode(context.Read(key), out AttesterSlashingGloas slashing);
-        AssertVerdict($"step {stepIndex}: attester_slashing {key}", expectedValid,
-            Attempt(() => context.Runner.OnAttesterSlashing(slashing, verifySignatures: true)));
     }
 
     private static void RunChecksStep(Context context, YamlMappingNode checks, int stepIndex)
