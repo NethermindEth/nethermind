@@ -129,22 +129,14 @@ public class GloasForkOverrideTests
         Assert.That(ex.Message, Does.Contain(expected));
     }
 
-    [Test]
-    public void Epoch_without_a_version_needs_one_where_the_network_has_no_built_in_version()
+    [TestCase(OverrideEpoch, null, "needs BeaconChain.GloasForkVersion", TestName = "Epoch_without_a_version_needs_one_where_the_network_has_no_built_in_version")]
+    [TestCase(null, "0x80000910", "has no effect", TestName = "Version_without_an_epoch_fails_where_the_network_has_no_gloas_epoch")]
+    public void An_incomplete_gloas_override_fails_where_the_network_has_no_built_in_version(ulong? epoch, string? version, string error)
     {
         InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(
-            () => BeaconChainSpec.Hoodi.WithGloasForkOverride(OverrideEpoch, null))!;
+            () => BeaconChainSpec.Hoodi.WithGloasForkOverride(epoch, version))!;
 
-        Assert.That(ex.Message, Does.Contain("needs BeaconChain.GloasForkVersion"));
-    }
-
-    [Test]
-    public void Version_without_an_epoch_fails_where_the_network_has_no_gloas_epoch()
-    {
-        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(
-            () => BeaconChainSpec.Hoodi.WithGloasForkOverride(null, "0x80000910"))!;
-
-        Assert.That(ex.Message, Does.Contain("has no effect"));
+        Assert.That(ex.Message, Does.Contain(error));
     }
 
     [Test]

@@ -18,6 +18,8 @@ public class GossipTopicsTests
     [TestCase(GossipTopics.VoluntaryExit, "/eth2/8c9f62fe/voluntary_exit/ssz_snappy")]
     [TestCase(GossipTopics.ProposerSlashing, "/eth2/8c9f62fe/proposer_slashing/ssz_snappy")]
     [TestCase(GossipTopics.AttesterSlashing, "/eth2/8c9f62fe/attester_slashing/ssz_snappy")]
+    [TestCase(GossipTopics.ExecutionPayload, "/eth2/8c9f62fe/execution_payload/ssz_snappy")]
+    [TestCase(GossipTopics.PayloadAttestationMessage, "/eth2/8c9f62fe/payload_attestation_message/ssz_snappy")]
     public void Builds_topic_strings_for_the_current_mainnet_digest(string name, string expected) =>
         Assert.That(GossipTopics.Topic(GossipTopics.CurrentDigest(Spec, 419072), name), Is.EqualTo(expected));
 
@@ -45,11 +47,6 @@ public class GossipTopicsTests
         Assert.That(digest, Is.EqualTo(Bytes.FromHexString("0x8c9f62fe")), "BPO2 digest");
         Assert.That(GossipTopics.NextRotation(Spec, 419_072), Is.Null, "nothing scheduled after BPO2");
     }
-
-    [TestCase(GossipTopics.ExecutionPayload, "/eth2/8c9f62fe/execution_payload/ssz_snappy")]
-    [TestCase(GossipTopics.PayloadAttestationMessage, "/eth2/8c9f62fe/payload_attestation_message/ssz_snappy")]
-    public void Builds_topic_strings_for_the_gloas_only_topics(string name, string expected) =>
-        Assert.That(GossipTopics.Topic(GossipTopics.CurrentDigest(Spec, 419072), name), Is.EqualTo(expected));
 
     [Test]
     public void Gloas_topic_names_are_exactly_execution_payload_and_payload_attestation_message_and_never_the_builder_only_ones()
