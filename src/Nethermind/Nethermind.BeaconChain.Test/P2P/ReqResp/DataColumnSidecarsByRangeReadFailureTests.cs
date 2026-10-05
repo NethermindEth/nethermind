@@ -197,11 +197,7 @@ public class DataColumnSidecarsByRangeReadFailureTests
     private static async Task<List<ResponseChunk>> RequestAsync(DataColumnSidecarsByRangeProtocol protocol, ulong startSlot, ulong count, CancellationToken token, ulong[]? columns = null)
     {
         Channel channel = new();
-        Task listen = Task.Run(async () =>
-        {
-            await protocol.ListenAsync(channel.Reverse, Context());
-            await channel.Reverse.WriteEofAsync();
-        }, token);
+        Task listen = Task.Run(() => ReqRespTestChannel.ListenThenCloseAsync(protocol, channel.Reverse, Context()), token);
 
         ChannelStreamAdapter client = new(channel);
         await ReqRespFraming.WriteRequestAsync(client, DataColumnSidecarsByRangeRequest.Encode(new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns ?? [Column] }), token);
