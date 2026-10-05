@@ -23,26 +23,25 @@ public interface INewPayloadNotifier
 {
     /// <summary>Returns the execution layer's verdict on the body's payload (with its versioned hashes and execution requests).</summary>
     /// <remarks>
-    /// <see cref="ExecutionStatus.Optimistic"/> means the payload was not rejected and was not
-    /// validated either; the caller must carry that distinction into fork choice rather than
-    /// collapsing it into acceptance.
+    /// <see cref="ExecutionStatus.Optimistic"/> is neither rejected nor validated;
+    /// fork choice must retain that distinction.
     /// </remarks>
     ExecutionStatus NotifyNewPayload(BeaconBlockBody body);
 
     /// <summary>
-    /// Gloas <c>ExecutionEngine.verify_and_notify_new_payload</c> for an execution payload envelope
-    /// (spec <c>verify_execution_payload_envelope</c>, EIP-7732). The plugin's engine adapter
-    /// implements it for real; the default exists only so pre-Gloas test doubles keep compiling,
-    /// and <see cref="RequireEnvelopeSupport"/> turns a production notifier still relying on it into
-    /// a startup failure instead of a throw at the first Gloas envelope.
+    /// Gloas <c>ExecutionEngine.verify_and_notify_new_payload</c> for an envelope
+    /// (spec <c>verify_execution_payload_envelope</c>, EIP-7732).
     /// </summary>
+    /// <remarks>
+    /// The throwing default supports pre-Gloas test doubles; <see cref="RequireEnvelopeSupport"/>
+    /// rejects it at production startup.
+    /// </remarks>
     ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) =>
         throw new NotSupportedException($"{GetType().Name} does not implement execution-layer notification for Gloas execution payload envelopes");
 
     /// <summary>
-    /// Refuses a notifier whose runtime type still uses the interface's throwing default for the
-    /// envelope overload. Run once at startup against the production notifier: a node that passes
-    /// this can not discover at Gloas activation that it never had an engine path for envelopes.
+    /// Rejects a notifier using the throwing envelope default; run at production startup
+    /// to detect missing envelope support before Gloas activation.
     /// </summary>
     /// <exception cref="InvalidOperationException">The notifier does not implement the envelope overload.</exception>
     static void RequireEnvelopeSupport(INewPayloadNotifier notifier)
@@ -68,13 +67,10 @@ public interface INewPayloadNotifier
 /// The Electra/Fulu <c>process_block</c> sub-transitions over <see cref="BeaconStateFulu"/>.
 /// </summary>
 /// <remarks>
-/// Ported from consensus-specs v1.6.1 (<c>specs/electra/beacon-chain.md</c> block processing,
-/// plus the Fulu <c>process_execution_payload</c> blob-limit change), cross-checked against
-/// Lighthouse <c>consensus/state_processing/src/per_block_processing</c>. Spec asserts throw
-/// <see cref="BeaconStateException"/>, so catching it means the block is invalid. Each
-/// <c>Process*</c> method is independently callable, matching the per-operation spec test
-/// fixtures. The <c>verifySignatures</c> flags exist for replaying already-verified blocks and
-/// for spec tests with <c>bls_setting: 2</c>.
+/// Follows consensus-specs v1.6.1 <c>specs/electra/beacon-chain.md</c> and Fulu's execution
+/// payload blob limit. Spec assertions throw <see cref="BeaconStateException"/>.
+/// Operations are independently callable; signature checks may be disabled for verified
+/// replay or spec tests with <c>bls_setting: 2</c>.
 /// </remarks>
 public static partial class BlockProcessing
 {
@@ -139,9 +135,7 @@ public static partial class BlockProcessing
 
         ulong validatorCount = (ulong)state.Validators!.Length;
         state.NextWithdrawalValidatorIndex = expected.Count == Presets.MaxWithdrawalsPerPayload
-            // Next sweep starts after the latest withdrawal's validator index.
             ? (expected[^1].ValidatorIndex + 1) % validatorCount
-            // Advance the sweep by its max length when the withdrawal set was not full.
             : (state.NextWithdrawalValidatorIndex + (ulong)Presets.MaxValidatorsPerWithdrawalsSweep) % validatorCount;
     }
 
@@ -176,7 +170,6 @@ public static partial class BlockProcessing
             processedPartialWithdrawalsCount++;
         }
 
-        // Sweep for remaining full and partial withdrawals.
         int bound = Math.Min(state.Validators!.Length, Presets.MaxValidatorsPerWithdrawalsSweep);
         for (int i = 0; i < bound; i++)
         {
@@ -220,10 +213,8 @@ public static partial class BlockProcessing
     /// queries the execution layer, and caches the payload header.
     /// </summary>
     /// <param name="maxBlobsPerBlock">
-    /// Fulu <c>get_blob_parameters(get_current_epoch(state)).max_blobs_per_block</c>. The
-    /// blob schedule lives in the node's <see cref="BeaconChainSpec"/> configuration (e.g.
-    /// <see cref="BeaconChainSpec.GetBlobParameters"/>), which the state transition does not own,
-    /// so the caller resolves the limit for the state's epoch.
+    /// Fulu <c>get_blob_parameters(get_current_epoch(state)).max_blobs_per_block</c>, resolved
+    /// by the caller through <see cref="BeaconChainSpec.GetBlobParameters"/>.
     /// </param>
     public static void ProcessExecutionPayload(BeaconStateFulu state, BeaconBlockBody body, INewPayloadNotifier notifier, ulong maxBlobsPerBlock)
     {

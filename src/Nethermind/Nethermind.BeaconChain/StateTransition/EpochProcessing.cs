@@ -16,12 +16,10 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// (cross-checked against Lighthouse <c>per_epoch_processing</c>).
 /// </summary>
 /// <remarks>
-/// Each sub-transition is public so the per-handler consensus-spec <c>epoch_processing</c> tests
-/// can exercise it in isolation. Within one <see cref="ProcessEpoch"/> the total-active-balance
-/// memo in <see cref="EpochCache"/> stays valid until
-/// <see cref="ProcessEffectiveBalanceUpdates"/>, which invalidates it: earlier steps only change
-/// raw balances or future activation/exit epochs, never the current-epoch active set or effective
-/// balances.
+/// Public sub-transitions support isolated consensus-spec <c>epoch_processing</c> tests.
+/// Within <see cref="ProcessEpoch"/>, <see cref="EpochCache"/>'s total-active-balance memo remains valid
+/// until <see cref="ProcessEffectiveBalanceUpdates"/> invalidates it: earlier steps change only raw
+/// balances or future activation/exit epochs, not current active membership or effective balances.
 /// </remarks>
 public static partial class EpochProcessing
 {
@@ -63,7 +61,6 @@ public static partial class EpochProcessing
         Checkpoint oldPreviousJustifiedCheckpoint = result.PreviousJustifiedCheckpoint;
         Checkpoint oldCurrentJustifiedCheckpoint = result.CurrentJustifiedCheckpoint;
 
-        // Process justifications.
         result.PreviousJustifiedCheckpoint = result.CurrentJustifiedCheckpoint;
         BitArray bits = result.JustificationBits;
         for (int i = bits.Length - 1; i >= 1; i--)
@@ -90,7 +87,6 @@ public static partial class EpochProcessing
             bits[0] = true;
         }
 
-        // Process finalizations.
         // The 2nd/3rd/4th most recent epochs are justified, the 2nd using the 4th as source.
         if (bits[1] && bits[2] && bits[3] && oldPreviousJustifiedCheckpoint.Epoch + 3 == currentEpoch)
             result.FinalizedCheckpoint = oldPreviousJustifiedCheckpoint;
@@ -116,12 +112,10 @@ public static partial class EpochProcessing
             if (!IsEligibleValidator(validator, previousEpoch))
                 continue;
 
-            // Increase the inactivity score of inactive validators.
             if (IsUnslashedParticipant(validator, previousParticipation[i], Presets.TimelyTargetFlagIndex, previousEpoch))
                 inactivityScores[i] -= Math.Min(1, inactivityScores[i]);
             else
                 inactivityScores[i] += Presets.InactivityScoreBias;
-            // Decrease the inactivity score of all eligible validators during a leak-free epoch.
             if (!isInInactivityLeak)
                 inactivityScores[i] -= Math.Min(Presets.InactivityScoreRecoveryRate, inactivityScores[i]);
         }
