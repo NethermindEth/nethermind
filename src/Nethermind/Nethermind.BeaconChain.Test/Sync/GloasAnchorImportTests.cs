@@ -98,37 +98,27 @@ public class GloasAnchorImportTests
         Assert.That(childEnvelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the child's own envelope verifies against the child's post-state");
     }
 
-    [Test]
-    public void Envelope_newpayload_verdict_decides_whether_its_payload_is_valid([Values(ExecutionStatus.Valid, ExecutionStatus.Optimistic)] ExecutionStatus verdict)
+    [TestCase(ExecutionStatus.Valid, false)]
+    [TestCase(ExecutionStatus.Optimistic, false)]
+    [TestCase(ExecutionStatus.Valid, true)]
+    public void Envelope_newpayload_verdict_decides_whether_its_payload_is_valid(ExecutionStatus verdict, bool invalidated)
     {
         (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
         SignedGloasChain.Block child = chain.Next(anchor, ForkSlot + 1, full: false, 0xA2);
         ForkChoiceSnapshotHolder snapshots = new();
         IBlockImporter importer = CreateFactory(chain, anchor.PostState.Validators!, new SignedGloasChain.EnvelopeEngine { EnvelopeVerdict = verdict },
-                chain.CreateStore(), new SlotClock(chain.Spec, Timestamper.Default), forkChoiceSnapshots: snapshots)
+                chain.CreateStore(), new SlotClock(chain.Spec, Timestamper.Default), forkChoiceSnapshots: invalidated ? null : snapshots)
             .Create(new ForkedBeaconState.OfGloas(anchor.PostState), anchor.Forked, anchor.Root);
         Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
 
-        ExecutionPayloadEnvelopeImportResult result = importer.ImportEnvelope(child.Envelope);
-        importer.ComputeHead();
+        if (invalidated) ((BlockImporter)importer).OnInvalidExecutionPayload(child.Root, latestValidHash: null);
+        ExecutionPayloadEnvelopeImportResult? result = null;
+        Assert.That(() => result = importer.ImportEnvelope(child.Envelope), Throws.Nothing);
+        if (!invalidated) importer.ComputeHead();
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(result, Is.EqualTo(verdict == ExecutionStatus.Valid ? ExecutionPayloadEnvelopeImportResult.Valid : ExecutionPayloadEnvelopeImportResult.Optimistic));
-        Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == child.Root).PayloadValid, Is.EqualTo(verdict == ExecutionStatus.Valid));
-    }
-
-    [Test]
-    public void Valid_envelope_verdict_on_an_invalidated_block_is_recorded_without_failing_the_import()
-    {
-        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
-        SignedGloasChain.Block child = chain.Next(anchor, ForkSlot + 1, full: false, 0xA2);
-        BlockImporter importer = (BlockImporter)CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), chain.CreateStore());
-        Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
-        importer.OnInvalidExecutionPayload(child.Root, latestValidHash: null);
-
-        ExecutionPayloadEnvelopeImportResult? result = null;
-        Assert.That(() => result = importer.ImportEnvelope(child.Envelope), Throws.Nothing);
-        Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        if (!invalidated) Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == child.Root).PayloadValid, Is.EqualTo(verdict == ExecutionStatus.Valid));
     }
 
     [Test]
